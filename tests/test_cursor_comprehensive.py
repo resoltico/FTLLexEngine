@@ -5,7 +5,7 @@ Tests immutable cursor infrastructure for type-safe parsing.
 """
 
 import pytest
-from hypothesis import assume, given
+from hypothesis import given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
@@ -88,10 +88,14 @@ class TestCursorCurrentProperty:
         with pytest.raises(EOFError, match="EOF"):
             _ = cursor.current
 
-    @given(st.text(min_size=1), st.integers(min_value=0, max_value=100))
-    def test_current_returns_correct_character(self, source: str, pos: int) -> None:
+    @given(
+        st.text(min_size=1).flatmap(
+            lambda s: st.tuples(st.just(s), st.integers(min_value=0, max_value=len(s) - 1))
+        )
+    )
+    def test_current_returns_correct_character(self, source_pos: tuple[str, int]) -> None:
         """Property: current returns character at position if valid."""
-        assume(pos < len(source))
+        source, pos = source_pos
         cursor = Cursor(source=source, pos=pos)
         assert cursor.current == source[pos]
 
