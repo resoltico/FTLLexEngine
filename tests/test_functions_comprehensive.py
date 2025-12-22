@@ -1,0 +1,222 @@
+"""Comprehensive property-based tests for runtime.functions module.
+
+Tests formatting behavior for NUMBER, DATETIME, and CURRENCY functions.
+Since v0.14.0, LocaleContext.create() always succeeds with en_US fallback.
+"""
+
+from datetime import UTC, datetime
+
+from hypothesis import given
+from hypothesis import strategies as st
+
+from ftllexengine.runtime.functions import (
+    create_default_registry,
+    currency_format,
+    datetime_format,
+    number_format,
+)
+
+
+class TestNumberFormatBehavior:
+    """Tests for number_format formatting behavior."""
+
+    def test_number_format_with_invalid_locale_uses_fallback(self) -> None:
+        """Verify number_format with invalid locale uses en_US fallback (v0.14.0+)."""
+        # Invalid locale should still format successfully using en_US fallback
+        result = number_format(1234.5, "invalid-locale")
+        # Should contain the number (formatted with en_US rules)
+        assert "1" in result
+        assert "234" in result
+
+    @given(st.floats(allow_nan=False, allow_infinity=False, min_value=-1e10, max_value=1e10))
+    def test_number_format_always_returns_string(self, value: float) -> None:
+        """Property: number_format always returns a string for any finite float."""
+        result = number_format(value, "en-US")
+        assert isinstance(result, str)
+
+    def test_number_format_invalid_locale_with_pattern(self) -> None:
+        """Verify invalid locale with pattern still formats successfully."""
+        result = number_format(
+            42.0,
+            "xx-INVALID",
+            pattern="#,##0.00",
+            minimum_fraction_digits=2,
+        )
+        # Should return formatted string using en_US fallback
+        assert isinstance(result, str)
+        assert "42" in result
+
+    def test_number_format_success_case_basic(self) -> None:
+        """Verify number_format works correctly in success case."""
+        result = number_format(1234.5, "en-US", minimum_fraction_digits=2)
+        # Should format with locale-specific formatting
+        assert "1" in result
+        assert "234" in result
+
+    def test_number_format_success_with_grouping(self) -> None:
+        """Verify number_format with grouping enabled."""
+        result = number_format(1000000, "en-US", use_grouping=True)
+        # Should have thousands separators
+        assert "," in result or " " in result
+
+
+class TestDatetimeFormatBehavior:
+    """Tests for datetime_format formatting behavior."""
+
+    def test_datetime_format_with_invalid_locale_datetime_input(self) -> None:
+        """Verify datetime_format with invalid locale formats datetime (v0.14.0+)."""
+        dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
+        # Invalid locale should still format successfully using en_US fallback
+        result = datetime_format(dt, "invalid-locale")
+        # Should contain formatted date (using en_US rules)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_datetime_format_with_invalid_locale_string_input(self) -> None:
+        """Verify datetime_format with invalid locale handles string input."""
+        dt_string = "2025-10-27T14:30:00+00:00"
+        # Invalid locale should still format successfully using en_US fallback
+        result = datetime_format(dt_string, "bad-locale")
+        assert isinstance(result, str)
+
+    @given(st.datetimes(timezones=st.just(UTC)))
+    def test_datetime_format_always_returns_string(self, dt: datetime) -> None:
+        """Property: datetime_format always returns a string for datetime inputs."""
+        result = datetime_format(dt, "en-US")
+        assert isinstance(result, str)
+
+    def test_datetime_format_invalid_locale_with_pattern(self) -> None:
+        """Verify invalid locale with pattern still formats successfully."""
+        dt = datetime(2025, 10, 27, tzinfo=UTC)
+        result = datetime_format(dt, "invalid", pattern="yyyy-MM-dd")
+        # Should return formatted string using en_US fallback
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_datetime_format_success_case_basic(self) -> None:
+        """Verify datetime_format works correctly in success case."""
+        dt = datetime(2025, 10, 27, tzinfo=UTC)
+        result = datetime_format(dt, "en-US", date_style="short")
+        # Should format with locale-specific formatting
+        assert "10" in result
+        assert "27" in result
+
+    def test_datetime_format_success_with_time_style(self) -> None:
+        """Verify datetime_format with both date and time styles."""
+        dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
+        result = datetime_format(dt, "en-US", date_style="medium", time_style="short")
+        # Should include both date and time
+        assert len(result) > 0
+
+
+class TestCurrencyFormatBehavior:
+    """Tests for currency_format formatting behavior."""
+
+    def test_currency_format_with_invalid_locale(self) -> None:
+        """Verify currency_format with invalid locale uses fallback (v0.14.0+)."""
+        # Invalid locale should still format successfully using en_US fallback
+        result = currency_format(123.45, "invalid-locale", currency="EUR")
+        # Should contain currency info (formatted with en_US rules)
+        assert isinstance(result, str)
+        assert "123" in result or "EUR" in result
+
+    @given(
+        st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e10),
+        st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF"]),
+    )
+    def test_currency_format_always_returns_string(self, value: float, currency: str) -> None:
+        """Property: currency_format always returns a string."""
+        result = currency_format(value, "en-US", currency=currency)
+        assert isinstance(result, str)
+
+    def test_currency_format_invalid_locale_with_display_style(self) -> None:
+        """Verify invalid locale with display style still formats successfully."""
+        result = currency_format(
+            100.0,
+            "xx-INVALID",
+            currency="EUR",
+            currency_display="name",
+        )
+        # Should return formatted string using en_US fallback
+        assert isinstance(result, str)
+        assert "100" in result or "EUR" in result or "euro" in result.lower()
+
+    def test_currency_format_success_case_basic(self) -> None:
+        """Verify currency_format works correctly in success case."""
+        result = currency_format(123.45, "en-US", currency="USD")
+        # Should format with currency symbol or code
+        assert "123" in result
+
+    def test_currency_format_success_with_symbol_display(self) -> None:
+        """Verify currency_format with symbol display."""
+        result = currency_format(100, "en-US", currency="EUR", currency_display="symbol")
+        # Should include currency representation
+        assert len(result) > 0
+
+
+class TestFunctionRegistryIntegration:
+    """Tests for create_default_registry() integration."""
+
+    def test_function_registry_contains_number(self) -> None:
+        """Verify default registry contains NUMBER function."""
+        registry = create_default_registry()
+        assert "NUMBER" in registry
+        assert registry.has_function("NUMBER")
+
+    def test_function_registry_contains_datetime(self) -> None:
+        """Verify default registry contains DATETIME function."""
+        registry = create_default_registry()
+        assert "DATETIME" in registry
+        assert registry.has_function("DATETIME")
+
+    def test_function_registry_contains_currency(self) -> None:
+        """Verify default registry contains CURRENCY function."""
+        registry = create_default_registry()
+        assert "CURRENCY" in registry
+        assert registry.has_function("CURRENCY")
+
+    def test_function_registry_count(self) -> None:
+        """Verify default registry has exactly 3 built-in functions."""
+        registry = create_default_registry()
+        assert len(registry) == 3
+
+    def test_function_registry_list_functions(self) -> None:
+        """Verify registry.list_functions returns all built-ins."""
+        registry = create_default_registry()
+        functions = registry.list_functions()
+        assert "NUMBER" in functions
+        assert "DATETIME" in functions
+        assert "CURRENCY" in functions
+
+    def test_number_function_signature_in_registry(self) -> None:
+        """Verify NUMBER function has correct signature in registry."""
+        registry = create_default_registry()
+        sig = registry.get_function_info("NUMBER")
+        assert sig is not None
+        assert sig.python_name == "number_format"
+        assert sig.ftl_name == "NUMBER"
+        # Should have camelCase parameter mappings
+        assert "minimumFractionDigits" in sig.param_mapping
+        assert "maximumFractionDigits" in sig.param_mapping
+        assert "useGrouping" in sig.param_mapping
+
+    def test_datetime_function_signature_in_registry(self) -> None:
+        """Verify DATETIME function has correct signature in registry."""
+        registry = create_default_registry()
+        sig = registry.get_function_info("DATETIME")
+        assert sig is not None
+        assert sig.python_name == "datetime_format"
+        assert sig.ftl_name == "DATETIME"
+        # Should have camelCase parameter mappings
+        assert "dateStyle" in sig.param_mapping
+        assert "timeStyle" in sig.param_mapping
+
+    def test_currency_function_signature_in_registry(self) -> None:
+        """Verify CURRENCY function has correct signature in registry."""
+        registry = create_default_registry()
+        sig = registry.get_function_info("CURRENCY")
+        assert sig is not None
+        assert sig.python_name == "currency_format"
+        assert sig.ftl_name == "CURRENCY"
+        # Should have camelCase parameter mappings
+        assert "currencyDisplay" in sig.param_mapping

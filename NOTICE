@@ -1,0 +1,147 @@
+ftllexengine
+Copyright (c) 2025 Ervins Strauhmanis
+
+Licensed under the MIT License. See LICENSE file for details.
+
+This product is an independent implementation of the FTL Syntax
+Specification (Apache License 2.0, Mozilla Foundation and others).
+
+================================================================================
+
+FTL Specification Attribution
+-----------------------------
+
+This software implements the FTL Syntax Specification.
+
+  Specification: https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf
+  Copyright: Mozilla Foundation and others
+  License: Apache License 2.0
+  Project: https://projectfluent.org/
+
+The specification is licensed under the Apache License 2.0. This
+implementation is independent work and licensed separately under MIT.
+
+Full Apache License 2.0 text: http://www.apache.org/licenses/LICENSE-2.0
+
+================================================================================
+
+Important Clarifications
+------------------------
+
+1. This library is an INDEPENDENT IMPLEMENTATION of the FTL Syntax Specification
+2. This is NOT a fork or derivative of Mozilla's reference implementation code
+3. All implementation code in this library is original work, licensed under MIT
+4. This implementation is independent work and licensed separately from the
+   specification
+
+================================================================================
+
+Trademark Usage
+---------------
+
+This library uses "FTL" (Fluent Translation List) as a descriptive term to
+indicate technical compatibility with the FTL Syntax Specification v1.0.
+
+This usage is descriptive only and does not imply affiliation with or
+endorsement by the Mozilla Foundation.
+
+"Fluent" and "FTL" may be trademarks of the Mozilla Foundation. All trademarks
+are the property of their respective owners.
+
+================================================================================
+
+Disclaimer of Affiliation and Endorsement
+------------------------------------------
+
+This project is NOT affiliated with, endorsed by, or sponsored by:
+- Mozilla Foundation
+- Mozilla Corporation
+- Project Fluent
+- Any Mozilla-related entity
+
+This is an independent, third-party implementation created by the copyright
+holder listed above.
+
+================================================================================
+
+Patent Considerations
+---------------------
+
+The FTL Specification is licensed under Apache License 2.0, which includes an
+explicit patent grant from specification contributors.
+
+This implementation (ftllexengine) is licensed under the MIT License, which
+does not include explicit patent language. Users should be aware that:
+
+1. The Apache 2.0 patent grant applies to the specification itself
+2. This independent implementation makes no patent claims
+3. No patents are knowingly infringed by this implementation
+4. Contributors to this implementation grant MIT License permissions only
+5. The MIT License does not provide explicit patent protection
+
+For patent-related inquiries, consult with legal counsel.
+
+================================================================================
+
+Third-Party Dependencies
+------------------------
+
+This software depends on the following third-party packages:
+
+1. Babel (BSD-3-Clause License)
+   Copyright (c) 2013-2024 by the Babel Team
+   https://github.com/python-babel/babel
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions
+   are met:
+
+   1. Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in
+      the documentation and/or other materials provided with the
+      distribution.
+
+   3. Neither the name of the copyright holder nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+2. returns (BSD-2-Clause License)
+   Copyright (c) 2018, dry-python team
+   https://github.com/dry-python/returns
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are met:
+
+   1. Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+
+   2. Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE.

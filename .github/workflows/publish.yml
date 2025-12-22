@@ -1,0 +1,429 @@
+name: Build and Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Verify Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify clean working tree
+        run: |
+          # Use porcelain format for maximum reliability across all git states (detached HEAD, etc.)
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working directory is not clean after checkout"
+            echo "Modified/untracked files detected:"
+            git status --porcelain
+            echo ""
+            git status
+            exit 1
+          fi
+          echo "✓ Working tree is clean"
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          allow-prereleases: true
+          cache: 'pip'
+
+      - name: Make scripts executable
+        run: chmod +x ./scripts/lint.sh ./scripts/test.sh
+
+      - name: Detect package name
+        id: detect
+        run: |
+          set -euo pipefail
+          # Robust detection excluding egg-info and pycache
+          PACKAGE_NAME=$(find src -mindepth 1 -maxdepth 1 -type d -not -name "*.egg-info" -not -name "__pycache__" | head -n 1 | xargs basename)
+          if [ -z "$PACKAGE_NAME" ]; then
+            echo "::error::Could not detect package in src/"
+            exit 1
+          fi
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
+          echo "✓ Detected package: $PACKAGE_NAME"
+
+      - name: Validate version tag (Release only)
+        if: github.event_name == 'release'
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_VERSION#v}"
+
+          # Validate tag format
+          if ! [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid tag format: $TAG_VERSION (expected semver)"
+            exit 1
+          fi
+
+          PACKAGE_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+
+          echo "Tag version: $TAG_VERSION"
+          echo "Package version: $PACKAGE_VERSION"
+
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION doesn't match package version $PACKAGE_VERSION"
+            exit 1
+          fi
+          echo "✓ Version validation passed"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install "build>=1.3.0,<3.0.0" "twine>=6.2.0,<8.0.0"
+          # Install the package in editable mode with dev dependencies
+          pip install -e ".[dev]"
+          echo "✓ Dependencies installed"
+
+      - name: Validate runtime version matches tag
+        if: github.event_name == 'release'
+        run: |
+          set -euo pipefail
+
+          PACKAGE="${{ steps.detect.outputs.name }}"
+
+          RUNTIME_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_VERSION#v}"
+
+          echo "Package: $PACKAGE"
+          echo "Runtime version: $RUNTIME_VERSION"
+          echo "Tag version: $TAG_VERSION"
+
+          if [ "$RUNTIME_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Runtime version $RUNTIME_VERSION doesn't match tag $TAG_VERSION"
+            echo "::error::Update __version__ in src/${PACKAGE}/__init__.py"
+            exit 1
+          fi
+          echo "✓ Runtime version validation passed"
+
+      - name: Run Quality Checks (Lint & Test)
+        run: |
+          echo "::group::Linting"
+          # lint.sh now cleans caches by default before running
+          ./scripts/lint.sh
+          echo "::endgroup::"
+
+          echo "::group::Testing"
+          # CI flag optimizes output for logs
+          ./scripts/test.sh --ci
+          echo "::endgroup::"
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: false
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check package metadata
+        run: twine check dist/*
+
+      - name: Verify package integrity
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+
+          echo "Verifying package: $PACKAGE"
+
+          # Check wheel contains required files
+          set +o pipefail  # grep -q can cause SIGPIPE
+          if ! unzip -l dist/*.whl | grep -q "${PACKAGE}/__init__.py"; then
+            set -o pipefail
+            echo "::error::Wheel missing ${PACKAGE}/__init__.py"
+            exit 1
+          fi
+          set -o pipefail
+
+          # Ensure no compiled Python files in wheel
+          set +o pipefail
+          if unzip -l dist/*.whl | grep -qE "\.pyc$|__pycache__"; then
+            set -o pipefail
+            echo "::error::Wheel contains compiled Python files"
+            exit 1
+          fi
+          set -o pipefail
+
+          # Check source distribution contains source files
+          set +o pipefail  # grep -q closes pipe early, causing tar SIGPIPE with pipefail
+          if ! tar -tzf dist/*.tar.gz | grep -q "src/${PACKAGE}/__init__.py"; then
+            set -o pipefail
+            echo "::error::Source distribution missing src/${PACKAGE}/__init__.py"
+            exit 1
+          fi
+          set -o pipefail
+
+          echo "✓ Package integrity verified"
+
+      - name: Debug Artifacts
+        run: ls -laR dist/
+
+      - name: Store build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  test-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          skip-existing: true
+
+  verify-test-publish:
+    name: Verify TestPyPI Publication
+    needs: test-publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Detect package name
+        id: detect
+        run: |
+          set -euo pipefail
+          PACKAGE_NAME=$(find src -mindepth 1 -maxdepth 1 -type d -not -name "*.egg-info" -not -name "__pycache__" | head -n 1 | xargs basename)
+          if [ -z "$PACKAGE_NAME" ]; then
+            echo "::error::Could not detect package in src/"
+            exit 1
+          fi
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "✓ Detected package: $PACKAGE_NAME"
+
+      - name: Extract version
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "✓ Version: $VERSION"
+
+      - name: Wait for TestPyPI CDN propagation
+        run: |
+          echo "Waiting 60 seconds for TestPyPI CDN to propagate..."
+          sleep 60
+
+      - name: Install from TestPyPI with retry
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          MAX_ATTEMPTS=5
+          ATTEMPT=1
+          DELAY=20
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${VERSION}..."
+            pip cache purge || true
+            # Extra index url ensures dependencies are found on real PyPI
+            if pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "${PACKAGE}==${VERSION}"; then
+              echo "Successfully installed ${PACKAGE}==${VERSION}"
+              break
+            fi
+            
+            if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+              echo "::error::Failed to install from TestPyPI after $MAX_ATTEMPTS attempts"
+              exit 1
+            fi
+            sleep $DELAY
+            ATTEMPT=$((ATTEMPT + 1))
+            DELAY=$((DELAY * 2))
+          done
+
+      - name: Verify installed version
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          INSTALLED_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
+          EXPECTED_VERSION="${{ steps.version.outputs.version }}"
+
+          echo "Installed version: $INSTALLED_VERSION"
+          echo "Expected version: $EXPECTED_VERSION"
+
+          if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Version mismatch: $INSTALLED_VERSION != $EXPECTED_VERSION"
+            exit 1
+          fi
+          echo "✓ Version verification passed"
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          python -c "import ${PACKAGE}; print(f'✓ Successfully imported ${PACKAGE}')"
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  verify-publish:
+    name: Verify PyPI Publication
+    needs: publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Detect package name
+        id: detect
+        run: |
+          set -euo pipefail
+          PACKAGE_NAME=$(find src -mindepth 1 -maxdepth 1 -type d -not -name "*.egg-info" -not -name "__pycache__" | head -n 1 | xargs basename)
+          if [ -z "$PACKAGE_NAME" ]; then
+            echo "::error::Could not detect package in src/"
+            exit 1
+          fi
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "✓ Detected package: $PACKAGE_NAME"
+
+      - name: Wait for PyPI CDN propagation
+        run: |
+          echo "Waiting 90 seconds for PyPI CDN..."
+          sleep 90
+
+      - name: Install from PyPI with retry
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          PACKAGE="${{ steps.detect.outputs.name }}"
+
+          MAX_ATTEMPTS=5
+          ATTEMPT=1
+          DELAY=30
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${TAG_VERSION}..."
+            pip cache purge || true
+            if pip install --no-cache-dir "${PACKAGE}==${TAG_VERSION}"; then
+              echo "✓ Successfully installed ${PACKAGE}==${TAG_VERSION}"
+              break
+            fi
+
+            if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+              echo "::error::Failed to install from PyPI after $MAX_ATTEMPTS attempts"
+              exit 1
+            fi
+            sleep $DELAY
+            ATTEMPT=$((ATTEMPT + 1))
+            DELAY=$((DELAY * 2))
+          done
+
+      - name: Verify installed version
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          INSTALLED_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
+          TAG_VERSION="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_VERSION#v}"
+
+          echo "Installed version: $INSTALLED_VERSION"
+          echo "Expected version: $TAG_VERSION"
+
+          if [ "$INSTALLED_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: $INSTALLED_VERSION != $TAG_VERSION"
+            exit 1
+          fi
+          echo "✓ Version verification passed"
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          python -c "import ${PACKAGE}; print(f'✓ Successfully imported ${PACKAGE}')"
+
+  verify-python-requirement:
+    name: Verify Python 3.13+ Requirement
+    needs: publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect package name
+        id: detect
+        run: |
+          set -euo pipefail
+          PACKAGE_NAME=$(find src -mindepth 1 -maxdepth 1 -type d -not -name "*.egg-info" -not -name "__pycache__" | head -n 1 | xargs basename)
+          if [ -z "$PACKAGE_NAME" ]; then
+            echo "::error::Could not detect package in src/"
+            exit 1
+          fi
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "✓ Detected package: $PACKAGE_NAME"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify install is blocked
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+
+          echo "Attempting to install $PACKAGE on Python 3.12 (should fail)..."
+
+          if pip install "$PACKAGE" 2>/dev/null; then
+            echo "::error::Installation succeeded on Python 3.12 (should have failed)"
+            echo "::error::Check requires-python in pyproject.toml"
+            exit 1
+          fi
+
+          echo "✓ Installation correctly blocked on Python 3.12"

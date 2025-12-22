@@ -1,0 +1,334 @@
+[build-system]
+requires = ["hatchling>=1.28.0,<2.0.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ftllexengine"
+version = "0.28.0"
+description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Ervins Strauhmanis"},
+]
+keywords = [
+    # Core
+    "fluent",
+    "ftl",
+    # Localization
+    "i18n",
+    "l10n",
+    "localization",
+    "internationalization",
+    "translation",
+    # Data standards
+    "cldr",
+    "babel",
+    "locale",
+    # Parsing
+    "parsing",
+    "currency",
+    "date",
+    "number",
+    "decimal",
+    # Features
+    "plurals",
+    "formatting",
+    "thread-safe",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Internationalization",
+    "Topic :: Software Development :: Localization",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
+dependencies = [
+    "Babel>=2.17.0,<3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "hypothesis>=6.148.7",
+    "mypy>=1.19.1",
+    "pylint>=4.0.4",
+    "ruff>=0.14.10",
+    "pytest-benchmark>=5.2.3",
+]
+publish = [
+    "build>=1.3.0",
+    "twine>=6.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/resoltico/ftllexengine"
+Documentation = "https://github.com/resoltico/ftllexengine#readme"
+Repository = "https://github.com/resoltico/ftllexengine.git"
+Issues = "https://github.com/resoltico/ftllexengine/issues"
+Changelog = "https://github.com/resoltico/ftllexengine/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.sdist]
+# Source distribution includes:
+# - Full source code (/src) - runtime code
+# - Complete test suite (/tests) - for downstream packagers and verification
+# - Working examples (/examples) - educational value and learning resources
+# - User documentation (*.md) - offline reference and API docs
+# - CI workflows (/.github/workflows) - shows testing/release process for packagers
+# - License files (LICENSE, NOTICE, PATENTS.md) - legal compliance
+#
+# IMPORTANT: Hatch uses VCS (git) mode by default and respects git tracking
+# Files must be committed to git to be included in sdist
+# .gitignore is always included (cannot be excluded per Hatch behavior)
+only-include = [
+    "/.github/workflows",
+    "/examples",
+    "/src",
+    "/tests",
+    "/docs",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "NOTICE",
+    "PATENTS.md",
+    "README.md",
+]
+
+[tool.hatch.build.targets.wheel]
+# Wheel contains ONLY runtime code (src/ftllexengine/)
+# Automatically excludes: tests, examples, docs
+# Hatch auto-detects packages in src-layout (src/ftllexengine/)
+# No explicit configuration needed - hatch finds src/ftllexengine/ automatically
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "property: Property-based tests using Hypothesis",
+    "slow: Slow-running tests",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src/ftllexengine"]
+branch = true  # Track branch coverage, not just statement coverage
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 95.0
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+    "if __name__ == .__main__.:",
+]
+
+# Mypy configuration
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+module = "ftllexengine.syntax.visitor"
+# ASTTransformer.generic_visit and _transform_list require these suppressions:
+# - arg-type: visit() returns ASTNode union; pattern matching narrows at runtime but mypy
+#   cannot verify the correct subtype for each replace() field (75+ false positives)
+# - unreachable: _transform_list checks for None/list returns from subclass visit_* methods
+#   which are valid at runtime but typed as -> ASTNode in base class
+# Inline type:ignore per-line would require 30+ comments - module override is cleaner.
+# ASTVisitor base class remains fully type-checked.
+disable_error_code = ["arg-type", "unreachable"]
+
+[[tool.mypy.overrides]]
+module = "babel.*"
+ignore_missing_imports = true
+
+# Ruff configuration
+[tool.ruff]
+line-length = 100
+target-version = "py313"  # Match minimum requires-python version
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "T10", # flake8-debugger
+    "EM",  # flake8-errmsg
+    "ISC", # flake8-implicit-str-concat
+    "ICN", # flake8-import-conventions
+    "PIE", # flake8-pie
+    "PT",  # flake8-pytest-style
+    "Q",   # flake8-quotes
+    "RSE", # flake8-raise
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "TID", # flake8-tidy-imports
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8-use-pathlib
+    "ERA", # eradicate
+    "PL",  # pylint
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "PLR0913",  # Too many arguments - acceptable for configuration objects
+    "PLR2004",  # Magic values - acceptable for protocol constants
+]
+
+[tool.ruff.lint.per-file-ignores]
+# PRODUCTION CODE - Architectural patterns only (real bugs fixed separately)
+
+# Visitor pattern: N802 (visit_NodeName methods follow stdlib ast.NodeVisitor convention)
+"src/ftllexengine/introspection.py" = ["N802"]
+
+# Parser: Inherent complexity from EBNF grammar
+"src/ftllexengine/syntax/parser/core.py" = ["PLR0912"]
+
+# Visitor: Commented example code + inherent complexity from AST node dispatch
+"src/ftllexengine/syntax/visitor.py" = ["ERA001", "PLR0911", "PLR0912"]
+
+# Bundle: Inherent complexity in resource validation
+"src/ftllexengine/runtime/bundle.py" = ["PLR0912", "E501"]
+
+# Function metadata: Lazy import for performance
+"src/ftllexengine/runtime/function_metadata.py" = ["PLC0415"]
+
+# Dates: Intentionally naive datetime (user provides timezone if needed)
+"src/ftllexengine/parsing/dates.py" = ["DTZ007"]
+
+# Currency: Inherent complexity in ambiguous symbol disambiguation
+"src/ftllexengine/parsing/currency.py" = ["PLR0911", "PLR0912"]
+
+# EXAMPLES - Educational code, not production quality
+"examples/**/*.py" = ["N802", "E501", "ERA001", "PLC0415"]
+
+# TESTS - Minimal architectural pattern suppressions
+"tests/test_visitor.py" = ["N802"]
+"tests/test_visitor_coverage.py" = ["N802"]
+"tests/test_visitor_hypothesis.py" = ["N802", "ARG002"]
+"tests/test_ast_tooling.py" = ["N802", "ARG002"]
+"tests/test_ast_edge_cases.py" = ["N801", "N802", "PLC0415"]
+"tests/test_api_consistency_contracts.py" = ["PLC0415"]
+"tests/test_fluent_bundle.py" = ["N802", "N806"]
+"tests/test_fluent_resolver.py" = ["N802", "EM101"]
+"tests/test_resolver_coverage.py" = ["N802"]
+"tests/test_function_registry_integration.py" = ["N802"]
+"tests/test_cache_basic.py" = ["N802"]
+"tests/test_cache_properties.py" = ["E501"]
+"tests/test_localization_api_completeness.py" = ["N802"]
+"tests/test_parsing_dates.py" = ["DTZ001"]
+"tests/test_parsing_*.py" = ["PLC0415"]
+"tests/test_parser_final_coverage.py" = ["N801", "PLC0415"]
+"tests/test_parser_coverage_gaps.py" = ["PLC0415", "PT017"]
+"tests/test_spec_conformance.py" = ["ARG002", "PLC0415"]
+"tests/test_systematic_error_paths.py" = ["ARG002"]
+"tests/test_multiline_hypothesis.py" = ["E721", "E501"]
+"tests/test_parser_hypothesis_errors.py" = ["E721"]
+"tests/test_serializer_completeness.py" = ["RUF002"]
+"tests/test_semantic_validation.py" = ["PLC0415"]
+"tests/test_span_attachment.py" = ["PLC0415"]
+"tests/test_introspection_coverage.py" = ["PLC0415"]
+"tests/test_locale_context_coverage.py" = ["PLC0415"]
+"tests/test_ast_validation_coverage.py" = ["PLC0415"]
+"tests/test_functions_coverage.py" = ["SIM105"]
+"tests/test_properties.py" = ["PLC0415", "SIM105"]
+"tests/test_function_bridge_coverage.py" = ["PLC0415"]
+"tests/test_function_metadata_coverage.py" = ["PLC0415"]
+"tests/test_parser_entries_complete_coverage.py" = ["PLC0415"]
+"tests/test_parser_entries_comprehensive.py" = ["PLC0415"]
+"tests/test_parser_expressions_remaining_coverage.py" = ["PLC0415"]
+"tests/test_validation_resource_comprehensive.py" = ["PLC0415"]
+"tests/test_init_error_paths.py" = ["PLC0415", "EM101", "PT017", "F401"]
+"tests/test_serialization_hypothesis.py" = ["PLC0415"]
+"tests/test_metamorphic_properties.py" = ["PLC0415"]
+"tests/conftest.py" = ["PLC0415"]
+"tests/helpers/type_assertions.py" = ["PLC0415"]
+"tests/test_fluent_parser_*.py" = ["PT018"]
+
+# Pylint configuration
+[tool.pylint.main]
+py-version = "3.13"
+ignore-paths = ["^tests/.*$"]
+extension-pkg-allow-list = ["babel"]
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",     # Data classes are intentionally minimal
+    "too-many-arguments",         # Configuration objects need many parameters
+    "too-many-instance-attributes",  # AST nodes have many attributes
+    "too-many-locals",            # Parser/resolver methods need many local variables
+    "too-many-branches",          # Parser/resolver complexity inherent to EBNF grammar
+    "too-many-statements",        # Parser methods implement complex state machines
+    "too-many-lines",             # Parser is monolithic by design (see Task 4)
+    "too-many-positional-arguments",  # Cache keys need many position-only args
+    "protected-access",           # Test utilities and internal helpers need protected access
+    "fixme",                      # TODOs are tracked separately
+    "too-many-public-methods",    # Visitor pattern needs one method per node type
+    "duplicate-code",             # Similar __all__ lists across modules is intentional
+    "too-many-return-statements", # Parser/resolver patterns need multiple returns
+    "import-outside-toplevel",    # Runtime imports avoid circular dependencies
+    "cyclic-import",              # Parser modules are mutually recursive by design (grammar)
+    "unreachable",                # Pylint doesn't recognize Never return type from Result monad
+    "assignment-from-no-return",  # Pylint doesn't recognize Never return type from Result monad
+    "invalid-name",               # Visitor pattern visit_NodeName methods
+    "unused-variable",            # start_pos variables from parser span tracking
+    "unused-argument",            # start_pos parameters from parser span tracking
+    "line-too-long",              # Delegated to ruff (ruff E501)
+    "import-error",               # Extension packages (Babel) handled via extension-pkg-allow-list
+]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.design]
+max-args = 7
+max-attributes = 10
+max-locals = 20  # Parser methods need local variables for token tracking
+max-branches = 20  # Parser dispatch methods + v0.7.0 currency disambiguation
+max-nested-blocks = 6  # v0.7.0 currency ambiguous symbol handling

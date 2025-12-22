@@ -1,0 +1,397 @@
+# Pylint configuration for test code
+# Location: tests/.pylintrc
+# Invoked by: cd tests && pylint . (from scripts/lint.sh)
+#
+# ============================================================================
+# ARCHITECTURAL PHILOSOPHY
+# ============================================================================
+#
+# Test code has different quality goals than production code:
+#
+# PRODUCTION CODE (10.00/10):
+# - Long-lived, user-facing, security-critical
+# - Optimized for maintainability and extensibility
+# - Zero tolerance for technical debt
+#
+# TEST CODE (9.00/10 target):
+# - Executable specifications, refactored frequently
+# - Developer-facing, isolated impact (tests don't run in production)
+# - High standards, pragmatic exceptions
+#
+# SPECIFIC TEST PATTERNS ALLOWED:
+# - DSL mimicry: FTL built-in functions use UPPERCASE (matches Mozilla spec)
+# - Pytest fixtures: May have unused arguments (injected by framework)
+# - Test data: Long string literals for readability
+# - Integration tests: May access protected members to verify internals
+#
+# NEVER RELAXED (even in tests):
+# - Undefined variables, typos: Actual bugs
+# - Logic errors: Incorrect comparisons, unused variables
+# - Security: No hardcoded secrets, no dangerous patterns
+#
+# ============================================================================
+
+[MAIN]
+
+# Python version (must match pyproject.toml and tests/mypy.ini)
+py-version = 3.13
+
+# Files or directories to exclude (in addition to standard exclusions)
+ignore-patterns = ^__pycache__.*,
+                  ^.*\.pyc$,
+                  ^\.pytest_cache.*,
+                  ^\.mypy_cache.*,
+                  ^.*\.egg-info$
+
+# Use all CPU cores for parallel linting (0 = auto-detect)
+jobs = 0
+
+# Don't load plugins (keep linting fast and simple)
+# Uncomment if pytest-specific checks are needed:
+# load-plugins = pylint.extensions.docparams
+
+# Pickle collected data for stats (not needed for tests)
+persistent = false
+
+# ============================================================================
+# MESSAGES CONTROL
+# ============================================================================
+
+[MESSAGES CONTROL]
+
+# Disable checks that are inappropriate for test code
+disable =
+    # ========================================================================
+    # NAMING CONVENTIONS (DSL Mimicry & Test Patterns)
+    # ========================================================================
+
+    # C0103: invalid-name
+    # Reason: Allow UPPERCASE for FTL function mimics (UPPER, DOUBLE, GREET)
+    # These match Mozilla Fluent spec where built-ins are UPPERCASE:
+    #   NUMBER(), DATETIME(), PLATFORM()
+    # Test code mimics DSL for clarity.
+    invalid-name,
+
+    # C0104: disallowed-name
+    # Reason: Test fixtures may use generic names (foo, bar, baz)
+    disallowed-name,
+
+    # ========================================================================
+    # DOCUMENTATION (Test Names Are Self-Documenting)
+    # ========================================================================
+
+    # C0114: missing-module-docstring
+    # Reason: Test file names explain purpose (test_fluent_parser.py)
+    missing-module-docstring,
+
+    # C0115: missing-class-docstring
+    # Reason: Test class names explain purpose (TestFluentParserBasic)
+    missing-class-docstring,
+
+    # C0116: missing-function-docstring
+    # Reason: Test names are self-documenting (test_parse_message_with_variable)
+    # Most tests have docstrings anyway, but not required.
+    missing-function-docstring,
+
+    # ========================================================================
+    # DESIGN (Test-Specific Patterns)
+    # ========================================================================
+
+    # R0903: too-few-public-methods
+    # Reason: Test classes may have single test method
+    too-few-public-methods,
+
+    # R0913: too-many-arguments
+    # R0917: too-many-positional-arguments (Pylint 3.0+)
+    # Reason: Pytest fixtures inject many arguments
+    # Reason: Hypothesis @given strategies inject multiple parameters
+    too-many-arguments,
+    too-many-positional-arguments,
+
+    # R0914: too-many-locals
+    # Reason: Test setup may need many variables
+    too-many-locals,
+
+    # R0915: too-many-statements
+    # Reason: Integration tests verify many conditions
+    too-many-statements,
+
+    # R0801: duplicate-code
+    # Reason: Similar test setups (arrange-act-assert) repeat intentionally
+    duplicate-code,
+
+    # R0912: too-many-branches
+    # Reason: Tests may have complex conditional logic
+    too-many-branches,
+
+    # R0911: too-many-return-statements
+    # Reason: Test helpers may need many return paths
+    too-many-return-statements,
+
+    # C0302: too-many-lines
+    # Reason: Comprehensive hypothesis test files covering all aspects of a system
+    # Example: test_parser_hypothesis.py exhaustively tests ALL FTL syntax elements
+    # Splitting would reduce cohesion and make maintenance harder. Property-based
+    # tests benefit from having all related properties in one cohesive module.
+    too-many-lines,
+
+    # W0201: attribute-defined-outside-init
+    # Reason: Hypothesis RuleBasedStateMachine requires @initialize() decorator
+    # Framework controls instantiation - cannot use __init__.
+    # Per Hypothesis docs, attributes must be set in @initialize() methods.
+    attribute-defined-outside-init,
+
+    # ========================================================================
+    # CODE STYLE (Test Patterns)
+    # ========================================================================
+
+    # C1803: use-implicit-booleaness-not-comparison
+    # Reason: Test assertions should be explicit about expected values
+    # Pattern: assert x == [] documents type and expected value
+    # More readable in test context than: assert not x
+    # Codebase consistently uses len(...) == 0 for emptiness checks
+    use-implicit-booleaness-not-comparison,
+
+    # ========================================================================
+    # IMPORTS (Test-Specific Patterns)
+    # ========================================================================
+
+    # C0415: import-outside-toplevel
+    # Reason: Tests may import conditionally (e.g., inside property tests)
+    # Example: from ftllexengine.runtime.functions import number_format
+    import-outside-toplevel,
+
+    # C0411: wrong-import-order
+    # Reason: Ruff handles import ordering (isort)
+    wrong-import-order,
+
+    # C0412: ungrouped-imports
+    # Reason: Ruff handles this
+    ungrouped-imports,
+
+    # W0404: reimported
+    # Reason: Mid-function imports for test isolation (manual AST construction)
+    # Tests import modules mid-function to avoid circular dependencies and for test isolation
+    reimported,
+
+    # ========================================================================
+    # PROTECTED ACCESS (Integration Tests)
+    # ========================================================================
+
+    # W0212: protected-access
+    # Reason: Integration tests may verify internal state
+    # Example: assert bundle._resources == expected
+    # This is intentional for white-box testing.
+    protected-access,
+
+    # W0101: unreachable
+    # E1111: assignment-from-no-return
+    # Reason: Pylint doesn't recognize Never return type from Result monad
+    # Pattern: result.failure() has Never return type (raises), but pylint
+    # doesn't understand this and flags subsequent code as unreachable
+    unreachable,
+    assignment-from-no-return,
+
+    # ========================================================================
+    # MISCELLANEOUS
+    # ========================================================================
+
+    # W0511: fixme
+    # Reason: TODOs are tracked separately in GitHub issues
+    fixme,
+
+    # R1705: no-else-return
+    # Reason: Explicit if/else improves test readability
+    no-else-return,
+
+    # R1710: inconsistent-return-statements
+    # Reason: Test helpers may have implicit None returns
+    inconsistent-return-statements,
+
+    # W0621: redefined-outer-name
+    # Reason: Pytest fixture parameter shadowing is standard pattern
+    # Example: def test_foo(parser): ... where parser is a fixture
+    redefined-outer-name,
+
+    # W0108: unnecessary-lambda
+    # Reason: Lambda expressions in test data may be clearer than named functions
+    unnecessary-lambda,
+
+    # W0613: unused-argument
+    # Reason: Test function parameters match real function signatures for clarity
+    unused-argument,
+
+# ============================================================================
+# REPORTS
+# ============================================================================
+
+[REPORTS]
+
+# Disable full report (we only need errors)
+reports = false
+
+# Simpler output format
+output-format = text
+
+# Score (show at end)
+score = true
+
+# ============================================================================
+# FORMAT
+# ============================================================================
+
+[FORMAT]
+
+# Line length (must match pyproject.toml ruff configuration)
+max-line-length = 100
+
+# Allow longer lines for specific patterns:
+# - URLs in docstrings
+# - Long string literals (test data, FTL messages)
+# - Import statements
+ignore-long-lines = ^\s*(# )?<?https?://\S+>?$|
+                    ^\s*""".*"""$|
+                    ^\s*'''.*'''$|
+                    ^\s*from .* import
+
+# Expected line ending style (Unix)
+expected-line-ending-format = LF
+
+# ============================================================================
+# DESIGN
+# ============================================================================
+
+[DESIGN]
+
+# Test-specific design limits (more lenient than production)
+
+# Maximum number of arguments for function/method
+max-args = 10  # Pytest fixtures inject many arguments
+
+# Maximum number of attributes for a class
+max-attributes = 15  # Test classes accumulate test data
+
+# Maximum number of boolean expressions in an if statement
+max-bool-expr = 5  # Complex assertions are OK
+
+# Maximum number of branch for function/method body
+max-branches = 15  # Test decision trees can be complex
+
+# Maximum number of locals for function/method body
+max-locals = 20  # Test setup needs many variables
+
+# Maximum number of return / yield for function/method body
+max-returns = 8  # Multiple assertion branches
+
+# Maximum number of statements in function/method body
+max-statements = 75  # Integration tests are longer
+
+# Minimum number of public methods for a class
+min-public-methods = 0  # Test classes may have 1 test
+
+# ============================================================================
+# SIMILARITIES
+# ============================================================================
+
+[SIMILARITIES]
+
+# Minimum lines of similar code to flag (higher for tests)
+# Tests have similar arrange-act-assert patterns
+min-similarity-lines = 10
+
+# Ignore comments when computing similarities
+ignore-comments = true
+
+# Ignore docstrings when computing similarities
+ignore-docstrings = true
+
+# Ignore imports when computing similarities
+ignore-imports = true
+
+# Ignore function/method signatures
+ignore-signatures = true
+
+# ============================================================================
+# BASIC (Naming Conventions)
+# ============================================================================
+
+[BASIC]
+
+# Naming styles (relaxed for test-specific needs)
+
+# Function naming: Allow both snake_case AND UPPERCASE (for FTL mimics)
+function-naming-style = any
+# Regex for function names (allow UPPERCASE):
+function-rgx = [a-z_][a-z0-9_]{2,30}$|^[A-Z_][A-Z0-9_]{2,30}$
+
+# Argument naming: Allow both snake_case and camelCase (test fixtures)
+argument-naming-style = any
+
+# Variable naming: Prefer snake_case
+variable-naming-style = snake_case
+variable-rgx = [a-z_][a-z0-9_]{0,30}$
+
+# Class naming: PascalCase (standard)
+class-naming-style = PascalCase
+class-rgx = [A-Z_][a-zA-Z0-9]+$
+
+# Constant naming: UPPER_CASE (standard)
+const-naming-style = UPPER_CASE
+const-rgx = ([A-Z_][A-Z0-9_]*)|(__.*__)$
+
+# Allow single-letter names in specific contexts
+good-names = i,
+             j,
+             k,
+             n,      # Common in iteration/math
+             _,      # Unused variable
+             id,     # Message ID (common in FTL tests)
+             db,     # Database fixture
+             up,     # Migration direction
+             x,
+             y,
+             z
+
+# Disallowed names (avoid generic names, except in strategies)
+bad-names =
+
+# ============================================================================
+# EXCEPTIONS
+# ============================================================================
+
+[EXCEPTIONS]
+
+# List of exceptions that should not be caught broadly
+overgeneral-exceptions = builtins.BaseException,
+                         builtins.Exception
+
+# ============================================================================
+# TYPECHECK
+# ============================================================================
+
+[TYPECHECK]
+
+# List of class names for which member attributes should not be checked
+# (Useful for dynamic classes like Mock)
+ignored-classes = Mock,
+                  MagicMock,
+                  unittest.mock.Mock,
+                  unittest.mock.MagicMock
+
+# ============================================================================
+# NOTES ON REMAINING ERRORS
+# ============================================================================
+#
+# After this configuration, remaining pylint errors indicate REAL issues:
+#
+# 1. Undefined variables (E0602): Typos, actual bugs
+# 2. Unused variables (W0612): Dead code to remove
+# 3. Redefining outer name (W0621): Pytest fixture shadowing (OK)
+# 4. Comparison with itself (R0124): Nonsense logic
+# 5. Protected access (W0212): Only if truly needed for white-box testing
+#
+# These are intentional - pylint should catch these to ensure test quality.
+#
+# TARGET SCORE: 9.00/10 or higher
+#
+# ============================================================================

@@ -1,0 +1,122 @@
+"""Whitespace handling utilities for Fluent FTL parser.
+
+This module provides whitespace skipping and continuation detection
+per the Fluent specification.
+"""
+
+from ftllexengine.syntax.cursor import Cursor
+
+
+def skip_blank_inline(cursor: Cursor) -> Cursor:
+    """Skip inline whitespace (ONLY space U+0020, per FTL spec).
+
+    Per Fluent EBNF specification:
+        blank_inline ::= "\u0020"+
+
+    This is stricter than skip_blank() - it ONLY accepts space (U+0020),
+    NOT tabs or newlines.
+
+    Used in contexts where spec requires blank_inline:
+    - Between tokens on same line (identifier = value)
+    - Inside call arguments and select expressions
+    - Before/after operators (=, ->, :)
+
+    Args:
+        cursor: Current position in source
+
+    Returns:
+        New cursor at first non-space character (or EOF)
+
+    Design:
+        Immutable cursor ensures termination (same proof as skip_blank).
+    """
+    return cursor.skip_spaces()  # Always makes progress
+
+
+def skip_blank(cursor: Cursor) -> Cursor:
+    """Skip blank (spaces and line endings, per FTL spec).
+
+    Per Fluent EBNF specification:
+        blank ::= (blank_inline | line_end)+
+        blank_inline ::= "\u0020"+
+        line_end ::= "\u000d\u000a" | "\u000a" | EOF
+
+    This accepts spaces and newlines, but NOT tabs.
+
+    Used in contexts where spec requires blank:
+    - Between entries in resource
+    - Inside select expression variant lists
+    - Before/after patterns with line breaks
+
+    Args:
+        cursor: Current position in source
+
+    Returns:
+        New cursor at first non-blank character (or EOF)
+
+    Design:
+        Immutable cursor ensures termination.
+    """
+    return cursor.skip_whitespace()  # Always makes progress
+
+
+def is_indented_continuation(cursor: Cursor) -> bool:
+    """Check if the next line is an indented pattern continuation.
+
+    According to FTL spec:
+    - Continuation lines must start with at least one space (U+0020)
+    - Lines starting with [, *, or . are NOT pattern continuations
+      (they indicate variants, default variants, or attributes)
+
+    Args:
+        cursor: Current position (should be at newline character)
+
+    Returns:
+        True if next line is an indented continuation, False otherwise
+    """
+    if cursor.is_eof or cursor.current not in ("\n", "\r"):
+        return False
+
+    # Skip the newline(s)
+    next_cursor = cursor.advance()
+    if not next_cursor.is_eof and next_cursor.current == "\n":
+        next_cursor = next_cursor.advance()  # Handle \r\n
+
+    # Check if next line starts with space (U+0020 only, NOT tab)
+    if next_cursor.is_eof or next_cursor.current != " ":
+        return False
+
+    # Skip leading spaces to find first non-space character
+    while not next_cursor.is_eof and next_cursor.current == " ":
+        next_cursor = next_cursor.advance()
+
+    # If line starts with special chars, it's not a pattern continuation
+    return not (not next_cursor.is_eof and next_cursor.current in ("[", "*", "."))
+
+
+def skip_multiline_pattern_start(cursor: Cursor) -> Cursor:
+    """Skip whitespace and handle multiline pattern start.
+
+    Per spec: Pattern can start on same line or next line (if indented).
+        Message ::= Identifier blank_inline? "=" blank_inline? Pattern
+        Attribute ::= ... blank_inline? "=" blank_inline? Pattern
+        blank_inline ::= "\u0020"+  (ONLY space, NOT tabs)
+
+    This method handles:
+    1. Inline patterns: "key = value" (skip spaces on same line)
+    2. Multiline patterns: "key =\n    value" (skip newline + leading spaces)
+    """
+    # Skip inline whitespace (ONLY spaces per spec, NOT tabs)
+    cursor = skip_blank_inline(cursor)
+
+    # Check for pattern starting on next line
+    if not cursor.is_eof and cursor.current in ("\n", "\r"):  # noqa: SIM102
+        if is_indented_continuation(cursor):
+            # Multiline pattern - skip newline and leading indentation
+            cursor = cursor.advance()
+            if not cursor.is_eof and cursor.current == "\n":  # Handle \r\n (CRLF)
+                cursor = cursor.advance()
+            # Skip leading indentation (ONLY spaces per spec)
+            cursor = skip_blank_inline(cursor)
+
+    return cursor
