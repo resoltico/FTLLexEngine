@@ -8,25 +8,20 @@ RETRIEVAL_HINTS:
 ## Setup
 
 ```bash
-git clone https://github.com/resoltico/ftllexengine.git
+git clone https://github.com/resoltico/FTLLexEngine.git
 cd ftllexengine
-pip install -e ".[dev]"
+uv sync --all-groups
 ```
-
-Dependencies: pytest, pytest-cov, hypothesis, mypy, ruff, pylint
 
 ## Scripts
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `./scripts/lint.sh` | Code quality checks (ruff, mypy, pylint) | During development |
-| `./scripts/test.sh` | Run test suite with coverage | After code changes |
-| `./scripts/benchmark.sh` | Performance benchmarks | Before/after optimization |
-| `./scripts/bump-version.sh` | Update version in pyproject.toml | During release prep |
-| `./scripts/extract-changelog.sh` | Extract release notes from CHANGELOG | During release |
-| `./scripts/release.sh` | Full release automation | When releasing a version |
-| `./scripts/validate_docs.py` | Validate documentation structure | Before documentation PRs |
-| `./scripts/validate_version.py` | Check version consistency | During CI/release |
+| `uv run scripts/lint.sh` | Code quality checks (ruff, mypy, pylint) | During development |
+| `uv run scripts/test.sh` | Run test suite with coverage | After code changes |
+| `uv run scripts/benchmark.sh` | Performance benchmarks | Before/after optimization |
+| `uv run scripts/bump-version.sh` | Update version in pyproject.toml | During release prep |
+| `uv run scripts/release.sh` | Full release automation | When releasing a version |
 
 All scripts support:
 - `--help` - Show usage documentation
@@ -46,8 +41,8 @@ Style:
 
 Architecture:
 - Immutable data structures (frozen dataclasses)
-- Pure functions
 - No mutable global state
+- Pure functions
 
 ```python
 from __future__ import annotations
@@ -64,14 +59,13 @@ class Message:
 ## Testing
 
 ```bash
-./scripts/test.sh           # Full suite with coverage
-./scripts/test.sh --quick   # Quick mode (no coverage)
+uv run scripts/test.sh           # Full suite with coverage
+uv run scripts/test.sh --quick   # Quick mode (no coverage)
 
-# Or directly with pytest:
-pytest tests/
-pytest tests/ --cov=ftllexengine --cov-report=term-missing
-pytest tests/test_fluent_parser.py
-pytest tests/ -x
+# Or directly with uv:
+uv run pytest tests/
+uv run pytest tests/ --cov=src/ftllexengine --cov-report=term-missing
+uv run pytest tests/test_fluent_parser.py
 ```
 
 Example tests:
@@ -94,13 +88,12 @@ Coverage requirement: 95%+
 ## Quality Checks
 
 ```bash
-./scripts/lint.sh           # Run all linters
-./scripts/lint.sh --fix     # Auto-fix where possible
+uv run scripts/lint.sh           # Run all linters
 
-# Or individually:
-mypy --strict src/ftllexengine
-ruff check src/ tests/
-pylint src/ftllexengine
+# Or individually via uv run:
+uv run mypy --strict src/ftllexengine
+uv run ruff check src/ tests/
+uv run pylint src/ftllexengine
 ```
 
 ## Property-Based Testing
@@ -133,8 +126,8 @@ CI requirements:
 
 Before submitting:
 ```bash
-./scripts/lint.sh
-./scripts/test.sh
+uv run scripts/lint.sh
+uv run scripts/test.sh
 ```
 
 ## Version Management
@@ -149,25 +142,25 @@ The `__version__` attribute auto-populates from package metadata via `importlib.
 
 1. **Edit version in pyproject.toml only:**
    ```bash
-   # Edit: version = "0.8.0" in pyproject.toml
+   # Edit: version = "0.28.0" in pyproject.toml
    vim pyproject.toml
    ```
 
-2. **Refresh package metadata:**
+2. **Refresh environment:**
    ```bash
-   pip install -e .
+   uv sync
    ```
 
 3. **Verify auto-sync worked:**
    ```bash
    python -c "import ftllexengine; print(ftllexengine.__version__)"
-   # Output: 0.8.0
+   # Output: 0.28.0
    ```
 
 4. **Run tests to validate:**
    ```bash
-   ./scripts/lint.sh
-   ./scripts/test.sh
+   uv run scripts/lint.sh
+   uv run scripts/test.sh
    ```
 
 **NEVER** manually edit `__version__` in `src/ftllexengine/__init__.py` - it auto-updates from metadata.
@@ -181,10 +174,10 @@ Versioning (Semantic Versioning):
 
 ### Manual Release Process
 
-1. Run `./scripts/lint.sh` and ./scripts/test.sh` (complete validation)
+1. Run `uv run scripts/lint.sh` and `uv run scripts/test.sh` (complete validation)
 2. Update version in `pyproject.toml` ONLY
-3. Run `pip install -e .` to refresh metadata
-4. Verify: `python -c "import ftllexengine; print(ftllexengine.__version__)"`
+3. Run `uv sync` to refresh metadata
+4. Verify: `uv run python -c "import ftllexengine; print(ftllexengine.__version__)"`
 5. Commit: `Bump version to X.Y.Z`
 6. Tag: `git tag vX.Y.Z`
 7. Push: `git push origin main && git push origin vX.Y.Z`
@@ -195,17 +188,17 @@ Use the release automation script for safer releases:
 
 ```bash
 # 1. Update version in pyproject.toml
-vim pyproject.toml  # Change version to 0.8.0
+vim pyproject.toml  # Change version to 0.28.0
 
 # 2. Refresh metadata
-pip install -e .
+uv sync
 
 # 3. Commit version change
 git add pyproject.toml
-git commit -m "Bump version to 0.8.0"
+git commit -m "Bump version to 0.28.0"
 
 # 4. Run release script (validates + creates tag)
-./scripts/release.sh
+uv run scripts/release.sh
 
 # 5. Push (as displayed by script)
 git push origin main --tags
@@ -219,5 +212,5 @@ The release script will:
 - Display push commands
 
 **Options:**
-- `./scripts/release.sh --dry-run` - Validate only, no git operations
-- `./scripts/release.sh --help` - Show usage information
+- `uv run scripts/release.sh --dry-run` - Validate only, no git operations
+- `uv run scripts/release.sh --help` - Show usage information

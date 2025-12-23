@@ -19,6 +19,25 @@
 
 set -euo pipefail
 
+# --- ASSUMPTIONS TESTER (Platinum Standard) ---
+pre_flight_diagnostics() {
+    # Output Architecture Directive (OAD) for cross-agent legibility
+    # @FORMAT: [STATUS:8][COMPONENT:20][MESSAGE]
+    echo "[  OK  ] Diagnostic Schema  : fixed-width/padded-tags (announcing OAD)"
+
+    # Environment Guard (Enforce uv run context)
+    if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+        echo "[ FAIL ] Environment         : NOT UV-MANAGED"
+        echo "[ INFO ] Policy              : This script must be run via 'uv run'"
+        echo "[ INFO ] Command             : uv run scripts/$(basename "$0")"
+        exit 1
+    fi
+
+    echo "[  OK  ] Environment         : Valid uv context detected"
+    echo "[ INFO ] Python Version      : $(python --version)"
+}
+pre_flight_diagnostics
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,10 +54,10 @@ print_header() {
 }
 
 # Logging functions
-log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[FAIL]${NC} $*"; }
+log_info() { echo -e "${BLUE}[ INFO ]${NC} $*"; }
+log_success() { echo -e "${GREEN}[  OK  ]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[ WARN ]${NC} $*"; }
+log_error() { echo -e "${RED}[ FAIL ]${NC} $*"; }
 
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,7 +157,7 @@ exit_code=$?
 if [[ $exit_code -ne 0 ]]; then
     log_error "Failed to import $PACKAGE_NAME"
     echo "$RUNTIME_VERSION"
-    log_warn "Run 'pip install -e .' to install package in editable mode"
+    log_warn "Run 'uv sync' to synchronize environment"
     exit 1
 fi
 
@@ -230,13 +249,13 @@ if [[ "$SKIP_TESTS" == "false" ]]; then
     print_header "RUNNING QUALITY CHECKS"
     
     log_info "Running lint.sh..."
-    if ! "$SCRIPT_DIR/lint.sh" --ci; then
+    if ! uv run scripts/lint.sh --ci; then
         log_error "Linting failed"
         exit 1
     fi
     
     log_info "Running test.sh..."
-    if ! "$SCRIPT_DIR/test.sh" --ci; then
+    if ! uv run scripts/test.sh --ci; then
         log_error "Tests failed"
         exit 1
     fi

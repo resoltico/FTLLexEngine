@@ -46,7 +46,7 @@ The library can serve you well as **single-language infrastructure** or as a ful
 ## Installation
 
 ```bash
-pip install ftllexengine
+uv add ftllexengine
 ```
 
 **Requirements**: Python >= 3.13, Babel >= 2.17

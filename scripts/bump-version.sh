@@ -19,6 +19,25 @@
 
 set -euo pipefail
 
+# --- ASSUMPTIONS TESTER (Platinum Standard) ---
+pre_flight_diagnostics() {
+    # Output Architecture Directive (OAD) for cross-agent legibility
+    # @FORMAT: [STATUS:8][COMPONENT:20][MESSAGE]
+    echo "[  OK  ] Diagnostic Schema  : fixed-width/padded-tags (announcing OAD)"
+
+    # Environment Guard (Enforce uv run context)
+    if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+        echo "[ FAIL ] Environment         : NOT UV-MANAGED"
+        echo "[ INFO ] Policy              : This script must be run via 'uv run'"
+        echo "[ INFO ] Command             : uv run scripts/$(basename "$0")"
+        exit 1
+    fi
+
+    echo "[  OK  ] Environment         : Valid uv context detected"
+    echo "[ INFO ] Python Version      : $(python --version)"
+}
+pre_flight_diagnostics
+
 # Colors for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -32,19 +51,19 @@ readonly PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Logging functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $*"
+    echo -e "${BLUE}[ INFO ]${NC} $*"
 }
 
 log_success() {
-    echo -e "${GREEN}[OK]${NC} $*"
+    echo -e "${GREEN}[  OK  ]${NC} $*"
 }
 
 log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
+    echo -e "${YELLOW}[ WARN ]${NC} $*"
 }
 
 log_error() {
-    echo -e "${RED}[FAIL]${NC} $*"
+    echo -e "${RED}[ FAIL ]${NC} $*"
 }
 
 # Change to project root
@@ -270,17 +289,10 @@ fi
 
 log_success "pyproject.toml updated (verified)"
 
-# Step 6: Refresh package metadata
-log_info "Refreshing package metadata (pip install -e .)..."
+log_info "Refreshing package metadata (uv sync)..."
 
-# Check if in virtual environment (informational only)
-if [[ -z "$VIRTUAL_ENV" ]]; then
-    log_warn "No virtual environment detected"
-    log_warn "Consider running: python -m venv .venv && source .venv/bin/activate"
-    log_warn "Proceeding with system Python..."
-fi
-
-if ! pip install -e . > /dev/null 2>&1; then
+# Refresh environment
+if ! uv sync > /dev/null 2>&1; then
     log_error "Failed to refresh package metadata"
     log_warn "Reverting pyproject.toml..."
 
@@ -354,7 +366,7 @@ echo "   ${GREEN}git add pyproject.toml CHANGELOG.md${NC}"
 echo "   ${GREEN}git commit -m \"Bump version to $NEW_VERSION\"${NC}"
 echo ""
 echo "4. Run release script:"
-echo "   ${GREEN}./scripts/release.sh${NC}"
+echo "   ${GREEN}uv run scripts/release.sh${NC}"
 echo ""
 
 log_success "Version bump automation complete!"

@@ -808,8 +808,8 @@ if Message.guard(msg):
 
 ---
 
-**Type Hints Guide Last Updated**: December 14, 2025
-**FTLLexEngine Version**: 0.13.0
+**Type Hints Guide Last Updated**: December 23, 2025
+**FTLLexEngine Version**: 0.29.1
 **Python Version**: 3.13+
 
 **See Also**:

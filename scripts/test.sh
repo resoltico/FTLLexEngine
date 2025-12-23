@@ -50,61 +50,31 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Safe Tool Resolver (No subshells, uses Nameref, handles errors internally)
-resolve_tool() {
-    local cmd="$1"
-    local -n out_ref="$2"
-    
-    if [[ -n "${VIRTUAL_ENV:-}" && -x "$VIRTUAL_ENV/bin/$cmd" ]]; then
-        out_ref="$VIRTUAL_ENV/bin/$cmd"
-        log_info "$cmd resolved to: $out_ref (VENV)"
-        return 0
-    fi
-    
-    local path_result=""
-    set +e # Turn off errexit temporarily for command-v check
-    path_result="$(command -v "$cmd" 2>/dev/null)"
-    local exit_code=$?
-    set -e
-    
-    if [[ $exit_code -eq 0 ]]; then
-        out_ref="$path_result"
-        log_info "$cmd resolved to: $out_ref (PATH)"
-        return 0
-    fi
-
-    if [[ -x ".venv/bin/$cmd" ]]; then
-        out_ref=".venv/bin/$cmd"
-        log_info "$cmd resolved to: $out_ref (Local VENV)"
-        return 0
-    fi
-    
-    out_ref="$cmd"
-    return 1
-}
-
-
-# --- 2. EXECUTION ---
-echo "[BEGIN-TEST]"
-
-# --- ASSUMPTIONS TESTER (User requested diagnostic) ---
+# --- ASSUMPTIONS TESTER (Platinum Standard) ---
 pre_flight_diagnostics() {
     log_group_start "Pre-Flight Diagnostics"
-    log_info "Bash Version: ${BASH_VERSION}"
-    log_info "Shell Strictness: errexit, nounset, pipefail are all globally ON."
     
-    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
-        log_info "VIRTUAL_ENV: Active at ${VIRTUAL_ENV}"
-    else
-        log_warn "VIRTUAL_ENV: Not active."
-    fi
+    # Output Architecture Directive (OAD) for cross-agent legibility
+    # @FORMAT: [STATUS:8][COMPONENT:20][MESSAGE]
+    echo "[  OK  ] Diagnostic Schema  : fixed-width/padded-tags (announcing OAD)"
 
-    if resolve_tool "pytest" PYTEST_BIN; then
-        log_pass "Pytest Found: $PYTEST_BIN"
-    else
-        log_err "Pytest MISSING. Run 'pip install .[dev]'."
+    # Environment Guard (Enforce uv run context)
+    if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+        echo "[ FAIL ] Environment         : NOT UV-MANAGED"
+        echo "[ INFO ] Policy              : This script must be run via 'uv run'"
+        echo "[ INFO ] Command             : uv run scripts/$(basename "$0")"
         exit 1
     fi
+
+    echo "[  OK  ] Environment         : Valid uv context detected"
+    echo "[ INFO ] Python Version      : $(python --version)"
+    
+    # Direct tool verification
+    if ! pytest --version >/dev/null 2>&1; then
+        echo "[ FAIL ] Tooling             : Pytest missing (Execute 'uv sync')"
+        exit 1
+    fi
+    echo "[  OK  ] Tooling             : Pytest verified"
     log_group_end
 }
 pre_flight_diagnostics
@@ -143,7 +113,7 @@ if [[ "$QUICK_MODE" == "false" && -d "src" ]]; then
     done
 fi
 
-declare -a CMD=("$PYTEST_BIN")
+declare -a CMD=("pytest")
 if [[ -d "tests" ]]; then CMD+=("tests"); fi
 if [[ -d "test" ]]; then CMD+=("test"); fi
 

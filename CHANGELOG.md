@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1] - 2025-12-23
+
+### Changed
+- Replaced pip-based workflow with uv.
+
 ## [0.29.0] - 2025-12-23
 
 ### Added
@@ -55,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.29.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.1
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0

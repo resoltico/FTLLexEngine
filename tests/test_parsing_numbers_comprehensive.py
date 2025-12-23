@@ -348,7 +348,16 @@ class TestParseNumberEdgeCases:
         assert isinstance(result, (float, type(None)))
         assert isinstance(errors, tuple)
 
-    @given(st.text(alphabet=st.characters(blacklist_characters="0123456789.,-+ "), min_size=1))
+    @given(
+        st.text(
+            alphabet=st.characters(
+                blacklist_characters="0123456789.,-+ ",
+                # Exclude ALL Unicode decimal digits (Nd category)
+                blacklist_categories=("Nd",),  # type: ignore[arg-type]
+            ),
+            min_size=1,
+        )
+    )
     def test_parse_number_no_digits(self, value: str) -> None:
         """Property: parse_number returns error for strings with no digits."""
         assume(value.strip() != "")  # Skip empty strings

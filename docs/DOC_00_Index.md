@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.29.0
+project_version: 0.29.1
 context: INDEX
-last_updated: 2025-12-22T00:00:00Z
+last_updated: 2025-12-23T00:00:00Z
 maintainer: claude-opus-4-5
 retrieval_hints:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]

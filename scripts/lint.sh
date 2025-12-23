@@ -59,58 +59,32 @@ log_fail() { echo -e "${RED}[FAIL]${RESET} $1"; }
 log_pass() { echo -e "${GREEN}[PASS]${RESET} $1"; }
 log_err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
 
-# Safe Tool Resolver
-resolve_tool() {
-    local cmd="$1"
-    local -n out_ref="$2"
-    
-    if [[ -n "${VIRTUAL_ENV:-}" && -x "$VIRTUAL_ENV/bin/$cmd" ]]; then
-        out_ref="$VIRTUAL_ENV/bin/$cmd"
-        log_info "$cmd resolved to: $out_ref (VENV)"
-        return 0
-    fi
-    
-    local path_result=""
-    set +e 
-    path_result="$(command -v "$cmd" 2>/dev/null)"
-    local exit_code=$?
-    set -e
-    
-    if [[ $exit_code -eq 0 ]]; then
-        out_ref="$path_result"
-        log_info "$cmd resolved to: $out_ref (PATH)"
-        return 0
-    fi
-
-    if [[ -x ".venv/bin/$cmd" ]]; then
-        out_ref=".venv/bin/$cmd"
-        log_info "$cmd resolved to: $out_ref (Local VENV)"
-        return 0
-    fi
-
-    out_ref="$cmd"
-    return 1
-}
-
-# --- 2. EXECUTION ---
-# --- ASSUMPTIONS TESTER ---
+# --- ASSUMPTIONS TESTER (Platinum Standard) ---
 pre_flight_diagnostics() {
     log_group_start "Pre-Flight Diagnostics"
-    log_info "Host Script Location: ${SCRIPT_DIR}"
-    log_info "Bash Version: ${BASH_VERSION}"
     
-    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
-        log_info "VIRTUAL_ENV: Active at ${VIRTUAL_ENV}"
-    else
-        log_warn "VIRTUAL_ENV: Not active."
+    # Output Architecture Directive (OAD) for cross-agent legibility
+    # @FORMAT: [STATUS:8][COMPONENT:20][MESSAGE]
+    echo "[  OK  ] Diagnostic Schema  : fixed-width/padded-tags (announcing OAD)"
+
+    # Environment Guard (Enforce uv run context)
+    if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+        echo "[ FAIL ] Environment         : NOT UV-MANAGED"
+        echo "[ INFO ] Policy              : This script must be run via 'uv run'"
+        echo "[ INFO ] Command             : uv run scripts/$(basename "$0")"
+        exit 1
     fi
 
-    local status=0
-    if ! resolve_tool "ruff" RUFF_BIN; then status=1; log_err "Ruff MISSING." ; else log_pass "Ruff Found: $RUFF_BIN" ; fi
-    if ! resolve_tool "mypy" MYPY_BIN; then status=1; log_err "MyPy MISSING." ; else log_pass "MyPy Found: $MYPY_BIN" ; fi
-    if ! resolve_tool "pylint" PYLINT_BIN; then status=1; log_err "Pylint MISSING." ; else log_pass "Pylint Found: $PYLINT_BIN" ; fi
+    echo "[  OK  ] Environment         : Valid uv context detected"
+    echo "[ INFO ] Python Version      : $(python --version)"
     
-    if [[ $status -ne 0 ]]; then log_err "One or more lint tools are missing. Run 'pip install .[dev]'." ; exit 1 ; fi
+    # Direct internal tool verification
+    local status=0
+    if ! ruff --version >/dev/null 2>&1; then status=1; echo "[ FAIL ] Tooling             : Ruff missing (Execute 'uv sync')" ; else echo "[  OK  ] Tooling             : Ruff verified" ; fi
+    if ! mypy --version >/dev/null 2>&1; then status=1; echo "[ FAIL ] Tooling             : MyPy missing (Execute 'uv sync')" ; else echo "[  OK  ] Tooling             : MyPy verified" ; fi
+    if ! pylint --version >/dev/null 2>&1; then status=1; echo "[ FAIL ] Tooling             : Pylint missing (Execute 'uv sync')" ; else echo "[  OK  ] Tooling             : Pylint verified" ; fi
+    
+    if [[ $status -ne 0 ]]; then exit 1 ; fi
     log_group_end
 }
 pre_flight_diagnostics
@@ -172,7 +146,7 @@ run_ruff() {
     set -e
 
     set +e
-    "$RUFF_BIN" check --config "$PYPROJECT_CONFIG" "${TARGETS[@]}"
+    ruff check --config "$PYPROJECT_CONFIG" "${TARGETS[@]}"
     local ruff_exit_code=$?
     set -e
 
@@ -204,7 +178,7 @@ run_mypy() {
         local output_file=$(mktemp)
 
         set +e
-        "$MYPY_BIN" "${conf_args[@]}" "$dir" 2>&1 | tee "$output_file"
+        mypy "${conf_args[@]}" "$dir" 2>&1 | tee "$output_file"
         local mypy_exit_code=$?
         set -e
 
@@ -253,7 +227,7 @@ run_pylint() {
         set -e
 
         set +e
-        "$PYLINT_BIN" "${conf_args[@]}" "$dir"
+        pylint "${conf_args[@]}" "$dir"
         local pylint_exit_code=$?
         set -e
 

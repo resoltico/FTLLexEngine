@@ -769,8 +769,8 @@ from ftllexengine import (
 
 ---
 
-**Migration Guide Last Updated**: December 16, 2025
-**FTLLexEngine Version**: 0.22.0
+**Migration Guide Last Updated**: December 23, 2025
+**FTLLexEngine Version**: 0.29.1
 **fluent.runtime Version Referenced**: 0.4.0
 
 **Feedback**: If you encounter migration issues not covered here, please open an issue!
