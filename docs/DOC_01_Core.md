@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.28.1
+project_version: 0.29.0
 context: CORE
 last_updated: 2025-12-22T00:00:00Z
 maintainer: claude-opus-4-5
@@ -506,7 +506,7 @@ class FluentLocalization:
 ### Constraints
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty or resource_ids without loader.
-- State: Creates bundles for each locale.
+- State: Lazy bundle initialization (v0.29.0+). Bundles created on first access.
 - Thread: Unsafe for writes, safe for reads.
 
 ---

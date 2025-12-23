@@ -16,7 +16,7 @@ Python 3.13+.
 
 import logging
 
-from ftllexengine.analysis.graph import detect_cycles
+from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
 from ftllexengine.diagnostics import (
     FluentSyntaxError,
     ValidationError,
@@ -25,7 +25,7 @@ from ftllexengine.diagnostics import (
 )
 from ftllexengine.introspection import extract_references
 from ftllexengine.syntax import Junk, Message, Resource, Term
-from ftllexengine.syntax.cursor import Cursor
+from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.parser import FluentParserV1
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,9 @@ def _extract_syntax_errors(
     Converts Junk AST nodes (unparseable content) to structured
     ValidationError objects with line/column information.
 
+    Uses LineOffsetCache for O(n + M log n) total complexity instead of
+    O(M*N) when using Cursor.compute_line_col() for each entry.
+
     Args:
         resource: Parsed Resource AST (may contain Junk entries)
         source: Original FTL source for position calculation
@@ -49,13 +52,18 @@ def _extract_syntax_errors(
     """
     errors: list[ValidationError] = []
 
+    # Build line offset cache once (O(n)) for efficient position lookups (O(log n) each)
+    line_cache: LineOffsetCache | None = None
+
     for entry in resource.entries:
         if isinstance(entry, Junk):
             line: int | None = None
             column: int | None = None
             if entry.span:
-                cursor = Cursor(source, entry.span.start)
-                line, column = cursor.compute_line_col()
+                # Lazy initialization of cache - only create if we have Junk entries
+                if line_cache is None:
+                    line_cache = LineOffsetCache(source)
+                line, column = line_cache.get_line_col(entry.span.start)
 
             errors.append(
                 ValidationError(
@@ -238,8 +246,10 @@ def _detect_circular_references(
         term_deps[term_name] = set(term_refs)
 
     # Detect message cycles
+    # Use centralized make_cycle_key() which preserves direction info
+    # (A->B->C is distinct from A->C->B, unlike sorted set approach)
     for cycle in detect_cycles(message_deps):
-        cycle_key = " -> ".join(sorted(set(cycle)))
+        cycle_key = make_cycle_key(cycle)
         if cycle_key not in seen_cycle_keys:
             seen_cycle_keys.add(cycle_key)
             cycle_str = " -> ".join(cycle)
@@ -253,7 +263,7 @@ def _detect_circular_references(
 
     # Detect term cycles
     for cycle in detect_cycles(term_deps):
-        cycle_key = " -> ".join(sorted(set(cycle)))
+        cycle_key = make_cycle_key(cycle)
         if cycle_key not in seen_cycle_keys:
             seen_cycle_keys.add(cycle_key)
             cycle_str = " -> ".join([f"-{t}" for t in cycle])

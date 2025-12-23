@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 
 from ftllexengine.diagnostics import ErrorTemplate
 
-__all__ = ["Cursor", "ParseError", "ParseResult"]
+__all__ = ["Cursor", "LineOffsetCache", "ParseError", "ParseResult"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +310,93 @@ class Cursor:
         last_newline = self.source.rfind("\n", 0, self.pos)
         # Use ternary for simple conditional assignment (Pythonic style)
         col = self.pos - last_newline if last_newline >= 0 else self.pos + 1
+
+        return (line, col)
+
+
+class LineOffsetCache:
+    """Cached line offset computation for efficient position lookups.
+
+    Precomputes line start offsets in O(n) single pass, then provides
+    O(log n) lookups using binary search. Use this when you need to
+    compute line:column for multiple positions in the same source.
+
+    This is more efficient than calling Cursor.compute_line_col() for
+    each position, which is O(n) per call.
+
+    Example:
+        >>> source = "line1\\nline2\\nline3"
+        >>> cache = LineOffsetCache(source)
+        >>> cache.get_line_col(0)   # Start of line 1
+        (1, 1)
+        >>> cache.get_line_col(6)   # Start of line 2
+        (2, 1)
+        >>> cache.get_line_col(8)   # Third char of line 2
+        (2, 3)
+
+    Thread Safety:
+        Thread-safe. Internal state is only set during __init__.
+    """
+
+    __slots__ = ("_offsets", "_source_len")
+
+    def __init__(self, source: str) -> None:
+        """Build line offset cache from source.
+
+        Args:
+            source: Source text to index
+
+        Complexity:
+            O(n) where n = len(source)
+        """
+        # Line offsets: position where each line starts
+        # Line 1 starts at offset 0
+        offsets = [0]
+        for i, char in enumerate(source):
+            if char == "\n":
+                # Next line starts after this newline
+                offsets.append(i + 1)
+        self._offsets: tuple[int, ...] = tuple(offsets)
+        self._source_len = len(source)
+
+    def get_line_col(self, pos: int) -> tuple[int, int]:
+        """Get line and column for position using binary search.
+
+        Args:
+            pos: Character position in source (0-indexed)
+
+        Returns:
+            (line, column) tuple (1-indexed, like text editors)
+
+        Complexity:
+            O(log n) where n = number of lines
+
+        Example:
+            >>> cache = LineOffsetCache("abc\\ndef\\nghi")
+            >>> cache.get_line_col(0)
+            (1, 1)
+            >>> cache.get_line_col(4)  # 'd' in "def"
+            (2, 1)
+        """
+        # Clamp position to valid range
+        if pos < 0:
+            pos = 0
+        elif pos > self._source_len:
+            pos = self._source_len
+
+        # Binary search: find the line containing this position
+        # Line number = index of largest offset <= pos
+        left, right = 0, len(self._offsets) - 1
+        while left < right:
+            mid = (left + right + 1) // 2
+            if self._offsets[mid] <= pos:
+                left = mid
+            else:
+                right = mid - 1
+
+        # left is now the line index (0-based)
+        line = left + 1  # Convert to 1-based
+        col = pos - self._offsets[left] + 1  # 1-based column
 
         return (line, col)
 

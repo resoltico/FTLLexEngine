@@ -337,6 +337,57 @@ result, _ = bundle_lv.format_pattern("greet", {"name": "Anna"})
 # → "Sveiki, Anna!"
 ```
 
+### Alternative: Automatic Locale Injection (v0.29.0+)
+
+Instead of using the factory pattern, you can mark a function for automatic locale injection:
+
+```python
+def GREETING(name: str, locale_code: str, /, *, formal: str = "false") -> str:
+    """Locale-aware greeting with automatic locale injection.
+
+    Args:
+        name: Person's name (positional, from FTL)
+        locale_code: Bundle's locale (auto-injected by runtime)
+        formal: "true" for formal greeting, "false" for informal (keyword)
+
+    Returns:
+        Localized greeting
+    """
+    is_formal = formal.lower() == "true"
+    locale_lower = locale_code.lower()
+
+    if locale_lower.startswith("lv"):
+        return f"Labdien, {name}!" if is_formal else f"Sveiki, {name}!"
+    if locale_lower.startswith("de"):
+        return f"Guten Tag, {name}!" if is_formal else f"Hallo, {name}!"
+    return f"Good day, {name}!" if is_formal else f"Hello, {name}!"
+
+
+# Mark function for locale injection
+GREETING._ftl_requires_locale = True  # type: ignore[attr-defined]
+
+# Register - locale will be injected automatically
+bundle = FluentBundle("lv_LV")
+bundle.add_function("GREETING", GREETING)
+
+bundle.add_resource('greet = { GREETING($name, formal: "false") }')
+result, _ = bundle.format_pattern("greet", {"name": "Anna"})
+# → "Sveiki, Anna!"
+```
+
+**How it works:**
+1. Set `_ftl_requires_locale = True` on the function
+2. The runtime checks for this attribute via `should_inject_locale()`
+3. When calling the function, the bundle's locale is injected as the second positional argument
+
+**When to use which approach:**
+
+| Approach | Use When |
+|:---------|:---------|
+| Factory pattern | Function needs locale at definition time (closures) |
+| `_ftl_requires_locale` | Function accepts locale as parameter at call time |
+| Neither | Function doesn't need locale (e.g., FILESIZE) |
+
 ### Alternative: Use Babel Locale
 
 For CLDR-compliant formatting, create a LocaleContext inside the function:
@@ -935,6 +986,6 @@ class TestFileSizeHypothesis:
 
 ---
 
-**Document Last Updated**: December 14, 2025
-**FTLLexEngine Version**: 0.13.0
+**Document Last Updated**: December 22, 2025
+**FTLLexEngine Version**: 0.29.0
 **Python Requirement**: 3.13+

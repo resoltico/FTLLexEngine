@@ -1,63 +1,16 @@
 """Comprehensive coverage tests for runtime/locale_context.py.
 
-Targets remaining uncovered lines:
-- Line 54: LocaleValidationError.__str__()
-- Lines 165-170: LocaleContext.create_or_raise() ValueError path
+Targets coverage for LocaleContext.create() and create_or_raise() methods.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from ftllexengine.runtime.locale_context import LocaleContext, LocaleValidationError
+from ftllexengine.runtime.locale_context import LocaleContext
 
 # ============================================================================
-# LINE 54: LocaleValidationError.__str__()
-# ============================================================================
-
-
-class TestLocaleValidationErrorString:
-    """Test LocaleValidationError.__str__() (line 54)."""
-
-    def test_locale_validation_error_str(self) -> None:
-        """Verify LocaleValidationError.__str__() formats correctly (line 54)."""
-        error = LocaleValidationError(
-            locale_code="invalid-locale",
-            error_message="Test error message",
-        )
-
-        # Call __str__ method (line 54)
-        result = str(error)
-
-        assert "Invalid locale 'invalid-locale'" in result
-        assert "Test error message" in result
-
-    def test_locale_validation_error_str_with_special_chars(self) -> None:
-        """Test LocaleValidationError.__str__() with special characters."""
-        error = LocaleValidationError(
-            locale_code="zh-Hans-CN",
-            error_message="Contains special: <>[]{}",
-        )
-
-        result = str(error)
-
-        assert "zh-Hans-CN" in result
-        assert "special: <>[]" in result
-
-    def test_locale_validation_error_str_empty_message(self) -> None:
-        """Test LocaleValidationError.__str__() with empty error message."""
-        error = LocaleValidationError(
-            locale_code="test",
-            error_message="",
-        )
-
-        result = str(error)
-
-        assert "Invalid locale 'test'" in result
-
-
-# ============================================================================
-# LINES 165-170: LocaleContext.create_or_raise() ValueError Path
+# LocaleContext.create_or_raise() ValueError Path
 # ============================================================================
 
 
@@ -135,61 +88,6 @@ class TestLocaleContextCreateFallback:
         for locale in test_cases:
             result = LocaleContext.create(locale)
             assert isinstance(result, LocaleContext)
-
-
-# ============================================================================
-# Integration Tests
-# ============================================================================
-
-
-class TestLocaleValidationErrorIntegration:
-    """Integration tests for LocaleValidationError."""
-
-    def test_locale_validation_error_is_dataclass(self) -> None:
-        """LocaleValidationError is a proper dataclass."""
-        error = LocaleValidationError(
-            locale_code="test-locale",
-            error_message="Test error",
-        )
-
-        # Dataclass fields accessible
-        assert error.locale_code == "test-locale"
-        assert error.error_message == "Test error"
-
-        # __str__ works
-        assert "test-locale" in str(error)
-
-    def test_locale_validation_error_repr(self) -> None:
-        """Test LocaleValidationError can be represented properly."""
-        error = LocaleValidationError(
-            locale_code="repr-test",
-            error_message="Test repr",
-        )
-
-        # Verify repr works (uses default dataclass repr)
-        repr_str = repr(error)
-        assert "LocaleValidationError" in repr_str
-        assert "repr-test" in repr_str
-        assert "Test repr" in repr_str
-
-    def test_locale_validation_error_equality(self) -> None:
-        """Test LocaleValidationError equality comparison."""
-        error1 = LocaleValidationError(
-            locale_code="test",
-            error_message="Same",
-        )
-        error2 = LocaleValidationError(
-            locale_code="test",
-            error_message="Same",
-        )
-        error3 = LocaleValidationError(
-            locale_code="different",
-            error_message="Same",
-        )
-
-        # Dataclass should provide __eq__
-        assert error1 == error2
-        assert error1 != error3
 
 
 class TestLocaleContextBehaviorConsistency:

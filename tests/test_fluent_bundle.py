@@ -532,7 +532,12 @@ class TestFluentBundleMockedErrors:
                 bundle.add_resource("msg = Hello")
 
     def test_format_pattern_with_keyerror_exception(self) -> None:
-        """Bundle handles KeyError from resolver."""
+        """Bundle propagates KeyError from resolver (fail-fast behavior).
+
+        v0.29.0: Internal errors (KeyError, AttributeError, etc.) are no longer
+        caught. This ensures bugs are detected immediately rather than hidden
+        behind fallback values.
+        """
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello { $name }")
 
@@ -542,14 +547,15 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = KeyError("name")
             MockResolver.return_value = mock_resolver
 
-            # Should catch KeyError and return fallback (lines 148-151)
-            result, errors = bundle.format_pattern("msg", {})
-
-            assert result == "{msg}"
-            assert len(errors) >= 1, f"Expected error from KeyError, got {errors}"
+            # v0.29.0: KeyError propagates (fail-fast)
+            with pytest.raises(KeyError, match="name"):
+                bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_attribute_error_exception(self) -> None:
-        """Bundle handles AttributeError from resolver."""
+        """Bundle propagates AttributeError from resolver (fail-fast behavior).
+
+        v0.29.0: Internal errors are no longer caught.
+        """
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
@@ -559,14 +565,15 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = AttributeError("Invalid attribute")
             MockResolver.return_value = mock_resolver
 
-            # Should catch AttributeError and return fallback (lines 148-151)
-            result, errors = bundle.format_pattern("msg", {})
-
-            assert result == "{msg}"
-            assert len(errors) >= 1, f"Expected error from AttributeError, got {errors}"
+            # v0.29.0: AttributeError propagates (fail-fast)
+            with pytest.raises(AttributeError, match="Invalid attribute"):
+                bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_recursion_error_exception(self) -> None:
-        """Bundle handles RecursionError from resolver."""
+        """Bundle propagates RecursionError from resolver (fail-fast behavior).
+
+        v0.29.0: Internal errors are no longer caught.
+        """
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
@@ -576,14 +583,16 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = RecursionError("Maximum recursion")
             MockResolver.return_value = mock_resolver
 
-            # Should catch RecursionError and return fallback (lines 152-155)
-            result, errors = bundle.format_pattern("msg", {})
-
-            assert result == "{msg}"
-            assert len(errors) >= 1, f"Expected error from RecursionError, got {errors}"
+            # v0.29.0: RecursionError propagates (fail-fast)
+            with pytest.raises(RecursionError, match="Maximum recursion"):
+                bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_unexpected_exception(self) -> None:
-        """Bundle handles unexpected exceptions from resolver."""
+        """Bundle propagates unexpected exceptions from resolver (fail-fast behavior).
+
+        v0.29.0: Internal errors are no longer caught. Only FluentError subclasses
+        are part of the normal error handling flow.
+        """
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
@@ -593,11 +602,9 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = RuntimeError("Unexpected error")
             MockResolver.return_value = mock_resolver
 
-            # Should catch Exception and return fallback (lines 156-160)
-            result, errors = bundle.format_pattern("msg", {})
-
-            assert result == "{msg}"
-            assert len(errors) >= 1, f"Expected error from RuntimeError, got {errors}"
+            # v0.29.0: RuntimeError propagates (fail-fast)
+            with pytest.raises(RuntimeError, match="Unexpected error"):
+                bundle.format_pattern("msg", {})
 
     # Note: Lines 76-77 (term debug logging) are unreachable with current parser
     # Parser doesn't support Term syntax (-term = value), so isinstance(entry, Term)

@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.28.1
+project_version: 0.29.0
 context: INDEX
 last_updated: 2025-12-22T00:00:00Z
 maintainer: claude-opus-4-5
@@ -53,7 +53,7 @@ from ftllexengine.syntax.ast import (
 from ftllexengine.syntax import (
     FluentParserV1, ASTVisitor, ASTTransformer,
     Cursor, ParseError, ParseResult,
-    parse, serialize,
+    parse, serialize, SerializationValidationError,
 )
 ```
 

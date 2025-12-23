@@ -335,7 +335,7 @@ class FluentResolver:
         errors: list[FluentError],
         context: ResolutionContext,
     ) -> str:
-        """Resolve term reference."""
+        """Resolve term reference with cycle detection."""
         term_id = expr.id.name
         if term_id not in self.terms:
             raise FluentReferenceError(ErrorTemplate.term_not_found(term_id))
@@ -352,7 +352,29 @@ class FluentResolver:
         else:
             pattern = term.value
 
-        return self._resolve_pattern(pattern, args, errors, context)
+        # Build term key for cycle detection (use -prefix to match FTL syntax)
+        term_key = f"-{term_id}.{expr.attribute.name}" if expr.attribute else f"-{term_id}"
+
+        # Check for circular references
+        if context.contains(term_key):
+            cycle_path = context.get_cycle_path(term_key)
+            cycle_error = FluentCyclicReferenceError(ErrorTemplate.cyclic_reference(cycle_path))
+            errors.append(cycle_error)
+            return f"{{{term_key}}}"
+
+        # Check for maximum depth
+        if context.is_depth_exceeded():
+            depth_error = FluentReferenceError(
+                ErrorTemplate.max_depth_exceeded(term_key, context.max_depth)
+            )
+            errors.append(depth_error)
+            return f"{{{term_key}}}"
+
+        try:
+            context.push(term_key)
+            return self._resolve_pattern(pattern, args, errors, context)
+        finally:
+            context.pop()
 
     def _find_exact_variant(
         self,
@@ -436,7 +458,12 @@ class FluentResolver:
         """
         # Evaluate selector
         selector_value = self._resolve_expression(expr.selector, args, errors, context)
-        selector_str = str(selector_value)
+
+        # Handle None consistently with _format_value (which returns "" for None).
+        # None represents a missing/undefined value and should NOT match any identifier.
+        # Using "" ensures None falls through to the default variant, which is the
+        # semantically correct behavior for missing data.
+        selector_str = "" if selector_value is None else str(selector_value)
 
         # Pass 1: Exact match (takes priority)
         exact_match = self._find_exact_variant(expr.variants, selector_value, selector_str)

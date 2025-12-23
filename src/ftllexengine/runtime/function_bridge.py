@@ -209,15 +209,16 @@ class FunctionRegistry:
             python_kwargs[python_param] = value
 
         # Call Python function
+        # Only catch TypeError and ValueError which typically indicate argument issues:
+        # - TypeError: Wrong number/types of arguments passed to function
+        # - ValueError: Function explicitly rejected an argument value
+        #
+        # Do NOT catch KeyError, AttributeError, ArithmeticError, etc. These indicate
+        # bugs in the custom function implementation and should propagate to expose
+        # the real issue. Swallowing them masks debugging information.
         try:
             return func_sig.callable(*positional, **python_kwargs)
-        except (TypeError, ValueError, KeyError, AttributeError, ArithmeticError) as e:
-            # Catch common function execution errors:
-            # - TypeError: Wrong arguments or non-callable
-            # - ValueError: Invalid argument values
-            # - KeyError: Missing dictionary key
-            # - AttributeError: Missing object attribute
-            # - ArithmeticError: Math errors (ZeroDivision, Overflow, etc.)
+        except (TypeError, ValueError) as e:
             raise FluentResolutionError(ErrorTemplate.function_failed(ftl_name, str(e))) from e
 
     def has_function(self, ftl_name: str) -> bool:

@@ -107,8 +107,8 @@ pylint src/ftllexengine
 
 FTLLexEngine uses Hypothesis for property-based testing. When Hypothesis discovers edge cases, they are automatically saved to `.hypothesis/examples/` and replayed on subsequent test runs.
 
-If you see `[ALERT] HYPOTHESIS DISCOVERED A BUG`:
-1. This is a REAL bug that needs fixing
+If you see `HYPOTHESIS DETECTED A LOGIC FLAW`:
+1. This should be a bug that needs fixing
 2. The failing example is automatically saved
 3. Fix the bug and re-run tests to verify
 

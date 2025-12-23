@@ -60,26 +60,6 @@ def _get_locale_context_cache_size() -> int:
 
 
 @dataclass(frozen=True, slots=True)
-class LocaleValidationError:
-    """Error result from locale validation.
-
-    Returned by LocaleContext.create() when locale code is invalid.
-    Makes validation failures explicit instead of silently swallowing them.
-
-    Attributes:
-        locale_code: The invalid locale code that was provided
-        error_message: Description of why validation failed
-    """
-
-    locale_code: str
-    error_message: str
-
-    def __str__(self) -> str:
-        """Format error for display."""
-        return f"Invalid locale '{self.locale_code}': {self.error_message}"
-
-
-@dataclass(frozen=True, slots=True)
 class LocaleContext:
     """Immutable locale configuration for formatting operations.
 

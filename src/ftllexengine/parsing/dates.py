@@ -5,6 +5,7 @@
 - Removed `strict` parameter - functions NEVER raise, errors returned in tuple
 - Consistent with format_*() "never raise" philosophy
 - Fixed: Date pattern tokenizer replaces regex word boundary approach
+- Optimized: Pattern generation is cached per locale
 
 Thread-safe. Uses Python 3.13 stdlib + Babel CLDR patterns.
 
@@ -12,6 +13,7 @@ Python 3.13+.
 """
 
 from datetime import date, datetime, timezone
+from functools import cache
 
 from babel import Locale, UnknownLocaleError
 
@@ -20,9 +22,9 @@ from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
 # CLDR date format styles used for parsing.
-# "long" is included for dates but excluded for datetimes (rarely used in input).
+# Both date and datetime use the same styles for consistency.
 _DATE_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long")
-_DATETIME_PARSE_STYLES: tuple[str, ...] = ("short", "medium")
+_DATETIME_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long")
 
 # Default separator between date and time components (fallback only).
 # Used when locale-specific dateTimeFormat pattern extraction fails.
@@ -237,18 +239,21 @@ def parse_datetime(
     return (None, tuple(errors))
 
 
-def _get_date_patterns(locale_code: str) -> list[str]:
+@cache
+def _get_date_patterns(locale_code: str) -> tuple[str, ...]:
     """Get strptime date patterns for locale.
 
     Uses ONLY Babel CLDR date format patterns specific to the locale.
     No fallback patterns to avoid ambiguous date interpretation.
 
+    Results are cached per locale_code for performance.
+
     Args:
         locale_code: BCP 47 locale identifier
 
     Returns:
-        List of strptime patterns to try, in order of preference
-        Empty list if locale parsing fails
+        Tuple of strptime patterns to try, in order of preference
+        Empty tuple if locale parsing fails
     """
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -265,10 +270,10 @@ def _get_date_patterns(locale_code: str) -> list[str]:
             except (AttributeError, KeyError):
                 pass
 
-        return patterns
+        return tuple(patterns)
 
     except (UnknownLocaleError, ValueError, RuntimeError):
-        return []
+        return ()
 
 
 def _extract_datetime_separator(locale: Locale, style: str = "medium") -> str:
@@ -325,18 +330,21 @@ def _extract_datetime_separator(locale: Locale, style: str = "medium") -> str:
         return _DATETIME_SEPARATOR_FALLBACK
 
 
-def _get_datetime_patterns(locale_code: str) -> list[str]:
+@cache
+def _get_datetime_patterns(locale_code: str) -> tuple[str, ...]:
     """Get strptime datetime patterns for locale.
 
     Uses ONLY Babel CLDR datetime format patterns specific to the locale.
     No fallback patterns to avoid ambiguous datetime interpretation.
 
+    Results are cached per locale_code for performance.
+
     Args:
         locale_code: BCP 47 locale identifier
 
     Returns:
-        List of strptime patterns to try, in order of preference
-        Empty list if locale parsing fails
+        Tuple of strptime patterns to try, in order of preference
+        Empty tuple if locale parsing fails
     """
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -368,10 +376,10 @@ def _get_datetime_patterns(locale_code: str) -> list[str]:
                 ]
             )
 
-        return patterns
+        return tuple(patterns)
 
     except (UnknownLocaleError, ValueError, RuntimeError):
-        return []
+        return ()
 
 
 # ==============================================================================

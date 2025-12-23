@@ -35,7 +35,7 @@ from .ast import (
 )
 from .cursor import Cursor, ParseError, ParseResult
 from .parser import FluentParserV1
-from .serializer import serialize
+from .serializer import SerializationValidationError, serialize
 from .visitor import ASTTransformer, ASTVisitor
 
 # Note: FluentSerializer is intentionally NOT exported.
@@ -66,6 +66,7 @@ __all__ = [
     "Placeable",
     "Resource",
     "SelectExpression",
+    "SerializationValidationError",
     "Span",
     "StringLiteral",
     "Term",

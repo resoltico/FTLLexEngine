@@ -273,11 +273,17 @@ class ValidationResult:
         if self.annotations:
             lines.append(f"Annotations ({len(self.annotations)}):")
             for annotation in self.annotations:
-                # Annotations have code and message but content may contain source
+                # Annotations have code, message, and optional arguments dict
                 content = annotation.message
                 if sanitize and len(content) > _SANITIZE_MAX_CONTENT_LENGTH:
                     content = content[:_SANITIZE_MAX_CONTENT_LENGTH] + "..."
-                lines.append(f"  [{annotation.code}]: {content}")
+
+                # Include arguments dict if present (preserves structured diagnostic data)
+                if annotation.arguments:
+                    args_str = ", ".join(f"{k}={v!r}" for k, v in annotation.arguments.items())
+                    lines.append(f"  [{annotation.code}]: {content} ({args_str})")
+                else:
+                    lines.append(f"  [{annotation.code}]: {content}")
 
         # Format warnings if requested
         if include_warnings and self.warnings:

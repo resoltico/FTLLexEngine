@@ -276,6 +276,7 @@ class FluentLocalization:
         "_locales",
         "_resource_ids",
         "_resource_loader",
+        "_resources_loaded",
         "_use_isolating",
     )
 
@@ -322,24 +323,23 @@ class FluentLocalization:
         self._enable_cache = enable_cache
         self._cache_size = cache_size
 
-        # Create bundle instances for each locale
-        self._bundles: dict[LocaleCode, FluentBundle] = {}
-        for locale in self._locales:
-            bundle = FluentBundle(
-                locale,
-                use_isolating=use_isolating,
-                enable_cache=enable_cache,
-                cache_size=cache_size,
-            )
-            self._bundles[locale] = bundle
+        # Lazy bundle storage: None means bundle not yet created
+        # This reduces memory usage when fallback locales are rarely accessed
+        self._bundles: dict[LocaleCode, FluentBundle | None] = dict.fromkeys(
+            self._locales, None
+        )
 
-        # Load resources if loader provided
+        # Track which locales have had resources loaded
+        self._resources_loaded: set[LocaleCode] = set()
+
+        # Eagerly load resources if loader provided
+        # This is done eagerly to report FileNotFoundError early
         if resource_loader and resource_ids:
             for locale in self._locales:
                 for resource_id in self._resource_ids:
                     try:
                         ftl_source = resource_loader.load(locale, resource_id)
-                        bundle = self._bundles[locale]
+                        bundle = self._get_or_create_bundle(locale)
                         # Construct source path for better error messages
                         # If loader is PathResourceLoader, use its base_path
                         if isinstance(resource_loader, PathResourceLoader):
@@ -348,10 +348,34 @@ class FluentLocalization:
                         else:
                             source_path = f"{locale}/{resource_id}"
                         bundle.add_resource(ftl_source, source_path=source_path)
+                        self._resources_loaded.add(locale)
                     except FileNotFoundError:
                         # Resource doesn't exist for this locale - skip it
                         # Fallback will try next locale in chain
                         continue
+
+    def _get_or_create_bundle(self, locale: LocaleCode) -> FluentBundle:
+        """Get existing bundle or create one lazily.
+
+        This implements lazy bundle initialization to reduce memory usage
+        when fallback locales are rarely accessed.
+
+        Args:
+            locale: Locale code (must be in _bundles dict)
+
+        Returns:
+            FluentBundle instance for the locale
+        """
+        bundle = self._bundles[locale]
+        if bundle is None:
+            bundle = FluentBundle(
+                locale,
+                use_isolating=self._use_isolating,
+                enable_cache=self._enable_cache,
+                cache_size=self._cache_size,
+            )
+            self._bundles[locale] = bundle
+        return bundle
 
     @property
     def locales(self) -> tuple[LocaleCode, ...]:
@@ -412,7 +436,10 @@ class FluentLocalization:
             >>> repr(l10n)
             "FluentLocalization(locales=('lv', 'en'), bundles=2)"
         """
-        return f"FluentLocalization(locales={self._locales!r}, bundles={len(self._bundles)})"
+        # Count only initialized bundles
+        initialized = sum(1 for b in self._bundles.values() if b is not None)
+        total = len(self._bundles)
+        return f"FluentLocalization(locales={self._locales!r}, bundles={initialized}/{total})"
 
     def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> None:
         """Add FTL resource to specific locale bundle.
@@ -430,7 +457,7 @@ class FluentLocalization:
             msg = f"Locale '{locale}' not in fallback chain {self._locales}"
             raise ValueError(msg)
 
-        bundle = self._bundles[locale]
+        bundle = self._get_or_create_bundle(locale)
         bundle.add_resource(ftl_source)
 
     def format_value(
@@ -462,7 +489,7 @@ class FluentLocalization:
 
         # Try each locale in priority order (fallback chain)
         for locale in self._locales:
-            bundle = self._bundles[locale]
+            bundle = self._get_or_create_bundle(locale)
 
             # Check if this bundle has the message
             if bundle.has_message(message_id):
@@ -497,7 +524,11 @@ class FluentLocalization:
         Returns:
             True if message exists in at least one locale
         """
-        return any(bundle.has_message(message_id) for bundle in self._bundles.values())
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            if bundle.has_message(message_id):
+                return True
+        return False
 
     def format_pattern(
         self,
@@ -532,7 +563,7 @@ class FluentLocalization:
 
         # Try each locale in fallback order
         for locale in self._locales:
-            bundle = self._bundles[locale]
+            bundle = self._get_or_create_bundle(locale)
 
             if bundle.has_message(message_id):
                 value, bundle_errors = bundle.format_pattern(message_id, args, attribute=attribute)
@@ -551,6 +582,7 @@ class FluentLocalization:
         """Register custom function on all bundles.
 
         Convenience method to avoid manual bundle iteration.
+        Creates bundles lazily if they don't exist yet.
 
         Args:
             name: Function name (UPPERCASE by convention)
@@ -566,7 +598,8 @@ class FluentLocalization:
             >>> result
             'HELLO'
         """
-        for bundle in self._bundles.values():
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
             bundle.add_function(name, func)
 
     def introspect_message(self, message_id: MessageId) -> "MessageIntrospection | None":
@@ -586,7 +619,7 @@ class FluentLocalization:
             frozenset({'name', 'count'})
         """
         for locale in self._locales:
-            bundle = self._bundles[locale]
+            bundle = self._get_or_create_bundle(locale)
             if bundle.has_message(message_id):
                 return bundle.introspect_message(message_id)
         return None
@@ -607,7 +640,7 @@ class FluentLocalization:
             'lv'
         """
         primary_locale = self._locales[0]
-        bundle = self._bundles[primary_locale]
+        bundle = self._get_or_create_bundle(primary_locale)
         return bundle.get_babel_locale()
 
     def validate_resource(self, ftl_source: FTLSource) -> "ValidationResult":
@@ -628,27 +661,29 @@ class FluentLocalization:
             True
         """
         primary_locale = self._locales[0]
-        bundle = self._bundles[primary_locale]
+        bundle = self._get_or_create_bundle(primary_locale)
         return bundle.validate_resource(ftl_source)
 
     def clear_cache(self) -> None:
-        """Clear format cache on all bundles.
+        """Clear format cache on all initialized bundles.
 
-        Calls clear_cache() on each bundle in the localization.
+        Calls clear_cache() on each bundle that has been created.
+        Does not create new bundles.
         """
         for bundle in self._bundles.values():
-            bundle.clear_cache()
+            if bundle is not None:
+                bundle.clear_cache()
 
     def get_bundles(self) -> Generator[FluentBundle]:
         """Lazy generator yielding bundles in fallback order.
 
         Enables advanced use cases where direct bundle access is needed.
-        Uses Python 3.13 generator expressions for memory efficiency.
+        Creates bundles lazily if they don't exist yet.
 
         Yields:
             FluentBundle instances in locale priority order
         """
-        yield from (self._bundles[locale] for locale in self._locales)
+        yield from (self._get_or_create_bundle(locale) for locale in self._locales)
 
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically

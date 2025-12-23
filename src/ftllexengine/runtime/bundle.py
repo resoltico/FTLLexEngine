@@ -13,7 +13,6 @@ from ftllexengine.diagnostics import (
     ErrorTemplate,
     FluentError,
     FluentReferenceError,
-    FluentResolutionError,
     FluentSyntaxError,
     ValidationResult,
 )
@@ -49,6 +48,14 @@ class FluentBundle:
     Main public API for Fluent localization. Aligned with Mozilla python-fluent
     error handling that returns (result, errors) tuples.
 
+    Thread Safety:
+        - format_pattern() and format_value() are thread-safe for concurrent reads.
+        - add_resource() and add_function() are NOT thread-safe. These methods
+          mutate internal state without locking.
+        - Recommended pattern: Complete all add_resource() and add_function() calls
+          during initialization before sharing the bundle across threads.
+        - If dynamic resource loading is required during concurrent operation,
+          use external synchronization (e.g., threading.Lock).
 
     Examples:
         >>> bundle = FluentBundle("lv_LV")
@@ -585,30 +592,27 @@ class FluentBundle:
         )
 
         # Resolve message (resolver handles all errors internally including cycles)
-        try:
-            result, errors_tuple = resolver.resolve_message(message, args, attribute)
+        # Note: No try-except here. The resolver is designed to collect all expected
+        # errors (missing references, type errors, etc.) and return them in the tuple.
+        # If a raw KeyError/AttributeError/RuntimeError escapes the resolver, that
+        # indicates a bug in the resolver implementation that should be exposed,
+        # not swallowed. This follows the principle of failing fast on internal bugs.
+        result, errors_tuple = resolver.resolve_message(message, args, attribute)
 
-            if errors_tuple:
-                logger.warning(
-                    "Message resolution errors for '%s': %d error(s)", message_id, len(errors_tuple)
-                )
-                for err in errors_tuple:
-                    logger.debug("  - %s: %s", type(err).__name__, err)
-            else:
-                logger.debug("Resolved message '%s': %s", message_id, result[:50])
+        if errors_tuple:
+            logger.warning(
+                "Message resolution errors for '%s': %d error(s)", message_id, len(errors_tuple)
+            )
+            for err in errors_tuple:
+                logger.debug("  - %s: %s", type(err).__name__, err)
+        else:
+            logger.debug("Resolved message '%s': %s", message_id, result[:50])
 
-            # Cache successful resolution (even if there are non-critical errors)
-            if self._cache is not None:
-                self._cache.put(message_id, args, attribute, self._locale, (result, errors_tuple))
+        # Cache successful resolution (even if there are non-critical errors)
+        if self._cache is not None:
+            self._cache.put(message_id, args, attribute, self._locale, (result, errors_tuple))
 
-            return (result, errors_tuple)
-
-        except (KeyError, AttributeError, RuntimeError) as e:
-            # Resolver raised unexpected error (missing variable, invalid attribute, etc.)
-            # Treat as resolution error and return fallback
-            logger.error("Resolution error for '%s': %s", message_id, e)
-            error_obj = FluentResolutionError(f"Resolution failed: {e}")
-            return (f"{{{message_id}}}", (error_obj,))
+        return (result, errors_tuple)
 
     def format_value(
         self, message_id: str, args: Mapping[str, FluentValue] | None = None

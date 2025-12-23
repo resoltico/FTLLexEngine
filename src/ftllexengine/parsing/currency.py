@@ -394,7 +394,10 @@ def parse_currency(
         currency_code = currency_str
 
     # Remove currency symbol/code to extract number
-    number_str = value.replace(currency_str, "").strip()
+    # Use match position to remove ONLY the matched occurrence, not all instances.
+    # This prevents corruption if the symbol appears elsewhere in the string
+    # (e.g., "Price $100 ($5 tax)" should not become "Price 100 ( 5 tax)").
+    number_str = (value[:match.start(1)] + value[match.end(1):]).strip()
 
     # Parse number using Babel
     try:

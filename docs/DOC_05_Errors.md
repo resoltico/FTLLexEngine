@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.28.1
+project_version: 0.29.0
 context: ERRORS
 last_updated: 2025-12-22T00:00:00Z
 maintainer: claude-opus-4-5
@@ -142,6 +142,26 @@ class FluentParseError(FluentError):
 ### Constraints
 - Purpose: Bi-directional parsing errors.
 - Behavior: Returned in error list, never raised.
+
+---
+
+## `SerializationValidationError`
+
+### Signature
+```python
+class SerializationValidationError(ValueError): ...
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Purpose: AST validation errors during serialization.
+- Raised: When `serialize_ftl(validate=True)` detects invalid AST.
+- Common: SelectExpression without exactly one default variant.
+- Import: `from ftllexengine.syntax import SerializationValidationError`
+- Version: v0.29.0+
 
 ---
 

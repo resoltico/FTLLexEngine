@@ -37,7 +37,10 @@ class CustomResourceLoader(ResourceLoader):
 
 
 class TestFluentLocalizationRepr:
-    """Tests for FluentLocalization.__repr__ method (line 294)."""
+    """Tests for FluentLocalization.__repr__ method.
+
+    v0.29.0: Format changed to show initialized/total bundles due to lazy initialization.
+    """
 
     def test_repr_shows_locales_and_bundle_count(self) -> None:
         """Verify __repr__ returns formatted string with locales and bundle count."""
@@ -47,7 +50,8 @@ class TestFluentLocalizationRepr:
         assert "FluentLocalization" in repr_str
         assert "lv" in repr_str
         assert "en" in repr_str
-        assert "bundles=2" in repr_str
+        # v0.29.0: Lazy init shows initialized/total (0/2 until bundles accessed)
+        assert "bundles=0/2" in repr_str
 
     def test_repr_single_locale(self) -> None:
         """Verify __repr__ works with single locale."""
@@ -56,7 +60,18 @@ class TestFluentLocalizationRepr:
 
         assert "FluentLocalization" in repr_str
         assert "en" in repr_str
-        assert "bundles=1" in repr_str
+        # v0.29.0: Lazy init shows initialized/total
+        assert "bundles=0/1" in repr_str
+
+    def test_repr_after_bundle_access(self) -> None:
+        """Verify __repr__ shows initialized bundles after access."""
+        l10n = FluentLocalization(locales=["lv", "en"])
+        l10n.add_resource("lv", "msg = Sveiki")
+
+        repr_str = repr(l10n)
+
+        # After adding resource, lv bundle is initialized
+        assert "bundles=1/2" in repr_str
 
 
 class TestCustomResourceLoader:

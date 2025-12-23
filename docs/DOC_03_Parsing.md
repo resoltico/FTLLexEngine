@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.28.1
+project_version: 0.29.0
 context: PARSING
 last_updated: 2025-12-22T00:00:00Z
 maintainer: claude-opus-4-5
@@ -34,17 +34,18 @@ def parse_ftl(source: str) -> Resource:
 
 ### Signature
 ```python
-def serialize_ftl(resource: Resource) -> str:
+def serialize_ftl(resource: Resource, *, validate: bool = False) -> str:
 ```
 
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `resource` | `Resource` | Y | Resource AST node. |
+| `validate` | `bool` | N | Validate AST before serialization (default: False). |
 
 ### Constraints
 - Return: FTL source string.
-- Raises: None.
+- Raises: `SerializationValidationError` when `validate=True` and AST invalid.
 - State: None.
 - Thread: Safe.
 

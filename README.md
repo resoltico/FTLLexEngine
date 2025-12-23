@@ -290,6 +290,8 @@ with ThreadPoolExecutor() as executor:
 
 Each `LocaleContext` is a frozen dataclass. No global state is mutated. The same context can be shared across threads.
 
+**Note**: `FluentBundle.format_pattern()` is thread-safe for concurrent reads. However, `add_resource()` and `add_function()` are NOT thread-safe. Complete all resource loading during initialization before sharing the bundle across threads.
+
 ### 4. Template Introspection
 
 Extract metadata from templates at runtime. Useful for form builders, linters, and AI agents.

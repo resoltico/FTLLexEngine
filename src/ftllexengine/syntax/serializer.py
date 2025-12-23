@@ -34,6 +34,92 @@ from .ast import (
 )
 from .visitor import ASTVisitor
 
+
+class SerializationValidationError(ValueError):
+    """Raised when AST validation fails during serialization.
+
+    This error indicates the AST structure would produce invalid FTL syntax.
+    Common causes:
+    - SelectExpression without exactly one default variant
+    - Malformed AST nodes from programmatic construction
+    """
+
+
+def _validate_select_expression(expr: SelectExpression, context: str) -> None:
+    """Validate SelectExpression has exactly one default variant.
+
+    Per FTL spec, every SelectExpression must have exactly one variant
+    marked as default with the * prefix.
+
+    Args:
+        expr: SelectExpression to validate
+        context: Description of location for error message
+
+    Raises:
+        SerializationValidationError: If validation fails
+    """
+    default_count = sum(1 for v in expr.variants if v.default)
+
+    if default_count == 0:
+        msg = f"SelectExpression in {context} has no default variant (requires exactly one *[key])"
+        raise SerializationValidationError(msg)
+
+    if default_count > 1:
+        msg = (
+            f"SelectExpression in {context} has {default_count} default variants "
+            "(requires exactly one)"
+        )
+        raise SerializationValidationError(msg)
+
+
+def _validate_pattern(pattern: Pattern, context: str) -> None:
+    """Validate all expressions within a Pattern."""
+    for element in pattern.elements:
+        if isinstance(element, Placeable):
+            _validate_expression(element.expression, context)
+
+
+def _validate_expression(expr: Expression, context: str) -> None:
+    """Validate an Expression recursively."""
+    match expr:
+        case SelectExpression():
+            _validate_select_expression(expr, context)
+            # Also validate patterns within variants
+            for variant in expr.variants:
+                _validate_pattern(variant.value, context)
+        case Placeable():
+            _validate_expression(expr.expression, context)
+        case _:
+            pass  # Other expressions don't need validation
+
+
+def _validate_resource(resource: Resource) -> None:
+    """Validate a Resource AST for serialization.
+
+    Checks all SelectExpressions have exactly one default variant.
+
+    Args:
+        resource: Resource AST to validate
+
+    Raises:
+        SerializationValidationError: If validation fails
+    """
+    for entry in resource.entries:
+        match entry:
+            case Message():
+                context = f"message '{entry.id.name}'"
+                if entry.value:
+                    _validate_pattern(entry.value, context)
+                for attr in entry.attributes:
+                    _validate_pattern(attr.value, f"{context}.{attr.id.name}")
+            case Term():
+                context = f"term '-{entry.id.name}'"
+                _validate_pattern(entry.value, context)
+                for attr in entry.attributes:
+                    _validate_pattern(attr.value, f"{context}.{attr.id.name}")
+            case _:
+                pass  # Comments and Junk don't need validation
+
 # FTL indentation constants per Fluent spec.
 # Attributes use 4 spaces for standard indentation.
 _ATTR_INDENT: str = "\n    "
@@ -58,7 +144,7 @@ class FluentSerializer(ASTVisitor):
         hello = Hello, world!
     """
 
-    def serialize(self, resource: Resource) -> str:
+    def serialize(self, resource: Resource, *, validate: bool = False) -> str:
         """Serialize Resource to FTL string.
 
         Pure function - builds output locally without mutating instance state.
@@ -66,10 +152,18 @@ class FluentSerializer(ASTVisitor):
 
         Args:
             resource: Resource AST node
+            validate: If True, validate AST before serialization (default: False).
+                     Checks that SelectExpressions have exactly one default variant.
 
         Returns:
             FTL source code
+
+        Raises:
+            SerializationValidationError: If validate=True and AST is invalid
         """
+        if validate:
+            _validate_resource(resource)
+
         output: list[str] = []
         self._serialize_resource(resource, output)
         return "".join(output)
@@ -282,16 +376,21 @@ class FluentSerializer(ASTVisitor):
         output.append("\n")
 
 
-def serialize(resource: Resource) -> str:
+def serialize(resource: Resource, *, validate: bool = False) -> str:
     """Serialize Resource to FTL string.
 
     Convenience function for FluentSerializer.serialize().
 
     Args:
         resource: Resource AST node
+        validate: If True, validate AST before serialization (default: False).
+                 Checks that SelectExpressions have exactly one default variant.
 
     Returns:
         FTL source code
+
+    Raises:
+        SerializationValidationError: If validate=True and AST is invalid
 
     Example:
         >>> from ftllexengine.syntax import parse, serialize
@@ -300,4 +399,4 @@ def serialize(resource: Resource) -> str:
         >>> assert ftl == "hello = Hello, world!\\n"
     """
     serializer = FluentSerializer()
-    return serializer.serialize(resource)
+    return serializer.serialize(resource, validate=validate)

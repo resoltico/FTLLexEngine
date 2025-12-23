@@ -16,7 +16,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import FormatCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.locale_context import LocaleContext, LocaleValidationError
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.visitor import ASTVisitor
 
 
@@ -236,33 +236,3 @@ class TestASTVisitorSlots:
         assert visitor.count == 0
         visitor.count = 5
         assert visitor.count == 5
-
-
-class TestLocaleValidationErrorStillExists:
-    """Verify LocaleValidationError class still exists for backwards compatibility."""
-
-    def test_locale_validation_error_class_exists(self) -> None:
-        """LocaleValidationError class is still importable."""
-        # LocaleValidationError imported at top of file
-        assert LocaleValidationError is not None
-
-    def test_locale_validation_error_has_expected_fields(self) -> None:
-        """LocaleValidationError has locale_code and error_message."""
-        error = LocaleValidationError(
-            locale_code="invalid",
-            error_message="Test error"
-        )
-
-        assert error.locale_code == "invalid"
-        assert error.error_message == "Test error"
-
-    def test_locale_validation_error_str(self) -> None:
-        """LocaleValidationError __str__ formats correctly."""
-        error = LocaleValidationError(
-            locale_code="bad-locale",
-            error_message="Not recognized"
-        )
-
-        error_str = str(error)
-        assert "bad-locale" in error_str
-        assert "Not recognized" in error_str

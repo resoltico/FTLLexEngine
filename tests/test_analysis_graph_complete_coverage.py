@@ -3,6 +3,8 @@
 Tests uncovered lines and branches to achieve 100% coverage.
 
 Missing coverage:
+- Line 44: canonicalize_cycle with empty or single-element cycle
+- Line 49: canonicalize_cycle with cycle that becomes empty after removing last
 - Line 79: continue when node already visited in another traversal
 - Branch 106->89: duplicate cycle detection (cycle_key in seen_cycle_keys)
 - Branch 112->114: path empty or path[-1] != node in EXIT state
@@ -10,7 +12,46 @@ Missing coverage:
 
 from __future__ import annotations
 
-from ftllexengine.analysis.graph import detect_cycles
+from ftllexengine.analysis.graph import canonicalize_cycle, detect_cycles
+
+# ============================================================================
+# LINE 44: canonicalize_cycle with Empty or Single-Element Cycle
+# ============================================================================
+
+
+class TestLine44EmptyOrSingleElementCycle:
+    """Test line 44: early return for len(cycle) <= 1."""
+
+    def test_canonicalize_empty_cycle(self) -> None:
+        """Test canonicalize_cycle with empty sequence returns empty tuple."""
+        result = canonicalize_cycle([])
+        assert result == ()
+
+    def test_canonicalize_single_element_cycle(self) -> None:
+        """Test canonicalize_cycle with single element returns tuple with that element."""
+        result = canonicalize_cycle(["A"])
+        assert result == ("A",)
+
+
+# ============================================================================
+# LINE 49: canonicalize_cycle with Cycle that Becomes Empty After Slice
+# ============================================================================
+
+
+class TestLine49NodesEmptyAfterSlice:
+    """Test line 49: nodes empty after excluding closing element."""
+
+    def test_canonicalize_two_element_identical_cycle(self) -> None:
+        """Test canonicalize_cycle with ["A", "A"] returns same tuple.
+
+        When cycle is ["A", "A"], cycle[:-1] gives ["A"], which is not empty.
+        We need a case where cycle[:-1] produces empty list.
+        This only happens with len=1, which is already handled by line 44.
+        So line 49 is unreachable in practice.
+        """
+        # This test documents the expected behavior
+        result = canonicalize_cycle(["A", "A"])
+        assert result == ("A", "A")
 
 # ============================================================================
 # LINE 79: Node Already Visited in Another Traversal

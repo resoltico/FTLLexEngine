@@ -200,15 +200,18 @@ def should_inject_locale(func_name: str, function_registry: "FunctionRegistry") 
         >>> should_inject_locale("NUMBER", bundle._function_registry)
         True
 
-        >>> # Custom CURRENCY function (same name, different function)
-        >>> bundle.add_function("CURRENCY", my_custom_currency)
-        >>> should_inject_locale("CURRENCY", bundle._function_registry)
+        >>> # Custom function with locale requirement
+        >>> def my_format(value, *, _locale=None): ...
+        >>> my_format._ftl_requires_locale = True
+        >>> bundle.add_function("MY_FORMAT", my_format)
+        >>> should_inject_locale("MY_FORMAT", bundle._function_registry)
+        True
+
+        >>> # Custom function without locale requirement (default)
+        >>> bundle.add_function("SIMPLE", lambda x: str(x))
+        >>> should_inject_locale("SIMPLE", bundle._function_registry)
         False
     """
-    # Check if it's a built-in function name that could require locale
-    if not requires_locale_injection(func_name):
-        return False
-
     # Check if the function exists in the registry
     if not function_registry.has_function(func_name):
         return False
@@ -219,7 +222,7 @@ def should_inject_locale(func_name: str, function_registry: "FunctionRegistry") 
         return False
 
     # Check if the callable has the locale requirement marker
-    # Built-in functions are marked with _ftl_requires_locale = True at module load
-    # Custom functions won't have this attribute
-    # This avoids circular imports by using function attributes instead of identity comparison
+    # Both built-in functions (marked at module load) and custom functions
+    # (explicitly marked by user) can have _ftl_requires_locale = True
+    # This allows custom functions to receive locale context when needed.
     return getattr(bundle_callable, "_ftl_requires_locale", False) is True

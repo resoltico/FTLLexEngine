@@ -6,8 +6,69 @@ message/term reference graphs in FTL resources.
 Python 3.13+.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import Enum, auto
+
+
+def canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:
+    """Canonicalize a cycle path by rotating to start with smallest element.
+
+    This preserves directional information (A->B->C vs A->C->B remain distinct)
+    while normalizing the starting point for deduplication.
+
+    The input cycle is expected to have the format [A, B, C, A] where the
+    last element repeats the first to close the cycle.
+
+    Args:
+        cycle: Cycle path as sequence of node IDs, with last element
+               repeating the first (e.g., ["A", "B", "C", "A"]).
+
+    Returns:
+        Canonicalized cycle as tuple, rotated to start with lexicographically
+        smallest element. The closing repeat is preserved.
+
+    Examples:
+        >>> canonicalize_cycle(["B", "C", "A", "B"])
+        ('A', 'B', 'C', 'A')
+
+        >>> canonicalize_cycle(["C", "B", "A", "C"])
+        ('A', 'C', 'B', 'A')
+
+        >>> # Different directions produce different canonical forms
+        >>> canonicalize_cycle(["A", "B", "C", "A"])
+        ('A', 'B', 'C', 'A')
+        >>> canonicalize_cycle(["A", "C", "B", "A"])
+        ('A', 'C', 'B', 'A')
+    """
+    if len(cycle) <= 1:
+        return tuple(cycle)
+
+    # Exclude the closing element (which repeats the first)
+    nodes = list(cycle[:-1])
+    if not nodes:
+        return tuple(cycle)
+
+    # Find the index of the lexicographically smallest element
+    min_idx = nodes.index(min(nodes))
+
+    # Rotate the cycle to start with the smallest element
+    rotated = nodes[min_idx:] + nodes[:min_idx]
+
+    # Add the closing element (repeat of first)
+    return (*rotated, rotated[0])
+
+
+def make_cycle_key(cycle: Sequence[str]) -> str:
+    """Create a canonical string key from a cycle for deduplication.
+
+    Args:
+        cycle: Cycle path as sequence of node IDs.
+
+    Returns:
+        Canonical string key in format "A -> B -> C -> A".
+    """
+    canonical = canonicalize_cycle(cycle)
+    return " -> ".join(canonical)
 
 
 class _NodeState(Enum):
@@ -101,12 +162,13 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
                         cycle_start = path.index(neighbor)
                         cycle = [*path[cycle_start:], neighbor]
 
-                        # Deduplicate cycles using canonical form (sorted key)
-                        cycle_key = " -> ".join(sorted(set(cycle)))
+                        # Deduplicate cycles using canonical form that preserves direction
+                        # Unlike sorted(set()), this distinguishes A->B->C from A->C->B
+                        cycle_key = make_cycle_key(cycle)
                         if cycle_key not in seen_cycle_keys:  # pragma: no branch
                             # Note: False branch is theoretically possible if same cycle
                             # found multiple times, but canonical key deduplication
-                            # ensures each unique cycle set is only reported once.
+                            # ensures each unique cycle is only reported once.
                             seen_cycle_keys.add(cycle_key)
                             cycles.append(cycle)
 

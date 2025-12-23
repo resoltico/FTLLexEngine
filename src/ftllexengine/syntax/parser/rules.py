@@ -5,6 +5,7 @@ This module provides all parsing rules for FTL grammar constructs:
 - Expression parsing (inline expressions, select expressions, function calls)
 - Entry parsing (messages, terms, attributes, comments)
 
+v0.29.0: Improved documentation of lookahead patterns.
 v0.27.0: Merged entries.py to eliminate circular imports between entry and pattern parsing.
 v0.26.0: Merged patterns.py and expressions.py to eliminate circular imports.
 
@@ -12,6 +13,20 @@ All grammar rules are co-located in a single module to:
 1. Eliminate circular imports between interdependent parsing functions
 2. Simplify the import graph
 3. Allow direct function calls instead of function-local imports
+
+Lookahead Patterns:
+    The parser uses character-based lookahead for disambiguation:
+    - `{` starts a Placeable
+    - `$` starts a VariableReference
+    - `-` followed by identifier starts a TermReference
+    - `.` in specific contexts starts an attribute access
+    - `*[` marks the default variant in SelectExpression
+
+    These single-character or two-character lookaheads are implemented inline
+    using cursor.peek(n) rather than separate Lookahead helper classes. While
+    this creates some code duplication, it keeps the parsing logic explicit
+    and easy to trace. Future refactoring could extract common patterns into
+    a Lookahead utility class if the grammar expands significantly.
 
 Security:
     Includes configurable nesting depth limit to prevent DoS attacks via

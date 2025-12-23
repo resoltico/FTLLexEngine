@@ -705,6 +705,14 @@ for entry in resource.entries:
 
 # Serialize back to FTL
 ftl_output = serialize_ftl(resource)
+
+# v0.29.0: Validate AST before serialization
+from ftllexengine.syntax import SerializationValidationError
+
+try:
+    ftl_output = serialize_ftl(resource, validate=True)
+except SerializationValidationError as e:
+    print(f"Invalid AST: {e}")
 ```
 
 ### Visitor Pattern
@@ -763,5 +771,5 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 ---
 
 **Quick Reference Last Updated**: December 22, 2025
-**FTLLexEngine Version**: 0.28.1
+**FTLLexEngine Version**: 0.29.0
 **Python Requirement**: 3.13+
