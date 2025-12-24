@@ -102,11 +102,33 @@ class ValidationWarning:
         code: Warning code (e.g., "duplicate-id", "undefined-reference")
         message: Human-readable warning message
         context: Additional context (e.g., the duplicate ID name)
+        line: Line number where warning occurred (1-indexed, optional)
+        column: Column number where warning occurred (1-indexed, optional)
+
+    The optional line/column fields enable IDE integration (LSP servers)
+    to display warning squiggles at the correct source location.
     """
 
     code: str
     message: str
     context: str | None = None
+    line: int | None = None
+    column: int | None = None
+
+    def format(self) -> str:
+        """Format warning as human-readable string.
+
+        Returns:
+            Formatted warning string with optional location information.
+        """
+        location = ""
+        if self.line is not None:
+            location = f" at line {self.line}"
+            if self.column is not None:
+                location += f", column {self.column}"
+
+        context_str = f" (context: {self.context!r})" if self.context else ""
+        return f"[{self.code}]{location}: {self.message}{context_str}"
 
 
 # ============================================================================

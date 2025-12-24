@@ -201,7 +201,7 @@ class ErrorTemplate:
         """Function not found in registry.
 
         Args:
-            function_name: The function name (e.g., "NUMBER", "DATETIME")
+            function_name: The function name (e.g., "NUMBER", "DATETIME", "CURRENCY")
 
         Returns:
             Diagnostic for FUNCTION_NOT_FOUND
@@ -211,7 +211,7 @@ class ErrorTemplate:
             code=DiagnosticCode.FUNCTION_NOT_FOUND,
             message=msg,
             span=None,
-            hint="Built-in functions: NUMBER, DATETIME. Check spelling.",
+            hint="Built-in functions: NUMBER, DATETIME, CURRENCY. Check spelling.",
             help_url=f"{ErrorTemplate._DOCS_BASE}/functions.html",
         )
 

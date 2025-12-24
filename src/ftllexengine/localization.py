@@ -5,10 +5,18 @@ Separates multi-locale orchestration (FluentLocalization) from single-locale
 formatting (FluentBundle).
 
 Key architectural decisions:
-- Lazy bundle generation using generators (memory efficient)
+- Lazy bundle creation: FluentBundle objects created on first access
+- Eager resource loading: FTL resources loaded at init (fail-fast behavior)
 - Protocol-based ResourceLoader (dependency inversion)
 - Immutable locale chain (established at construction)
 - Python 3.13 features: pattern matching, TypeIs, frozen dataclasses
+
+Initialization Behavior:
+    FluentLocalization loads all resources eagerly at construction to
+    provide fail-fast error detection. This means FileNotFoundError and
+    parse errors are raised immediately rather than during format() calls.
+    Bundle objects are still created lazily to reduce memory when fallback
+    locales are rarely accessed.
 
 Python 3.13+.
 """
@@ -323,8 +331,8 @@ class FluentLocalization:
         self._enable_cache = enable_cache
         self._cache_size = cache_size
 
-        # Lazy bundle storage: None means bundle not yet created
-        # This reduces memory usage when fallback locales are rarely accessed
+        # Bundle storage: bundles are created lazily on first access
+        # But resources are loaded eagerly at init time for fail-fast behavior
         self._bundles: dict[LocaleCode, FluentBundle | None] = dict.fromkeys(
             self._locales, None
         )
@@ -332,8 +340,11 @@ class FluentLocalization:
         # Track which locales have had resources loaded
         self._resources_loaded: set[LocaleCode] = set()
 
-        # Eagerly load resources if loader provided
-        # This is done eagerly to report FileNotFoundError early
+        # Resource loading is EAGER by design:
+        # - Fail-fast: FileNotFoundError raised at construction, not at format() time
+        # - Predictable: All resource parse errors discovered immediately
+        # - Trade-off: Slower initialization, but no runtime surprises
+        # Note: Bundle objects themselves are still lazily created via _get_or_create_bundle
         if resource_loader and resource_ids:
             for locale in self._locales:
                 for resource_id in self._resource_ids:

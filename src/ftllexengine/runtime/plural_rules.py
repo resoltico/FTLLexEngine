@@ -9,13 +9,15 @@ Python 3.13+. Depends on Babel for CLDR data.
 Reference: https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
 """
 
+from decimal import Decimal
+
 from babel import Locale
 from babel.core import UnknownLocaleError
 
 from ftllexengine.locale_utils import normalize_locale
 
 
-def select_plural_category(n: int | float, locale: str) -> str:
+def select_plural_category(n: int | float | Decimal, locale: str) -> str:
     """Select CLDR plural category for number using Babel's CLDR data.
 
     Args:

@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.29.1
+project_version: 0.30.0
 context: TYPES
 last_updated: 2025-12-23T00:00:00Z
 maintainer: claude-opus-4-5
@@ -721,7 +721,7 @@ class ReferenceInfo:
 
 ### Signature
 ```python
-class CommentType(Enum):
+class CommentType(StrEnum):
     COMMENT = "comment"
     GROUP = "group"
     RESOURCE = "resource"
@@ -735,8 +735,9 @@ class CommentType(Enum):
 | `RESOURCE` | Resource comment: `### text` |
 
 ### Constraints
-- Enum type.
+- StrEnum: Members ARE strings. `str(CommentType.COMMENT) == "comment"`
 - Import: `from ftllexengine.enums import CommentType`
+- Version: Migrated to StrEnum in v0.30.0
 
 ---
 
@@ -744,7 +745,7 @@ class CommentType(Enum):
 
 ### Signature
 ```python
-class VariableContext(Enum):
+class VariableContext(StrEnum):
     PATTERN = "pattern"
     SELECTOR = "selector"
     VARIANT = "variant"
@@ -760,8 +761,9 @@ class VariableContext(Enum):
 | `FUNCTION_ARG` | Variable in function argument. |
 
 ### Constraints
-- Enum type.
+- StrEnum: Members ARE strings. `str(VariableContext.PATTERN) == "pattern"`
 - Import: `from ftllexengine.enums import VariableContext`
+- Version: Migrated to StrEnum in v0.30.0
 
 ---
 
@@ -769,7 +771,7 @@ class VariableContext(Enum):
 
 ### Signature
 ```python
-class ReferenceKind(Enum):
+class ReferenceKind(StrEnum):
     MESSAGE = "message"
     TERM = "term"
 ```
@@ -781,7 +783,8 @@ class ReferenceKind(Enum):
 | `TERM` | Reference to a term: `{ -term-id }` |
 
 ### Constraints
-- Enum type.
+- StrEnum: Members ARE strings. `str(ReferenceKind.MESSAGE) == "message"`
 - Import: `from ftllexengine.enums import ReferenceKind`
+- Version: Migrated to StrEnum in v0.30.0
 
 ---

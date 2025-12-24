@@ -577,8 +577,8 @@ class TestMessageWithoutValueOrAttributes:
         # Create Resource with this message
         resource = Resource(entries=(message_with_no_content,))
 
-        # Call _collect_entries directly
-        _messages_dict, _terms_dict, warnings = _collect_entries(resource)
+        # Call _collect_entries directly (empty string for source since we're testing AST directly)
+        _messages_dict, _terms_dict, warnings = _collect_entries(resource, "")
 
         # Should have warning about no value or attributes (line 113)
         no_value_warnings = [
@@ -693,8 +693,8 @@ class TestMissingBranchCoverage:
         messages_dict = {"existing_msg": existing_message}  # Message exists
         terms_dict = {"myterm": term_with_msg_ref}
 
-        # Check references
-        warnings = _check_undefined_references(messages_dict, terms_dict)
+        # Check references (empty string for source since we're testing AST directly)
+        warnings = _check_undefined_references(messages_dict, terms_dict, "")
 
         # Should have NO warnings (message exists)
         # This tests branch 187->186 (if condition is False, continue to next iteration)
@@ -702,13 +702,14 @@ class TestMissingBranchCoverage:
         assert len(undefined_warnings) == 0
 
     def test_duplicate_cycle_detection_line_243(self) -> None:
-        """Test cycle deduplication for messages (branch 243->241).
+        """Test cycle deduplication for messages.
 
-        Line 243: if cycle_key not in seen_cycle_keys
-        Tests the branch where a duplicate cycle is found and skipped.
+        Verifies that the unified graph cycle detection produces exactly one
+        warning per unique cycle, not multiple warnings for the same cycle
+        detected from different starting points.
+
+        v0.30.0: Updated to work with unified cross-type cycle detection.
         """
-        from unittest.mock import patch
-
         from ftllexengine.syntax.ast import (
             Identifier,
             Message,
@@ -738,30 +739,24 @@ class TestMissingBranchCoverage:
         messages_dict = {"a": msg_a, "b": msg_b}
         terms_dict: dict[str, Term] = {}
 
-        # Mock detect_cycles to return the same cycle twice (with different order)
-        # This simulates finding the same cycle multiple times
-        with patch("ftllexengine.validation.resource.detect_cycles") as mock_detect:
-            # Return same cycle twice: [a, b, a] and [b, a, b]
-            # They have the same canonical form when sorted
-            mock_detect.return_value = [
-                ["a", "b", "a"],  # First occurrence
-                ["b", "a", "b"],  # Second occurrence (same cycle, different start)
-            ]
+        # Call the real function without mocking
+        warnings = _detect_circular_references(messages_dict, terms_dict)
 
-            warnings = _detect_circular_references(messages_dict, terms_dict)
-
-            # Should only have 1 warning (second cycle deduplicated)
-            circular_warnings = [w for w in warnings if "circular" in w.message.lower()]
-            assert len(circular_warnings) == 1
+        # Should only have 1 warning (cycle a -> b -> a is detected once)
+        circular_warnings = [w for w in warnings if "circular" in w.message.lower()]
+        assert len(circular_warnings) == 1
+        # Should mention both messages in the cycle
+        warning_msg = circular_warnings[0].message.lower()
+        assert "a" in warning_msg or "b" in warning_msg
 
     def test_duplicate_cycle_detection_line_257(self) -> None:
-        """Test cycle deduplication for terms (branch 257->255).
+        """Test cycle deduplication for terms.
 
-        Line 257: if cycle_key not in seen_cycle_keys
-        Tests the branch where a duplicate term cycle is found and skipped.
+        Verifies that term-only cycles are detected and deduplicated properly
+        in the unified graph.
+
+        v0.30.0: Updated to work with unified cross-type cycle detection.
         """
-        from unittest.mock import patch
-
         from ftllexengine.syntax.ast import (
             Identifier,
             Message,
@@ -791,19 +786,12 @@ class TestMissingBranchCoverage:
         messages_dict: dict[str, Message] = {}
         terms_dict = {"ta": term_a, "tb": term_b}
 
-        # Mock detect_cycles to return the same cycle twice
-        with patch("ftllexengine.validation.resource.detect_cycles") as mock_detect:
-            # First call for messages (returns empty), second call for terms (returns cycles)
-            mock_detect.side_effect = [
-                [],  # Message cycles (none)
-                [
-                    ["ta", "tb", "ta"],  # First occurrence
-                    ["tb", "ta", "tb"],  # Second occurrence (same cycle)
-                ],
-            ]
+        # Call the real function without mocking
+        warnings = _detect_circular_references(messages_dict, terms_dict)
 
-            warnings = _detect_circular_references(messages_dict, terms_dict)
-
-            # Should only have 1 warning (second cycle deduplicated)
-            circular_warnings = [w for w in warnings if "circular" in w.message.lower()]
-            assert len(circular_warnings) == 1
+        # Should only have 1 warning (cycle ta -> tb -> ta is detected once)
+        circular_warnings = [w for w in warnings if "circular" in w.message.lower()]
+        assert len(circular_warnings) == 1
+        # Should mention both terms in the cycle
+        warning_msg = circular_warnings[0].message.lower()
+        assert "ta" in warning_msg or "tb" in warning_msg

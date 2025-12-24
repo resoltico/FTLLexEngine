@@ -45,7 +45,8 @@ def canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:
 
     # Exclude the closing element (which repeats the first)
     nodes = list(cycle[:-1])
-    if not nodes:
+    if not nodes:  # pragma: no cover
+        # Defensive: unreachable since len(cycle) > 1 implies cycle[:-1] non-empty
         return tuple(cycle)
 
     # Find the index of the lexicographically smallest element

@@ -264,29 +264,15 @@ class SemanticValidator:
             case VariableReference():
                 pass  # Variable references always valid
             case MessageReference():
-                self._validate_message_reference(expr, errors, context)
+                # Message references cannot have arguments (grammar-enforced)
+                # MessageReference AST has no arguments field, unlike TermReference
+                pass
             case TermReference():
                 self._validate_term_reference(expr, errors)
             case FunctionReference():
                 self._validate_function_reference(expr, errors)
             case Placeable():
                 self._validate_expression(expr.expression, errors, context)
-
-    def _validate_message_reference(
-        self,
-        ref: MessageReference,
-        errors: list[Annotation],
-        context: str,
-    ) -> None:
-        """Validate message reference.
-
-        Per spec:
-        - Messages cannot be called with arguments
-        - Message.attribute() is invalid (only terms can be parameterized)
-        """
-        # Message references should not have call arguments
-        # This is enforced by grammar (MessageReference has no arguments field)
-        # But we document it here for completeness
 
     def _validate_term_reference(
         self,

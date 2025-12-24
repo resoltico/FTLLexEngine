@@ -4,14 +4,19 @@ RETRIEVAL_HINTS:
   answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, thread safety]
   related: [docs/QUICK_REFERENCE.md, docs/DOC_00_Index.md, docs/PARSING_GUIDE.md, docs/TERMINOLOGY.md]
 -->
-# FTLLexEngine
+
+[![FTLLexEngine Device, A Steampunk-Inspired Concept Render](https://raw.githubusercontent.com/resoltico/FTLLexEngine/main/images/FTLLexEngine_device.png)](https://github.com/resoltico/FTLLexEngine)
+
+-----
 
 [![PyPI](https://img.shields.io/pypi/v/ftllexengine.svg)](https://pypi.org/project/ftllexengine/)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![codecov](https://codecov.io/github/resoltico/FTLLexEngine/graph/badge.svg?token=Q5KUGU3S3U)](https://codecov.io/github/resoltico/FTLLexEngine)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![FTLLexEngine Device, A Steampunk-Inspired Concept Render](images/FTLLexEngine_device.png)
+-----
+
+# FTLLexEngine
 
 **A logic engine for text and a parsing gateway.**
 

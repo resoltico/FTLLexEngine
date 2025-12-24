@@ -1,15 +1,18 @@
 """Enumerations for FTLLexEngine type-safe constants.
 
+Uses StrEnum (Python 3.11+) for automatic string conversion.
+StrEnum members are strings themselves, eliminating boilerplate __str__ methods.
 
 Python 3.13+.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 
-class CommentType(Enum):
+class CommentType(StrEnum):
     """Type of FTL comment.
 
+    StrEnum provides automatic string conversion: str(CommentType.COMMENT) == "comment"
     """
 
     COMMENT = "comment"
@@ -21,14 +24,11 @@ class CommentType(Enum):
     RESOURCE = "resource"
     """Resource comment: ### Resource Description"""
 
-    def __str__(self) -> str:
-        """Return enum value for serialization."""
-        return self.value
 
-
-class VariableContext(Enum):
+class VariableContext(StrEnum):
     """Context where a variable reference appears.
 
+    StrEnum provides automatic string conversion: str(VariableContext.PATTERN) == "pattern"
     """
 
     PATTERN = "pattern"
@@ -43,14 +43,11 @@ class VariableContext(Enum):
     FUNCTION_ARG = "function_arg"
     """Variable in function argument: { NUMBER($value) }"""
 
-    def __str__(self) -> str:
-        """Return enum value for serialization."""
-        return self.value
 
-
-class ReferenceKind(Enum):
+class ReferenceKind(StrEnum):
     """Kind of reference (message or term).
 
+    StrEnum provides automatic string conversion: str(ReferenceKind.MESSAGE) == "message"
     """
 
     MESSAGE = "message"
@@ -58,10 +55,6 @@ class ReferenceKind(Enum):
 
     TERM = "term"
     """Reference to a term: { -term-id }"""
-
-    def __str__(self) -> str:
-        """Return enum value for serialization."""
-        return self.value
 
 
 __all__ = [

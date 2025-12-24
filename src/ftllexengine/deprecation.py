@@ -41,20 +41,25 @@ def warn_deprecated(
         alternative: Suggested replacement (optional)
         stacklevel: Stack level for warning (default: 2, caller's caller)
 
+    Note:
+        Uses DeprecationWarning (not FutureWarning) per Python convention.
+        DeprecationWarning is filtered by default for end users but visible
+        during development when running with -W default or pytest.
+
     Example:
         >>> warn_deprecated(
         ...     "parse_string()",
         ...     removal_version="1.0.0",
         ...     alternative="FluentParserV1.parse()",
         ... )
-        # Issues: FutureWarning: parse_string() is deprecated and will be
+        # Issues: DeprecationWarning: parse_string() is deprecated and will be
         # removed in version 1.0.0. Use FluentParserV1.parse() instead.
     """
     msg = f"{feature} is deprecated and will be removed in version {removal_version}."
     if alternative:
         msg += f" Use {alternative} instead."
 
-    warnings.warn(msg, FutureWarning, stacklevel=stacklevel)
+    warnings.warn(msg, DeprecationWarning, stacklevel=stacklevel)
 
 
 def deprecated(
@@ -64,7 +69,7 @@ def deprecated(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to mark a function or method as deprecated.
 
-    Emits FutureWarning on each call with standardized deprecation message.
+    Emits DeprecationWarning on each call with standardized deprecation message.
     Preserves function signature and docstring.
 
     Args:
@@ -79,7 +84,7 @@ def deprecated(
         ... def old_function(x: int) -> int:
         ...     return x * 2
         >>>
-        >>> old_function(5)  # Issues FutureWarning
+        >>> old_function(5)  # Issues DeprecationWarning
         10
     """
 
@@ -120,7 +125,7 @@ def deprecated_parameter(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to mark a specific parameter as deprecated.
 
-    Emits FutureWarning when the deprecated parameter is used.
+    Emits DeprecationWarning when the deprecated parameter is used.
 
     Args:
         param_name: Name of the deprecated parameter
@@ -135,7 +140,7 @@ def deprecated_parameter(
         ... def my_function(x: int, old_param: bool = False, new_param: bool = False) -> int:
         ...     return x * 2
         >>>
-        >>> my_function(5, old_param=True)  # Issues FutureWarning
+        >>> my_function(5, old_param=True)  # Issues DeprecationWarning
         10
     """
 

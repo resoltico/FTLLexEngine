@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.29.1
+project_version: 0.30.0
 context: ERRORS
 last_updated: 2025-12-23T00:00:00Z
 maintainer: claude-opus-4-5
@@ -289,6 +289,10 @@ class ValidationWarning:
     code: str
     message: str
     context: str | None = None
+    line: int | None = None
+    column: int | None = None
+
+    def format(self) -> str: ...
 ```
 
 ### Contract
@@ -297,10 +301,32 @@ class ValidationWarning:
 | `code` | `str` | Y | Warning code (e.g., "duplicate-id"). |
 | `message` | `str` | Y | Warning message. |
 | `context` | `str \| None` | N | Additional context. |
+| `line` | `int \| None` | N | Line number (1-indexed). |
+| `column` | `int \| None` | N | Column number (1-indexed). |
 
 ### Constraints
 - Return: Immutable warning record.
 - State: Frozen dataclass.
+- IDE: Line/column fields enable IDE/LSP integration for warning display.
+- Version: line/column fields added in v0.30.0.
+
+---
+
+## `ValidationWarning.format`
+
+### Signature
+```python
+def format(self) -> str:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Formatted warning string with location (if available).
+- Format: `[code] at line N, column M: message (context: 'ctx')`
+- Version: v0.30.0+
 
 ---
 

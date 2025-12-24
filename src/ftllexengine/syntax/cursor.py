@@ -10,6 +10,16 @@ Design Philosophy:
     - Every advance() returns NEW cursor (prevents infinite loops)
     - Line:column computed on-demand (O(n) only for errors)
 
+Line Ending Support:
+    - LF (Unix, \\n): Fully supported
+    - CRLF (Windows, \\r\\n): Supported (\\n is the line delimiter)
+    - CR-only (Classic Mac, \\r): NOT supported
+
+    Both Cursor.compute_line_col() and LineOffsetCache use \\n as the line
+    delimiter. CRLF files work correctly because the \\n is still present.
+    Files using CR-only line endings (pre-OSX Mac format) will produce
+    incorrect line numbers.
+
 Pattern Reference:
     - Rust nom parser combinator library
     - Haskell Parsec

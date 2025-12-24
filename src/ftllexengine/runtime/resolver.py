@@ -11,6 +11,7 @@ Thread Safety:
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from ftllexengine.diagnostics import (
     ErrorTemplate,
@@ -398,7 +399,9 @@ class FluentResolver:
                     if key_name == selector_str:
                         return variant
                 case NumberLiteral(value=key_value):
-                    if isinstance(selector_value, (int, float)) and key_value == selector_value:
+                    # Handle int, float, and Decimal for exact numeric match
+                    is_numeric = isinstance(selector_value, (int, float, Decimal))
+                    if is_numeric and key_value == selector_value:
                         return variant
         return None
 
@@ -471,7 +474,8 @@ class FluentResolver:
             return self._resolve_pattern(exact_match.value, args, errors, context)
 
         # Pass 2: Plural category match (numeric selectors only)
-        if isinstance(selector_value, (int, float)):
+        # FluentValue includes Decimal for currency/financial values
+        if isinstance(selector_value, (int, float, Decimal)):
             plural_category = select_plural_category(selector_value, self.locale)
             plural_match = self._find_plural_variant(expr.variants, plural_category)
             if plural_match is not None:

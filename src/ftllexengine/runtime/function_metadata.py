@@ -18,23 +18,22 @@ Python 3.13+. Zero external dependencies.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ftllexengine.runtime.function_bridge import FunctionRegistry
 
 
-class FunctionCategory(Enum):
-    """Category classification for Fluent functions."""
+class FunctionCategory(StrEnum):
+    """Category classification for Fluent functions.
+
+    StrEnum provides automatic string conversion: str(FunctionCategory.FORMATTING) == "formatting"
+    """
 
     FORMATTING = "formatting"
     TEXT = "text"
     CUSTOM = "custom"
-
-    def __str__(self) -> str:
-        """Return enum value for serialization."""
-        return self.value
 
 
 @dataclass(frozen=True)

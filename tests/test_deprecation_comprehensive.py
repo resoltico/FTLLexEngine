@@ -34,7 +34,7 @@ class TestWarnDeprecatedFunction:
             )
 
             assert len(w) == 1
-            assert issubclass(w[0].category, FutureWarning)
+            assert issubclass(w[0].category, DeprecationWarning)
             expected_msg = (
                 "old_function() is deprecated and will be removed in version 2.0.0."
             )
@@ -52,7 +52,7 @@ class TestWarnDeprecatedFunction:
             )
 
             assert len(w) == 1
-            assert issubclass(w[0].category, FutureWarning)
+            assert issubclass(w[0].category, DeprecationWarning)
             expected_msg = (
                 "legacy_api() is deprecated and will be removed in version 3.0.0. "
                 "Use new_api() instead."
@@ -79,7 +79,7 @@ class TestWarnDeprecatedFunction:
             outer_function()
 
             assert len(w) == 1
-            assert w[0].category is FutureWarning
+            assert w[0].category is DeprecationWarning
 
     @given(
         feature=st.text(min_size=1, max_size=100),
@@ -104,7 +104,7 @@ class TestDeprecatedDecorator:
     """Test suite for @deprecated decorator."""
 
     def test_deprecated_decorator_emits_warning_on_call(self) -> None:
-        """Verify decorated function emits FutureWarning when called."""
+        """Verify decorated function emits DeprecationWarning when called."""
 
         @deprecated(removal_version="1.0.0")
         def old_function(x: int) -> int:
@@ -117,7 +117,7 @@ class TestDeprecatedDecorator:
 
             assert result == 10
             assert len(w) == 1
-            assert issubclass(w[0].category, FutureWarning)
+            assert issubclass(w[0].category, DeprecationWarning)
             assert "old_function()" in str(w[0].message)
             assert "1.0.0" in str(w[0].message)
 
@@ -200,7 +200,7 @@ class TestDeprecatedDecorator:
             repeated_call()
 
             assert len(w) == 3
-            assert all(issubclass(warning.category, FutureWarning) for warning in w)
+            assert all(issubclass(warning.category, DeprecationWarning) for warning in w)
 
     @given(
         removal_version=st.text(min_size=5, max_size=20),
@@ -255,7 +255,7 @@ class TestDeprecatedParameterDecorator:
 
             assert result == 10
             assert len(w) == 1
-            assert issubclass(w[0].category, FutureWarning)
+            assert issubclass(w[0].category, DeprecationWarning)
             assert "old_param" in str(w[0].message)
             assert "1.0.0" in str(w[0].message)
 
@@ -414,8 +414,8 @@ class TestDeprecationIntegration:
             assert result == "LEGACY:test_data"
             assert len(w) == 2  # One for function, one for parameter
 
-            # Verify both warnings are FutureWarning
-            assert all(issubclass(warning.category, FutureWarning) for warning in w)
+            # Verify both warnings are DeprecationWarning
+            assert all(issubclass(warning.category, DeprecationWarning) for warning in w)
 
             # Verify warning messages contain expected content
             messages = [str(warning.message) for warning in w]
@@ -439,7 +439,7 @@ class TestDeprecationIntegration:
         # Test with warnings set to error (should raise)
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            with pytest.raises(FutureWarning):
+            with pytest.raises(DeprecationWarning):
                 filtered_func()
 
     def test_nested_deprecated_functions(self) -> None:

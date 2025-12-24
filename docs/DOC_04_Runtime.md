@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.29.1
+project_version: 0.30.0
 context: RUNTIME
 last_updated: 2025-12-23T00:00:00Z
 maintainer: claude-opus-4-5
@@ -242,7 +242,7 @@ def create_default_registry() -> FunctionRegistry:
 
 ### Signature
 ```python
-class FunctionCategory(Enum):
+class FunctionCategory(StrEnum):
     FORMATTING = "formatting"
     TEXT = "text"
     CUSTOM = "custom"
@@ -256,8 +256,9 @@ class FunctionCategory(Enum):
 | `CUSTOM` | User-defined functions. |
 
 ### Constraints
+- StrEnum: Members ARE strings. `str(FunctionCategory.FORMATTING) == "formatting"`
 - Import: `from ftllexengine.runtime.function_metadata import FunctionCategory`
-- Version: v0.27.0+
+- Version: Migrated to StrEnum in v0.30.0
 
 ---
 
@@ -377,13 +378,13 @@ def should_inject_locale(func_name: str, function_registry: FunctionRegistry) ->
 
 ### Signature
 ```python
-def select_plural_category(n: int | float, locale: str) -> str:
+def select_plural_category(n: int | float | Decimal, locale: str) -> str:
 ```
 
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `n` | `int \| float` | Y | Number to categorize. |
+| `n` | `int \| float \| Decimal` | Y | Number to categorize. |
 | `locale` | `str` | Y | BCP 47 locale code. |
 
 ### Constraints
@@ -391,6 +392,7 @@ def select_plural_category(n: int | float, locale: str) -> str:
 - Raises: Never. Returns "one" or "other" on invalid locale.
 - State: None.
 - Thread: Safe.
+- Version: Decimal support added in v0.30.0.
 
 ---
 

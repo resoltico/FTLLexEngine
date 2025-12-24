@@ -80,6 +80,7 @@ def _extract_syntax_errors(
 
 def _collect_entries(
     resource: Resource,
+    source: str,
 ) -> tuple[dict[str, Message], dict[str, Term], list[ValidationWarning]]:
     """Collect message/term entries and check for structural issues.
 
@@ -89,6 +90,7 @@ def _collect_entries(
 
     Args:
         resource: Parsed Resource AST
+        source: Original FTL source for position calculation
 
     Returns:
         Tuple of (messages_dict, terms_dict, warnings)
@@ -98,11 +100,24 @@ def _collect_entries(
     messages_dict: dict[str, Message] = {}
     terms_dict: dict[str, Term] = {}
 
+    # Build line offset cache once for efficient position lookups
+    line_cache: LineOffsetCache | None = None
+
+    def _get_position(entry: Message | Term) -> tuple[int | None, int | None]:
+        """Get line/column from entry's span if available."""
+        nonlocal line_cache
+        if entry.span:
+            if line_cache is None:
+                line_cache = LineOffsetCache(source)
+            return line_cache.get_line_col(entry.span.start)
+        return None, None
+
     for entry in resource.entries:
         match entry:
             case Message(id=msg_id, value=value, attributes=attributes):
                 # Check for duplicate message IDs
                 if msg_id.name in seen_ids:
+                    line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
                             code="duplicate-id",
@@ -111,6 +126,8 @@ def _collect_entries(
                                 f"(later definition will overwrite earlier)"
                             ),
                             context=msg_id.name,
+                            line=line,
+                            column=column,
                         )
                     )
                 seen_ids.add(msg_id.name)
@@ -118,17 +135,21 @@ def _collect_entries(
 
                 # Check for messages without values (only attributes)
                 if value is None and len(attributes) == 0:
+                    line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
                             code="no-value-or-attributes",
                             message=f"Message '{msg_id.name}' has neither value nor attributes",
                             context=msg_id.name,
+                            line=line,
+                            column=column,
                         )
                     )
 
             case Term(id=term_id):
                 # Check for duplicate term IDs
                 if term_id.name in seen_ids:
+                    line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
                             code="duplicate-id",
@@ -137,6 +158,8 @@ def _collect_entries(
                                 f"(later definition will overwrite earlier)"
                             ),
                             context=term_id.name,
+                            line=line,
+                            column=column,
                         )
                     )
                 seen_ids.add(term_id.name)
@@ -148,6 +171,7 @@ def _collect_entries(
 def _check_undefined_references(
     messages_dict: dict[str, Message],
     terms_dict: dict[str, Term],
+    source: str,
 ) -> list[ValidationWarning]:
     """Check for undefined message and term references.
 
@@ -157,15 +181,29 @@ def _check_undefined_references(
     Args:
         messages_dict: Map of message IDs to Message nodes
         terms_dict: Map of term IDs to Term nodes
+        source: Original FTL source for position calculation
 
     Returns:
         List of warnings for undefined references
     """
     warnings: list[ValidationWarning] = []
 
+    # Build line offset cache once for efficient position lookups
+    line_cache: LineOffsetCache | None = None
+
+    def _get_position(entry: Message | Term) -> tuple[int | None, int | None]:
+        """Get line/column from entry's span if available."""
+        nonlocal line_cache
+        if entry.span:
+            if line_cache is None:
+                line_cache = LineOffsetCache(source)
+            return line_cache.get_line_col(entry.span.start)
+        return None, None
+
     # Check message references
     for msg_name, message in messages_dict.items():
         msg_refs, term_refs = extract_references(message)
+        line, column = _get_position(message)
 
         for ref in msg_refs:
             if ref not in messages_dict:
@@ -174,6 +212,8 @@ def _check_undefined_references(
                         code="undefined-reference",
                         message=f"Message '{msg_name}' references undefined message '{ref}'",
                         context=ref,
+                        line=line,
+                        column=column,
                     )
                 )
 
@@ -184,12 +224,15 @@ def _check_undefined_references(
                         code="undefined-reference",
                         message=f"Message '{msg_name}' references undefined term '-{ref}'",
                         context=f"-{ref}",
+                        line=line,
+                        column=column,
                     )
                 )
 
     # Check term references
     for term_name, term in terms_dict.items():
         msg_refs, term_refs = extract_references(term)
+        line, column = _get_position(term)
 
         for ref in msg_refs:
             if ref not in messages_dict:
@@ -198,6 +241,8 @@ def _check_undefined_references(
                         code="undefined-reference",
                         message=f"Term '-{term_name}' references undefined message '{ref}'",
                         context=ref,
+                        line=line,
+                        column=column,
                     )
                 )
 
@@ -208,6 +253,8 @@ def _check_undefined_references(
                         code="undefined-reference",
                         message=f"Term '-{term_name}' references undefined term '-{ref}'",
                         context=f"-{ref}",
+                        line=line,
+                        column=column,
                     )
                 )
 
@@ -223,6 +270,11 @@ def _detect_circular_references(
     Uses iterative DFS via analysis.graph module to avoid stack overflow
     on deep dependency chains.
 
+    Builds a unified dependency graph with type-prefixed nodes to detect:
+    - Message-only cycles (msg:A -> msg:B -> msg:A)
+    - Term-only cycles (term:A -> term:B -> term:A)
+    - Cross-type cycles (msg:A -> term:B -> msg:A)
+
     Args:
         messages_dict: Map of message IDs to Message nodes
         terms_dict: Map of term IDs to Term nodes
@@ -233,44 +285,72 @@ def _detect_circular_references(
     warnings: list[ValidationWarning] = []
     seen_cycle_keys: set[str] = set()
 
-    # Build dependency graph for messages
-    message_deps: dict[str, set[str]] = {}
+    # Build unified dependency graph with type-prefixed nodes
+    # This enables detection of cross-type cycles (message -> term -> message)
+    unified_deps: dict[str, set[str]] = {}
+
+    # Add message nodes with all their dependencies (both message and term refs)
     for msg_name, message in messages_dict.items():
-        msg_refs, _ = extract_references(message)
-        message_deps[msg_name] = set(msg_refs)
+        msg_refs, term_refs = extract_references(message)
+        node_key = f"msg:{msg_name}"
+        deps: set[str] = set()
+        # Message references: only add if target exists
+        for ref in msg_refs:
+            if ref in messages_dict:
+                deps.add(f"msg:{ref}")
+        # Term references: only add if target exists
+        for ref in term_refs:
+            if ref in terms_dict:
+                deps.add(f"term:{ref}")
+        unified_deps[node_key] = deps
 
-    # Build dependency graph for terms
-    term_deps: dict[str, set[str]] = {}
+    # Add term nodes with all their dependencies (both message and term refs)
     for term_name, term in terms_dict.items():
-        _, term_refs = extract_references(term)
-        term_deps[term_name] = set(term_refs)
+        msg_refs, term_refs = extract_references(term)
+        node_key = f"term:{term_name}"
+        deps = set()
+        # Message references: only add if target exists
+        for ref in msg_refs:
+            if ref in messages_dict:
+                deps.add(f"msg:{ref}")
+        # Term references: only add if target exists
+        for ref in term_refs:
+            if ref in terms_dict:
+                deps.add(f"term:{ref}")
+        unified_deps[node_key] = deps
 
-    # Detect message cycles
-    # Use centralized make_cycle_key() which preserves direction info
-    # (A->B->C is distinct from A->C->B, unlike sorted set approach)
-    for cycle in detect_cycles(message_deps):
+    # Detect all cycles in the unified graph
+    for cycle in detect_cycles(unified_deps):
         cycle_key = make_cycle_key(cycle)
         if cycle_key not in seen_cycle_keys:
             seen_cycle_keys.add(cycle_key)
-            cycle_str = " -> ".join(cycle)
-            warnings.append(
-                ValidationWarning(
-                    code="circular-reference",
-                    message=f"Circular message reference: {cycle_str}",
-                    context=cycle_str,
-                )
-            )
 
-    # Detect term cycles
-    for cycle in detect_cycles(term_deps):
-        cycle_key = make_cycle_key(cycle)
-        if cycle_key not in seen_cycle_keys:
-            seen_cycle_keys.add(cycle_key)
-            cycle_str = " -> ".join([f"-{t}" for t in cycle])
+            # Format cycle for human-readable output
+            # Convert "msg:foo" -> "foo", "term:bar" -> "-bar"
+            formatted_parts: list[str] = []
+            for node in cycle:
+                if node.startswith("msg:"):
+                    formatted_parts.append(node[4:])  # Strip "msg:" prefix
+                elif node.startswith("term:"):
+                    formatted_parts.append(f"-{node[5:]}")  # Strip "term:", add "-"
+
+            cycle_str = " -> ".join(formatted_parts)
+
+            # Determine cycle type for appropriate message
+            has_messages = any(n.startswith("msg:") for n in cycle)
+            has_terms = any(n.startswith("term:") for n in cycle)
+
+            if has_messages and has_terms:
+                msg = f"Circular cross-reference: {cycle_str}"
+            elif has_terms:
+                msg = f"Circular term reference: {cycle_str}"
+            else:
+                msg = f"Circular message reference: {cycle_str}"
+
             warnings.append(
                 ValidationWarning(
                     code="circular-reference",
-                    message=f"Circular term reference: {cycle_str}",
+                    message=msg,
                     context=cycle_str,
                 )
             )
@@ -323,10 +403,10 @@ def validate_resource(
         errors = _extract_syntax_errors(resource, source)
 
         # Pass 2: Collect entries and check structural issues
-        messages_dict, terms_dict, structure_warnings = _collect_entries(resource)
+        messages_dict, terms_dict, structure_warnings = _collect_entries(resource, source)
 
         # Pass 3: Check undefined references
-        ref_warnings = _check_undefined_references(messages_dict, terms_dict)
+        ref_warnings = _check_undefined_references(messages_dict, terms_dict, source)
 
         # Pass 4: Detect circular dependencies
         cycle_warnings = _detect_circular_references(messages_dict, terms_dict)

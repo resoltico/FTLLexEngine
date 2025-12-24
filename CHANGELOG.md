@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2025-12-24
+
+### Added
+- `ValidationWarning.line` and `ValidationWarning.column` fields for IDE/LSP integration
+- `ValidationWarning.format()` method for human-readable warning output with position info
+- Cross-type cycle detection: message->term->message cycles now detected during validation
+- Documentation of line ending support (LF/CRLF supported, CR-only not supported)
+
+### Changed
+- Deprecation warnings now use `DeprecationWarning` instead of `FutureWarning` (per Python convention)
+- `CommentType`, `VariableContext`, `ReferenceKind`, `FunctionCategory` now use `StrEnum` (Python 3.11+)
+- `FluentLocalization` docstring now correctly describes eager resource loading behavior
+- Function not found hint now includes CURRENCY (was missing from "NUMBER, DATETIME" list)
+
+### Fixed
+- `Decimal` type now triggers plural category matching (was silently falling through to exact match only)
+- Unified dependency graph for cycle detection now catches message<->term cycles
+- Removed dead code `_validate_message_reference` method from `SemanticValidator`
+
 ## [0.29.1] - 2025-12-23
 
 ### Changed
@@ -60,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.30.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.30.0
 [0.29.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.1
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
