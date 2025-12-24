@@ -6,6 +6,8 @@ Per Fluent spec valid.md, implements two-level validation:
 
 The validation process may reject syntax which is well-formed but semantically incorrect.
 
+Includes depth limiting to prevent stack overflow on adversarial or malformed ASTs.
+
 References:
 - Fluent spec: valid.md
 - Example: message.attr(param: "val") is well-formed but invalid
@@ -13,6 +15,7 @@ References:
 """
 
 from ftllexengine.diagnostics import ValidationResult
+from ftllexengine.runtime.depth_guard import MAX_EXPRESSION_DEPTH, DepthGuard
 from ftllexengine.syntax.ast import (
     Annotation,
     Attribute,
@@ -95,6 +98,8 @@ class SemanticValidator:
         Pure function - builds error list locally without mutating instance state.
         Thread-safe and reusable.
 
+        Includes depth limiting to prevent stack overflow on deeply nested ASTs.
+
         Args:
             resource: Parsed FTL resource
 
@@ -102,9 +107,10 @@ class SemanticValidator:
             ValidationResult with errors (if any)
         """
         errors: list[Annotation] = []
+        depth_guard = DepthGuard(max_depth=MAX_EXPRESSION_DEPTH)
 
         for entry in resource.entries:
-            self._validate_entry(entry, errors)
+            self._validate_entry(entry, errors, depth_guard)
 
         return ValidationResult.from_annotations(tuple(errors))
 
@@ -141,19 +147,23 @@ class SemanticValidator:
     # ENTRY VALIDATION
     # ========================================================================
 
-    def _validate_entry(self, entry: Entry, errors: list[Annotation]) -> None:
+    def _validate_entry(
+        self, entry: Entry, errors: list[Annotation], depth_guard: DepthGuard
+    ) -> None:
         """Validate top-level entry using structural pattern matching."""
         match entry:
             case Message():
-                self._validate_message(entry, errors)
+                self._validate_message(entry, errors, depth_guard)
             case Term():
-                self._validate_term(entry, errors)
+                self._validate_term(entry, errors, depth_guard)
             case Comment():
                 pass  # Comments don't need validation
             case Junk():
                 pass  # Junk already represents invalid syntax
 
-    def _validate_message(self, message: Message, errors: list[Annotation]) -> None:
+    def _validate_message(
+        self, message: Message, errors: list[Annotation], depth_guard: DepthGuard
+    ) -> None:
         """Validate message entry.
 
         Per spec:
@@ -162,13 +172,15 @@ class SemanticValidator:
         """
         # Validate value pattern
         if message.value:
-            self._validate_pattern(message.value, errors, context="message")
+            self._validate_pattern(message.value, errors, "message", depth_guard)
 
         # Validate attributes
         for attr in message.attributes:
-            self._validate_attribute(attr, errors, parent_type="message")
+            self._validate_attribute(attr, errors, "message", depth_guard)
 
-    def _validate_term(self, term: Term, errors: list[Annotation]) -> None:
+    def _validate_term(
+        self, term: Term, errors: list[Annotation], depth_guard: DepthGuard
+    ) -> None:
         """Validate term entry.
 
         Per spec:
@@ -186,17 +198,18 @@ class SemanticValidator:
             return  # Cannot validate further without a value
 
         # Validate value pattern
-        self._validate_pattern(term.value, errors, context="term")
+        self._validate_pattern(term.value, errors, "term", depth_guard)
 
         # Validate attributes
         for attr in term.attributes:
-            self._validate_attribute(attr, errors, parent_type="term")
+            self._validate_attribute(attr, errors, "term", depth_guard)
 
     def _validate_attribute(
         self,
         attribute: Attribute,
         errors: list[Annotation],
         parent_type: str,
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate message or term attribute.
 
@@ -204,7 +217,9 @@ class SemanticValidator:
         - Message attributes cannot be parameterized
         - Term attributes can be parameterized
         """
-        self._validate_pattern(attribute.value, errors, context=f"{parent_type}_attribute")
+        self._validate_pattern(
+            attribute.value, errors, f"{parent_type}_attribute", depth_guard
+        )
 
     # ========================================================================
     # PATTERN VALIDATION
@@ -215,23 +230,27 @@ class SemanticValidator:
         pattern: Pattern,
         errors: list[Annotation],
         context: str,
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate pattern elements."""
         for element in pattern.elements:
-            self._validate_pattern_element(element, errors, context)
+            self._validate_pattern_element(element, errors, context, depth_guard)
 
     def _validate_pattern_element(
         self,
         element: PatternElement,
         errors: list[Annotation],
         context: str,
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate pattern element using structural pattern matching."""
         match element:
             case TextElement():
                 pass  # Text elements don't need validation
             case Placeable():
-                self._validate_expression(element.expression, errors, context)
+                # Track depth to prevent stack overflow on deep nesting
+                with depth_guard:
+                    self._validate_expression(element.expression, errors, context, depth_guard)
 
     # ========================================================================
     # EXPRESSION VALIDATION
@@ -242,18 +261,20 @@ class SemanticValidator:
         expr: Expression,
         errors: list[Annotation],
         context: str,
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate expression (select or inline)."""
         if isinstance(expr, SelectExpression):
-            self._validate_select_expression(expr, errors)
+            self._validate_select_expression(expr, errors, depth_guard)
         else:
-            self._validate_inline_expression(expr, errors, context)
+            self._validate_inline_expression(expr, errors, context, depth_guard)
 
     def _validate_inline_expression(
         self,
         expr: InlineExpression,
         errors: list[Annotation],
         context: str,
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate inline expression using structural pattern matching."""
         match expr:
@@ -268,16 +289,19 @@ class SemanticValidator:
                 # MessageReference AST has no arguments field, unlike TermReference
                 pass
             case TermReference():
-                self._validate_term_reference(expr, errors)
+                self._validate_term_reference(expr, errors, depth_guard)
             case FunctionReference():
-                self._validate_function_reference(expr, errors)
+                self._validate_function_reference(expr, errors, depth_guard)
             case Placeable():
-                self._validate_expression(expr.expression, errors, context)
+                # Track depth for nested Placeables
+                with depth_guard:
+                    self._validate_expression(expr.expression, errors, context, depth_guard)
 
     def _validate_term_reference(
         self,
         ref: TermReference,
         errors: list[Annotation],
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate term reference.
 
@@ -286,12 +310,13 @@ class SemanticValidator:
         - Term.attribute can also be called with arguments
         """
         if ref.arguments:
-            self._validate_call_arguments(ref.arguments, errors)
+            self._validate_call_arguments(ref.arguments, errors, depth_guard)
 
     def _validate_function_reference(
         self,
         ref: FunctionReference,
         errors: list[Annotation],
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate function reference.
 
@@ -299,12 +324,13 @@ class SemanticValidator:
         - Function names must be uppercase (already validated by parser)
         - Call arguments must be valid
         """
-        self._validate_call_arguments(ref.arguments, errors)
+        self._validate_call_arguments(ref.arguments, errors, depth_guard)
 
     def _validate_call_arguments(
         self,
         args: CallArguments,
         errors: list[Annotation],
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate function/term call arguments.
 
@@ -332,10 +358,10 @@ class SemanticValidator:
 
         # Validate each argument expression
         for pos_arg in args.positional:
-            self._validate_inline_expression(pos_arg, errors, context="call_argument")
+            self._validate_inline_expression(pos_arg, errors, "call_argument", depth_guard)
 
         for named_arg in args.named:
-            self._validate_inline_expression(named_arg.value, errors, context="call_argument")
+            self._validate_inline_expression(named_arg.value, errors, "call_argument", depth_guard)
 
     # ========================================================================
     # SELECT EXPRESSION VALIDATION
@@ -345,6 +371,7 @@ class SemanticValidator:
         self,
         select: SelectExpression,
         errors: list[Annotation],
+        depth_guard: DepthGuard,
     ) -> None:
         """Validate select expression.
 
@@ -354,7 +381,7 @@ class SemanticValidator:
         - Variant keys must be unique
         """
         # Validate selector
-        self._validate_inline_expression(select.selector, errors, context="select_selector")
+        self._validate_inline_expression(select.selector, errors, "select_selector", depth_guard)
 
         # Check: must have at least one variant
         if not select.variants:
@@ -386,7 +413,7 @@ class SemanticValidator:
             seen_keys.add(key_str)
 
             # Validate variant value pattern
-            self._validate_pattern(variant.value, errors, context="select_variant")
+            self._validate_pattern(variant.value, errors, "select_variant", depth_guard)
 
     @staticmethod
     def _variant_key_to_string(key: Identifier | NumberLiteral) -> str:

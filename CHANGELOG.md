@@ -13,6 +13,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2025-12-24
+
+### Added
+- Unified `DepthGuard` context manager in `runtime.depth_guard` for recursion limiting
+- `get_babel_locale()` cached Babel Locale retrieval in `locale_utils`
+- `get_system_locale()` environment variable detection in `locale_utils`
+- O(1) cycle detection in `ResolutionContext` via `_seen` set field
+- Expression depth tracking in `ResolutionContext` with `enter_expression()`/`exit_expression()`
+- `DiagnosticFormatter` service for centralized diagnostic output formatting (Rust-style, simple, JSON)
+- `OutputFormat` enum for formatter output style selection
+- `get_shared_registry()` for efficient FunctionRegistry sharing across bundles
+- `LoadSummary`, `ResourceLoadResult`, `LoadStatus` for eager loading diagnostics in `FluentLocalization`
+- `FluentLocalization.get_load_summary()` method for introspecting resource load results
+
+### Changed
+- Serializer now escapes literal braces per Fluent spec using `{"{"}` syntax
+- Parser CRLF handling improved in junk recovery via `_skip_line_ending()` method
+- Locale normalization now happens at system boundary using `normalize_locale()`
+- `plural_rules.py` now uses cached `get_babel_locale()` for Babel Locale parsing
+- `locale_context.py` normalizes cache keys for consistent BCP-47/POSIX handling
+- `currency.py` normalizes locale before dictionary lookup
+- `FluentBundle` now uses `get_shared_registry()` for default function registry (performance)
+- `FluentLocalization` now tracks all resource load attempts for diagnostics
+
+### Fixed
+- Parser junk recovery now correctly handles CRLF line endings
+- Number parsing now handles `OverflowError` for extremely large Decimal values
+- Locale cache keys consistently normalized to prevent BCP-47 vs POSIX cache misses
+
+### Removed
+- Unused `deprecation.py` module and associated test files
+
 ## [0.30.0] - 2025-12-24
 
 ### Added
@@ -79,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.31.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.31.0
 [0.30.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.30.0
 [0.29.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.1
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0

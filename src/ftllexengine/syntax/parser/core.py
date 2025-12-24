@@ -244,11 +244,8 @@ class FluentParserV1:
         while not cursor.is_eof and cursor.current not in ("\n", "\r"):
             cursor = cursor.advance()
 
-        # Skip the newline
-        if not cursor.is_eof and cursor.current in ("\n", "\r"):
-            cursor = cursor.advance()
-            if not cursor.is_eof and cursor.current == "\n":  # Handle CRLF
-                cursor = cursor.advance()
+        # Skip the newline (handle CRLF correctly)
+        cursor = self._skip_line_ending(cursor)
 
         # Continue consuming lines UNTIL we hit a valid entry start
         while not cursor.is_eof:
@@ -273,10 +270,30 @@ class FluentParserV1:
             while not cursor.is_eof and cursor.current not in ("\n", "\r"):
                 cursor = cursor.advance()
 
-            # Skip the newline
-            if not cursor.is_eof and cursor.current in ("\n", "\r"):
+            # Skip the newline (handle CRLF correctly)
+            cursor = self._skip_line_ending(cursor)
+
+        return cursor
+
+    @staticmethod
+    def _skip_line_ending(cursor: Cursor) -> Cursor:
+        """Skip a single line ending, handling both LF and CRLF.
+
+        CRLF (\\r\\n) is a single line ending and should be consumed as one unit.
+        LF (\\n) alone is also a single line ending.
+        CR (\\r) alone is treated as a single line ending (legacy Mac).
+
+        This correctly handles \\n\\n as TWO line endings (blank line).
+        """
+        if cursor.is_eof:
+            return cursor
+
+        if cursor.current == "\r":
+            cursor = cursor.advance()
+            # Only consume \n after \r (true CRLF)
+            if not cursor.is_eof and cursor.current == "\n":
                 cursor = cursor.advance()
-                if not cursor.is_eof and cursor.current == "\n":  # Handle CRLF
-                    cursor = cursor.advance()
+        elif cursor.current == "\n":
+            cursor = cursor.advance()
 
         return cursor

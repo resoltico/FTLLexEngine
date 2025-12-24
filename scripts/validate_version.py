@@ -147,7 +147,7 @@ def check_version_matches_pyproject(root: Path) -> CheckResult:
                 f"Package not installed or import failed.\n"
                 f"  pyproject.toml: {pyproject_version}\n"
                 f"  __version__:    <not available>\n"
-                f"  Resolution: Run 'pip install -e .'"
+                f"  Resolution: Run 'uv sync'"
             ),
             is_critical=True,
         )
@@ -160,7 +160,7 @@ def check_version_matches_pyproject(root: Path) -> CheckResult:
                 f"Version mismatch detected!\n"
                 f"  pyproject.toml: {pyproject_version}\n"
                 f"  __version__:    {runtime_version}\n"
-                f"  Resolution: Run 'pip install -e .' to refresh metadata"
+                f"  Resolution: Run 'uv sync' to refresh metadata"
             ),
             is_critical=True,
         )

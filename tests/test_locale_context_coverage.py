@@ -14,7 +14,10 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.locale_context import LocaleContext
+from ftllexengine.runtime.locale_context import (
+    LocaleContext,
+    _clear_locale_context_cache,
+)
 
 
 class TestLocaleContextUnknownLocale:
@@ -26,6 +29,9 @@ class TestLocaleContextUnknownLocale:
 
     def test_unknown_locale_warns_on_create(self, caplog: pytest.LogCaptureFixture) -> None:
         """Unknown locale logs warning during create()."""
+        # Clear cache to ensure warning is logged (not cached from previous run)
+        _clear_locale_context_cache()
+
         with caplog.at_level(logging.WARNING):
             ctx = LocaleContext.create("xx_INVALID")
 

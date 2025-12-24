@@ -52,7 +52,7 @@ try:
     __version__ = _get_version("ftllexengine")
 except PackageNotFoundError:
     # Development mode: package not installed yet
-    # Run: pip install -e .
+    # Run: uv sync
     __version__ = "0.0.0+dev"
 
 # Fluent specification conformance

@@ -309,8 +309,6 @@ Demonstrates:
 6. Stateful property testing with RuleBasedStateMachine (advanced)
 7. Custom Hypothesis strategies for valid FTL generation
 
-**Prerequisites**: `pip install hypothesis`
-
 **Run**: `python examples/property_based_testing.py`
 
 **Note**: This example demonstrates advanced testing techniques using property-based testing, which generates hundreds of random test cases to verify universal properties of the library. Excellent for discovering edge cases and verifying API contracts.
@@ -330,7 +328,7 @@ python examples/custom_functions.py
 python examples/function_introspection.py
 python examples/thread_safety.py
 python examples/benchmark_loaders.py
-python examples/property_based_testing.py  # Requires: pip install hypothesis
+python examples/property_based_testing.py
 ```
 
 ## Basic Usage

@@ -11,10 +11,9 @@ Reference: https://www.unicode.org/cldr/charts/47/supplemental/language_plural_r
 
 from decimal import Decimal
 
-from babel import Locale
 from babel.core import UnknownLocaleError
 
-from ftllexengine.locale_utils import normalize_locale
+from ftllexengine.locale_utils import get_babel_locale
 
 
 def select_plural_category(n: int | float | Decimal, locale: str) -> str:
@@ -51,10 +50,14 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
         - Automatic fallback to language-level rules
 
         If locale parsing fails, falls back to simple one/other rule.
+
+    Performance:
+        Uses cached locale parsing via get_babel_locale() to avoid
+        repeated Locale.parse() overhead in hot paths.
     """
     try:
-        # Parse locale (supports both en_US and en-US formats)
-        locale_obj = Locale.parse(normalize_locale(locale), sep="_")
+        # Use cached locale parsing for performance
+        locale_obj = get_babel_locale(locale)
     except (UnknownLocaleError, ValueError):
         # Fallback for unknown/invalid locales
         # Most common pattern: n == 1 → "one", else → "other"

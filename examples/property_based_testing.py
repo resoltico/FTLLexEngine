@@ -8,9 +8,6 @@ Learn more about property-based testing:
 - Hypothesis documentation: https://hypothesis.readthedocs.io/
 - Property-based testing guide: https://increment.com/testing/in-praise-of-property-based-testing/
 
-Prerequisites:
-    pip install hypothesis
-
 Run this example:
     python examples/property_based_testing.py
 

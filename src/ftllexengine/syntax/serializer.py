@@ -262,22 +262,57 @@ class FluentSerializer(ASTVisitor):
     def _serialize_pattern(self, pattern: Pattern, output: list[str]) -> None:
         """Serialize Pattern elements.
 
-        TextElement values must have special characters escaped per FTL spec:
-        - { and } must be escaped as \\{ and \\} to avoid placeable interpretation
-        - Backslashes must be escaped first to prevent double-escaping
+        Per Fluent Spec 1.0: Backslash has no escaping power in TextElements.
+        Literal braces MUST be expressed as StringLiterals within Placeables:
+        - { must be serialized as {"{"} (Placeable containing StringLiteral)
+        - } must be serialized as {"}"} (Placeable containing StringLiteral)
+
+        This ensures output is valid FTL that compliant parsers accept.
         """
         for element in pattern.elements:
             if isinstance(element, TextElement):
-                # Escape special characters in text elements per FTL spec
-                # Order matters: backslash first to avoid double-escaping
-                escaped = element.value.replace("\\", "\\\\")
-                escaped = escaped.replace("{", "\\{")
-                escaped = escaped.replace("}", "\\}")
-                output.append(escaped)
+                # Per Fluent spec: no escape sequences in TextElements
+                # Literal braces must become Placeable(StringLiteral("{"/"}")
+                text = element.value
+                if "{" in text or "}" in text:
+                    # Split and emit braces as StringLiteral Placeables
+                    self._serialize_text_with_braces(text, output)
+                else:
+                    # No special characters - emit directly
+                    output.append(text)
             elif isinstance(element, Placeable):
                 output.append("{ ")
                 self._serialize_expression(element.expression, output)
                 output.append(" }")
+
+    def _serialize_text_with_braces(self, text: str, output: list[str]) -> None:
+        """Serialize text containing literal braces per Fluent spec.
+
+        Converts literal { and } characters to Placeable(StringLiteral) form.
+        Example: "a{b}c" becomes: a{"{"}b{"}"}c
+        """
+        # Collect runs of non-brace characters for efficiency
+        buffer: list[str] = []
+
+        for char in text:
+            if char == "{":
+                # Flush buffer, emit brace as StringLiteral Placeable
+                if buffer:
+                    output.append("".join(buffer))
+                    buffer.clear()
+                output.append('{"{"}')
+            elif char == "}":
+                # Flush buffer, emit brace as StringLiteral Placeable
+                if buffer:
+                    output.append("".join(buffer))
+                    buffer.clear()
+                output.append('{"}"}')
+            else:
+                buffer.append(char)
+
+        # Flush remaining buffer
+        if buffer:
+            output.append("".join(buffer))
 
     def _serialize_expression(self, expr: Expression, output: list[str]) -> None:
         """Serialize Expression nodes using structural pattern matching.

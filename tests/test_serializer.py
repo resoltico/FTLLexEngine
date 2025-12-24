@@ -875,19 +875,23 @@ class TestSerializerIntegration:
 
 
 # ============================================================================
-# TEXT ELEMENT ESCAPING TESTS
+# TEXT ELEMENT BRACE SERIALIZATION TESTS
 # ============================================================================
 
 
-class TestTextElementEscaping:
-    """Test that special characters in TextElements are properly escaped.
+class TestTextElementBraceSerialization:
+    """Test that literal braces in TextElements are serialized per Fluent Spec 1.0.
 
-    Regression tests for LOGIC-SER-011: TextElements containing { } must be
-    escaped per FTL spec to avoid placeable interpretation.
+    Per Fluent Spec: Backslash has no escaping power in TextElements.
+    Literal braces MUST be expressed as StringLiterals within Placeables:
+    - { must be serialized as {"{"} (Placeable containing StringLiteral)
+    - } must be serialized as {"}"} (Placeable containing StringLiteral)
+
+    This produces valid FTL that compliant parsers accept.
     """
 
-    def test_escape_open_brace_in_text(self) -> None:
-        """Open brace { in text must be escaped as \\{."""
+    def test_open_brace_becomes_string_literal_placeable(self) -> None:
+        """Open brace { in text becomes {"{"} per Fluent spec."""
         msg = Message(
             id=Identifier(name="brace"),
             value=Pattern(elements=(TextElement(value="Use {variable} syntax"),)),
@@ -897,10 +901,11 @@ class TestTextElementEscaping:
 
         result = serialize(resource)
 
-        assert "brace = Use \\{variable\\} syntax\n" in result
+        # Braces become StringLiteral Placeables: {"{"}variable{"}"}
+        assert 'brace = Use {"{"}variable{"}"} syntax\n' in result
 
-    def test_escape_close_brace_in_text(self) -> None:
-        """Close brace } in text must be escaped as \\}."""
+    def test_close_brace_becomes_string_literal_placeable(self) -> None:
+        """Close brace } in text becomes {"}"} per Fluent spec."""
         msg = Message(
             id=Identifier(name="json"),
             value=Pattern(elements=(TextElement(value='{"key": "value"}'),)),
@@ -910,16 +915,32 @@ class TestTextElementEscaping:
 
         result = serialize(resource)
 
-        # Both { and } should be escaped
-        assert "json = \\{" in result
-        assert "\\}" in result
+        # Both { and } become StringLiteral Placeables
+        assert '{"{"}' in result
+        assert '{"}"}' in result
+        # Full pattern: {"{"}"key": "value"{"}"}
+        assert 'json = {"{"}"key": "value"{"}"}\n' in result
 
-    def test_escape_backslash_before_brace(self) -> None:
-        """Backslash must be escaped first to prevent double-escaping.
+    def test_backslash_not_escaped_in_text_elements(self) -> None:
+        """Backslash has no special meaning in TextElements per Fluent spec.
 
-        Without proper order: text with \\{ would become \\\\{ then \\\\\\{
-        With proper order: \\ becomes \\\\ first, then { becomes \\{
+        Per spec: backslash only has escaping power in StringLiterals,
+        not in TextElements. A backslash in text is preserved as-is.
         """
+        msg = Message(
+            id=Identifier(name="path"),
+            value=Pattern(elements=(TextElement(value="C:\\Users\\file.txt"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource)
+
+        # Backslash preserved as-is (no escaping in TextElements)
+        assert "path = C:\\Users\\file.txt\n" in result
+
+    def test_backslash_before_brace_preserved(self) -> None:
+        """Backslash before brace: backslash preserved, brace becomes placeable."""
         msg = Message(
             id=Identifier(name="escaped"),
             value=Pattern(elements=(TextElement(value="Literal \\{ brace"),)),
@@ -929,11 +950,11 @@ class TestTextElementEscaping:
 
         result = serialize(resource)
 
-        # Backslash should be escaped, then brace should be escaped
-        assert "escaped = Literal \\\\\\{ brace\n" in result
+        # Backslash preserved, brace becomes StringLiteral Placeable
+        assert 'escaped = Literal \\{"{"} brace\n' in result
 
-    def test_preserve_text_without_special_chars(self) -> None:
-        """Text without special characters should not be modified."""
+    def test_preserve_text_without_braces(self) -> None:
+        """Text without braces should not be modified."""
         msg = Message(
             id=Identifier(name="plain"),
             value=Pattern(elements=(TextElement(value="Hello, World!"),)),
@@ -946,7 +967,7 @@ class TestTextElementEscaping:
         assert "plain = Hello, World!\n" in result
 
     def test_mixed_text_and_placeables(self) -> None:
-        """Text with braces alongside real placeables."""
+        """Text with literal braces alongside real placeables."""
         msg = Message(
             id=Identifier(name="mixed"),
             value=Pattern(
@@ -961,5 +982,59 @@ class TestTextElementEscaping:
 
         result = serialize(resource)
 
-        # The literal {key} should be escaped, but the placeable should not
-        assert "mixed = JSON: \\{key\\} = { $value }\n" in result
+        # Literal braces become StringLiteral Placeables, real placeable unchanged
+        assert 'mixed = JSON: {"{"}key{"}"} = { $value }\n' in result
+
+    def test_multiple_consecutive_braces(self) -> None:
+        """Multiple consecutive braces each become separate placeables."""
+        msg = Message(
+            id=Identifier(name="multi"),
+            value=Pattern(elements=(TextElement(value="{{nested}}"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource)
+
+        # Each brace becomes its own placeable
+        assert 'multi = {"{"}{"{"}'  in result
+        assert '{"}"}{"}"}' in result
+
+    def test_brace_at_start_of_text(self) -> None:
+        """Brace at start of text element."""
+        msg = Message(
+            id=Identifier(name="start"),
+            value=Pattern(elements=(TextElement(value="{start"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource)
+
+        assert 'start = {"{"}start\n' in result
+
+    def test_brace_at_end_of_text(self) -> None:
+        """Brace at end of text element."""
+        msg = Message(
+            id=Identifier(name="end"),
+            value=Pattern(elements=(TextElement(value="end}"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource)
+
+        assert 'end = end{"}"}\n' in result
+
+    def test_only_braces(self) -> None:
+        """Text containing only braces."""
+        msg = Message(
+            id=Identifier(name="braces"),
+            value=Pattern(elements=(TextElement(value="{}"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource)
+
+        assert 'braces = {"{"}{"}"}\n' in result

@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.30.0
+project_version: 0.31.0
 context: CORE
-last_updated: 2025-12-23T00:00:00Z
+last_updated: 2025-12-24T00:00:00Z
 maintainer: claude-opus-4-5
 ---
 
@@ -661,6 +661,126 @@ def locales(self) -> tuple[LocaleCode, ...]:
 
 ---
 
+## `FluentLocalization.get_load_summary`
+
+### Signature
+```python
+def get_load_summary(self) -> LoadSummary:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: LoadSummary with aggregated load results from initialization.
+- Raises: None.
+- State: Read-only.
+- Thread: Safe.
+- Version: Added in v0.31.0.
+
+---
+
+## `LoadStatus`
+
+### Signature
+```python
+class LoadStatus(StrEnum):
+    SUCCESS = "success"
+    NOT_FOUND = "not_found"
+    ERROR = "error"
+```
+
+### Contract
+| Value | Description |
+|:------|:------------|
+| `SUCCESS` | Resource loaded successfully. |
+| `NOT_FOUND` | Resource file not found (expected for optional locales). |
+| `ERROR` | Resource load failed with error. |
+
+### Constraints
+- StrEnum: Members ARE strings.
+- Import: `from ftllexengine.localization import LoadStatus`
+- Version: Added in v0.31.0.
+
+---
+
+## `ResourceLoadResult`
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class ResourceLoadResult:
+    locale: LocaleCode
+    resource_id: ResourceId
+    status: LoadStatus
+    error: Exception | None = None
+    source_path: str | None = None
+
+    @property
+    def is_success(self) -> bool: ...
+    @property
+    def is_not_found(self) -> bool: ...
+    @property
+    def is_error(self) -> bool: ...
+```
+
+### Contract
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `locale` | `LocaleCode` | Locale code for this resource. |
+| `resource_id` | `ResourceId` | Resource identifier (e.g., 'main.ftl'). |
+| `status` | `LoadStatus` | Load status (success, not_found, error). |
+| `error` | `Exception \| None` | Exception if status is ERROR. |
+| `source_path` | `str \| None` | Full path to resource (if available). |
+
+### Constraints
+- Return: Immutable load result record.
+- State: Frozen dataclass.
+- Import: `from ftllexengine.localization import ResourceLoadResult`
+- Version: Added in v0.31.0.
+
+---
+
+## `LoadSummary`
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class LoadSummary:
+    results: tuple[ResourceLoadResult, ...]
+    total_attempted: int  # computed
+    successful: int  # computed
+    not_found: int  # computed
+    errors: int  # computed
+
+    def get_errors(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_not_found(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_successful(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_by_locale(self, locale: LocaleCode) -> tuple[ResourceLoadResult, ...]: ...
+    @property
+    def has_errors(self) -> bool: ...
+    @property
+    def all_successful(self) -> bool: ...
+```
+
+### Contract
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `results` | `tuple[ResourceLoadResult, ...]` | All individual load results. |
+| `total_attempted` | `int` | Total number of load attempts. |
+| `successful` | `int` | Number of successful loads. |
+| `not_found` | `int` | Number of resources not found. |
+| `errors` | `int` | Number of load errors. |
+
+### Constraints
+- Return: Immutable summary record.
+- State: Frozen dataclass. Statistics computed in __post_init__.
+- Import: `from ftllexengine.localization import LoadSummary`
+- Version: Added in v0.31.0.
+
+---
+
 ## `FluentLocalization.cache_enabled`
 
 ### Signature
@@ -821,5 +941,69 @@ class ResourceLoader(Protocol):
 - Raises: Implementation-dependent.
 - State: Protocol. No implementation.
 - Thread: Implementation-dependent.
+
+---
+
+## `normalize_locale`
+
+### Signature
+```python
+def normalize_locale(locale_code: str) -> str:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `locale_code` | `str` | Y | BCP-47 or POSIX locale code. |
+
+### Constraints
+- Return: POSIX-formatted locale code (hyphens to underscores).
+- State: None. Pure function.
+- Thread: Safe.
+- Import: `from ftllexengine.locale_utils import normalize_locale`
+- Version: Added in v0.31.0.
+
+---
+
+## `get_babel_locale`
+
+### Signature
+```python
+@functools.lru_cache(maxsize=128)
+def get_babel_locale(locale_code: str) -> Locale:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `locale_code` | `str` | Y | BCP-47 or POSIX locale code. |
+
+### Constraints
+- Return: Babel Locale object (cached).
+- Raises: `babel.core.UnknownLocaleError` on invalid locale.
+- State: None. Cached pure function.
+- Thread: Safe (lru_cache internal locking).
+- Import: `from ftllexengine.locale_utils import get_babel_locale`
+- Version: Added in v0.31.0.
+
+---
+
+## `get_system_locale`
+
+### Signature
+```python
+def get_system_locale() -> str:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Detected locale code in POSIX format, or "en_US" if not determinable.
+- State: Reads environment variables LC_ALL, LC_MESSAGES, LANG.
+- Thread: Safe.
+- Import: `from ftllexengine.locale_utils import get_system_locale`
+- Version: Added in v0.31.0.
 
 ---

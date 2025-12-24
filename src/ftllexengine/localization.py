@@ -22,7 +22,8 @@ Python 3.13+.
 """
 
 from collections.abc import Callable, Generator, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -40,6 +41,118 @@ type MessageId = str
 type LocaleCode = str
 type ResourceId = str
 type FTLSource = str
+
+
+class LoadStatus(StrEnum):
+    """Status of a resource load attempt."""
+
+    SUCCESS = "success"  # Resource loaded successfully
+    NOT_FOUND = "not_found"  # Resource file not found (expected for optional locales)
+    ERROR = "error"  # Resource load failed with error
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceLoadResult:
+    """Result of loading a single FTL resource.
+
+    Tracks the outcome of loading a resource for a specific locale,
+    including any errors encountered.
+
+    Attributes:
+        locale: Locale code for this resource
+        resource_id: Resource identifier (e.g., 'main.ftl')
+        status: Load status (success, not_found, error)
+        error: Exception if status is ERROR, None otherwise
+        source_path: Full path to resource (if available)
+    """
+
+    locale: LocaleCode
+    resource_id: ResourceId
+    status: LoadStatus
+    error: Exception | None = None
+    source_path: str | None = None
+
+    @property
+    def is_success(self) -> bool:
+        """Check if resource loaded successfully."""
+        return self.status == LoadStatus.SUCCESS
+
+    @property
+    def is_not_found(self) -> bool:
+        """Check if resource was not found (expected for optional locales)."""
+        return self.status == LoadStatus.NOT_FOUND
+
+    @property
+    def is_error(self) -> bool:
+        """Check if resource load failed with an error."""
+        return self.status == LoadStatus.ERROR
+
+
+@dataclass(frozen=True, slots=True)
+class LoadSummary:
+    """Summary of all resource load attempts during initialization.
+
+    Provides aggregated information about resource loading success/failure
+    across all locales. Use this to diagnose missing resources or loading errors.
+
+    Attributes:
+        results: All individual load results
+        total_attempted: Total number of load attempts
+        successful: Number of successful loads
+        not_found: Number of resources not found
+        errors: Number of load errors
+
+    Example:
+        >>> l10n = FluentLocalization(['en', 'de'], ['ui.ftl'], loader)
+        >>> summary = l10n.get_load_summary()
+        >>> if summary.errors > 0:
+        ...     for result in summary.get_errors():
+        ...         print(f"Failed: {result.locale}/{result.resource_id}: {result.error}")
+    """
+
+    results: tuple[ResourceLoadResult, ...]
+    total_attempted: int = field(init=False)
+    successful: int = field(init=False)
+    not_found: int = field(init=False)
+    errors: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Calculate summary statistics."""
+        # Use object.__setattr__ because this is a frozen dataclass
+        object.__setattr__(self, "total_attempted", len(self.results))
+        object.__setattr__(
+            self, "successful", sum(1 for r in self.results if r.is_success)
+        )
+        object.__setattr__(
+            self, "not_found", sum(1 for r in self.results if r.is_not_found)
+        )
+        object.__setattr__(self, "errors", sum(1 for r in self.results if r.is_error))
+
+    def get_errors(self) -> tuple[ResourceLoadResult, ...]:
+        """Get all results with errors."""
+        return tuple(r for r in self.results if r.is_error)
+
+    def get_not_found(self) -> tuple[ResourceLoadResult, ...]:
+        """Get all results where resource was not found."""
+        return tuple(r for r in self.results if r.is_not_found)
+
+    def get_successful(self) -> tuple[ResourceLoadResult, ...]:
+        """Get all successful load results."""
+        return tuple(r for r in self.results if r.is_success)
+
+    def get_by_locale(self, locale: LocaleCode) -> tuple[ResourceLoadResult, ...]:
+        """Get all results for a specific locale."""
+        return tuple(r for r in self.results if r.locale == locale)
+
+    @property
+    def has_errors(self) -> bool:
+        """Check if any resources failed to load with errors."""
+        return self.errors > 0
+
+    @property
+    def all_successful(self) -> bool:
+        """Check if all attempted resources loaded successfully."""
+        return self.errors == 0 and self.not_found == 0
 
 
 class ResourceLoader(Protocol):
@@ -281,6 +394,7 @@ class FluentLocalization:
         "_bundles",
         "_cache_size",
         "_enable_cache",
+        "_load_results",
         "_locales",
         "_resource_ids",
         "_resource_loader",
@@ -340,30 +454,62 @@ class FluentLocalization:
         # Track which locales have had resources loaded
         self._resources_loaded: set[LocaleCode] = set()
 
+        # Track all load results for diagnostics
+        self._load_results: list[ResourceLoadResult] = []
+
         # Resource loading is EAGER by design:
-        # - Fail-fast: FileNotFoundError raised at construction, not at format() time
+        # - Fail-fast: Critical errors (parse, permission) raised at construction
         # - Predictable: All resource parse errors discovered immediately
         # - Trade-off: Slower initialization, but no runtime surprises
+        # - Tracking: All load attempts recorded in _load_results for diagnostics
         # Note: Bundle objects themselves are still lazily created via _get_or_create_bundle
         if resource_loader and resource_ids:
             for locale in self._locales:
                 for resource_id in self._resource_ids:
+                    # Construct source path for better error messages
+                    if isinstance(resource_loader, PathResourceLoader):
+                        locale_path = resource_loader.base_path.format(locale=locale)
+                        source_path = f"{locale_path}/{resource_id}"
+                    else:
+                        source_path = f"{locale}/{resource_id}"
+
                     try:
                         ftl_source = resource_loader.load(locale, resource_id)
                         bundle = self._get_or_create_bundle(locale)
-                        # Construct source path for better error messages
-                        # If loader is PathResourceLoader, use its base_path
-                        if isinstance(resource_loader, PathResourceLoader):
-                            locale_path = resource_loader.base_path.format(locale=locale)
-                            source_path = f"{locale_path}/{resource_id}"
-                        else:
-                            source_path = f"{locale}/{resource_id}"
                         bundle.add_resource(ftl_source, source_path=source_path)
                         self._resources_loaded.add(locale)
+                        # Record successful load
+                        self._load_results.append(
+                            ResourceLoadResult(
+                                locale=locale,
+                                resource_id=resource_id,
+                                status=LoadStatus.SUCCESS,
+                                source_path=source_path,
+                            )
+                        )
                     except FileNotFoundError:
-                        # Resource doesn't exist for this locale - skip it
+                        # Resource doesn't exist for this locale - expected for optional locales
                         # Fallback will try next locale in chain
-                        continue
+                        self._load_results.append(
+                            ResourceLoadResult(
+                                locale=locale,
+                                resource_id=resource_id,
+                                status=LoadStatus.NOT_FOUND,
+                                source_path=source_path,
+                            )
+                        )
+                    except (OSError, ValueError) as e:
+                        # Permission errors, path traversal errors, etc.
+                        # Record the error but continue loading other resources
+                        self._load_results.append(
+                            ResourceLoadResult(
+                                locale=locale,
+                                resource_id=resource_id,
+                                status=LoadStatus.ERROR,
+                                error=e,
+                                source_path=source_path,
+                            )
+                        )
 
     def _get_or_create_bundle(self, locale: LocaleCode) -> FluentBundle:
         """Get existing bundle or create one lazily.
@@ -396,6 +542,32 @@ class FluentLocalization:
             Tuple of locale codes in priority order
         """
         return self._locales
+
+    def get_load_summary(self) -> LoadSummary:
+        """Get summary of all resource load attempts.
+
+        Returns a LoadSummary with information about which resources loaded
+        successfully, which were not found, and which failed with errors.
+
+        Use this to diagnose loading issues, especially in multi-locale setups
+        where some locales may have missing or broken resources.
+
+        Returns:
+            LoadSummary with aggregated load results
+
+        Example:
+            >>> loader = PathResourceLoader("locales/{locale}")
+            >>> l10n = FluentLocalization(['en', 'de', 'fr'], ['ui.ftl'], loader)
+            >>> summary = l10n.get_load_summary()
+            >>> print(f"Loaded: {summary.successful}/{summary.total_attempted}")
+            Loaded: 2/3
+            >>> if summary.has_errors:
+            ...     for result in summary.get_errors():
+            ...         print(f"Error loading {result.source_path}: {result.error}")
+            >>> for result in summary.get_not_found():
+            ...     print(f"Missing: {result.locale}/{result.resource_id}")
+        """
+        return LoadSummary(results=tuple(self._load_results))
 
     @property
     def cache_enabled(self) -> bool:
@@ -699,9 +871,14 @@ class FluentLocalization:
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
+    # Main classes
     "FluentLocalization",
     "PathResourceLoader",
     "ResourceLoader",
+    # Load tracking (eager loading diagnostics)
+    "LoadStatus",
+    "LoadSummary",
+    "ResourceLoadResult",
     # Type aliases for user code type annotations
     "MessageId",
     "LocaleCode",

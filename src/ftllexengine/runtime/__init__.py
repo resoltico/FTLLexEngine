@@ -14,6 +14,7 @@ from .functions import (
     create_default_registry,
     currency_format,
     datetime_format,
+    get_shared_registry,
     number_format,
 )
 from .plural_rules import select_plural_category
@@ -28,6 +29,7 @@ __all__ = [
     "create_default_registry",
     "currency_format",
     "datetime_format",
+    "get_shared_registry",
     "number_format",
     "select_plural_category",
 ]

@@ -181,6 +181,29 @@ class ErrorTemplate:
         )
 
     @staticmethod
+    def expression_depth_exceeded(max_depth: int) -> Diagnostic:
+        """Maximum expression nesting depth exceeded.
+
+        Used when nested Placeables or other expressions exceed safe depth limits.
+        This protects against stack overflow from adversarial or malformed ASTs.
+
+        Args:
+            max_depth: The maximum allowed expression depth
+
+        Returns:
+            Diagnostic for MAX_DEPTH_EXCEEDED
+        """
+        msg = f"Maximum expression nesting depth ({max_depth}) exceeded"
+
+        return Diagnostic(
+            code=DiagnosticCode.MAX_DEPTH_EXCEEDED,
+            message=msg,
+            span=None,
+            hint="Reduce expression nesting or check for malformed AST construction",
+            help_url=f"{ErrorTemplate._DOCS_BASE}/references.html",
+        )
+
+    @staticmethod
     def no_variants() -> Diagnostic:
         """Select expression has no variants.
 

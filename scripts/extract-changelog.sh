@@ -51,7 +51,7 @@ if [[ $# -eq 0 ]]; then
 
     if [[ -z "$VERSION" || "$VERSION" == "0.0.0+dev" || "$VERSION" == "0.0.0+unknown" ]]; then
         log_error "Failed to determine package version"
-        log_warn "Run 'pip install -e .' or specify version explicitly"
+        log_warn "Run 'uv sync' or specify version explicitly"
         echo ""
         echo "Usage: $0 [VERSION]"
         exit 1

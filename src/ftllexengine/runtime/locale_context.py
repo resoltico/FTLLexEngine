@@ -124,17 +124,20 @@ class LocaleContext:
             'xx_UNKNOWN'
             >>> # But formatting uses en_US rules (with warning logged)
         """
+        # Normalize locale code for consistent cache keys
+        # This ensures "en-US", "en_US", "EN-US" all map to the same cache entry
+        cache_key = normalize_locale(locale_code)
+
         # Thread-safe LRU caching with identity preservation
         with _locale_context_cache_lock:
-            if locale_code in _locale_context_cache:
+            if cache_key in _locale_context_cache:
                 # Move to end (mark as recently used) and return cached instance
-                _locale_context_cache.move_to_end(locale_code)
-                return _locale_context_cache[locale_code]
+                _locale_context_cache.move_to_end(cache_key)
+                return _locale_context_cache[cache_key]
 
         # Create new instance (Locale.parse is thread-safe)
         try:
-            normalized = normalize_locale(locale_code)
-            babel_locale = Locale.parse(normalized)
+            babel_locale = Locale.parse(cache_key)
         except UnknownLocaleError as e:
             logger.warning("Unknown locale '%s': %s. Falling back to en_US", locale_code, e)
             babel_locale = Locale.parse("en_US")
@@ -144,18 +147,19 @@ class LocaleContext:
             )
             babel_locale = Locale.parse("en_US")
 
+        # Store with normalized cache_key, but preserve original locale_code for debugging
         ctx = cls(locale_code=locale_code, _babel_locale=babel_locale)
 
         # Add to cache with lock (double-check pattern for thread safety)
         with _locale_context_cache_lock:
-            if locale_code in _locale_context_cache:
-                return _locale_context_cache[locale_code]
+            if cache_key in _locale_context_cache:
+                return _locale_context_cache[cache_key]
 
             # Evict LRU if cache is full
             if len(_locale_context_cache) >= _MAX_LOCALE_CACHE_SIZE:
                 _locale_context_cache.popitem(last=False)
 
-            _locale_context_cache[locale_code] = ctx
+            _locale_context_cache[cache_key] = ctx
             return ctx
 
     @classmethod

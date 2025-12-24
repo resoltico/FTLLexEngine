@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.30.0
+project_version: 0.31.0
 context: ERRORS
-last_updated: 2025-12-23T00:00:00Z
+last_updated: 2025-12-24T00:00:00Z
 maintainer: claude-opus-4-5
 ---
 
@@ -18,6 +18,7 @@ FluentError
   FluentReferenceError
     FluentCyclicReferenceError
   FluentResolutionError
+    DepthLimitExceededError
   FluentParseError
 ```
 
@@ -109,6 +110,26 @@ class FluentResolutionError(FluentError): ...
 ### Constraints
 - Purpose: Runtime resolution errors.
 - Behavior: Returns partial result up to error point.
+
+---
+
+## `DepthLimitExceededError`
+
+### Signature
+```python
+class DepthLimitExceededError(FluentResolutionError): ...
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Purpose: Maximum expression/nesting depth exceeded.
+- Cause: Adversarial input, malformed AST, or deep Placeable nesting.
+- Behavior: Raised immediately when limit exceeded.
+- Import: `from ftllexengine.runtime.depth_guard import DepthLimitExceededError`
+- Version: Added in v0.31.0.
 
 ---
 
@@ -448,6 +469,120 @@ class SourceSpan:
 ### Constraints
 - Return: Immutable span record.
 - State: Frozen dataclass.
+
+---
+
+## `OutputFormat`
+
+### Signature
+```python
+class OutputFormat(StrEnum):
+    RUST = "rust"
+    SIMPLE = "simple"
+    JSON = "json"
+```
+
+### Contract
+| Value | Description |
+|:------|:------------|
+| `RUST` | Rust compiler-style output with hints and help URLs. |
+| `SIMPLE` | Single-line format (code: message). |
+| `JSON` | JSON format for tooling integration. |
+
+### Constraints
+- StrEnum: Members ARE strings. `str(OutputFormat.RUST) == "rust"`
+- Import: `from ftllexengine.diagnostics import OutputFormat`
+- Version: Added in v0.31.0.
+
+---
+
+## `DiagnosticFormatter`
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class DiagnosticFormatter:
+    output_format: OutputFormat = OutputFormat.RUST
+    sanitize: bool = False
+    color: bool = False
+    max_content_length: int = 100
+
+    def format(self, diagnostic: Diagnostic) -> str: ...
+    def format_all(self, diagnostics: Iterable[Diagnostic]) -> str: ...
+    def format_validation_result(self, result: ValidationResult) -> str: ...
+```
+
+### Contract
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `output_format` | `OutputFormat` | Output style (rust, simple, json). |
+| `sanitize` | `bool` | Truncate content to prevent information leakage. |
+| `color` | `bool` | Enable ANSI color codes (for terminal output). |
+| `max_content_length` | `int` | Maximum content length when sanitizing. |
+
+### Constraints
+- Return: Immutable formatter instance.
+- State: Frozen dataclass.
+- Thread: Safe.
+- Import: `from ftllexengine.diagnostics import DiagnosticFormatter`
+- Version: Added in v0.31.0.
+
+---
+
+## `DiagnosticFormatter.format`
+
+### Signature
+```python
+def format(self, diagnostic: Diagnostic) -> str:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `diagnostic` | `Diagnostic` | Y | Diagnostic to format. |
+
+### Constraints
+- Return: Formatted diagnostic string.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `DiagnosticFormatter.format_all`
+
+### Signature
+```python
+def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `diagnostics` | `Iterable[Diagnostic]` | Y | Diagnostics to format. |
+
+### Constraints
+- Return: Formatted string with all diagnostics separated by newlines.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `DiagnosticFormatter.format_validation_result`
+
+### Signature
+```python
+def format_validation_result(self, result: ValidationResult) -> str:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `result` | `ValidationResult` | Y | Validation result to format. |
+
+### Constraints
+- Return: Formatted string with summary, errors, warnings, and annotations.
+- State: Read-only.
+- Thread: Safe.
 
 ---
 

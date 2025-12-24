@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.30.0
+project_version: 0.31.0
 context: PARSING
-last_updated: 2025-12-23T00:00:00Z
+last_updated: 2025-12-24T00:00:00Z
 maintainer: claude-opus-4-5
 ---
 

@@ -19,7 +19,7 @@ from ftllexengine.diagnostics import (
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.runtime.cache import FormatCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.functions import create_default_registry
+from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver, FluentValue
 from ftllexengine.syntax import Junk, Message, Term
@@ -152,11 +152,13 @@ class FluentBundle:
         self._terms: dict[str, Term] = {}
         self._parser = FluentParserV1()
 
-        # Function registry: use provided registry (copy it for isolation) or create fresh default
+        # Function registry: use provided registry (copy it for isolation) or use shared default
+        # Using the shared registry avoids re-registering built-in functions for each bundle.
+        # The copy() ensures bundles are isolated even when sharing the same source registry.
         if functions is not None:
             self._function_registry = functions.copy()
         else:
-            self._function_registry = create_default_registry()
+            self._function_registry = get_shared_registry().copy()
 
         # Format cache (opt-in)
         self._cache: FormatCache | None = None

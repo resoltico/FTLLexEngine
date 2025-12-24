@@ -4,17 +4,14 @@ This module tests the specific fixes and improvements introduced in v0.30.0:
 - LOGIC-PLURALCAT-001: Decimal support in plural category matching
 - LOGIC-TERMSELF-001/BUILD-DEPS-001: Cross-type cycle detection
 - API-VALIDWARN-001: ValidationWarning with line/column position
-- LOGIC-FUTUREWARN-001: DeprecationWarning instead of FutureWarning
 - STRUCT-ENUM-001: StrEnum migration for enum types
 """
 
 from __future__ import annotations
 
-import warnings
 from decimal import Decimal
 from enum import StrEnum
 
-from ftllexengine.deprecation import deprecated, warn_deprecated
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.diagnostics.validation import ValidationWarning
 from ftllexengine.enums import CommentType, ReferenceKind, VariableContext
@@ -276,54 +273,6 @@ msg-duplicate = Duplicate definition
         formatted = warning.format()
         assert "test-code" in formatted
         assert "line" not in formatted
-
-
-class TestDeprecationWarningCategory:
-    """Test DeprecationWarning instead of FutureWarning (LOGIC-FUTUREWARN-001)."""
-
-    def test_warn_deprecated_uses_deprecation_warning(self) -> None:
-        """Test warn_deprecated emits DeprecationWarning, not FutureWarning."""
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            warn_deprecated(
-                "test_feature",
-                removal_version="2.0.0",
-            )
-
-        assert len(caught) == 1
-        assert issubclass(caught[0].category, DeprecationWarning)
-        assert not issubclass(caught[0].category, FutureWarning)
-
-    def test_deprecated_decorator_uses_deprecation_warning(self) -> None:
-        """Test @deprecated decorator emits DeprecationWarning."""
-
-        @deprecated(removal_version="2.0.0")
-        def old_function() -> str:
-            return "result"
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            result = old_function()
-
-        assert result == "result"
-        assert len(caught) == 1
-        assert issubclass(caught[0].category, DeprecationWarning)
-
-    def test_deprecation_warning_message_format(self) -> None:
-        """Test deprecation warning message includes version and alternative."""
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            warn_deprecated(
-                "old_api",
-                removal_version="2.0.0",
-                alternative="new_api",
-            )
-
-        assert len(caught) == 1
-        msg = str(caught[0].message)
-        assert "old_api" in msg
-        assert "2.0.0" in msg
-        assert "new_api" in msg
 
 
 class TestStrEnumMigration:

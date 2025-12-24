@@ -69,25 +69,40 @@ class ResolutionContext:
     - Easier testing (no state reset needed)
     - Clear dependency flow
 
+    Performance: Uses both list (for ordered path) and set (for O(1) lookup)
+    to optimize cycle detection while preserving path information for errors.
+
     Attributes:
         stack: Resolution stack for cycle detection (message keys being resolved)
+        _seen: Set for O(1) membership checking (internal)
         max_depth: Maximum resolution depth (prevents stack overflow)
+        expression_depth: Current expression nesting depth (Placeable depth)
+        max_expression_depth: Maximum expression nesting depth
     """
 
     stack: list[str] = field(default_factory=list)
+    _seen: set[str] = field(default_factory=set)
     max_depth: int = MAX_RESOLUTION_DEPTH
+    expression_depth: int = field(default=0)
+    max_expression_depth: int = MAX_RESOLUTION_DEPTH
 
     def push(self, key: str) -> None:
         """Push message key onto resolution stack."""
         self.stack.append(key)
+        self._seen.add(key)
 
     def pop(self) -> str:
         """Pop message key from resolution stack."""
-        return self.stack.pop()
+        key = self.stack.pop()
+        self._seen.discard(key)
+        return key
 
     def contains(self, key: str) -> bool:
-        """Check if key is in resolution stack (cycle detection)."""
-        return key in self.stack
+        """Check if key is in resolution stack (cycle detection).
+
+        Performance: O(1) set lookup instead of O(N) list scan.
+        """
+        return key in self._seen
 
     @property
     def depth(self) -> int:
@@ -101,6 +116,28 @@ class ResolutionContext:
     def get_cycle_path(self, key: str) -> list[str]:
         """Get the cycle path for error reporting."""
         return [*self.stack, key]
+
+    def enter_expression(self) -> None:
+        """Enter a nested expression (e.g., Placeable).
+
+        Tracks expression nesting depth separately from message resolution depth.
+        Raises DepthLimitExceededError if max depth exceeded.
+        """
+        self.expression_depth += 1
+        if self.expression_depth > self.max_expression_depth:
+            # Lazy import: avoid circular dependency resolver -> depth_guard
+            from ftllexengine.runtime.depth_guard import (  # noqa: PLC0415
+                DepthLimitExceededError,
+            )
+
+            raise DepthLimitExceededError(
+                ErrorTemplate.expression_depth_exceeded(self.max_expression_depth)
+            )
+
+    def exit_expression(self) -> None:
+        """Exit a nested expression."""
+        if self.expression_depth > 0:
+            self.expression_depth -= 1
 
 
 class FluentResolver:
@@ -292,7 +329,12 @@ class FluentResolver:
             case NumberLiteral():
                 return expr.value
             case Placeable():
-                return self._resolve_expression(expr.expression, args, errors, context)
+                # Track expression depth to prevent stack overflow from deep nesting
+                context.enter_expression()
+                try:
+                    return self._resolve_expression(expr.expression, args, errors, context)
+                finally:
+                    context.exit_expression()
             case _:
                 raise FluentResolutionError(ErrorTemplate.unknown_expression(type(expr).__name__))
 

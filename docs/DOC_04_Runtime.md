@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.30.0
+project_version: 0.31.0
 context: RUNTIME
-last_updated: 2025-12-23T00:00:00Z
+last_updated: 2025-12-24T00:00:00Z
 maintainer: claude-opus-4-5
 ---
 
@@ -238,6 +238,28 @@ def create_default_registry() -> FunctionRegistry:
 
 ---
 
+## `get_shared_registry`
+
+### Signature
+```python
+def get_shared_registry() -> FunctionRegistry:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Module-level cached FunctionRegistry with NUMBER, DATETIME, CURRENCY.
+- Raises: Never.
+- State: Returns shared singleton (lazy initialized).
+- Thread: Safe for reads. Do not modify returned registry.
+- Performance: Avoids repeated registry creation for multi-bundle applications.
+- Import: `from ftllexengine.runtime.functions import get_shared_registry`
+- Version: Added in v0.31.0.
+
+---
+
 ## `FunctionCategory`
 
 ### Signature
@@ -467,11 +489,16 @@ def validate_resource(
 @dataclass(slots=True)
 class ResolutionContext:
     stack: list[str] = field(default_factory=list)
+    _seen: set[str] = field(default_factory=set)
     max_depth: int = MAX_RESOLUTION_DEPTH
+    expression_depth: int = field(default=0)
+    max_expression_depth: int = MAX_RESOLUTION_DEPTH
 
     def push(self, key: str) -> None: ...
     def pop(self) -> str: ...
     def contains(self, key: str) -> bool: ...
+    def enter_expression(self) -> None: ...
+    def exit_expression(self) -> None: ...
     @property
     def depth(self) -> int: ...
     def is_depth_exceeded(self) -> bool: ...
@@ -481,13 +508,18 @@ class ResolutionContext:
 ### Contract
 | Field | Type | Description |
 |:------|:-----|:------------|
-| `stack` | `list[str]` | Resolution stack for cycle detection. |
+| `stack` | `list[str]` | Resolution stack for cycle path. |
+| `_seen` | `set[str]` | O(1) membership check set. |
 | `max_depth` | `int` | Maximum resolution depth (default: 100). |
+| `expression_depth` | `int` | Current placeable nesting depth. |
+| `max_expression_depth` | `int` | Maximum expression depth (default: 100). |
 
 ### Constraints
 - Thread: Safe (explicit parameter passing, no global state).
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
+- Complexity: contains() is O(1) via _seen set.
 - Import: `from ftllexengine.runtime import ResolutionContext`
+- Version: O(1) contains() added in v0.31.0.
 
 ---
 
@@ -541,7 +573,45 @@ def contains(self, key: str) -> bool:
 
 ### Constraints
 - Return: True if key is in resolution stack (cycle detected).
+- Complexity: O(1) via _seen set lookup.
 - State: Read-only.
+
+---
+
+## `ResolutionContext.enter_expression`
+
+### Signature
+```python
+def enter_expression(self) -> None:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: None.
+- Raises: DepthLimitExceededError if max_expression_depth exceeded.
+- State: Increments expression_depth.
+- Version: Added in v0.31.0.
+
+---
+
+## `ResolutionContext.exit_expression`
+
+### Signature
+```python
+def exit_expression(self) -> None:
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: None.
+- State: Decrements expression_depth (min 0).
+- Version: Added in v0.31.0.
 
 ---
 
@@ -722,5 +792,58 @@ MAX_RESOLUTION_DEPTH: int = 100
 
 - Purpose: Maximum message reference chain depth.
 - Usage: Prevents RecursionError from long non-cyclic reference chains.
+
+---
+
+### `MAX_EXPRESSION_DEPTH`
+
+```python
+MAX_EXPRESSION_DEPTH: int = 100
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 100 |
+| Location | `ftllexengine.runtime.depth_guard` |
+
+- Purpose: Maximum nested Placeable/expression depth.
+- Usage: Prevents stack overflow from deeply nested ASTs.
+- Version: Added in v0.31.0.
+
+---
+
+## `DepthGuard`
+
+### Signature
+```python
+@dataclass(slots=True)
+class DepthGuard:
+    max_depth: int = MAX_EXPRESSION_DEPTH
+    current_depth: int = field(default=0, init=False)
+
+    def __enter__(self) -> DepthGuard: ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None: ...
+    @property
+    def depth(self) -> int: ...
+    def is_exceeded(self) -> bool: ...
+    def check(self) -> None: ...
+    def increment(self) -> None: ...
+    def decrement(self) -> None: ...
+    def reset(self) -> None: ...
+```
+
+### Contract
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `max_depth` | `int` | Maximum allowed depth. |
+| `current_depth` | `int` | Current recursion depth. |
+
+### Constraints
+- Thread: Safe (explicit instance state, reentrant).
+- Usage: Context manager or manual increment/decrement.
+- Raises: DepthLimitExceededError when depth limit exceeded.
+- Import: `from ftllexengine.runtime.depth_guard import DepthGuard`
+- Version: Added in v0.31.0.
 
 ---

@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.30.0
+project_version: 0.31.0
 context: INDEX
-last_updated: 2025-12-23T00:00:00Z
+last_updated: 2025-12-24T00:00:00Z
 maintainer: claude-opus-4-5
 retrieval_hints:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
@@ -63,6 +63,7 @@ from ftllexengine.diagnostics import (
     FluentError, FluentSyntaxError, FluentReferenceError,
     FluentResolutionError, FluentCyclicReferenceError,
     ValidationResult, ValidationError, ValidationWarning,
+    DiagnosticFormatter, OutputFormat,  # v0.31.0+
 )
 ```
 
@@ -99,6 +100,25 @@ from ftllexengine.validation import validate_resource
 ### Visitor (`from ftllexengine.syntax.visitor import ...`)
 ```python
 from ftllexengine.syntax.visitor import ASTVisitor
+```
+
+### Runtime (`from ftllexengine.runtime import ...`)
+```python
+from ftllexengine.runtime import (
+    FluentBundle, FluentResolver, FunctionRegistry, ResolutionContext,
+    create_default_registry, get_shared_registry,  # v0.31.0+
+    number_format, datetime_format, currency_format,
+    select_plural_category,
+)
+```
+
+### Localization (`from ftllexengine.localization import ...`)
+```python
+from ftllexengine.localization import (
+    FluentLocalization, PathResourceLoader, ResourceLoader,
+    LoadStatus, LoadSummary, ResourceLoadResult,  # v0.31.0+
+    MessageId, LocaleCode, ResourceId, FTLSource,
+)
 ```
 
 ---
@@ -144,9 +164,10 @@ ftllexengine/
     __init__.py            # Runtime exports
     bundle.py              # FluentBundle
     resolver.py            # FluentResolver, ResolutionContext, MAX_RESOLUTION_DEPTH
-    functions.py           # Built-in functions, create_default_registry
+    functions.py           # Built-in functions, create_default_registry, get_shared_registry
     function_bridge.py     # FunctionRegistry
     plural_rules.py        # select_plural_category
+    depth_guard.py         # DepthGuard, DepthLimitExceededError, MAX_EXPRESSION_DEPTH
   parsing/
     __init__.py            # Parsing API exports
     numbers.py             # parse_number, parse_decimal
@@ -159,6 +180,7 @@ ftllexengine/
     codes.py               # DiagnosticCode, Diagnostic, SourceSpan
     templates.py           # ErrorTemplate
     validation.py          # ValidationResult, ValidationError, ValidationWarning
+    formatter.py           # DiagnosticFormatter, OutputFormat
   validation/
     __init__.py            # validate_resource
     resource.py            # Standalone resource validation

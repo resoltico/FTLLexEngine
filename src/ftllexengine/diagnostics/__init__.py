@@ -15,12 +15,14 @@ from .errors import (
     FluentResolutionError,
     FluentSyntaxError,
 )
+from .formatter import DiagnosticFormatter, OutputFormat
 from .templates import ErrorTemplate
 from .validation import ValidationError, ValidationResult, ValidationWarning
 
 __all__ = [
     "Diagnostic",
     "DiagnosticCode",
+    "DiagnosticFormatter",
     "ErrorTemplate",
     "FluentCyclicReferenceError",
     "FluentError",
@@ -28,6 +30,7 @@ __all__ = [
     "FluentReferenceError",
     "FluentResolutionError",
     "FluentSyntaxError",
+    "OutputFormat",
     "SourceSpan",
     "ValidationError",
     "ValidationResult",

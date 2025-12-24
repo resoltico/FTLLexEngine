@@ -78,7 +78,14 @@ def parse_number(
     try:
         parsed = babel_parse_decimal(value, locale=locale)
         return (float(parsed), tuple(errors))
-    except (NumberFormatError, InvalidOperation, ValueError, AttributeError, TypeError) as e:
+    except (
+        NumberFormatError,
+        InvalidOperation,
+        ValueError,
+        AttributeError,
+        TypeError,
+        OverflowError,  # float() on extremely large Decimal (e.g., 1e1000)
+    ) as e:
         diagnostic = ErrorTemplate.parse_number_failed(value, locale_code, str(e))
         errors.append(
             FluentParseError(

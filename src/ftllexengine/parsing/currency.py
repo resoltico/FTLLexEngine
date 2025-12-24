@@ -349,7 +349,9 @@ def parse_currency(
             if default_currency:
                 currency_code = default_currency
             elif infer_from_locale:
-                inferred_currency = locale_to_currency.get(locale_code)
+                # Normalize locale for lookup: keys are Babel format (en_US)
+                # but input may be BCP-47 format (en-US)
+                inferred_currency = locale_to_currency.get(normalize_locale(locale_code))
                 if inferred_currency is None:
                     diagnostic = ErrorTemplate.parse_currency_ambiguous(currency_str, value)
                     errors.append(
