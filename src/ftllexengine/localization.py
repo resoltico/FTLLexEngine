@@ -634,7 +634,8 @@ class FluentLocalization:
             ftl_source: FTL source code
 
         Raises:
-            ValueError: If locale not in fallback chain
+            ValueError: If locale not in fallback chain.
+            FluentSyntaxError: If FTL source contains critical syntax errors.
         """
         if locale not in self._bundles:
             msg = f"Locale '{locale}' not in fallback chain {self._locales}"

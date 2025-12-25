@@ -20,6 +20,7 @@ from ftllexengine.diagnostics import (
     FluentReferenceError,
     FluentResolutionError,
 )
+from ftllexengine.runtime.depth_guard import MAX_EXPRESSION_DEPTH, DepthGuard
 from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
 from ftllexengine.runtime.function_metadata import (
     get_expected_positional_args,
@@ -76,15 +77,19 @@ class ResolutionContext:
         stack: Resolution stack for cycle detection (message keys being resolved)
         _seen: Set for O(1) membership checking (internal)
         max_depth: Maximum resolution depth (prevents stack overflow)
-        expression_depth: Current expression nesting depth (Placeable depth)
         max_expression_depth: Maximum expression nesting depth
+        _expression_guard: DepthGuard for expression depth tracking (internal)
     """
 
     stack: list[str] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
     max_depth: int = MAX_RESOLUTION_DEPTH
-    expression_depth: int = field(default=0)
-    max_expression_depth: int = MAX_RESOLUTION_DEPTH
+    max_expression_depth: int = MAX_EXPRESSION_DEPTH
+    _expression_guard: DepthGuard = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Initialize the expression depth guard with configured max depth."""
+        self._expression_guard = DepthGuard(max_depth=self.max_expression_depth)
 
     def push(self, key: str) -> None:
         """Push message key onto resolution stack."""
@@ -117,27 +122,20 @@ class ResolutionContext:
         """Get the cycle path for error reporting."""
         return [*self.stack, key]
 
-    def enter_expression(self) -> None:
-        """Enter a nested expression (e.g., Placeable).
+    @property
+    def expression_guard(self) -> DepthGuard:
+        """Get the expression depth guard for context manager use.
 
-        Tracks expression nesting depth separately from message resolution depth.
-        Raises DepthLimitExceededError if max depth exceeded.
+        Usage:
+            with context.expression_guard:
+                result = self._resolve_expression(nested_expr, ...)
         """
-        self.expression_depth += 1
-        if self.expression_depth > self.max_expression_depth:
-            # Lazy import: avoid circular dependency resolver -> depth_guard
-            from ftllexengine.runtime.depth_guard import (  # noqa: PLC0415
-                DepthLimitExceededError,
-            )
+        return self._expression_guard
 
-            raise DepthLimitExceededError(
-                ErrorTemplate.expression_depth_exceeded(self.max_expression_depth)
-            )
-
-    def exit_expression(self) -> None:
-        """Exit a nested expression."""
-        if self.expression_depth > 0:
-            self.expression_depth -= 1
+    @property
+    def expression_depth(self) -> int:
+        """Current expression nesting depth (read-only, delegates to guard)."""
+        return self._expression_guard.current_depth
 
 
 class FluentResolver:
@@ -330,11 +328,8 @@ class FluentResolver:
                 return expr.value
             case Placeable():
                 # Track expression depth to prevent stack overflow from deep nesting
-                context.enter_expression()
-                try:
+                with context.expression_guard:
                     return self._resolve_expression(expr.expression, args, errors, context)
-                finally:
-                    context.exit_expression()
             case _:
                 raise FluentResolutionError(ErrorTemplate.unknown_expression(type(expr).__name__))
 

@@ -370,8 +370,8 @@ class TestSerializerStringLiteralEscapesCoverage:
 
         ftl = serialize(resource)
 
-        # Tab should be escaped
-        assert "\\t" in ftl
+        # Tab should be escaped using Unicode escape per Fluent 1.0 spec
+        assert "\\u0009" in ftl
 
     def test_serialize_string_literal_with_newline(self) -> None:
         """Test newline character escaping in StringLiteral."""

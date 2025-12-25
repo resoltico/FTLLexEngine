@@ -325,10 +325,11 @@ class FluentSerializer(ASTVisitor):
                 # Order matters: backslash first to avoid double-escaping
                 escaped = expr.value.replace("\\", "\\\\")
                 escaped = escaped.replace('"', '\\"')
-                # Control characters prohibited in FTL string literals
+                # Control characters: use Unicode escapes per Fluent 1.0 spec
+                # Spec only allows: \\, \", \{, \uHHHH, \UHHHHHH
                 escaped = escaped.replace("\n", "\\u000A")
                 escaped = escaped.replace("\r", "\\u000D")
-                escaped = escaped.replace("\t", "\\t")
+                escaped = escaped.replace("\t", "\\u0009")
                 output.append(f'"{escaped}"')
 
             case NumberLiteral():

@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.31.0
+project_version: 0.32.0
 context: CORE
-last_updated: 2025-12-24T00:00:00Z
+last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
 ---
 
@@ -72,8 +72,9 @@ def for_system_locale(
 ### Constraints
 - Return: FluentBundle with system locale.
 - Raises: `RuntimeError` if locale cannot be determined.
-- State: Detects locale from LC_ALL, LC_MESSAGES, LANG.
+- State: Delegates to `get_system_locale(raise_on_failure=True)`.
 - Thread: Safe.
+- Version: Now uses unified `get_system_locale()` from locale_utils (v0.32.0).
 
 ---
 
@@ -527,6 +528,7 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> None:
 ### Constraints
 - Return: None.
 - Raises: `ValueError` if locale not in fallback chain.
+- Raises: `FluentSyntaxError` if FTL source contains critical syntax errors.
 - State: Mutates target bundle.
 - Thread: Unsafe.
 
@@ -992,18 +994,20 @@ def get_babel_locale(locale_code: str) -> Locale:
 
 ### Signature
 ```python
-def get_system_locale() -> str:
+def get_system_locale(*, raise_on_failure: bool = False) -> str:
 ```
 
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
+| `raise_on_failure` | `bool` | N | Raise RuntimeError if locale cannot be determined. |
 
 ### Constraints
 - Return: Detected locale code in POSIX format, or "en_US" if not determinable.
-- State: Reads environment variables LC_ALL, LC_MESSAGES, LANG.
+- Raises: `RuntimeError` if raise_on_failure=True and locale cannot be determined.
+- State: Reads OS locale via locale.getlocale() and env vars LC_ALL, LC_MESSAGES, LANG.
 - Thread: Safe.
 - Import: `from ftllexengine.locale_utils import get_system_locale`
-- Version: Added in v0.31.0.
+- Version: Added in v0.31.0. `raise_on_failure` parameter added in v0.32.0.
 
 ---

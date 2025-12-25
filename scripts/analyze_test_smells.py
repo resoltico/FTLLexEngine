@@ -12,29 +12,35 @@ Architecture:
     - Configurable via pyproject.toml [tool.test-smells]
     - Inline suppression via # noqa: test-smell[rule-name]
 
+Hypothesis Integration:
+    - Detects non-Hypothesis tests that could benefit from property-based testing
+    - Identifies tests with many parametrize cases, hardcoded example iterations,
+      or multiple similar assertions that suggest a need for @given strategies
+    - Detects Hypothesis anti-patterns like using .example() directly
+    - Use --hypothesis-candidates for a focused report on reimagining opportunities
+
 Exit Codes:
     0: No critical smells found
     1: Critical smells detected (with --fail-on-critical)
     2: Configuration error
 
-Python 3.13+. Standard library only.
+Python 3.13+ required. Standard library only.
 """
-
-from __future__ import annotations
 
 import argparse
 import ast
 import json
 import re
 import sys
-from collections.abc import Iterator
+import tomllib
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import Final, TypeIs
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+# Type alias for function nodes (Python 3.12+ type statement)
+type FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 
 
 # =============================================================================
@@ -63,6 +69,20 @@ GENERIC_TEST_PREFIXES: Final[tuple[str, ...]] = (
 )
 
 HYPOTHESIS_DECORATORS: Final[frozenset[str]] = frozenset({"given", "settings", "example"})
+
+# Patterns indicating a test could benefit from property-based testing
+PROPERTY_TEST_CANDIDATE_INDICATORS: Final[frozenset[str]] = frozenset({
+    # Keywords in test names suggesting multiple cases
+    "various", "multiple", "different", "several", "many",
+    "all", "any", "every", "combinations", "permutations",
+    "edge", "corner", "boundary", "random", "fuzzy",
+})
+
+# Minimum parametrize cases to suggest Hypothesis conversion
+MIN_PARAMETRIZE_CASES_FOR_HYPOTHESIS: Final[int] = 5
+
+# Minimum hardcoded test values to suggest Hypothesis
+MIN_HARDCODED_VALUES_FOR_HYPOTHESIS: Final[int] = 4
 
 # File patterns that exempt tests from specific checks
 MAGIC_VALUE_EXEMPT_PATTERNS: Final[frozenset[str]] = frozenset({
@@ -142,7 +162,15 @@ class Config:
 
 
 def load_config(project_root: Path | None = None) -> Config:
-    """Load configuration from pyproject.toml if available."""
+    """Load configuration from pyproject.toml if available.
+
+    Supports the following keys in [tool.test-smells]:
+        assertion-threshold: int
+        assertion-threshold-parser: int
+        mock-threshold: int
+        min-test-name-length: int
+        magic-number-threshold: int
+    """
     if project_root is None:
         project_root = Path.cwd()
 
@@ -151,47 +179,27 @@ def load_config(project_root: Path | None = None) -> Config:
         return Config()
 
     try:
-        # Parse TOML manually (no tomllib dependency for Python 3.10 compat)
-        content = pyproject.read_text(encoding="utf-8")
-        if "[tool.test-smells]" not in content:
+        with pyproject.open("rb") as f:
+            data = tomllib.load(f)
+
+        config_section = data.get("tool", {}).get("test-smells", {})
+        if not config_section:
             return Config()
 
-        # Extract section (simple parsing for common keys)
-        # Full TOML parsing would require tomllib (Python 3.11+)
-        assertion_threshold: int | None = None
-        mock_threshold: int | None = None
-        min_test_name_length: int | None = None
+        # Extract config values with proper None handling (0 is valid)
+        def get_int(key: str, default: int) -> int:
+            val = config_section.get(key)
+            return val if isinstance(val, int) else default
 
-        # Look for integer values
-        key_map = {
-            "assertion-threshold": "assertion_threshold",
-            "mock-threshold": "mock_threshold",
-            "min-test-name-length": "min_test_name_length",
-        }
-        for toml_key, var_name in key_map.items():
-            pattern = f"{toml_key} = "
-            for line in content.splitlines():
-                if pattern in line:
-                    try:
-                        val = int(line.split("=")[1].strip())
-                        if var_name == "assertion_threshold":
-                            assertion_threshold = val
-                        elif var_name == "mock_threshold":
-                            mock_threshold = val
-                        elif var_name == "min_test_name_length":
-                            min_test_name_length = val
-                    except (ValueError, IndexError):
-                        pass
-                    break
-
-        # Build config with parsed values or defaults
         return Config(
-            assertion_threshold=assertion_threshold or ASSERTION_OVERLOAD_THRESHOLD,
-            mock_threshold=mock_threshold or MOCK_OVERUSE_THRESHOLD,
-            min_test_name_length=min_test_name_length or MIN_TEST_NAME_LENGTH,
+            assertion_threshold=get_int("assertion-threshold", ASSERTION_OVERLOAD_THRESHOLD),
+            assertion_threshold_parser=get_int("assertion-threshold-parser", 15),
+            mock_threshold=get_int("mock-threshold", MOCK_OVERUSE_THRESHOLD),
+            min_test_name_length=get_int("min-test-name-length", MIN_TEST_NAME_LENGTH),
+            magic_number_threshold=get_int("magic-number-threshold", MAGIC_NUMBER_THRESHOLD),
         )
 
-    except OSError:
+    except (OSError, tomllib.TOMLDecodeError):
         return Config()
 
 
@@ -231,26 +239,6 @@ class Smell:
 
 
 @dataclass(slots=True)
-class FunctionStats:
-    """Statistics collected in a single AST pass for efficiency.
-
-    Instead of walking the AST multiple times for each check, we collect
-    all relevant node information in one pass.
-    """
-
-    assertions: list[ast.Assert] = field(default_factory=list)
-    loops: list[ast.For | ast.While] = field(default_factory=list)
-    conditionals: list[ast.If] = field(default_factory=list)
-    exception_handlers: list[ast.ExceptHandler] = field(default_factory=list)
-    try_blocks: list[ast.Try] = field(default_factory=list)
-    calls: list[ast.Call] = field(default_factory=list)
-    with_blocks: list[ast.With] = field(default_factory=list)
-    constants: list[ast.Constant] = field(default_factory=list)
-    names: list[ast.Name] = field(default_factory=list)
-    attributes: list[ast.Attribute] = field(default_factory=list)
-
-
-@dataclass(slots=True)
 class SmellReport:
     """Collection of detected smells with statistics."""
 
@@ -258,20 +246,13 @@ class SmellReport:
     files_analyzed: int = 0
     tests_analyzed: int = 0
 
-    SEVERITY_ORDER: ClassVar[dict[Severity, int]] = {
-        Severity.CRITICAL: 0,
-        Severity.HIGH: 1,
-        Severity.MEDIUM: 2,
-        Severity.LOW: 3,
-    }
-
     def add(self, smell: Smell) -> None:
         """Add smell to report."""
         self.smells.append(smell)
 
     def sort_by_severity(self) -> None:
         """Sort smells by severity, then file, then line."""
-        self.smells.sort(key=lambda s: (self.SEVERITY_ORDER[s.severity], str(s.file), s.line))
+        self.smells.sort(key=lambda s: (SEVERITY_ORDER[s.severity], str(s.file), s.line))
 
     def count_by_severity(self, severity: Severity) -> int:
         """Count smells of a specific severity."""
@@ -368,7 +349,7 @@ class SmellReport:
             by_file.setdefault(smell.file, []).append(smell)
         # Sort smells within each file by severity then line
         for smells in by_file.values():
-            smells.sort(key=lambda s: (self.SEVERITY_ORDER[s.severity], s.line))
+            smells.sort(key=lambda s: (SEVERITY_ORDER[s.severity], s.line))
         return by_file
 
     def filter_by_severity(self, filter_spec: str) -> None:
@@ -381,8 +362,8 @@ class SmellReport:
         if filter_spec.endswith("+"):
             # "medium+" means medium and above (medium, high, critical)
             base = filter_spec[:-1].upper()
-            base_order = self.SEVERITY_ORDER.get(Severity(base), 3)
-            allowed = {s for s, order in self.SEVERITY_ORDER.items() if order <= base_order}
+            base_order = SEVERITY_ORDER.get(Severity(base), 3)
+            allowed = {s for s, order in SEVERITY_ORDER.items() if order <= base_order}
         else:
             # Comma-separated list
             allowed = {Severity(s.strip().upper()) for s in filter_spec.split(",")}
@@ -453,8 +434,11 @@ def walk_without_nested_definitions(node: ast.AST) -> Iterator[ast.AST]:
         yield from walk_without_nested_definitions(child)
 
 
-def is_hypothesis_decorated(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check if function has Hypothesis decorators."""
+def is_hypothesis_decorated(node: FunctionNode) -> TypeIs[FunctionNode]:
+    """Check if function has Hypothesis decorators.
+
+    Returns TypeIs for type narrowing in callers (Python 3.13+).
+    """
     for decorator in node.decorator_list:
         match decorator:
             # @given, @settings, @example
@@ -472,8 +456,11 @@ def is_hypothesis_decorated(node: ast.FunctionDef | ast.AsyncFunctionDef) -> boo
     return False
 
 
-def is_skipped_test(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check if test has skip decorator (pytest.mark.skip or unittest.skip)."""
+def is_skipped_test(node: FunctionNode) -> TypeIs[FunctionNode]:
+    """Check if test has skip decorator (pytest.mark.skip or unittest.skip).
+
+    Returns TypeIs for type narrowing in callers (Python 3.13+).
+    """
     skip_names = {"skip", "skipIf", "skipUnless", "xfail"}
     for decorator in node.decorator_list:
         match decorator:
@@ -497,37 +484,57 @@ def count_assertions(node: ast.AST) -> int:
     return sum(1 for _ in ast.walk(node) if isinstance(_, ast.Assert))
 
 
-def has_pytest_raises(node: ast.AST) -> bool:
-    """Check if node contains pytest.raises context manager."""
+def has_pytest_raises_or_warns(node: ast.AST) -> bool:
+    """Check if node contains pytest.raises or pytest.warns context manager."""
     for child in ast.walk(node):
         if not isinstance(child, ast.With):
             continue
         for item in child.items:
             match item.context_expr:
-                case ast.Call(func=ast.Attribute(attr="raises")):
-                    # Matches pytest.raises(ExceptionType)
+                case ast.Call(func=ast.Attribute(attr="raises" | "warns")):
+                    # Matches pytest.raises(Ex) or pytest.warns(Warning)
                     return True
-                case ast.Call(func=ast.Name(id="raises")):
-                    # Matches directly imported raises(ExceptionType)
+                case ast.Call(func=ast.Name(id="raises" | "warns")):
+                    # Matches directly imported raises/warns
                     return True
     return False
 
 
-def has_caplog_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def has_unittest_assertion(node: ast.AST) -> bool:
+    """Check if node contains unittest assertion methods.
+
+    Detects self.assertRaises, self.assertWarns, self.assertEqual, etc.
+    """
+    unittest_assertions = frozenset({
+        "assertEqual", "assertNotEqual", "assertTrue", "assertFalse",
+        "assertIs", "assertIsNot", "assertIsNone", "assertIsNotNone",
+        "assertIn", "assertNotIn", "assertIsInstance", "assertNotIsInstance",
+        "assertRaises", "assertWarns", "assertLogs", "assertAlmostEqual",
+        "assertNotAlmostEqual", "assertGreater", "assertGreaterEqual",
+        "assertLess", "assertLessEqual", "assertRegex", "assertNotRegex",
+        "assertCountEqual", "assertMultiLineEqual", "assertSequenceEqual",
+        "assertListEqual", "assertTupleEqual", "assertSetEqual", "assertDictEqual",
+    })
+    for child in ast.walk(node):
+        match child:
+            case ast.Call(func=ast.Attribute(attr=attr)) if attr in unittest_assertions:
+                return True
+    return False
+
+
+def has_caplog_fixture(node: FunctionNode) -> TypeIs[FunctionNode]:
     """Check if test function uses caplog fixture (logging tests)."""
     return any(arg.arg == "caplog" for arg in node.args.args)
 
 
-def is_concurrency_test(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def is_concurrency_test(node: FunctionNode) -> TypeIs[FunctionNode]:
     """Check if test is a concurrency/thread-safety test."""
     concurrency_keywords = {"concurrent", "thread", "parallel", "race", "deadlock"}
     name_lower = node.name.lower()
     return any(kw in name_lower for kw in concurrency_keywords)
 
 
-def is_coverage_or_error_test(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, file_path: Path
-) -> bool:
+def is_coverage_or_error_test(node: FunctionNode, file_path: Path) -> TypeIs[FunctionNode]:
     """Check if test is a coverage/error path test that may swallow exceptions."""
     # Keywords in test name that suggest legitimate exception swallowing
     name_keywords = {
@@ -545,7 +552,7 @@ def is_coverage_or_error_test(
     )
 
 
-def is_type_guard_conditional(node: ast.If) -> bool:  # noqa: PLR0911
+def is_type_guard_conditional(node: ast.If) -> TypeIs[ast.If]:  # noqa: PLR0911
     """Check if conditional is a type guard or result inspection (required for type narrowing)."""
     match node.test:
         # if x is not None:
@@ -579,7 +586,7 @@ def is_type_guard_conditional(node: ast.If) -> bool:  # noqa: PLR0911
     return False
 
 
-def is_search_loop(loop_node: ast.For) -> bool:
+def is_search_loop(loop_node: ast.For) -> TypeIs[ast.For]:
     """Check if loop is searching within results (not iterating test cases).
 
     Search patterns:
@@ -597,7 +604,7 @@ def is_search_loop(loop_node: ast.For) -> bool:
     return conditional_count > 0 and len(loop_node.body) <= 2
 
 
-def is_cleanup_loop(loop_node: ast.For | ast.While, func_node: ast.AST) -> bool:
+def is_cleanup_loop(loop_node: ast.For | ast.While, func_node: ast.AST) -> TypeIs[ast.For | ast.While]:
     """Check if loop is cleanup code (e.g., in finally block or teardown).
 
     Cleanup patterns:
@@ -671,7 +678,7 @@ class TestSmellDetector(ast.NodeVisitor):
         """Analyze async test function for smells."""
         self._analyze_function(node)
 
-    def _analyze_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _analyze_function(self, node: FunctionNode) -> None:
         """Run all smell checks on a function definition."""
         if not node.name.startswith("test_"):
             self.generic_visit(node)
@@ -708,6 +715,9 @@ class TestSmellDetector(ast.NodeVisitor):
         self._check_flaky_indicators(node)
         self._check_incomplete_cleanup(node)
         self._check_hardcoded_paths(node)
+        # Hypothesis reimagining candidates
+        self._check_hypothesis_example_antipattern(node)
+        self._check_non_hypothesis_candidate(node)
 
         self.generic_visit(node)
         self._in_test_function = old_in_test
@@ -744,16 +754,17 @@ class TestSmellDetector(ast.NodeVisitor):
     # SMELL CHECKS
     # -------------------------------------------------------------------------
 
-    def _check_no_assertions(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_no_assertions(self, node: FunctionNode) -> None:
         """Detect tests with no assertions."""
         # Skip tests marked with skip/xfail decorators (intentionally not implemented)
         if is_skipped_test(node):
             return
 
         has_assert = count_assertions(node) > 0
-        has_raises = has_pytest_raises(node)
+        has_pytest_context = has_pytest_raises_or_warns(node)
+        has_unittest = has_unittest_assertion(node)
 
-        if has_assert or has_raises:
+        if has_assert or has_pytest_context or has_unittest:
             return
 
         # Skip if it's a placeholder test (pass-only or docstring-only)
@@ -776,7 +787,7 @@ class TestSmellDetector(ast.NodeVisitor):
             description=f"Test '{node.name}' has no assertions",
         )
 
-    def _check_empty_body(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_empty_body(self, node: FunctionNode) -> None:
         """Detect tests with empty bodies (only docstring)."""
         # Skip tests marked with skip/xfail decorators (intentionally not implemented)
         if is_skipped_test(node):
@@ -793,7 +804,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         description=f"Test '{node.name}' has only a docstring, no implementation",
                     )
 
-    def _check_assertion_overload(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_assertion_overload(self, node: FunctionNode) -> None:
         """Detect tests with too many assertions (non-property tests)."""
         if is_hypothesis_decorated(node):
             return
@@ -819,7 +830,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 ),
             )
 
-    def _check_weak_assertions(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_weak_assertions(self, node: FunctionNode) -> None:
         """Detect weak/tautological assertions."""
         for child in ast.walk(node):
             if not isinstance(child, ast.Assert):
@@ -852,7 +863,7 @@ class TestSmellDetector(ast.NodeVisitor):
                             snippet=line_text.strip(),
                         )
 
-    def _check_singleton_equality(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_singleton_equality(self, node: FunctionNode) -> None:
         """Detect assert x == None instead of assert x is None."""
         for child in ast.walk(node):
             if not isinstance(child, ast.Assert):
@@ -884,7 +895,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         snippet=line_text.strip(),
                     )
 
-    def _check_broad_exceptions(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_broad_exceptions(self, node: FunctionNode) -> None:
         """Detect overly broad exception handling."""
         # Skip concurrency tests - thread workers legitimately catch all exceptions
         if is_concurrency_test(node):
@@ -930,7 +941,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         description="Catching BaseException is almost always wrong",
                     )
 
-    def _check_exception_swallowing(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_exception_swallowing(self, node: FunctionNode) -> None:
         """Detect except blocks that swallow exceptions."""
         # Skip logging tests - exception swallowing is legitimate when testing log output
         if has_caplog_fixture(node):
@@ -971,7 +982,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         )
 
     def _check_try_except_instead_of_raises(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, node: FunctionNode
     ) -> None:
         """Detect try/except used instead of pytest.raises."""
         for child in ast.walk(node):
@@ -1006,7 +1017,7 @@ class TestSmellDetector(ast.NodeVisitor):
                             )
                             break
 
-    def _check_conditional_logic(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_conditional_logic(self, node: FunctionNode) -> None:
         """Detect conditional logic in tests (anti-pattern)."""
         # Skip hypothesis property tests - conditionals are often legitimate
         if is_hypothesis_decorated(node):
@@ -1092,7 +1103,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return False
 
     def _check_loops_without_hypothesis(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, node: FunctionNode
     ) -> None:
         """Detect loops in non-property-based tests."""
         if is_hypothesis_decorated(node):
@@ -1201,7 +1212,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return False
 
     def _is_setup_loop(
-        self, loop_node: ast.For | ast.While, func_node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, loop_node: ast.For | ast.While, func_node: FunctionNode
     ) -> bool:
         """Check if loop appears before any assertions (setup phase)."""
         loop_lineno = loop_node.lineno
@@ -1214,7 +1225,7 @@ class TestSmellDetector(ast.NodeVisitor):
         # No assertions before this loop - likely setup
         return True
 
-    def _check_magic_values(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_magic_values(self, node: FunctionNode) -> None:
         """Detect unexplained magic values in assertions."""
         # Skip if file/test name suggests valid numeric testing
         file_lower = self.file_path.name.lower()
@@ -1256,7 +1267,7 @@ class TestSmellDetector(ast.NodeVisitor):
                             snippet=line_text.strip(),
                         )
 
-    def _check_poor_naming(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_poor_naming(self, node: FunctionNode) -> None:
         """Detect poorly named tests."""
         name = node.name
         name_lower = name.lower()
@@ -1292,7 +1303,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 )
                 break
 
-    def _check_io_operations(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_io_operations(self, node: FunctionNode) -> None:
         """Detect file I/O operations in unit tests."""
         # Skip tests explicitly named for I/O
         name_lower = node.name.lower()
@@ -1309,7 +1320,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         description="File I/O in test; use tmp_path fixture or mock",
                     )
 
-    def _check_time_operations(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_time_operations(self, node: FunctionNode) -> None:
         """Detect time-dependent operations.
 
         Exemptions:
@@ -1342,7 +1353,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         description="Time-dependent call should use freezegun or be mocked",
                     )
 
-    def _check_excessive_mocking(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_excessive_mocking(self, node: FunctionNode) -> None:
         """Detect excessive use of mocks."""
         mock_count = 0
         for child in ast.walk(node):
@@ -1360,7 +1371,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 description=f"Test uses {mock_count} mocks (>{MOCK_OVERUSE_THRESHOLD})",
             )
 
-    def _check_print_statements(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _check_print_statements(self, node: FunctionNode) -> None:
         """Detect print statements in tests."""
         for child in ast.walk(node):
             match child:
@@ -1377,7 +1388,7 @@ class TestSmellDetector(ast.NodeVisitor):
                     )
 
     def _check_duplicate_assertions(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, node: FunctionNode
     ) -> None:
         """Detect exact duplicate assertions (copy-paste errors).
 
@@ -1431,7 +1442,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 )
 
     def _check_flaky_indicators(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, node: FunctionNode
     ) -> None:
         """Detect indicators of flaky tests (random without seed, uuid in assertions)."""
         # Skip Hypothesis tests - randomness is expected and managed
@@ -1488,7 +1499,7 @@ class TestSmellDetector(ast.NodeVisitor):
             )
 
     def _check_incomplete_cleanup(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, node: FunctionNode
     ) -> None:
         """Detect incomplete resource cleanup (tempfile without context, chdir without restore)."""
         chdir_calls: list[int] = []
@@ -1531,7 +1542,7 @@ class TestSmellDetector(ast.NodeVisitor):
             )
 
     def _is_inside_with(
-        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef, target: ast.AST
+        self, func_node: FunctionNode, target: ast.AST
     ) -> bool:
         """Check if target node is inside a with statement."""
         target_line = getattr(target, "lineno", 0)
@@ -1550,7 +1561,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return False
 
     def _check_hardcoded_paths(
-        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        self, node: FunctionNode
     ) -> None:
         """Detect hardcoded platform-specific paths in tests.
 
@@ -1596,6 +1607,198 @@ class TestSmellDetector(ast.NodeVisitor):
                                 rule_id="hardcoded-path",
                             )
                             break
+
+    def _check_hypothesis_example_antipattern(
+        self, node: FunctionNode
+    ) -> None:
+        """Detect .example() anti-pattern in Hypothesis tests.
+
+        Per Hypothesis best practices: Never use .example() in tests as it
+        bypasses Hypothesis's core strength—property-based testing with
+        multiple generated examples.
+
+        Looks for patterns like:
+            st.integers().example()
+            strategies.text().example()
+            some_strategy.example()
+        """
+        # Known Hypothesis strategy module/object names
+        hypothesis_names = frozenset({
+            "st", "strategies", "hypothesis", "strategy",
+            "integers", "floats", "text", "binary", "booleans",
+            "lists", "sets", "tuples", "dictionaries", "dicts",
+            "from_regex", "from_type", "builds", "one_of", "sampled_from",
+            "just", "none", "characters", "emails", "uuids", "datetimes",
+        })
+
+        for child in ast.walk(node):
+            match child:
+                case ast.Call(
+                    func=ast.Attribute(value=value, attr="example"),
+                    args=[],  # .example() takes no args
+                ):
+                    line_text = self._get_line(child.lineno)
+
+                    # Skip if it's @example decorator usage
+                    if "@example" in line_text:
+                        continue
+
+                    # Check if value looks like a Hypothesis strategy
+                    is_likely_strategy = False
+
+                    # Direct strategy name: st.integers().example()
+                    match value:
+                        case ast.Call(func=ast.Attribute(value=ast.Name(id=name))):
+                            if name in hypothesis_names:
+                                is_likely_strategy = True
+                        case ast.Call(func=ast.Name(id=name)):
+                            if name in hypothesis_names:
+                                is_likely_strategy = True
+                        case ast.Attribute(value=ast.Name(id=name)):
+                            if name in hypothesis_names:
+                                is_likely_strategy = True
+
+                    # Also check if "st." or "strategies." appears in the line
+                    if "st." in line_text or "strategies." in line_text:
+                        is_likely_strategy = True
+
+                    if is_likely_strategy:
+                        self._add_smell(
+                            category="Hypothesis Anti-Pattern",
+                            severity=Severity.HIGH,
+                            line=child.lineno,
+                            description=(
+                                "Using .example() bypasses property-based testing; "
+                                "use @given decorator or helpers like minimal(), find_any()"
+                            ),
+                            snippet=line_text.strip()[:60],
+                            rule_id="hypothesis-example-antipattern",
+                        )
+
+    def _check_non_hypothesis_candidate(
+        self, node: FunctionNode
+    ) -> None:
+        """Detect non-Hypothesis tests that could benefit from property-based testing.
+
+        Identifies tests that are good candidates for reimagining as Hypothesis tests:
+        1. Tests with many parametrize cases (suggests need for broader coverage)
+        2. Tests with hardcoded example lists/tuples being iterated
+        3. Tests with names suggesting multiple/various/edge cases
+        4. Tests with many similar assertions on different values
+        """
+        # Skip if already using Hypothesis
+        if is_hypothesis_decorated(node):
+            return
+
+        reasons: list[str] = []
+
+        # Check 1: Test name suggests multiple cases
+        name_lower = node.name.lower()
+        matching_indicators = [
+            ind for ind in PROPERTY_TEST_CANDIDATE_INDICATORS
+            if ind in name_lower
+        ]
+        if matching_indicators:
+            reasons.append(f"name suggests multiple cases ({', '.join(matching_indicators)})")
+
+        # Check 2: Parametrize decorator with many cases
+        parametrize_cases = self._count_parametrize_cases(node)
+        if parametrize_cases >= MIN_PARAMETRIZE_CASES_FOR_HYPOTHESIS:
+            reasons.append(f"has {parametrize_cases} parametrize cases")
+
+        # Check 3: Hardcoded example list/tuple being iterated
+        hardcoded_examples = self._find_hardcoded_example_iterations(node)
+        if hardcoded_examples >= MIN_HARDCODED_VALUES_FOR_HYPOTHESIS:
+            reasons.append(f"iterates over {hardcoded_examples}+ hardcoded examples")
+
+        # Check 4: Multiple similar assertions with string/number constants
+        similar_assertions = self._count_similar_constant_assertions(node)
+        if similar_assertions >= MIN_HARDCODED_VALUES_FOR_HYPOTHESIS:
+            reasons.append(f"has {similar_assertions} similar assertions with constants")
+
+        # Report if any reasons found
+        if reasons:
+            self._add_smell(
+                category="Non-Hypothesis Test Candidate",
+                severity=Severity.LOW,
+                line=node.lineno,
+                description=(
+                    f"Test '{node.name}' could benefit from property-based testing: "
+                    f"{'; '.join(reasons)}"
+                ),
+                rule_id="non-hypothesis-candidate",
+            )
+
+    def _count_parametrize_cases(
+        self, node: FunctionNode
+    ) -> int:
+        """Count the number of cases in pytest.mark.parametrize decorators.
+
+        Handles:
+            @pytest.mark.parametrize("x", [1, 2, 3])
+            @pytest.mark.parametrize("x,y", [(1,2), (3,4)])
+            @mark.parametrize("x", values)  # variable - can't count
+        """
+        total_cases = 0
+        for decorator in node.decorator_list:
+            match decorator:
+                case ast.Call(func=ast.Attribute(attr="parametrize"), args=args) if len(args) >= 2:
+                    # Second argument is the test cases (first is parameter names)
+                    match args[1]:
+                        case ast.List(elts=elts) | ast.Tuple(elts=elts):
+                            total_cases += len(elts)
+        return total_cases
+
+    def _find_hardcoded_example_iterations(
+        self, node: FunctionNode
+    ) -> int:
+        """Find hardcoded lists/tuples being iterated in for loops."""
+        max_examples = 0
+        for child in walk_without_nested_definitions(node):
+            match child:
+                case ast.For(iter=ast.List(elts=elts) | ast.Tuple(elts=elts)):
+                    # for x in [1, 2, 3, 4, 5]: - hardcoded iteration
+                    max_examples = max(max_examples, len(elts))
+                case ast.For(iter=ast.Name()):
+                    # Check if the iterable is defined as a literal in the function
+                    var_name = child.iter.id if isinstance(child.iter, ast.Name) else None
+                    if var_name:
+                        for stmt in node.body:
+                            match stmt:
+                                case ast.Assign(
+                                    targets=[ast.Name(id=name)],
+                                    value=ast.List(elts=elts) | ast.Tuple(elts=elts),
+                                ) if name == var_name:
+                                    max_examples = max(max_examples, len(elts))
+        return max_examples
+
+    def _count_similar_constant_assertions(
+        self, node: FunctionNode
+    ) -> int:
+        """Count assertions that compare against constant values.
+
+        Pattern: multiple assert func(x) == "value" or assert func(x) == 123
+        """
+        constant_assertions = 0
+        for child in ast.walk(node):
+            match child:
+                case ast.Assert(
+                    test=ast.Compare(
+                        left=ast.Call(),  # Function call on left
+                        ops=[ast.Eq()],
+                        comparators=[ast.Constant()],  # Constant on right
+                    )
+                ):
+                    constant_assertions += 1
+                case ast.Assert(
+                    test=ast.Compare(
+                        left=ast.Constant(),  # Constant on left
+                        ops=[ast.Eq()],
+                        comparators=[ast.Call()],  # Function call on right
+                    )
+                ):
+                    constant_assertions += 1
+        return constant_assertions
 
 
 def check_bad_filename(file_path: Path) -> Smell | None:
@@ -1683,20 +1886,21 @@ def analyze_file(
 
 
 def discover_test_files(test_dir: Path) -> Iterator[Path]:
-    """Recursively discover test files in directory."""
-    # Direct test files
-    yield from test_dir.glob("test_*.py")
-    yield from test_dir.glob("*_test.py")
+    """Recursively discover test files in directory.
 
-    # conftest files
-    conftest = test_dir / "conftest.py"
-    if conftest.exists():
-        yield conftest
+    Discovers:
+        - test_*.py files
+        - *_test.py files
+        - conftest.py files
 
-    # Recursive discovery in subdirectories
-    for subdir in test_dir.iterdir():
-        if subdir.is_dir() and not subdir.name.startswith((".", "__")):
-            yield from discover_test_files(subdir)
+    Excludes hidden directories (.) and __pycache__.
+    """
+    # Use rglob for efficient recursive discovery
+    for pattern in ("test_*.py", "*_test.py", "conftest.py"):
+        for path in test_dir.rglob(pattern):
+            # Skip hidden directories and __pycache__
+            if not any(part.startswith((".", "__")) for part in path.parts):
+                yield path
 
 
 def analyze_directory(
@@ -1853,6 +2057,117 @@ def print_by_file_report(report: SmellReport, *, verbose: bool = False) -> None:
             print(f"  ... and {len(smells) - 10} more (use --verbose to see all)")
 
 
+def print_hypothesis_candidates_report(report: SmellReport, *, verbose: bool = False) -> None:
+    """Print report focused on non-Hypothesis test candidates and anti-patterns.
+
+    This report helps identify tests that could benefit from property-based testing
+    and highlights Hypothesis anti-patterns (like .example() usage).
+    """
+    # Filter to only Hypothesis-related smells
+    hypothesis_categories = {
+        "Non-Hypothesis Test Candidate",
+        "Hypothesis Anti-Pattern",
+    }
+    candidates = [s for s in report.smells if s.category in hypothesis_categories]
+
+    print("=" * 80)
+    print("HYPOTHESIS REIMAGINING CANDIDATES REPORT")
+    print("=" * 80)
+    print(f"Files analyzed: {report.files_analyzed}")
+    print(f"Tests analyzed: {report.tests_analyzed}")
+    print("=" * 80)
+
+    if not candidates:
+        print("\n[OK] No tests identified as Hypothesis candidates or anti-patterns!")
+        print("\nTip: All your tests either already use Hypothesis or don't show")
+        print("     patterns that would benefit from property-based testing.")
+        return
+
+    # Separate anti-patterns from candidates
+    anti_patterns = [s for s in candidates if s.category == "Hypothesis Anti-Pattern"]
+    reimagine_candidates = [s for s in candidates if s.category == "Non-Hypothesis Test Candidate"]
+
+    # Print anti-patterns first (higher priority)
+    if anti_patterns:
+        print(f"\n🚨 HYPOTHESIS ANTI-PATTERNS ({len(anti_patterns)} found)")
+        print("-" * 80)
+        print("These tests misuse Hypothesis features and should be fixed:")
+        print()
+        for smell in anti_patterns:
+            print(f"  {smell.file.name}:{smell.line}")
+            print(f"    {smell.description}")
+            if smell.snippet and verbose:
+                print(f"    > {smell.snippet}")
+        print()
+        print("FIX: Replace .example() calls with @given decorator or use helper")
+        print("     functions from tests.common.debug: minimal(), find_any(),")
+        print("     assert_all_examples(), assert_simple_property()")
+
+    # Print candidates
+    if reimagine_candidates:
+        print(f"\n💡 TESTS TO REIMAGINE AS PROPERTY-BASED ({len(reimagine_candidates)} found)")
+        print("-" * 80)
+        print("These tests could benefit from Hypothesis property-based testing:")
+        print()
+
+        # Group by file
+        by_file: dict[Path, list[Smell]] = {}
+        for smell in reimagine_candidates:
+            by_file.setdefault(smell.file, []).append(smell)
+
+        for file_path in sorted(by_file.keys()):
+            smells = by_file[file_path]
+            print(f"\n  {file_path.name} ({len(smells)} candidates)")
+            for smell in smells:
+                # Extract just the test name from description
+                desc = smell.description
+                print(f"    Line {smell.line}: {desc}")
+
+        print()
+        print("-" * 80)
+        print("REIMAGINING GUIDE:")
+        print("-" * 80)
+        print("""
+How to convert these tests to property-based tests:
+
+1. PARAMETRIZED TESTS → @given with strategies
+   Before: @pytest.mark.parametrize("x", [1, 2, 3, 4, 5])
+   After:  @given(x=st.integers(min_value=1, max_value=5))
+
+2. HARDCODED EXAMPLE LOOPS → @given with strategies
+   Before: for val in ["a", "b", "c", "d"]:
+   After:  @given(val=st.text(min_size=1, max_size=1))
+
+3. MULTIPLE SIMILAR ASSERTIONS → Single @given test
+   Before: assert func("a") == expected_a
+           assert func("b") == expected_b
+   After:  @given(input=st.text())
+           def test_func_properties(input):
+               result = func(input)
+               # Assert properties that hold for ALL inputs
+
+4. EDGE/BOUNDARY TESTS → Use st.one_of() or assume()
+   Before: test_edge_case_empty(), test_edge_case_large()
+   After:  @given(st.one_of(st.just(""), st.text(min_size=1000)))
+
+Key Hypothesis strategies:
+  - st.integers(), st.floats(), st.text(), st.binary()
+  - st.lists(), st.dictionaries(), st.tuples()
+  - st.one_of(), st.sampled_from(), st.builds()
+  - st.from_regex() for pattern-based generation
+
+Documentation: https://hypothesis.readthedocs.io/
+""")
+
+    # Summary
+    print("=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"  Anti-patterns to fix:    {len(anti_patterns)}")
+    print(f"  Tests to reimagine:      {len(reimagine_candidates)}")
+    print(f"  Total opportunities:     {len(candidates)}")
+
+
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
@@ -1893,6 +2208,11 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         "--by-file",
         action="store_true",
         help="Group output by file (for fixing workflow)",
+    )
+    output_group.add_argument(
+        "--hypothesis-candidates",
+        action="store_true",
+        help="List only tests that could be reimagined as Hypothesis property-based tests",
     )
 
     parser.add_argument(
@@ -1962,6 +2282,8 @@ def main(args: Sequence[str] | None = None) -> int:
         print_sarif_report(report)
     elif parsed.by_file:
         print_by_file_report(report, verbose=parsed.verbose)
+    elif parsed.hypothesis_candidates:
+        print_hypothesis_candidates_report(report, verbose=parsed.verbose)
     else:
         print_report(report, verbose=parsed.verbose)
 

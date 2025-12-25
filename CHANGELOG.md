@@ -13,6 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2025-12-25
+
+### Added
+- CLDR stand-alone month tokens (L/LL/LLL/LLLL) to Babel pattern mapping in `dates.py`
+- CLDR stand-alone weekday tokens (c/cc/ccc/cccc) to Babel pattern mapping in `dates.py`
+- CLDR era tokens (G/GG/GGG/GGGG) to Babel pattern mapping in `dates.py`
+- `ResolutionContext.expression_guard` property returning `DepthGuard` for context manager use
+- `get_system_locale(raise_on_failure=True)` parameter for deterministic error handling
+
+### Changed
+- Serializer now uses `\u0009` for tab characters per Fluent 1.0 spec escape sequence rules
+- `ResolutionContext` refactored to use `DepthGuard` internally for expression depth tracking
+- `FluentBundle.for_system_locale()` now delegates to `get_system_locale()` from `locale_utils`
+- `IntrospectionVisitor` now uses `DepthGuard` for recursion protection
+- `validate_resource()` now includes semantic validation (Pass 5) via `SemanticValidator`
+- `format_number()` and `format_currency()` type hints now accept `Decimal` in addition to `int | float`
+
+### Fixed
+- Serializer escape sequences now strictly comply with Fluent 1.0 spec (only `\\`, `\"`, `\{`, `\uHHHH`, `\UHHHHHH` allowed)
+- `FluentLocalization.add_resource` docstring now documents `FluentSyntaxError` exception
+
 ## [0.31.0] - 2025-12-24
 
 ### Added
@@ -111,6 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.32.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.32.0
 [0.31.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.31.0
 [0.30.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.30.0
 [0.29.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.1

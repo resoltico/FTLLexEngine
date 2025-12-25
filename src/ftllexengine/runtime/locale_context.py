@@ -23,7 +23,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 from threading import RLock
 from typing import Literal
 
@@ -210,7 +210,7 @@ class LocaleContext:
 
     def format_number(
         self,
-        value: int | float,
+        value: int | float | Decimal,
         *,
         minimum_fraction_digits: int = 0,
         maximum_fraction_digits: int = 3,
@@ -222,7 +222,7 @@ class LocaleContext:
         Implements Fluent NUMBER function semantics using Babel.
 
         Args:
-            value: Number to format
+            value: Number to format (int, float, or Decimal)
             minimum_fraction_digits: Minimum decimal places (default: 0)
             maximum_fraction_digits: Maximum decimal places (default: 3)
             use_grouping: Use thousands separator (default: True)
@@ -399,7 +399,7 @@ class LocaleContext:
 
     def format_currency(
         self,
-        value: int | float,
+        value: int | float | Decimal,
         *,
         currency: str,
         currency_display: Literal["symbol", "code", "name"] = "symbol",
@@ -410,7 +410,7 @@ class LocaleContext:
         Implements Fluent CURRENCY function semantics using Babel.
 
         Args:
-            value: Monetary amount
+            value: Monetary amount (int, float, or Decimal)
             currency: ISO 4217 currency code (EUR, USD, JPY, BHD, etc.)
             currency_display: Display style for currency
                 - "symbol": Use currency symbol (default)

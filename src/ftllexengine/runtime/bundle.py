@@ -17,6 +17,7 @@ from ftllexengine.diagnostics import (
     ValidationResult,
 )
 from ftllexengine.introspection import extract_variables, introspect_message
+from ftllexengine.locale_utils import get_system_locale
 from ftllexengine.runtime.cache import FormatCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
@@ -250,8 +251,8 @@ class FluentBundle:
     ) -> "FluentBundle":
         """Factory method to create a FluentBundle using the system locale.
 
-        Detects and uses the current system locale (from LC_ALL, LC_MESSAGES,
-        LANG environment variables, or OS settings).
+        Detects and uses the current system locale (from locale.getlocale(),
+        LC_ALL, LC_MESSAGES, or LANG environment variables).
 
         Args:
             use_isolating: Wrap interpolated values in Unicode bidi isolation marks
@@ -270,30 +271,8 @@ class FluentBundle:
             >>> bundle.locale  # Returns detected system locale
             'en_US'
         """
-        import locale as locale_module  # noqa: PLC0415
-
-        # Get system locale
-        system_locale, _ = locale_module.getlocale()
-
-        if not system_locale:
-            # Try alternative detection methods via environment variables
-            import os  # noqa: PLC0415
-
-            system_locale = os.environ.get("LC_ALL") or os.environ.get(
-                "LC_MESSAGES"
-            ) or os.environ.get("LANG")
-
-        if not system_locale:
-            msg = (
-                "Could not determine system locale. "
-                "Set LC_ALL, LC_MESSAGES, or LANG environment variable."
-            )
-            raise RuntimeError(msg)
-
-        # Normalize locale code (convert POSIX format to Fluent-compatible)
-        # e.g., "en_US.UTF-8" -> "en_US"
-        if "." in system_locale:
-            system_locale = system_locale.split(".")[0]
+        # Delegate to unified locale detection (raises RuntimeError on failure)
+        system_locale = get_system_locale(raise_on_failure=True)
 
         return cls(
             system_locale,

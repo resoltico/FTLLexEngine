@@ -392,18 +392,34 @@ _BABEL_TOKEN_MAP: dict[str, str] = {
     "yyyy": "%Y",  # 4-digit year
     "yy": "%y",  # 2-digit year
     "y": "%Y",  # Year (default to 4-digit)
-    # Month
+    # Month (format context)
     "MMMM": "%B",  # Full month name
     "MMM": "%b",  # Short month name
     "MM": "%m",  # 2-digit month
     "M": "%m",  # Month
+    # Month (stand-alone context) - used in some locales for headers/labels
+    "LLLL": "%B",  # Full month name (stand-alone)
+    "LLL": "%b",  # Short month name (stand-alone)
+    "LL": "%m",  # 2-digit month (stand-alone)
+    "L": "%m",  # Month (stand-alone)
     # Day
     "dd": "%d",  # 2-digit day
     "d": "%d",  # Day
-    # Weekday
+    # Weekday (format context)
     "EEEE": "%A",  # Full weekday name
     "EEE": "%a",  # Short weekday name
     "E": "%a",  # Weekday
+    # Weekday (stand-alone context) - used in some locales for headers/labels
+    "cccc": "%A",  # Full weekday name (stand-alone)
+    "ccc": "%a",  # Short weekday name (stand-alone)
+    "cc": "%w",  # Numeric weekday (stand-alone)
+    "c": "%w",  # Numeric weekday (stand-alone)
+    # Era (AD/BC) - strptime doesn't support era, map to empty (pass-through)
+    # These appear in some locale patterns but Python datetime doesn't support era
+    "GGGG": "",  # Full era name (Anno Domini)
+    "GGG": "",  # Abbreviated era (AD)
+    "GG": "",  # Abbreviated era (AD)
+    "G": "",  # Era abbreviation (AD)
     # Hour
     "HH": "%H",  # 2-digit hour (0-23)
     "H": "%H",  # Hour (0-23)

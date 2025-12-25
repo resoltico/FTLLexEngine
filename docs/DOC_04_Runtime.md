@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.31.0
+project_version: 0.32.0
 context: RUNTIME
-last_updated: 2025-12-24T00:00:00Z
+last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
 ---
 
@@ -15,7 +15,7 @@ maintainer: claude-opus-4-5
 ### Signature
 ```python
 def number_format(
-    value: int | float,
+    value: int | float | Decimal,
     locale_code: str = "en-US",
     *,
     minimum_fraction_digits: int = 0,
@@ -28,7 +28,7 @@ def number_format(
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float` | Y | Number to format. |
+| `value` | `int \| float \| Decimal` | Y | Number to format. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `minimum_fraction_digits` | `int` | N | Minimum decimal places. |
 | `maximum_fraction_digits` | `int` | N | Maximum decimal places. |
@@ -79,7 +79,7 @@ def datetime_format(
 ### Signature
 ```python
 def currency_format(
-    value: int | float,
+    value: int | float | Decimal,
     locale_code: str = "en-US",
     *,
     currency: str,
@@ -91,7 +91,7 @@ def currency_format(
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float` | Y | Monetary amount. |
+| `value` | `int \| float \| Decimal` | Y | Monetary amount. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `currency` | `str` | Y | ISO 4217 currency code. |
 | `currency_display` | `Literal[...]` | N | Display style. |
@@ -474,11 +474,13 @@ def validate_resource(
 | `parser` | `FluentParserV1 \| None` | N | Parser instance (creates default if not provided). |
 
 ### Constraints
-- Return: ValidationResult with errors and warnings.
+- Return: ValidationResult with errors, warnings, and semantic annotations.
+- Validation Passes: (1) Syntax errors, (2) Structural issues, (3) Undefined refs, (4) Cycles, (5) Semantic (Fluent spec E0001-E0013).
 - Raises: Never. Critical parse errors returned as ValidationError.
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
 - Import: `from ftllexengine.validation import validate_resource`
+- Version: Pass 5 semantic validation added in v0.32.0.
 
 ---
 
@@ -491,14 +493,17 @@ class ResolutionContext:
     stack: list[str] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
     max_depth: int = MAX_RESOLUTION_DEPTH
-    expression_depth: int = field(default=0)
-    max_expression_depth: int = MAX_RESOLUTION_DEPTH
+    max_expression_depth: int = MAX_EXPRESSION_DEPTH
+    _expression_guard: DepthGuard = field(init=False)
 
+    def __post_init__(self) -> None: ...
     def push(self, key: str) -> None: ...
     def pop(self) -> str: ...
     def contains(self, key: str) -> bool: ...
-    def enter_expression(self) -> None: ...
-    def exit_expression(self) -> None: ...
+    @property
+    def expression_guard(self) -> DepthGuard: ...
+    @property
+    def expression_depth(self) -> int: ...
     @property
     def depth(self) -> int: ...
     def is_depth_exceeded(self) -> bool: ...
@@ -511,15 +516,15 @@ class ResolutionContext:
 | `stack` | `list[str]` | Resolution stack for cycle path. |
 | `_seen` | `set[str]` | O(1) membership check set. |
 | `max_depth` | `int` | Maximum resolution depth (default: 100). |
-| `expression_depth` | `int` | Current placeable nesting depth. |
 | `max_expression_depth` | `int` | Maximum expression depth (default: 100). |
+| `_expression_guard` | `DepthGuard` | Internal depth guard (init=False). |
 
 ### Constraints
 - Thread: Safe (explicit parameter passing, no global state).
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
 - Complexity: contains() is O(1) via _seen set.
 - Import: `from ftllexengine.runtime import ResolutionContext`
-- Version: O(1) contains() added in v0.31.0.
+- Version: O(1) contains() added in v0.31.0. DepthGuard refactor in v0.32.0.
 
 ---
 
@@ -578,40 +583,35 @@ def contains(self, key: str) -> bool:
 
 ---
 
-## `ResolutionContext.enter_expression`
+## `ResolutionContext.expression_guard`
 
 ### Signature
 ```python
-def enter_expression(self) -> None:
+@property
+def expression_guard(self) -> DepthGuard:
 ```
 
-### Contract
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
 ### Constraints
-- Return: None.
-- Raises: DepthLimitExceededError if max_expression_depth exceeded.
-- State: Increments expression_depth.
-- Version: Added in v0.31.0.
+- Return: DepthGuard for expression depth tracking.
+- Usage: Use as context manager (`with context.expression_guard:`).
+- Raises: DepthLimitExceededError when depth limit exceeded.
+- State: Read-only property returning internal DepthGuard.
+- Version: Added in v0.32.0. Replaces enter_expression/exit_expression.
 
 ---
 
-## `ResolutionContext.exit_expression`
+## `ResolutionContext.expression_depth`
 
 ### Signature
 ```python
-def exit_expression(self) -> None:
+@property
+def expression_depth(self) -> int:
 ```
 
-### Contract
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
 ### Constraints
-- Return: None.
-- State: Decrements expression_depth (min 0).
-- Version: Added in v0.31.0.
+- Return: Current expression nesting depth.
+- State: Read-only property (delegates to expression_guard.current_depth).
+- Version: Changed to read-only property in v0.32.0.
 
 ---
 

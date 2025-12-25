@@ -82,26 +82,52 @@ def get_babel_locale(locale_code: str) -> Locale:
     return Locale.parse(normalized)
 
 
-def get_system_locale() -> str:
-    """Detect system locale from environment variables.
+def get_system_locale(*, raise_on_failure: bool = False) -> str:
+    """Detect system locale from OS and environment variables.
 
-    Checks standard POSIX environment variables in order of precedence:
-    1. LC_ALL (overrides all)
-    2. LC_MESSAGES (for message catalogs)
-    3. LANG (default locale)
+    Detection order:
+    1. Python locale.getlocale() (OS-level locale)
+    2. LC_ALL environment variable (overrides all)
+    3. LC_MESSAGES environment variable (for message catalogs)
+    4. LANG environment variable (default locale)
 
     Normalizes the result to POSIX format for Babel compatibility.
+    Filters out "C" and "POSIX" pseudo-locales.
+
+    Args:
+        raise_on_failure: If True, raise RuntimeError when locale cannot be
+            determined. If False (default), return "en_US" as fallback.
 
     Returns:
-        Detected locale code in POSIX format, or "en_US" if not determinable
+        Detected locale code in POSIX format.
+        Returns "en_US" if not determinable and raise_on_failure is False.
+
+    Raises:
+        RuntimeError: If raise_on_failure is True and locale cannot be determined.
 
     Example:
         >>> import os
         >>> os.environ['LANG'] = 'de_DE.UTF-8'
         >>> get_system_locale()
         'de_DE'
+
+        >>> get_system_locale(raise_on_failure=True)  # May raise if no locale set
+        'de_DE'
     """
-    # Check environment variables in order of precedence
+    import locale as locale_module  # noqa: PLC0415
+
+    # Try OS-level locale detection first
+    try:
+        system_locale, _ = locale_module.getlocale()
+        if system_locale and system_locale not in ("C", "POSIX"):
+            # Strip encoding suffix if present
+            if "." in system_locale:
+                system_locale = system_locale.split(".")[0]
+            return normalize_locale(system_locale)
+    except (ValueError, AttributeError):
+        pass
+
+    # Fall back to environment variables in order of precedence
     for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         value = os.environ.get(var)
         if value and value not in ("C", "POSIX", ""):
@@ -109,6 +135,14 @@ def get_system_locale() -> str:
             locale_code = value.split(".")[0]
             # Normalize to ensure consistent format
             return normalize_locale(locale_code)
+
+    # No locale detected
+    if raise_on_failure:
+        msg = (
+            "Could not determine system locale. "
+            "Set LC_ALL, LC_MESSAGES, or LANG environment variable."
+        )
+        raise RuntimeError(msg)
 
     # Default fallback
     return "en_US"

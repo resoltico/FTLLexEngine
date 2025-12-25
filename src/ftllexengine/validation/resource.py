@@ -10,6 +10,7 @@ Architecture:
     - _collect_entries(): Pass 2 - Collect messages/terms, check duplicates
     - _check_undefined_references(): Pass 3 - Validate message/term references
     - _detect_circular_references(): Pass 4 - Check for reference cycles
+    - SemanticValidator: Pass 5 - Fluent spec compliance (E0001-E0013)
 
 Python 3.13+.
 """
@@ -27,6 +28,7 @@ from ftllexengine.introspection import extract_references
 from ftllexengine.syntax import Junk, Message, Resource, Term
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.parser import FluentParserV1
+from ftllexengine.syntax.validator import SemanticValidator
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +375,7 @@ def validate_resource(
     2. Structural: Duplicate IDs, messages without values
     3. References: Undefined message/term references
     4. Cycles: Circular dependency detection
+    5. Semantic: Fluent spec compliance (E0001-E0013)
 
     Args:
         source: FTL file content
@@ -411,19 +414,25 @@ def validate_resource(
         # Pass 4: Detect circular dependencies
         cycle_warnings = _detect_circular_references(messages_dict, terms_dict)
 
+        # Pass 5: Fluent spec compliance (E0001-E0013)
+        semantic_validator = SemanticValidator()
+        semantic_result = semantic_validator.validate(resource)
+        semantic_annotations = semantic_result.annotations
+
         # Combine all warnings
         all_warnings = structure_warnings + ref_warnings + cycle_warnings
 
         logger.debug(
-            "Validated resource: %d errors, %d warnings",
+            "Validated resource: %d errors, %d warnings, %d annotations",
             len(errors),
             len(all_warnings),
+            len(semantic_annotations),
         )
 
         return ValidationResult(
             errors=tuple(errors),
             warnings=tuple(all_warnings),
-            annotations=(),
+            annotations=semantic_annotations,
         )
 
     except FluentSyntaxError as e:

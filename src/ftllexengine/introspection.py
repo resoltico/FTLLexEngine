@@ -9,6 +9,7 @@ Key features:
 - Memory-efficient frozen dataclasses with slots for reduced overhead
 - Pattern matching for elegant AST traversal
 - Comprehensive variable, function, and reference extraction
+- Depth limiting to prevent stack overflow on adversarial ASTs
 
 Python 3.13+.
 """
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .enums import ReferenceKind, VariableContext
+from .runtime.depth_guard import MAX_EXPRESSION_DEPTH, DepthGuard
 from .syntax.ast import (
     FunctionReference,
     Message,
@@ -155,21 +157,39 @@ class IntrospectionVisitor(ASTVisitor):
         of each element type. Calling super() would invoke generic_visit() which
         is a no-op for this visitor pattern.
 
+    Depth Limiting (v0.32.0):
+        Includes DepthGuard to prevent stack overflow on adversarial or
+        programmatically constructed deeply nested ASTs. While parser-produced
+        ASTs have implicit limits, programmatic construction bypasses the parser.
+
     Memory Optimization:
         Uses __slots__ to restrict attribute creation and reduce memory overhead
         when introspecting large ASTs with many visitor instances.
     """
 
-    __slots__ = ("_context", "functions", "has_selectors", "references", "variables")
+    __slots__ = (
+        "_context",
+        "_depth_guard",
+        "functions",
+        "has_selectors",
+        "references",
+        "variables",
+    )
 
-    def __init__(self) -> None:
-        """Initialize visitor with empty result sets."""
+    def __init__(self, *, max_depth: int = MAX_EXPRESSION_DEPTH) -> None:
+        """Initialize visitor with empty result sets.
+
+        Args:
+            max_depth: Maximum expression nesting depth (default: MAX_EXPRESSION_DEPTH).
+                       Prevents stack overflow on adversarial ASTs.
+        """
         super().__init__()
         self.variables: set[VariableInfo] = set()
         self.functions: set[FunctionCallInfo] = set()
         self.references: set[ReferenceInfo] = set()
         self.has_selectors: bool = False
         self._context: VariableContext = VariableContext.PATTERN
+        self._depth_guard: DepthGuard = DepthGuard(max_depth=max_depth)
 
     def visit_Pattern(self, node: Pattern) -> None:
         """Visit pattern and extract variables from all elements.
@@ -187,7 +207,9 @@ class IntrospectionVisitor(ASTVisitor):
             case TextElement():
                 pass  # No variables in text
             case Placeable(expression=expr):
-                self._visit_expression(expr)
+                # Track depth to prevent stack overflow on deep nesting
+                with self._depth_guard:
+                    self._visit_expression(expr)
 
     def _visit_expression(self, expr: "Expression | InlineExpression") -> None:
         """Visit an expression and extract metadata using pattern matching."""
@@ -212,10 +234,11 @@ class IntrospectionVisitor(ASTVisitor):
 
         elif SelectExpression.guard(expr):
             self.has_selectors = True
-            # Visit selector
+            # Visit selector with depth tracking
             old_context = self._context
             self._context = VariableContext.SELECTOR
-            self._visit_expression(expr.selector)
+            with self._depth_guard:
+                self._visit_expression(expr.selector)
             self._context = old_context
 
             # Visit variants
@@ -242,7 +265,8 @@ class IntrospectionVisitor(ASTVisitor):
                 # nested FunctionReference, SelectExpression, etc.
                 old_context = self._context
                 self._context = VariableContext.FUNCTION_ARG
-                self._visit_expression(pos_arg)
+                with self._depth_guard:
+                    self._visit_expression(pos_arg)
                 self._context = old_context
 
             # Extract named argument keys and recursively visit values
@@ -251,7 +275,8 @@ class IntrospectionVisitor(ASTVisitor):
                 # Recursively visit value expression for all nested dependencies
                 old_context = self._context
                 self._context = VariableContext.FUNCTION_ARG
-                self._visit_expression(named_arg.value)
+                with self._depth_guard:
+                    self._visit_expression(named_arg.value)
                 self._context = old_context
 
         func_info = FunctionCallInfo(
