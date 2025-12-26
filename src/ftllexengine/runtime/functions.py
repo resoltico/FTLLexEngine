@@ -315,17 +315,21 @@ _SHARED_REGISTRY: FunctionRegistry | None = None
 
 
 def get_shared_registry() -> FunctionRegistry:
-    """Get a shared, read-only FunctionRegistry with built-in functions.
+    """Get a shared, frozen FunctionRegistry with built-in functions.
 
     Returns a module-level cached registry instance that can be shared across
     multiple FluentBundle instances. This avoids the overhead of creating and
     registering functions for each bundle.
 
+    Immutability:
+        The returned registry is FROZEN. Calling register() on it will raise
+        TypeError. This prevents accidental pollution of the shared singleton.
+        To add custom functions, use copy() or create_default_registry().
+
     Thread Safety:
-        The returned registry should be treated as read-only. While reading is
-        thread-safe, modifying the shared registry from multiple threads is not.
-        If you need to add custom functions, use create_default_registry() instead
-        to get a fresh, isolated copy.
+        Reading is thread-safe. The registry is frozen, so writes are not
+        possible. For custom functions, use create_default_registry() to get
+        a fresh, isolated copy.
 
     Performance:
         Using the shared registry avoids:
@@ -337,7 +341,10 @@ def get_shared_registry() -> FunctionRegistry:
         significant memory and initialization savings.
 
     Returns:
-        Shared FunctionRegistry with NUMBER, DATETIME, and CURRENCY registered.
+        Frozen shared FunctionRegistry with NUMBER, DATETIME, and CURRENCY.
+
+    Raises:
+        TypeError: If you attempt to call register() on the returned registry.
 
     Example:
         >>> # Efficient: Share registry across multiple bundles
@@ -346,20 +353,15 @@ def get_shared_registry() -> FunctionRegistry:
         >>> bundle_de = FluentBundle("de", functions=shared)
         >>> bundle_fr = FluentBundle("fr", functions=shared)
         >>>
-        >>> # All bundles share the same registry instance
-        >>> bundle_en._function_registry is bundle_de._function_registry
-        False  # Bundle copies for isolation, but source is shared
-
-    Warning:
-        Do NOT modify the returned registry. If custom functions are needed,
-        use create_default_registry() to get a fresh copy:
-
-        >>> registry = create_default_registry()  # Fresh copy
-        >>> registry.register(my_custom_func, ftl_name="CUSTOM")
-        >>> bundle = FluentBundle("en", functions=registry)
+        >>> # Registry is frozen - attempting to modify raises TypeError
+        >>> shared.register(my_func)  # Raises TypeError!
+        >>>
+        >>> # To add custom functions, use copy() to get unfrozen copy:
+        >>> my_registry = shared.copy()
+        >>> my_registry.register(my_custom_func, ftl_name="CUSTOM")
 
     See Also:
-        create_default_registry: Creates a new isolated registry for customization.
+        create_default_registry: Creates a new unfrozen registry for customization.
     """
     # pylint: disable=global-statement
     # Lazy initialization of module-level singleton.
@@ -367,4 +369,5 @@ def get_shared_registry() -> FunctionRegistry:
     global _SHARED_REGISTRY  # noqa: PLW0603
     if _SHARED_REGISTRY is None:
         _SHARED_REGISTRY = create_default_registry()
+        _SHARED_REGISTRY.freeze()  # Protect from accidental modification
     return _SHARED_REGISTRY

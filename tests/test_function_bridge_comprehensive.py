@@ -33,7 +33,7 @@ class TestFunctionSignatureDataclass:
         sig = FunctionSignature(
             python_name="sample_func",
             ftl_name="SAMPLE",
-            param_mapping={"value": "value"},
+            param_mapping=(("value", "value"),),
             callable=sample_func,
         )
 
@@ -52,13 +52,13 @@ class TestFunctionSignatureDataclass:
         sig = FunctionSignature(
             python_name=python_name,
             ftl_name=ftl_name,
-            param_mapping={},
+            param_mapping=(),
             callable=dummy_func,
         )
 
         assert sig.python_name == python_name
         assert sig.ftl_name == ftl_name
-        assert sig.param_mapping == {}
+        assert sig.param_mapping == ()
         assert sig.callable is dummy_func
 
 
@@ -386,8 +386,10 @@ class TestFunctionRegistryDictInterface:
         assert info is not None
         assert info.python_name == "my_function"
         assert info.ftl_name == "CUSTOM"
-        assert "myParam" in info.param_mapping
-        assert info.param_mapping["myParam"] == "_my_param"
+        # Convert immutable tuple to dict for lookup
+        param_dict = dict(info.param_mapping)
+        assert "myParam" in param_dict
+        assert param_dict["myParam"] == "_my_param"
 
     def test_get_function_info_not_found(self) -> None:
         """Verify get_function_info returns None for unregistered function."""

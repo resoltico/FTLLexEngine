@@ -243,6 +243,19 @@ run_check() {
     TESTS_FAILED=${TESTS_FAILED:-0}
     HYPOTHESIS_FAILURES=${HYPOTHESIS_FAILURES:-0}
 
+    # Extract first failure details for JSON output
+    FIRST_FAILURE_TEST=""
+    FIRST_FAILURE_INPUT=""
+    FIRST_FAILURE_ERROR=""
+    if [[ $TESTS_FAILED -gt 0 ]] || [[ $HYPOTHESIS_FAILURES -gt 0 ]]; then
+        # Extract failing test name (e.g., "test_parser_handles_input")
+        FIRST_FAILURE_TEST=$(echo "$OUTPUT" | grep -oE 'FAILED [^:]+::[^[ ]+' | head -1 | sed 's/FAILED //' || echo "")
+        # Extract falsifying example input (line after "Falsifying example:")
+        FIRST_FAILURE_INPUT=$(echo "$OUTPUT" | grep -A1 "Falsifying example:" | tail -1 | sed 's/^[[:space:]]*//' | head -c 200 || echo "")
+        # Extract error type (e.g., "AssertionError", "ValueError")
+        FIRST_FAILURE_ERROR=$(echo "$OUTPUT" | grep -oE '(AssertionError|ValueError|TypeError|RecursionError|Exception)[^:]*' | head -1 || echo "")
+    fi
+
     # Determine status
     if [[ $EXIT_CODE -eq 0 ]]; then
         STATUS="pass"
@@ -254,7 +267,15 @@ run_check() {
 
     # Output
     if [[ "$JSON_OUTPUT" == "true" ]]; then
-        echo '{"mode":"check","status":"'"$STATUS"'","tests_passed":"'"$TESTS_PASSED"'","tests_failed":"'"$TESTS_FAILED"'","hypothesis_failures":"'"$HYPOTHESIS_FAILURES"'"}'
+        # Escape special characters for JSON
+        FIRST_FAILURE_INPUT_ESCAPED=$(echo "$FIRST_FAILURE_INPUT" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr -d '\n')
+        FIRST_FAILURE_ERROR_ESCAPED=$(echo "$FIRST_FAILURE_ERROR" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
+
+        if [[ -n "$FIRST_FAILURE_TEST" ]]; then
+            echo '{"mode":"check","status":"'"$STATUS"'","tests_passed":"'"$TESTS_PASSED"'","tests_failed":"'"$TESTS_FAILED"'","hypothesis_failures":"'"$HYPOTHESIS_FAILURES"'","first_failure":{"test":"'"$FIRST_FAILURE_TEST"'","input":"'"$FIRST_FAILURE_INPUT_ESCAPED"'","error":"'"$FIRST_FAILURE_ERROR_ESCAPED"'"}}'
+        else
+            echo '{"mode":"check","status":"'"$STATUS"'","tests_passed":"'"$TESTS_PASSED"'","tests_failed":"'"$TESTS_FAILED"'","hypothesis_failures":"'"$HYPOTHESIS_FAILURES"'"}'
+        fi
     else
         echo ""
         echo -e "${BOLD}============================================================${NC}"

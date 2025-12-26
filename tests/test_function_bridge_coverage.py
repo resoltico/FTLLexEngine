@@ -29,8 +29,9 @@ class TestParameterSkipLogic:
 
         # Verify 'self' was skipped in parameter mapping
         sig = registry._functions["FORMAT"]
-        assert "self" not in sig.param_mapping.values()
-        assert "value" in sig.param_mapping.values()
+        param_values = [v for _, v in sig.param_mapping]
+        assert "self" not in param_values
+        assert "value" in param_values
 
     def test_register_function_with_star_separator(self):
         """Test registering function with keyword-only separator '*'."""
@@ -90,7 +91,7 @@ class TestParameterSkipLogic:
 
         # Only 'keyword_arg' should be in the mapping, not self, /, or *
         sig = registry._functions["COMPLEX"]
-        param_names = set(sig.param_mapping.values())
+        param_names = {v for _, v in sig.param_mapping}
 
         # Should include keyword_arg but NOT self, /, or *
         assert "keyword_arg" in param_names

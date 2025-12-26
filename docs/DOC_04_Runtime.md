@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.33.0
+project_version: 0.34.0
 context: RUNTIME
 last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
@@ -105,12 +105,39 @@ def currency_format(
 
 ---
 
+## `FunctionSignature`
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FunctionSignature:
+    python_name: str
+    ftl_name: str
+    param_mapping: tuple[tuple[str, str], ...]
+    callable: Callable[..., FluentValue]
+```
+
+### Contract
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `python_name` | `str` | Python function name (snake_case). |
+| `ftl_name` | `str` | FTL function name (UPPERCASE). |
+| `param_mapping` | `tuple[tuple[str, str], ...]` | Immutable mapping of FTL camelCase to Python snake_case params. |
+| `callable` | `Callable[..., FluentValue]` | The registered Python function. |
+
+### Constraints
+- Return: Frozen dataclass instance.
+- State: Fully immutable. param_mapping uses tuple for safe sharing across registries.
+- Thread: Safe for reads.
+
+---
+
 ## `FunctionRegistry`
 
 ### Signature
 ```python
 class FunctionRegistry:
-    __slots__ = ("_functions",)
+    __slots__ = ("_frozen", "_functions")
 
     def __init__(self) -> None: ...
     def register(
@@ -126,6 +153,9 @@ class FunctionRegistry:
         named: Mapping[str, FluentValue],
     ) -> FluentValue: ...
     def has_function(self, ftl_name: str) -> bool: ...
+    def freeze(self) -> None: ...
+    @property
+    def frozen(self) -> bool: ...
     def get_callable(self, ftl_name: str) -> Callable[..., FluentValue] | None: ...
     def get_function_info(self, ftl_name: str) -> FunctionSignature | None: ...
     def get_python_name(self, ftl_name: str) -> str | None: ...
@@ -142,9 +172,10 @@ class FunctionRegistry:
 
 ### Constraints
 - Return: Registry instance.
-- State: Mutable registry dict.
-- Thread: Unsafe for concurrent register().
+- State: Mutable until frozen. Shared registry is frozen after creation.
+- Thread: Unsafe for concurrent register(). Safe for reads after freeze().
 - Memory: Uses __slots__ for reduced memory footprint.
+- Freeze: Once frozen, register() raises TypeError. Use copy() for mutable clone.
 
 ---
 
@@ -217,10 +248,11 @@ def register(
 
 ### Constraints
 - Return: None.
-- Raises: ValueError if parameter names collide after underscore stripping (e.g., `_value` and `value`).
+- Raises: `TypeError` if registry is frozen (via `freeze()` method).
+- Raises: `ValueError` if parameter names collide after underscore stripping (e.g., `_value` and `value`).
 - State: Mutates registry.
 - Thread: Unsafe.
-- Version: Collision detection added in v0.33.0.
+- Version: Collision detection added in v0.33.0. TypeError for frozen added in v0.34.0.
 
 ---
 
@@ -256,13 +288,13 @@ def get_shared_registry() -> FunctionRegistry:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Module-level cached FunctionRegistry with NUMBER, DATETIME, CURRENCY.
+- Return: Frozen FunctionRegistry singleton with NUMBER, DATETIME, CURRENCY.
 - Raises: Never.
-- State: Returns shared singleton (lazy initialized).
-- Thread: Safe for reads. Do not modify returned registry.
+- State: Returns shared frozen singleton (lazy initialized). Calling `register()` raises `TypeError`.
+- Thread: Safe for reads. Use `copy()` to get mutable registry for customization.
 - Performance: Avoids repeated registry creation for multi-bundle applications.
 - Import: `from ftllexengine.runtime.functions import get_shared_registry`
-- Version: Added in v0.31.0.
+- Version: Added in v0.31.0. Returns frozen registry since v0.34.0.
 
 ---
 

@@ -64,15 +64,17 @@ class TestBuiltInFunctionsIntrospection:
         assert info.ftl_name == "NUMBER"
         assert info.python_name == "number_format"
         assert callable(info.callable)
-        assert isinstance(info.param_mapping, dict)
+        # param_mapping is now immutable tuple[tuple[str, str], ...]
+        assert isinstance(info.param_mapping, tuple)
 
-        # Check parameter mappings
-        assert "minimumFractionDigits" in info.param_mapping
-        assert info.param_mapping["minimumFractionDigits"] == "minimum_fraction_digits"
-        assert "maximumFractionDigits" in info.param_mapping
-        assert info.param_mapping["maximumFractionDigits"] == "maximum_fraction_digits"
-        assert "useGrouping" in info.param_mapping
-        assert info.param_mapping["useGrouping"] == "use_grouping"
+        # Check parameter mappings (convert to dict for lookup)
+        param_dict = dict(info.param_mapping)
+        assert "minimumFractionDigits" in param_dict
+        assert param_dict["minimumFractionDigits"] == "minimum_fraction_digits"
+        assert "maximumFractionDigits" in param_dict
+        assert param_dict["maximumFractionDigits"] == "maximum_fraction_digits"
+        assert "useGrouping" in param_dict
+        assert param_dict["useGrouping"] == "use_grouping"
 
     def test_get_datetime_function_info(self, registry: FunctionRegistry) -> None:
         """get_function_info returns metadata for DATETIME function."""
@@ -82,13 +84,15 @@ class TestBuiltInFunctionsIntrospection:
         assert info.ftl_name == "DATETIME"
         assert info.python_name == "datetime_format"
         assert callable(info.callable)
-        assert isinstance(info.param_mapping, dict)
+        # param_mapping is now immutable tuple[tuple[str, str], ...]
+        assert isinstance(info.param_mapping, tuple)
 
-        # Check parameter mappings
-        assert "dateStyle" in info.param_mapping
-        assert info.param_mapping["dateStyle"] == "date_style"
-        assert "timeStyle" in info.param_mapping
-        assert info.param_mapping["timeStyle"] == "time_style"
+        # Check parameter mappings (convert to dict for lookup)
+        param_dict = dict(info.param_mapping)
+        assert "dateStyle" in param_dict
+        assert param_dict["dateStyle"] == "date_style"
+        assert "timeStyle" in param_dict
+        assert param_dict["timeStyle"] == "time_style"
 
     def test_get_currency_function_info(self, registry: FunctionRegistry) -> None:
         """get_function_info returns metadata for CURRENCY function."""
@@ -98,13 +102,15 @@ class TestBuiltInFunctionsIntrospection:
         assert info.ftl_name == "CURRENCY"
         assert info.python_name == "currency_format"
         assert callable(info.callable)
-        assert isinstance(info.param_mapping, dict)
+        # param_mapping is now immutable tuple[tuple[str, str], ...]
+        assert isinstance(info.param_mapping, tuple)
 
-        # Check parameter mappings
-        assert "currency" in info.param_mapping
-        assert info.param_mapping["currency"] == "currency"
-        assert "currencyDisplay" in info.param_mapping
-        assert info.param_mapping["currencyDisplay"] == "currency_display"
+        # Check parameter mappings (convert to dict for lookup)
+        param_dict = dict(info.param_mapping)
+        assert "currency" in param_dict
+        assert param_dict["currency"] == "currency"
+        assert "currencyDisplay" in param_dict
+        assert param_dict["currencyDisplay"] == "currency_display"
 
 
 # ============================================================================
@@ -181,8 +187,8 @@ class TestFunctionDiscoveryWorkflow:
 
         assert info is not None
 
-        # Inspect parameter mappings
-        params = info.param_mapping
+        # Inspect parameter mappings (convert tuple to dict)
+        param_dict = dict(info.param_mapping)
 
         # Should have all NUMBER parameters
         expected_params = {
@@ -192,7 +198,7 @@ class TestFunctionDiscoveryWorkflow:
             "value",
             "localeCode",
         }
-        assert expected_params.issubset(set(params.keys()))
+        assert expected_params.issubset(set(param_dict.keys()))
 
     def test_verify_function_exists_before_use(self) -> None:
         """Verify built-in NUMBER function exists and is usable."""
@@ -216,9 +222,11 @@ class TestFunctionDiscoveryWorkflow:
             info = bundle._function_registry.get_function_info(name)  # pylint: disable=protected-access
             # All registered functions must have metadata for documentation
             assert info is not None, f"Function {name} has no metadata"
+            # Convert immutable tuple to list of keys for documentation
+            param_keys = [k for k, _ in info.param_mapping]
             functions[name] = {
                 "python_name": info.python_name,
-                "parameters": list(info.param_mapping.keys()),
+                "parameters": param_keys,
             }
 
         # Should have documentation for all built-in functions
@@ -269,8 +277,9 @@ class TestFinancialUseCases:
         info = bundle._function_registry.get_function_info("NUMBER")  # pylint: disable=protected-access
         assert info is not None
 
-        # Verify has minimum_fraction_digits for financial precision
-        assert "minimumFractionDigits" in info.param_mapping
+        # Verify has minimum_fraction_digits for financial precision (convert tuple to dict)
+        param_dict = dict(info.param_mapping)
+        assert "minimumFractionDigits" in param_dict
 
         # Use in VAT calculation
         bundle.add_resource("vat = VAT: { NUMBER($amount, minimumFractionDigits: 2) }")
@@ -322,7 +331,8 @@ class TestFinancialUseCases:
             assert info is not None
             assert info.ftl_name == func_name
             assert callable(info.callable)
-            assert isinstance(info.param_mapping, dict)
+            # param_mapping is now immutable tuple[tuple[str, str], ...]
+            assert isinstance(info.param_mapping, tuple)
 
 
 # ============================================================================

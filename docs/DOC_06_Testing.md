@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.33.0
+project_version: 0.34.0
 context: TESTING
 last_updated: 2025-12-25
 maintainer: claude-opus-4-5
@@ -295,6 +295,14 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 | `target` | `fuzz/stability.py` | Fuzz target file |
 | `-max_total_time=N` | Endless | Stop after N seconds |
 
+### Available Targets
+
+| Target | Strategy | Use Case |
+|:-------|:---------|:---------|
+| `fuzz/stability.py` | Byte-level chaos | Crash detection, edge cases |
+| `fuzz/structured.py` | Grammar-aware generation | Deep logic bugs, better coverage |
+| `fuzz/perf.py` | Performance monitoring | Algorithmic complexity bugs |
+
 ### Environment
 
 | Variable | Default | Description |
@@ -479,7 +487,7 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 | `test_*_coverage.py` | Unit | N/A | Coverage gap tests |
 | `test_*_comprehensive.py` | Unit | N/A | Thorough edge cases |
 | `test_grammar_based_fuzzing.py` | Fuzzing | `fuzz` | Excluded from normal runs |
-| `test_differential_fuzzing.py` | Fuzzing | Optional | Metamorphic testing |
+| `test_metamorphic_properties.py` | Property | N/A | Metamorphic self-consistency tests |
 
 ---
 

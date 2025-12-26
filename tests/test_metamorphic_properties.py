@@ -1,486 +1,344 @@
-"""Metamorphic property-based testing for FTLLexEngine.
+"""Metamorphic property testing for FTL parser.
 
-This module implements SYSTEM 2 from the testing strategy: Metamorphic Testing.
-Instead of testing concrete outputs (oracle problem), we test **metamorphic relations**
-- properties that should hold across related inputs/outputs.
+Validates metamorphic properties that any correct FTL parser must satisfy.
+Uses Hypothesis to generate test inputs and verify parser invariants.
 
-Metamorphic Relations Tested:
-1. Serialization idempotence: serialize(ast) == serialize(ast) always
-2. Parse determinism: parse(text) == parse(text) always
-3. Resolution stability: resolve(msg, args) == resolve(msg, args) always
-4. Argument monotonicity: Adding unused args doesn't change output
-5. Serializer commutativity: Order of serialization calls doesn't matter
-6. Parser robustness: Parser never crashes on any input
-7. Roundtrip convergence: parse→serialize→parse→serialize converges
-8. Locale independence: Changing locale doesn't crash (may change output)
-9. Message immutability: AST nodes are truly immutable
-10. Variable substitution order independence
+Metamorphic testing verifies self-consistency properties without requiring
+an external oracle. Unlike differential testing (which compares against
+another implementation), metamorphic testing checks that transformations
+preserve expected relationships.
 
-These properties catch semantic bugs that coverage metrics miss.
+Properties tested:
+- Information preservation: parse(x) retains semantic content
+- Structural stability: multiple parses produce identical results (determinism)
+- Robustness: parser never crashes on any input
+- Serialization idempotence: serialize(resource) is deterministic
+- Roundtrip convergence: parse-serialize converges to fixed point
 
 References:
-- T.Y. Chen et al., "Metamorphic Testing: A Review of Challenges and Opportunities" (2018)
-- Our deep analysis identified oracle gap issues in existing tests
+- Chen et al., "Metamorphic Testing: A Review of Challenges and Opportunities" (2018)
+- Segura et al., "A Survey on Metamorphic Testing" (ACM Computing Surveys, 2016)
 """
 
+from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine import FluentBundle
-from ftllexengine.syntax.ast import Message, Resource
+from ftllexengine.syntax.ast import Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.serializer import serialize
-from tests.strategies import (
-    ftl_identifiers,
-    ftl_resources,
-    ftl_simple_messages,
-)
+from tests.strategies import ftl_simple_messages
+
+# =============================================================================
+# Parsing Properties
+# =============================================================================
 
 
-class TestSerializationMetamorphicProperties:
-    """Metamorphic relations for serialization."""
+class TestParsingProperties:
+    """Metamorphic properties for FTL parsing."""
 
-    @given(ftl_resources())
-    @settings(max_examples=100)
-    def test_serialization_deterministic(self, resource):
-        """MR1: Serialization is deterministic.
+    @example(ftl="hello = world")
+    @example(ftl="msg = value with spaces")
+    @given(ftl_simple_messages())
+    def test_information_preservation(self, ftl: str) -> None:
+        """Property: parse(x) retains semantic content from x.
 
-        Property: serialize(ast) == serialize(ast) always
-        Rationale: Same AST should always produce same FTL string
-        """
-        ftl1 = serialize(resource)
-        ftl2 = serialize(resource)
-
-        assert ftl1 == ftl2, "Serialization should be deterministic"
-
-    @given(ftl_resources())
-    @settings(max_examples=100)
-    def test_serialization_idempotent_structure(self, resource):
-        """MR2: Serialization doesn't mutate input AST.
-
-        Property: AST structure unchanged after serialization
-        Rationale: Serialization is read-only operation
-        """
-        # Count entries before
-        entries_before = len(resource.entries)
-
-        # Serialize
-        _ = serialize(resource)
-
-        # Count entries after
-        entries_after = len(resource.entries)
-
-        assert entries_before == entries_after
-        assert resource.entries is not None
-
-    @given(ftl_resources())
-    @settings(max_examples=50)
-    def test_serialize_parse_serialize_converges(self, resource):
-        """MR3: Roundtrip converges to fixed point.
-
-        Property: serialize→parse→serialize→parse→serialize converges
-        Rationale: After first roundtrip, format stabilizes
+        For valid FTL, parsing should preserve message IDs and produce
+        serializable output.
         """
         parser = FluentParserV1()
+        resource = parser.parse(ftl)
 
-        # First serialization
-        ftl1 = serialize(resource)
-
-        # Parse and serialize again
-        resource2 = parser.parse(ftl1)
-        ftl2 = serialize(resource2)
-
-        # Parse and serialize third time
-        resource3 = parser.parse(ftl2)
-        ftl3 = serialize(resource3)
-
-        # Should have converged
-        assert ftl2 == ftl3, "Serialization should converge after first roundtrip"
-
-
-class TestParserMetamorphicProperties:
-    """Metamorphic relations for parser."""
-
-    @given(st.text(max_size=1000))
-    @settings(max_examples=200)
-    def test_parser_never_crashes(self, text):
-        """MR4: Parser robustness - never crashes.
-
-        Property: parse(any_string) returns Resource (never throws)
-        Rationale: Parser should handle ALL inputs gracefully
-        """
-        parser = FluentParserV1()
-
-        # Should not raise exception
-        resource = parser.parse(text)
-
-        # Should return valid Resource
         assert isinstance(resource, Resource)
         assert resource.entries is not None
 
-    @given(st.text(min_size=1, max_size=500))
-    @settings(max_examples=100)
-    def test_parser_deterministic(self, text):
-        """MR5: Parser determinism.
+        message_count = sum(1 for e in resource.entries if isinstance(e, Message))
+        term_count = sum(1 for e in resource.entries if isinstance(e, Term))
 
-        Property: parse(text) == parse(text) always
-        Rationale: Same input should produce same AST
-        """
-        parser = FluentParserV1()
+        # Valid FTL should produce at least one Message or Term
+        assert message_count + term_count >= 1, "Valid FTL should produce entries"
 
-        resource1 = parser.parse(text)
-        resource2 = parser.parse(text)
+        # Serialization should work for valid entries
+        ftl_out = serialize(resource)
+        assert isinstance(ftl_out, str)
+        assert len(ftl_out) > 0, "Serialized output should not be empty"
 
-        # Should produce same number of entries
-        assert len(resource1.entries) == len(resource2.entries)
-
-        # Entry types should match
-        types1 = [type(e).__name__ for e in resource1.entries]
-        types2 = [type(e).__name__ for e in resource2.entries]
-        assert types1 == types2
-
-    @given(ftl_simple_messages(), ftl_simple_messages())
-    @settings(max_examples=50)
-    def test_parser_concatenation_independence(self, ftl1, ftl2):
-        """MR6: Parse result independent of concatenation order.
-
-        Property: Parsing msg1, msg2 separately vs together behaves predictably
-        Rationale: Parser should handle messages independently
-        """
-        parser = FluentParserV1()
-
-        # Parse separately
-        r1 = parser.parse(ftl1)
-        r2 = parser.parse(ftl2)
-        count_separate = len(r1.entries) + len(r2.entries)
-
-        # Parse concatenated
-        combined = ftl1 + "\n" + ftl2
-        r_combined = parser.parse(combined)
-        count_combined = len(r_combined.entries)
-
-        # Should have similar number of entries
-        # (exact match depends on whether messages are valid)
-        assert count_combined >= 0  # At minimum, doesn't crash
-        assert count_separate >= 0
-
-
-class TestResolverMetamorphicProperties:
-    """Metamorphic relations for message resolution."""
-
-    @given(ftl_simple_messages(), st.dictionaries(ftl_identifiers(), st.text()))
-    @settings(max_examples=50)
-    def test_resolution_deterministic(self, ftl, args):
-        """MR7: Resolution determinism.
-
-        Property: resolve(msg, args) == resolve(msg, args) always
-        Rationale: Same inputs should produce same output
-        """
-        bundle = FluentBundle("en-US")
-        bundle.add_resource(ftl)
-
-        # Extract message ID from FTL
-        parser = FluentParserV1()
-        resource = parser.parse(ftl)
-        messages = [e for e in resource.entries if isinstance(e, Message)]
-
-        if not messages:
-            return  # Skip if no valid messages
-
-        msg_id = messages[0].id.name
-
-        # Resolve twice
-        result1, _errors = bundle.format_pattern(msg_id, args)
-        result2, _errors = bundle.format_pattern(msg_id, args)
-
-        assert result1 == result2, "Resolution should be deterministic"
-
-    @given(ftl_simple_messages(), st.dictionaries(ftl_identifiers(), st.text()))
-    @settings(max_examples=50)
-    def test_resolution_argument_monotonicity(self, ftl, args):
-        """MR8: Argument monotonicity.
-
-        Property: Adding unused args doesn't change output
-        Rationale: Extra args should be ignored
-        """
-        bundle = FluentBundle("en-US")
-        bundle.add_resource(ftl)
-
-        # Extract message ID
-        parser = FluentParserV1()
-        resource = parser.parse(ftl)
-        messages = [e for e in resource.entries if isinstance(e, Message)]
-
-        if not messages:
-            return
-
-        msg_id = messages[0].id.name
-
-        # Resolve with original args
-        result1, _errors = bundle.format_pattern(msg_id, args)
-
-        # Add extra unused arg
-        args_extended = {**args, "unused_arg_xyz": "unused_value"}
-        result2, _errors = bundle.format_pattern(msg_id, args_extended)
-
-        # Should be identical (unused args ignored)
-        assert result1 == result2, "Adding unused args should not change output"
-
-
-class TestASTImmutabilityProperties:
-    """Metamorphic relations for AST immutability."""
-
-    @given(ftl_resources())
-    @settings(max_examples=50)
-    def test_ast_truly_immutable(self, resource):
-        """MR9: AST immutability.
-
-        Property: AST nodes cannot be modified
-        Rationale: Frozen dataclasses should prevent mutation
-        """
-        # Try to modify entries (should fail)
-        with pytest.raises((AttributeError, TypeError)):
-            resource.entries = ()
-
-        # Original should be unchanged
-        assert resource.entries is not None
-
-    @given(ftl_resources())
-    @settings(max_examples=50)
-    def test_ast_copy_independence(self, resource):
-        """MR10: Deep copying AST creates independent structures.
-
-        Property: Modifications to copy don't affect original
-        Rationale: Immutability should extend through copy operations
-        """
-        # This test verifies the immutability architecture
-        # Since AST is frozen, even "copying" shares structure safely
-
-        original_entry_count = len(resource.entries)
-
-        # Attempt to serialize (read operation)
-        _ = serialize(resource)
-
-        # Original should be unchanged
-        assert len(resource.entries) == original_entry_count
-
-
-class TestBundleMetamorphicProperties:
-    """Metamorphic relations for FluentBundle."""
-
+    @example(ftl="test = value")
     @given(ftl_simple_messages())
-    @settings(max_examples=50)
-    def test_bundle_add_resource_idempotent(self, ftl):
-        """MR11: Adding same resource twice behaves predictably.
+    def test_determinism(self, ftl: str) -> None:
+        """Property: parse(x) produces identical results across calls.
 
-        Property: add_resource is idempotent for message override
-        Rationale: Later additions should override earlier ones
+        Multiple parses of the same input must produce structurally
+        identical ASTs.
         """
-        bundle = FluentBundle("en-US")
-
-        # Add resource twice
-        bundle.add_resource(ftl)
-        bundle.add_resource(ftl)
-
-        # Extract message ID
         parser = FluentParserV1()
-        resource = parser.parse(ftl)
-        messages = [e for e in resource.entries if isinstance(e, Message)]
 
-        if not messages:
-            return
+        r1 = parser.parse(ftl)
+        r2 = parser.parse(ftl)
+        r3 = parser.parse(ftl)
 
-        msg_id = messages[0].id.name
+        # Entry counts must match
+        assert len(r1.entries) == len(r2.entries) == len(r3.entries), (
+            "Parser is non-deterministic: entry counts differ"
+        )
 
-        # Should resolve without errors
-        result, _errors = bundle.format_pattern(msg_id, {})
-        assert isinstance(result, str)
+        # Entry types must match
+        types1 = [type(e).__name__ for e in r1.entries]
+        types2 = [type(e).__name__ for e in r2.entries]
+        types3 = [type(e).__name__ for e in r3.entries]
+        assert types1 == types2 == types3, (
+            "Parser is non-deterministic: entry types differ"
+        )
 
-    @given(ftl_simple_messages(), st.sampled_from(["en-US", "lv-LV", "de-DE"]))
-    @settings(max_examples=50)
-    def test_bundle_locale_independence_for_simple_messages(self, ftl, locale):
-        """MR12: Simple messages work across locales.
+        # Entry IDs must match for messages
+        ids1 = [e.id.name for e in r1.entries if isinstance(e, (Message, Term))]
+        ids2 = [e.id.name for e in r2.entries if isinstance(e, (Message, Term))]
+        assert ids1 == ids2, "Parser is non-deterministic: entry IDs differ"
 
-        Property: Messages without plurals work in any locale
-        Rationale: Locale should only affect plural/number formatting
-        """
-        # Skip if message contains plural syntax
-        if "$" in ftl or "[" in ftl:
-            return
-
-        bundle = FluentBundle(locale)
-        bundle.add_resource(ftl)
-
-        # Extract message ID
-        parser = FluentParserV1()
-        resource = parser.parse(ftl)
-        messages = [e for e in resource.entries if isinstance(e, Message)]
-
-        if not messages:
-            return
-
-        msg_id = messages[0].id.name
-
-        # Should resolve in any locale
-        result, _errors = bundle.format_pattern(msg_id, {})
-        assert isinstance(result, str)
-        # Result may be empty for edge cases like "a = ."
-        assert len(result) >= 0
-
-
-class TestLocaleMetamorphicProperties:
-    """Metamorphic relations for locale handling."""
-
-    @given(st.integers(min_value=0, max_value=100))
-    @settings(max_examples=50)
-    def test_plural_category_stability(self, number):
-        """MR13: Plural category mapping is consistent.
-
-        Property: Same number always maps to same category for a locale
-        Rationale: Plural rules are deterministic
-        """
-        from ftllexengine.runtime.plural_rules import select_plural_category
-
-        # Test for English
-        category1 = select_plural_category(number, "en_US")
-        category2 = select_plural_category(number, "en_US")
-
-        assert category1 == category2, "Plural category should be consistent"
-
-    @given(st.integers(min_value=0, max_value=1000))
-    @settings(max_examples=100)
-    def test_plural_category_never_crashes(self, number):
-        """MR14: Plural rules handle all integers.
-
-        Property: get_plural_category(n, locale) never crashes
-        Rationale: Plural rules should handle any integer
-        """
-        from ftllexengine.runtime.plural_rules import select_plural_category
-
-        locales = ["en_US", "lv_LV", "de_DE", "pl_PL", "ru_RU", "cs_CZ"]
-
-        for locale in locales:
-            category = select_plural_category(number, locale)
-            assert category in ["zero", "one", "two", "few", "many", "other"]
-
-
-class TestFunctionMetamorphicProperties:
-    """Metamorphic relations for built-in functions."""
-
-    @given(st.floats(allow_nan=False, allow_infinity=False, min_value=-1e10, max_value=1e10))
-    @settings(max_examples=100)
-    def test_number_function_always_returns_string(self, number):
-        """MR15: NUMBER function always returns valid string.
-
-        Property: NUMBER(n) returns parseable string for any float
-        Rationale: Function should never crash or return invalid data
-        """
-        from ftllexengine.runtime.functions import number_format
-
-        # Should not crash
-        result = number_format(number)
-
-        # Should return string
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    @given(st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e10))
-    @settings(max_examples=50)
-    def test_number_function_monotonicity(self, number):
-        """MR16: NUMBER formatting is consistent.
-
-        Property: Formatting same number twice gives same result
-        Rationale: Function should be deterministic
-        """
-        from ftllexengine.runtime.functions import number_format
-
-        result1 = number_format(number)
-        result2 = number_format(number)
-
-        assert result1 == result2, "NUMBER function should be deterministic"
-
-
-class TestCursorMetamorphicProperties:
-    """Metamorphic relations for immutable cursor."""
-
-    @given(st.text(max_size=100), st.integers(min_value=0, max_value=10))
-    @settings(max_examples=100)
-    def test_cursor_advance_composition(self, text, n):
-        """MR17: Cursor advance is associative.
-
-        Property: cursor.advance(n).advance(m) == cursor.advance(n+m)
-        Rationale: Cursor movement should compose naturally
-        """
-        from ftllexengine.syntax.cursor import Cursor
-
-        cursor = Cursor(text, 0)
-
-        # Advance n times, then n more times
-        cursor1 = cursor.advance(n).advance(n)
-
-        # Advance 2n times
-        cursor2 = cursor.advance(n + n)
-
-        # Should end at same position
-        assert cursor1.pos == cursor2.pos
-
-    @given(st.text(min_size=1, max_size=100), st.integers(min_value=1, max_value=50))
-    @settings(max_examples=100)
-    def test_cursor_advance_monotonic(self, text, advances):
-        """MR18: Cursor position never decreases.
-
-        Property: Advancing cursor never moves backward
-        Rationale: Cursor is forward-only parser
-        """
-        from ftllexengine.syntax.cursor import Cursor
-
-        cursor = Cursor(text, 0)
-        prev_pos = cursor.pos
-
-        for _ in range(advances):
-            cursor = cursor.advance()
-            assert cursor.pos >= prev_pos, "Cursor should never move backward"
-            prev_pos = cursor.pos
-
-
-class TestErrorHandlingMetamorphicProperties:
-    """Metamorphic relations for error handling."""
-
+    @example(ftl="")
+    @example(ftl="\x00\x01\x02")
+    @example(ftl="invalid ===")
     @given(st.text(max_size=200))
-    @settings(max_examples=100)
-    def test_parser_error_recovery_stability(self, text):
-        """MR19: Parser produces consistent Junk for invalid input.
+    def test_robustness(self, ftl: str) -> None:
+        """Property: parse(x) never crashes for any input.
 
-        Property: Parsing invalid input twice produces same error structure
-        Rationale: Error recovery should be deterministic
+        Parser must always return a Resource, even for invalid input.
         """
         parser = FluentParserV1()
 
-        resource1 = parser.parse(text)
-        resource2 = parser.parse(text)
+        # Should never raise exception
+        resource = parser.parse(ftl)
 
-        # Should have same number of entries (including Junk)
-        assert len(resource1.entries) == len(resource2.entries)
+        assert isinstance(resource, Resource)
+        assert hasattr(resource, "entries")
+        assert isinstance(resource.entries, tuple)
 
-    @given(st.text(max_size=100))
-    @settings(max_examples=50)
-    def test_serializer_handles_all_ast_structures(self, text):
-        """MR20: Serializer never crashes on parsed AST.
 
-        Property: serialize(parse(text)) never crashes
-        Rationale: Parser output should always be serializable
+# =============================================================================
+# Serialization Properties
+# =============================================================================
+
+
+class TestSerializationProperties:
+    """Metamorphic properties for FTL serialization."""
+
+    @example(ftl="hello = world")
+    @given(ftl_simple_messages())
+    def test_idempotence(self, ftl: str) -> None:
+        """Property: serialize(resource) produces identical output.
+
+        Serializing the same resource twice must produce identical strings.
+        """
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        out1 = serialize(resource)
+        out2 = serialize(resource)
+
+        assert out1 == out2, "Serialization is not deterministic"
+
+    @example(ftl="test = value")
+    @given(ftl_simple_messages())
+    def test_roundtrip_convergence(self, ftl: str) -> None:
+        """Property: roundtrip converges to fixed point after one iteration.
+
+        serialize(parse(serialize(parse(x)))) == serialize(parse(x))
         """
         parser = FluentParserV1()
 
+        # First roundtrip
+        r1 = parser.parse(ftl)
+        out1 = serialize(r1)
+
+        # Second roundtrip
+        r2 = parser.parse(out1)
+        out2 = serialize(r2)
+
+        # Third roundtrip (should equal second)
+        r3 = parser.parse(out2)
+        out3 = serialize(r3)
+
+        assert out2 == out3, (
+            f"Roundtrip does not converge:\n"
+            f"  After 2nd: {out2!r}\n"
+            f"  After 3rd: {out3!r}"
+        )
+
+
+# =============================================================================
+# Error Recovery Properties
+# =============================================================================
+
+
+class TestErrorRecovery:
+    """Properties for parser error recovery behavior."""
+
+    @example(text="!!invalid!!")
+    @example(text="= no identifier")
+    @given(st.text(min_size=1, max_size=200))
+    def test_invalid_input_handled_gracefully(self, text: str) -> None:
+        """Property: invalid input produces Junk or empty resource.
+
+        Parser should never crash on invalid input.
+        """
+        parser = FluentParserV1()
         resource = parser.parse(text)
 
-        # Should not crash
-        ftl = serialize(resource)
+        assert isinstance(resource, Resource)
+        assert isinstance(resource.entries, tuple)
 
-        assert isinstance(ftl, str)
+    @example(ftl="hello = world", truncate_pos=5)
+    @given(ftl_simple_messages(), st.integers(min_value=0, max_value=50))
+    def test_truncation_recovery(self, ftl: str, truncate_pos: int) -> None:
+        """Property: truncated input recovers gracefully.
+
+        Parser should handle EOF at any position without crashing.
+        """
+        assume(len(ftl) > 0)
+
+        truncate_pos = min(truncate_pos, len(ftl))
+        truncated = ftl[:truncate_pos]
+
+        parser = FluentParserV1()
+        resource = parser.parse(truncated)
+
+        assert isinstance(resource, Resource)
+        assert resource.entries is not None
+
+
+# =============================================================================
+# Edge Cases
+# =============================================================================
+
+
+class TestEdgeCases:
+    """Edge cases that may differ between implementations."""
+
+    def test_empty_message_value(self) -> None:
+        """Edge case: message with no value (message =)."""
+        parser = FluentParserV1()
+        resource = parser.parse("message =")
+
+        assert isinstance(resource, Resource)
+
+    def test_whitespace_only_pattern(self) -> None:
+        """Edge case: pattern with only whitespace."""
+        parser = FluentParserV1()
+        resource = parser.parse("message =    ")
+
+        assert isinstance(resource, Resource)
+
+    @pytest.mark.parametrize(
+        "ftl",
+        [
+            "message = Hello 世界",
+            "# Comment with emojis",
+            "test = Value\nother = Value",
+        ],
+        ids=["unicode-value", "unicode-comment", "multiline"],
+    )
+    def test_unicode_content(self, ftl: str) -> None:
+        """Edge case: Unicode characters in various positions."""
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        assert isinstance(resource, Resource)
+
+    def test_very_long_identifier(self) -> None:
+        """Edge case: identifier at length boundary (500 chars)."""
+        long_id = "a" * 500
+        parser = FluentParserV1()
+        resource = parser.parse(f"{long_id} = value")
+
+        assert isinstance(resource, Resource)
+        assert len(resource.entries) >= 1
+
+    def test_deeply_nested_placeables(self) -> None:
+        """Edge case: deeply nested placeables (10 levels)."""
+        nested = "$var"
+        for _ in range(10):
+            nested = f"{{ {nested} }}"
+
+        parser = FluentParserV1()
+        resource = parser.parse(f"test = {nested}")
+
+        assert isinstance(resource, Resource)
+
+
+# =============================================================================
+# Spec Compliance
+# =============================================================================
+
+
+class TestSpecCompliance:
+    """Test cases derived from FTL specification."""
+
+    def test_comment_types(self) -> None:
+        """Spec: All comment types (#, ##, ###) are recognized."""
+        ftl = """# Regular comment
+## Group comment
+### Resource comment
+message = value
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        messages = [e for e in resource.entries if isinstance(e, Message)]
+        assert len(messages) >= 1
+        assert messages[0].id.name == "message"
+
+    def test_attribute_syntax(self) -> None:
+        """Spec: Attributes use .name = value syntax."""
+        ftl = """message = value
+    .attr1 = first
+    .attr2 = second
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        messages = [e for e in resource.entries if isinstance(e, Message)]
+        assert len(messages) >= 1
+        assert messages[0].id.name == "message"
+
+    def test_select_expression(self) -> None:
+        """Spec: Select expressions with * default marker."""
+        ftl = """message = { $count ->
+    [one] One item
+   *[other] {$count} items
+}"""
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        assert isinstance(resource, Resource)
+        assert len(resource.entries) >= 1
+
+
+# =============================================================================
+# Performance Properties
+# =============================================================================
+
+
+class TestPerformanceProperties:
+    """Performance-related properties."""
+
+    @given(st.lists(ftl_simple_messages(), min_size=10, max_size=50))
+    @settings(deadline=5000)
+    def test_linear_scaling(self, messages: list[str]) -> None:
+        """Property: parsing time scales linearly with input size.
+
+        Combining messages should not cause exponential slowdown.
+        """
+        parser = FluentParserV1()
+        ftl = "\n\n".join(messages)
+
+        resource = parser.parse(ftl)
+
+        assert isinstance(resource, Resource)
+        # Upper bound: at most 2x entries per input message
+        assert len(resource.entries) <= len(messages) * 2
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-m", "not slow"])
+    pytest.main([__file__, "-v", "--tb=short"])

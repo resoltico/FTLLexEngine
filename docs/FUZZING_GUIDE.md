@@ -2,7 +2,7 @@
 RETRIEVAL_HINTS:
   keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, fuzz.sh]
   answers: [how to run fuzzing, how to fuzz, what is fuzzing, how to find bugs, crash investigation, how to detect failures]
-  related: [scripts/fuzz.sh, fuzz/stability.py, fuzz/perf.py, tests/test_grammar_based_fuzzing.py, tests/strategies.py]
+  related: [scripts/fuzz.sh, fuzz/stability.py, fuzz/structured.py, fuzz/perf.py, tests/test_grammar_based_fuzzing.py, tests/strategies.py]
 -->
 # Fuzzing Guide
 
@@ -369,7 +369,7 @@ scripts/
 
 tests/
   test_grammar_based_fuzzing.py    <- Parser property tests
-  test_differential_fuzzing.py     <- Metamorphic tests
+  test_metamorphic_properties.py   <- Metamorphic self-consistency tests
   test_runtime_fuzzing.py          <- Runtime resolution tests
   test_resolver_cycles.py          <- Cycle detection tests
   test_serializer_ast_fuzzing.py   <- AST-first serializer tests
@@ -379,7 +379,8 @@ tests/
 
 fuzz/
   seeds/                   <- Seed corpus (git tracked)
-  stability.py             <- Atheris crash detector
+  stability.py             <- Atheris crash detector (byte-level chaos)
+  structured.py            <- Atheris crash detector (grammar-aware)
   perf.py                  <- Atheris performance detector
 
 .hypothesis/               <- Hypothesis data (git ignored)
@@ -493,10 +494,31 @@ All fuzzing outputs include JSON summaries for automation:
 ./scripts/fuzz.sh --json
 ```
 
-Output:
+Output (pass):
 ```json
-{"mode":"check","status":"pass","tests_passed":"12",...}
+{"mode":"check","status":"pass","tests_passed":"12","tests_failed":"0","hypothesis_failures":"0"}
 ```
+
+Output (finding):
+```json
+{
+  "mode": "check",
+  "status": "finding",
+  "tests_passed": "11",
+  "tests_failed": "1",
+  "hypothesis_failures": "1",
+  "first_failure": {
+    "test": "tests/test_grammar_based_fuzzing.py::test_roundtrip",
+    "input": "ftl='msg = { $x }'",
+    "error": "AssertionError"
+  }
+}
+```
+
+The `first_failure` object is included when failures are detected, containing:
+- `test`: Full test path (file::function)
+- `input`: Falsifying example (truncated to 200 chars)
+- `error`: Exception type
 
 Parse the summary to detect findings programmatically. Exit codes:
 - `0`: Pass (no findings)

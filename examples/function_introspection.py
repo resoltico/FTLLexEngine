@@ -78,7 +78,8 @@ def demonstrate_function_metadata() -> None:
         print(f"Python name: {info.python_name}")
         print(f"Callable: {callable(info.callable)}")
         print("\nParameter mappings (FTL camelCase → Python snake_case):")
-        for ftl_param, python_param in sorted(info.param_mapping.items()):
+        # param_mapping is immutable tuple[tuple[str, str], ...] - already sorted
+        for ftl_param, python_param in info.param_mapping:
             print(f"  {ftl_param:25s} → {python_param}")
     # Output:
     # FTL name: NUMBER
@@ -135,7 +136,8 @@ def demonstrate_custom_function_introspection() -> None:
     if info:
         print(f"\nFunction: {info.ftl_name}")
         print("Parameter mappings:")
-        for ftl_param, python_param in sorted(info.param_mapping.items()):
+        # param_mapping is immutable tuple[tuple[str, str], ...] - already sorted
+        for ftl_param, python_param in info.param_mapping:
             print(f"  {ftl_param:15s} → {python_param}")
     # Output:
     # Function: VAT_CALCULATION
@@ -213,7 +215,8 @@ def demonstrate_auto_documentation() -> None:
 
         if info.param_mapping:
             print("Parameters (FTL → Python):")
-            for ftl_param, python_param in sorted(info.param_mapping.items()):
+            # param_mapping is immutable tuple[tuple[str, str], ...] - already sorted
+            for ftl_param, python_param in info.param_mapping:
                 print(f"  - {ftl_param} → {python_param}")
         else:
             print("Parameters: None")

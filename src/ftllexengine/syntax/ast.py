@@ -316,6 +316,12 @@ class NumberLiteral:
     """Number literal: 42 or 3.14
 
     The raw field preserves original source for serialization.
+
+    Invariant:
+        AST transformers creating new NumberLiteral nodes must ensure
+        raw correctly represents value. Parser guarantees consistency
+        at construction time. Divergence between these fields indicates
+        a transformer bug, not a library issue.
     """
 
     value: int | float

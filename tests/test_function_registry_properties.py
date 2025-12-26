@@ -218,7 +218,8 @@ class TestFunctionInfoInvariants:
         for name in names:
             info = registry.get_function_info(name)
             assert info is not None
-            assert isinstance(info.param_mapping, dict)
+            # param_mapping is now immutable tuple[tuple[str, str], ...]
+            assert isinstance(info.param_mapping, tuple)
 
 
 # ============================================================================

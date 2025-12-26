@@ -385,14 +385,20 @@ class FluentBundle:
         Args:
             source: FTL file content [positional-only]
             source_path: Optional path to source file for better error messages
-                        (e.g., "locales/lv/ui.ftl")
+                        (e.g., "locales/lv/ui.ftl"). Used as source identifier
+                        in warning messages. Defaults to "<string>" if not provided.
 
         Raises:
             FluentSyntaxError: On critical parse error
 
+        Logging:
+            Syntax errors (Junk entries) are logged at WARNING level regardless
+            of whether source_path is provided. This ensures syntax errors are
+            visible whether loading from files, databases, or in-memory strings.
+
         Note:
-            Non-critical syntax errors become Junk entries and are logged.
-            Parser continues after errors (robustness principle).
+            Parser continues after errors (robustness principle). Junk entries
+            are counted and reported in the summary log message.
         """
         try:
             resource = self._parser.parse(source)
@@ -408,22 +414,17 @@ class FluentBundle:
                         self._terms[entry.id.name] = entry
                         logger.debug("Registered term: %s", entry.id.name)
                     case Junk():
-                        # Count junk entries, log at debug level (non-critical parse artifacts)
+                        # Count junk entries, always log at WARNING level
+                        # Syntax errors are functional failures regardless of source origin
                         junk_count += 1
                         # Security: Use ascii() to escape control characters in untrusted content
                         # Prevents log injection via ANSI escape codes or other control chars
-                        # Include source path in error message if available
-                        if source_path:
-                            logger.warning(
-                                "Syntax error in %s: %s",
-                                source_path,
-                                ascii(entry.content[:_LOG_TRUNCATE_WARNING]),
-                            )
-                        else:
-                            logger.debug(
-                                "Junk entry (non-critical): %s",
-                                ascii(entry.content[:_LOG_TRUNCATE_DEBUG]),
-                            )
+                        source_desc = source_path or "<string>"
+                        logger.warning(
+                            "Syntax error in %s: %s",
+                            source_desc,
+                            ascii(entry.content[:_LOG_TRUNCATE_WARNING]),
+                        )
                     case _:
                         # Comments or other entry types don't need registration
                         pass

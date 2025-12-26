@@ -70,13 +70,20 @@ class FunctionSignature:
     Attributes:
         python_name: Function name in Python (snake_case)
         ftl_name: Function name in FTL files (UPPERCASE)
-        param_mapping: Maps FTL camelCase params → Python snake_case params
+        param_mapping: Immutable mapping of FTL camelCase → Python snake_case params.
+            Stored as sorted tuple of (ftl_param, python_param) pairs for full
+            immutability. Use dict(param_mapping) for O(1) lookup when needed.
         callable: The actual Python function
+
+    Immutability:
+        All fields are immutable. param_mapping uses tuple instead of dict to
+        ensure FunctionSignature objects can be safely shared across registries
+        without risk of mutation via retained references.
     """
 
     python_name: str
     ftl_name: str
-    param_mapping: dict[str, str]
+    param_mapping: tuple[tuple[str, str], ...]
     callable: Callable[..., FluentValue]
 
 
@@ -96,6 +103,12 @@ class FunctionRegistry:
         - __len__: Count registered functions
         - __contains__: Check if function exists (supports 'in' operator)
 
+    Freezing:
+        Registries can be frozen via freeze() to prevent further modifications.
+        Once frozen, register() will raise TypeError. This is used by
+        get_shared_registry() to protect the shared singleton from accidental
+        modification.
+
     Memory Optimization:
         Uses __slots__ for memory efficiency (avoids per-instance __dict__).
 
@@ -111,11 +124,12 @@ class FunctionRegistry:
         CUSTOM
     """
 
-    __slots__ = ("_functions",)
+    __slots__ = ("_frozen", "_functions")
 
     def __init__(self) -> None:
         """Initialize empty function registry."""
         self._functions: dict[str, FunctionSignature] = {}
+        self._frozen: bool = False
 
     def register(
         self,
@@ -131,6 +145,9 @@ class FunctionRegistry:
             ftl_name: Function name in FTL (default: func.__name__.upper())
             param_map: Custom parameter mappings (overrides auto-generation)
 
+        Raises:
+            TypeError: If registry is frozen (via freeze() method).
+
         Example:
             >>> def number_format(value, *, minimum_fraction_digits=0):
             ...     return str(value)
@@ -139,6 +156,13 @@ class FunctionRegistry:
             >>> # FTL: { $x NUMBER(minimumFractionDigits: 2) }
             >>> # Python: number_format(x, minimum_fraction_digits=2)
         """
+        if self._frozen:
+            msg = (
+                "Cannot modify frozen registry. "
+                "Use create_default_registry() to get a mutable copy."
+            )
+            raise TypeError(msg)
+
         # Default FTL name: UPPERCASE version of function name
         if ftl_name is None:
             ftl_name = getattr(func, "__name__", "unknown").upper()
@@ -174,11 +198,15 @@ class FunctionRegistry:
         # Custom mappings override auto-generated ones
         final_map = {**auto_map, **(param_map or {})}
 
+        # Convert to immutable sorted tuple for safe sharing across registries
+        # Sorting ensures deterministic ordering for testing and debugging
+        immutable_mapping = tuple(sorted(final_map.items()))
+
         # Store function signature
         self._functions[ftl_name] = FunctionSignature(
             python_name=getattr(func, "__name__", "unknown"),
             ftl_name=ftl_name,
-            param_mapping=final_map,
+            param_mapping=immutable_mapping,
             callable=func,
         )
 
@@ -212,10 +240,12 @@ class FunctionRegistry:
         func_sig = self._functions[ftl_name]
 
         # Convert FTL camelCase args → Python snake_case args
+        # Reconstruct dict from immutable tuple for O(1) lookup
+        param_dict = dict(func_sig.param_mapping)
         python_kwargs = {}
         for ftl_param, value in named.items():
             # Look up Python parameter name
-            python_param = func_sig.param_mapping.get(ftl_param, ftl_param)
+            python_param = param_dict.get(ftl_param, ftl_param)
             python_kwargs[python_param] = value
 
         # Call Python function
@@ -241,6 +271,27 @@ class FunctionRegistry:
             True if function is registered
         """
         return ftl_name in self._functions
+
+    def freeze(self) -> None:
+        """Freeze registry to prevent further modifications.
+
+        Once frozen, calling register() will raise TypeError.
+        This is used by get_shared_registry() to protect the shared
+        singleton from accidental modification.
+
+        Freezing is irreversible. To get a mutable registry with the
+        same functions, use copy() which creates an unfrozen copy.
+        """
+        self._frozen = True
+
+    @property
+    def frozen(self) -> bool:
+        """Check if registry is frozen (read-only).
+
+        Returns:
+            True if registry is frozen and cannot be modified.
+        """
+        return self._frozen
 
     def get_python_name(self, ftl_name: str) -> str | None:
         """Get Python function name for FTL function.
@@ -379,18 +430,27 @@ class FunctionRegistry:
         return f"FunctionRegistry(functions={len(self._functions)})"
 
     def copy(self) -> "FunctionRegistry":
-        """Create a shallow copy of this registry.
+        """Create an unfrozen copy of this registry.
 
         Returns:
             New FunctionRegistry instance with the same functions.
+            The copy is always unfrozen, even if the original was frozen.
 
         Note:
-            This creates a shallow copy - the FunctionSignature objects
-            are shared, but modifications to the registry (adding/removing
-            functions) won't affect the original.
+            FunctionSignature objects are shared between the original and
+            copy, but this is safe because FunctionSignature is fully
+            immutable (frozen dataclass with immutable tuple for param_mapping).
+            Modifications to the registry (adding/removing functions) in
+            either copy won't affect the other.
+
+        Example:
+            >>> frozen_registry = get_shared_registry()  # Frozen
+            >>> my_registry = frozen_registry.copy()  # Unfrozen copy
+            >>> my_registry.register(my_custom_func)  # Works!
         """
         new_registry = FunctionRegistry()
         new_registry._functions = self._functions.copy()
+        # Note: _frozen is already False from __init__, copy is always unfrozen
         return new_registry
 
     @staticmethod

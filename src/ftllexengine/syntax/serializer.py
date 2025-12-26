@@ -314,7 +314,9 @@ class FluentSerializer(ASTVisitor):
         if buffer:
             output.append("".join(buffer))
 
-    def _serialize_expression(self, expr: Expression, output: list[str]) -> None:
+    def _serialize_expression(  # noqa: PLR0912  # Branches required by Expression union type
+        self, expr: Expression, output: list[str]
+    ) -> None:
         """Serialize Expression nodes using structural pattern matching.
 
         Handles all Expression types including nested Placeables (valid per FTL spec).
@@ -322,15 +324,21 @@ class FluentSerializer(ASTVisitor):
         match expr:
             case StringLiteral():
                 # Escape special characters per FTL spec
-                # Order matters: backslash first to avoid double-escaping
-                escaped = expr.value.replace("\\", "\\\\")
-                escaped = escaped.replace('"', '\\"')
-                # Control characters: use Unicode escapes per Fluent 1.0 spec
-                # Spec only allows: \\, \", \{, \uHHHH, \UHHHHHH
-                escaped = escaped.replace("\n", "\\u000A")
-                escaped = escaped.replace("\r", "\\u000D")
-                escaped = escaped.replace("\t", "\\u0009")
-                output.append(f'"{escaped}"')
+                # Uses \uHHHH for ALL control characters (< 0x20 and 0x7F)
+                # to produce robust output that works in all editors and parsers
+                result: list[str] = []
+                for char in expr.value:
+                    code = ord(char)
+                    if char == "\\":
+                        result.append("\\\\")
+                    elif char == '"':
+                        result.append('\\"')
+                    elif code < 0x20 or code == 0x7F:
+                        # All control characters: NUL, BEL, BS, TAB, LF, VT, FF, CR, ESC, DEL, etc.
+                        result.append(f"\\u{code:04X}")
+                    else:
+                        result.append(char)
+                output.append(f'"{"".join(result)}"')
 
             case NumberLiteral():
                 output.append(expr.raw)

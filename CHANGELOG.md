@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] - 2025-12-26
+
+### Breaking Changes
+- `FunctionSignature.param_mapping` type changed from `dict[str, str]` to `tuple[tuple[str, str], ...]` for full immutability
+- `get_shared_registry()` now returns a frozen registry; calling `register()` raises `TypeError`
+
+### Added
+- `FunctionRegistry.freeze()` method to prevent further modifications
+- `FunctionRegistry.frozen` property to check if registry is frozen
+- `FunctionSignature` documentation in DOC_04_Runtime.md
+
+### Changed
+- `FluentSerializer` now escapes ALL control characters (codepoints < 0x20 and 0x7F) using `\uHHHH` format
+- `FluentBundle.add_resource()` now logs syntax errors at WARNING level regardless of `source_path` presence
+- `ReferenceExtractor.visit_MessageReference()` no longer calls `generic_visit()` (performance optimization)
+- `FunctionRegistry.copy()` now explicitly documented to return unfrozen copy
+
+### Fixed
+- Mutable `param_mapping` dict in frozen `FunctionSignature` dataclass violated immutability protocol
+- Shared registry singleton could be modified by external code, polluting global state
+- Syntax errors hidden at DEBUG level when loading FTL from in-memory strings without source_path
+- Unnecessary `generic_visit()` traversal on `MessageReference` nodes (leaf nodes in AST)
+- Raw control characters passed through serializer StringLiteral output
+
 ## [0.33.0] - 2025-12-26
 
 ### Added
@@ -158,6 +182,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[Unreleased]: https://github.com/resoltico/ftllexengine/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.34.0
 [0.33.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.33.0
 [0.32.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.32.0
 [0.31.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.31.0

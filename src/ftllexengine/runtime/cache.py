@@ -242,6 +242,11 @@ class FormatCache:
             Applications with many args per message and extreme performance
             requirements should profile to verify caching provides net benefit.
 
+        Robustness:
+            Catches RecursionError for deeply nested structures and TypeError
+            for unhashable values. Returns None in both cases to gracefully
+            bypass caching without failing the format operation.
+
         Args:
             message_id: Message identifier
             args: Message arguments (may contain unhashable values)

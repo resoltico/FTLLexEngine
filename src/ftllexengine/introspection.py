@@ -330,14 +330,23 @@ class ReferenceExtractor(ASTVisitor):
         self._depth_guard: DepthGuard = DepthGuard(max_depth=max_depth)
 
     def visit_MessageReference(self, node: MessageReference) -> MessageReference:
-        """Collect message reference with depth tracking."""
+        """Collect message reference ID.
+
+        MessageReference contains only Identifier children (leaf nodes with
+        just name: str). No nested references are possible, so generic_visit()
+        is unnecessary and would waste cycles traversing leaf nodes.
+        """
         self.message_refs.add(node.id.name)
-        with self._depth_guard:
-            self.generic_visit(node)
         return node
 
     def visit_TermReference(self, node: TermReference) -> TermReference:
-        """Collect term reference with depth tracking."""
+        """Collect term reference with depth tracking.
+
+        Unlike MessageReference, TermReference has arguments: CallArguments | None
+        which CAN contain nested expressions (including MessageReference,
+        TermReference, VariableReference). Must traverse children to find all
+        nested references.
+        """
         self.term_refs.add(node.id.name)
         with self._depth_guard:
             self.generic_visit(node)

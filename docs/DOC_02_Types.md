@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.33.0
+project_version: 0.34.0
 context: TYPES
 last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
@@ -320,11 +320,12 @@ class NumberLiteral:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `int \| float` | Y | Parsed numeric value. |
-| `raw` | `str` | Y | Original source representation. |
+| `raw` | `str` | Y | Original source representation for serialization. |
 
 ### Constraints
 - Return: Immutable number literal.
 - State: Frozen dataclass.
+- Invariant: AST transformers creating new nodes must ensure raw represents value. Parser guarantees consistency at construction.
 
 ---
 

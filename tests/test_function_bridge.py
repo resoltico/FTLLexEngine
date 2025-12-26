@@ -55,20 +55,20 @@ class TestFunctionSignature:
         sig = FunctionSignature(
             python_name="test_func",
             ftl_name="TEST",
-            param_mapping={"minimumValue": "minimum_value"},
+            param_mapping=(("minimumValue", "minimum_value"),),
             callable=lambda x: str(x),
         )
 
         assert sig.python_name == "test_func"
         assert sig.ftl_name == "TEST"
-        assert sig.param_mapping == {"minimumValue": "minimum_value"}
+        assert sig.param_mapping == (("minimumValue", "minimum_value"),)
 
     def test_function_signature_immutable(self) -> None:
         """FunctionSignature is immutable."""
         sig = FunctionSignature(
             python_name="test",
             ftl_name="TEST",
-            param_mapping={},
+            param_mapping=(),
             callable=lambda: "test",
         )
 
@@ -383,9 +383,11 @@ class TestFunctionRegistryIntrospection:
         assert info is not None
         assert info.python_name == "sample_function"
         assert info.ftl_name == "FORMAT"
-        assert isinstance(info.param_mapping, dict)
-        assert "minimumFractionDigits" in info.param_mapping
-        assert info.param_mapping["minimumFractionDigits"] == "minimum_fraction_digits"
+        # param_mapping is now immutable tuple[tuple[str, str], ...]
+        assert isinstance(info.param_mapping, tuple)
+        param_dict = dict(info.param_mapping)
+        assert "minimumFractionDigits" in param_dict
+        assert param_dict["minimumFractionDigits"] == "minimum_fraction_digits"
         assert callable(info.callable)
 
     def test_get_function_info_nonexistent_function(self) -> None:

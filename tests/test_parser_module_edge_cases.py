@@ -246,7 +246,8 @@ class TestFunctionBridgeUncoveredLine:
         # Should strip leading underscore for FTL name but keep in mapping
         sig = registry._functions["TEST"]
         # The mapping should have 'internal' -> '_internal' (stripped for FTL)
-        assert "_internal" in sig.param_mapping.values()
+        param_values = [v for _, v in sig.param_mapping]
+        assert "_internal" in param_values
 
 
 class TestFunctionMetadataUncoveredLine:
