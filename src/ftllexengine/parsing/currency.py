@@ -47,22 +47,26 @@ _SYMBOL_LOOKUP_LOCALE_IDS: tuple[str, ...] = (
 )
 
 
-def _build_currency_maps_from_cldr() -> tuple[dict[str, str], set[str], dict[str, str]]:
+def _build_currency_maps_from_cldr() -> tuple[
+    dict[str, str], set[str], dict[str, str], frozenset[str]
+]:
     """Build currency maps from Unicode CLDR data via Babel.
 
     Scans all available locales and currencies in CLDR to build:
     1. Symbol → ISO code mapping (for unambiguous symbols)
     2. Set of ambiguous symbols (symbols used by multiple currencies)
     3. Locale → default currency mapping (from territory data)
+    4. Set of all valid ISO 4217 currency codes (for validation)
 
     This replaces hardcoded maps with dynamic CLDR data extraction.
     Executed once at module initialization for optimal runtime performance.
 
     Returns:
-        Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency):
+        Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes):
         - symbol_to_code: Unambiguous currency symbol → ISO 4217 code
         - ambiguous_symbols: Symbols that map to multiple currencies
         - locale_to_currency: Locale code → default ISO 4217 currency code
+        - valid_codes: Frozenset of all valid ISO 4217 currency codes from CLDR
     """
     # Step 1: Build symbol → currency codes mapping
     # Key insight: A symbol is ambiguous if multiple currency codes use it
@@ -149,18 +153,22 @@ def _build_currency_maps_from_cldr() -> tuple[dict[str, str], set[str], dict[str
             # Expected failures: invalid locale identifiers, missing territory data
             continue
 
-    return unambiguous_map, ambiguous_set, locale_to_currency
+    return unambiguous_map, ambiguous_set, locale_to_currency, frozenset(all_currencies)
 
 
 @functools.cache
-def _get_currency_maps() -> tuple[dict[str, str], set[str], dict[str, str]]:
+def _get_currency_maps() -> tuple[dict[str, str], set[str], dict[str, str], frozenset[str]]:
     """Lazy-load CLDR currency maps on first use.
 
     Thread-safe via functools.cache internal locking.
     Called once per process lifetime; subsequent calls return cached result.
 
     Returns:
-        Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency).
+        Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes):
+        - symbol_to_code: Unambiguous currency symbol → ISO 4217 code
+        - ambiguous_symbols: Symbols that map to multiple currencies
+        - locale_to_currency: Locale code → default ISO 4217 currency code
+        - valid_codes: Frozenset of all valid ISO 4217 currency codes from CLDR
     """
     return _build_currency_maps_from_cldr()
 
@@ -186,7 +194,7 @@ def _get_currency_pattern() -> re.Pattern[str]:
         2. Longer symbols matched before shorter to prevent partial matches
            (e.g., "kr" before "k", "zl" as complete unit)
     """
-    symbol_map, ambiguous, _ = _get_currency_maps()
+    symbol_map, ambiguous, _, _ = _get_currency_maps()
 
     # Collect all symbols from both maps
     all_symbols: set[str] = set(symbol_map.keys()) | ambiguous
@@ -339,9 +347,10 @@ def parse_currency(
     is_iso_code = (len(currency_str) == ISO_CURRENCY_CODE_LENGTH
                    and currency_str.isupper() and currency_str.isalpha())
 
+    # Get currency maps (includes valid ISO 4217 codes for validation)
+    symbol_map, ambiguous_symbols, locale_to_currency, valid_iso_codes = _get_currency_maps()
+
     if not is_iso_code:
-        # Get currency maps for symbol lookup
-        symbol_map, ambiguous_symbols, locale_to_currency = _get_currency_maps()
 
         # It's a symbol - check if ambiguous
         if currency_str in ambiguous_symbols:
@@ -392,7 +401,18 @@ def parse_currency(
                 return (None, tuple(errors))
             currency_code = mapped_currency
     else:
-        # ISO code (3 uppercase letters) - always unambiguous
+        # ISO code (3 uppercase letters) - validate against CLDR data
+        if currency_str not in valid_iso_codes:
+            diagnostic = ErrorTemplate.parse_currency_code_invalid(currency_str, value)
+            errors.append(
+                FluentParseError(
+                    diagnostic,
+                    input_value=value,
+                    locale_code=locale_code,
+                    parse_type="currency",
+                )
+            )
+            return (None, tuple(errors))
         currency_code = currency_str
 
     # Remove currency symbol/code to extract number

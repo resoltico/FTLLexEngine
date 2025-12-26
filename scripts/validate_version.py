@@ -15,10 +15,11 @@ CHECKS PERFORMED:
     DOCUMENTATION (fail build):
     5. All docs/DOC_*.md frontmatter has correct project_version
     6. docs/QUICK_REFERENCE.md footer has correct version
+    7. docs/TERMINOLOGY.md footer has correct version
 
     INFORMATIONAL (warn only):
-    7. CHANGELOG.md mentions current version
-    8. CHANGELOG.md has version link at bottom
+    8. CHANGELOG.md mentions current version
+    9. CHANGELOG.md has version link at bottom
 
 Architecture:
     - Uses tomllib (Python 3.11+) for pyproject.toml parsing
@@ -449,6 +450,74 @@ def check_quick_reference_version(root: Path) -> CheckResult:
         )
 
 
+def check_terminology_version(root: Path) -> CheckResult:
+    """docs/TERMINOLOGY.md footer must have correct version."""
+    version = get_pyproject_version(root)
+
+    if version is None:
+        return CheckResult(
+            name="terminology_version",
+            passed=False,
+            message="Cannot read version from pyproject.toml",
+            is_critical=True,
+        )
+
+    term_path = root / "docs" / "TERMINOLOGY.md"
+    if not term_path.exists():
+        return CheckResult(
+            name="terminology_version",
+            passed=True,
+            message="TERMINOLOGY.md not found (skipped)",
+            is_critical=True,
+        )
+
+    try:
+        content = term_path.read_text(encoding="utf-8")
+
+        # Look for version in footer pattern: **FTLLexEngine Version**: X.Y.Z
+        version_pattern = re.compile(
+            r"\*\*FTLLexEngine Version\*\*:\s*(\S+)"
+        )
+        match = version_pattern.search(content)
+
+        if not match:
+            return CheckResult(
+                name="terminology_version",
+                passed=True,  # No version footer is OK
+                message="No version footer in TERMINOLOGY.md (skipped)",
+                is_critical=True,
+            )
+
+        term_version = match.group(1)
+        if term_version != version:
+            return CheckResult(
+                name="terminology_version",
+                passed=False,
+                message=(
+                    f"TERMINOLOGY.md version mismatch:\n"
+                    f"  Found: {term_version}\n"
+                    f"  Expected: {version}\n"
+                    f"  Resolution: Update footer in TERMINOLOGY.md"
+                ),
+                is_critical=True,
+            )
+
+        return CheckResult(
+            name="terminology_version",
+            passed=True,
+            message=f"TERMINOLOGY.md has version {version}",
+            is_critical=True,
+        )
+
+    except Exception as e:
+        return CheckResult(
+            name="terminology_version",
+            passed=False,
+            message=f"Error reading TERMINOLOGY.md: {e}",
+            is_critical=True,
+        )
+
+
 def check_changelog_mentions_version(root: Path) -> CheckResult:
     """CHANGELOG.md should document current version (informational)."""
     version = get_pyproject_version(root)
@@ -641,6 +710,7 @@ def main() -> int:
         # Documentation checks
         check_doc_frontmatter_versions(root),
         check_quick_reference_version(root),
+        check_terminology_version(root),
         # Informational checks
         check_changelog_mentions_version(root),
         check_changelog_has_version_link(root),

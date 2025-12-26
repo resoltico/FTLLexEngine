@@ -57,7 +57,7 @@ class TestBuildCurrencyMapsLocaleParseException:
                 return_value=["en_US", "broken_locale", "de_DE"],
             ),
         ):
-            symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+            symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should still return valid maps (from the locales that didn't fail)
         assert isinstance(symbol_map, dict)
@@ -76,7 +76,7 @@ class TestBuildCurrencyMapsLocaleParseException:
                 return_value=["test_locale"],
             ),
         ):
-            symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+            symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should still return valid (possibly empty) maps
         assert isinstance(symbol_map, dict)
@@ -124,7 +124,7 @@ class TestBuildCurrencyMapsSymbolLookupException:
             mock_locale.territory = "US"
 
             with patch("babel.Locale.parse", return_value=mock_locale):
-                symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+                symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should complete without crashing
         assert isinstance(symbol_map, dict)
@@ -182,7 +182,7 @@ class TestBuildCurrencyMapsLocaleDataException:
             ),
             patch("babel.Locale.parse", side_effect=mock_parse),
         ):
-            symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+            symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should complete without crashing
         assert isinstance(symbol_map, dict)
@@ -202,7 +202,7 @@ class TestBuildCurrencyMapsLocaleDataException:
                 return_value=["en"],  # Language only, no territory
             ),
         ):
-            symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+            symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should handle gracefully
         assert isinstance(symbol_map, dict)
@@ -227,7 +227,7 @@ class TestBuildCurrencyMapsLocaleDataException:
                 return_value=[],  # Empty list
             ),
         ):
-            _symbol_map, _ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+            _symbol_map, _ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should handle gracefully (no currency added for this locale)
         assert isinstance(locale_to_currency, dict)
@@ -243,7 +243,7 @@ class TestBuildCurrencyMapsEdgeCases:
 
     def test_build_maps_returns_correct_types(self) -> None:
         """Verify _build_currency_maps_from_cldr returns correct types."""
-        symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+        symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         assert isinstance(symbol_map, dict)
         assert isinstance(ambiguous, set)
@@ -265,7 +265,7 @@ class TestBuildCurrencyMapsEdgeCases:
 
     def test_build_maps_euro_is_unambiguous(self) -> None:
         """Verify EUR symbol is in the unambiguous map."""
-        symbol_map, ambiguous, _locale_to_currency = _build_currency_maps_from_cldr()
+        symbol_map, ambiguous, _locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Euro should be unambiguous (only EUR uses this symbol)
         assert "€" in symbol_map or "€" not in ambiguous
@@ -274,7 +274,7 @@ class TestBuildCurrencyMapsEdgeCases:
 
     def test_build_maps_dollar_is_ambiguous(self) -> None:
         """Verify $ symbol is in the ambiguous set (USD, CAD, AUD, etc.)."""
-        _symbol_map, ambiguous, _locale_to_currency = _build_currency_maps_from_cldr()
+        _symbol_map, ambiguous, _locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Dollar sign is used by multiple currencies
         assert "$" in ambiguous
@@ -298,7 +298,7 @@ class TestBuildCurrencyMapsEdgeCases:
                 return_value=mock_locales,
             ),
         ):
-            symbol_map, ambiguous, locale_to_currency = _build_currency_maps_from_cldr()
+            symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should always return valid types
         assert isinstance(symbol_map, dict)
@@ -385,10 +385,10 @@ class TestBuildCurrencyPatternFallback:
         # Clear the pattern cache before test
         _get_currency_pattern.cache_clear()
 
-        # Mock _get_currency_maps to return empty maps
+        # Mock _get_currency_maps to return empty maps (with empty valid_codes)
         with patch(
             "ftllexengine.parsing.currency._get_currency_maps",
-            return_value=({}, set(), {}),
+            return_value=({}, set(), {}, frozenset()),
         ):
             # Clear cache again after patching to force regeneration
             _get_currency_pattern.cache_clear()

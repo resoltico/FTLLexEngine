@@ -48,8 +48,18 @@ htmlcov/
 .tox/
 .nox/
 
-# Hypothesis database
+# Hypothesis database (ENTIRE directory - see rationale below)
+# RATIONALE: The .hypothesis/examples/ directory contains:
+#   - Standard runs: A few KB of regression examples (valuable)
+#   - HypoFuzz runs: 100k+ coverage examples (NOT valuable for git)
+# Since we can't distinguish between them, we ignore ALL and instead:
+#   1. Promote failing examples to @example() decorators in test code
+#   2. Keep corpus local to each developer's machine
+# This follows Hypothesis best practices and prevents 100MB+ commits.
 .hypothesis/
+
+# Atheris/libFuzzer corpus (binary seeds, machine-specific)
+.fuzz_corpus/
 
 # Type checking
 .mypy_cache/

@@ -386,13 +386,26 @@ def test_roundtrip_property_select_expressions(select_expr):
 
 @given(ftl_comments())
 @settings(max_examples=30)
-def test_roundtrip_property_comments(comment):
+def test_roundtrip_property_comments(comment_str: str) -> None:
     """Property: All generated comments serialize correctly.
 
     NOTE: Parser does not support standalone comments yet, so we only test
     that serialization produces valid FTL syntax (doesn't crash).
     """
-    resource = Resource(entries=(comment,))
+    # Parse comment string to extract type and content
+    # Format: "# content", "## content", or "### content"
+    if comment_str.startswith("### "):
+        comment_type = CommentType.RESOURCE
+        content = comment_str[4:]  # Skip "### "
+    elif comment_str.startswith("## "):
+        comment_type = CommentType.GROUP
+        content = comment_str[3:]  # Skip "## "
+    else:
+        comment_type = CommentType.COMMENT
+        content = comment_str[2:]  # Skip "# "
+
+    comment_node = Comment(content=content, type=comment_type)
+    resource = Resource(entries=(comment_node,))
 
     # Serializer should not crash
     serialized = serialize(resource)

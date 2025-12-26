@@ -169,7 +169,7 @@ class TestCurrencyLocaleListCoverage:
         """
         from ftllexengine.parsing.currency import _get_currency_maps
 
-        symbol_map, _ambiguous_symbols, _ = _get_currency_maps()
+        symbol_map, _ambiguous_symbols, _, _ = _get_currency_maps()
 
         # Collect all currencies discoverable via symbols
         discovered_currencies: set[str] = set()
@@ -202,7 +202,7 @@ class TestCurrencyLocaleListCoverage:
         """
         from ftllexengine.parsing.currency import _get_currency_maps
 
-        _, _, locale_to_currency = _get_currency_maps()
+        _, _, locale_to_currency, _ = _get_currency_maps()
 
         # Key locales that should have currency mappings
         expected_locales = {

@@ -300,13 +300,13 @@ class FluentSerializer(ASTVisitor):
                 if buffer:
                     output.append("".join(buffer))
                     buffer.clear()
-                output.append('{"{"}')
+                output.append('{ "{" }')
             elif char == "}":
                 # Flush buffer, emit brace as StringLiteral Placeable
                 if buffer:
                     output.append("".join(buffer))
                     buffer.clear()
-                output.append('{"}"}')
+                output.append('{ "}" }')
             else:
                 buffer.append(char)
 

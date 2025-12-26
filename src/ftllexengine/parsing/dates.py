@@ -110,9 +110,11 @@ def parse_date(
         )
         return (None, tuple(errors))
 
-    for pattern in patterns:
+    for pattern, has_era in patterns:
         try:
-            return (datetime.strptime(value, pattern).date(), tuple(errors))
+            # Strip era text from input if pattern had era tokens (v0.33.0)
+            parse_value = _strip_era(value) if has_era else value
+            return (datetime.strptime(parse_value, pattern).date(), tuple(errors))
         except ValueError:
             continue
 
@@ -215,9 +217,11 @@ def parse_datetime(
         )
         return (None, tuple(errors))
 
-    for pattern in patterns:
+    for pattern, has_era in patterns:
         try:
-            parsed = datetime.strptime(value, pattern)
+            # Strip era text from input if pattern had era tokens (v0.33.0)
+            parse_value = _strip_era(value) if has_era else value
+            parsed = datetime.strptime(parse_value, pattern)
             if tzinfo is not None and parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=tzinfo)
             return (parsed, tuple(errors))
@@ -240,8 +244,8 @@ def parse_datetime(
 
 
 @cache
-def _get_date_patterns(locale_code: str) -> tuple[str, ...]:
-    """Get strptime date patterns for locale.
+def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
+    """Get strptime date patterns for locale with era flags.
 
     Uses ONLY Babel CLDR date format patterns specific to the locale.
     No fallback patterns to avoid ambiguous date interpretation.
@@ -252,21 +256,22 @@ def _get_date_patterns(locale_code: str) -> tuple[str, ...]:
         locale_code: BCP 47 locale identifier
 
     Returns:
-        Tuple of strptime patterns to try, in order of preference
-        Empty tuple if locale parsing fails
+        Tuple of (strptime_pattern, has_era) pairs to try, in order of preference.
+        has_era is True if the pattern contains era tokens requiring preprocessing.
+        Empty tuple if locale parsing fails.
     """
     try:
         locale = Locale.parse(normalize_locale(locale_code))
 
         # Get CLDR date patterns
-        patterns = []
+        patterns: list[tuple[str, bool]] = []
 
         # Try CLDR format styles
         for style in _DATE_PARSE_STYLES:
             try:
                 babel_pattern = locale.date_formats[style].pattern
-                strptime_pattern = _babel_to_strptime(babel_pattern)
-                patterns.append(strptime_pattern)
+                strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
+                patterns.append((strptime_pattern, has_era))
             except (AttributeError, KeyError):
                 pass
 
@@ -331,8 +336,8 @@ def _extract_datetime_separator(locale: Locale, style: str = "medium") -> str:
 
 
 @cache
-def _get_datetime_patterns(locale_code: str) -> tuple[str, ...]:
-    """Get strptime datetime patterns for locale.
+def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
+    """Get strptime datetime patterns for locale with era flags.
 
     Uses ONLY Babel CLDR datetime format patterns specific to the locale.
     No fallback patterns to avoid ambiguous datetime interpretation.
@@ -343,21 +348,22 @@ def _get_datetime_patterns(locale_code: str) -> tuple[str, ...]:
         locale_code: BCP 47 locale identifier
 
     Returns:
-        Tuple of strptime patterns to try, in order of preference
-        Empty tuple if locale parsing fails
+        Tuple of (strptime_pattern, has_era) pairs to try, in order of preference.
+        has_era is True if the pattern contains era tokens requiring preprocessing.
+        Empty tuple if locale parsing fails.
     """
     try:
         locale = Locale.parse(normalize_locale(locale_code))
 
         # Get CLDR datetime patterns
-        patterns = []
+        patterns: list[tuple[str, bool]] = []
 
         # Try CLDR format styles for datetime
         for style in _DATETIME_PARSE_STYLES:
             try:
                 babel_pattern = locale.datetime_formats[style].pattern
-                strptime_pattern = _babel_to_strptime(babel_pattern)
-                patterns.append(strptime_pattern)
+                strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
+                patterns.append((strptime_pattern, has_era))
             except (AttributeError, KeyError):
                 pass
 
@@ -366,13 +372,14 @@ def _get_datetime_patterns(locale_code: str) -> tuple[str, ...]:
 
         # Get locale-specific separator from CLDR dateTimeFormat
         sep = _extract_datetime_separator(locale)
-        for date_pat in date_patterns:
+        for date_pat, has_era in date_patterns:
+            # Time components don't have era, inherit from date pattern
             patterns.extend(
                 [
-                    f"{date_pat}{sep}%H:%M:%S",  # 24-hour with seconds
-                    f"{date_pat}{sep}%H:%M",  # 24-hour without seconds
-                    f"{date_pat}{sep}%I:%M:%S %p",  # 12-hour with seconds + AM/PM
-                    f"{date_pat}{sep}%I:%M %p",  # 12-hour without seconds + AM/PM
+                    (f"{date_pat}{sep}%H:%M:%S", has_era),  # 24-hour with seconds
+                    (f"{date_pat}{sep}%H:%M", has_era),  # 24-hour without seconds
+                    (f"{date_pat}{sep}%I:%M:%S %p", has_era),  # 12-hour with seconds
+                    (f"{date_pat}{sep}%I:%M %p", has_era),  # 12-hour without seconds
                 ]
             )
 
@@ -387,7 +394,8 @@ def _get_datetime_patterns(locale_code: str) -> tuple[str, ...]:
 # ==============================================================================
 
 # Token mapping: Babel CLDR pattern -> Python strptime directive
-_BABEL_TOKEN_MAP: dict[str, str] = {
+# None values indicate tokens that require preprocessing (e.g., era stripping)
+_BABEL_TOKEN_MAP: dict[str, str | None] = {
     # Year
     "yyyy": "%Y",  # 4-digit year
     "yy": "%y",  # 2-digit year
@@ -414,12 +422,13 @@ _BABEL_TOKEN_MAP: dict[str, str] = {
     "ccc": "%a",  # Short weekday name (stand-alone)
     "cc": "%w",  # Numeric weekday (stand-alone)
     "c": "%w",  # Numeric weekday (stand-alone)
-    # Era (AD/BC) - strptime doesn't support era, map to empty (pass-through)
-    # These appear in some locale patterns but Python datetime doesn't support era
-    "GGGG": "",  # Full era name (Anno Domini)
-    "GGG": "",  # Abbreviated era (AD)
-    "GG": "",  # Abbreviated era (AD)
-    "G": "",  # Era abbreviation (AD)
+    # Era (AD/BC) - strptime doesn't support era
+    # Map to None to signal that era stripping is needed (v0.33.0 fix)
+    # See _ERA_STRINGS and _strip_era() for runtime handling
+    "GGGG": None,  # Full era name (Anno Domini)
+    "GGG": None,  # Abbreviated era (AD)
+    "GG": None,  # Abbreviated era (AD)
+    "G": None,  # Era abbreviation (AD)
     # Hour
     "HH": "%H",  # 2-digit hour (0-23)
     "H": "%H",  # Hour (0-23)
@@ -431,9 +440,94 @@ _BABEL_TOKEN_MAP: dict[str, str] = {
     # Second
     "ss": "%S",  # 2-digit second
     "s": "%S",  # Second
+    # Fractional seconds (v0.33.0)
+    # Python's %f expects 6 digits (microseconds); CLDR uses variable precision
+    # Map to %f and accept precision mismatch as best-effort
+    "SSSSSS": "%f",  # Microseconds (6 digits)
+    "SSSSS": "%f",  # 5 fractional digits
+    "SSSS": "%f",  # 4 fractional digits
+    "SSS": "%f",  # Milliseconds (3 digits)
+    "SS": "%f",  # 2 fractional digits
+    "S": "%f",  # 1 fractional digit
     # AM/PM
     "a": "%p",  # AM/PM marker
+    # Hour (1-24 and 0-11 variants) (v0.33.0)
+    # Python doesn't have direct equivalents; map to closest
+    "kk": "%H",  # Hour 1-24 -> 0-23 (off-by-one at midnight)
+    "k": "%H",  # Hour 1-24 -> 0-23
+    "KK": "%I",  # Hour 0-11 -> 1-12 (off-by-one at noon)
+    "K": "%I",  # Hour 0-11 -> 1-12
+    # Timezone tokens (v0.33.0)
+    # Python strptime has limited timezone support; map what's possible
+    "ZZZZZ": "%z",  # Extended offset (e.g., +01:00) -> +HHMM
+    "ZZZZ": "%z",  # Localized GMT (e.g., GMT+01:00) -> +HHMM (partial)
+    "ZZZ": "%z",  # RFC 822 offset (e.g., +0100)
+    "ZZ": "%z",  # RFC 822 offset
+    "Z": "%z",  # Basic offset
+    "xxxxx": "%z",  # ISO 8601 extended (+01:00:00)
+    "xxxx": "%z",  # ISO 8601 basic (+0100)
+    "xxx": "%z",  # ISO 8601 extended (+01:00)
+    "xx": "%z",  # ISO 8601 basic (+01)
+    "x": "%z",  # ISO 8601 basic (+01)
+    "XXXXX": "%z",  # ISO 8601 extended with Z
+    "XXXX": "%z",  # ISO 8601 basic with Z
+    "XXX": "%z",  # ISO 8601 extended with Z
+    "XX": "%z",  # ISO 8601 basic with Z
+    "X": "%z",  # ISO 8601 basic with Z
+    # Timezone names - strptime has limited support (v0.33.0)
+    # These often fail in strptime; map to None like era tokens
+    "zzzz": None,  # Full timezone name (e.g., Pacific Standard Time)
+    "zzz": None,  # Abbreviated timezone (e.g., PST)
+    "zz": None,  # Abbreviated timezone
+    "z": None,  # Abbreviated timezone
+    "vvvv": None,  # Generic non-location timezone
+    "v": None,  # Generic non-location timezone short
+    "VVVV": None,  # Generic location timezone
+    "VVV": None,  # City timezone
+    "VV": None,  # Timezone ID (e.g., America/Los_Angeles)
+    "V": None,  # Short timezone ID
+    "OOOO": None,  # Localized GMT long
+    "O": None,  # Localized GMT short
 }
+
+# Era strings to strip from input when pattern contains era tokens (v0.33.0)
+# Sorted by length descending to match longer strings first
+# Covers common English and Latin era designations
+_ERA_STRINGS: tuple[str, ...] = (
+    "Anno Domini",  # GGGG full form
+    "Before Christ",  # GGGG full form (BC)
+    "Common Era",  # CE variant
+    "Before Common Era",  # BCE variant
+    "A.D.",  # With periods
+    "B.C.",  # With periods
+    "C.E.",  # Common Era with periods
+    "BCE",  # Before Common Era
+    "AD",  # Standard abbreviation
+    "BC",  # Standard abbreviation
+    "CE",  # Common Era
+)
+
+
+def _strip_era(value: str) -> str:
+    """Strip era designations from date string.
+
+    Used when pattern contains era tokens (G/GG/GGG/GGGG) since Python's
+    strptime doesn't support era parsing.
+
+    Args:
+        value: Date string potentially containing era text
+
+    Returns:
+        Date string with era text removed and whitespace normalized
+    """
+    result = value
+    for era in _ERA_STRINGS:
+        # Case-insensitive replacement
+        idx = result.upper().find(era.upper())
+        if idx != -1:
+            result = result[:idx] + result[idx + len(era):]
+    # Normalize whitespace (collapse multiple spaces)
+    return " ".join(result.split())
 
 
 def _tokenize_babel_pattern(pattern: str) -> list[str]:
@@ -515,12 +609,17 @@ def _tokenize_babel_pattern(pattern: str) -> list[str]:
     return tokens
 
 
-def _babel_to_strptime(babel_pattern: str) -> str:
+def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
     """Convert Babel CLDR pattern to Python strptime format.
 
     Fixes edge cases with word boundaries in patterns like "d.MM.yyyy".
 
     Babel uses Unicode CLDR date pattern syntax, Python uses strptime directives.
+
+    Returns:
+        Tuple of (strptime_pattern, has_era) where has_era indicates if the
+        pattern contained era tokens that were stripped and require input
+        preprocessing via _strip_era().
 
     Babel Patterns:
         y, yy      = 2-digit year
@@ -556,17 +655,25 @@ def _babel_to_strptime(babel_pattern: str) -> str:
         babel_pattern: Babel CLDR date pattern
 
     Returns:
-        Python strptime pattern
+        Tuple of (strptime_pattern, has_era):
+        - strptime_pattern: Python strptime pattern
+        - has_era: True if pattern contained era tokens (G/GG/GGG/GGGG)
     """
     tokens = _tokenize_babel_pattern(babel_pattern)
     result_parts: list[str] = []
+    has_era = False
 
     for token in tokens:
         # Check if token is a Babel pattern token
         if token in _BABEL_TOKEN_MAP:
-            result_parts.append(_BABEL_TOKEN_MAP[token])
+            mapped = _BABEL_TOKEN_MAP[token]
+            if mapped is None:
+                # Era token - skip in pattern, mark for preprocessing
+                has_era = True
+            else:
+                result_parts.append(mapped)
         else:
             # Literal: pass through (punctuation, spaces, etc.)
             result_parts.append(token)
 
-    return "".join(result_parts)
+    return ("".join(result_parts), has_era)

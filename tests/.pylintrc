@@ -165,6 +165,11 @@ disable =
     # Reason: Ruff handles import ordering (isort)
     wrong-import-order,
 
+    # C0413: wrong-import-position
+    # Reason: pytestmark = pytest.mark.fuzz must precede imports for file-level marker application
+    # This is a documented pattern in DOC_06_Testing.md for fuzz-marked test files
+    wrong-import-position,
+
     # C0412: ungrouped-imports
     # Reason: Ruff handles this
     ungrouped-imports,

@@ -327,7 +327,8 @@ class TestGetDatetimePatternsExceptions:
         assert len(patterns) > 0
         # Verify the CLDR patterns were converted (lines 359-360 executed)
         # The patterns should contain strptime directives
-        pattern_str = " ".join(patterns)
+        # patterns is now tuple of (pattern_str, has_era) tuples
+        pattern_str = " ".join(p[0] for p in patterns)
         assert "%" in pattern_str  # Contains strptime directives
 
     def test_get_datetime_patterns_attribute_error_in_pattern(self) -> None:

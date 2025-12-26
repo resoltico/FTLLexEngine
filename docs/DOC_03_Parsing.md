@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.32.0
+project_version: 0.33.0
 context: PARSING
 last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
@@ -10,11 +10,11 @@ maintainer: claude-opus-4-5
 
 ---
 
-## `parse_ftl`
+## `parse`
 
 ### Signature
 ```python
-def parse_ftl(source: str) -> Resource:
+def parse(source: str) -> Resource:
 ```
 
 ### Contract
@@ -30,11 +30,11 @@ def parse_ftl(source: str) -> Resource:
 
 ---
 
-## `serialize_ftl`
+## `serialize`
 
 ### Signature
 ```python
-def serialize_ftl(resource: Resource, *, validate: bool = False) -> str:
+def serialize(resource: Resource, *, validate: bool = False) -> str:
 ```
 
 ### Contract
@@ -56,22 +56,30 @@ def serialize_ftl(resource: Resource, *, validate: bool = False) -> str:
 ### Signature
 ```python
 class FluentParserV1:
-    def __init__(self, *, max_source_size: int | None = None) -> None: ...
+    def __init__(
+        self,
+        *,
+        max_source_size: int | None = None,
+        max_nesting_depth: int | None = None,
+    ) -> None: ...
     def parse(self, source: str) -> Resource: ...
     @property
     def max_source_size(self) -> int: ...
+    @property
+    def max_nesting_depth(self) -> int: ...
 ```
 
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `max_source_size` | `int \| None` | N | Maximum source size in bytes (default: 10 MB). |
+| `max_nesting_depth` | `int \| None` | N | Maximum nesting depth for placeables (default: 100). |
 
 ### Constraints
 - Return: Parser instance.
-- State: Stores max_source_size configuration.
+- State: Stores max_source_size and max_nesting_depth configuration.
 - Thread: Safe for concurrent parse() calls.
-- Security: Validates source size before parsing (DoS prevention).
+- Security: Validates source size and nesting depth (DoS prevention).
 
 ---
 
@@ -93,33 +101,6 @@ def parse(self, source: str) -> Resource:
 - State: None.
 - Thread: Safe.
 - Security: Enforces input size limit.
-
----
-
-## `FluentParserV1.max_nesting_depth`
-
-### Signature
-```python
-def __init__(
-    self,
-    *,
-    max_source_size: int | None = None,
-    max_nesting_depth: int | None = None,
-) -> None:
-```
-
-### Contract
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `max_source_size` | `int \| None` | N | Maximum source size in bytes. |
-| `max_nesting_depth` | `int \| None` | N | Maximum nesting depth (default: 100). |
-
-### Constraints
-- Return: None.
-- State: Per-instance configuration.
-- Thread: Each parser instance has independent limit.
-- Security: Prevents DoS via deeply nested placeables.
-- Import: `from ftllexengine.syntax.parser import FluentParserV1`
 
 ---
 
@@ -376,6 +357,7 @@ def parse_currency(
 - Raises: Never.
 - State: None.
 - Thread: Safe.
+- Validation: ISO 4217 codes validated against CLDR data (v0.33.0+).
 
 ---
 
@@ -507,7 +489,7 @@ DEFAULT_MAX_NESTING_DEPTH: int = 100
 |:----------|:------|
 | Type | `int` |
 | Value | 100 |
-| Location | `ftllexengine.syntax.parser.expressions` |
+| Location | `ftllexengine.syntax.parser.rules` |
 
 - Purpose: Default maximum nesting depth for placeable parsing.
 - Usage: Default value for ParseContext.max_nesting_depth and FluentParserV1.

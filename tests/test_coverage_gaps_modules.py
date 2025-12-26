@@ -81,7 +81,7 @@ class TestParsingCurrencyCoverage:
         _get_currency_pattern.cache_clear()
 
         # Get the original maps and force pattern to be built with them
-        original_symbol_map, original_ambiguous, original_locale_map = (
+        original_symbol_map, original_ambiguous, original_locale_map, original_valid_codes = (
             _get_currency_maps()
         )
 
@@ -93,9 +93,10 @@ class TestParsingCurrencyCoverage:
 
         # Patch _get_currency_maps to return modified maps
         # BUT don't clear the pattern cache - pattern still has € in regex
+        mock_return = (modified_map, original_ambiguous, original_locale_map, original_valid_codes)
         with patch(
             "ftllexengine.parsing.currency._get_currency_maps",
-            return_value=(modified_map, original_ambiguous, original_locale_map),
+            return_value=mock_return,
         ):
             # Now € is in the regex (built earlier) but NOT in the map (patched)
             result, errors = parse_currency("€100.50", "en_US")

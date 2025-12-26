@@ -35,14 +35,21 @@ from ftllexengine.syntax.visitor import ASTTransformer, ASTVisitor
 # Use st.from_regex for FTL identifiers (hypothesis.md insight)
 ftl_identifiers = st.from_regex(r"[a-z][a-z0-9_-]*", fullmatch=True)
 
-# Simple text without FTL syntax
-ftl_text = st.text(
-    alphabet=st.characters(
-        blacklist_categories=("Cc", "Cs"),
-        blacklist_characters="{}[]*$->\n\r",
-    ),
-    min_size=1,
-    max_size=50,
+# Valid FTL pattern text: must contain at least one non-whitespace character.
+# Per Fluent spec, Pattern ::= PatternElement+, and whitespace before pattern
+# is consumed as blank_inline, so patterns need visible content.
+# Constructed by definition: core guarantees visibility.
+_ftl_visible_char = st.characters(
+    blacklist_categories=("Cc", "Cs", "Z"),  # Exclude control, surrogate, separator
+    blacklist_characters="{}[]*$->\n\r ",  # Exclude FTL syntax and space
+)
+_ftl_padding_char = st.sampled_from(" \t")
+
+ftl_text = st.builds(
+    lambda prefix, core, suffix: prefix + core + suffix,
+    prefix=st.text(alphabet=_ftl_padding_char, max_size=3),
+    core=st.text(alphabet=_ftl_visible_char, min_size=1, max_size=44),
+    suffix=st.text(alphabet=_ftl_padding_char, max_size=3),
 )
 
 

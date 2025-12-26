@@ -642,6 +642,28 @@ class ErrorTemplate:
         )
 
     @staticmethod
+    def parse_currency_code_invalid(
+        code: str,
+        value: str,
+    ) -> Diagnostic:
+        """Invalid ISO 4217 currency code.
+
+        Args:
+            code: The invalid 3-letter currency code
+            value: The full currency string
+
+        Returns:
+            Diagnostic for PARSE_CURRENCY_CODE_INVALID
+        """
+        msg = f"Invalid ISO 4217 currency code '{code}' in '{value}'"
+        return Diagnostic(
+            code=DiagnosticCode.PARSE_CURRENCY_CODE_INVALID,
+            message=msg,
+            span=None,
+            hint="Use valid ISO 4217 codes (USD, EUR, GBP, JPY, etc.)",
+        )
+
+    @staticmethod
     def parse_amount_invalid(
         amount_str: str,
         value: str,

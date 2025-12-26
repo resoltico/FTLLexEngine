@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.32.0"
+version = "0.33.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -64,11 +64,16 @@ dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "hypothesis>=6.148.8",
+    "hypofuzz>=25.11.1",
     "mypy>=1.19.1",
     "pylint>=4.0.4",
     "ruff>=0.14.10",
     "pytest-benchmark>=5.2.3",
+    "pytest-xdist>=3.8.0",
+    "pytest-sugar>=1.1.1",
+    "atheris>=3.0.0",    # Atheris 3.0.0 does not support Python 3.14. See docs/FUZZING_GUIDE.md
 ]
+
 release = [
     "build>=1.3.0",
     "twine>=6.2.0",
@@ -187,6 +192,17 @@ disable_error_code = ["arg-type", "unreachable"]
 module = "babel.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "atheris"
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+module = ["fuzz.stability", "fuzz.perf"]
+ignore_missing_imports = true
+# Atheris has no type stubs - disable type checking errors for fuzz targets
+disable_error_code = ["import-untyped", "attr-defined"]
+
 # Ruff configuration
 [tool.ruff]
 line-length = 100
@@ -233,6 +249,7 @@ ignore = [
 
 # Parser: Inherent complexity from EBNF grammar
 "src/ftllexengine/syntax/parser/core.py" = ["PLR0912"]
+"src/ftllexengine/syntax/parser/rules.py" = ["PLR0911", "PLR0912"]
 
 # Visitor: Commented example code + inherent complexity from AST node dispatch
 "src/ftllexengine/syntax/visitor.py" = ["ERA001", "PLR0911", "PLR0912"]
@@ -277,6 +294,9 @@ ignore = [
 "tests/test_systematic_error_paths.py" = ["ARG002"]
 "tests/test_multiline_hypothesis.py" = ["E721", "E501"]
 "tests/test_parser_hypothesis_errors.py" = ["E721"]
+
+# Fuzzing: pytestmark must precede imports for file-level marker application
+"tests/test_grammar_based_fuzzing.py" = ["E402"]
 "tests/test_serializer_completeness.py" = ["RUF002"]
 "tests/test_semantic_validation.py" = ["PLC0415"]
 "tests/test_span_attachment.py" = ["PLC0415"]

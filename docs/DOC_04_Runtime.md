@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.32.0
+project_version: 0.33.0
 context: RUNTIME
 last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
@@ -15,7 +15,7 @@ maintainer: claude-opus-4-5
 ### Signature
 ```python
 def number_format(
-    value: int | float | Decimal,
+    value: int | float,
     locale_code: str = "en-US",
     *,
     minimum_fraction_digits: int = 0,
@@ -28,7 +28,7 @@ def number_format(
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float \| Decimal` | Y | Number to format. |
+| `value` | `int \| float` | Y | Number to format. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `minimum_fraction_digits` | `int` | N | Minimum decimal places. |
 | `maximum_fraction_digits` | `int` | N | Maximum decimal places. |
@@ -79,7 +79,7 @@ def datetime_format(
 ### Signature
 ```python
 def currency_format(
-    value: int | float | Decimal,
+    value: int | float,
     locale_code: str = "en-US",
     *,
     currency: str,
@@ -91,7 +91,7 @@ def currency_format(
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float \| Decimal` | Y | Monetary amount. |
+| `value` | `int \| float` | Y | Monetary amount. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `currency` | `str` | Y | ISO 4217 currency code. |
 | `currency_display` | `Literal[...]` | N | Display style. |
@@ -125,10 +125,15 @@ class FunctionRegistry:
         positional: Sequence[FluentValue],
         named: Mapping[str, FluentValue],
     ) -> FluentValue: ...
-    def get(self, name: str) -> Callable[..., FluentValue] | None: ...
+    def has_function(self, ftl_name: str) -> bool: ...
     def get_callable(self, ftl_name: str) -> Callable[..., FluentValue] | None: ...
     def get_function_info(self, ftl_name: str) -> FunctionSignature | None: ...
+    def get_python_name(self, ftl_name: str) -> str | None: ...
+    def list_functions(self) -> list[str]: ...
     def copy(self) -> FunctionRegistry: ...
+    def __iter__(self) -> Iterator[str]: ...
+    def __len__(self) -> int: ...
+    def __contains__(self, ftl_name: str) -> bool: ...
 ```
 
 ### Contract
@@ -212,9 +217,10 @@ def register(
 
 ### Constraints
 - Return: None.
-- Raises: None.
+- Raises: ValueError if parameter names collide after underscore stripping (e.g., `_value` and `value`).
 - State: Mutates registry.
 - Thread: Unsafe.
+- Version: Collision detection added in v0.33.0.
 
 ---
 
@@ -480,7 +486,7 @@ def validate_resource(
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
 - Import: `from ftllexengine.validation import validate_resource`
-- Version: Pass 5 semantic validation added in v0.32.0.
+- Version: Pass 5 semantic validation added in v0.33.0.
 
 ---
 
@@ -524,7 +530,7 @@ class ResolutionContext:
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
 - Complexity: contains() is O(1) via _seen set.
 - Import: `from ftllexengine.runtime import ResolutionContext`
-- Version: O(1) contains() added in v0.31.0. DepthGuard refactor in v0.32.0.
+- Version: O(1) contains() added in v0.31.0. DepthGuard refactor in v0.33.0.
 
 ---
 
@@ -596,7 +602,7 @@ def expression_guard(self) -> DepthGuard:
 - Usage: Use as context manager (`with context.expression_guard:`).
 - Raises: DepthLimitExceededError when depth limit exceeded.
 - State: Read-only property returning internal DepthGuard.
-- Version: Added in v0.32.0. Replaces enter_expression/exit_expression.
+- Version: Added in v0.33.0. Replaces enter_expression/exit_expression.
 
 ---
 
@@ -611,7 +617,7 @@ def expression_depth(self) -> int:
 ### Constraints
 - Return: Current expression nesting depth.
 - State: Read-only property (delegates to expression_guard.current_depth).
-- Version: Changed to read-only property in v0.32.0.
+- Version: Changed to read-only property in v0.33.0.
 
 ---
 

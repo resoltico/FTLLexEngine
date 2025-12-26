@@ -55,6 +55,7 @@ class DiagnosticCode(Enum):
     PARSE_CURRENCY_AMBIGUOUS = 4007
     PARSE_CURRENCY_SYMBOL_UNKNOWN = 4008
     PARSE_AMOUNT_INVALID = 4009
+    PARSE_CURRENCY_CODE_INVALID = 4010
 
 
 @dataclass(frozen=True, slots=True)

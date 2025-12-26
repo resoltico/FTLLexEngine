@@ -89,11 +89,13 @@ cd "$PROJECT_ROOT"
 # Clean Caches
 if [[ "$CLEAN_CACHE" == "true" ]]; then
     log_group_start "Housekeeping"
-    rm -rf .pytest_cache .hypothesis
+    rm -rf .pytest_cache
+    # Preserve .hypothesis/examples/ (regression database) but clean temp files
+    rm -rf .hypothesis/unicode_data .hypothesis/constants
     set +e # Guard against find failing on permissions or non-existent files
     find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
     set -e
-    log_info "Test caches cleared."
+    log_info "Test caches cleared (hypothesis examples preserved)."
     log_group_end
 fi
 

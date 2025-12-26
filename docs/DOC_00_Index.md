@@ -1,13 +1,13 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.32.0
+project_version: 0.33.0
 context: INDEX
 last_updated: 2025-12-24T12:00:00Z
 maintainer: claude-opus-4-5
 retrieval_hints:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
   answers: [api documentation, what classes available, how to import, module exports]
-  related: [DOC_01_Core.md, DOC_02_Types.md, DOC_03_Parsing.md, DOC_04_Runtime.md, DOC_05_Errors.md]
+  related: [DOC_01_Core.md, DOC_02_Types.md, DOC_03_Parsing.md, DOC_04_Runtime.md, DOC_05_Errors.md, DOC_06_Testing.md]
 ---
 
 # FTLLexEngine API Reference Index
@@ -129,7 +129,7 @@ from ftllexengine.localization import (
 |:--------------|:------------|:-------|
 | FluentBundle, FluentLocalization, add_resource, format_pattern, format_value | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
-| parse_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
+| parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FluentError, FluentReferenceError, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, extract_references, ReferenceExtractor, dependency graph | [DOC_02_Types.md](DOC_02_Types.md) | Analysis |

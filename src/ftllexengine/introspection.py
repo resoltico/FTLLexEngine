@@ -307,28 +307,40 @@ class ReferenceExtractor(ASTVisitor):
     This is intentionally simpler than IntrospectionVisitor - it does one thing
     well: extract reference IDs for dependency analysis.
 
+    Depth Limiting (v0.33.0):
+        Includes DepthGuard to prevent stack overflow on adversarial or
+        programmatically constructed deeply nested ASTs.
+
     Memory Optimization:
         Uses __slots__ to restrict attribute creation and reduce memory overhead.
     """
 
-    __slots__ = ("message_refs", "term_refs")
+    __slots__ = ("_depth_guard", "message_refs", "term_refs")
 
-    def __init__(self) -> None:
-        """Initialize reference collector."""
+    def __init__(self, *, max_depth: int = MAX_EXPRESSION_DEPTH) -> None:
+        """Initialize reference collector.
+
+        Args:
+            max_depth: Maximum expression nesting depth (default: MAX_EXPRESSION_DEPTH).
+                       Prevents stack overflow on adversarial ASTs.
+        """
         super().__init__()
         self.message_refs: set[str] = set()
         self.term_refs: set[str] = set()
+        self._depth_guard: DepthGuard = DepthGuard(max_depth=max_depth)
 
     def visit_MessageReference(self, node: MessageReference) -> MessageReference:
-        """Collect message reference."""
+        """Collect message reference with depth tracking."""
         self.message_refs.add(node.id.name)
-        self.generic_visit(node)
+        with self._depth_guard:
+            self.generic_visit(node)
         return node
 
     def visit_TermReference(self, node: TermReference) -> TermReference:
-        """Collect term reference."""
+        """Collect term reference with depth tracking."""
         self.term_refs.add(node.id.name)
-        self.generic_visit(node)
+        with self._depth_guard:
+            self.generic_visit(node)
         return node
 
 

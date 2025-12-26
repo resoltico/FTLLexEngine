@@ -412,10 +412,10 @@ Complete alphabetical reference:
 | **Entry** | Top-level AST node | Message, Term, Comment, or Junk |
 | **Expression** | Evaluable AST component | Variables, functions, selects |
 | **Fallback** | Default when error occurs | Readable placeholder value |
-| **FTL** | Fluent Translation List file format | .ftl file extension |
-| **FTL source** | String containing FTL syntax | What you pass to `add_resource()` |
 | **Fluent** | The localization system | Overall specification and ecosystem |
 | **Fluent syntax** | The language syntax | Grammar rules for .ftl files |
+| **FTL** | Fluent Translation List file format | .ftl file extension |
+| **FTL source** | String containing FTL syntax | What you pass to `add_resource()` |
 | **Function** | Formatting function | NUMBER, DATETIME, custom |
 | **Junk** | Unparseable FTL syntax | Parser error recovery node |
 | **Locale** | Language and region | "en_US", "lv_LV" |
@@ -432,8 +432,8 @@ Complete alphabetical reference:
 
 ---
 
-**Terminology Guide Last Updated**: December 23, 2025
-**FTLLexEngine Version**: 0.29.1
+**Terminology Guide Last Updated**: December 26, 2025
+**FTLLexEngine Version**: 0.33.0
 
 **See Also**:
 - [README.md - Terminology Section](README.md#terminology)

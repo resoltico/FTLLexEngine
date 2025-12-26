@@ -1,9 +1,13 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.32.0
+project_version: 0.33.0
 context: CORE
-last_updated: 2025-12-24T12:00:00Z
+last_updated: 2025-12-26T12:00:00Z
 maintainer: claude-opus-4-5
+retrieval_hints:
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, validate_resource, introspect_message]
+  answers: [how to format message, how to add translations, how to validate ftl, how to check message exists, how to use bundle]
+  related: [DOC_02_Types.md, DOC_04_Runtime.md, DOC_05_Errors.md]
 ---
 
 # Core API Reference
@@ -74,7 +78,7 @@ def for_system_locale(
 - Raises: `RuntimeError` if locale cannot be determined.
 - State: Delegates to `get_system_locale(raise_on_failure=True)`.
 - Thread: Safe.
-- Version: Now uses unified `get_system_locale()` from locale_utils (v0.32.0).
+- Version: Now uses unified `get_system_locale()` from locale_utils (v0.33.0).
 
 ---
 
@@ -367,7 +371,7 @@ def clear_cache(self) -> None:
 
 ### Signature
 ```python
-def get_cache_stats(self) -> dict[str, int] | None:
+def get_cache_stats(self) -> dict[str, int | float] | None:
 ```
 
 ### Contract
@@ -375,7 +379,7 @@ def get_cache_stats(self) -> dict[str, int] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Dict with size/hits/misses/hit_rate, or None if disabled.
+- Return: Dict with size/hits/misses (int) and hit_rate (float 0.0-100.0), or None if disabled.
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
@@ -623,8 +627,9 @@ def add_function(self, name: str, func: Callable[..., str]) -> None:
 ### Constraints
 - Return: None.
 - Raises: None.
-- State: Mutates all bundles.
+- State: Stores function for existing and future bundles.
 - Thread: Unsafe.
+- Behavior: Preserves lazy bundle initialization (v0.33.0+). Functions are stored and applied when bundles are first accessed.
 
 ---
 
@@ -1008,6 +1013,6 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 - State: Reads OS locale via locale.getlocale() and env vars LC_ALL, LC_MESSAGES, LANG.
 - Thread: Safe.
 - Import: `from ftllexengine.locale_utils import get_system_locale`
-- Version: Added in v0.31.0. `raise_on_failure` parameter added in v0.32.0.
+- Version: Added in v0.31.0. `raise_on_failure` parameter added in v0.33.0.
 
 ---

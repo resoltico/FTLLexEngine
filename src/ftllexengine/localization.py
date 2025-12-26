@@ -396,6 +396,7 @@ class FluentLocalization:
         "_enable_cache",
         "_load_results",
         "_locales",
+        "_pending_functions",
         "_resource_ids",
         "_resource_loader",
         "_resources_loaded",
@@ -457,6 +458,10 @@ class FluentLocalization:
         # Track all load results for diagnostics
         self._load_results: list[ResourceLoadResult] = []
 
+        # Pending functions: stored until bundle is created (lazy loading support)
+        # Functions are applied to bundles when they are first accessed
+        self._pending_functions: dict[str, Callable[..., str]] = {}
+
         # Resource loading is EAGER by design:
         # - Fail-fast: Critical errors (parse, permission) raised at construction
         # - Predictable: All resource parse errors discovered immediately
@@ -517,6 +522,9 @@ class FluentLocalization:
         This implements lazy bundle initialization to reduce memory usage
         when fallback locales are rarely accessed.
 
+        When a new bundle is created, any pending functions (registered via
+        add_function before the bundle was accessed) are automatically applied.
+
         Args:
             locale: Locale code (must be in _bundles dict)
 
@@ -531,6 +539,9 @@ class FluentLocalization:
                 enable_cache=self._enable_cache,
                 cache_size=self._cache_size,
             )
+            # Apply any pending functions that were registered before bundle creation
+            for name, func in self._pending_functions.items():
+                bundle.add_function(name, func)
             self._bundles[locale] = bundle
         return bundle
 
@@ -765,8 +776,9 @@ class FluentLocalization:
     def add_function(self, name: str, func: Callable[..., str]) -> None:
         """Register custom function on all bundles.
 
-        Convenience method to avoid manual bundle iteration.
-        Creates bundles lazily if they don't exist yet.
+        Functions are applied immediately to any already-created bundles,
+        and stored for deferred application to bundles created later.
+        This preserves lazy bundle initialization.
 
         Args:
             name: Function name (UPPERCASE by convention)
@@ -782,9 +794,13 @@ class FluentLocalization:
             >>> result
             'HELLO'
         """
-        for locale in self._locales:
-            bundle = self._get_or_create_bundle(locale)
-            bundle.add_function(name, func)
+        # Store for future bundle creation (lazy loading support)
+        self._pending_functions[name] = func
+
+        # Apply to any already-created bundles
+        for bundle in self._bundles.values():
+            if bundle is not None:
+                bundle.add_function(name, func)
 
     def introspect_message(self, message_id: MessageId) -> "MessageIntrospection | None":
         """Get message introspection from first bundle with message.

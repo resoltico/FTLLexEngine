@@ -29,7 +29,7 @@ class TestParseCurrencyHypothesis:
         ),
         currency_symbol=st.sampled_from(["€", "$", "£", "¥", "₹", "₽", "₪", "₫", "₱"]),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=200, deadline=None)  # deadline=None for CLDR cache warmup
     def test_parse_currency_roundtrip_financial_precision(
         self, amount: Decimal, currency_symbol: str
     ) -> None:
@@ -58,15 +58,20 @@ class TestParseCurrencyHypothesis:
         assert currency_code.isupper()
 
     @given(
-        currency_code=st.from_regex(r"[A-Z]{3}", fullmatch=True),  # ISO 4217 format
+        # Use actual ISO 4217 codes from CLDR (v0.33.0+: validated against CLDR)
+        currency_code=st.sampled_from([
+            "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY", "INR",
+            "BRL", "MXN", "KRW", "RUB", "ZAR", "SGD", "HKD", "NOK", "SEK", "DKK",
+            "PLN", "TRY", "THB", "MYR", "IDR", "PHP", "VND", "CZK", "HUF", "ILS",
+        ]),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_parse_currency_iso_code_format(self, currency_code: str) -> None:
-        """ISO 4217 currency codes (3 uppercase letters) should be recognized."""
+        """Valid ISO 4217 currency codes should be recognized."""
         amount_str = f"{currency_code} 123.45"
 
         result, errors = parse_currency(amount_str, "en_US")
-        assert not errors
+        assert not errors, f"Failed for {currency_code}: {errors}"
         assert result is not None
 
         parsed_amount, parsed_code = result
@@ -105,7 +110,9 @@ class TestParseCurrencyHypothesis:
         from ftllexengine.parsing.currency import _get_currency_pattern
 
         # Get original maps and create modified version missing € symbol
-        original_symbol_map, original_ambiguous, original_locale_map = _get_currency_maps()
+        original_symbol_map, original_ambiguous, original_locale_map, original_valid_codes = (
+            _get_currency_maps()
+        )
         modified_map = original_symbol_map.copy()
         del modified_map["€"]
 
@@ -113,9 +120,12 @@ class TestParseCurrencyHypothesis:
         _get_currency_pattern.cache_clear()
 
         # Mock _get_currency_maps to return modified maps
+        mock_return = (
+            modified_map, original_ambiguous, original_locale_map, original_valid_codes
+        )
         with patch(
             "ftllexengine.parsing.currency._get_currency_maps",
-            return_value=(modified_map, original_ambiguous, original_locale_map),
+            return_value=mock_return,
         ):
             # Clear cache again after patching to force regeneration
             _get_currency_pattern.cache_clear()

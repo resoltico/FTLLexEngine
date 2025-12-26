@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2025-12-26
+
+### Added
+- `PARSE_CURRENCY_CODE_INVALID` diagnostic code for invalid ISO 4217 currency codes
+- ISO 4217 currency code validation against CLDR data in `parse_currency()`
+- Underscore parameter collision detection in `FunctionRegistry.register()`
+- Era token stripping (`_strip_era()`) for date/datetime parsing compatibility
+- Missing CLDR tokens to `_BABEL_TOKEN_MAP`: fractional seconds (S/SSS/SSSSSS), hour variants (k/kk/K/KK), timezone tokens (Z/ZZZZZ/x/xxxxx/z/zzzz)
+- `DepthGuard` protection to `ReferenceExtractor` for stack overflow prevention
+- `_get_node_fields()` method to `ASTVisitor` for cached field introspection
+
+### Changed
+- `FluentLocalization.add_function()` now preserves lazy bundle initialization
+- `_get_currency_maps()` now returns frozenset of valid ISO 4217 codes for validation
+- `parse_argument_expression()` now handles TermReference, FunctionReference, and inline_placeable per FTL spec
+- Era tokens (G/GG/GGG/GGGG) now map to `None` and are stripped from input before parsing
+- `ASTVisitor.generic_visit()` now uses cached fields per node type for performance
+
+### Fixed
+- `add_function()` no longer defeats lazy bundle loading by eagerly creating all bundles
+- Currency parsing now rejects invalid ISO 4217 codes instead of accepting any 3-letter uppercase string
+- Function registration now raises `ValueError` on underscore parameter collision (e.g., `_value` and `value` mapping to same FTL parameter)
+
+### Performance
+- `ASTVisitor.generic_visit()` field introspection reduced from O(n) per visit to O(1) via class-level caching
+
 ## [0.32.0] - 2025-12-25
 
 ### Added
@@ -132,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.33.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.33.0
 [0.32.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.32.0
 [0.31.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.31.0
 [0.30.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.30.0

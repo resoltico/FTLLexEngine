@@ -901,8 +901,8 @@ class TestTextElementBraceSerialization:
 
         result = serialize(resource)
 
-        # Braces become StringLiteral Placeables: {"{"}variable{"}"}
-        assert 'brace = Use {"{"}variable{"}"} syntax\n' in result
+        # Braces become StringLiteral Placeables: { "{" }variable{ "}" }
+        assert 'brace = Use { "{" }variable{ "}" } syntax\n' in result
 
     def test_close_brace_becomes_string_literal_placeable(self) -> None:
         """Close brace } in text becomes {"}"} per Fluent spec."""
@@ -916,10 +916,10 @@ class TestTextElementBraceSerialization:
         result = serialize(resource)
 
         # Both { and } become StringLiteral Placeables
-        assert '{"{"}' in result
-        assert '{"}"}' in result
-        # Full pattern: {"{"}"key": "value"{"}"}
-        assert 'json = {"{"}"key": "value"{"}"}\n' in result
+        assert '{ "{" }' in result
+        assert '{ "}" }' in result
+        # Full pattern: { "{" }"key": "value"{ "}" }
+        assert 'json = { "{" }"key": "value"{ "}" }\n' in result
 
     def test_backslash_not_escaped_in_text_elements(self) -> None:
         """Backslash has no special meaning in TextElements per Fluent spec.
@@ -951,7 +951,7 @@ class TestTextElementBraceSerialization:
         result = serialize(resource)
 
         # Backslash preserved, brace becomes StringLiteral Placeable
-        assert 'escaped = Literal \\{"{"} brace\n' in result
+        assert 'escaped = Literal \\{ "{" } brace\n' in result
 
     def test_preserve_text_without_braces(self) -> None:
         """Text without braces should not be modified."""
@@ -983,7 +983,7 @@ class TestTextElementBraceSerialization:
         result = serialize(resource)
 
         # Literal braces become StringLiteral Placeables, real placeable unchanged
-        assert 'mixed = JSON: {"{"}key{"}"} = { $value }\n' in result
+        assert 'mixed = JSON: { "{" }key{ "}" } = { $value }\n' in result
 
     def test_multiple_consecutive_braces(self) -> None:
         """Multiple consecutive braces each become separate placeables."""
@@ -997,8 +997,8 @@ class TestTextElementBraceSerialization:
         result = serialize(resource)
 
         # Each brace becomes its own placeable
-        assert 'multi = {"{"}{"{"}'  in result
-        assert '{"}"}{"}"}' in result
+        assert 'multi = { "{" }{ "{" }'  in result
+        assert '{ "}" }{ "}" }' in result
 
     def test_brace_at_start_of_text(self) -> None:
         """Brace at start of text element."""
@@ -1011,7 +1011,7 @@ class TestTextElementBraceSerialization:
 
         result = serialize(resource)
 
-        assert 'start = {"{"}start\n' in result
+        assert 'start = { "{" }start\n' in result
 
     def test_brace_at_end_of_text(self) -> None:
         """Brace at end of text element."""
@@ -1024,7 +1024,7 @@ class TestTextElementBraceSerialization:
 
         result = serialize(resource)
 
-        assert 'end = end{"}"}\n' in result
+        assert 'end = end{ "}" }\n' in result
 
     def test_only_braces(self) -> None:
         """Text containing only braces."""
@@ -1037,4 +1037,4 @@ class TestTextElementBraceSerialization:
 
         result = serialize(resource)
 
-        assert 'braces = {"{"}{"}"}\n' in result
+        assert 'braces = { "{" }{ "}" }\n' in result

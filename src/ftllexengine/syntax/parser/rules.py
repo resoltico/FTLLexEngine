@@ -172,7 +172,7 @@ def _is_valid_variant_key_char(ch: str, is_first: bool) -> bool:
     return ch.isalnum() or ch in ("_", "-", ".")
 
 
-def _is_variant_marker(cursor: Cursor) -> bool:  # noqa: PLR0911
+def _is_variant_marker(cursor: Cursor) -> bool:
     """Check if cursor is at a variant marker using lookahead.
 
     Distinguishes actual variant syntax from literal text:
@@ -619,56 +619,119 @@ def parse_select_expression(
     return ParseResult(select_expr, cursor)
 
 
-def parse_argument_expression(cursor: Cursor) -> ParseResult[InlineExpression] | None:  # noqa: PLR0911 - Grammar complexity
-    """Parse a single argument expression (variable, string, number, or identifier).
+def parse_argument_expression(
+    cursor: Cursor,
+    context: ParseContext | None = None,
+) -> ParseResult[InlineExpression] | None:
+    """Parse a single argument expression per FTL spec.
 
-    Helper method extracted from parse_call_arguments to reduce complexity.
+    FTL Argument Grammar (v0.33.0):
+        InlineExpression ::= StringLiteral | NumberLiteral | FunctionReference
+                           | MessageReference | TermReference | VariableReference
+                           | inline_placeable
+
+    This handles all valid positional argument types including:
+    - Variable references: $var
+    - String literals: "text"
+    - Number literals: 42, -123
+    - Term references: -brand
+    - Function references: NUMBER($val)
+    - Inline placeables: { expr }
+    - Message references: identifier
 
     Args:
         cursor: Current position in source
+        context: Parse context for nested placeable depth tracking
 
     Returns:
         Success(ParseResult(InlineExpression, cursor)) on success
-        Failure(ParseError(...)) on parse error
+        None on parse error
     """
-    if cursor.current == "$":
+    if cursor.is_eof:
+        return None
+
+    ch = cursor.current
+
+    # Variable reference: $var
+    if ch == "$":
         var_result = parse_variable_reference(cursor)
         if var_result is None:
-            return var_result
-        var_parse = var_result
-        return ParseResult(var_parse.value, var_parse.cursor)
+            return None
+        return ParseResult(var_result.value, var_result.cursor)
 
-    if cursor.current == '"':
+    # String literal: "text"
+    if ch == '"':
         str_result = parse_string_literal(cursor)
         if str_result is None:
-            return str_result
-        str_parse = str_result
-        return ParseResult(StringLiteral(value=str_parse.value), str_parse.cursor)
+            return None
+        return ParseResult(StringLiteral(value=str_result.value), str_result.cursor)
 
-    if cursor.current in _ASCII_DIGITS or cursor.current == "-":
+    # Hyphen: could be TermReference (-brand) or negative number (-123)
+    if ch == "-":
+        next_cursor = cursor.advance()
+        if not next_cursor.is_eof and next_cursor.current.isalpha():
+            # Term reference: -brand
+            term_result = parse_term_reference(cursor, context)
+            if term_result is None:
+                return None
+            return ParseResult(term_result.value, term_result.cursor)
+        # Negative number: -123
         num_result = parse_number(cursor)
         if num_result is None:
-            return num_result
-        num_parse = num_result
-        num_str = num_parse.value
-        num_value = parse_number_value(num_str)
+            return None
+        num_value = parse_number_value(num_result.value)
         return ParseResult(
-            NumberLiteral(value=num_value, raw=num_str), num_parse.cursor
+            NumberLiteral(value=num_value, raw=num_result.value), num_result.cursor
         )
 
-    if cursor.current.isalpha():
+    # Positive number: 42
+    if ch in _ASCII_DIGITS:
+        num_result = parse_number(cursor)
+        if num_result is None:
+            return None
+        num_value = parse_number_value(num_result.value)
+        return ParseResult(
+            NumberLiteral(value=num_value, raw=num_result.value), num_result.cursor
+        )
+
+    # Inline placeable: { expr }
+    if ch == "{":
+        cursor = cursor.advance()  # Skip opening {
+        placeable_result = parse_placeable(cursor, context)
+        if placeable_result is None:
+            return None
+        return ParseResult(placeable_result.value, placeable_result.cursor)
+
+    # Identifier: function call (UPPERCASE) or message reference
+    if ch.isalpha() or ch == "_":
         id_result = parse_identifier(cursor)
         if id_result is None:
-            return id_result
-        id_parse = id_result
+            return None
+
+        name = id_result.value
+        cursor_after_id = id_result.cursor
+
+        # Check if uppercase identifier followed by '(' -> function call
+        if name.isupper():
+            lookahead = skip_blank_inline(cursor_after_id)
+            if not lookahead.is_eof and lookahead.current == "(":
+                func_result = parse_function_reference(cursor, context)
+                if func_result is None:
+                    return None
+                return ParseResult(func_result.value, func_result.cursor)
+
+        # Message reference (or identifier for named argument name)
         return ParseResult(
-            MessageReference(id=Identifier(id_parse.value)), id_parse.cursor
+            MessageReference(id=Identifier(name)), cursor_after_id
         )
 
-    return None  # "Expected argument expression (variable, string, number, or identifier)"
+    return None  # "Expected argument expression"
 
 
-def parse_call_arguments(cursor: Cursor) -> ParseResult[CallArguments] | None:  # noqa: PLR0911 - Grammar complexity
+def parse_call_arguments(
+    cursor: Cursor,
+    context: ParseContext | None = None,
+) -> ParseResult[CallArguments] | None:
     """Parse function call arguments: (pos1, pos2, name1: val1, name2: val2)
 
     Arguments consist of positional arguments followed by named arguments.
@@ -681,6 +744,7 @@ def parse_call_arguments(cursor: Cursor) -> ParseResult[CallArguments] | None:  
 
     Args:
         cursor: Position AFTER the opening '('
+        context: Parse context for nested placeable depth tracking
 
     Returns:
         Success(ParseResult(CallArguments, cursor_after_))) on success
@@ -703,7 +767,7 @@ def parse_call_arguments(cursor: Cursor) -> ParseResult[CallArguments] | None:  
             break
 
         # Parse the argument expression using extracted helper
-        arg_result = parse_argument_expression(cursor)
+        arg_result = parse_argument_expression(cursor, context)
         if arg_result is None:
             return arg_result
 
@@ -733,7 +797,7 @@ def parse_call_arguments(cursor: Cursor) -> ParseResult[CallArguments] | None:  
                 return None  # "Expected value after ':'", cursor
 
             # Parse value expression using extracted helper
-            value_result = parse_argument_expression(cursor)
+            value_result = parse_argument_expression(cursor, context)
             if value_result is None:
                 return value_result
 
@@ -768,7 +832,10 @@ def parse_call_arguments(cursor: Cursor) -> ParseResult[CallArguments] | None:  
     return ParseResult(call_args, cursor)
 
 
-def parse_function_reference(cursor: Cursor) -> ParseResult[FunctionReference] | None:
+def parse_function_reference(
+    cursor: Cursor,
+    context: ParseContext | None = None,
+) -> ParseResult[FunctionReference] | None:
     """Parse function reference: FUNCTION(args)
 
     Function names must be uppercase identifiers.
@@ -780,6 +847,7 @@ def parse_function_reference(cursor: Cursor) -> ParseResult[FunctionReference] |
 
     Args:
         cursor: Position at start of function name
+        context: Parse context for nested placeable depth tracking
 
     Returns:
         Success(ParseResult(FunctionReference, cursor_after_))) on success
@@ -807,7 +875,7 @@ def parse_function_reference(cursor: Cursor) -> ParseResult[FunctionReference] |
     cursor = cursor.advance()  # Skip (
 
     # Parse arguments
-    args_result = parse_call_arguments(cursor)
+    args_result = parse_call_arguments(cursor, context)
     if args_result is None:
         return args_result
 
@@ -824,7 +892,10 @@ def parse_function_reference(cursor: Cursor) -> ParseResult[FunctionReference] |
     return ParseResult(func_ref, cursor)
 
 
-def parse_term_reference(cursor: Cursor) -> ParseResult[TermReference] | None:
+def parse_term_reference(
+    cursor: Cursor,
+    context: ParseContext | None = None,
+) -> ParseResult[TermReference] | None:
     """Parse term reference in inline expression (-term-id or -term.attr).
 
     FTL syntax:
@@ -836,6 +907,7 @@ def parse_term_reference(cursor: Cursor) -> ParseResult[TermReference] | None:
 
     Args:
         cursor: Current position (should be at '-')
+        context: Parse context for nested placeable depth tracking
 
     Returns:
         Success(ParseResult(TermReference, new_cursor)) on success
@@ -876,7 +948,7 @@ def parse_term_reference(cursor: Cursor) -> ParseResult[TermReference] | None:
     if not cursor.is_eof and cursor.current == "(":
         # Parse call arguments (reuse function argument parsing)
         cursor = cursor.advance()  # Skip '('
-        args_result = parse_call_arguments(cursor)
+        args_result = parse_call_arguments(cursor, context)
         if args_result is None:
             return args_result
 
@@ -965,7 +1037,7 @@ def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | 
     )
 
 
-def parse_inline_expression(  # noqa: PLR0911 - Grammar dispatch
+def parse_inline_expression(
     cursor: Cursor,
     context: ParseContext | None = None,  # noqa: ARG001 - Reserved for future use
 ) -> ParseResult[InlineExpression] | None:
@@ -1018,7 +1090,7 @@ def parse_inline_expression(  # noqa: PLR0911 - Grammar dispatch
             return None
 
 
-def parse_placeable(  # noqa: PLR0911 - Grammar complexity
+def parse_placeable(
     cursor: Cursor,
     context: ParseContext | None = None,
 ) -> ParseResult[Placeable] | None:
@@ -1347,7 +1419,7 @@ def parse_attribute(
     return ParseResult(attribute, pattern_parse.cursor)
 
 
-def parse_term(  # noqa: PLR0912 - Grammar complexity
+def parse_term(
     cursor: Cursor,
     context: ParseContext | None = None,
 ) -> ParseResult[Term] | None:

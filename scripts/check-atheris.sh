@@ -1,0 +1,117 @@
+#!/bin/bash
+# Atheris Installation Checker
+# Verifies that Atheris is properly installed and configured.
+#
+# Usage:
+#   ./scripts/check-atheris.sh
+#
+# Exit codes:
+#   0: Atheris is ready
+#   1: Atheris not installed or not working
+#   2: LLVM not installed (macOS)
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+echo ""
+echo -e "${BOLD}============================================================${NC}"
+echo -e "${BOLD}Atheris Installation Check${NC}"
+echo -e "${BOLD}============================================================${NC}"
+echo ""
+
+# Check 1: Python version
+echo -n "Python version... "
+PYTHON_VERSION=$(uv run python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
+echo -e "${GREEN}$PYTHON_VERSION${NC}"
+
+# Check 2: Atheris import
+echo -n "Atheris import... "
+if uv run python -c "import atheris" 2>/dev/null; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}FAILED${NC}"
+    echo ""
+    echo -e "${YELLOW}Atheris is not installed or not working.${NC}"
+    echo ""
+
+    # Check if this is macOS
+    if [[ "$(uname)" == "Darwin" ]]; then
+        echo "On macOS, Atheris requires LLVM Clang (not Apple Clang)."
+        echo ""
+
+        # Check for LLVM
+        if command -v brew &> /dev/null; then
+            if brew list llvm &> /dev/null; then
+                echo -e "${GREEN}LLVM is installed via Homebrew.${NC}"
+                LLVM_PREFIX=$(brew --prefix llvm)
+                echo "LLVM location: $LLVM_PREFIX"
+                echo ""
+                echo "To install Atheris with LLVM, run:"
+                echo ""
+                echo -e "${BOLD}CLANG_BIN=\"$LLVM_PREFIX/bin/clang\" \\"
+                echo "CC=\"$LLVM_PREFIX/bin/clang\" \\"
+                echo "CXX=\"$LLVM_PREFIX/bin/clang++\" \\"
+                echo "LDFLAGS=\"-L$LLVM_PREFIX/lib/c++ -L$LLVM_PREFIX/lib\" \\"
+                echo "CPPFLAGS=\"-I$LLVM_PREFIX/include\" \\"
+                echo -e "uv pip install --reinstall --no-binary atheris atheris${NC}"
+            else
+                echo -e "${YELLOW}LLVM is not installed.${NC}"
+                echo ""
+                echo "Install LLVM first:"
+                echo -e "${BOLD}brew install llvm${NC}"
+                echo ""
+                echo "Then re-run this script for installation instructions."
+                exit 2
+            fi
+        else
+            echo "Homebrew not found. Install LLVM manually and set CC/CXX environment variables."
+        fi
+    else
+        # Linux
+        echo "On Linux, install Atheris directly:"
+        echo -e "${BOLD}uv pip install atheris${NC}"
+    fi
+
+    exit 1
+fi
+
+# Check 3: Atheris version
+echo -n "Atheris version... "
+ATHERIS_VERSION=$(uv run python -c "import atheris; print(atheris.__version__)" 2>/dev/null || echo "unknown")
+echo -e "${GREEN}$ATHERIS_VERSION${NC}"
+
+# Check 4: Basic fuzzing capability
+echo -n "Fuzzing capability... "
+FUZZ_TEST=$(uv run python -c "
+import atheris
+import sys
+def TestOneInput(data):
+    pass
+# Just verify we can set up fuzzing
+atheris.Setup(['test'], TestOneInput)
+print('OK')
+" 2>&1)
+
+if [[ "$FUZZ_TEST" == "OK" ]]; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${YELLOW}Warning: Basic test failed${NC}"
+    echo "Atheris may not be fully functional."
+fi
+
+echo ""
+echo -e "${BOLD}============================================================${NC}"
+echo -e "${GREEN}[OK]${NC} Atheris is ready for fuzzing."
+echo ""
+echo "Run fuzzing with:"
+echo "  ./scripts/fuzz.sh --native"
+echo "  ./scripts/fuzz.sh --native --time 60"
+echo -e "${BOLD}============================================================${NC}"
+
+exit 0

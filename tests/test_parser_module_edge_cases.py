@@ -199,10 +199,10 @@ class TestCurrencyUncoveredLine:
         # Clear the pattern cache before test
         _get_currency_pattern.cache_clear()
 
-        # Mock _get_currency_maps to return empty maps
+        # Mock _get_currency_maps to return empty maps (with empty valid_codes)
         with patch(
             "ftllexengine.parsing.currency._get_currency_maps",
-            return_value=({}, set(), {}),
+            return_value=({}, set(), {}, frozenset()),
         ):
             # Clear cache again after patching to force regeneration
             _get_currency_pattern.cache_clear()

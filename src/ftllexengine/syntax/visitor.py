@@ -11,7 +11,7 @@ Python 3.13+.
 """
 
 from collections.abc import Callable
-from dataclasses import fields, replace
+from dataclasses import Field, fields, replace
 from typing import ClassVar
 
 from .ast import (
@@ -73,6 +73,10 @@ class ASTVisitor:
     # Built once per class definition via __init_subclass__
     _class_visit_methods: ClassVar[dict[str, str]] = {}
 
+    # Class-level cache for dataclass fields per node type
+    # Avoids repeated introspection in generic_visit (PERF-VISITOR-002)
+    _fields_cache: ClassVar[dict[type[ASTNode], tuple[Field[object], ...]]] = {}
+
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Build class-level dispatch table when subclass is defined."""
         super().__init_subclass__(**kwargs)
@@ -121,6 +125,22 @@ class ASTVisitor:
         self._instance_dispatch_cache[node_type] = method
         return method(node)  # type: ignore[no-any-return]  # getattr returns Any
 
+    def _get_node_fields(self, node_type: type[ASTNode]) -> tuple[Field[object], ...]:
+        """Get cached dataclass fields for a node type.
+
+        Uses class-level cache to avoid repeated introspection.
+        Thread-safe: dict operations are atomic in CPython.
+
+        Args:
+            node_type: The AST node type to get fields for
+
+        Returns:
+            Tuple of dataclass Field objects
+        """
+        if node_type not in ASTVisitor._fields_cache:
+            ASTVisitor._fields_cache[node_type] = fields(node_type)
+        return ASTVisitor._fields_cache[node_type]
+
     def generic_visit(self, node: ASTNode) -> ASTNode:
         """Default visitor (traverses children).
 
@@ -133,8 +153,8 @@ class ASTVisitor:
         Returns:
             The node itself (identity)
         """
-        # Introspect dataclass fields to find and visit children
-        for field in fields(node):
+        # Use cached fields to avoid repeated introspection (PERF-VISITOR-002)
+        for field in self._get_node_fields(type(node)):
             value = getattr(node, field.name)
 
             # Skip None values and non-node fields (str, int, bool, etc.)

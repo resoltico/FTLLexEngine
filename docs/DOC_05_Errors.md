@@ -1,9 +1,13 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.32.0
+project_version: 0.33.0
 context: ERRORS
-last_updated: 2025-12-24T12:00:00Z
+last_updated: 2025-12-26T12:00:00Z
 maintainer: claude-opus-4-5
+retrieval_hints:
+  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, ValidationResult, ValidationError, DiagnosticCode, Diagnostic]
+  answers: [what errors can occur, how to handle errors, error codes, validation errors, diagnostic formatting]
+  related: [DOC_01_Core.md, DOC_03_Parsing.md]
 ---
 
 # Errors Reference
@@ -375,6 +379,7 @@ class DiagnosticCode(Enum):
     ARGUMENT_REQUIRED = 2008
     PATTERN_INVALID = 2009
     MAX_DEPTH_EXCEEDED = 2010
+    FUNCTION_ARITY_MISMATCH = 2011
 
     # Syntax errors (3000-3999)
     UNEXPECTED_EOF = 3001
@@ -392,6 +397,7 @@ class DiagnosticCode(Enum):
     PARSE_CURRENCY_AMBIGUOUS = 4007
     PARSE_CURRENCY_SYMBOL_UNKNOWN = 4008
     PARSE_AMOUNT_INVALID = 4009
+    PARSE_CURRENCY_CODE_INVALID = 4010
 ```
 
 ### Contract

@@ -145,7 +145,7 @@ class FunctionRegistry:
 
         # Auto-generate parameter mappings from function signature
         sig = signature(func)
-        auto_map = {}
+        auto_map: dict[str, str] = {}
 
         for param_name in sig.parameters:
             # Skip 'self' and positional-only markers
@@ -158,6 +158,16 @@ class FunctionRegistry:
 
             # Convert Python snake_case → FTL camelCase
             camel_case = self._to_camel_case(stripped_name)
+
+            # Detect underscore collision: e.g., both `_value` and `value` map to `value`
+            if camel_case in auto_map and auto_map[camel_case] != param_name:
+                msg = (
+                    f"Parameter name collision in function '{ftl_name}': "
+                    f"'{auto_map[camel_case]}' and '{param_name}' both map to FTL "
+                    f"parameter '{camel_case}'"
+                )
+                raise ValueError(msg)
+
             auto_map[camel_case] = param_name
 
         # Merge custom mappings with auto-generated ones
