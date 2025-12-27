@@ -239,6 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - We're officially out of Alpha. Welcome to Beta.
 
 [Unreleased]: https://github.com/resoltico/ftllexengine/compare/v0.35.0...HEAD
+[0.36.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.36.0
 [0.35.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.35.0
 [0.34.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.34.0
 [0.33.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.33.0

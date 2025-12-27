@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.35.0
+project_version: 0.36.0
 context: TYPES
 last_updated: 2025-12-26T18:00:00Z
 maintainer: claude-opus-4-5
