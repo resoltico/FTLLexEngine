@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.34.0
+project_version: 0.35.0
 context: CORE
-last_updated: 2025-12-26T12:00:00Z
+last_updated: 2025-12-26T18:00:00Z
 maintainer: claude-opus-4-5
 retrieval_hints:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, validate_resource, introspect_message]

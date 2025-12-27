@@ -421,7 +421,7 @@ uv run scripts/test.sh               # Skips fuzz tests
 
 ### Is it hanging?
 
-No. The default profile runs silently for ~2 minutes. Use verbose mode:
+No. The default profile runs silently and, depending on hardware, can take a long time to complete. Use verbose mode:
 ```bash
 ./scripts/fuzz.sh --verbose
 ```

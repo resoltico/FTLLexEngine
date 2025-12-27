@@ -1,12 +1,12 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.34.0
+project_version: 0.35.0
 context: ERRORS
-last_updated: 2025-12-26T12:00:00Z
+last_updated: 2025-12-26T18:00:00Z
 maintainer: claude-opus-4-5
 retrieval_hints:
-  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, ValidationResult, ValidationError, DiagnosticCode, Diagnostic]
-  answers: [what errors can occur, how to handle errors, error codes, validation errors, diagnostic formatting]
+  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, ValidationResult, ValidationError, DiagnosticCode, Diagnostic, SerializationDepthError, SerializationValidationError]
+  answers: [what errors can occur, how to handle errors, error codes, validation errors, diagnostic formatting, serialization errors]
   related: [DOC_01_Core.md, DOC_03_Parsing.md]
 ---
 
@@ -183,10 +183,31 @@ class SerializationValidationError(ValueError): ...
 
 ### Constraints
 - Purpose: AST validation errors during serialization.
-- Raised: When `serialize_ftl(validate=True)` detects invalid AST.
+- Raised: When `serialize(validate=True)` detects invalid AST.
 - Common: SelectExpression without exactly one default variant.
 - Import: `from ftllexengine.syntax import SerializationValidationError`
-- Version: v0.29.0+
+- Version: Added in v0.29.0.
+
+---
+
+## `SerializationDepthError`
+
+### Signature
+```python
+class SerializationDepthError(ValueError): ...
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Purpose: AST nesting exceeds maximum serialization depth.
+- Cause: Adversarial input, malformed AST, or deep Placeable nesting.
+- Raised: When AST depth exceeds `max_depth` parameter (default: 100).
+- Security: Prevents stack overflow from adversarially constructed ASTs.
+- Import: `from ftllexengine.syntax import SerializationDepthError`
+- Version: Added in v0.35.0.
 
 ---
 

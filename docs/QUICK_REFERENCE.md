@@ -713,6 +713,14 @@ try:
     ftl_output = serialize_ftl(resource, validate=True)
 except SerializationValidationError as e:
     print(f"Invalid AST: {e}")
+
+# v0.35.0: Depth guard prevents stack overflow from malicious ASTs
+from ftllexengine.syntax import SerializationDepthError
+
+try:
+    ftl_output = serialize_ftl(resource, max_depth=100)  # default
+except SerializationDepthError as e:
+    print(f"AST too deep: {e}")
 ```
 
 ### Visitor Pattern
@@ -770,6 +778,6 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 
 ---
 
-**Quick Reference Last Updated**: December 24, 2025
-**FTLLexEngine Version**: 0.34.0
+**Quick Reference Last Updated**: December 26, 2025
+**FTLLexEngine Version**: 0.35.0
 **Python Requirement**: 3.13+

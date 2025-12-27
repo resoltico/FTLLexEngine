@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2025-12-27
+
+### Added
+- `SerializationDepthError` exception for AST nesting overflow during serialization
+- `max_depth` parameter to `serialize()` and `FluentSerializer.serialize()` (default: 100)
+- `DepthGuard` protection to serializer preventing stack overflow from deep ASTs
+- `MAX_SERIALIZATION_DEPTH` constant in `syntax.serializer` module
+
+### Changed
+- `FluentValue` type now imported from canonical location in `function_bridge.py` (consolidated from duplicate in `cache.py`)
+- Serializer recursive methods now track depth via `DepthGuard` for security
+
+### Fixed
+- Decimal exact variant matching: `Decimal('1.1')` now correctly matches `[1.1]` variant
+  - Previously failed due to IEEE 754 float/Decimal comparison mismatch
+  - Integer Decimals (`Decimal('1')`) were unaffected; fractional Decimals now work
+- Boolean selector values no longer crash variant matching
+  - `isinstance(False, int)` is `True` in Python, but `Decimal("False")` raises error
+  - Booleans now explicitly excluded from numeric comparison path
+- Duplicate `_FluentValue` type definition in `cache.py` consolidated to single source
+
+### Security
+- Serializer now raises `SerializationDepthError` instead of `RecursionError` on deep ASTs
+- Prevents stack overflow from adversarially constructed ASTs passed to `serialize()`
+
 ## [0.34.0] - 2025-12-26
 
 ### Breaking Changes
@@ -182,7 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
-[Unreleased]: https://github.com/resoltico/ftllexengine/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/resoltico/ftllexengine/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.35.0
 [0.34.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.34.0
 [0.33.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.33.0
 [0.32.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.32.0

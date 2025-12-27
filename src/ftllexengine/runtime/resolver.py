@@ -436,10 +436,21 @@ class FluentResolver:
                     if key_name == selector_str:
                         return variant
                 case NumberLiteral(value=key_value):
-                    # Handle int, float, and Decimal for exact numeric match
-                    is_numeric = isinstance(selector_value, (int, float, Decimal))
-                    if is_numeric and key_value == selector_value:
-                        return variant
+                    # Handle int, float, and Decimal for exact numeric match.
+                    # Normalize via string to handle float/Decimal precision mismatch.
+                    # Problem: float(1.1) != Decimal("1.1") due to IEEE 754 representation.
+                    # Solution: Convert both to Decimal via str for exact comparison.
+                    # Note: Exclude bool since isinstance(True, int) is True in Python,
+                    # but str(True) == "True" which is not a valid Decimal.
+                    is_numeric = (
+                        isinstance(selector_value, (int, float, Decimal))
+                        and not isinstance(selector_value, bool)
+                    )
+                    if is_numeric:
+                        key_decimal = Decimal(str(key_value))
+                        sel_decimal = Decimal(str(selector_value))
+                        if key_decimal == sel_decimal:
+                            return variant
         return None
 
     def _find_plural_variant(

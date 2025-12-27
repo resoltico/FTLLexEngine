@@ -5,8 +5,17 @@ Converts AST nodes to FTL source code. Useful for:
 - Code generators
 - Property-based testing (roundtrip: parse → serialize → parse)
 
+Security:
+- DepthGuard protects against stack overflow from deeply nested ASTs.
+- Maximum nesting depth defaults to 100 (matching parser limit).
+- Raises SerializationDepthError on overflow (not RecursionError).
+
 Python 3.13+.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from ftllexengine.enums import CommentType
 
@@ -34,6 +43,13 @@ from .ast import (
 )
 from .visitor import ASTVisitor
 
+if TYPE_CHECKING:
+    from ftllexengine.runtime.depth_guard import DepthGuard
+
+# Maximum serialization depth - matches parser and validator limits.
+# Defined locally to avoid circular import with runtime package.
+MAX_SERIALIZATION_DEPTH: int = 100
+
 
 class SerializationValidationError(ValueError):
     """Raised when AST validation fails during serialization.
@@ -42,6 +58,18 @@ class SerializationValidationError(ValueError):
     Common causes:
     - SelectExpression without exactly one default variant
     - Malformed AST nodes from programmatic construction
+    """
+
+
+class SerializationDepthError(ValueError):
+    """Raised when AST nesting exceeds maximum serialization depth.
+
+    This error indicates the AST is too deeply nested for safe serialization.
+    Prevents stack overflow from:
+    - Adversarially constructed ASTs with excessive Placeable nesting
+    - Malformed programmatic AST construction
+
+    The default limit is 100, matching the parser's maximum nesting depth.
     """
 
 
@@ -144,7 +172,13 @@ class FluentSerializer(ASTVisitor):
         hello = Hello, world!
     """
 
-    def serialize(self, resource: Resource, *, validate: bool = False) -> str:
+    def serialize(
+        self,
+        resource: Resource,
+        *,
+        validate: bool = False,
+        max_depth: int = MAX_SERIALIZATION_DEPTH,
+    ) -> str:
         """Serialize Resource to FTL string.
 
         Pure function - builds output locally without mutating instance state.
@@ -154,44 +188,66 @@ class FluentSerializer(ASTVisitor):
             resource: Resource AST node
             validate: If True, validate AST before serialization (default: False).
                      Checks that SelectExpressions have exactly one default variant.
+            max_depth: Maximum nesting depth (default: 100). Prevents stack
+                      overflow from adversarial or malformed ASTs.
 
         Returns:
             FTL source code
 
         Raises:
             SerializationValidationError: If validate=True and AST is invalid
+            SerializationDepthError: If AST nesting exceeds max_depth
         """
+        # PLC0415: Runtime import to break circular dependency chain:
+        # serializer (syntax) imports depth_guard (runtime) imports diagnostics imports syntax
+        from ftllexengine.runtime.depth_guard import (  # noqa: PLC0415
+            DepthGuard,
+            DepthLimitExceededError,
+        )
+
         if validate:
             _validate_resource(resource)
 
         output: list[str] = []
-        self._serialize_resource(resource, output)
+        depth_guard = DepthGuard(max_depth=max_depth)
+
+        try:
+            self._serialize_resource(resource, output, depth_guard)
+        except DepthLimitExceededError as e:
+            msg = f"AST nesting exceeds maximum depth ({max_depth})"
+            raise SerializationDepthError(msg) from e
+
         return "".join(output)
 
-    def _serialize_resource(self, node: Resource, output: list[str]) -> None:
+    def _serialize_resource(
+        self, node: Resource, output: list[str], depth_guard: DepthGuard
+    ) -> None:
         """Serialize Resource to output list."""
         for i, entry in enumerate(node.entries):
             if i > 0:
                 output.append("\n")
-            self._serialize_entry(entry, output)
+            self._serialize_entry(entry, output, depth_guard)
 
     def _serialize_entry(
         self,
         entry: Message | Term | Comment | Junk,
         output: list[str],
+        depth_guard: DepthGuard,
     ) -> None:
         """Serialize a top-level entry."""
         match entry:
             case Message():
-                self._serialize_message(entry, output)
+                self._serialize_message(entry, output, depth_guard)
             case Term():
-                self._serialize_term(entry, output)
+                self._serialize_term(entry, output, depth_guard)
             case Comment():
                 self._serialize_comment(entry, output)
             case Junk():
                 self._serialize_junk(entry, output)
 
-    def _serialize_message(self, node: Message, output: list[str]) -> None:
+    def _serialize_message(
+        self, node: Message, output: list[str], depth_guard: DepthGuard
+    ) -> None:
         """Serialize Message."""
         # Comment if present
         if node.comment:
@@ -204,16 +260,18 @@ class FluentSerializer(ASTVisitor):
         # Value
         if node.value:
             output.append(" = ")
-            self._serialize_pattern(node.value, output)
+            self._serialize_pattern(node.value, output, depth_guard)
 
         # Attributes
         for attr in node.attributes:
             output.append(_ATTR_INDENT)
-            self._serialize_attribute(attr, output)
+            self._serialize_attribute(attr, output, depth_guard)
 
         output.append("\n")
 
-    def _serialize_term(self, node: Term, output: list[str]) -> None:
+    def _serialize_term(
+        self, node: Term, output: list[str], depth_guard: DepthGuard
+    ) -> None:
         """Serialize Term."""
         # Comment if present
         if node.comment:
@@ -224,19 +282,21 @@ class FluentSerializer(ASTVisitor):
         output.append(f"-{node.id.name} = ")
 
         # Value
-        self._serialize_pattern(node.value, output)
+        self._serialize_pattern(node.value, output, depth_guard)
 
         # Attributes
         for attr in node.attributes:
             output.append(_ATTR_INDENT)
-            self._serialize_attribute(attr, output)
+            self._serialize_attribute(attr, output, depth_guard)
 
         output.append("\n")
 
-    def _serialize_attribute(self, node: Attribute, output: list[str]) -> None:
+    def _serialize_attribute(
+        self, node: Attribute, output: list[str], depth_guard: DepthGuard
+    ) -> None:
         """Serialize Attribute."""
         output.append(f".{node.id.name} = ")
-        self._serialize_pattern(node.value, output)
+        self._serialize_pattern(node.value, output, depth_guard)
 
     def _serialize_comment(self, node: Comment, output: list[str]) -> None:
         """Serialize Comment."""
@@ -259,7 +319,9 @@ class FluentSerializer(ASTVisitor):
         output.append(node.content)
         output.append("\n")
 
-    def _serialize_pattern(self, pattern: Pattern, output: list[str]) -> None:
+    def _serialize_pattern(
+        self, pattern: Pattern, output: list[str], depth_guard: DepthGuard
+    ) -> None:
         """Serialize Pattern elements.
 
         Per Fluent Spec 1.0: Backslash has no escaping power in TextElements.
@@ -282,7 +344,8 @@ class FluentSerializer(ASTVisitor):
                     output.append(text)
             elif isinstance(element, Placeable):
                 output.append("{ ")
-                self._serialize_expression(element.expression, output)
+                with depth_guard:
+                    self._serialize_expression(element.expression, output, depth_guard)
                 output.append(" }")
 
     def _serialize_text_with_braces(self, text: str, output: list[str]) -> None:
@@ -315,7 +378,7 @@ class FluentSerializer(ASTVisitor):
             output.append("".join(buffer))
 
     def _serialize_expression(  # noqa: PLR0912  # Branches required by Expression union type
-        self, expr: Expression, output: list[str]
+        self, expr: Expression, output: list[str], depth_guard: DepthGuard
     ) -> None:
         """Serialize Expression nodes using structural pattern matching.
 
@@ -356,23 +419,26 @@ class FluentSerializer(ASTVisitor):
                 if expr.attribute:
                     output.append(f".{expr.attribute.name}")
                 if expr.arguments:
-                    self._serialize_call_arguments(expr.arguments, output)
+                    self._serialize_call_arguments(expr.arguments, output, depth_guard)
 
             case FunctionReference():
                 output.append(expr.id.name)
-                self._serialize_call_arguments(expr.arguments, output)
+                self._serialize_call_arguments(expr.arguments, output, depth_guard)
 
             case Placeable():
                 # Nested Placeable - serialize inner expression with braces
                 # Valid per FTL spec: { { $var } } is a nested placeable
                 output.append("{ ")
-                self._serialize_expression(expr.expression, output)
+                with depth_guard:
+                    self._serialize_expression(expr.expression, output, depth_guard)
                 output.append(" }")
 
             case SelectExpression():
-                self._serialize_select_expression(expr, output)
+                self._serialize_select_expression(expr, output, depth_guard)
 
-    def _serialize_call_arguments(self, args: CallArguments, output: list[str]) -> None:
+    def _serialize_call_arguments(
+        self, args: CallArguments, output: list[str], depth_guard: DepthGuard
+    ) -> None:
         """Serialize CallArguments."""
         output.append("(")
 
@@ -380,7 +446,7 @@ class FluentSerializer(ASTVisitor):
         for i, arg in enumerate(args.positional):
             if i > 0:
                 output.append(", ")
-            self._serialize_expression(arg, output)
+            self._serialize_expression(arg, output, depth_guard)
 
         # Named arguments
         named_arg: NamedArgument
@@ -388,7 +454,7 @@ class FluentSerializer(ASTVisitor):
             if i > 0 or args.positional:
                 output.append(", ")
             output.append(f"{named_arg.name.name}: ")
-            self._serialize_expression(named_arg.value, output)
+            self._serialize_expression(named_arg.value, output, depth_guard)
 
         output.append(")")
 
@@ -396,9 +462,10 @@ class FluentSerializer(ASTVisitor):
         self,
         expr: SelectExpression,
         output: list[str],
+        depth_guard: DepthGuard,
     ) -> None:
         """Serialize SelectExpression."""
-        self._serialize_expression(expr.selector, output)
+        self._serialize_expression(expr.selector, output, depth_guard)
         output.append(" ->")
 
         for variant in expr.variants:
@@ -415,12 +482,17 @@ class FluentSerializer(ASTVisitor):
                     output.append(variant.key.raw)
 
             output.append("] ")
-            self._serialize_pattern(variant.value, output)
+            self._serialize_pattern(variant.value, output, depth_guard)
 
         output.append("\n")
 
 
-def serialize(resource: Resource, *, validate: bool = False) -> str:
+def serialize(
+    resource: Resource,
+    *,
+    validate: bool = False,
+    max_depth: int = MAX_SERIALIZATION_DEPTH,
+) -> str:
     """Serialize Resource to FTL string.
 
     Convenience function for FluentSerializer.serialize().
@@ -429,12 +501,15 @@ def serialize(resource: Resource, *, validate: bool = False) -> str:
         resource: Resource AST node
         validate: If True, validate AST before serialization (default: False).
                  Checks that SelectExpressions have exactly one default variant.
+        max_depth: Maximum nesting depth (default: 100). Prevents stack
+                  overflow from adversarial or malformed ASTs.
 
     Returns:
         FTL source code
 
     Raises:
         SerializationValidationError: If validate=True and AST is invalid
+        SerializationDepthError: If AST nesting exceeds max_depth
 
     Example:
         >>> from ftllexengine.syntax import parse, serialize
@@ -443,4 +518,4 @@ def serialize(resource: Resource, *, validate: bool = False) -> str:
         >>> assert ftl == "hello = Hello, world!\\n"
     """
     serializer = FluentSerializer()
-    return serializer.serialize(resource, validate=validate)
+    return serializer.serialize(resource, validate=validate, max_depth=max_depth)

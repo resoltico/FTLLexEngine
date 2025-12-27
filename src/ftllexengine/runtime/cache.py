@@ -25,18 +25,13 @@ Python 3.13+.
 
 from collections import OrderedDict
 from collections.abc import Mapping
-from datetime import date, datetime
-from decimal import Decimal
 from threading import RLock
 
 from ftllexengine.diagnostics import FluentError
-
-# Type alias for Fluent values (matches resolver.FluentValue)
-# Note: Includes both datetime.date and datetime.datetime for flexibility.
-type _FluentValue = str | int | float | bool | Decimal | datetime | date | None
+from ftllexengine.runtime.function_bridge import FluentValue
 
 # Internal type alias for cache keys (prefixed with _ per naming convention)
-type _CacheKey = tuple[str, tuple[tuple[str, _FluentValue], ...], str | None, str]
+type _CacheKey = tuple[str, tuple[tuple[str, FluentValue], ...], str | None, str]
 
 # Internal type alias for cache values (prefixed with _ per naming convention)
 type _CacheValue = tuple[str, tuple[FluentError, ...]]
@@ -76,7 +71,7 @@ class FormatCache:
     def get(
         self,
         message_id: str,
-        args: Mapping[str, _FluentValue] | None,
+        args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
     ) -> _CacheValue | None:
@@ -114,7 +109,7 @@ class FormatCache:
     def put(
         self,
         message_id: str,
-        args: Mapping[str, _FluentValue] | None,
+        args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
         result: _CacheValue,
@@ -221,7 +216,7 @@ class FormatCache:
     @staticmethod
     def _make_key(
         message_id: str,
-        args: Mapping[str, _FluentValue] | None,
+        args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
     ) -> _CacheKey | None:
@@ -258,14 +253,14 @@ class FormatCache:
         """
         # Convert args dict to sorted tuple of tuples
         if args is None:
-            args_tuple: tuple[tuple[str, _FluentValue], ...] = ()
+            args_tuple: tuple[tuple[str, FluentValue], ...] = ()
         else:
             try:
                 # Convert values to hashable equivalents and sort by key
                 # Type ignore: _make_hashable recursively converts dicts/lists to tuples
                 # for cache key hashing. Mypy returns `object` for the recursive helper,
-                # but runtime values are always _FluentValue compatible.
-                converted_items: list[tuple[str, _FluentValue]] = [
+                # but runtime values are always FluentValue compatible.
+                converted_items: list[tuple[str, FluentValue]] = [
                     (k, FormatCache._make_hashable(v))  # type: ignore[misc]
                     for k, v in args.items()
                 ]

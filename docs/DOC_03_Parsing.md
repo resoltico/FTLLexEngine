@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.34.0
+project_version: 0.35.0
 context: PARSING
-last_updated: 2025-12-24T12:00:00Z
+last_updated: 2025-12-26T18:00:00Z
 maintainer: claude-opus-4-5
 ---
 
@@ -34,7 +34,12 @@ def parse(source: str) -> Resource:
 
 ### Signature
 ```python
-def serialize(resource: Resource, *, validate: bool = False) -> str:
+def serialize(
+    resource: Resource,
+    *,
+    validate: bool = False,
+    max_depth: int = MAX_SERIALIZATION_DEPTH,
+) -> str:
 ```
 
 ### Contract
@@ -42,12 +47,15 @@ def serialize(resource: Resource, *, validate: bool = False) -> str:
 |:----------|:-----|:----|:------------|
 | `resource` | `Resource` | Y | Resource AST node. |
 | `validate` | `bool` | N | Validate AST before serialization (default: False). |
+| `max_depth` | `int` | N | Maximum nesting depth (default: 100) (v0.35.0+). |
 
 ### Constraints
 - Return: FTL source string.
 - Raises: `SerializationValidationError` when `validate=True` and AST invalid.
+- Raises: `SerializationDepthError` when AST exceeds `max_depth` (v0.35.0+).
 - State: None.
 - Thread: Safe.
+- Security: DepthGuard prevents stack overflow from adversarial ASTs.
 
 ---
 
@@ -494,5 +502,24 @@ DEFAULT_MAX_NESTING_DEPTH: int = 100
 - Purpose: Default maximum nesting depth for placeable parsing.
 - Usage: Default value for ParseContext.max_nesting_depth and FluentParserV1.
 - Security: Prevents DoS attacks via deeply nested placeables.
+
+---
+
+### `MAX_SERIALIZATION_DEPTH`
+
+```python
+MAX_SERIALIZATION_DEPTH: int = 100
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 100 |
+| Location | `ftllexengine.syntax.serializer` |
+
+- Purpose: Default maximum depth for AST serialization.
+- Usage: Default value for `serialize(max_depth=...)` parameter.
+- Security: Prevents stack overflow from adversarially constructed ASTs.
+- Version: Added in v0.35.0.
 
 ---

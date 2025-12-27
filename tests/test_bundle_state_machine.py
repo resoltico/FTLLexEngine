@@ -41,11 +41,15 @@ from tests.strategies import ftl_identifiers, ftl_simple_text
 
 @st.composite
 def simple_ftl_message(draw: st.DrawFn) -> tuple[str, str, str]:
-    """Generate (msg_id, value, ftl_source) tuple."""
+    """Generate (msg_id, value, ftl_source) tuple.
+
+    Returns normalized value since FTL spec strips leading whitespace only.
+    """
     msg_id = draw(ftl_identifiers())
     value = draw(ftl_simple_text())
     ftl_source = f"{msg_id} = {value}"
-    return (msg_id, value, ftl_source)
+    # Return normalized value to match FTL parsing behavior (lstrip only)
+    return (msg_id, value.lstrip(), ftl_source)
 
 
 @st.composite
@@ -233,13 +237,15 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         ftl_source = f"{msg_id} = {new_value}"
 
         self._fluent_bundle.add_resource(ftl_source)
-        self.known_messages[msg_id] = new_value
+        # Store normalized value - FTL spec strips leading whitespace only
+        normalized_value = new_value.lstrip()
+        self.known_messages[msg_id] = normalized_value
         self.operation_count += 1
 
-        # Format should now return new value
+        # Format should now return normalized value
         result, _ = self._fluent_bundle.format_value(msg_id)
         # Note: result may have Unicode isolation chars depending on settings
-        assert new_value in result or result == new_value
+        assert normalized_value in result or result == normalized_value
 
     # =========================================================================
     # Invariants
