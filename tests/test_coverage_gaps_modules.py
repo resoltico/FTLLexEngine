@@ -17,12 +17,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from babel import numbers as babel_numbers
 
+from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.parsing import parse_currency
 from ftllexengine.parsing.currency import _get_currency_maps, _get_currency_pattern
 from ftllexengine.runtime.locale_context import (
-    _MAX_LOCALE_CACHE_SIZE,
     LocaleContext,
     _clear_locale_context_cache,
     _get_locale_context_cache_size,
@@ -119,13 +119,13 @@ class TestLocaleContextCacheLimitCoverage:
     def test_cache_at_limit_prevents_new_entries(self) -> None:
         """Line 163-164: Cache limit LRU eviction.
 
-        When cache size reaches _MAX_LOCALE_CACHE_SIZE, LRU entry is evicted.
+        When cache size reaches MAX_LOCALE_CACHE_SIZE, LRU entry is evicted.
         """
         # Clear cache first
         _clear_locale_context_cache()
 
         # Fill cache to just under limit with unique locale strings
-        locales_to_fill = [f"en_TEST{i:04d}" for i in range(_MAX_LOCALE_CACHE_SIZE)]
+        locales_to_fill = [f"en_TEST{i:04d}" for i in range(MAX_LOCALE_CACHE_SIZE)]
 
         for locale_code in locales_to_fill:
             # These will fallback but still create entries in cache
@@ -135,7 +135,7 @@ class TestLocaleContextCacheLimitCoverage:
 
         # Now cache should be at limit
         cache_size = _get_locale_context_cache_size()
-        assert cache_size >= _MAX_LOCALE_CACHE_SIZE
+        assert cache_size >= MAX_LOCALE_CACHE_SIZE
 
         # Track cache size
         size_before = cache_size
@@ -146,7 +146,7 @@ class TestLocaleContextCacheLimitCoverage:
 
         # Cache size should not exceed maxsize
         cache_size_after = _get_locale_context_cache_size()
-        assert cache_size_after <= _MAX_LOCALE_CACHE_SIZE
+        assert cache_size_after <= MAX_LOCALE_CACHE_SIZE
         # Size may stay the same or decrease slightly due to LRU eviction
         assert cache_size_after <= size_before + 1
 

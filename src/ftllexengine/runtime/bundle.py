@@ -7,6 +7,11 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
+from ftllexengine.constants import (
+    DEFAULT_CACHE_SIZE,
+    FALLBACK_INVALID,
+    FALLBACK_MISSING_MESSAGE,
+)
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -31,10 +36,6 @@ if TYPE_CHECKING:
     from ftllexengine.introspection import MessageIntrospection
 
 logger = logging.getLogger(__name__)
-
-# Default maximum cache entries for format results.
-# 1000 entries is sufficient for most applications (typical UI has <500 messages).
-DEFAULT_CACHE_SIZE: int = 1000
 
 # Logging truncation limits for error messages.
 # Warnings show more context (100 chars) as they're surfaced to users.
@@ -553,14 +554,15 @@ class FluentBundle:
             )
             error = FluentReferenceError(diagnostic)
             # Don't cache errors
-            return ("{???}", (error,))
+            return (FALLBACK_INVALID, (error,))
 
         # Check if message exists
         if message_id not in self._messages:
             logger.warning("Message '%s' not found", message_id)
             error = FluentReferenceError(ErrorTemplate.message_not_found(message_id))
             # Don't cache missing message errors
-            return (f"{{{message_id}}}", (error,))
+            fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
+            return (fallback, (error,))
 
         message = self._messages[message_id]
 

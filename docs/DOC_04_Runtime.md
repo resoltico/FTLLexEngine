@@ -412,25 +412,48 @@ def get_expected_positional_args(ftl_name: str) -> int | None:
 
 ---
 
-## `should_inject_locale`
+## `FunctionRegistry.should_inject_locale`
 
 ### Signature
 ```python
-def should_inject_locale(func_name: str, function_registry: FunctionRegistry) -> bool:
+def should_inject_locale(self, ftl_name: str) -> bool:
 ```
 
 ### Contract
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `func_name` | `str` | Y | FTL function name. |
-| `function_registry` | `FunctionRegistry` | Y | Registry to check. |
+| `ftl_name` | `str` | Y | FTL function name. |
 
 ### Constraints
 - Return: True if locale should be injected for this call.
-- Logic: Checks built-in status AND callable's `_ftl_requires_locale` attribute.
+- Logic: Checks callable's `_ftl_requires_locale` attribute set by `@fluent_function(inject_locale=True)`.
 - Thread: Safe.
-- Import: `from ftllexengine.runtime.function_metadata import should_inject_locale`
-- Version: v0.27.0+
+- Access: Via `bundle._function_registry.should_inject_locale(name)` or registry instance.
+- Version: v0.36.0+ (moved from `function_metadata` module)
+
+---
+
+## `fluent_function`
+
+### Signature
+```python
+@overload
+def fluent_function[F: Callable[..., FluentValue]](func: F, *, inject_locale: bool = False) -> F: ...
+@overload
+def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_locale: bool = False) -> Callable[[F], F]: ...
+```
+
+### Contract
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `func` | `F \| None` | N | Function to decorate. |
+| `inject_locale` | `bool` | N | If True, inject bundle locale as second argument. |
+
+### Constraints
+- Return: Decorated function with Fluent metadata attributes.
+- Thread: Safe.
+- Import: `from ftllexengine import fluent_function`
+- Version: v0.36.0+
 
 ---
 
@@ -530,8 +553,8 @@ def validate_resource(
 class ResolutionContext:
     stack: list[str] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
-    max_depth: int = MAX_RESOLUTION_DEPTH
-    max_expression_depth: int = MAX_EXPRESSION_DEPTH
+    max_depth: int = MAX_DEPTH
+    max_expression_depth: int = MAX_DEPTH
     _expression_guard: DepthGuard = field(init=False)
 
     def __post_init__(self) -> None: ...
@@ -553,8 +576,8 @@ class ResolutionContext:
 |:------|:-----|:------------|
 | `stack` | `list[str]` | Resolution stack for cycle path. |
 | `_seen` | `set[str]` | O(1) membership check set. |
-| `max_depth` | `int` | Maximum resolution depth (default: 100). |
-| `max_expression_depth` | `int` | Maximum expression depth (default: 100). |
+| `max_depth` | `int` | Maximum resolution depth (default: MAX_DEPTH=100). |
+| `max_expression_depth` | `int` | Maximum expression depth (default: MAX_DEPTH=100). |
 | `_expression_guard` | `DepthGuard` | Internal depth guard (init=False). |
 
 ### Constraints
@@ -562,6 +585,7 @@ class ResolutionContext:
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
 - Complexity: contains() is O(1) via _seen set.
 - Import: `from ftllexengine.runtime import ResolutionContext`
+- Constants: `MAX_DEPTH` from `ftllexengine.constants`
 - Version: O(1) contains() added in v0.31.0. DepthGuard refactor in v0.33.0.
 
 ---
@@ -816,38 +840,23 @@ UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
 
 ---
 
-### `MAX_RESOLUTION_DEPTH`
+### `MAX_DEPTH`
 
 ```python
-MAX_RESOLUTION_DEPTH: int = 100
+MAX_DEPTH: int = 100
 ```
 
 | Attribute | Value |
 |:----------|:------|
 | Type | `int` |
 | Value | 100 |
-| Location | `ftllexengine.runtime.resolver` |
+| Location | `ftllexengine.constants` |
+| Re-exported | `ftllexengine.runtime.depth_guard` |
 
-- Purpose: Maximum message reference chain depth.
-- Usage: Prevents RecursionError from long non-cyclic reference chains.
-
----
-
-### `MAX_EXPRESSION_DEPTH`
-
-```python
-MAX_EXPRESSION_DEPTH: int = 100
-```
-
-| Attribute | Value |
-|:----------|:------|
-| Type | `int` |
-| Value | 100 |
-| Location | `ftllexengine.runtime.depth_guard` |
-
-- Purpose: Maximum nested Placeable/expression depth.
-- Usage: Prevents stack overflow from deeply nested ASTs.
-- Version: Added in v0.31.0.
+- Purpose: Unified maximum depth for all recursion protection.
+- Usage: Message reference chains, expression nesting, serialization, validation.
+- Import: `from ftllexengine.constants import MAX_DEPTH`
+- Version: v0.36.0 unified `MAX_RESOLUTION_DEPTH` and `MAX_EXPRESSION_DEPTH`.
 
 ---
 
@@ -857,7 +866,7 @@ MAX_EXPRESSION_DEPTH: int = 100
 ```python
 @dataclass(slots=True)
 class DepthGuard:
-    max_depth: int = MAX_EXPRESSION_DEPTH
+    max_depth: int = MAX_DEPTH
     current_depth: int = field(default=0, init=False)
 
     def __enter__(self) -> DepthGuard: ...

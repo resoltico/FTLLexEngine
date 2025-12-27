@@ -39,7 +39,8 @@ def line_offset(source: str, pos: int) -> int:
         raise ValueError(msg)
     pos = min(pos, len(source))  # Clamp to source length
 
-    return source[:pos].count("\n")
+    # O(1) memory: count in range instead of creating substring
+    return source.count("\n", 0, pos)
 
 
 def column_offset(source: str, pos: int) -> int:

@@ -41,24 +41,36 @@ class TestParsingProperties:
 
     @example(ftl="hello = world")
     @example(ftl="msg = value with spaces")
+    @example(ftl="MyMessage = uppercase start")
     @given(ftl_simple_messages())
     def test_information_preservation(self, ftl: str) -> None:
         """Property: parse(x) retains semantic content from x.
 
-        For valid FTL, parsing should preserve message IDs and produce
-        serializable output.
+        For valid FTL, parsing should:
+        1. Preserve the exact message ID from input
+        2. Produce serializable output
+
+        Strengthened in v0.36.0 to verify ID preservation, not just entry count.
         """
+        # Extract expected ID from input (format: "id = value")
+        expected_id = ftl.split("=")[0].strip()
+
         parser = FluentParserV1()
         resource = parser.parse(ftl)
 
         assert isinstance(resource, Resource)
         assert resource.entries is not None
 
-        message_count = sum(1 for e in resource.entries if isinstance(e, Message))
-        term_count = sum(1 for e in resource.entries if isinstance(e, Term))
+        # Collect all entry IDs
+        entry_ids = {
+            e.id.name for e in resource.entries if isinstance(e, (Message, Term))
+        }
 
-        # Valid FTL should produce at least one Message or Term
-        assert message_count + term_count >= 1, "Valid FTL should produce entries"
+        # CRITICAL: The expected ID must appear exactly in the parsed output
+        assert expected_id in entry_ids, (
+            f"Expected ID '{expected_id}' not found in parsed entries. "
+            f"Found IDs: {entry_ids}. Input: {ftl!r}"
+        )
 
         # Serialization should work for valid entries
         ftl_out = serialize(resource)

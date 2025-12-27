@@ -283,7 +283,7 @@ class TestDatetimeFormatBoundaries:
         """
         result = datetime_format("invalid", "en-US", date_style="short")
         # Should return error marker, not crash
-        assert "{?DATETIME}" in result or isinstance(result, str)
+        assert "{!DATETIME}" in result or isinstance(result, str)
 
     def test_datetime_format_empty_string(self):
         """Kills: empty string handling mutations.

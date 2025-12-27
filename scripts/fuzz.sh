@@ -65,9 +65,11 @@ MODES:
     (default)       Fast property tests (500 examples, ~2 min)
     --deep          Continuous coverage-guided fuzzing (HypoFuzz)
     --native        Native fuzzing with Atheris (requires setup)
+    --structured    Structure-aware fuzzing with Atheris (requires setup)
     --perf          Performance fuzzing to detect ReDoS (Atheris)
     --list          List all captured failures
     --corpus        Check seed corpus health
+    --repro FILE    Reproduce a crash and generate @example decorator
     --help          Show this help message
 
 OPTIONS:
@@ -89,6 +91,12 @@ EXAMPLES:
 
     # Native fuzzing for security audit
     ./scripts/fuzz.sh --native --time 60
+
+    # Structure-aware fuzzing (better coverage)
+    ./scripts/fuzz.sh --structured --time 60
+
+    # Reproduce a crash and get @example decorator
+    ./scripts/fuzz.sh --repro .fuzz_corpus/crash_xxx
 
     # Check for any captured failures
     ./scripts/fuzz.sh --list
@@ -116,6 +124,15 @@ while [[ $# -gt 0 ]]; do
         --perf)
             MODE="perf"
             shift
+            ;;
+        --structured)
+            MODE="structured"
+            shift
+            ;;
+        --repro)
+            MODE="repro"
+            REPRO_FILE="$2"
+            shift 2
             ;;
         --list)
             MODE="list"
@@ -520,6 +537,70 @@ run_corpus() {
     exec uv run python "$SCRIPT_DIR/corpus-health.py" $(if [[ "$JSON_OUTPUT" == "true" ]]; then echo "--json"; fi)
 }
 
+# Mode: structured - Atheris structure-aware fuzzing
+run_structured() {
+    print_header
+
+    # Check if Atheris is available
+    if ! uv run python -c "import atheris" 2>/dev/null; then
+        if [[ "$JSON_OUTPUT" == "true" ]]; then
+            echo '{"mode":"structured","status":"error","error":"atheris_not_installed"}'
+            exit 2
+        else
+            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
+            echo ""
+            echo "Atheris requires special setup on macOS:"
+            echo "  1. Install LLVM: brew install llvm"
+            echo "  2. Run: ./scripts/check-atheris.sh"
+            echo ""
+            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
+            exit 2
+        fi
+    fi
+
+    # Build args
+    EXTRA_ARGS=""
+    if [[ -n "$TIME_LIMIT" ]]; then
+        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
+    fi
+
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        echo -e "Mode:    ${BOLD}Structure-Aware Fuzzing${NC}"
+        echo "Engine:  Atheris (libFuzzer) + Grammar-Aware Generation"
+        echo "Target:  fuzz/structured.py"
+        echo "Workers: $WORKERS"
+        if [[ -n "$TIME_LIMIT" ]]; then
+            echo "Time:    ${TIME_LIMIT}s"
+        else
+            echo "Time:    Until Ctrl+C"
+        fi
+        echo ""
+        echo "This mode generates syntactically plausible FTL for better coverage."
+        echo ""
+    fi
+
+    # Delegate to existing script
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/structured.py" $EXTRA_ARGS
+}
+
+# Mode: repro - Reproduce a crash file
+run_repro() {
+    if [[ -z "$REPRO_FILE" ]]; then
+        echo -e "${RED}[ERROR]${NC} --repro requires a file path."
+        echo "Usage: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_xxx"
+        exit 2
+    fi
+
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        print_header
+        echo -e "Mode:    ${BOLD}Crash Reproduction${NC}"
+        echo "File:    $REPRO_FILE"
+        echo ""
+    fi
+
+    exec uv run python "$SCRIPT_DIR/repro.py" "$REPRO_FILE"
+}
+
 # Dispatch to mode
 case $MODE in
     check)
@@ -533,6 +614,12 @@ case $MODE in
         ;;
     perf)
         run_perf
+        ;;
+    structured)
+        run_structured
+        ;;
+    repro)
+        run_repro
         ;;
     list)
         run_list

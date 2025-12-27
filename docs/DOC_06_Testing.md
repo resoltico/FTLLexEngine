@@ -238,6 +238,48 @@ Run property/fuzzing tests with full Hypothesis intensity.
 
 ---
 
+## `scripts/fuzz.sh` (Unified Interface)
+
+### Purpose
+Single entry point for all fuzzing operations. Recommended over individual scripts.
+
+### Invocation
+```bash
+./scripts/fuzz.sh [MODE] [OPTIONS]
+```
+
+### Modes (v0.36.0+)
+
+| Mode | Description |
+|:-----|:------------|
+| (default) | Fast property tests (500 examples) |
+| `--deep` | Continuous HypoFuzz coverage-guided |
+| `--native` | Atheris byte-level chaos |
+| `--structured` | Atheris grammar-aware generation |
+| `--perf` | Performance/ReDoS detection |
+| `--repro FILE` | Reproduce crash file |
+| `--list` | List captured failures |
+| `--corpus` | Check seed corpus health |
+
+### Options
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `--json` | Off | Output JSON for CI |
+| `--verbose` | Off | Detailed progress |
+| `--workers N` | 4 | Parallel workers |
+| `--time N` | Endless | Time limit (seconds) |
+
+### Exit Codes
+
+| Code | Meaning |
+|-----:|:--------|
+| 0 | All tests passed, no findings |
+| 1 | Findings detected |
+| 2 | Error (environment/script) |
+
+---
+
 ## `scripts/fuzz-hypothesis.sh`
 
 ### Purpose
@@ -462,16 +504,22 @@ def test_parser_handles_input(text: str) -> None:
 
 ### Atheris Bug Preservation
 
-When Atheris finds a crash, DON'T rely on `.fuzz_corpus/crash_*`.
-Instead, create a unit test with the crash input as a literal:
+When Atheris finds a crash, use the `--repro` tool for fast reproduction:
 
 | Step | Action |
 |:-----|:-------|
-| 1 | Review crash: `xxd .fuzz_corpus/crash_* \| head -20` |
-| 2 | Reproduce with Python to understand the exception |
-| 3 | Create `test_<descriptive_name>.py` with crash input as literal |
+| 1 | Reproduce: `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
+| 2 | Get @example: `uv run python scripts/repro.py --example .fuzz_corpus/crash_*` |
+| 3 | Add `@example(...)` decorator to relevant test function |
 | 4 | Fix the bug, run tests to confirm |
 | 5 | Delete crash file after committing test |
+
+**v0.36.0+**: The `scripts/repro.py` tool closes the feedback loop:
+- `--repro FILE`: Full traceback reproduction
+- `--example`: Generates copy-paste `@example()` decorator
+
+**Crash-proof reporting**: Fuzz targets now emit `[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`
+on exit via atexit handler, ensuring metadata is never lost on crash.
 
 **Rationale**: `.fuzz_corpus/` is git-ignored (contains binary seeds, machine-specific).
 Unit tests with literal inputs are permanent, readable, and version-controlled.

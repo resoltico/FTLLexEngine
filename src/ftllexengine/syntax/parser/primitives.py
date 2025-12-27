@@ -200,7 +200,7 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
     return ParseResult(number_str, cursor)
 
 
-def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa: PLR0911, PLR0912
+def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa: PLR0911
     """Parse escape sequence after backslash in string.
 
     Helper method extracted from parse_string_literal to reduce complexity.
@@ -241,17 +241,18 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
     if escape_ch == "u":
         # Unicode escape: \uXXXX (4 hex digits for BMP)
         cursor = cursor.advance()
-        hex_digits = ""
-        for _ in range(_UNICODE_ESCAPE_LEN_SHORT):
-            if cursor.is_eof or cursor.current not in _HEX_DIGITS:
-                _set_parse_error(
-                    f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_SHORT} hex digits)",
-                    cursor.pos,
-                    ("0-9", "a-f", "A-F"),
-                )
-                return None
-            hex_digits += cursor.current
-            cursor = cursor.advance()
+        # Use slice_ahead for O(1) extraction instead of character-by-character loop
+        hex_digits = cursor.slice_ahead(_UNICODE_ESCAPE_LEN_SHORT)
+        if len(hex_digits) < _UNICODE_ESCAPE_LEN_SHORT or not all(
+            c in _HEX_DIGITS for c in hex_digits
+        ):
+            _set_parse_error(
+                f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_SHORT} hex digits)",
+                cursor.pos,
+                ("0-9", "a-f", "A-F"),
+            )
+            return None
+        cursor = cursor.advance(_UNICODE_ESCAPE_LEN_SHORT)
 
         # Convert to character
         code_point = int(hex_digits, 16)
@@ -260,17 +261,18 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
     if escape_ch == "U":
         # Unicode escape: \UXXXXXX (6 hex digits for full Unicode range)
         cursor = cursor.advance()
-        hex_digits = ""
-        for _ in range(_UNICODE_ESCAPE_LEN_LONG):
-            if cursor.is_eof or cursor.current not in _HEX_DIGITS:
-                _set_parse_error(
-                    f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_LONG} hex digits)",
-                    cursor.pos,
-                    ("0-9", "a-f", "A-F"),
-                )
-                return None
-            hex_digits += cursor.current
-            cursor = cursor.advance()
+        # Use slice_ahead for O(1) extraction instead of character-by-character loop
+        hex_digits = cursor.slice_ahead(_UNICODE_ESCAPE_LEN_LONG)
+        if len(hex_digits) < _UNICODE_ESCAPE_LEN_LONG or not all(
+            c in _HEX_DIGITS for c in hex_digits
+        ):
+            _set_parse_error(
+                f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_LONG} hex digits)",
+                cursor.pos,
+                ("0-9", "a-f", "A-F"),
+            )
+            return None
+        cursor = cursor.advance(_UNICODE_ESCAPE_LEN_LONG)
 
         # Convert to character
         code_point = int(hex_digits, 16)

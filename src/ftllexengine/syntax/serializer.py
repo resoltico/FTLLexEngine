@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.enums import CommentType
 
 from .ast import (
@@ -45,10 +46,6 @@ from .visitor import ASTVisitor
 
 if TYPE_CHECKING:
     from ftllexengine.runtime.depth_guard import DepthGuard
-
-# Maximum serialization depth - matches parser and validator limits.
-# Defined locally to avoid circular import with runtime package.
-MAX_SERIALIZATION_DEPTH: int = 100
 
 
 class SerializationValidationError(ValueError):
@@ -177,7 +174,7 @@ class FluentSerializer(ASTVisitor):
         resource: Resource,
         *,
         validate: bool = False,
-        max_depth: int = MAX_SERIALIZATION_DEPTH,
+        max_depth: int = MAX_DEPTH,
     ) -> str:
         """Serialize Resource to FTL string.
 
@@ -491,7 +488,7 @@ def serialize(
     resource: Resource,
     *,
     validate: bool = False,
-    max_depth: int = MAX_SERIALIZATION_DEPTH,
+    max_depth: int = MAX_DEPTH,
 ) -> str:
     """Serialize Resource to FTL string.
 

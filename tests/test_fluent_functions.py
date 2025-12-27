@@ -281,7 +281,7 @@ class TestDatetimeFunctionErrorHandling:
         result = datetime_format("not a date")
 
         # Should return Fluent error placeholder
-        assert result == "{?DATETIME}"
+        assert result == "{!DATETIME}"
 
     def test_datetime_with_partial_iso_string(self) -> None:
         """datetime_format() handles incomplete ISO string."""
@@ -463,7 +463,7 @@ class TestDatetimeFunctionEdgeCases:
         result = datetime_format("")
 
         # Should return error placeholder
-        assert result == "{?DATETIME}"
+        assert result == "{!DATETIME}"
 
 
 class TestDatetimeFunctionMockedErrors:

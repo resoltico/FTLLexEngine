@@ -29,16 +29,24 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from functools import wraps
 from inspect import signature
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol, overload
 
 from ftllexengine.diagnostics import ErrorTemplate, FluentResolutionError
+
+if TYPE_CHECKING:
+    from ftllexengine.runtime.function_metadata import FunctionMetadata
 
 # Type alias for Fluent-compatible function values.
 # This is the CANONICAL definition - imported by resolver.py and localization.py.
 # Defined here (not in resolver.py) to avoid circular imports.
 # Note: Includes both datetime.date and datetime.datetime for flexibility.
 type FluentValue = str | int | float | bool | Decimal | datetime | date | None
+
+# Attribute name for marking functions that require locale injection.
+# Used by FunctionRegistry.should_inject_locale() and @fluent_function decorator.
+_FTL_REQUIRES_LOCALE_ATTR: str = "_ftl_requires_locale"
 
 
 class FluentFunction(Protocol):
@@ -61,6 +69,75 @@ class FluentFunction(Protocol):
         **kwargs: FluentValue,
     ) -> FluentValue:
         ...  # pragma: no cover  # Protocol stub - not executable
+
+
+@overload
+def fluent_function[F: Callable[..., FluentValue]](
+    func: F,
+    *,
+    inject_locale: bool = False,
+) -> F: ...
+
+
+@overload
+def fluent_function[F: Callable[..., FluentValue]](
+    func: None = None,
+    *,
+    inject_locale: bool = False,
+) -> Callable[[F], F]: ...
+
+
+def fluent_function[F: Callable[..., FluentValue]](
+    func: F | None = None,
+    *,
+    inject_locale: bool = False,
+) -> F | Callable[[F], F]:
+    """Decorator for marking custom functions with Fluent metadata.
+
+    Use this decorator to configure how your custom function integrates
+    with the Fluent resolution system.
+
+    Args:
+        func: The function to decorate (auto-filled when used without parentheses)
+        inject_locale: If True, the bundle's locale code will be injected as the
+            second positional argument when the function is called from FTL.
+            Use this for locale-aware formatting functions.
+
+    Returns:
+        Decorated function with Fluent metadata attributes set.
+
+    Example - Simple function (no locale):
+        >>> @fluent_function
+        ... def my_upper(value: str) -> str:
+        ...     return value.upper()
+        >>> bundle.add_function("MYUPPER", my_upper)
+        >>> # FTL: { MY_UPPER($name) }
+
+    Example - Locale-aware function:
+        >>> @fluent_function(inject_locale=True)
+        ... def my_format(value: int, locale_code: str) -> str:
+        ...     # Format number according to locale
+        ...     return format_for_locale(value, locale_code)
+        >>> bundle.add_function("MYFORMAT", my_format)
+        >>> # FTL: { MY_FORMAT($count) }
+        >>> # Bundle automatically injects locale as second argument
+    """
+
+    def decorator(fn: F) -> F:
+        @wraps(fn)
+        def wrapper(*args: object, **kwargs: object) -> FluentValue:
+            return fn(*args, **kwargs)
+
+        # Set locale injection marker if requested
+        if inject_locale:
+            setattr(wrapper, _FTL_REQUIRES_LOCALE_ATTR, True)
+
+        return wrapper  # type: ignore[return-value]  # wrapper preserves F signature
+
+    # Handle both @fluent_function and @fluent_function() usage
+    if func is not None:
+        return decorator(func)
+    return decorator
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,6 +529,87 @@ class FunctionRegistry:
         new_registry._functions = self._functions.copy()
         # Note: _frozen is already False from __init__, copy is always unfrozen
         return new_registry
+
+    def should_inject_locale(self, ftl_name: str) -> bool:
+        """Check if locale should be injected for this function call.
+
+        This is the canonical way to check locale injection requirements.
+        It checks the callable's _ftl_requires_locale attribute, which is
+        set by the @fluent_function decorator or _mark_locale_required().
+
+        Args:
+            ftl_name: FTL function name (e.g., "NUMBER", "CURRENCY")
+
+        Returns:
+            True if locale should be injected, False otherwise.
+
+        Logic:
+            1. Check if function exists in registry
+            2. Get the callable and check its _ftl_requires_locale attribute
+            3. Only inject if the callable has the marker set to True
+
+        Example:
+            >>> registry = FunctionRegistry()
+            >>> @fluent_function(inject_locale=True)
+            ... def my_format(value, locale_code): return str(value)
+            >>> registry.register(my_format, ftl_name="MYFORMAT")
+            >>> registry.should_inject_locale("MYFORMAT")
+            True
+        """
+        if ftl_name not in self._functions:
+            return False
+
+        callable_func = self._functions[ftl_name].callable
+        return getattr(callable_func, _FTL_REQUIRES_LOCALE_ATTR, False) is True
+
+    def get_expected_positional_args(self, ftl_name: str) -> int | None:
+        """Get expected positional argument count for a built-in function.
+
+        Used for arity validation before locale injection to prevent
+        TypeError from incorrect argument positioning.
+
+        For custom functions (not in BUILTIN_FUNCTIONS), returns None
+        and the registry allows any number of positional arguments.
+
+        Args:
+            ftl_name: FTL function name (e.g., "NUMBER", "CURRENCY")
+
+        Returns:
+            Expected positional arg count (from FTL, before locale injection),
+            or None if not a built-in function with known arity.
+
+        Example:
+            >>> registry = create_default_registry()
+            >>> registry.get_expected_positional_args("NUMBER")
+            1
+            >>> registry.get_expected_positional_args("CUSTOM")
+            None
+        """
+        # Lazy import to avoid circular dependency at module load time
+        from ftllexengine.runtime.function_metadata import BUILTIN_FUNCTIONS  # noqa: PLC0415
+
+        metadata = BUILTIN_FUNCTIONS.get(ftl_name)
+        return metadata.expected_positional_args if metadata else None
+
+    def get_builtin_metadata(self, ftl_name: str) -> "FunctionMetadata | None":
+        """Get metadata for a built-in function.
+
+        Args:
+            ftl_name: FTL function name (e.g., "NUMBER", "DATETIME")
+
+        Returns:
+            FunctionMetadata for built-in functions, None for custom functions.
+
+        Example:
+            >>> registry = create_default_registry()
+            >>> meta = registry.get_builtin_metadata("NUMBER")
+            >>> meta.requires_locale
+            True
+        """
+        # Lazy import to avoid circular dependency at module load time
+        from ftllexengine.runtime.function_metadata import BUILTIN_FUNCTIONS  # noqa: PLC0415
+
+        return BUILTIN_FUNCTIONS.get(ftl_name)
 
     @staticmethod
     def _to_camel_case(snake_case: str) -> str:

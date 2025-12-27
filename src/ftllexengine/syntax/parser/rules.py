@@ -35,6 +35,7 @@ Security:
 
 from dataclasses import dataclass
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     Attribute,
@@ -73,9 +74,6 @@ from ftllexengine.syntax.parser.whitespace import (
     skip_multiline_pattern_start,
 )
 
-# Default maximum nesting depth for placeable parsing
-DEFAULT_MAX_NESTING_DEPTH: int = 100
-
 
 @dataclass(slots=True)
 class ParseContext:
@@ -92,7 +90,7 @@ class ParseContext:
         current_depth: Current nesting depth (0 = top level)
     """
 
-    max_nesting_depth: int = DEFAULT_MAX_NESTING_DEPTH
+    max_nesting_depth: int = MAX_DEPTH
     current_depth: int = 0
 
     def is_depth_exceeded(self) -> bool:
@@ -1588,24 +1586,13 @@ def parse_comment(cursor: Cursor) -> ParseResult[Comment] | None:
 
     # Collect comment content (everything until line end)
     content_start = cursor.pos
-    while not cursor.is_eof and cursor.current not in ("\n", "\r"):
-        cursor = cursor.advance()
+    cursor = cursor.skip_to_line_end()
 
     # Extract comment text
     content = cursor.source[content_start : cursor.pos]
 
-    # Advance past line ending
-    if not cursor.is_eof:
-        if cursor.current == "\r":
-            cursor = cursor.advance()
-            # Handle CRLF
-            if not cursor.is_eof and cursor.current == "\n":
-                cursor = cursor.advance()
-        elif cursor.current == "\n":  # pragma: no branch
-            # Note: elif False branch is unreachable. After content collection loop,
-            # cursor is either EOF, at '\r', or at '\n'. If not EOF and not '\r',
-            # then cursor must be at '\n', so this condition is always True.
-            cursor = cursor.advance()
+    # Advance past line ending (handles LF, CRLF, CR)
+    cursor = cursor.skip_line_end()
 
     # Create Comment node with span
     comment_node = Comment(

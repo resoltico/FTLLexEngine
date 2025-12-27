@@ -12,8 +12,22 @@ Usage:
 
 from __future__ import annotations
 
+import atexit
+import json
 import logging
 import sys
+
+# Crash-proof reporting: ensure summary is always emitted
+_fuzz_stats: dict[str, int | str] = {"status": "incomplete", "iterations": 0, "findings": 0}
+
+
+def _emit_final_report() -> None:
+    """Emit JSON summary on exit (crash-proof reporting)."""
+    report = json.dumps(_fuzz_stats)
+    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr)
+
+
+atexit.register(_emit_final_report)
 
 try:
     import atheris
@@ -44,6 +58,11 @@ ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     """Atheris entry point: parse fuzzed input and detect unexpected crashes."""
+    global _fuzz_stats  # noqa: PLW0603 - Required for crash-proof reporting
+
+    _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
+    _fuzz_stats["status"] = "running"
+
     fdp = atheris.FuzzedDataProvider(data)
 
     try:
@@ -59,6 +78,9 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
         pass  # Expected for invalid input
     except Exception as e:
         # Unexpected exception - this is a finding
+        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+        _fuzz_stats["status"] = "finding"
+
         print()
         print("=" * 80)
         print("[FINDING] STABILITY BREACH DETECTED")
@@ -67,7 +89,7 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
         print(f"Input size: {len(source)} chars")
         print()
         print("Next steps:")
-        print("  1. Review crash input: xxd .fuzz_corpus/crash_* | head -20")
+        print("  1. Reproduce: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
         print("  2. Create unit test in tests/ with crash input as literal")
         print("  3. Fix the bug, run tests to confirm")
         print("  4. See: docs/FUZZING_GUIDE.md (Bug Preservation Workflow)")

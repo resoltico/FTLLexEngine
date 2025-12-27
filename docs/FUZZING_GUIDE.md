@@ -49,9 +49,11 @@ All fuzzing operations use `./scripts/fuzz.sh`:
 | Command | Purpose | Time |
 |---------|---------|------|
 | `./scripts/fuzz.sh` | Quick property tests | CPU-dependent |
-| `./scripts/fuzz.sh --deep` | Continuous deep fuzzing | Until Ctrl+C |
-| `./scripts/fuzz.sh --native` | Native Atheris fuzzing | Until Ctrl+C |
-| `./scripts/fuzz.sh --perf` | Performance fuzzing | Until Ctrl+C |
+| `./scripts/fuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | Until Ctrl+C |
+| `./scripts/fuzz.sh --native` | Native Atheris byte-level chaos | Until Ctrl+C |
+| `./scripts/fuzz.sh --structured` | Structure-aware fuzzing (better coverage) | Until Ctrl+C |
+| `./scripts/fuzz.sh --perf` | Performance/ReDoS detection | Until Ctrl+C |
+| `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | Instant |
 | `./scripts/fuzz.sh --list` | List captured failures | Instant |
 | `./scripts/fuzz.sh --corpus` | Check seed corpus health | Instant |
 
@@ -63,6 +65,8 @@ Common options:
 | `--time N` | Run for N seconds |
 | `--workers N` | Use N parallel workers |
 | `--json` | Output JSON (for CI) |
+
+**v0.36.0+**: Added `--structured` (grammar-aware fuzzing) and `--repro` (crash reproduction).
 
 ---
 

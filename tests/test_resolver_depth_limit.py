@@ -1,12 +1,12 @@
 """Tests for resolver maximum depth limit.
 
-Tests that the resolver properly enforces MAX_RESOLUTION_DEPTH to prevent
+Tests that the resolver properly enforces MAX_DEPTH to prevent
 stack overflow from long non-cyclic message chains.
 """
 
 from ftllexengine import FluentBundle
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import FluentReferenceError
-from ftllexengine.runtime.resolver import MAX_RESOLUTION_DEPTH
 
 # ============================================================================
 # UNIT TESTS - MAX DEPTH LIMIT
@@ -17,8 +17,8 @@ class TestMaxDepthLimit:
     """Tests for maximum resolution depth enforcement."""
 
     def test_max_depth_constant_exists(self) -> None:
-        """MAX_RESOLUTION_DEPTH constant is defined and reasonable."""
-        assert MAX_RESOLUTION_DEPTH == 100
+        """MAX_DEPTH constant is defined and reasonable."""
+        assert MAX_DEPTH == 100
 
     def test_shallow_chain_succeeds(self) -> None:
         """Chain of 5 messages resolves without error."""
@@ -55,11 +55,11 @@ m4 = Final value
         assert "Done" in result
 
     def test_deep_chain_hits_limit(self) -> None:
-        """Chain exceeding MAX_RESOLUTION_DEPTH returns error."""
+        """Chain exceeding MAX_DEPTH returns error."""
         bundle = FluentBundle("en")
 
-        # Generate chain of MAX_RESOLUTION_DEPTH + 10 messages
-        depth = MAX_RESOLUTION_DEPTH + 10
+        # Generate chain of MAX_DEPTH + 10 messages
+        depth = MAX_DEPTH + 10
         lines = []
         for i in range(depth - 1):
             lines.append(f"m{i} = {{ m{i+1} }}")
@@ -76,13 +76,13 @@ m4 = Final value
         assert len(depth_errors) > 0
 
     def test_exactly_at_limit_succeeds(self) -> None:
-        """Chain of exactly MAX_RESOLUTION_DEPTH messages succeeds."""
+        """Chain of exactly MAX_DEPTH messages succeeds."""
         bundle = FluentBundle("en")
 
-        # Generate chain of exactly MAX_RESOLUTION_DEPTH messages
+        # Generate chain of exactly MAX_DEPTH messages
         # The limit is checked BEFORE adding to stack, so depth == limit triggers error
-        # This means we can have MAX_RESOLUTION_DEPTH - 1 levels of nesting
-        depth = MAX_RESOLUTION_DEPTH - 1
+        # This means we can have MAX_DEPTH - 1 levels of nesting
+        depth = MAX_DEPTH - 1
         lines = []
         for i in range(depth - 1):
             lines.append(f"m{i} = {{ m{i+1} }}")
@@ -99,7 +99,7 @@ m4 = Final value
         bundle = FluentBundle("en")
 
         # Generate chain exceeding limit
-        depth = MAX_RESOLUTION_DEPTH + 5
+        depth = MAX_DEPTH + 5
         lines = []
         for i in range(depth - 1):
             lines.append(f"msg{i} = {{ msg{i+1} }}")

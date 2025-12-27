@@ -13,15 +13,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import FluentResolutionError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
-__all__ = ["MAX_EXPRESSION_DEPTH", "DepthGuard", "DepthLimitExceededError"]
+__all__ = ["MAX_DEPTH", "DepthGuard", "DepthLimitExceededError"]
 
-# Maximum expression/AST depth to prevent stack overflow.
-# 100 nested Placeables is almost certainly adversarial or malformed input.
-# This limit prevents RecursionError while allowing reasonable nesting.
-MAX_EXPRESSION_DEPTH: int = 100
+# Re-export MAX_DEPTH for backwards compatibility and convenient import.
+# Canonical source: ftllexengine.constants.MAX_DEPTH
 
 
 class DepthLimitExceededError(FluentResolutionError):
@@ -54,11 +53,11 @@ class DepthGuard:
         Each call stack maintains its own DepthGuard instance.
 
     Attributes:
-        max_depth: Maximum allowed depth (default: MAX_EXPRESSION_DEPTH)
+        max_depth: Maximum allowed depth (default: MAX_DEPTH)
         current_depth: Current recursion depth
     """
 
-    max_depth: int = MAX_EXPRESSION_DEPTH
+    max_depth: int = MAX_DEPTH
     current_depth: int = field(default=0, init=False)
 
     def __enter__(self) -> DepthGuard:

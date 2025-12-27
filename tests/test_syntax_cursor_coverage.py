@@ -9,7 +9,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from ftllexengine.syntax.cursor import LineOffsetCache
+from ftllexengine.syntax.cursor import Cursor, LineOffsetCache
 
 # ============================================================================
 # LineOffsetCache.__init__ - Lines 354-360
@@ -221,3 +221,66 @@ class TestLineOffsetCacheGetLineCol:
         assert cache.get_line_col(6) == (2, 1)
         assert cache.get_line_col(11) == (2, 6)
         assert cache.get_line_col(12) == (3, 1)
+
+
+# ============================================================================
+# Cursor.skip_line_end - Line 349 coverage
+# ============================================================================
+
+
+class TestCursorSkipLineEnd:
+    """Test Cursor.skip_line_end edge cases (line 349)."""
+
+    def test_skip_line_end_at_regular_char(self) -> None:
+        """Test skip_line_end when not at line ending (line 349)."""
+        # Cursor at 'h' - not a line ending
+        cursor = Cursor("hello\nworld", 0)
+
+        # Should return self unchanged
+        result = cursor.skip_line_end()
+
+        assert result.pos == 0  # Position unchanged
+        assert result is cursor  # Same object returned
+
+    def test_skip_line_end_at_middle_char(self) -> None:
+        """Test skip_line_end at middle of line."""
+        # Cursor at 'l' - not a line ending
+        cursor = Cursor("hello\nworld", 2)
+
+        result = cursor.skip_line_end()
+
+        assert result.pos == 2
+        assert result is cursor
+
+    def test_skip_line_end_at_lf(self) -> None:
+        """Test skip_line_end at LF."""
+        cursor = Cursor("hello\nworld", 5)  # At '\n'
+
+        result = cursor.skip_line_end()
+
+        assert result.pos == 6  # Skipped past LF
+
+    def test_skip_line_end_at_cr(self) -> None:
+        """Test skip_line_end at standalone CR."""
+        cursor = Cursor("hello\rworld", 5)  # At '\r'
+
+        result = cursor.skip_line_end()
+
+        assert result.pos == 6  # Skipped past CR
+
+    def test_skip_line_end_at_crlf(self) -> None:
+        """Test skip_line_end at CRLF sequence."""
+        cursor = Cursor("hello\r\nworld", 5)  # At '\r' in '\r\n'
+
+        result = cursor.skip_line_end()
+
+        assert result.pos == 7  # Skipped both CR and LF
+
+    def test_skip_line_end_at_eof(self) -> None:
+        """Test skip_line_end at EOF."""
+        cursor = Cursor("hello", 5)  # At EOF
+
+        result = cursor.skip_line_end()
+
+        assert result.pos == 5
+        assert result is cursor

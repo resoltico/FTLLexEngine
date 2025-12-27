@@ -10,6 +10,7 @@ Public API:
     parse_ftl - Parse FTL source to AST
     serialize_ftl - Serialize AST to FTL source
     FluentValue - Type alias for values accepted by formatting functions
+    fluent_function - Decorator for custom functions (locale injection support)
 
 Exceptions:
     FluentError - Base exception class
@@ -35,7 +36,7 @@ from .diagnostics import (
 )
 from .localization import FluentLocalization
 from .runtime import FluentBundle
-from .runtime.function_bridge import FluentValue
+from .runtime.function_bridge import FluentValue, fluent_function
 from .syntax import parse as parse_ftl
 from .syntax import serialize as serialize_ftl
 
@@ -74,6 +75,7 @@ __all__ = [
     "__recommended_encoding__",
     "__spec_url__",
     "__version__",
+    "fluent_function",
     "parse_ftl",
     "serialize_ftl",
 ]

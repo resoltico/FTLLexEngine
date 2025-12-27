@@ -7,6 +7,11 @@ Methods are named visit_NodeName (PascalCase) rather than visit_node_name (snake
 This is an intentional architectural decision to maintain consistency with Python's
 AST visitor pattern. See: https://docs.python.org/3/library/ast.html#ast.NodeVisitor
 
+Type System (v0.36.0):
+- ASTVisitor[T] is generic over return type T
+- ASTVisitor (no type param) defaults to T=ASTNode for backwards compatibility
+- ASTTransformer uses extended return type: ASTNode | None | list[ASTNode]
+
 Python 3.13+.
 """
 
@@ -32,8 +37,12 @@ from .ast import (
     Variant,
 )
 
+# Type aliases for visitor return types (v0.36.0)
+type VisitorResult = ASTNode
+type TransformerResult = ASTNode | None | list[ASTNode]
 
-class ASTVisitor:
+
+class ASTVisitor[T = ASTNode]:
     """Base visitor for traversing Fluent AST.
 
     Follows stdlib ast.NodeVisitor convention: generic_visit() automatically
@@ -91,9 +100,9 @@ class ASTVisitor:
     def __init__(self) -> None:
         """Initialize visitor with empty instance-level dispatch cache."""
         # Instance cache for bound method references (faster than getattr each time)
-        self._instance_dispatch_cache: dict[type[ASTNode], Callable[[ASTNode], ASTNode]] = {}
+        self._instance_dispatch_cache: dict[type[ASTNode], Callable[[ASTNode], T]] = {}
 
-    def visit(self, node: ASTNode) -> ASTNode:
+    def visit(self, node: ASTNode) -> T:
         """Visit a node (dispatcher with class-level + instance-level caching).
 
         Uses two-tier caching:
@@ -141,7 +150,7 @@ class ASTVisitor:
             ASTVisitor._fields_cache[node_type] = fields(node_type)
         return ASTVisitor._fields_cache[node_type]
 
-    def generic_visit(self, node: ASTNode) -> ASTNode:
+    def generic_visit(self, node: ASTNode) -> T:
         """Default visitor (traverses children).
 
         Follows stdlib ast.NodeVisitor convention: automatically traverses
@@ -171,7 +180,7 @@ class ASTVisitor:
             elif hasattr(value, "__dataclass_fields__"):
                 self.visit(value)
 
-        return node
+        return node  # type: ignore[return-value]  # T defaults to ASTNode
 
     # Note: All visit_* methods now delegate to generic_visit() which handles
     # traversal automatically. Override these methods to add custom behavior
@@ -183,7 +192,7 @@ class ASTVisitor:
     #         return self.generic_visit(node)  # Traverse children
 
 
-class ASTTransformer(ASTVisitor):
+class ASTTransformer(ASTVisitor[TransformerResult]):
     """AST transformer for in-place modifications using Python 3.13+ features.
 
     Extends ASTVisitor to enable transforming AST nodes in-place. Each visit method
@@ -228,7 +237,7 @@ class ASTTransformer(ASTVisitor):
         >>> expanded_resource = transformer.transform(resource)
     """
 
-    def transform(self, node: ASTNode) -> ASTNode | None | list[ASTNode]:
+    def transform(self, node: ASTNode) -> TransformerResult:
         """Transform an AST node or tree.
 
         This is the main entry point for transformations.
@@ -241,7 +250,7 @@ class ASTTransformer(ASTVisitor):
         """
         return self.visit(node)
 
-    def generic_visit(self, node: ASTNode) -> ASTNode:
+    def generic_visit(self, node: ASTNode) -> TransformerResult:
         """Transform node children (default behavior).
 
         Recursively transforms all child nodes. Uses dataclasses.replace()

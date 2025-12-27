@@ -22,9 +22,23 @@ Usage:
 
 from __future__ import annotations
 
+import atexit
+import json
 import logging
 import string
 import sys
+
+# Crash-proof reporting: ensure summary is always emitted
+_fuzz_stats: dict[str, int | str] = {"status": "incomplete", "iterations": 0, "findings": 0}
+
+
+def _emit_final_report() -> None:
+    """Emit JSON summary on exit (crash-proof reporting)."""
+    report = json.dumps(_fuzz_stats)
+    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr)
+
+
+atexit.register(_emit_final_report)
 
 try:
     import atheris
@@ -52,9 +66,10 @@ class UnexpectedCrash(Exception):  # noqa: N818 - Domain-specific name
 # Exception contract: only these exceptions are acceptable for invalid input
 ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
 
-# Character sets for FTL generation
-IDENTIFIER_FIRST = string.ascii_lowercase
-IDENTIFIER_REST = string.ascii_lowercase + string.digits + "-_"
+# Character sets for FTL generation per spec: [a-zA-Z][a-zA-Z0-9_-]*
+# CRITICAL: Both uppercase AND lowercase letters are valid per FTL specification.
+IDENTIFIER_FIRST = string.ascii_letters  # [a-zA-Z]
+IDENTIFIER_REST = string.ascii_letters + string.digits + "-_"  # [a-zA-Z0-9_-]
 TEXT_CHARS = string.ascii_letters + string.digits + " .,!?'-"
 SPECIAL_CHARS = "\t\n\r\x00\x1f\x7f\u200b\ufeff"  # Edge case characters
 
@@ -200,6 +215,11 @@ def generate_ftl_resource(fdp: atheris.FuzzedDataProvider) -> str:
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     """Atheris entry point: generate structured FTL and detect crashes."""
+    global _fuzz_stats  # noqa: PLW0603 - Required for crash-proof reporting
+
+    _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
+    _fuzz_stats["status"] = "running"
+
     fdp = atheris.FuzzedDataProvider(data)
 
     # Generate structured FTL using fuzzer-guided decisions
@@ -222,6 +242,9 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
         pass  # Expected for invalid/corrupted input
     except Exception as e:
         # Unexpected exception - this is a finding
+        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+        _fuzz_stats["status"] = "finding"
+
         print()
         print("=" * 80)
         print("[FINDING] STABILITY BREACH DETECTED (Structure-Aware)")
@@ -231,7 +254,7 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
         print(f"Input preview: {source[:200]!r}...")
         print()
         print("Next steps:")
-        print("  1. Review crash input: xxd .fuzz_corpus/crash_* | head -20")
+        print("  1. Reproduce: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
         print("  2. Create unit test in tests/ with crash input as literal")
         print("  3. Fix the bug, run tests to confirm")
         print("  4. See: docs/FUZZING_GUIDE.md (Bug Preservation Workflow)")

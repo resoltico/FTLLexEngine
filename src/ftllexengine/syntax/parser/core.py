@@ -28,20 +28,17 @@ See Also:
     - :mod:`ftllexengine.syntax.parser.rules` - Grammar rules (patterns, expressions, entries)
 """
 
+from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.syntax.ast import Annotation, Comment, Junk, Message, Resource, Span, Term
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser.rules import (
-    DEFAULT_MAX_NESTING_DEPTH,
     ParseContext,
     parse_comment,
     parse_message,
     parse_term,
 )
 from ftllexengine.syntax.parser.whitespace import skip_blank
-
-# Default maximum source size in bytes (10 MB)
-DEFAULT_MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
 
 
 class FluentParserV1:
@@ -84,10 +81,10 @@ class FluentParserV1:
                               Prevents DoS via deeply nested { { { ... } } }.
         """
         self._max_source_size = (
-            max_source_size if max_source_size is not None else DEFAULT_MAX_SOURCE_SIZE
+            max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
         )
         self._max_nesting_depth = (
-            max_nesting_depth if max_nesting_depth is not None else DEFAULT_MAX_NESTING_DEPTH
+            max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
         )
 
     @property
@@ -240,12 +237,8 @@ class FluentParserV1:
         Returns:
             New cursor position after all junk lines consumed
         """
-        # Skip first line to end
-        while not cursor.is_eof and cursor.current not in ("\n", "\r"):
-            cursor = cursor.advance()
-
-        # Skip the newline (handle CRLF correctly)
-        cursor = self._skip_line_ending(cursor)
+        # Skip first line to end and consume line ending
+        cursor = cursor.skip_to_line_end().skip_line_end()
 
         # Continue consuming lines UNTIL we hit a valid entry start
         while not cursor.is_eof:
@@ -266,34 +259,7 @@ class FluentParserV1:
                 break
 
             # This line doesn't start a valid entry - consume it as junk
-            # Skip to end of line
-            while not cursor.is_eof and cursor.current not in ("\n", "\r"):
-                cursor = cursor.advance()
-
-            # Skip the newline (handle CRLF correctly)
-            cursor = self._skip_line_ending(cursor)
-
-        return cursor
-
-    @staticmethod
-    def _skip_line_ending(cursor: Cursor) -> Cursor:
-        """Skip a single line ending, handling both LF and CRLF.
-
-        CRLF (\\r\\n) is a single line ending and should be consumed as one unit.
-        LF (\\n) alone is also a single line ending.
-        CR (\\r) alone is treated as a single line ending (legacy Mac).
-
-        This correctly handles \\n\\n as TWO line endings (blank line).
-        """
-        if cursor.is_eof:
-            return cursor
-
-        if cursor.current == "\r":
-            cursor = cursor.advance()
-            # Only consume \n after \r (true CRLF)
-            if not cursor.is_eof and cursor.current == "\n":
-                cursor = cursor.advance()
-        elif cursor.current == "\n":
-            cursor = cursor.advance()
+            # Skip to end of line and consume line ending
+            cursor = cursor.skip_to_line_end().skip_line_end()
 
         return cursor

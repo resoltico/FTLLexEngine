@@ -18,7 +18,6 @@ from ftllexengine.parsing.currency import parse_currency
 from ftllexengine.parsing.dates import _tokenize_babel_pattern
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.function_metadata import should_inject_locale
 from ftllexengine.syntax.ast import Junk
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser.rules import (
@@ -265,7 +264,7 @@ class TestFunctionMetadataUncoveredLine:
         registry.register(custom, ftl_name="CUSTOM")
 
         # should_inject_locale should return False (not found)
-        result = should_inject_locale("NOTFOUND", registry)
+        result = registry.should_inject_locale("NOTFOUND")
         assert result is False
 
 

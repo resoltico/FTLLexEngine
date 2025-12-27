@@ -8,9 +8,9 @@ from __future__ import annotations
 from hypothesis import example, given
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.syntax.parser.core import FluentParserV1
-from ftllexengine.syntax.parser.rules import DEFAULT_MAX_NESTING_DEPTH
 
 
 class TestNestingDepthControl:
@@ -25,10 +25,10 @@ class TestNestingDepthControl:
         parser2 = FluentParserV1(max_nesting_depth=200)
         assert parser2.max_nesting_depth == 200  # Arbitrary large depth for testing
 
-        # Default parser uses DEFAULT_MAX_NESTING_DEPTH
+        # Default parser uses MAX_DEPTH
         parser_default = FluentParserV1()
-        assert parser_default.max_nesting_depth == DEFAULT_MAX_NESTING_DEPTH
-        assert DEFAULT_MAX_NESTING_DEPTH > 0
+        assert parser_default.max_nesting_depth == MAX_DEPTH
+        assert MAX_DEPTH > 0
 
     @given(st.integers(min_value=1, max_value=1000))
     def test_parser_accepts_positive_depths(self, depth: int) -> None:

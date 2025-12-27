@@ -357,7 +357,7 @@ class TestFallbackGeneration:
             arguments=Mock(),
         )
         fallback = resolver._get_fallback_for_placeable(func_ref)
-        assert fallback == "{NUMBER(...)}"
+        assert fallback == "{!NUMBER}"
 
     def test_fallback_select_expression(self) -> None:
         """Verify fallback for SelectExpression uses generic {???}."""

@@ -26,7 +26,7 @@ import logging
 from datetime import datetime
 from typing import Literal
 
-from .function_bridge import FunctionRegistry
+from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FunctionRegistry
 from .locale_context import LocaleContext
 
 logger = logging.getLogger(__name__)
@@ -227,11 +227,10 @@ def currency_format(
 
 
 # Mark built-in functions that require locale injection.
-# This attribute is checked by should_inject_locale() to determine
+# This attribute is checked by FunctionRegistry.should_inject_locale() to determine
 # whether to append the bundle's locale to the function call arguments.
-# Using function attributes avoids circular imports between
-# function_metadata.py and functions.py.
-_FTL_REQUIRES_LOCALE_ATTR = "_ftl_requires_locale"
+# The constant _FTL_REQUIRES_LOCALE_ATTR is imported from function_bridge.py
+# to ensure a single source of truth.
 
 
 def _mark_locale_required(func: object) -> None:

@@ -141,6 +141,7 @@ from ftllexengine.localization import (
 ```
 ftllexengine/
   __init__.py              # Public API exports
+  constants.py             # MAX_DEPTH, cache limits, fallback strings
   enums.py                 # CommentType, VariableContext, ReferenceKind
   localization.py          # FluentLocalization, PathResourceLoader
   introspection.py         # MessageIntrospection, introspect_message, extract_references
@@ -163,11 +164,11 @@ ftllexengine/
   runtime/
     __init__.py            # Runtime exports
     bundle.py              # FluentBundle
-    resolver.py            # FluentResolver, ResolutionContext, MAX_RESOLUTION_DEPTH
+    resolver.py            # FluentResolver, ResolutionContext
     functions.py           # Built-in functions, create_default_registry, get_shared_registry
-    function_bridge.py     # FunctionRegistry
+    function_bridge.py     # FunctionRegistry, fluent_function
     plural_rules.py        # select_plural_category
-    depth_guard.py         # DepthGuard, DepthLimitExceededError, MAX_EXPRESSION_DEPTH
+    depth_guard.py         # DepthGuard, DepthLimitExceededError
   parsing/
     __init__.py            # Parsing API exports
     numbers.py             # parse_number, parse_decimal

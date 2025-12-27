@@ -228,7 +228,7 @@ class TestUnknownExpressionFallback:
 
         func_ref = FunctionReference(id=Identifier(name="FUNC"), arguments=Mock())
         fallback = resolver._get_fallback_for_placeable(func_ref)
-        assert fallback == "{FUNC(...)}"
+        assert fallback == "{!FUNC}"
 
         # SelectExpression with unknown selector type falls back to {???}
         select_expr_unknown = SelectExpression(selector=Mock(), variants=())

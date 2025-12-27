@@ -20,13 +20,13 @@ from datetime import UTC, datetime
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.diagnostics.validation import (
     _SANITIZE_MAX_CONTENT_LENGTH,
     ValidationError,
     ValidationResult,
 )
 from ftllexengine.runtime.locale_context import (
-    _MAX_LOCALE_CACHE_SIZE,
     LocaleContext,
     _clear_locale_context_cache,
     _get_locale_context_cache_size,
@@ -153,20 +153,20 @@ class TestCacheBoundsProperty:
     """Property: Cache size must never exceed maximum."""
 
     def test_cache_respects_max_size(self) -> None:
-        """PROPERTY: Cache size never exceeds _MAX_LOCALE_CACHE_SIZE.
+        """PROPERTY: Cache size never exceeds MAX_LOCALE_CACHE_SIZE.
 
         Catches bugs where cache grows unbounded, leading to memory leaks.
         """
         _clear_locale_context_cache()
 
         # Create more locales than the cache limit
-        for i in range(_MAX_LOCALE_CACHE_SIZE + 10):
+        for i in range(MAX_LOCALE_CACHE_SIZE + 10):
             locale_code = f"en_TEST{i:04d}"
             LocaleContext.create(locale_code)
 
         cache_size = _get_locale_context_cache_size()
-        assert cache_size <= _MAX_LOCALE_CACHE_SIZE, (
-            f"Cache size {cache_size} exceeds maximum {_MAX_LOCALE_CACHE_SIZE}"
+        assert cache_size <= MAX_LOCALE_CACHE_SIZE, (
+            f"Cache size {cache_size} exceeds maximum {MAX_LOCALE_CACHE_SIZE}"
         )
 
         _clear_locale_context_cache()
@@ -181,7 +181,7 @@ class TestCacheBoundsProperty:
             LocaleContext.create(f"xx_TEST{i:04d}")
 
         cache_size = _get_locale_context_cache_size()
-        assert cache_size <= _MAX_LOCALE_CACHE_SIZE
+        assert cache_size <= MAX_LOCALE_CACHE_SIZE
 
         _clear_locale_context_cache()
 
@@ -389,7 +389,7 @@ class TestCombinedProperties:
         _ = LocaleContext.create("en_US")
 
         # Fill cache past limit to trigger eviction
-        for i in range(_MAX_LOCALE_CACHE_SIZE + 5):
+        for i in range(MAX_LOCALE_CACHE_SIZE + 5):
             LocaleContext.create(f"xx_FILLER{i:04d}")
 
         # en_US should have been evicted, so new instance created

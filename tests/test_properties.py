@@ -5,7 +5,7 @@ Uses Hypothesis to test properties that must always hold, regardless of input.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -127,11 +127,14 @@ class TestResolverProperties:
 class TestIdentifierProperties:
     """FTL identifiers must follow naming rules."""
 
+    @example(identifier="A")  # Uppercase: caught test blindness to case
+    @example(identifier="msg")  # Lowercase: standard case
     @given(ftl_identifiers())
     @settings(max_examples=100)
     def test_identifiers_start_with_letter(self, identifier: str) -> None:
-        """Generated identifiers always start with a letter."""
-        assert identifier[0].islower()
+        """Generated identifiers always start with a letter (upper or lower)."""
+        # FTL spec: [a-zA-Z] - both uppercase AND lowercase are valid
+        assert identifier[0].isalpha()
 
     @given(ftl_identifiers())
     @settings(max_examples=100)

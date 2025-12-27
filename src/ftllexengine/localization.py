@@ -27,9 +27,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from .constants import DEFAULT_CACHE_SIZE, FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
 from .diagnostics.codes import Diagnostic, DiagnosticCode
 from .diagnostics.errors import FluentError
-from .runtime.bundle import DEFAULT_CACHE_SIZE, FluentBundle
+from .runtime.bundle import FluentBundle
 from .runtime.resolver import FluentValue
 
 if TYPE_CHECKING:
@@ -704,11 +705,12 @@ class FluentLocalization:
                     message=f"Message '{message_id}' not found in any locale",
                 )
                 errors.append(FluentError(diagnostic))
-                return (f"{{{message_id}}}", tuple(errors))
+                fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
+                return (fallback, tuple(errors))
             case _:
                 # Invalid message ID - treat as simple string error
                 errors.append(FluentError("Empty message ID"))
-                return ("{???}", tuple(errors))
+                return (FALLBACK_INVALID, tuple(errors))
 
     def has_message(self, message_id: MessageId) -> bool:
         """Check if message exists in any locale.
@@ -771,7 +773,8 @@ class FluentLocalization:
             message=f"Message '{message_id}' not found in any locale",
         )
         errors.append(FluentError(diagnostic))
-        return (f"{{{message_id}}}", tuple(errors))
+        fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
+        return (fallback, tuple(errors))
 
     def add_function(self, name: str, func: Callable[..., str]) -> None:
         """Register custom function on all bundles.

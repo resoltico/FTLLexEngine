@@ -13,6 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2025-12-27
+
+### Breaking Changes
+- `ASTVisitor[T]` generic parameter no longer has upper bound constraint; allows `None` and `list` return types
+- Constants consolidated to `ftllexengine.constants` module:
+  - `MAX_DEPTH` replaces `MAX_RESOLUTION_DEPTH`, `MAX_EXPRESSION_DEPTH`, `DEFAULT_MAX_NESTING_DEPTH`
+  - `MAX_LOCALE_CACHE_SIZE` replaces `_MAX_LOCALE_CACHE_SIZE`
+  - `MAX_SOURCE_SIZE` replaces `DEFAULT_MAX_SOURCE_SIZE`
+  - `DEFAULT_CACHE_SIZE` moved from `bundle.py`
+- Fallback strings unified across all modules:
+  - Function errors: `{!FUNCTION_NAME}` (was `{?FUNCTION_NAME}` or `{FUNCTION_NAME(...)}`)
+  - Missing variables: `{$variable}` (unchanged but now uses constant)
+  - Missing terms: `{-term}` (unchanged but now uses constant)
+  - Missing messages: `{message}` (unchanged but now uses constant)
+  - Invalid: `{???}` (unchanged but now uses constant)
+- `should_inject_locale()` removed from `function_metadata` module; use `FunctionRegistry.should_inject_locale()`
+
+### Added
+- `fluent_function(inject_locale=True)` decorator for marking custom functions requiring locale injection
+- `FunctionRegistry.should_inject_locale(ftl_name)` method for locale injection check
+- `FunctionRegistry.get_expected_positional_args(ftl_name)` method for positional arg count
+- `ftllexengine.constants` module with centralized configuration constants
+- Fallback pattern constants: `FALLBACK_INVALID`, `FALLBACK_MISSING_MESSAGE`, `FALLBACK_MISSING_VARIABLE`, `FALLBACK_MISSING_TERM`, `FALLBACK_FUNCTION_ERROR`
+
+### Changed
+- `FunctionRegistry` now encapsulates locale injection logic (was in `function_metadata`)
+- All depth/cache/size limits now reference `constants.py` as single source of truth
+
+### Performance
+- Cache key generation fast path: skips expensive conversion when all values are already hashable primitives
+
 ## [0.35.0] - 2025-12-27
 
 ### Added

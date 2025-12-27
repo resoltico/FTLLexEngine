@@ -40,6 +40,11 @@ from ftllexengine.syntax.ast import (
 # Constants
 # =============================================================================
 
+# FTL identifier character sets per spec: [a-zA-Z][a-zA-Z0-9_-]*
+# CRITICAL: Both uppercase AND lowercase letters are valid per FTL specification.
+FTL_IDENTIFIER_FIRST_CHARS: str = string.ascii_letters  # [a-zA-Z]
+FTL_IDENTIFIER_REST_CHARS: str = string.ascii_letters + string.digits + "-_"
+
 # Common identifier parts for testing
 IDENTIFIER_PARTS = ("foo", "bar", "baz", "value", "count", "name", "id", "key")
 
@@ -66,11 +71,12 @@ def ftl_identifiers(draw: st.DrawFn) -> str:
     """Generate valid FTL identifiers.
 
     FTL spec: [a-zA-Z][a-zA-Z0-9_-]*
+    Uses both uppercase AND lowercase per specification.
     """
-    first = draw(st.sampled_from(string.ascii_lowercase))
+    first = draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
     rest = draw(
         st.text(
-            alphabet=string.ascii_lowercase + string.digits + "-_",
+            alphabet=FTL_IDENTIFIER_REST_CHARS,
             max_size=20,
         )
     )
@@ -368,22 +374,23 @@ def ftl_boundary_identifiers(draw: st.DrawFn) -> str:
     """Generate boundary-case identifiers.
 
     Tests: single char, very long, edge characters.
+    Uses FTL_IDENTIFIER_FIRST_CHARS per spec (includes uppercase).
     """
     case = draw(st.sampled_from(["single", "long", "numeric", "hyphen", "underscore"]))
     match case:
         case "single":
-            return draw(st.sampled_from(string.ascii_lowercase))
+            return draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
         case "long":
-            first = draw(st.sampled_from(string.ascii_lowercase))
+            first = draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
             return first + "x" * draw(st.integers(50, 100))
         case "numeric":
-            first = draw(st.sampled_from(string.ascii_lowercase))
+            first = draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
             return first + "123456789"
         case "hyphen":
-            first = draw(st.sampled_from(string.ascii_lowercase))
+            first = draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
             return first + "-" + draw(ftl_identifiers())
         case _:  # underscore
-            first = draw(st.sampled_from(string.ascii_lowercase))
+            first = draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
             return first + "_" + draw(ftl_identifiers())
 
 

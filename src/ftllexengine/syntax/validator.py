@@ -14,8 +14,9 @@ References:
   (message attributes cannot be parameterized, only terms can)
 """
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import ValidationResult
-from ftllexengine.runtime.depth_guard import MAX_EXPRESSION_DEPTH, DepthGuard
+from ftllexengine.runtime.depth_guard import DepthGuard
 from ftllexengine.syntax.ast import (
     Annotation,
     Attribute,
@@ -107,7 +108,7 @@ class SemanticValidator:
             ValidationResult with errors (if any)
         """
         errors: list[Annotation] = []
-        depth_guard = DepthGuard(max_depth=MAX_EXPRESSION_DEPTH)
+        depth_guard = DepthGuard(max_depth=MAX_DEPTH)
 
         for entry in resource.entries:
             self._validate_entry(entry, errors, depth_guard)

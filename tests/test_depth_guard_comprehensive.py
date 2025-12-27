@@ -10,9 +10,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.runtime.depth_guard import (
-    MAX_EXPRESSION_DEPTH,
     DepthGuard,
     DepthLimitExceededError,
 )
@@ -22,10 +22,10 @@ class TestDepthGuardConstruction:
     """Test DepthGuard construction and defaults."""
 
     def test_default_construction(self):
-        """DepthGuard uses MAX_EXPRESSION_DEPTH by default."""
+        """DepthGuard uses MAX_DEPTH by default."""
         guard = DepthGuard()
 
-        assert guard.max_depth == MAX_EXPRESSION_DEPTH
+        assert guard.max_depth == MAX_DEPTH
         assert guard.current_depth == 0
 
     def test_custom_max_depth(self):
@@ -36,8 +36,8 @@ class TestDepthGuardConstruction:
         assert guard.current_depth == 0
 
     def test_max_expression_depth_constant(self):
-        """MAX_EXPRESSION_DEPTH is set to 100."""
-        assert MAX_EXPRESSION_DEPTH == 100
+        """MAX_DEPTH is set to 100."""
+        assert MAX_DEPTH == 100
 
 
 class TestDepthGuardContextManager:

@@ -6,8 +6,6 @@ Financial-grade quality for production use.
 
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -20,7 +18,6 @@ from ftllexengine.runtime.function_metadata import (
     get_python_name,
     is_builtin_function,
     requires_locale_injection,
-    should_inject_locale,
 )
 
 # ============================================================================
@@ -78,14 +75,14 @@ class TestFunctionMetadataBasic:
 
 
 class TestShouldInjectLocaleEdgeCases:
-    """Test edge cases for should_inject_locale function."""
+    """Test edge cases for FunctionRegistry.should_inject_locale method."""
 
     def test_should_inject_locale_function_not_in_registry(self) -> None:
         """should_inject_locale returns False if function not in registry."""
         registry = FunctionRegistry()
 
         # NUMBER not registered yet
-        assert should_inject_locale("NUMBER", registry) is False
+        assert registry.should_inject_locale("NUMBER") is False
 
     def test_should_inject_locale_custom_function_same_name(self) -> None:
         """should_inject_locale returns False for custom function with built-in name."""
@@ -98,33 +95,35 @@ class TestShouldInjectLocaleEdgeCases:
         registry.register(custom_number, ftl_name="NUMBER")
 
         # Should detect it's not the built-in and return False
-        assert should_inject_locale("NUMBER", registry) is False
+        assert registry.should_inject_locale("NUMBER") is False
 
-    def test_should_inject_locale_with_malformed_registry(self) -> None:
-        """should_inject_locale handles malformed registry gracefully."""
-        # Create mock registry that will cause AttributeError
-        mock_registry = Mock()
-        mock_registry.has_function.return_value = True
-        mock_registry._functions = None  # Will cause AttributeError
+    def test_should_inject_locale_with_marked_custom_function(self) -> None:
+        """should_inject_locale returns True for custom function with locale marker."""
+        from ftllexengine.runtime.function_bridge import fluent_function
 
-        result = should_inject_locale("NUMBER", mock_registry)
+        registry = FunctionRegistry()
 
-        assert result is False
+        @fluent_function(inject_locale=True)
+        def custom_locale(value: str, locale_code: str = "en") -> str:
+            return f"{value}:{locale_code}"
 
-    def test_should_inject_locale_with_missing_global_func(self) -> None:
-        """should_inject_locale handles missing global function."""
+        registry.register(custom_locale, ftl_name="CUSTOM_LOCALE")
 
+        # Should return True because function is marked with _ftl_requires_locale
+        assert registry.should_inject_locale("CUSTOM_LOCALE") is True
+
+    def test_should_inject_locale_with_missing_function(self) -> None:
+        """should_inject_locale handles missing function."""
         registry = FunctionRegistry()
 
         def test_func(value: str) -> str:
             return value
 
-        # Register function with name that's not in global registry
-        registry.register(test_func, ftl_name="UNKNOWN_BUILTIN")
+        # Register function with a name
+        registry.register(test_func, ftl_name="CUSTOM")
 
-        # Artificially make it look like a built-in (hack for test coverage)
-        # This tests the bundle_func is None or global_func is None path
-        result = should_inject_locale("UNKNOWN_BUILTIN", registry)
+        # Query for non-existent function
+        result = registry.should_inject_locale("UNKNOWN")
 
         assert result is False
 
@@ -178,7 +177,7 @@ class TestFunctionMetadataProperties:
         registry.register(test_func, ftl_name=func_name)
 
         # Should never crash, always return boolean
-        result = should_inject_locale(func_name, registry)
+        result = registry.should_inject_locale(func_name)
         assert isinstance(result, bool)
 
 
@@ -214,12 +213,12 @@ class TestFunctionMetadataIntegration:
         registry = create_default_registry()
 
         # Built-in functions should inject locale
-        assert should_inject_locale("NUMBER", registry) is True
-        assert should_inject_locale("DATETIME", registry) is True
-        assert should_inject_locale("CURRENCY", registry) is True
+        assert registry.should_inject_locale("NUMBER") is True
+        assert registry.should_inject_locale("DATETIME") is True
+        assert registry.should_inject_locale("CURRENCY") is True
 
         # Non-existent function shouldn't inject
-        assert should_inject_locale("NONEXISTENT", registry) is False
+        assert registry.should_inject_locale("NONEXISTENT") is False
 
 
 # ============================================================================
@@ -264,78 +263,48 @@ class TestFunctionMetadataStructure:
 
 
 # ============================================================================
-# COVERAGE TESTS - is_builtin_function_unmodified Edge Cases
+# COVERAGE TESTS - FunctionRegistry.should_inject_locale Edge Cases
 # ============================================================================
 
 
 class TestShouldInjectLocaleCoverage:
-    """Test edge cases for should_inject_locale (lines 177, 187)."""
+    """Test edge cases for FunctionRegistry.should_inject_locale method."""
 
-    def test_python_name_none_returns_false_line_177(self) -> None:
-        """COVERAGE: get_python_name returns None for malformed function (line 177)."""
-        # pylint: disable=import-outside-toplevel
-        from ftllexengine.runtime.function_bridge import FunctionRegistry
-        from ftllexengine.runtime.function_metadata import should_inject_locale
+    def test_should_inject_locale_non_existent_function(self) -> None:
+        """should_inject_locale returns False for non-existent function."""
+        registry = FunctionRegistry()
+
+        # Function not registered
+        result = registry.should_inject_locale("INVALID_BUILTIN")
+        assert result is False
+
+    def test_should_inject_locale_unmarked_function(self) -> None:
+        """should_inject_locale returns False for function without locale marker."""
+        registry = FunctionRegistry()
+
+        def simple_func(value: str) -> str:
+            return value.upper()
+
+        registry.register(simple_func, ftl_name="SIMPLE")
+
+        # Function has no _ftl_requires_locale attribute
+        result = registry.should_inject_locale("SIMPLE")
+        assert result is False
+
+    def test_should_inject_locale_explicitly_false(self) -> None:
+        """should_inject_locale returns False when marker is explicitly False."""
+        from ftllexengine.runtime.function_bridge import (
+            _FTL_REQUIRES_LOCALE_ATTR,
+        )
 
         registry = FunctionRegistry()
 
-        # Use a non-existent function name that will return None from get_python_name
-        # Line 176: python_name is None
-        # Line 177: return False
-        result = should_inject_locale("INVALID_BUILTIN", registry)
-        assert result is False
+        def test_func(value: str) -> str:
+            return value
 
-    def test_bundle_func_none_returns_false_line_187(self) -> None:
-        """COVERAGE: bundle_func is None returns False (line 187)."""
-        # pylint: disable=import-outside-toplevel
-        from unittest.mock import Mock
+        # Explicitly set marker to False
+        setattr(test_func, _FTL_REQUIRES_LOCALE_ATTR, False)
+        registry.register(test_func, ftl_name="EXPLICIT_FALSE")
 
-        from ftllexengine.runtime.function_bridge import FunctionRegistry
-        from ftllexengine.runtime.function_metadata import should_inject_locale
-
-        # Create a mock registry that claims to have the function but returns None from _functions
-        mock_registry = Mock(spec=FunctionRegistry)
-        mock_registry.has_function.return_value = True  # Claims to have NUMBER
-
-        # Create a mock _functions dict that returns None for any key
-        mock_functions = Mock()
-        mock_functions.get.return_value = None  # Returns None when accessed
-        mock_registry._functions = mock_functions
-
-        # This should trigger line 186-187: bundle_func is None
-        # Line 166: requires_locale_injection("NUMBER") returns True
-        # Line 171: has_function returns True (mocked)
-        # Line 175: get_python_name("NUMBER") returns "number_format"
-        # Line 176: python_name is not None, continues
-        # Line 183: bundle_func = None (mocked)
-        # Line 186: bundle_func is None -> True
-        # Line 187: return False
-        result = should_inject_locale("NUMBER", mock_registry)
-        assert result is False
-
-    def test_get_callable_returns_none_line_194(self) -> None:
-        """COVERAGE: get_callable returns None triggers line 194."""
-        from unittest.mock import Mock
-
-        from ftllexengine.runtime.function_bridge import FunctionRegistry
-
-        # Create a mock registry that satisfies all checks up to get_callable
-        mock_registry = Mock(spec=FunctionRegistry)
-        mock_registry.has_function.return_value = True
-        mock_registry.get_callable.return_value = None  # Key: returns None
-
-        # Create a mock _functions dict for line 183-187 path
-        mock_sig = Mock()
-        mock_sig.callable = None  # This makes line 183 work
-        mock_functions = {"NUMBER": mock_sig}
-        mock_registry._functions = mock_functions
-
-        # This should trigger line 194:
-        # - Line 169-170: requires_locale_injection("NUMBER") returns True
-        # - Line 173-174: has_function returns True (mocked)
-        # - Line 177-178: get_python_name("NUMBER") returns "number_format"
-        # - Line 192: bundle_callable = get_callable() returns None (mocked)
-        # - Line 193: if bundle_callable is None -> True
-        # - Line 194: return False
-        result = should_inject_locale("NUMBER", mock_registry)
+        result = registry.should_inject_locale("EXPLICIT_FALSE")
         assert result is False

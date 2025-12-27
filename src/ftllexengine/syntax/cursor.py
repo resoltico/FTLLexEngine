@@ -290,6 +290,104 @@ class Cursor:
             return self.advance()
         return None
 
+    def slice_ahead(self, n: int) -> str:
+        """Get next n characters without advancing cursor.
+
+        Args:
+            n: Number of characters to get
+
+        Returns:
+            String of up to n characters starting at current position.
+            May return fewer characters if near EOF.
+
+        Note:
+            Use for efficient lookahead or batch character extraction.
+            Does not advance the cursor position.
+
+        Example:
+            >>> cursor = Cursor("hello", 0)
+            >>> cursor.slice_ahead(3)
+            'hel'
+            >>> cursor.pos  # Unchanged
+            0
+            >>> cursor.slice_ahead(10)  # More than available
+            'hello'
+        """
+        return self.source[self.pos : self.pos + n]
+
+    def skip_line_end(self) -> "Cursor":
+        """Skip LF, CR, or CRLF line ending.
+
+        Returns:
+            New cursor advanced past the line ending, or unchanged if not at line end.
+
+        Handles:
+            - LF (Unix, \\n): Skip 1 character
+            - CRLF (Windows, \\r\\n): Skip 2 characters
+            - CR (Mac, \\r): Skip 1 character
+
+        Example:
+            >>> cursor = Cursor("hello\\nworld", 5)  # At \\n
+            >>> new_cursor = cursor.skip_line_end()
+            >>> new_cursor.pos
+            6
+            >>> cursor = Cursor("hello\\r\\nworld", 5)  # At \\r in \\r\\n
+            >>> new_cursor = cursor.skip_line_end()
+            >>> new_cursor.pos
+            7
+        """
+        if self.is_eof:
+            return self
+        if self.current == "\r":
+            cursor = self.advance()
+            # Handle CRLF
+            if not cursor.is_eof and cursor.current == "\n":
+                return cursor.advance()
+            return cursor
+        if self.current == "\n":
+            return self.advance()
+        return self
+
+    def skip_to_line_end(self) -> "Cursor":
+        """Advance to the next line ending character.
+
+        Returns:
+            New cursor positioned at \\n or \\r (does not consume line ending).
+
+        Note:
+            Stops AT the line ending, does not skip past it.
+            Use skip_line_end() after this to consume the line ending.
+
+        Example:
+            >>> cursor = Cursor("hello\\nworld", 0)
+            >>> new_cursor = cursor.skip_to_line_end()
+            >>> new_cursor.pos
+            5
+            >>> new_cursor.current
+            '\\n'
+        """
+        cursor = self
+        while not cursor.is_eof and cursor.current not in ("\n", "\r"):
+            cursor = cursor.advance()
+        return cursor
+
+    def count_newlines_before(self) -> int:
+        """Count newlines before current position without substring copy.
+
+        Returns:
+            Number of newline characters before current position.
+
+        Performance:
+            O(n) time, O(1) memory (no substring allocation).
+            More efficient than source[:pos].count() for large files.
+
+        Example:
+            >>> cursor = Cursor("a\\nb\\nc", 4)  # At 'c'
+            >>> cursor.count_newlines_before()
+            2
+        """
+        return self.source.count("\n", 0, self.pos)
+
     def compute_line_col(self) -> tuple[int, int]:
         """Compute line and column for current position.
 
@@ -312,8 +410,8 @@ class Cursor:
             >>> cursor.compute_line_col()
             (2, 3)
         """
-        # Count newlines before current position
-        lines_before = self.source[: self.pos].count("\n")
+        # Count newlines before current position (O(1) memory)
+        lines_before = self.count_newlines_before()
         line = lines_before + 1
 
         # Find last newline before current position

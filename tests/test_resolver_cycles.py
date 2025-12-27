@@ -17,9 +17,10 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import FluentCyclicReferenceError
 from ftllexengine.runtime.bundle import FluentBundle
-from ftllexengine.runtime.resolver import MAX_RESOLUTION_DEPTH, ResolutionContext
+from ftllexengine.runtime.resolver import ResolutionContext
 
 # Mark all tests in this file as fuzzing tests
 pytestmark = pytest.mark.fuzz
@@ -115,9 +116,9 @@ class TestDeepChains:
     """Tests for deep non-cyclic chains."""
 
     def test_chain_at_depth_limit(self) -> None:
-        """Chain exactly at MAX_RESOLUTION_DEPTH should work."""
+        """Chain exactly at MAX_DEPTH should work."""
         # Create chain shorter than limit
-        depth = min(MAX_RESOLUTION_DEPTH - 1, 50)
+        depth = min(MAX_DEPTH - 1, 50)
         messages = []
         for i in range(depth):
             if i < depth - 1:
@@ -135,9 +136,9 @@ class TestDeepChains:
         assert "End" in result
 
     def test_chain_exceeding_depth_limit(self) -> None:
-        """Chain exceeding MAX_RESOLUTION_DEPTH should produce error."""
+        """Chain exceeding MAX_DEPTH should produce error."""
         # Create chain longer than limit
-        depth = MAX_RESOLUTION_DEPTH + 10
+        depth = MAX_DEPTH + 10
         messages = []
         for i in range(depth):
             if i < depth - 1:

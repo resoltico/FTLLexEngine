@@ -14,15 +14,17 @@ Design Goals:
     - Type-safe (mypy --strict compliant)
     - Future-proof (easy to extend)
 
+Note (v0.36.0):
+    The `should_inject_locale()` and `get_expected_positional_args()` functions
+    were moved to FunctionRegistry as instance methods. Use:
+    - registry.should_inject_locale(ftl_name)
+    - registry.get_expected_positional_args(ftl_name)
+
 Python 3.13+. Zero external dependencies.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ftllexengine.runtime.function_bridge import FunctionRegistry
 
 
 class FunctionCategory(StrEnum):
@@ -148,80 +150,3 @@ def get_python_name(ftl_name: str) -> str | None:
     """
     metadata = BUILTIN_FUNCTIONS.get(ftl_name)
     return metadata.python_name if metadata else None
-
-
-def get_expected_positional_args(ftl_name: str) -> int | None:
-    """Get expected positional argument count for a built-in function.
-
-    Used for arity validation before locale injection to prevent
-    TypeError from incorrect argument positioning.
-
-    Args:
-        ftl_name: FTL function name (e.g., "NUMBER", "CURRENCY")
-
-    Returns:
-        Expected positional arg count (from FTL, before locale injection),
-        or None if not a built-in function.
-
-    Example:
-        >>> get_expected_positional_args("NUMBER")
-        1
-        >>> get_expected_positional_args("CUSTOM")
-        None
-    """
-    metadata = BUILTIN_FUNCTIONS.get(ftl_name)
-    return metadata.expected_positional_args if metadata else None
-
-
-def should_inject_locale(func_name: str, function_registry: "FunctionRegistry") -> bool:
-    """Check if locale should be injected for this function call.
-
-    This is the CORRECT way to check locale injection, handling both
-    built-in functions and custom functions with the same name.
-
-    Uses function attributes (set at registration time) to determine locale
-    requirements, avoiding circular imports between this module and functions.py.
-
-    Args:
-        func_name: FTL function name (e.g., "NUMBER", "CURRENCY")
-        function_registry: FunctionRegistry instance to check
-
-    Returns:
-        True if locale should be injected, False otherwise
-
-    Logic:
-        1. Check if function name is a built-in that needs locale
-        2. Get the callable from registry and check its _ftl_requires_locale attribute
-        3. Only inject if the callable has the locale requirement marker
-
-    Example:
-        >>> # Built-in NUMBER function
-        >>> should_inject_locale("NUMBER", bundle._function_registry)
-        True
-
-        >>> # Custom function with locale requirement
-        >>> def my_format(value, *, _locale=None): ...
-        >>> my_format._ftl_requires_locale = True
-        >>> bundle.add_function("MY_FORMAT", my_format)
-        >>> should_inject_locale("MY_FORMAT", bundle._function_registry)
-        True
-
-        >>> # Custom function without locale requirement (default)
-        >>> bundle.add_function("SIMPLE", lambda x: str(x))
-        >>> should_inject_locale("SIMPLE", bundle._function_registry)
-        False
-    """
-    # Check if the function exists in the registry
-    if not function_registry.has_function(func_name):
-        return False
-
-    # Get the callable from the registry
-    bundle_callable = function_registry.get_callable(func_name)
-    if bundle_callable is None:
-        return False
-
-    # Check if the callable has the locale requirement marker
-    # Both built-in functions (marked at module load) and custom functions
-    # (explicitly marked by user) can have _ftl_requires_locale = True
-    # This allows custom functions to receive locale context when needed.
-    return getattr(bundle_callable, "_ftl_requires_locale", False) is True

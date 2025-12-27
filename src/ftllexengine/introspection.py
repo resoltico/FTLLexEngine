@@ -17,8 +17,9 @@ Python 3.13+.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .constants import MAX_DEPTH
 from .enums import ReferenceKind, VariableContext
-from .runtime.depth_guard import MAX_EXPRESSION_DEPTH, DepthGuard
+from .runtime.depth_guard import DepthGuard
 from .syntax.ast import (
     FunctionReference,
     Message,
@@ -176,11 +177,11 @@ class IntrospectionVisitor(ASTVisitor):
         "variables",
     )
 
-    def __init__(self, *, max_depth: int = MAX_EXPRESSION_DEPTH) -> None:
+    def __init__(self, *, max_depth: int = MAX_DEPTH) -> None:
         """Initialize visitor with empty result sets.
 
         Args:
-            max_depth: Maximum expression nesting depth (default: MAX_EXPRESSION_DEPTH).
+            max_depth: Maximum expression nesting depth (default: MAX_DEPTH).
                        Prevents stack overflow on adversarial ASTs.
         """
         super().__init__()
@@ -244,6 +245,12 @@ class IntrospectionVisitor(ASTVisitor):
             # Visit variants
             for variant in expr.variants:
                 self._visit_variant(variant)
+
+        elif Placeable.guard(expr):
+            # Handle nested Placeables (e.g., { { $var } })
+            # This case occurs when an expression contains a nested Placeable
+            with self._depth_guard:
+                self._visit_expression(expr.expression)
 
     def _extract_function_call(self, func: FunctionReference) -> None:
         """Extract function call information including arguments.
@@ -317,11 +324,11 @@ class ReferenceExtractor(ASTVisitor):
 
     __slots__ = ("_depth_guard", "message_refs", "term_refs")
 
-    def __init__(self, *, max_depth: int = MAX_EXPRESSION_DEPTH) -> None:
+    def __init__(self, *, max_depth: int = MAX_DEPTH) -> None:
         """Initialize reference collector.
 
         Args:
-            max_depth: Maximum expression nesting depth (default: MAX_EXPRESSION_DEPTH).
+            max_depth: Maximum expression nesting depth (default: MAX_DEPTH).
                        Prevents stack overflow on adversarial ASTs.
         """
         super().__init__()

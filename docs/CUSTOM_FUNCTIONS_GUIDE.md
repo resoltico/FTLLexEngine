@@ -337,11 +337,15 @@ result, _ = bundle_lv.format_pattern("greet", {"name": "Anna"})
 # → "Sveiki, Anna!"
 ```
 
-### Alternative: Automatic Locale Injection (v0.29.0+)
+### Alternative: Automatic Locale Injection (v0.36.0+)
 
-Instead of using the factory pattern, you can mark a function for automatic locale injection:
+Instead of using the factory pattern, use the `@fluent_function` decorator for automatic locale injection:
 
 ```python
+from ftllexengine import FluentBundle, fluent_function
+
+
+@fluent_function(inject_locale=True)
 def GREETING(name: str, locale_code: str, /, *, formal: str = "false") -> str:
     """Locale-aware greeting with automatic locale injection.
 
@@ -363,9 +367,6 @@ def GREETING(name: str, locale_code: str, /, *, formal: str = "false") -> str:
     return f"Good day, {name}!" if is_formal else f"Hello, {name}!"
 
 
-# Mark function for locale injection
-GREETING._ftl_requires_locale = True  # type: ignore[attr-defined]
-
 # Register - locale will be injected automatically
 bundle = FluentBundle("lv_LV")
 bundle.add_function("GREETING", GREETING)
@@ -376,8 +377,8 @@ result, _ = bundle.format_pattern("greet", {"name": "Anna"})
 ```
 
 **How it works:**
-1. Set `_ftl_requires_locale = True` on the function
-2. The runtime checks for this attribute via `should_inject_locale()`
+1. Apply `@fluent_function(inject_locale=True)` to your function
+2. The runtime checks for this via `FunctionRegistry.should_inject_locale()`
 3. When calling the function, the bundle's locale is injected as the second positional argument
 
 **When to use which approach:**
@@ -385,7 +386,7 @@ result, _ = bundle.format_pattern("greet", {"name": "Anna"})
 | Approach | Use When |
 |:---------|:---------|
 | Factory pattern | Function needs locale at definition time (closures) |
-| `_ftl_requires_locale` | Function accepts locale as parameter at call time |
+| `@fluent_function(inject_locale=True)` | Function accepts locale as parameter at call time |
 | Neither | Function doesn't need locale (e.g., FILESIZE) |
 
 ### Alternative: Use Babel Locale

@@ -259,8 +259,8 @@ class TestCacheEvictionAndRace:
 
     def test_cache_eviction_when_full(self) -> None:
         """COVERAGE: Line 156 - Cache eviction when full."""
+        from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
         from ftllexengine.runtime.locale_context import (
-            _MAX_LOCALE_CACHE_SIZE,
             _clear_locale_context_cache,
             _get_locale_context_cache_size,
         )
@@ -269,13 +269,13 @@ class TestCacheEvictionAndRace:
         _clear_locale_context_cache()
 
         # Create more contexts than cache size
-        for i in range(_MAX_LOCALE_CACHE_SIZE + 5):
+        for i in range(MAX_LOCALE_CACHE_SIZE + 5):
             # Use unique locale strings that will still parse
             LocaleContext.create(f"en-X{i:03d}")
 
         # Cache should be at max size (evicted oldest)
         size = _get_locale_context_cache_size()
-        assert size <= _MAX_LOCALE_CACHE_SIZE
+        assert size <= MAX_LOCALE_CACHE_SIZE
 
     def test_cache_double_check_pattern(self) -> None:
         """COVERAGE: Line 152 - Double-check pattern in cache.

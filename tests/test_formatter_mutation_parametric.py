@@ -405,7 +405,7 @@ class TestDatetimeFormatStringConversions:
         """
         result = datetime_format(invalid_string, "en-US", date_style="short")
         # Should return error marker
-        assert "{?DATETIME}" in result or isinstance(result, str)
+        assert "{!DATETIME}" in result or isinstance(result, str)
 
 
 if __name__ == "__main__":

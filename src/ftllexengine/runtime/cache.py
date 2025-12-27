@@ -224,18 +224,18 @@ class FormatCache:
 
         Converts unhashable types (lists, dicts, sets) to hashable equivalents.
 
-        Performance Note:
-            This method has O(N log N) complexity where N is the number of args,
-            due to sorting args by key for consistent cache key ordering. This is
-            called on every cache access (both get and put operations).
+        Performance Optimization (v0.36.0):
+            Fast path: If all args are already hashable primitives (the common case),
+            skip the expensive _make_hashable() conversion entirely. This reduces
+            overhead from O(N) conversions to O(N) type checks, which is faster
+            since type checks don't allocate new objects.
+
+            Slow path: Only invoked when args contain lists, dicts, or sets.
+            Has O(N log N) complexity due to sorting for consistent key ordering.
 
             The sorting is REQUIRED for correctness: without it, format_pattern()
             called with args {"a": 1, "b": 2} and {"b": 2, "a": 1} would produce
             different cache keys despite being semantically equivalent.
-
-            For most use cases (N < 20 args), the overhead is negligible.
-            Applications with many args per message and extreme performance
-            requirements should profile to verify caching provides net benefit.
 
         Robustness:
             Catches RecursionError for deeply nested structures and TypeError
@@ -256,15 +256,26 @@ class FormatCache:
             args_tuple: tuple[tuple[str, FluentValue], ...] = ()
         else:
             try:
-                # Convert values to hashable equivalents and sort by key
-                # Type ignore: _make_hashable recursively converts dicts/lists to tuples
-                # for cache key hashing. Mypy returns `object` for the recursive helper,
-                # but runtime values are always FluentValue compatible.
-                converted_items: list[tuple[str, FluentValue]] = [
-                    (k, FormatCache._make_hashable(v))  # type: ignore[misc]
-                    for k, v in args.items()
-                ]
-                args_tuple = tuple(sorted(converted_items))
+                # Fast path: check if all values are hashable primitives
+                # This avoids creating intermediate conversion objects for the common case
+                needs_conversion = any(
+                    isinstance(v, (list, dict, set)) for v in args.values()
+                )
+
+                if needs_conversion:
+                    # Slow path: convert unhashable types to hashable equivalents
+                    # Type ignore: _make_hashable recursively converts dicts/lists to tuples
+                    # for cache key hashing. Mypy returns `object` for the recursive helper,
+                    # but runtime values are always FluentValue compatible.
+                    converted_items: list[tuple[str, FluentValue]] = [
+                        (k, FormatCache._make_hashable(v))  # type: ignore[misc]
+                        for k, v in args.items()
+                    ]
+                    args_tuple = tuple(sorted(converted_items))
+                else:
+                    # Fast path: values are already hashable, just sort keys
+                    args_tuple = tuple(sorted(args.items()))
+
                 # Verify the result is actually hashable
                 hash(args_tuple)
             except (TypeError, RecursionError):

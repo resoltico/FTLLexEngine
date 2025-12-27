@@ -7,7 +7,8 @@ Tests specifically targeting uncovered lines:
 
 import pytest
 
-from ftllexengine.syntax.parser.core import DEFAULT_MAX_SOURCE_SIZE, FluentParserV1
+from ftllexengine.constants import MAX_SOURCE_SIZE
+from ftllexengine.syntax.parser.core import FluentParserV1
 
 
 class TestFluentParserV1Properties:
@@ -17,7 +18,7 @@ class TestFluentParserV1Properties:
         """Test max_source_size property returns default value (line 57)."""
         parser = FluentParserV1()
 
-        assert parser.max_source_size == DEFAULT_MAX_SOURCE_SIZE
+        assert parser.max_source_size == MAX_SOURCE_SIZE
 
     def test_max_source_size_property_custom(self) -> None:
         """Test max_source_size property returns custom value (line 57)."""

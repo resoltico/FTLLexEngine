@@ -4,8 +4,6 @@ Tests metadata system for built-in Fluent functions.
 
 """
 
-from unittest.mock import patch
-
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -18,7 +16,6 @@ from ftllexengine.runtime.function_metadata import (
     get_python_name,
     is_builtin_function,
     requires_locale_injection,
-    should_inject_locale,
 )
 
 
@@ -220,22 +217,22 @@ class TestGetPythonName:
 
 
 class TestShouldInjectLocale:
-    """Property-based tests for should_inject_locale function."""
+    """Property-based tests for FunctionRegistry.should_inject_locale method."""
 
     def test_builtin_number_should_inject(self) -> None:
         """Verify built-in NUMBER function should get locale injection."""
         bundle = FluentBundle("en", use_isolating=False)
-        assert should_inject_locale("NUMBER", bundle._function_registry) is True
+        assert bundle._function_registry.should_inject_locale("NUMBER") is True
 
     def test_builtin_datetime_should_inject(self) -> None:
         """Verify built-in DATETIME function should get locale injection."""
         bundle = FluentBundle("en", use_isolating=False)
-        assert should_inject_locale("DATETIME", bundle._function_registry) is True
+        assert bundle._function_registry.should_inject_locale("DATETIME") is True
 
     def test_builtin_currency_should_inject(self) -> None:
         """Verify built-in CURRENCY function should get locale injection."""
         bundle = FluentBundle("en", use_isolating=False)
-        assert should_inject_locale("CURRENCY", bundle._function_registry) is True
+        assert bundle._function_registry.should_inject_locale("CURRENCY") is True
 
     def test_custom_function_no_inject(self) -> None:
         """Verify custom function doesn't get locale injection."""
@@ -245,7 +242,7 @@ class TestShouldInjectLocale:
             return text.upper()
 
         bundle.add_function("UPPER", custom_upper)
-        assert should_inject_locale("UPPER", bundle._function_registry) is False
+        assert bundle._function_registry.should_inject_locale("UPPER") is False
 
     def test_replaced_builtin_no_inject(self) -> None:
         """Verify replaced built-in function doesn't get locale injection."""
@@ -258,59 +255,49 @@ class TestShouldInjectLocale:
         bundle.add_function("NUMBER", custom_number)
 
         # Should NOT inject locale because it's not the original built-in
-        assert should_inject_locale("NUMBER", bundle._function_registry) is False
+        assert bundle._function_registry.should_inject_locale("NUMBER") is False
 
     def test_nonexistent_function_no_inject(self) -> None:
         """Verify non-existent function doesn't get locale injection."""
         bundle = FluentBundle("en", use_isolating=False)
-        assert should_inject_locale("NONEXISTENT", bundle._function_registry) is False
+        assert bundle._function_registry.should_inject_locale("NONEXISTENT") is False
 
     def test_is_builtin_function_custom_function(self) -> None:
         """Verify is_builtin_function returns False for custom function."""
         # Custom function name not in BUILTIN_FUNCTIONS
         assert is_builtin_function("CUSTOM") is False
 
-    def test_should_inject_locale_defensive_none_check(self) -> None:
-        """Test defensive code: function name not in builtin_callables map.
+    def test_custom_function_with_locale_marker(self) -> None:
+        """Test custom function marked with _ftl_requires_locale attribute.
 
-        This tests defensive code that handles edge cases where requires_locale_injection
-        returns True but the function name is not in the internal builtin_callables map.
-
-        Note: v0.18.0 changed implementation to directly compare callables instead of
-        using get_python_name. This test validates the new defensive code path.
+        v0.36.0 changed implementation to use attribute-based detection.
+        Functions marked with _ftl_requires_locale = True get locale injection.
         """
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
         bundle = FluentBundle("en", use_isolating=False)
 
-        # Mock requires_locale_injection to return True for unknown function
-        # This simulates inconsistent metadata (BUILTIN_FUNCTIONS contains
-        # a name not in the callables map)
-        with patch(
-            "ftllexengine.runtime.function_metadata.requires_locale_injection",
-            return_value=True,
-        ):
-            # Register a custom function with a name that's not a real built-in
-            def custom_func(value: str) -> str:
-                return value
+        @fluent_function(inject_locale=True)
+        def custom_locale_func(value: str, locale_code: str = "en") -> str:
+            return f"{value}:{locale_code}"
 
-            bundle.add_function("UNKNOWN_BUILTIN", custom_func)
+        bundle.add_function("CUSTOM_LOCALE", custom_locale_func)
 
-            # should_inject_locale should return False because UNKNOWN_BUILTIN
-            # is not in the builtin_callables dict (defensive code path)
-            result = should_inject_locale("UNKNOWN_BUILTIN", bundle._function_registry)
-            assert result is False
+        # Should inject locale because it has the marker attribute
+        assert bundle._function_registry.should_inject_locale("CUSTOM_LOCALE") is True
 
     @given(st.sampled_from(["NUMBER", "DATETIME", "CURRENCY"]))
     def test_should_inject_idempotent(self, func_name: str) -> None:
         """Property: should_inject_locale is idempotent for built-ins."""
         bundle = FluentBundle("en", use_isolating=False)
-        first = should_inject_locale(func_name, bundle._function_registry)
-        second = should_inject_locale(func_name, bundle._function_registry)
+        first = bundle._function_registry.should_inject_locale(func_name)
+        second = bundle._function_registry.should_inject_locale(func_name)
         assert first == second
 
     def test_empty_string_no_inject(self) -> None:
         """Edge case: Empty string doesn't get locale injection."""
         bundle = FluentBundle("en", use_isolating=False)
-        assert should_inject_locale("", bundle._function_registry) is False
+        assert bundle._function_registry.should_inject_locale("") is False
 
 
 class TestFunctionMetadataInvariants:

@@ -13,6 +13,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from ftllexengine.constants import (
+    FALLBACK_FUNCTION_ERROR,
+    FALLBACK_INVALID,
+    FALLBACK_MISSING_MESSAGE,
+    FALLBACK_MISSING_TERM,
+    FALLBACK_MISSING_VARIABLE,
+    MAX_DEPTH,
+)
 from ftllexengine.diagnostics import (
     ErrorTemplate,
     FluentCyclicReferenceError,
@@ -20,12 +28,8 @@ from ftllexengine.diagnostics import (
     FluentReferenceError,
     FluentResolutionError,
 )
-from ftllexengine.runtime.depth_guard import MAX_EXPRESSION_DEPTH, DepthGuard
+from ftllexengine.runtime.depth_guard import DepthGuard
 from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
-from ftllexengine.runtime.function_metadata import (
-    get_expected_positional_args,
-    should_inject_locale,
-)
 from ftllexengine.runtime.plural_rules import select_plural_category
 from ftllexengine.syntax import (
     Expression,
@@ -48,11 +52,6 @@ from ftllexengine.syntax import (
 # Re-export FluentValue for public API compatibility
 # Canonical definition is in function_bridge.py to avoid circular imports
 __all__ = ["FluentResolver", "FluentValue", "ResolutionContext"]
-
-# Maximum resolution depth to prevent stack overflow from long non-cyclic chains.
-# A chain of 100+ message references is almost certainly a design error.
-# This limit prevents RecursionError crashes while allowing reasonable nesting.
-MAX_RESOLUTION_DEPTH: int = 100
 
 # Unicode bidirectional isolation characters per Unicode TR9.
 # Used to prevent RTL/LTR text interference when interpolating values.
@@ -83,8 +82,8 @@ class ResolutionContext:
 
     stack: list[str] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
-    max_depth: int = MAX_RESOLUTION_DEPTH
-    max_expression_depth: int = MAX_EXPRESSION_DEPTH
+    max_depth: int = MAX_DEPTH
+    max_expression_depth: int = MAX_DEPTH
     _expression_guard: DepthGuard = field(init=False)
 
     def __post_init__(self) -> None:
@@ -229,13 +228,15 @@ class FluentResolver:
                     ErrorTemplate.attribute_not_found(attribute, message.id.name)
                 )
                 errors.append(error)
-                return (f"{{{message.id.name}.{attribute}}}", tuple(errors))
+                fallback = FALLBACK_MISSING_MESSAGE.format(id=f"{message.id.name}.{attribute}")
+                return (fallback, tuple(errors))
             pattern = attr.value
         else:
             if message.value is None:
                 error = FluentReferenceError(ErrorTemplate.message_no_value(message.id.name))
                 errors.append(error)
-                return (f"{{{message.id.name}}}", tuple(errors))
+                fallback = FALLBACK_MISSING_MESSAGE.format(id=message.id.name)
+                return (fallback, tuple(errors))
             pattern = message.value
 
         # Check for circular references using explicit context
@@ -244,7 +245,8 @@ class FluentResolver:
             cycle_path = context.get_cycle_path(msg_key)
             error = FluentCyclicReferenceError(ErrorTemplate.cyclic_reference(cycle_path))
             errors.append(error)
-            return (f"{{{msg_key}}}", tuple(errors))
+            fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
+            return (fallback, tuple(errors))
 
         # Check for maximum depth (prevents stack overflow from long non-cyclic chains)
         if context.is_depth_exceeded():
@@ -252,7 +254,8 @@ class FluentResolver:
                 ErrorTemplate.max_depth_exceeded(msg_key, context.max_depth)
             )
             errors.append(error)
-            return (f"{{{msg_key}}}", tuple(errors))
+            fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
+            return (fallback, tuple(errors))
 
         try:
             context.push(msg_key)
@@ -398,7 +401,8 @@ class FluentResolver:
             cycle_path = context.get_cycle_path(term_key)
             cycle_error = FluentCyclicReferenceError(ErrorTemplate.cyclic_reference(cycle_path))
             errors.append(cycle_error)
-            return f"{{{term_key}}}"
+            # term_key already has '-' prefix, strip it for the template
+            return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
 
         # Check for maximum depth
         if context.is_depth_exceeded():
@@ -406,7 +410,8 @@ class FluentResolver:
                 ErrorTemplate.max_depth_exceeded(term_key, context.max_depth)
             )
             errors.append(depth_error)
-            return f"{{{term_key}}}"
+            # term_key already has '-' prefix, strip it for the template
+            return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
 
         try:
             context.push(term_key)
@@ -435,11 +440,12 @@ class FluentResolver:
                 case Identifier(name=key_name):
                     if key_name == selector_str:
                         return variant
-                case NumberLiteral(value=key_value):
+                case NumberLiteral(raw=raw_str):
                     # Handle int, float, and Decimal for exact numeric match.
-                    # Normalize via string to handle float/Decimal precision mismatch.
+                    # Use raw string representation for maximum precision.
                     # Problem: float(1.1) != Decimal("1.1") due to IEEE 754 representation.
-                    # Solution: Convert both to Decimal via str for exact comparison.
+                    # Solution: Use NumberLiteral.raw (exact source string) for key,
+                    # and convert selector to Decimal via str for comparison.
                     # Note: Exclude bool since isinstance(True, int) is True in Python,
                     # but str(True) == "True" which is not a valid Decimal.
                     is_numeric = (
@@ -447,7 +453,8 @@ class FluentResolver:
                         and not isinstance(selector_value, bool)
                     )
                     if is_numeric:
-                        key_decimal = Decimal(str(key_value))
+                        # Use raw string for key to preserve exact source precision
+                        key_decimal = Decimal(raw_str)
                         sel_decimal = Decimal(str(selector_value))
                         if key_decimal == sel_decimal:
                             return variant
@@ -570,10 +577,10 @@ class FluentResolver:
 
         # Check if locale injection is needed (metadata-driven, not magic tuple)
         # This correctly handles custom functions with same name as built-ins
-        if should_inject_locale(func_name, self.function_registry):
+        if self.function_registry.should_inject_locale(func_name):
             # Validate arity before injection to provide clear error messages
             # instead of opaque TypeError from incorrect argument positioning
-            expected_args = get_expected_positional_args(func_name)
+            expected_args = self.function_registry.get_expected_positional_args(func_name)
             if expected_args is not None and len(positional_values) != expected_args:
                 raise FluentResolutionError(
                     ErrorTemplate.function_arity_mismatch(
@@ -645,18 +652,22 @@ class FluentResolver:
         """
         match expr:
             case VariableReference():
-                return f"{{${expr.id.name}}}"
+                return FALLBACK_MISSING_VARIABLE.format(name=expr.id.name)
             case MessageReference():
-                attr_suffix = f".{expr.attribute.name}" if expr.attribute else ""
-                return f"{{{expr.id.name}{attr_suffix}}}"
+                msg_id = expr.id.name
+                if expr.attribute:
+                    msg_id = f"{msg_id}.{expr.attribute.name}"
+                return FALLBACK_MISSING_MESSAGE.format(id=msg_id)
             case TermReference():
-                attr_suffix = f".{expr.attribute.name}" if expr.attribute else ""
-                return f"{{-{expr.id.name}{attr_suffix}}}"
+                term_id = expr.id.name
+                if expr.attribute:
+                    term_id = f"{term_id}.{expr.attribute.name}"
+                return FALLBACK_MISSING_TERM.format(name=term_id)
             case FunctionReference():
-                return f"{{{expr.id.name}(...)}}"
+                return FALLBACK_FUNCTION_ERROR.format(name=expr.id.name)
             case SelectExpression():
                 # Provide context by showing the selector expression
                 selector_fallback = self._get_fallback_for_placeable(expr.selector)
                 return f"{{{selector_fallback} -> ...}}"
             case _:
-                return "{???}"  # Unknown expression type
+                return FALLBACK_INVALID

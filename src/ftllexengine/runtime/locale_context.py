@@ -31,15 +31,10 @@ from babel import Locale, UnknownLocaleError
 from babel import dates as babel_dates
 from babel import numbers as babel_numbers
 
+from ftllexengine.constants import FALLBACK_FUNCTION_ERROR, MAX_LOCALE_CACHE_SIZE
 from ftllexengine.locale_utils import normalize_locale
 
 logger = logging.getLogger(__name__)
-
-
-# Maximum cached LocaleContext instances. Prevents unbounded memory growth.
-# 128 covers typical multi-region applications. Increase if application
-# needs to simultaneously format content in more than 128 distinct locales.
-_MAX_LOCALE_CACHE_SIZE: int = 128
 
 # Module-level cache for LocaleContext instances (identity caching)
 # OrderedDict provides LRU semantics with O(1) operations
@@ -156,7 +151,7 @@ class LocaleContext:
                 return _locale_context_cache[cache_key]
 
             # Evict LRU if cache is full
-            if len(_locale_context_cache) >= _MAX_LOCALE_CACHE_SIZE:
+            if len(_locale_context_cache) >= MAX_LOCALE_CACHE_SIZE:
                 _locale_context_cache.popitem(last=False)
 
             _locale_context_cache[cache_key] = ctx
@@ -349,7 +344,7 @@ class LocaleContext:
                 dt_value = datetime.fromisoformat(value)
             except ValueError:
                 # Invalid datetime string - return Fluent error placeholder
-                return "{?DATETIME}"
+                return FALLBACK_FUNCTION_ERROR.format(name="DATETIME")
         else:
             dt_value = value
 
@@ -375,8 +370,12 @@ class LocaleContext:
                 )
                 # Get locale's dateTimeFormat pattern for combining date and time
                 # Pattern uses {0} for time and {1} for date per CLDR spec
-                datetime_pattern = self.babel_locale.datetime_formats.get(
-                    date_style, "{1} {0}"
+                # Use multi-level fallback: requested style -> medium -> short -> hardcoded
+                datetime_pattern = (
+                    self.babel_locale.datetime_formats.get(date_style)
+                    or self.babel_locale.datetime_formats.get("medium")
+                    or self.babel_locale.datetime_formats.get("short")
+                    or "{1} {0}"  # Ultimate fallback (Western LTR order)
                 )
                 # DateTimePattern objects have format() method, strings use str.format()
                 if hasattr(datetime_pattern, "format"):
