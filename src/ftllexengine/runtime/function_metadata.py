@@ -26,6 +26,8 @@ Python 3.13+. Zero external dependencies.
 from dataclasses import dataclass
 from enum import StrEnum
 
+__all__ = ["BUILTIN_FUNCTIONS", "FunctionCategory", "FunctionMetadata"]
+
 
 class FunctionCategory(StrEnum):
     """Category classification for Fluent functions.

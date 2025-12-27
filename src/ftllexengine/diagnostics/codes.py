@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
+__all__ = ["Diagnostic", "DiagnosticCode", "SourceSpan"]
+
 
 class DiagnosticCode(Enum):
     """Error codes with unique identifiers.
@@ -16,6 +18,9 @@ class DiagnosticCode(Enum):
         1000-1999: Reference errors (missing messages, terms, variables)
         2000-2999: Resolution errors (runtime evaluation failures)
         3000-3999: Syntax errors (parser failures)
+        4000-4999: Parsing errors (bi-directional localization)
+        5000-5099: Validation errors (Fluent spec semantic validation)
+        5100-5199: Validation warnings (resource-level structural checks)
     """
 
     # Reference errors (1000-1999)
@@ -56,6 +61,23 @@ class DiagnosticCode(Enum):
     PARSE_CURRENCY_SYMBOL_UNKNOWN = 4008
     PARSE_AMOUNT_INVALID = 4009
     PARSE_CURRENCY_CODE_INVALID = 4010
+
+    # Validation errors (5000-5099) - Fluent spec semantic validation
+    # These correspond to AST semantic checks per Fluent spec valid.md
+    VALIDATION_TERM_NO_VALUE = 5004
+    VALIDATION_SELECT_NO_DEFAULT = 5005
+    VALIDATION_SELECT_NO_VARIANTS = 5006
+    VALIDATION_VARIANT_DUPLICATE = 5007
+    VALIDATION_NAMED_ARG_DUPLICATE = 5010
+
+    # Validation warnings (5100-5199) - Resource-level validation
+    # These are structural checks beyond Fluent spec requirements
+    VALIDATION_PARSE_ERROR = 5100
+    VALIDATION_CRITICAL_PARSE_ERROR = 5101
+    VALIDATION_DUPLICATE_ID = 5102
+    VALIDATION_NO_VALUE_OR_ATTRS = 5103
+    VALIDATION_UNDEFINED_REFERENCE = 5104
+    VALIDATION_CIRCULAR_REFERENCE = 5105
 
 
 @dataclass(frozen=True, slots=True)

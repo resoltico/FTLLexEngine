@@ -13,6 +13,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2025-12-28
+
+### Breaking Changes
+- `ERROR_CODES` dict removed from `syntax/validator.py`; validation errors now use `DiagnosticCode` enum
+- Module-level cache functions removed from `locale_context.py`:
+  - `_clear_locale_context_cache()` removed; use `LocaleContext.clear_cache()` class method
+  - `_get_locale_context_cache_size()` removed; use `LocaleContext.cache_size()` class method
+- Validation error codes unified under `DiagnosticCode` enum (5000-5199 range):
+  - `VALIDATION_TERM_NO_VALUE` (5004)
+  - `VALIDATION_SELECT_NO_DEFAULT` (5005)
+  - `VALIDATION_SELECT_NO_VARIANTS` (5006)
+  - `VALIDATION_VARIANT_DUPLICATE` (5007)
+  - `VALIDATION_NAMED_ARG_DUPLICATE` (5010)
+  - `VALIDATION_PARSE_ERROR` (5100)
+  - `VALIDATION_CRITICAL_PARSE_ERROR` (5101)
+  - `VALIDATION_DUPLICATE_ID` (5102)
+  - `VALIDATION_NO_VALUE_OR_ATTRS` (5103)
+  - `VALIDATION_UNDEFINED_REFERENCE` (5104)
+  - `VALIDATION_CIRCULAR_REFERENCE` (5105)
+
+### Added
+- `LocaleContext.clear_cache()` class method for cache management
+- `LocaleContext.cache_size()` class method to query cache size
+- `LocaleContext.cache_info()` class method returning size, max_size, and cached locales
+- `_load_single_resource()` helper method in `FluentLocalization` for cleaner initialization
+- Tiered CLDR loading in `currency.py` for faster cold start:
+  - Fast Tier: ~50 common currencies with hardcoded unambiguous symbols (immediate, zero CLDR overhead)
+  - Full Tier: Complete CLDR scan (lazy-loaded on first cache miss)
+- CLDR pattern conversion architecture documentation in `dates.py`
+- Depth-limiting architecture documentation in `constants.py`
+- Explicit `__all__` declarations added to 26 modules for public API clarity
+
+### Changed
+- `syntax/validator.py` migrated from `ERROR_CODES` dict to `DiagnosticCode` enum
+- `validation/resource.py` migrated from hardcoded strings to `DiagnosticCode.*.name`
+- `LocaleContext` cache encapsulated as class-level state (`ClassVar`) instead of module-level variables
+- `FluentLocalization.__init__` resource loading extracted to `_load_single_resource()` helper
+
 ## [0.36.0] - 2025-12-27
 
 ### Breaking Changes
@@ -238,7 +276,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
-[Unreleased]: https://github.com/resoltico/ftllexengine/compare/v0.35.0...HEAD
+[0.37.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.37.0
 [0.36.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.36.0
 [0.35.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.35.0
 [0.34.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.34.0

@@ -20,11 +20,7 @@ import pytest
 
 from ftllexengine.localization import PathResourceLoader
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-    _get_locale_context_cache_size,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
 from ftllexengine.syntax.ast import (
     Identifier,
@@ -64,9 +60,9 @@ def test_path_resource_loader_fallback_to_cwd():
 @pytest.fixture
 def _clean_locale_cache():
     """Clear locale context cache before and after test."""
-    _clear_locale_context_cache()
+    LocaleContext.clear_cache()
     yield
-    _clear_locale_context_cache()
+    LocaleContext.clear_cache()
 
 
 @pytest.mark.usefixtures("_clean_locale_cache")
@@ -107,7 +103,7 @@ def test_locale_context_cache_concurrent_creation_exact_timing():
     assert results[0] is results[1]
 
     # Cache should have exactly one entry
-    assert _get_locale_context_cache_size() == 1
+    assert LocaleContext.cache_size() == 1
 
 
 @pytest.mark.usefixtures("_clean_locale_cache")

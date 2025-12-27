@@ -337,7 +337,7 @@ result, _ = bundle_lv.format_pattern("greet", {"name": "Anna"})
 # → "Sveiki, Anna!"
 ```
 
-### Alternative: Automatic Locale Injection (v0.36.0+)
+### Alternative: Automatic Locale Injection (v0.37.0+)
 
 Instead of using the factory pattern, use the `@fluent_function` decorator for automatic locale injection:
 

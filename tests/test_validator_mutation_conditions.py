@@ -267,32 +267,37 @@ class TestTermValidationConditions:
 class TestErrorCodeValidation:
     """Test error code handling.
 
-    Targets mutations in error code lookups and string handling.
+    Targets mutations in DiagnosticCode and _VALIDATION_MESSAGES.
     """
 
-    def test_error_codes_dict_exists(self):
-        """Kills: ERROR_CODES dict mutations.
+    def test_validation_messages_dict_exists(self):
+        """Kills: _VALIDATION_MESSAGES dict mutations.
 
-        ERROR_CODES should be a non-empty dict.
+        _VALIDATION_MESSAGES should be a non-empty dict.
         """
-        from ftllexengine.syntax.validator import ERROR_CODES  # noqa: PLC0415
+        from ftllexengine.syntax.validator import _VALIDATION_MESSAGES  # noqa: PLC0415
 
-        assert isinstance(ERROR_CODES, dict)
-        assert len(ERROR_CODES) > 0
+        assert isinstance(_VALIDATION_MESSAGES, dict)
+        assert len(_VALIDATION_MESSAGES) > 0
 
-    def test_error_codes_contain_expected_codes(self):
+    def test_diagnostic_codes_contain_expected_validation_codes(self):
         """Kills: specific error code mutations.
 
-        Common error codes should exist.
+        Common validation DiagnosticCodes should exist.
         """
-        from ftllexengine.syntax.validator import ERROR_CODES  # noqa: PLC0415
+        from ftllexengine.diagnostics.codes import DiagnosticCode  # noqa: PLC0415
 
-        # Check for some expected error codes
-        expected_codes = ["E0001", "E0002", "E0003", "E0004", "E0005"]
+        # Check for expected validation-related DiagnosticCodes
+        expected_codes = [
+            DiagnosticCode.VALIDATION_TERM_NO_VALUE,
+            DiagnosticCode.VALIDATION_SELECT_NO_DEFAULT,
+            DiagnosticCode.VALIDATION_SELECT_NO_VARIANTS,
+            DiagnosticCode.VALIDATION_VARIANT_DUPLICATE,
+            DiagnosticCode.VALIDATION_NAMED_ARG_DUPLICATE,
+        ]
         for code in expected_codes:
-            assert code in ERROR_CODES
-            assert isinstance(ERROR_CODES[code], str)
-            assert len(ERROR_CODES[code]) > 0
+            assert isinstance(code, DiagnosticCode)
+            assert code.value >= 5000  # Validation codes are in 5000+ range
 
 
 class TestValidationAnnotationHandling:

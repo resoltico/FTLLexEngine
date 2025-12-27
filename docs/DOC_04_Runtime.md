@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.36.0
+project_version: 0.37.0
 context: RUNTIME
 last_updated: 2025-12-26T18:00:00Z
 maintainer: claude-opus-4-5
@@ -429,7 +429,7 @@ def should_inject_locale(self, ftl_name: str) -> bool:
 - Logic: Checks callable's `_ftl_requires_locale` attribute set by `@fluent_function(inject_locale=True)`.
 - Thread: Safe.
 - Access: Via `bundle._function_registry.should_inject_locale(name)` or registry instance.
-- Version: v0.36.0+ (moved from `function_metadata` module)
+- Version: v0.37.0+ (moved from `function_metadata` module)
 
 ---
 
@@ -453,7 +453,7 @@ def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_
 - Return: Decorated function with Fluent metadata attributes.
 - Thread: Safe.
 - Import: `from ftllexengine import fluent_function`
-- Version: v0.36.0+
+- Version: v0.37.0+
 
 ---
 
@@ -856,7 +856,7 @@ MAX_DEPTH: int = 100
 - Purpose: Unified maximum depth for all recursion protection.
 - Usage: Message reference chains, expression nesting, serialization, validation.
 - Import: `from ftllexengine.constants import MAX_DEPTH`
-- Version: v0.36.0 unified `MAX_RESOLUTION_DEPTH` and `MAX_EXPRESSION_DEPTH`.
+- Version: v0.37.0 unified `MAX_RESOLUTION_DEPTH` and `MAX_EXPRESSION_DEPTH`.
 
 ---
 

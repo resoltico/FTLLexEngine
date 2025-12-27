@@ -40,6 +40,8 @@ from ftllexengine.syntax.parser.rules import (
 )
 from ftllexengine.syntax.parser.whitespace import skip_blank
 
+__all__ = ["FluentParserV1"]
+
 
 class FluentParserV1:
     """Fluent FTL parser using immutable cursor pattern.

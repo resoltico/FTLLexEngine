@@ -16,6 +16,7 @@ References:
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import ValidationResult
+from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.runtime.depth_guard import DepthGuard
 from ftllexengine.syntax.ast import (
     Annotation,
@@ -44,31 +45,21 @@ from ftllexengine.syntax.ast import (
     VariableReference,
 )
 
-# ============================================================================
-# VALIDATION ERROR CODES
-# ============================================================================
+__all__ = ["SemanticValidator", "validate"]
 
-# Per spec, error codes should be unique and descriptive
-ERROR_CODES = {
-    # Message validation
-    "E0001": "Message cannot be called with arguments",
-    "E0002": "Message attribute cannot be parameterized",
-    "E0003": "Message reference cannot have call arguments",
-    # Term validation
-    "E0004": "Term must have a value",
-    # Select expression validation
-    "E0005": "Select expression must have exactly one default variant",
-    "E0006": "Select expression must have at least one variant",
-    "E0007": "Variant keys must be unique within select expression",
-    # Function validation
-    "E0008": "Function name must be uppercase",
-    "E0009": "Named arguments cannot follow positional arguments",
-    "E0010": "Duplicate named argument",
-    # Reference validation
-    "E0011": "Attribute accessor requires message or term reference",
-    "E0012": "Only terms can be called with arguments",
-    # General
-    "E0013": "Invalid expression type in context",
+# Validation error messages keyed by DiagnosticCode
+_VALIDATION_MESSAGES: dict[DiagnosticCode, str] = {
+    DiagnosticCode.VALIDATION_TERM_NO_VALUE: "Term must have a value",
+    DiagnosticCode.VALIDATION_SELECT_NO_DEFAULT: (
+        "Select expression must have exactly one default variant"
+    ),
+    DiagnosticCode.VALIDATION_SELECT_NO_VARIANTS: (
+        "Select expression must have at least one variant"
+    ),
+    DiagnosticCode.VALIDATION_VARIANT_DUPLICATE: (
+        "Variant keys must be unique within select expression"
+    ),
+    DiagnosticCode.VALIDATION_NAMED_ARG_DUPLICATE: "Duplicate named argument",
 }
 
 
@@ -118,7 +109,7 @@ class SemanticValidator:
     @staticmethod
     def _add_error(
         errors: list[Annotation],
-        code: str,
+        code: DiagnosticCode,
         message: str | None = None,
         span: Span | None = None,
         **arguments: str,
@@ -127,17 +118,17 @@ class SemanticValidator:
 
         Args:
             errors: Error list to append to
-            code: Error code (e.g., "E0001")
-            message: Optional custom message (uses default from ERROR_CODES if None)
+            code: DiagnosticCode enum value
+            message: Optional custom message (uses default from _VALIDATION_MESSAGES)
             span: Optional source position
             **arguments: Additional error context
         """
         if message is None:
-            message = ERROR_CODES.get(code, "Unknown validation error")
+            message = _VALIDATION_MESSAGES.get(code, "Unknown validation error")
 
         errors.append(
             Annotation(
-                code=code,
+                code=code.name,
                 message=message,
                 arguments=arguments if arguments else None,
                 span=span,
@@ -192,7 +183,7 @@ class SemanticValidator:
         if not term.value:
             self._add_error(
                 errors,
-                "E0004",
+                DiagnosticCode.VALIDATION_TERM_NO_VALUE,
                 span=term.span,
                 term_id=term.id.name,
             )
@@ -335,16 +326,8 @@ class SemanticValidator:
     ) -> None:
         """Validate function/term call arguments.
 
-        Per spec:
-        - Named arguments cannot follow positional arguments
-        - Named argument names must be unique
+        Per spec, named argument names must be unique.
         """
-        # Check: positional args must come before named args
-        if args.positional and args.named:
-            # This is actually allowed in FTL, so no error
-            # But we track it for potential linting
-            pass
-
         # Check: named argument names must be unique
         seen_names: set[str] = set()
         for named_arg in args.named:
@@ -352,7 +335,7 @@ class SemanticValidator:
             if name in seen_names:
                 self._add_error(
                     errors,
-                    "E0010",
+                    DiagnosticCode.VALIDATION_NAMED_ARG_DUPLICATE,
                     argument_name=name,
                 )
             seen_names.add(name)
@@ -386,7 +369,7 @@ class SemanticValidator:
 
         # Check: must have at least one variant
         if not select.variants:
-            self._add_error(errors, "E0006")
+            self._add_error(errors, DiagnosticCode.VALIDATION_SELECT_NO_VARIANTS)
             return
 
         # Check: exactly one default variant
@@ -394,7 +377,7 @@ class SemanticValidator:
         if default_count != 1:
             self._add_error(
                 errors,
-                "E0005",
+                DiagnosticCode.VALIDATION_SELECT_NO_DEFAULT,
                 message=(
                     f"Select expression must have exactly one default variant, "
                     f"found {default_count}"
@@ -408,7 +391,7 @@ class SemanticValidator:
             if key_str in seen_keys:
                 self._add_error(
                     errors,
-                    "E0007",
+                    DiagnosticCode.VALIDATION_VARIANT_DUPLICATE,
                     variant_key=key_str,
                 )
             seen_keys.add(key_str)

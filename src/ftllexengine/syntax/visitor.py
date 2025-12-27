@@ -37,6 +37,8 @@ from .ast import (
     Variant,
 )
 
+__all__ = ["ASTTransformer", "ASTVisitor"]
+
 # Type aliases for visitor return types (v0.36.0)
 type VisitorResult = ASTNode
 type TransformerResult = ASTNode | None | list[ASTNode]

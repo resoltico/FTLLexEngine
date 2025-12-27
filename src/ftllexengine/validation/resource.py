@@ -10,7 +10,7 @@ Architecture:
     - _collect_entries(): Pass 2 - Collect messages/terms, check duplicates
     - _check_undefined_references(): Pass 3 - Validate message/term references
     - _detect_circular_references(): Pass 4 - Check for reference cycles
-    - SemanticValidator: Pass 5 - Fluent spec compliance (E0001-E0013)
+    - SemanticValidator: Pass 5 - Fluent spec compliance
 
 Python 3.13+.
 """
@@ -24,11 +24,14 @@ from ftllexengine.diagnostics import (
     ValidationResult,
     ValidationWarning,
 )
+from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.introspection import extract_references
 from ftllexengine.syntax import Junk, Message, Resource, Term
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.validator import SemanticValidator
+
+__all__ = ["validate_resource"]
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +72,7 @@ def _extract_syntax_errors(
 
             errors.append(
                 ValidationError(
-                    code="parse-error",
+                    code=DiagnosticCode.VALIDATION_PARSE_ERROR.name,
                     message="Failed to parse FTL content",
                     content=entry.content,
                     line=line,
@@ -122,7 +125,7 @@ def _collect_entries(
                     line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
-                            code="duplicate-id",
+                            code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
                             message=(
                                 f"Duplicate message ID '{msg_id.name}' "
                                 f"(later definition will overwrite earlier)"
@@ -140,7 +143,7 @@ def _collect_entries(
                     line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
-                            code="no-value-or-attributes",
+                            code=DiagnosticCode.VALIDATION_NO_VALUE_OR_ATTRS.name,
                             message=f"Message '{msg_id.name}' has neither value nor attributes",
                             context=msg_id.name,
                             line=line,
@@ -154,7 +157,7 @@ def _collect_entries(
                     line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
-                            code="duplicate-id",
+                            code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
                             message=(
                                 f"Duplicate term ID '{term_id.name}' "
                                 f"(later definition will overwrite earlier)"
@@ -211,7 +214,7 @@ def _check_undefined_references(
             if ref not in messages_dict:
                 warnings.append(
                     ValidationWarning(
-                        code="undefined-reference",
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
                         message=f"Message '{msg_name}' references undefined message '{ref}'",
                         context=ref,
                         line=line,
@@ -223,7 +226,7 @@ def _check_undefined_references(
             if ref not in terms_dict:
                 warnings.append(
                     ValidationWarning(
-                        code="undefined-reference",
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
                         message=f"Message '{msg_name}' references undefined term '-{ref}'",
                         context=f"-{ref}",
                         line=line,
@@ -240,7 +243,7 @@ def _check_undefined_references(
             if ref not in messages_dict:
                 warnings.append(
                     ValidationWarning(
-                        code="undefined-reference",
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
                         message=f"Term '-{term_name}' references undefined message '{ref}'",
                         context=ref,
                         line=line,
@@ -252,7 +255,7 @@ def _check_undefined_references(
             if ref not in terms_dict:
                 warnings.append(
                     ValidationWarning(
-                        code="undefined-reference",
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
                         message=f"Term '-{term_name}' references undefined term '-{ref}'",
                         context=f"-{ref}",
                         line=line,
@@ -351,7 +354,7 @@ def _detect_circular_references(
 
             warnings.append(
                 ValidationWarning(
-                    code="circular-reference",
+                    code=DiagnosticCode.VALIDATION_CIRCULAR_REFERENCE.name,
                     message=msg,
                     context=cycle_str,
                 )
@@ -438,7 +441,7 @@ def validate_resource(
     except FluentSyntaxError as e:
         logger.error("Critical validation error: %s", e)
         error = ValidationError(
-            code="critical-parse-error",
+            code=DiagnosticCode.VALIDATION_CRITICAL_PARSE_ERROR.name,
             message=str(e),
             content=str(e),
         )

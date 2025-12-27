@@ -38,6 +38,15 @@ from .syntax.visitor import ASTVisitor
 if TYPE_CHECKING:
     from .syntax.ast import Expression, InlineExpression, PatternElement
 
+__all__ = [
+    "FunctionCallInfo",
+    "MessageIntrospection",
+    "ReferenceInfo",
+    "VariableInfo",
+    "extract_references",
+    "extract_variables",
+    "introspect_message",
+]
 
 # ==============================================================================
 # INTROSPECTION METADATA (Frozen Dataclasses with Slots)

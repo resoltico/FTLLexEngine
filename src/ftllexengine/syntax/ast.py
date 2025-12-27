@@ -11,6 +11,43 @@ from typing import TypeIs
 
 from ftllexengine.enums import CommentType
 
+# ruff: noqa: RUF022 - __all__ organized by category for readability
+__all__ = [
+    # Base types
+    "Span",
+    "Annotation",
+    "Identifier",
+    # Resource structure
+    "Resource",
+    "Message",
+    "Term",
+    "Attribute",
+    "Comment",
+    "Junk",
+    # Pattern elements
+    "Pattern",
+    "TextElement",
+    "Placeable",
+    # Expressions
+    "SelectExpression",
+    "Variant",
+    "StringLiteral",
+    "NumberLiteral",
+    "VariableReference",
+    "MessageReference",
+    "TermReference",
+    "FunctionReference",
+    "CallArguments",
+    "NamedArgument",
+    # Type aliases
+    "Entry",
+    "PatternElement",
+    "Expression",
+    "InlineExpression",
+    "VariantKey",
+    "ASTNode",
+]
+
 # ============================================================================
 # BASE TYPES
 # ============================================================================

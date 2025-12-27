@@ -9,6 +9,8 @@ Python 3.13+.
 from collections.abc import Mapping, Sequence
 from enum import Enum, auto
 
+__all__ = ["canonicalize_cycle", "detect_cycles", "make_cycle_key"]
+
 
 def canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:
     """Canonicalize a cycle path by rotating to start with smallest element.

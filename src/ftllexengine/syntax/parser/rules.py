@@ -74,6 +74,8 @@ from ftllexengine.syntax.parser.whitespace import (
     skip_multiline_pattern_start,
 )
 
+__all__ = ["ParseContext", "parse_comment", "parse_message", "parse_term"]
+
 
 @dataclass(slots=True)
 class ParseContext:

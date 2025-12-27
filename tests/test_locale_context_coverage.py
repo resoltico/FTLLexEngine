@@ -14,10 +14,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 
 
 class TestLocaleContextUnknownLocale:
@@ -30,7 +27,7 @@ class TestLocaleContextUnknownLocale:
     def test_unknown_locale_warns_on_create(self, caplog: pytest.LogCaptureFixture) -> None:
         """Unknown locale logs warning during create()."""
         # Clear cache to ensure warning is logged (not cached from previous run)
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         with caplog.at_level(logging.WARNING):
             ctx = LocaleContext.create("xx_INVALID")
@@ -226,26 +223,21 @@ class TestLocaleCacheFunctions:
     """Test cache utility functions (lines 52-53, 58-59)."""
 
     def test_clear_cache_and_get_size(self) -> None:
-        """COVERAGE: Lines 52-53, 58-59 - Cache clear and size functions."""
-        from ftllexengine.runtime.locale_context import (
-            _clear_locale_context_cache,
-            _get_locale_context_cache_size,
-        )
-
+        """COVERAGE: Class-level cache clear and size methods."""
         # Create a few contexts to populate cache
         LocaleContext.create("en-US")
         LocaleContext.create("de-DE")
         LocaleContext.create("fr-FR")
 
         # Get cache size
-        size = _get_locale_context_cache_size()
+        size = LocaleContext.cache_size()
         assert size >= 3  # May have more from other tests
 
         # Clear cache
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Verify empty
-        new_size = _get_locale_context_cache_size()
+        new_size = LocaleContext.cache_size()
         assert new_size == 0
 
 
@@ -258,15 +250,11 @@ class TestCacheEvictionAndRace:
     """Test cache eviction and race condition paths (lines 152, 156)."""
 
     def test_cache_eviction_when_full(self) -> None:
-        """COVERAGE: Line 156 - Cache eviction when full."""
+        """COVERAGE: Cache eviction when full."""
         from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
-        from ftllexengine.runtime.locale_context import (
-            _clear_locale_context_cache,
-            _get_locale_context_cache_size,
-        )
 
         # Clear cache first
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create more contexts than cache size
         for i in range(MAX_LOCALE_CACHE_SIZE + 5):
@@ -274,18 +262,16 @@ class TestCacheEvictionAndRace:
             LocaleContext.create(f"en-X{i:03d}")
 
         # Cache should be at max size (evicted oldest)
-        size = _get_locale_context_cache_size()
+        size = LocaleContext.cache_size()
         assert size <= MAX_LOCALE_CACHE_SIZE
 
     def test_cache_double_check_pattern(self) -> None:
-        """COVERAGE: Line 152 - Double-check pattern in cache.
+        """COVERAGE: Double-check pattern in cache.
 
         This is difficult to trigger without threads, but we can verify
         that creating the same locale twice returns cached version.
         """
-        from ftllexengine.runtime.locale_context import _clear_locale_context_cache
-
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create first time
         ctx1 = LocaleContext.create("en-GB")

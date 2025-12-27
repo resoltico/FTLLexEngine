@@ -6,6 +6,8 @@ Python 3.13+. Zero external dependencies.
 
 from .codes import Diagnostic, DiagnosticCode
 
+__all__ = ["ErrorTemplate"]
+
 
 class ErrorTemplate:
     """Centralized error message templates.

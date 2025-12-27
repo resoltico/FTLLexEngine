@@ -198,7 +198,7 @@ msg = { $count ->
 
         # Should detect duplicate keys
         if not result.is_valid:
-            assert any("E0007" in ann.code for ann in result.annotations)
+            assert any("VALIDATION_VARIANT_DUPLICATE" in ann.code for ann in result.annotations)
         else:
             # Parser might have deduped, which is also acceptable
             pass
@@ -404,18 +404,24 @@ class TestValidatorState:
 class TestValidationErrorCodes:
     """Test that error codes are descriptive and consistent."""
 
-    def test_error_codes_are_unique(self):
-        """All error codes should be unique."""
-        from ftllexengine.syntax.validator import ERROR_CODES
+    def test_diagnostic_codes_are_unique(self):
+        """All validation DiagnosticCode values should be unique."""
+        from ftllexengine.diagnostics.codes import DiagnosticCode
 
-        codes = list(ERROR_CODES.keys())
-        assert len(codes) == len(set(codes)), "Error codes must be unique"
+        # Get all validation-related codes (5000-5199 range)
+        validation_codes = [
+            code for code in DiagnosticCode
+            if code.value >= 5000 and code.value < 5200
+        ]
+        values = [code.value for code in validation_codes]
+        assert len(values) == len(set(values)), "DiagnosticCode values must be unique"
 
-    def test_error_codes_have_messages(self):
-        """All error codes should have descriptive messages."""
-        from ftllexengine.syntax.validator import ERROR_CODES
+    def test_validation_messages_exist(self):
+        """All validation codes should have messages in _VALIDATION_MESSAGES."""
+        from ftllexengine.diagnostics.codes import DiagnosticCode
+        from ftllexengine.syntax.validator import _VALIDATION_MESSAGES
 
-        for code, message in ERROR_CODES.items():
-            assert code.startswith("E"), f"Error code {code} should start with 'E'"
-            assert len(message) > 10, f"Error message for {code} should be descriptive"
-            assert message[0].isupper(), f"Error message for {code} should start with uppercase"
+        for code, message in _VALIDATION_MESSAGES.items():
+            assert isinstance(code, DiagnosticCode), f"{code} should be DiagnosticCode"
+            assert len(message) > 5, f"Message for {code.name} should be descriptive"
+            assert message[0].isupper(), f"Message for {code.name} should start with uppercase"

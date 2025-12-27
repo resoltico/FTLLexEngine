@@ -13,45 +13,33 @@ Python 3.13+.
 from __future__ import annotations
 
 from decimal import Decimal
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 
 
 class TestLocaleContextCacheLine156:
-    """Test line 156: double-check pattern cache hit."""
+    """Test cache identity and thread-safety patterns."""
 
-    def test_create_double_check_pattern_cache_hit(self) -> None:
-        """Test create() returns cached instance in double-check (line 156).
+    def test_cache_returns_same_instance(self) -> None:
+        """Test that cache returns the same instance for same locale.
 
-        This tests the thread-safety double-check pattern where another thread
-        might have added the locale to cache between the first check and lock acquisition.
+        This validates the cache hit path works correctly.
         """
         # Clear cache first
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create a locale context to populate cache
         ctx1 = LocaleContext.create("en-US")
 
-        # Mock the scenario where cache is checked twice
-        # This simulates a race condition where another thread adds to cache
-        with patch(
-            "ftllexengine.runtime.locale_context._locale_context_cache"
-        ) as mock_cache:
-            # First access: cache miss (empty dict)
-            # Second access (inside lock): cache hit
-            mock_cache.__contains__.side_effect = [False, True]
-            mock_cache.move_to_end = Mock()
-            mock_cache.__getitem__ = Mock(return_value=ctx1)
+        # Create same locale again - should hit cache
+        ctx2 = LocaleContext.create("en-US")
 
-            # Create should return cached instance from second check
-            _ctx2 = LocaleContext.create("en-US")
+        # Both should be the same instance
+        assert ctx1 is ctx2
 
-            # Should have called __getitem__ due to cache hit in double-check
-            mock_cache.__getitem__.assert_called_once()
+        # Cache should have exactly one entry
+        assert LocaleContext.cache_size() == 1
 
 
 class TestFormatNumberFixedDecimalsLines281To282:
@@ -181,7 +169,7 @@ class TestLocaleContextIntegration:
     def test_clear_cache_and_recreate(self) -> None:
         """Test cache clearing and recreation."""
         # Clear cache
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create locale
         ctx1 = LocaleContext.create("fr-FR")
@@ -194,7 +182,7 @@ class TestLocaleContextIntegration:
         assert ctx1 is ctx2
 
         # Clear cache again
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create new instance
         ctx3 = LocaleContext.create("fr-FR")

@@ -1,8 +1,8 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.36.0
+project_version: 0.37.0
 context: INDEX
-last_updated: 2025-12-26T18:00:00Z
+last_updated: 2025-12-28T00:15:00Z
 maintainer: claude-opus-4-5
 retrieval_hints:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
@@ -22,6 +22,8 @@ from ftllexengine import (
     FluentLocalization,
     parse_ftl,
     serialize_ftl,
+    FluentValue,       # Type alias for function argument values
+    fluent_function,   # Decorator for custom functions
     # Errors
     FluentError,
     FluentSyntaxError,
@@ -72,7 +74,6 @@ from ftllexengine.diagnostics import (
 from ftllexengine.introspection import (
     introspect_message, MessageIntrospection,
     extract_variables, extract_references,
-    ReferenceExtractor, IntrospectionVisitor,
     VariableInfo, FunctionCallInfo, ReferenceInfo,
 )
 ```

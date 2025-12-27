@@ -1,6 +1,6 @@
 ---
 spec_version: AFAD-v1
-project_version: 0.36.0
+project_version: 0.37.0
 context: TESTING
 last_updated: 2025-12-26T18:00:00Z
 maintainer: claude-opus-4-5
@@ -248,7 +248,7 @@ Single entry point for all fuzzing operations. Recommended over individual scrip
 ./scripts/fuzz.sh [MODE] [OPTIONS]
 ```
 
-### Modes (v0.36.0+)
+### Modes (v0.37.0+)
 
 | Mode | Description |
 |:-----|:------------|
@@ -514,7 +514,7 @@ When Atheris finds a crash, use the `--repro` tool for fast reproduction:
 | 4 | Fix the bug, run tests to confirm |
 | 5 | Delete crash file after committing test |
 
-**v0.36.0+**: The `scripts/repro.py` tool closes the feedback loop:
+**v0.37.0+**: The `scripts/repro.py` tool closes the feedback loop:
 - `--repro FILE`: Full traceback reproduction
 - `--example`: Generates copy-paste `@example()` decorator
 

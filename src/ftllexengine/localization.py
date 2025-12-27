@@ -472,50 +472,8 @@ class FluentLocalization:
         if resource_loader and resource_ids:
             for locale in self._locales:
                 for resource_id in self._resource_ids:
-                    # Construct source path for better error messages
-                    if isinstance(resource_loader, PathResourceLoader):
-                        locale_path = resource_loader.base_path.format(locale=locale)
-                        source_path = f"{locale_path}/{resource_id}"
-                    else:
-                        source_path = f"{locale}/{resource_id}"
-
-                    try:
-                        ftl_source = resource_loader.load(locale, resource_id)
-                        bundle = self._get_or_create_bundle(locale)
-                        bundle.add_resource(ftl_source, source_path=source_path)
-                        self._resources_loaded.add(locale)
-                        # Record successful load
-                        self._load_results.append(
-                            ResourceLoadResult(
-                                locale=locale,
-                                resource_id=resource_id,
-                                status=LoadStatus.SUCCESS,
-                                source_path=source_path,
-                            )
-                        )
-                    except FileNotFoundError:
-                        # Resource doesn't exist for this locale - expected for optional locales
-                        # Fallback will try next locale in chain
-                        self._load_results.append(
-                            ResourceLoadResult(
-                                locale=locale,
-                                resource_id=resource_id,
-                                status=LoadStatus.NOT_FOUND,
-                                source_path=source_path,
-                            )
-                        )
-                    except (OSError, ValueError) as e:
-                        # Permission errors, path traversal errors, etc.
-                        # Record the error but continue loading other resources
-                        self._load_results.append(
-                            ResourceLoadResult(
-                                locale=locale,
-                                resource_id=resource_id,
-                                status=LoadStatus.ERROR,
-                                error=e,
-                                source_path=source_path,
-                            )
-                        )
+                    result = self._load_single_resource(locale, resource_id, resource_loader)
+                    self._load_results.append(result)
 
     def _get_or_create_bundle(self, locale: LocaleCode) -> FluentBundle:
         """Get existing bundle or create one lazily.
@@ -545,6 +503,61 @@ class FluentLocalization:
                 bundle.add_function(name, func)
             self._bundles[locale] = bundle
         return bundle
+
+    def _load_single_resource(
+        self,
+        locale: LocaleCode,
+        resource_id: ResourceId,
+        resource_loader: ResourceLoader,
+    ) -> ResourceLoadResult:
+        """Load a single FTL resource and record the result.
+
+        Encapsulates the logic for loading one resource for one locale,
+        including path construction, error handling, and result recording.
+
+        Args:
+            locale: Locale code to load resource for
+            resource_id: Resource identifier (e.g., 'main.ftl')
+            resource_loader: Loader implementation to use
+
+        Returns:
+            ResourceLoadResult indicating success, not_found, or error
+        """
+        # Construct source path for diagnostics
+        if isinstance(resource_loader, PathResourceLoader):
+            locale_path = resource_loader.base_path.format(locale=locale)
+            source_path = f"{locale_path}/{resource_id}"
+        else:
+            source_path = f"{locale}/{resource_id}"
+
+        try:
+            ftl_source = resource_loader.load(locale, resource_id)
+            bundle = self._get_or_create_bundle(locale)
+            bundle.add_resource(ftl_source, source_path=source_path)
+            self._resources_loaded.add(locale)
+            return ResourceLoadResult(
+                locale=locale,
+                resource_id=resource_id,
+                status=LoadStatus.SUCCESS,
+                source_path=source_path,
+            )
+        except FileNotFoundError:
+            # Resource doesn't exist for this locale - expected for optional locales
+            return ResourceLoadResult(
+                locale=locale,
+                resource_id=resource_id,
+                status=LoadStatus.NOT_FOUND,
+                source_path=source_path,
+            )
+        except (OSError, ValueError) as e:
+            # Permission errors, path traversal errors, etc.
+            return ResourceLoadResult(
+                locale=locale,
+                resource_id=resource_id,
+                status=LoadStatus.ERROR,
+                error=e,
+                source_path=source_path,
+            )
 
     @property
     def locales(self) -> tuple[LocaleCode, ...]:

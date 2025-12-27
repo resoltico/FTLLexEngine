@@ -66,7 +66,7 @@ Common options:
 | `--workers N` | Use N parallel workers |
 | `--json` | Output JSON (for CI) |
 
-**v0.36.0+**: Added `--structured` (grammar-aware fuzzing) and `--repro` (crash reproduction).
+**v0.37.0+**: Added `--structured` (grammar-aware fuzzing) and `--repro` (crash reproduction).
 
 ---
 

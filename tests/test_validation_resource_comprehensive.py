@@ -583,7 +583,7 @@ class TestMessageWithoutValueOrAttributes:
         # Should have warning about no value or attributes (line 113)
         no_value_warnings = [
             w for w in warnings
-            if "no-value-or-attributes" in w.code
+            if "VALIDATION_NO_VALUE_OR_ATTRS" in w.code
         ]
         assert len(no_value_warnings) == 1
         assert "neither value nor attributes" in no_value_warnings[0].message
@@ -618,7 +618,7 @@ class TestFluentSyntaxErrorHandling:
 
             # Should have converted exception to validation error (lines 341-346)
             assert len(result.errors) == 1
-            assert result.errors[0].code == "critical-parse-error"
+            assert result.errors[0].code == "VALIDATION_CRITICAL_PARSE_ERROR"
             assert "Catastrophic parse error" in result.errors[0].message
             assert not result.is_valid
             assert len(result.warnings) == 0

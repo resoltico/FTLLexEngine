@@ -30,6 +30,8 @@ from threading import RLock
 from ftllexengine.diagnostics import FluentError
 from ftllexengine.runtime.function_bridge import FluentValue
 
+__all__ = ["FormatCache"]
+
 # Internal type alias for cache keys (prefixed with _ per naming convention)
 type _CacheKey = tuple[str, tuple[tuple[str, FluentValue], ...], str | None, str]
 

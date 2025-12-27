@@ -8,7 +8,6 @@ Python 3.13+.
 from datetime import UTC, datetime
 from unittest.mock import patch
 
-import ftllexengine.runtime.locale_context as lc_module
 from ftllexengine.locale_utils import normalize_locale
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -19,21 +18,21 @@ class TestLocaleContextCachingRaceCondition:
     def test_cache_double_check_pattern(self) -> None:
         """Test cache double-check pattern when another thread adds entry first."""
         # Clear cache first
-        lc_module._locale_context_cache.clear()
+        LocaleContext.clear_cache()
 
         # Create first instance
         ctx1 = LocaleContext.create("en-US")
 
         # Simulate race condition: manually add to cache while holding lock
-        # to test the double-check return path (line 156)
-        with lc_module._locale_context_cache_lock:
+        # to test the double-check return path
+        with LocaleContext._cache_lock:
             # Cache key is normalized
             cache_key = normalize_locale("en-US")
 
             # The key should already be in cache from ctx1 creation
-            assert cache_key in lc_module._locale_context_cache
+            assert cache_key in LocaleContext._cache
 
-            # Try to create again - should hit the double-check return (line 156)
+            # Try to create again - should hit the double-check return
             # This simulates the case where between the first check and lock acquisition,
             # another thread added the entry
             ctx2 = LocaleContext.create("en-US")

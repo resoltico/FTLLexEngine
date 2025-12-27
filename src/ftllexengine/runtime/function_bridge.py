@@ -38,6 +38,14 @@ from ftllexengine.diagnostics import ErrorTemplate, FluentResolutionError
 if TYPE_CHECKING:
     from ftllexengine.runtime.function_metadata import FunctionMetadata
 
+__all__ = [
+    "FluentFunction",
+    "FluentValue",
+    "FunctionRegistry",
+    "FunctionSignature",
+    "fluent_function",
+]
+
 # Type alias for Fluent-compatible function values.
 # This is the CANONICAL definition - imported by resolver.py and localization.py.
 # Defined here (not in resolver.py) to avoid circular imports.

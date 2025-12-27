@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from threading import RLock
-from typing import Literal
+from typing import ClassVar, Literal
 
 from babel import Locale, UnknownLocaleError
 from babel import dates as babel_dates
@@ -34,24 +34,9 @@ from babel import numbers as babel_numbers
 from ftllexengine.constants import FALLBACK_FUNCTION_ERROR, MAX_LOCALE_CACHE_SIZE
 from ftllexengine.locale_utils import normalize_locale
 
+__all__ = ["LocaleContext"]
+
 logger = logging.getLogger(__name__)
-
-# Module-level cache for LocaleContext instances (identity caching)
-# OrderedDict provides LRU semantics with O(1) operations
-_locale_context_cache: OrderedDict[str, "LocaleContext"] = OrderedDict()
-_locale_context_cache_lock = RLock()
-
-
-def _clear_locale_context_cache() -> None:
-    """Clear the locale context cache (for testing only)."""
-    with _locale_context_cache_lock:
-        _locale_context_cache.clear()
-
-
-def _get_locale_context_cache_size() -> int:
-    """Get current cache size (for testing only)."""
-    with _locale_context_cache_lock:
-        return len(_locale_context_cache)
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +48,13 @@ class LocaleContext:
 
     Use LocaleContext.create() factory to construct instances with proper validation.
     Direct construction via __init__ is not recommended (bypasses validation).
+
+    Cache Management:
+        LocaleContext uses an internal LRU cache for instance reuse. Use class
+        methods for cache management:
+        - LocaleContext.clear_cache(): Clear all cached instances
+        - LocaleContext.cache_size(): Get current cache size
+        - LocaleContext.cache_info(): Get detailed cache statistics
 
     Examples:
         >>> ctx = LocaleContext.create('en-US')
@@ -80,15 +72,80 @@ class LocaleContext:
 
     Thread Safety:
         LocaleContext is immutable and thread-safe. Multiple threads can
-        share the same instance without synchronization.
+        share the same instance without synchronization. Cache operations
+        are protected by RLock.
 
     Babel vs locale module:
         - Babel: Thread-safe, CLDR-based, 600+ locales
         - locale: Thread-unsafe, platform-dependent, requires setlocale()
     """
 
+    # Class-level cache for LocaleContext instances (identity caching)
+    # OrderedDict provides LRU semantics with O(1) operations
+    # Note: ClassVar is excluded from dataclass fields
+    _cache: ClassVar[OrderedDict[str, "LocaleContext"]] = OrderedDict()
+    _cache_lock: ClassVar[RLock] = RLock()
+
     locale_code: str
     _babel_locale: Locale
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear the locale context cache.
+
+        Use this method to free memory or reset state in tests.
+        Thread-safe via RLock.
+
+        Example:
+            >>> LocaleContext.create('en-US')  # Cached
+            >>> LocaleContext.cache_size()
+            1
+            >>> LocaleContext.clear_cache()
+            >>> LocaleContext.cache_size()
+            0
+        """
+        with cls._cache_lock:
+            cls._cache.clear()
+
+    @classmethod
+    def cache_size(cls) -> int:
+        """Get current number of cached LocaleContext instances.
+
+        Returns:
+            Number of cached instances
+
+        Example:
+            >>> LocaleContext.clear_cache()
+            >>> LocaleContext.create('en-US')
+            >>> LocaleContext.create('de-DE')
+            >>> LocaleContext.cache_size()
+            2
+        """
+        with cls._cache_lock:
+            return len(cls._cache)
+
+    @classmethod
+    def cache_info(cls) -> dict[str, int | tuple[str, ...]]:
+        """Get detailed cache statistics.
+
+        Returns:
+            Dictionary with cache statistics:
+            - size: Current number of cached instances
+            - max_size: Maximum cache size
+            - locales: Tuple of cached locale codes (LRU order)
+
+        Example:
+            >>> LocaleContext.clear_cache()
+            >>> LocaleContext.create('en-US')
+            >>> LocaleContext.cache_info()
+            {'size': 1, 'max_size': 128, 'locales': ('en_US',)}
+        """
+        with cls._cache_lock:
+            return {
+                "size": len(cls._cache),
+                "max_size": MAX_LOCALE_CACHE_SIZE,
+                "locales": tuple(cls._cache.keys()),
+            }
 
     @classmethod
     def create(cls, locale_code: str) -> "LocaleContext":
@@ -124,11 +181,11 @@ class LocaleContext:
         cache_key = normalize_locale(locale_code)
 
         # Thread-safe LRU caching with identity preservation
-        with _locale_context_cache_lock:
-            if cache_key in _locale_context_cache:
+        with cls._cache_lock:
+            if cache_key in cls._cache:
                 # Move to end (mark as recently used) and return cached instance
-                _locale_context_cache.move_to_end(cache_key)
-                return _locale_context_cache[cache_key]
+                cls._cache.move_to_end(cache_key)
+                return cls._cache[cache_key]
 
         # Create new instance (Locale.parse is thread-safe)
         try:
@@ -146,15 +203,15 @@ class LocaleContext:
         ctx = cls(locale_code=locale_code, _babel_locale=babel_locale)
 
         # Add to cache with lock (double-check pattern for thread safety)
-        with _locale_context_cache_lock:
-            if cache_key in _locale_context_cache:
-                return _locale_context_cache[cache_key]
+        with cls._cache_lock:
+            if cache_key in cls._cache:
+                return cls._cache[cache_key]
 
             # Evict LRU if cache is full
-            if len(_locale_context_cache) >= MAX_LOCALE_CACHE_SIZE:
-                _locale_context_cache.popitem(last=False)
+            if len(cls._cache) >= MAX_LOCALE_CACHE_SIZE:
+                cls._cache.popitem(last=False)
 
-            _locale_context_cache[cache_key] = ctx
+            cls._cache[cache_key] = ctx
             return ctx
 
     @classmethod

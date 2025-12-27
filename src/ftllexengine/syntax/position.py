@@ -7,6 +7,8 @@ References:
 - Fluent spec errors.md: lineOffset and columnOffset helpers
 """
 
+__all__ = ["column_offset", "line_offset"]
+
 
 def line_offset(source: str, pos: int) -> int:
     """Get 0-based line number from byte offset.

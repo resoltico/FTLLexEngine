@@ -22,11 +22,7 @@ from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.parsing import parse_currency
 from ftllexengine.parsing.currency import _get_currency_maps, _get_currency_pattern
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-    _get_locale_context_cache_size,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.ast import (
     Annotation,
     Identifier,
@@ -122,7 +118,7 @@ class TestLocaleContextCacheLimitCoverage:
         When cache size reaches MAX_LOCALE_CACHE_SIZE, LRU entry is evicted.
         """
         # Clear cache first
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Fill cache to just under limit with unique locale strings
         locales_to_fill = [f"en_TEST{i:04d}" for i in range(MAX_LOCALE_CACHE_SIZE)]
@@ -134,7 +130,7 @@ class TestLocaleContextCacheLimitCoverage:
             assert ctx is not None
 
         # Now cache should be at limit
-        cache_size = _get_locale_context_cache_size()
+        cache_size = LocaleContext.cache_size()
         assert cache_size >= MAX_LOCALE_CACHE_SIZE
 
         # Track cache size
@@ -145,13 +141,13 @@ class TestLocaleContextCacheLimitCoverage:
         assert ctx is not None
 
         # Cache size should not exceed maxsize
-        cache_size_after = _get_locale_context_cache_size()
+        cache_size_after = LocaleContext.cache_size()
         assert cache_size_after <= MAX_LOCALE_CACHE_SIZE
         # Size may stay the same or decrease slightly due to LRU eviction
         assert cache_size_after <= size_before + 1
 
         # Cleanup
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
 
 class TestLocaleContextUnexpectedErrorPropagation:

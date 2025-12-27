@@ -20,6 +20,8 @@ from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
+__all__ = ["parse_decimal", "parse_number"]
+
 
 def parse_number(
     value: str,

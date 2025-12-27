@@ -21,6 +21,8 @@ from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
+__all__ = ["parse_date", "parse_datetime"]
+
 # CLDR date format styles used for parsing.
 # Both date and datetime use the same styles for consistency.
 _DATE_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long")
@@ -391,6 +393,60 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
 
 # ==============================================================================
 # TOKEN-BASED BABEL-TO-STRPTIME CONVERTER
+# ==============================================================================
+# ruff: noqa: ERA001 - Documentation table is not commented-out code
+#
+# ARCHITECTURAL OVERVIEW:
+#
+# The Unicode CLDR (Common Locale Data Repository) defines locale-specific date
+# patterns using a standardized format. Babel provides access to CLDR data.
+# Python's strptime uses a different directive syntax. This module bridges them.
+#
+# CLDR Pattern Syntax (subset relevant to parsing):
+#   Pattern | Meaning                | Example
+#   --------|------------------------|--------
+#   y/yy    | 2-digit year           | 25
+#   yyyy    | 4-digit year           | 2025
+#   M/MM    | Month (numeric)        | 1, 01
+#   MMM     | Month (short name)     | Jan
+#   MMMM    | Month (full name)      | January
+#   d/dd    | Day of month           | 5, 05
+#   E/EEE   | Weekday (short)        | Mon
+#   EEEE    | Weekday (full)         | Monday
+#   G       | Era (AD/BC)            | AD (no strptime equivalent)
+#   H/HH    | Hour (0-23)            | 14
+#   h/hh    | Hour (1-12)            | 2
+#   m/mm    | Minute                 | 30
+#   s/ss    | Second                 | 45
+#   a       | AM/PM marker           | PM
+#   S+      | Fractional seconds     | 123
+#
+# CONVERSION STRATEGY:
+# 1. Tokenize: Split CLDR pattern into tokens (letters, literals, quotes)
+# 2. Map: Convert each token using _BABEL_TOKEN_MAP
+# 3. Handle special cases:
+#    - Era tokens (G): Mark pattern for preprocessing, strip era from input
+#    - Timezone names (z): Cannot be parsed by strptime, marked for skip
+#    - Stand-alone month/weekday (L/c): Map to format context equivalents
+#
+# QUOTE ESCAPING (CLDR):
+#   - Single quotes delimit literal text: 'at' -> "at"
+#   - Double single quotes escape: '' -> "'"
+#   - Example: "h 'o''clock' a" -> "2 o'clock PM"
+#
+# ERA HANDLING:
+#   Python's strptime has no era support. Patterns containing G tokens are
+#   marked with has_era=True. At parse time, _strip_era() removes era text
+#   from input before parsing. See _ERA_STRINGS for supported designations.
+#
+# KNOWN LIMITATIONS:
+#   - Fractional seconds: CLDR uses S/SS/SSS for 1-3 digits, strptime %f
+#     expects 6 digits (microseconds). Best-effort mapping is applied.
+#   - Timezone names: strptime cannot parse "PST" or "America/Los_Angeles".
+#     These tokens are marked for skip.
+#   - Hour 1-24 (k) and 0-11 (K): Mapped to closest strptime equivalent
+#     with potential off-by-one at midnight/noon boundaries.
+#
 # ==============================================================================
 
 # Token mapping: Babel CLDR pattern -> Python strptime directive

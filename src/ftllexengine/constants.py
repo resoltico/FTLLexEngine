@@ -12,8 +12,65 @@ Constants are grouped by domain:
 Python 3.13+. Zero external dependencies.
 """
 
+# ruff: noqa: RUF022 - __all__ organized by category for readability
+__all__ = [
+    # Depth limits
+    "MAX_DEPTH",
+    # Cache limits
+    "MAX_LOCALE_CACHE_SIZE",
+    "DEFAULT_CACHE_SIZE",
+    # Input limits
+    "MAX_SOURCE_SIZE",
+    # Fallback strings
+    "FALLBACK_INVALID",
+    "FALLBACK_MISSING_MESSAGE",
+    "FALLBACK_MISSING_VARIABLE",
+    "FALLBACK_MISSING_TERM",
+    "FALLBACK_FUNCTION_ERROR",
+]
+
 # ============================================================================
 # DEPTH LIMITS
+# ============================================================================
+#
+# ARCHITECTURAL DECISION: Unified vs. Semantic-Specific Limits
+#
+# FTLLexEngine uses a UNIFIED depth limit (MAX_DEPTH=100) across all subsystems
+# rather than subsystem-specific limits. This is intentional:
+#
+# 1. PARSER (syntax/parser/core.py):
+#    - Tracks: Syntactic nesting depth (nested patterns, selectors, attributes)
+#    - Purpose: Prevent stack overflow during recursive descent parsing
+#    - Example: Deeply nested select expressions { $a -> [x] { $b -> [...] } }
+#
+# 2. RESOLVER (runtime/resolver.py):
+#    - Tracks: Reference resolution depth (message -> term -> message chains)
+#    - Purpose: Detect circular references, prevent infinite loops
+#    - Example: -term = { -other-term } where -other-term references -term
+#
+# 3. SERIALIZER (syntax/serializer.py):
+#    - Tracks: AST traversal depth during serialization
+#    - Purpose: Prevent stack overflow when serializing deeply nested ASTs
+#
+# 4. VALIDATORS (syntax/validator.py, analysis modules):
+#    - Tracks: Validation tree depth during AST analysis
+#    - Purpose: Prevent stack overflow during validation passes
+#
+# WHY UNIFIED?
+# - Simplicity: One constant to configure for defense-in-depth
+# - Consistency: Same limit across all attack surfaces
+# - Sufficient: 100 levels exceeds any legitimate use case
+#
+# WHY NOT SEMANTIC-SPECIFIC?
+# - Complexity: 4+ constants to tune with subtle interactions
+# - No practical benefit: Real-world FTL files rarely exceed 10 levels
+# - Same failure mode: All subsystems fail-safe on limit breach
+#
+# The value 100 was chosen empirically:
+# - Python default recursion limit: 1000 (ample margin)
+# - Legitimate FTL files: typically 1-5 levels, rarely >10
+# - Adversarial input: >100 levels is clearly malformed
+#
 # ============================================================================
 
 # Unified maximum depth for recursion protection.

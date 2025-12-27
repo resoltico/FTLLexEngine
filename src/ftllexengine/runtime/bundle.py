@@ -35,6 +35,8 @@ from ftllexengine.validation import validate_resource as _validate_resource_impl
 if TYPE_CHECKING:
     from ftllexengine.introspection import MessageIntrospection
 
+__all__ = ["FluentBundle"]
+
 logger = logging.getLogger(__name__)
 
 # Logging truncation limits for error messages.

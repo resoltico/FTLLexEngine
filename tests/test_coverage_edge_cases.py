@@ -33,12 +33,7 @@ from ftllexengine.parsing.dates import (
     _tokenize_babel_pattern,
 )
 from ftllexengine.runtime.functions import is_builtin_with_locale_requirement
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-    _locale_context_cache,
-    _locale_context_cache_lock,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.ast import Annotation
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser.rules import _is_variant_marker
@@ -295,22 +290,23 @@ class TestLocaleContextCacheRaceCondition:
         This tests the race condition where another thread populates the cache
         between the initial check and acquiring the lock.
         """
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # First, create a context normally to get a valid instance
         locale_code = "en_TEST_RACE"
         ctx = LocaleContext.create(locale_code)
 
         # Clear cache and immediately re-add with lock (simulating race)
-        with _locale_context_cache_lock:
-            _locale_context_cache.clear()
-            _locale_context_cache[locale_code] = ctx
+        # Access class-level cache via LocaleContext._cache and _cache_lock
+        with LocaleContext._cache_lock:
+            LocaleContext._cache.clear()
+            LocaleContext._cache[locale_code] = ctx
 
         # Now call create - should hit the cache in the double-check
         result = LocaleContext.create(locale_code)
         assert result is ctx
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
 
 class TestLocaleContextDatetimePattern:
@@ -318,7 +314,7 @@ class TestLocaleContextDatetimePattern:
 
     def test_datetime_pattern_without_format_method(self) -> None:
         """Line 404: Test when datetime_pattern is a string without format method."""
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create context and test formatting
         ctx = LocaleContext.create("en_US")
@@ -330,7 +326,7 @@ class TestLocaleContextDatetimePattern:
         assert result is not None
         assert len(result) > 0
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
 
 # ============================================================================

@@ -15,6 +15,8 @@ from babel.core import UnknownLocaleError
 
 from ftllexengine.locale_utils import get_babel_locale
 
+__all__ = ["select_plural_category"]
+
 
 def select_plural_category(n: int | float | Decimal, locale: str) -> str:
     """Select CLDR plural category for number using Babel's CLDR data.

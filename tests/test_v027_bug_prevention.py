@@ -26,11 +26,7 @@ from ftllexengine.diagnostics.validation import (
     ValidationError,
     ValidationResult,
 )
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-    _get_locale_context_cache_size,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.ast import Message, Pattern
 from ftllexengine.syntax.visitor import ASTVisitor
 
@@ -116,7 +112,7 @@ class TestCacheIdentityProperty:
         Catches bugs where cache returns new objects each time instead
         of preserving object identity.
         """
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         ctx1 = LocaleContext.create("en_US")
         ctx2 = LocaleContext.create("en_US")
@@ -127,20 +123,20 @@ class TestCacheIdentityProperty:
             f"Got {id(ctx1)} vs {id(ctx2)}"
         )
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
     @given(locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "ja_JP"]))
     @settings(max_examples=20)
     def test_locale_context_cache_identity_hypothesis(self, locale: str) -> None:
         """PROPERTY: Cache identity holds for various locales."""
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         ctx1 = LocaleContext.create(locale)
         ctx2 = LocaleContext.create(locale)
 
         assert ctx1 is ctx2
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
 
 # ============================================================================
@@ -157,33 +153,33 @@ class TestCacheBoundsProperty:
 
         Catches bugs where cache grows unbounded, leading to memory leaks.
         """
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create more locales than the cache limit
         for i in range(MAX_LOCALE_CACHE_SIZE + 10):
             locale_code = f"en_TEST{i:04d}"
             LocaleContext.create(locale_code)
 
-        cache_size = _get_locale_context_cache_size()
+        cache_size = LocaleContext.cache_size()
         assert cache_size <= MAX_LOCALE_CACHE_SIZE, (
             f"Cache size {cache_size} exceeds maximum {MAX_LOCALE_CACHE_SIZE}"
         )
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
     @given(num_locales=st.integers(min_value=1, max_value=200))
     @settings(max_examples=10)
     def test_cache_bounds_hypothesis(self, num_locales: int) -> None:
         """PROPERTY: Cache bounds hold for any number of locales."""
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         for i in range(num_locales):
             LocaleContext.create(f"xx_TEST{i:04d}")
 
-        cache_size = _get_locale_context_cache_size()
+        cache_size = LocaleContext.cache_size()
         assert cache_size <= MAX_LOCALE_CACHE_SIZE
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
 
 # ============================================================================
@@ -383,7 +379,7 @@ class TestCombinedProperties:
 
     def test_cache_identity_survives_eviction(self) -> None:
         """PROPERTY: Cache identity holds even after LRU eviction cycles."""
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         # Create a locale, then fill cache past limit, then re-access
         _ = LocaleContext.create("en_US")
@@ -402,13 +398,13 @@ class TestCombinedProperties:
             "Cache identity must hold for re-accessed locales after eviction"
         )
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
     @given(locale=st.sampled_from(["en_US", "de_DE", "fr_FR"]))
     @settings(max_examples=10)
     def test_locale_formatting_consistency(self, locale: str) -> None:
         """PROPERTY: Formatting is consistent across cache hits."""
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()
 
         dt = datetime(2025, 6, 15, 14, 30, tzinfo=UTC)
 
@@ -424,4 +420,4 @@ class TestCombinedProperties:
             f"Formatting should be identical for cache hits: {result1} vs {result2}"
         )
 
-        _clear_locale_context_cache()
+        LocaleContext.clear_cache()

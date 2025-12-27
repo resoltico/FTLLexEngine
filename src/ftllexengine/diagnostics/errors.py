@@ -8,6 +8,15 @@ Python 3.13+. Zero external dependencies.
 
 from .codes import Diagnostic
 
+__all__ = [
+    "FluentCyclicReferenceError",
+    "FluentError",
+    "FluentParseError",
+    "FluentReferenceError",
+    "FluentResolutionError",
+    "FluentSyntaxError",
+]
+
 
 class FluentError(Exception):
     """Base exception for all Fluent errors.

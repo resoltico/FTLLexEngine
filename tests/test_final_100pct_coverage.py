@@ -34,11 +34,7 @@ from ftllexengine.diagnostics.formatter import DiagnosticFormatter, OutputFormat
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.localization import FluentLocalization, PathResourceLoader
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.locale_context import (
-    LocaleContext,
-    _clear_locale_context_cache,
-    _get_locale_context_cache_size,
-)
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
 from ftllexengine.syntax.ast import (
     Identifier,
@@ -164,9 +160,9 @@ def test_localization_clear_cache_with_uninitialized_bundles():
 @pytest.fixture
 def _reset_locale_context_cache():
     """Clear locale context cache before and after test."""
-    _clear_locale_context_cache()
+    LocaleContext.clear_cache()
     yield
-    _clear_locale_context_cache()
+    LocaleContext.clear_cache()
 
 
 @pytest.mark.usefixtures("_reset_locale_context_cache")
@@ -187,7 +183,7 @@ def test_locale_context_cache_double_check_race_condition():
         barrier.wait()  # Synchronize threads
         ctx = LocaleContext.create("en-US")
         results.append(ctx)
-        cache_sizes.append(_get_locale_context_cache_size())
+        cache_sizes.append(LocaleContext.cache_size())
 
     # Run two threads concurrently
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -199,7 +195,7 @@ def test_locale_context_cache_double_check_race_condition():
     assert results[0] is results[1]
 
     # Cache should have exactly 1 entry (no duplicates)
-    assert _get_locale_context_cache_size() == 1
+    assert LocaleContext.cache_size() == 1
 
 
 @pytest.mark.usefixtures("_reset_locale_context_cache")

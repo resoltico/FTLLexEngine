@@ -29,6 +29,8 @@ from typing import Literal
 from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FunctionRegistry
 from .locale_context import LocaleContext
 
+__all__ = ["create_default_registry", "get_shared_registry"]
+
 logger = logging.getLogger(__name__)
 
 

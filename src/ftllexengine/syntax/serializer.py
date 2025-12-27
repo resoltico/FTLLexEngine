@@ -47,6 +47,13 @@ from .visitor import ASTVisitor
 if TYPE_CHECKING:
     from ftllexengine.runtime.depth_guard import DepthGuard
 
+__all__ = [
+    "FluentSerializer",
+    "SerializationDepthError",
+    "SerializationValidationError",
+    "serialize",
+]
+
 
 class SerializationValidationError(ValueError):
     """Raised when AST validation fails during serialization.
