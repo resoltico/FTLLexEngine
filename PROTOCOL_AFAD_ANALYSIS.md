@@ -2,19 +2,28 @@
 
 **Date**: 2025-12-27
 **Reviewer**: Claude Opus 4.5
-**Artifacts**: PROTOCOL_AFAD.md (v2.0 - unified refactored protocol)
+**Artifacts**:
+- PROTOCOL_AFAD.md (v2.0 - first unified refactored protocol)
+- PROTOCOL_AFAD_v2.1.md (v2.1 - refined second pass)
 
 ---
 
 ## Executive Summary
 
-Two documentation protocols (AFAD-v1.1 for reference docs, AFAD-AUX-v1.1 for auxiliary docs) were critically reviewed against:
-- Theoretical soundness
-- FTLLexEngine codebase implementation
-- Existing documentation practices
-- Industry best practices for RAG and AI agent documentation
+Two documentation protocols (AFAD-v1.1 for reference docs, AFAD-AUX-v1.1 for auxiliary docs) were critically reviewed in two passes.
 
-**Key Finding**: The protocols contained valuable insights but suffered from fragmentation, schema explosion, goal-oriented language, and poor economy of words. They have been unified into AFAD-2.0, reducing ~1700 lines to ~400 lines (76% reduction) while preserving semantic content.
+**First Pass (v2.0)**: Unified the protocols, reduced ~1700 lines to ~400 lines (76% reduction), replaced goal-oriented language with system invariants.
+
+**Second Pass (v2.1)**: Deep refinement addressing:
+- Missing core philosophy (knowledge graph mental model)
+- Dual audience problem (AI writers, AI+human readers)
+- Priority hierarchy (P0 Critical → P2 Stylistic)
+- Scale calibration (small/medium/large projects)
+- Graceful degradation (partial compliance > none)
+- Explicit graph edges in frontmatter (upstream/downstream)
+- Worked examples from actual codebase
+
+**Key Finding**: The original protocols contained valuable insights but suffered from fragmentation, schema explosion, goal-oriented language, and poor economy of words. AFAD-2.1 addresses these while providing a principled, layered architecture.
 
 ---
 
@@ -263,3 +272,105 @@ AFAD-2.0 is backward-compatible in spirit but not in syntax:
 | **Total** | **~1100** | **~600** | **~400** |
 
 **Net Reduction**: 76%
+
+---
+
+## Part VI: Second Pass Analysis (AFAD-2.1)
+
+### Self-Critique of First Pass
+
+| Issue | Description | Severity |
+|-------|-------------|----------|
+| Missing Core Philosophy | Protocol didn't explain the "why" behind design choices | High |
+| Arbitrary Thresholds | ">30 symbols", ">1000 lines" without justification | Medium |
+| Reader/Writer Asymmetry | Written by AI agents, read by AI+humans - not addressed | High |
+| No Priority Hierarchy | All rules appeared equal (critical vs stylistic) | High |
+| Weak Adaptation | Escape hatches tacked on rather than integrated | Medium |
+| No Scale Awareness | Treated small and large projects identically | Medium |
+| Missing AI-Specific Optimization | Context windows, chunking, embedding similarity not addressed | High |
+| Abstract Schemas | No grounding examples from real codebase | Medium |
+
+### Key Improvements in v2.1
+
+**1. Layer 0: Philosophy**
+Added foundational mental model:
+- Documentation as knowledge graph (nodes, edges, clusters)
+- Dual audience problem (AI writers, AI+human readers)
+- Retrieval optimization principle (semantic chunking)
+- Priority hierarchy (P0 Critical → P2 Stylistic)
+
+**2. Explicit Layering**
+Protocol restructured into 8 explicit layers:
+- Layer 0: Philosophy (why)
+- Layer 1: Invariants (what must be true)
+- Layer 2: File Architecture (organization)
+- Layer 3: Component Schemas (structure)
+- Layer 4: Auxiliary Documentation (narrative)
+- Layer 5: Adaptation Mechanisms (flexibility)
+- Layer 6: Maintenance Protocol (synchronization)
+- Layer 7: Validation (verification)
+- Layer 8: Worked Examples (concrete illustrations)
+
+**3. Enhanced Frontmatter**
+Added explicit knowledge graph edges:
+```yaml
+route:
+  upstream: [files that link here]
+  downstream: [files this links to]
+```
+
+**4. Scale Calibration**
+Different guidance for:
+- Small projects (<20 exports): May collapse domains
+- Medium projects (20-100 exports): Standard separation
+- Large projects (>100 exports): Additional splits needed
+
+**5. Graceful Degradation**
+Priority order when full compliance impossible:
+1. Full schema compliance
+2. Correct signature with simplified Contract
+3. Signature-only with Notes
+4. Placeholder with TODO marker
+
+**6. Validation Levels**
+Four severity levels (L0-L4) with blocking/non-blocking distinction.
+
+**7. Recovery Protocol**
+Explicit steps for recovering from validation failures.
+
+**8. Worked Examples**
+Concrete examples from FTLLexEngine codebase:
+- Reference entry (FluentBundle.format_pattern)
+- Exception hierarchy
+- Frontmatter structure
+
+### Research Sources Added
+
+- [Stack Overflow: Chunking in RAG](https://stackoverflow.blog/2024/12/27/breaking-up-is-hard-to-do-chunking-in-rag-applications/)
+- [Model Context Protocol Architecture](https://modelcontextprotocol.io/specification/2025-03-26/architecture)
+- [Knowledge Graphs in Technical Documentation](https://clickhelp.com/clickhelp-technical-writing-blog/how-knowledge-graphs-can-improve-documentation-creation/)
+- [W3C: Extensibility, Evolvability, Interoperability](https://www.w3.org/Protocols/Design/Interevol.html)
+
+### Line Count Comparison (Updated)
+
+| Version | Lines | vs Original |
+|---------|-------|-------------|
+| AFAD-v1.1 + AFAD-AUX-v1.1 | ~1700 | baseline |
+| AFAD-2.0 (first pass) | ~400 | -76% |
+| AFAD-2.1 (second pass) | ~550 | -68% |
+
+Note: v2.1 is slightly longer than v2.0 due to added philosophy layer,
+worked examples, and recovery protocols. This is intentional - the added
+content provides essential guidance that was missing.
+
+### Recommendation
+
+**Use AFAD-2.1** (PROTOCOL_AFAD_v2.1.md) as the canonical protocol.
+
+The additional ~150 lines provide:
+- Mental model for agents to understand intent
+- Graceful degradation when perfect compliance isn't possible
+- Scale-appropriate guidance
+- Concrete examples for disambiguation
+
+AFAD-2.0 can be retained as a minimal reference if preferred
