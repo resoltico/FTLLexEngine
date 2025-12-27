@@ -5,6 +5,7 @@
 **Artifacts**:
 - PROTOCOL_AFAD.md (v2.0 - first unified refactored protocol)
 - PROTOCOL_AFAD_v2.1.md (v2.1 - refined second pass)
+- PROTOCOL_AFAD_v2.2.md (v2.2 - deep third pass - RECOMMENDED)
 
 ---
 
@@ -358,19 +359,94 @@ Concrete examples from FTLLexEngine codebase:
 | AFAD-v1.1 + AFAD-AUX-v1.1 | ~1700 | baseline |
 | AFAD-2.0 (first pass) | ~400 | -76% |
 | AFAD-2.1 (second pass) | ~550 | -68% |
+| AFAD-2.2 (third pass) | ~480 | -72% |
 
-Note: v2.1 is slightly longer than v2.0 due to added philosophy layer,
-worked examples, and recovery protocols. This is intentional - the added
-content provides essential guidance that was missing.
+---
+
+## Part VII: Third Pass Analysis (AFAD-2.2)
+
+### Self-Critique of Second Pass
+
+| Issue | Description | Severity |
+|-------|-------------|----------|
+| "Contract" Terminology | Confusing - means preconditions/postconditions elsewhere | Medium |
+| Manual Graph Edges | upstream/downstream in frontmatter will drift | High |
+| No Anti-Patterns | What NOT to do is as important as what TO do | High |
+| No Lifecycle Management | Deprecation, versioning not covered | Medium |
+| No Code↔Doc Boundary | When docstrings vs external docs unclear | High |
+| 8 Layers Overhead | Cognitive load of layer navigation | Medium |
+| No Minimum Viable | What's absolute minimum for small projects | Medium |
+| No Doc Testing | How to verify examples work | High |
+
+### Key Improvements in v2.2
+
+**1. Terminology Fix**
+- "Contract" → "Parameters" (clearer, less confusing)
+- Aligns with Python documentation conventions
+
+**2. Removed Drift-Prone Metadata**
+- Removed `upstream`/`downstream` from frontmatter
+- These edges should be derived from content, not manually maintained
+
+**3. Anti-Patterns Section (§17-18)**
+Added comprehensive "what NOT to do":
+- Prose in Parameters tables
+- Duplicating docstrings
+- Examples in reference docs
+- Sentence descriptions
+- Manual cross-references
+
+**4. Lifecycle Management (§19-20)**
+- Deprecation protocol (3-phase: announce, warn, remove)
+- Documentation versioning strategy
+- Migration timeline guidance
+
+**5. Docstring vs External Docs (§3)**
+Clear boundary:
+- Docstrings: One-line summary, implementation notes, IDE tooltips
+- External docs: Full signatures, parameter semantics, thread safety
+
+**6. Flatter Structure**
+- Removed layer numbering (Layer 0, Layer 1, etc.)
+- Sections numbered §1, §2... for easier reference
+- Reduced cognitive overhead
+
+**7. Minimum Viable Documentation (§26)**
+For small projects (<20 exports):
+- DOC_00_Index.md + DOC_01_Core.md only
+- May omit separate Types/Errors files
+
+**8. Documentation Testing (§25)**
+Verification beyond signature matching:
+- Execute code examples
+- Verify links resolve
+- Check imports are valid
+- Cross-reference with CHANGELOG
+
+### Research Sources Added (v2.2)
+
+- [Real Python: Documenting Python Code](https://realpython.com/documenting-python-code/)
+- [Hitchhiker's Guide: Documentation](https://docs.python-guide.org/writing/documentation/)
+- [Apidog: API Versioning & Deprecation](https://apidog.com/blog/api-versioning-deprecation-strategy/)
+- [SendGrid: 4 Common Documentation Antipatterns](https://sendgrid.com/blog/4-common-antipatterns-avoid-documentation/)
+
+### Protocol Evolution Summary
+
+| Version | Focus | Key Addition |
+|---------|-------|--------------|
+| v2.0 | Unification | Single protocol, decision tree |
+| v2.1 | Philosophy | Mental model, priorities, scale |
+| v2.2 | Practical | Anti-patterns, lifecycle, boundaries |
 
 ### Recommendation
 
-**Use AFAD-2.1** (PROTOCOL_AFAD_v2.1.md) as the canonical protocol.
+**Use AFAD-2.2** (PROTOCOL_AFAD_v2.2.md) as the canonical protocol.
 
-The additional ~150 lines provide:
-- Mental model for agents to understand intent
-- Graceful degradation when perfect compliance isn't possible
-- Scale-appropriate guidance
-- Concrete examples for disambiguation
-
-AFAD-2.0 can be retained as a minimal reference if preferred
+v2.2 is the most practical and complete:
+- Clearer terminology (Parameters vs Contract)
+- Anti-patterns prevent common mistakes
+- Lifecycle management for deprecation
+- Clear docstring/external doc boundary
+- Minimum viable for small projects
+- Testing strategy for verification
+- More economical expression (~480 lines vs v2.1's ~550)
