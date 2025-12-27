@@ -5,7 +5,8 @@
 **Artifacts**:
 - PROTOCOL_AFAD.md (v2.0 - first unified refactored protocol)
 - PROTOCOL_AFAD_v2.1.md (v2.1 - refined second pass)
-- PROTOCOL_AFAD_v2.2.md (v2.2 - deep third pass - RECOMMENDED)
+- PROTOCOL_AFAD_v2.2.md (v2.2 - deep third pass)
+- PROTOCOL_AFAD_v3.0.md (v3.0 - retrieval-oriented fourth pass - RECOMMENDED)
 
 ---
 
@@ -24,7 +25,22 @@ Two documentation protocols (AFAD-v1.1 for reference docs, AFAD-AUX-v1.1 for aux
 - Explicit graph edges in frontmatter (upstream/downstream)
 - Worked examples from actual codebase
 
-**Key Finding**: The original protocols contained valuable insights but suffered from fragmentation, schema explosion, goal-oriented language, and poor economy of words. AFAD-2.1 addresses these while providing a principled, layered architecture.
+**Third Pass (v2.2)**: Practical refinements:
+- Renamed "Contract" → "Parameters"
+- Added anti-patterns section
+- Added lifecycle management (deprecation)
+- Clear docstring vs external docs boundary
+
+**Fourth Pass (v3.0)**: Retrieval-oriented optimization:
+- Retrieval-Oriented Architecture (ROA) with cost model
+- Atomic Documentation Design (atoms/molecules/organisms)
+- Query patterns with lazy loading protocol
+- Token budget constraints (≤600 tokens per entry)
+- "Lost in the middle" awareness
+- Multi-language extension framework
+- Conflict resolution with concrete examples
+
+**Key Finding**: The original protocols contained valuable insights but suffered from fragmentation, schema explosion, goal-oriented language, and poor economy of words. AFAD-3.0 addresses these while providing a retrieval-optimized, principled architecture.
 
 ---
 
@@ -360,6 +376,7 @@ Concrete examples from FTLLexEngine codebase:
 | AFAD-2.0 (first pass) | ~400 | -76% |
 | AFAD-2.1 (second pass) | ~550 | -68% |
 | AFAD-2.2 (third pass) | ~480 | -72% |
+| AFAD-3.0 (fourth pass) | ~420 | -75% |
 
 ---
 
@@ -438,15 +455,150 @@ Verification beyond signature matching:
 | v2.1 | Philosophy | Mental model, priorities, scale |
 | v2.2 | Practical | Anti-patterns, lifecycle, boundaries |
 
+---
+
+## Part VIII: Fourth Pass Analysis (AFAD-3.0)
+
+### Self-Critique of Third Pass
+
+| Issue | Description | Severity |
+|-------|-------------|----------|
+| Missing retrieval model | Protocol defines what to write, not how agents retrieve | High |
+| No chunk size guidance | RAG optimal chunk sizes (256-512 tokens) not addressed | High |
+| Verbose ASCII art | Box diagrams waste tokens | Medium |
+| Arbitrary heuristics | Numbers like ">25 symbols" lack justification | Medium |
+| Redundant tier field | Can derive from filename (DOC_* = reference) | Low |
+| Missing multi-language | Protocol assumes Python-only | Medium |
+| No query patterns | How agents formulate queries not specified | High |
+| No atomicity constraints | Entries can be arbitrarily large | High |
+| No lost-in-middle awareness | Critical content placement not addressed | Medium |
+| Missing conflict examples | Priority hierarchy abstract, no concrete scenarios | Medium |
+
+### Key Improvements in v3.0
+
+**1. Retrieval-Oriented Architecture (§1)**
+
+New foundational concept: documentation optimized for RAG retrieval.
+
+Three retrieval properties:
+- CHUNKABILITY: Natural semantic boundaries (256-512 tokens)
+- EMBEDDABILITY: Semantic meaning in first 100 tokens
+- ROUTABILITY: Query → correct file without full-text search
+
+Added retrieval cost model:
+```
+Cost = tokens_retrieved × calls × complexity
+Goal: 1-3 entries answer 80% of queries
+```
+
+**2. Atomic Documentation Design (§2)**
+
+Borrowed from atomic design methodology:
+- ATOM: Single entry (one symbol), 200-400 tokens ideal
+- MOLECULE: Related entries (one class)
+- ORGANISM: Full file (one domain)
+- ECOSYSTEM: All files (full project)
+
+Addresses "lost in the middle" phenomenon:
+- Critical entries at file start (first 30%)
+- Routine entries in middle
+- Edge cases at file end (last 20%)
+
+**3. Token Budget Constraints**
+
+New invariant INV-4: Every entry ≤600 tokens
+
+New validation L2 check: Entries exceeding 600 tokens block commit.
+
+Entry sizing guidance:
+- Callable: 250-350 tokens target
+- Property: 80-150 tokens target
+- Type alias: 60-120 tokens target
+- Constant: 40-80 tokens target
+
+**4. Query Patterns (§13)**
+
+New section defining how agents should query:
+
+| Query Type | Pattern | Expected Hit |
+|------------|---------|--------------|
+| "What does X do?" | route.keywords + Signature | Single atom |
+| "How do I achieve Y?" | route.questions + Guide | Guide section |
+| "What errors can X raise?" | Constraints → Raises | Exception atom |
+
+Added Lazy Loading Protocol:
+1. Query index for file routing
+2. Query file for entry routing
+3. Load specific entry
+4. If references other symbol, query that
+
+**5. Removed Redundant Fields**
+
+- `tier`: Derived from filename (DOC_*.md = reference)
+- `author`: Track in git, not frontmatter
+- Timezone in timestamps: ISO-8601 date sufficient
+
+**6. Multi-Language Extension (§19)**
+
+Framework for non-Python projects:
+
+| Concept | Python | JavaScript | Rust |
+|---------|--------|------------|------|
+| Exports | \_\_all\_\_ | export | pub |
+| Signature | def name(): | function name() | fn name() |
+
+**7. Conflict Resolution (§21)**
+
+Concrete conflict examples:
+
+| Conflict | Resolution |
+|----------|------------|
+| Complex signature doesn't fit table | Keep accurate (P0), explain in Notes (P2) |
+| Entry >600 tokens but splitting loses cohesion | Split unless accuracy suffers (P0 wins) |
+| Undocumented export, semantics unknown | Create placeholder (P1), add TODO |
+
+**8. Heuristic Calibration**
+
+Replaced arbitrary thresholds with justified ranges:
+
+| Action | Trigger | Justification |
+|--------|---------|---------------|
+| CREATE | >20 exports | File exceeds retrieval sweet spot |
+| MERGE | <8 entries | File too small for dedicated embedding |
+| SPLIT | >60 entries | File exceeds context window efficiency |
+
+Added calibration guidance: ±30% based on token density.
+
+### Research Sources Added (v3.0)
+
+- [Firecrawl: Chunking Strategies for RAG 2025](https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025)
+- [LangCopilot: 70% Accuracy Boost via Chunking](https://langcopilot.com/posts/2025-10-11-document-chunking-for-rag-practical-guide)
+- [Weaviate: Chunking Strategies](https://weaviate.io/blog/chunking-strategies-for-rag)
+- [GetMaxim: Context Window Management](https://www.getmaxim.ai/articles/context-window-management-strategies-for-long-context-ai-agents-and-chatbots/)
+- [Pinecone: Retrieval vs Larger Context](https://www.pinecone.io/blog/why-use-retrieval-instead-of-larger-context/)
+- [Microservice API Patterns](https://microservice-api-patterns.org/)
+- [Daily.dev: API Versioning Best Practices](https://daily.dev/blog/api-versioning-strategies-best-practices-guide)
+
+### Protocol Evolution Summary (Updated)
+
+| Version | Focus | Key Addition |
+|---------|-------|--------------|
+| v2.0 | Unification | Single protocol, decision tree |
+| v2.1 | Philosophy | Mental model, priorities, scale |
+| v2.2 | Practical | Anti-patterns, lifecycle, boundaries |
+| v3.0 | Retrieval | ROA, atomicity, query patterns, token budgets |
+
 ### Recommendation
 
-**Use AFAD-2.2** (PROTOCOL_AFAD_v2.2.md) as the canonical protocol.
+**Use AFAD-3.0** (PROTOCOL_AFAD_v3.0.md) as the canonical protocol.
 
-v2.2 is the most practical and complete:
-- Clearer terminology (Parameters vs Contract)
-- Anti-patterns prevent common mistakes
-- Lifecycle management for deprecation
-- Clear docstring/external doc boundary
-- Minimum viable for small projects
-- Testing strategy for verification
-- More economical expression (~480 lines vs v2.1's ~550)
+v3.0 is the most retrieval-optimized and complete:
+- Retrieval-Oriented Architecture with cost model
+- Atomic design principles for documentation
+- Token budget constraints (≤600 tokens)
+- Query patterns for agent consumption
+- "Lost in the middle" awareness
+- Multi-language extension framework
+- Concrete conflict resolution examples
+- Justified heuristics with calibration guidance
+- More economical expression (~420 lines vs v2.2's ~480)
