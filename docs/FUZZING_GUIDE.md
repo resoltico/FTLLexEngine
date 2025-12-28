@@ -8,7 +8,7 @@ RETRIEVAL_HINTS:
 
 **Purpose**: Run and understand the parser fuzzing infrastructure.
 **Audience**: Developers and AI agents new to fuzzing.
-**Last Updated**: 2025-12-26
+**Last Updated**: 2025-12-28
 
 ---
 

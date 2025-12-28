@@ -29,7 +29,6 @@ from hypothesis import strategies as st
 import ftllexengine.parsing.currency as currency_module
 from ftllexengine.enums import CommentType
 from ftllexengine.introspection import extract_references, introspect_message
-from ftllexengine.parsing.currency import _ensure_full_tier_loaded
 from ftllexengine.runtime.function_bridge import (
     _FTL_REQUIRES_LOCALE_ATTR,
     FluentValue,
@@ -69,33 +68,38 @@ from ftllexengine.validation.resource import (
 )
 
 # ============================================================================
-# CURRENCY: Double-Check Locking Coverage (line 290)
+# CURRENCY: Double-Check Locking Coverage (line 286)
 # ============================================================================
 
 
 class TestCurrencyDoubleCheckLocking:
-    """Test concurrent access to trigger double-check locking second return."""
+    """Test concurrent access to trigger double-check locking second return.
+
+    v0.38.0: Updated to use CurrencyDataProvider API instead of global state.
+    """
 
     def test_concurrent_full_tier_loading(self) -> None:
-        """Concurrent calls to _ensure_full_tier_loaded exercise double-check pattern.
+        """Concurrent calls to ensure_loaded() exercise double-check pattern.
 
-        The second return at line 290 is hit when multiple threads compete for
+        The second return at line 286 is hit when multiple threads compete for
         the lock and one finds the data already loaded after acquiring it.
         """
-        # Reset module state to ensure fresh start
-        currency_module._full_tier_loaded = False
-        currency_module._full_tier_symbol_map = {}
-        currency_module._full_tier_ambiguous = set()
-        currency_module._full_tier_locale_currencies = {}
-        currency_module._full_tier_valid_codes = frozenset()
+        # Get module-level provider and reset its state for testing
+        # Note: This tests the internal state reset for coverage purposes
+        provider = currency_module._provider
+        provider._loaded = False
+        provider._symbol_map = {}
+        provider._ambiguous = set()
+        provider._locale_currencies = {}
+        provider._valid_codes = frozenset()
 
         barrier = threading.Barrier(4)
         results: list[bool] = []
 
         def load_with_barrier() -> None:
             barrier.wait()  # Synchronize all threads
-            _ensure_full_tier_loaded()
-            results.append(currency_module._full_tier_loaded)
+            provider.ensure_loaded()
+            results.append(provider._loaded)
 
         threads = [threading.Thread(target=load_with_barrier) for _ in range(4)]
         for t in threads:
@@ -105,17 +109,18 @@ class TestCurrencyDoubleCheckLocking:
 
         # All threads should see loaded state
         assert all(results)
-        assert currency_module._full_tier_loaded
+        assert provider._loaded
 
     def test_full_tier_already_loaded_returns_immediately(self) -> None:
-        """When already loaded, _ensure_full_tier_loaded returns at first check."""
+        """When already loaded, ensure_loaded() returns at first check."""
+        provider = currency_module._provider
         # Ensure loaded
-        _ensure_full_tier_loaded()
-        assert currency_module._full_tier_loaded
+        provider.ensure_loaded()
+        assert provider._loaded
 
-        # Call again - should return immediately at line 285
-        _ensure_full_tier_loaded()
-        assert currency_module._full_tier_loaded
+        # Call again - should return immediately at line 280
+        provider.ensure_loaded()
+        assert provider._loaded
 
 
 # ============================================================================

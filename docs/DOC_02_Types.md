@@ -1,9 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: TYPES
-last_updated: 2025-12-26T18:00:00Z
-maintainer: claude-opus-4-5
+afad: "3.0"
+version: "0.38.0"
+domain: TYPES
+updated: "2025-12-28"
+route:
+  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
+  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
 ---
 
 # AST Types Reference
@@ -19,7 +21,7 @@ class Resource:
     entries: tuple[Entry, ...]
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `entries` | `tuple[Entry, ...]` | Y | All top-level entries. |
@@ -46,7 +48,7 @@ class Message:
     def guard(entry: object) -> TypeIs[Message]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Message identifier. |
@@ -77,7 +79,7 @@ class Term:
     def guard(entry: object) -> TypeIs[Term]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Term identifier (without - prefix). |
@@ -102,7 +104,7 @@ class Attribute:
     value: Pattern
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Attribute name. |
@@ -128,11 +130,11 @@ class Comment:
     def guard(entry: object) -> TypeIs[Comment]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `content` | `str` | Y | Comment text. |
-| `type` | `CommentType` | Y | SINGLE, GROUP, or RESOURCE. |
+| `type` | `CommentType` | Y | COMMENT, GROUP, or RESOURCE. |
 | `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
@@ -155,7 +157,7 @@ class Junk:
     def guard(entry: object) -> TypeIs[Junk]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `content` | `str` | Y | Unparseable source text. |
@@ -177,7 +179,7 @@ class Pattern:
     elements: tuple[PatternElement, ...]
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `elements` | `tuple[PatternElement, ...]` | Y | Text and placeable elements. |
@@ -200,7 +202,7 @@ class TextElement:
     def guard(elem: object) -> TypeIs[TextElement]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Plain text content. |
@@ -223,7 +225,7 @@ class Placeable:
     def guard(elem: object) -> TypeIs[Placeable]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `expression` | `Expression` | Y | Contained expression. |
@@ -247,7 +249,7 @@ class SelectExpression:
     def guard(expr: object) -> TypeIs[SelectExpression]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `selector` | `InlineExpression` | Y | Value to select on. |
@@ -270,7 +272,7 @@ class Variant:
     default: bool = False
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `key` | `VariantKey` | Y | Variant key (Identifier or NumberLiteral). |
@@ -292,7 +294,7 @@ class StringLiteral:
     value: str
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | String content (without quotes). |
@@ -316,7 +318,7 @@ class NumberLiteral:
     def guard(key: object) -> TypeIs[NumberLiteral]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `int \| float` | Y | Parsed numeric value. |
@@ -341,7 +343,7 @@ class VariableReference:
     def guard(expr: object) -> TypeIs[VariableReference]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Variable identifier (without $). |
@@ -365,7 +367,7 @@ class MessageReference:
     def guard(expr: object) -> TypeIs[MessageReference]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Message identifier. |
@@ -391,7 +393,7 @@ class TermReference:
     def guard(expr: object) -> TypeIs[TermReference]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Term identifier (without -). |
@@ -417,7 +419,7 @@ class FunctionReference:
     def guard(expr: object) -> TypeIs[FunctionReference]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Function name (e.g., NUMBER). |
@@ -439,7 +441,7 @@ class CallArguments:
     named: tuple[NamedArgument, ...]
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `positional` | `tuple[InlineExpression, ...]` | Y | Positional arguments. |
@@ -461,7 +463,7 @@ class NamedArgument:
     value: InlineExpression
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `Identifier` | Y | Argument name. |
@@ -485,7 +487,7 @@ class Identifier:
     def guard(key: object) -> TypeIs[Identifier]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Identifier string. |
@@ -506,7 +508,7 @@ class Span:
     end: int
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `start` | `int` | Y | Start byte offset (inclusive). |
@@ -531,7 +533,7 @@ class Annotation:
     span: Span | None = None
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `code` | `str` | Y | Error code. |
@@ -555,7 +557,7 @@ class ASTVisitor:
     def generic_visit(self, node: ASTNode) -> ASTNode: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -583,7 +585,7 @@ class MessageIntrospection:
     def get_function_names(self) -> frozenset[str]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `str` | Y | Message identifier. |
@@ -626,7 +628,7 @@ type ASTNode = Resource | Message | Term | ... # Union of all AST types
 type FluentValue = str | int | float | bool | Decimal | datetime | date | None
 ```
 
-### Contract
+### Parameters
 | Type | Description |
 |:-----|:------------|
 | `str` | String arguments. |
@@ -655,7 +657,7 @@ class VariableInfo:
     context: VariableContext
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Variable name (without $ prefix). |
@@ -679,7 +681,7 @@ class FunctionCallInfo:
     named_args: frozenset[str]
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Function name (e.g., 'NUMBER'). |
@@ -704,7 +706,7 @@ class ReferenceInfo:
     attribute: str | None
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `str` | Y | Referenced message or term ID. |
@@ -728,7 +730,7 @@ class CommentType(StrEnum):
     RESOURCE = "resource"
 ```
 
-### Contract
+### Parameters
 | Value | Description |
 |:------|:------------|
 | `COMMENT` | Standalone comment: `# text` |
@@ -753,7 +755,7 @@ class VariableContext(StrEnum):
     FUNCTION_ARG = "function_arg"
 ```
 
-### Contract
+### Parameters
 | Value | Description |
 |:------|:------------|
 | `PATTERN` | Variable in message pattern. |
@@ -777,7 +779,7 @@ class ReferenceKind(StrEnum):
     TERM = "term"
 ```
 
-### Contract
+### Parameters
 | Value | Description |
 |:------|:------------|
 | `MESSAGE` | Reference to a message: `{ message-id }` |

@@ -3,14 +3,18 @@
 This example shows the recommended patterns for using FluentBundle in multi-threaded
 applications.
 
-IMPORTANT: FluentBundle is NOT thread-safe for writes (add_resource, add_function).
-Once resources are loaded, bundles are safe for concurrent reads.
+Thread Safety Options (v0.38.0+):
+- Default (thread_safe=False): NOT thread-safe for writes (add_resource, add_function).
+  Once resources are loaded, bundles are safe for concurrent reads.
+- Opt-in (thread_safe=True): Full thread-safety via RLock synchronization.
+  All operations are thread-safe, suitable for dynamic loading scenarios.
 
 Demonstrates:
-1. Single-threaded initialization pattern (recommended)
+1. Single-threaded initialization pattern (recommended for static resources)
 2. Concurrent read operations (safe)
 3. Thread-local bundles (alternative for dynamic loading)
-4. Lock-based dynamic loading (if absolutely needed)
+4. Legacy lock-based dynamic loading (superseded by thread_safe=True)
+5. Built-in thread safety with thread_safe=True (recommended for dynamic use)
 
 WARNING: Examples use use_isolating=False for cleaner terminal output.
 NEVER disable bidi isolation in production applications that support RTL languages.
@@ -156,14 +160,14 @@ task = Processing task { $task_id }
     print("\n[SUCCESS] Thread-local bundles pattern complete")
 
 
-# Example 4: Lock-based dynamic loading (if absolutely necessary)
+# Example 4: Lock-based dynamic loading (LEGACY - superseded by thread_safe=True)
 def example_4_lock_based_dynamic_loading() -> None:
-    """Example 4: Dynamic resource loading with locks (use only if required)."""
+    """Example 4: Legacy manual lock pattern (superseded by thread_safe=True)."""
     print("\n" + "=" * 60)
-    print("Example 4: Lock-based Dynamic Loading")
+    print("Example 4: Lock-based Dynamic Loading (LEGACY)")
     print("=" * 60)
-    print("[WARNING] This pattern should be avoided if possible")
-    print("[WARNING] Prefer single-threaded init or thread-local bundles\n")
+    print("[DEPRECATED] This pattern is superseded by thread_safe=True (see Example 5)")
+    print("[NOTE] Shown for backwards compatibility understanding\n")
 
     bundle = FluentBundle("en", use_isolating=False)
     bundle.add_resource("initial = Initial message")
@@ -209,7 +213,49 @@ def example_4_lock_based_dynamic_loading() -> None:
         t.join()
 
     print("\n[SUCCESS] Lock-based pattern complete")
-    print("[NOTE] This pattern has performance overhead - avoid if possible")
+    print("[NOTE] Consider using thread_safe=True instead (see Example 5)")
+
+
+# Example 5: Built-in thread safety (v0.38.0+, RECOMMENDED for dynamic use)
+def example_5_builtin_thread_safety() -> None:
+    """Example 5: Use thread_safe=True for full thread-safety (v0.38.0+)."""
+    print("\n" + "=" * 60)
+    print("Example 5: Built-in Thread Safety (v0.38.0+)")
+    print("=" * 60)
+    print("[RECOMMENDED] For dynamic resource loading scenarios\n")
+
+    # Create thread-safe bundle with built-in RLock synchronization
+    bundle = FluentBundle("en", use_isolating=False, thread_safe=True)
+    bundle.add_resource("initial = Initial message")
+
+    # Verify thread safety is enabled
+    print(f"[SETUP] Bundle created with is_thread_safe={bundle.is_thread_safe}")
+
+    def add_and_read(worker_id: int) -> None:
+        """Worker that dynamically adds and reads resources - fully thread-safe."""
+        # Add resource (thread-safe - no manual locking needed)
+        ftl = f"dynamic-{worker_id} = Dynamic message from worker {worker_id}"
+        bundle.add_resource(ftl)
+        print(f"  [Worker-{worker_id}] Added resource")
+        time.sleep(0.01)
+
+        # Read message (thread-safe)
+        result, _ = bundle.format_pattern(f"dynamic-{worker_id}")
+        print(f"  [Worker-{worker_id}] {result}")
+
+    print("[EXECUTION] Dynamic loading with built-in thread safety:")
+
+    threads = []
+    for i in range(3):
+        t = threading.Thread(target=add_and_read, args=(i,))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    print("\n[SUCCESS] Built-in thread safety pattern complete")
+    print("[NOTE] No manual locking required - RLock handles synchronization")
 
 
 # Main execution
@@ -218,8 +264,11 @@ if __name__ == "__main__":
     example_2_threadpool_pattern()
     example_3_thread_local_bundles()
     example_4_lock_based_dynamic_loading()
+    example_5_builtin_thread_safety()
 
     print("\n" + "=" * 60)
     print("[SUCCESS] All thread safety examples complete!")
     print("=" * 60)
-    print("\nRECOMMENDATION: Use Example 1 (single-threaded init) in production.")
+    print("\nRECOMMENDATIONS:")
+    print("  - Static resources: Use Example 1 (single-threaded init)")
+    print("  - Dynamic resources: Use Example 5 (thread_safe=True)")

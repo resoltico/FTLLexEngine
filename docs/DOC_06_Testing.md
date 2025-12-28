@@ -1,13 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: TESTING
-last_updated: 2025-12-26T18:00:00Z
-maintainer: claude-opus-4-5
-retrieval_hints:
-  keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, test.sh, skip, exclude, quirk, pitfall]
-  answers: [how to run tests, skip fuzz tests, hypothesis profiles, test categories, why fuzz skipped, precedence, common mistakes]
-  related: [DOC_01_Core.md, DOC_05_Errors.md, FUZZING_GUIDE.md]
+afad: "3.0"
+version: "0.38.0"
+domain: TESTING
+updated: "2025-12-28"
+route:
+  keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh]
+  questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?"]
 ---
 
 # DOC_06_Testing
@@ -71,7 +69,7 @@ pytestmark = pytest.mark.fuzz
 def pytest_configure(config: pytest.Config) -> None:
 ```
 
-### Contract
+### Parameters
 
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
@@ -100,7 +98,7 @@ def pytest_collection_modifyitems(
 ) -> None:
 ```
 
-### Contract
+### Parameters
 
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|

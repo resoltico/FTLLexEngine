@@ -1,13 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: INDEX
-last_updated: 2025-12-28T00:15:00Z
-maintainer: claude-opus-4-5
-retrieval_hints:
+afad: "3.0"
+version: "0.38.0"
+domain: INDEX
+updated: "2025-12-28"
+route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
-  answers: [api documentation, what classes available, how to import, module exports]
-  related: [DOC_01_Core.md, DOC_02_Types.md, DOC_03_Parsing.md, DOC_04_Runtime.md, DOC_05_Errors.md, DOC_06_Testing.md]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -133,7 +131,8 @@ from ftllexengine.localization import (
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FluentError, FluentReferenceError, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
-| detect_cycles, extract_references, ReferenceExtractor, dependency graph | [DOC_02_Types.md](DOC_02_Types.md) | Analysis |
+| detect_cycles, build_dependency_graph, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
+| extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Introspection |
 
 ---
 
@@ -159,7 +158,7 @@ ftllexengine/
       __init__.py          # FluentParserV1, ParseContext
       core.py              # Parser main entry point
       primitives.py        # get_last_parse_error, clear_parse_error, ParseErrorContext
-      rules.py             # ParseContext, DEFAULT_MAX_NESTING_DEPTH, pattern/expression parsing
+      rules.py             # ParseContext, pattern/expression parsing
       entries.py           # Message, Term, Comment parsing
       whitespace.py        # Whitespace handling
   runtime/

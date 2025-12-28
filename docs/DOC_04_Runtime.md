@@ -1,9 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: RUNTIME
-last_updated: 2025-12-26T18:00:00Z
-maintainer: claude-opus-4-5
+afad: "3.0"
+version: "0.38.0"
+domain: RUNTIME
+updated: "2025-12-28"
+route:
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, formatting, locale]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?"]
 ---
 
 # Runtime Reference
@@ -25,7 +27,7 @@ def number_format(
 ) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `int \| float` | Y | Number to format. |
@@ -57,7 +59,7 @@ def datetime_format(
 ) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `datetime \| str` | Y | Datetime or ISO string. |
@@ -88,7 +90,7 @@ def currency_format(
 ) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `int \| float` | Y | Monetary amount. |
@@ -117,7 +119,7 @@ class FunctionSignature:
     callable: Callable[..., FluentValue]
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `python_name` | `str` | Python function name (snake_case). |
@@ -166,7 +168,7 @@ class FunctionRegistry:
     def __contains__(self, ftl_name: str) -> bool: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -186,7 +188,7 @@ class FunctionRegistry:
 def get_callable(self, ftl_name: str) -> Callable[..., FluentValue] | None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `ftl_name` | `str` | Y | FTL function name (e.g., "NUMBER"). |
@@ -210,7 +212,7 @@ def call(
 ) -> FluentValue:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `ftl_name` | `str` | Y | Function name from FTL (e.g., "NUMBER"). |
@@ -239,7 +241,7 @@ def register(
 ) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `func` | `Callable[..., FluentValue]` | Y | Function to register. |
@@ -263,7 +265,7 @@ def register(
 def create_default_registry() -> FunctionRegistry:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -283,7 +285,7 @@ def create_default_registry() -> FunctionRegistry:
 def get_shared_registry() -> FunctionRegistry:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -308,7 +310,7 @@ class FunctionCategory(StrEnum):
     CUSTOM = "custom"
 ```
 
-### Contract
+### Parameters
 | Value | Description |
 |:------|:------------|
 | `FORMATTING` | Number, date, currency formatting functions. |
@@ -335,7 +337,7 @@ class FunctionMetadata:
     category: FunctionCategory = FunctionCategory.FORMATTING
 ```
 
-### Contract
+### Parameters
 | Field | Type | Req | Description |
 |:------|:-----|:----|:------------|
 | `python_name` | `str` | Y | Python function name (snake_case). |
@@ -379,7 +381,7 @@ BUILTIN_FUNCTIONS: dict[str, FunctionMetadata] = {
 def is_builtin_with_locale_requirement(func: object) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `func` | `object` | Y | Callable to check. |
@@ -399,7 +401,7 @@ def is_builtin_with_locale_requirement(func: object) -> bool:
 def get_expected_positional_args(ftl_name: str) -> int | None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `ftl_name` | `str` | Y | FTL function name (e.g., "NUMBER"). |
@@ -419,7 +421,7 @@ def get_expected_positional_args(ftl_name: str) -> int | None:
 def should_inject_locale(self, ftl_name: str) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `ftl_name` | `str` | Y | FTL function name. |
@@ -443,7 +445,7 @@ def fluent_function[F: Callable[..., FluentValue]](func: F, *, inject_locale: bo
 def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_locale: bool = False) -> Callable[[F], F]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `func` | `F \| None` | N | Function to decorate. |
@@ -464,7 +466,7 @@ def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_
 def select_plural_category(n: int | float | Decimal, locale: str) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `n` | `int \| float \| Decimal` | Y | Number to categorize. |
@@ -502,7 +504,7 @@ def CUSTOM_FUNCTION(
 ) -> FluentValue:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | First positional | `FluentValue` | Y | Primary input value. |
@@ -528,7 +530,7 @@ def validate_resource(
 ) -> ValidationResult:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `source` | `str` | Y | FTL file content. |
@@ -571,7 +573,7 @@ class ResolutionContext:
     def get_cycle_path(self, key: str) -> list[str]: ...
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `stack` | `list[str]` | Resolution stack for cycle path. |
@@ -597,7 +599,7 @@ class ResolutionContext:
 def push(self, key: str) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `key` | `str` | Y | Message key to push onto stack. |
@@ -615,7 +617,7 @@ def push(self, key: str) -> None:
 def pop(self) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -633,7 +635,7 @@ def pop(self) -> str:
 def contains(self, key: str) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `key` | `str` | Y | Message key to check. |
@@ -685,7 +687,7 @@ def expression_depth(self) -> int:
 def depth(self) -> int:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -702,7 +704,7 @@ def depth(self) -> int:
 def is_depth_exceeded(self) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -719,7 +721,7 @@ def is_depth_exceeded(self) -> bool:
 def get_cycle_path(self, key: str) -> list[str]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `key` | `str` | Y | Message key that caused cycle. |
@@ -757,7 +759,7 @@ class FluentResolver:
     ) -> tuple[str, tuple[FluentError, ...]]: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locale` | `str` | Y | Locale code for plural selection. |
@@ -788,7 +790,7 @@ def resolve_message(
 ) -> tuple[str, tuple[FluentError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message` | `Message` | Y | Message AST. |
@@ -816,10 +818,11 @@ DEFAULT_CACHE_SIZE: int = 1000
 |:----------|:------|
 | Type | `int` |
 | Value | 1000 |
-| Location | `ftllexengine.runtime.bundle` |
+| Location | `ftllexengine.constants` |
 
 - Purpose: Default maximum cache entries for FluentBundle format results.
 - Usage: Referenced by `FluentBundle.__init__`, `create()`, `for_system_locale()`.
+- Import: `from ftllexengine.constants import DEFAULT_CACHE_SIZE`
 
 ---
 
@@ -880,7 +883,7 @@ class DepthGuard:
     def reset(self) -> None: ...
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `max_depth` | `int` | Maximum allowed depth. |

@@ -260,7 +260,15 @@ result, errors = bundle.format_pattern("msg", {"name": "Anna"})
 
 **Constructor**:
 ```python
-FluentBundle(locale: str, *, use_isolating: bool = True, enable_cache: bool = False)
+FluentBundle(
+    locale: str,
+    *,
+    use_isolating: bool = True,
+    enable_cache: bool = False,
+    cache_size: int = 1000,
+    functions: FunctionRegistry | None = None,
+    thread_safe: bool = False,
+)
 ```
 
 **Factory Methods**:
@@ -281,6 +289,7 @@ bundle.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tu
 bundle.format_value(message_id, args=None) -> tuple[str, tuple[FluentError, ...]]
 bundle.validate_resource(ftl_source: str) -> ValidationResult
 bundle.has_message(message_id: str) -> bool
+bundle.has_attribute(message_id: str, attribute: str) -> bool
 bundle.get_message_ids() -> list[str]
 bundle.get_message_variables(message_id: str) -> frozenset[str]
 bundle.introspect_message(message_id: str) -> MessageIntrospection
@@ -291,6 +300,7 @@ bundle.add_function(name: str, func: Callable) -> None
 ```python
 bundle.locale -> str  # Read-only
 bundle.use_isolating -> bool  # Read-only
+bundle.is_thread_safe -> bool  # Read-only (v0.38.0+)
 ```
 
 ---
@@ -478,6 +488,11 @@ if is_valid_date(result):
 result, errors = parse_currency("1 234,56 €", "lv_LV")
 if is_valid_currency(result):
     amount, currency = result  # (Decimal('1234.56'), 'EUR')
+
+# Note: Yen sign (¥) is ambiguous (v0.38.0+)
+# Resolves to CNY for zh_* locales, JPY otherwise
+result, errors = parse_currency("¥1,234", "ja_JP")  # JPY
+result, errors = parse_currency("¥1,234", "zh_CN")  # CNY
 ```
 
 **Key Functions**:
@@ -575,9 +590,26 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 ## Thread Safety
 
-**IMPORTANT**: FluentBundle is **NOT thread-safe** for writes, but **safe for concurrent reads**.
+**Default**: FluentBundle is **NOT thread-safe** for writes, but **safe for concurrent reads**.
 
-### Recommended Pattern (Single-Threaded Initialization)
+**Opt-in Thread Safety (v0.38.0+)**: Use `thread_safe=True` for full thread-safe operation.
+
+### Pattern 1: Opt-in Thread Safety (Recommended for Dynamic Use)
+
+```python
+# Thread-safe bundle with RLock synchronization
+bundle = FluentBundle("en_US", thread_safe=True)
+
+# All operations are now thread-safe (reads AND writes)
+bundle.add_resource(ftl_source)  # Thread-safe
+bundle.add_function("CUSTOM", my_function)  # Thread-safe
+result, errors = bundle.format_pattern("msg")  # Thread-safe
+
+# Check thread safety status
+print(bundle.is_thread_safe)  # True
+```
+
+### Pattern 2: Single-Threaded Initialization (Default)
 
 ```python
 # Startup phase (single-threaded)
@@ -585,12 +617,12 @@ bundle = FluentBundle("en_US")
 bundle.add_resource(ftl_source)
 bundle.add_function("CUSTOM", my_function)
 
-# Runtime (multi-threaded) - SAFE
+# Runtime (multi-threaded) - SAFE for reads only
 # Multiple threads can call format_pattern() simultaneously
 result, errors = bundle.format_pattern("msg")
 ```
 
-### Alternative: Thread-Local Bundles
+### Pattern 3: Thread-Local Bundles
 
 ```python
 import threading
@@ -679,8 +711,10 @@ from ftllexengine import (
     FluentSyntaxError,        # Parse error
     FluentReferenceError,     # Missing message/variable/term
     FluentResolutionError,    # Runtime error during resolution
-    FluentCyclicReferenceError,  # Circular reference detected
 )
+
+# Specialized exceptions from diagnostics module
+from ftllexengine.diagnostics import FluentCyclicReferenceError
 ```
 
 **Note**: All exceptions inherit from `FluentError` and are returned in errors list, NOT raised.
@@ -778,6 +812,6 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 
 ---
 
-**Quick Reference Last Updated**: December 26, 2025
-**FTLLexEngine Version**: 0.37.0
+**Quick Reference Last Updated**: December 28, 2025
+**FTLLexEngine Version**: 0.38.0
 **Python Requirement**: 3.13+

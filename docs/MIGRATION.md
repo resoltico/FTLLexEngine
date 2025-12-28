@@ -770,7 +770,7 @@ from ftllexengine import (
 ---
 
 **Migration Guide Last Updated**: December 23, 2025
-**FTLLexEngine Version**: 0.33.0
+**FTLLexEngine Version**: 0.38.0
 **fluent.runtime Version Referenced**: 0.4.0
 
 **Feedback**: If you encounter migration issues not covered here, please open an issue!

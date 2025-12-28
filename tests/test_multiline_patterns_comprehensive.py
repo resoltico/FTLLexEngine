@@ -9,8 +9,10 @@ which is valid per FTL spec. The resolver later joins these during formatting.
 
 from ftllexengine.syntax import (
     Attribute,
+    Identifier,
     Message,
     Placeable,
+    SelectExpression,
     Term,
     TextElement,
     VariableReference,
@@ -484,6 +486,112 @@ class TestMultilineSelectExpressions:
         assert msg.value is not None
         assert len(msg.value.elements) == 1
         assert isinstance(msg.value.elements[0], Placeable)
+
+    def test_multiline_variant_value_with_continuation(self):
+        """v0.38.0: Variant values can span multiple lines with indentation.
+
+        SPEC COMPLIANCE: PARSING-VARIANT-MULTILINE-001
+        Variant value patterns should support indented continuation lines,
+        matching the behavior of top-level message patterns.
+        """
+        source = """key = { $count ->
+    [one] This is a single item
+        that spans multiple lines
+        with proper indentation
+    *[other] These are multiple items
+        also spanning lines
+}
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(source)
+
+        # Should parse successfully
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert msg.value is not None
+        assert len(msg.value.elements) == 1
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+
+        # Check that variant values include continuation content
+        # First variant [one] should have multiline content
+        one_variant = select.variants[0]
+        assert isinstance(one_variant.key, Identifier)
+        assert one_variant.key.name == "one"
+        # The value should have multiple text elements from continuations
+        assert len(one_variant.value.elements) >= 1
+        # Verify content spans multiple elements (continuation lines)
+        one_text = "".join(
+            e.value for e in one_variant.value.elements if isinstance(e, TextElement)
+        )
+        assert "single item" in one_text
+        assert "spans multiple lines" in one_text
+
+    def test_multiline_variant_value_with_placeable(self):
+        """v0.38.0: Multiline variant with placeable on continuation line."""
+        source = """key = { $count ->
+    [one] You have { $count } item
+        in your cart
+    *[other] You have { $count } items
+        in your cart
+}
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert msg.value is not None
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+
+        # Both variants should have multiple elements
+        one_variant = select.variants[0]
+        # Should have: text, placeable, text (with continuation)
+        assert any(isinstance(e, Placeable) for e in one_variant.value.elements)
+
+    def test_variant_continuation_stops_at_next_variant(self):
+        """v0.38.0: Continuation stops when next variant marker is encountered."""
+        source = """key = { $type ->
+    [a] First variant
+        with continuation
+    [b] Second variant
+        also continued
+    *[c] Default variant
+}
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert msg.value is not None
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+
+        # Should have 3 variants
+        assert len(select.variants) == 3
+
+        # Each variant should have its own content (not merged)
+        a_text = "".join(
+            e.value for e in select.variants[0].value.elements
+            if isinstance(e, TextElement)
+        )
+        assert "First variant" in a_text
+        assert "Second variant" not in a_text
+
+        b_text = "".join(
+            e.value for e in select.variants[1].value.elements
+            if isinstance(e, TextElement)
+        )
+        assert "Second variant" in b_text
+        assert "First variant" not in b_text
 
 
 class TestMultilineWhitespaceHandling:

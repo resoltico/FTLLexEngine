@@ -1,9 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: PARSING
-last_updated: 2025-12-26T18:00:00Z
-maintainer: claude-opus-4-5
+afad: "3.0"
+version: "0.38.0"
+domain: PARSING
+updated: "2025-12-28"
+route:
+  keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax]
+  questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?"]
 ---
 
 # Parsing Reference
@@ -17,14 +19,14 @@ maintainer: claude-opus-4-5
 def parse(source: str) -> Resource:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `source` | `str` | Y | FTL source code. |
 
 ### Constraints
 - Return: Resource AST containing parsed entries.
-- Raises: `FluentSyntaxError` on critical parse error.
+- Raises: Never (robustness principle: invalid syntax becomes Junk nodes).
 - State: None.
 - Thread: Safe.
 
@@ -38,11 +40,11 @@ def serialize(
     resource: Resource,
     *,
     validate: bool = False,
-    max_depth: int = MAX_SERIALIZATION_DEPTH,
+    max_depth: int = MAX_DEPTH,
 ) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `resource` | `Resource` | Y | Resource AST node. |
@@ -77,7 +79,7 @@ class FluentParserV1:
     def max_nesting_depth(self) -> int: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `max_source_size` | `int \| None` | N | Maximum source size in bytes (default: 10 MB). |
@@ -98,7 +100,7 @@ class FluentParserV1:
 def parse(self, source: str) -> Resource:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `source` | `str` | Y | FTL source code. |
@@ -119,7 +121,7 @@ def parse(self, source: str) -> Resource:
 def get_last_parse_error() -> ParseErrorContext | None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -139,7 +141,7 @@ def get_last_parse_error() -> ParseErrorContext | None:
 def clear_parse_error() -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -163,7 +165,7 @@ class ParseErrorContext:
     expected: tuple[str, ...] = ()
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `message` | `str` | Human-readable error description. |
@@ -183,14 +185,14 @@ class ParseErrorContext:
 ```python
 @dataclass(slots=True)
 class ParseContext:
-    max_nesting_depth: int = DEFAULT_MAX_NESTING_DEPTH
+    max_nesting_depth: int = MAX_DEPTH
     current_depth: int = 0
 
     def is_depth_exceeded(self) -> bool: ...
     def enter_placeable(self) -> ParseContext: ...
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `max_nesting_depth` | `int` | Maximum allowed nesting depth for placeables. |
@@ -211,7 +213,7 @@ class ParseContext:
 def is_depth_exceeded(self) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -229,7 +231,7 @@ def is_depth_exceeded(self) -> bool:
 def enter_placeable(self) -> ParseContext:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -250,7 +252,7 @@ def parse_number(
 ) -> tuple[float | None, tuple[FluentParseError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Locale-formatted number string. |
@@ -274,7 +276,7 @@ def parse_decimal(
 ) -> tuple[Decimal | None, tuple[FluentParseError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Locale-formatted number string. |
@@ -298,7 +300,7 @@ def parse_date(
 ) -> tuple[date | None, tuple[FluentParseError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Locale-formatted date string. |
@@ -309,6 +311,7 @@ def parse_date(
 - Raises: Never.
 - State: None.
 - Thread: Safe.
+- Preprocessing: Era strings (AD, BC, etc.) and timezone names stripped before parsing (v0.38.0+).
 
 ---
 
@@ -324,7 +327,7 @@ def parse_datetime(
 ) -> tuple[datetime | None, tuple[FluentParseError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Locale-formatted datetime string. |
@@ -336,6 +339,7 @@ def parse_datetime(
 - Raises: Never.
 - State: None.
 - Thread: Safe.
+- Preprocessing: Era strings (AD, BC, etc.) and timezone names stripped before parsing (v0.38.0+).
 
 ---
 
@@ -352,12 +356,12 @@ def parse_currency(
 ) -> tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Currency string with amount and symbol. |
 | `locale_code` | `str` | Y | BCP 47 locale identifier. |
-| `default_currency` | `str \| None` | N | Fallback currency for ambiguous symbols ($, kr). |
+| `default_currency` | `str \| None` | N | Fallback currency for ambiguous symbols ($, kr, ¥). |
 | `infer_from_locale` | `bool` | N | Infer currency from locale if symbol ambiguous. |
 
 ### Constraints
@@ -366,6 +370,8 @@ def parse_currency(
 - State: None.
 - Thread: Safe.
 - Validation: ISO 4217 codes validated against CLDR data (v0.33.0+).
+- Ambiguous: Yen sign (`¥`) now ambiguous (v0.38.0+); resolves to CNY for `zh_*` locales, JPY otherwise.
+- Resolution: With `infer_from_locale=True`, ambiguous symbols use locale-aware defaults.
 
 ---
 
@@ -376,7 +382,7 @@ def parse_currency(
 def is_valid_number(value: float | None) -> TypeIs[float]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `float \| None` | Y | Float to validate (may be None). |
@@ -396,7 +402,7 @@ def is_valid_number(value: float | None) -> TypeIs[float]:
 def is_valid_decimal(value: Decimal | None) -> TypeIs[Decimal]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `Decimal \| None` | Y | Decimal to validate (may be None). |
@@ -416,7 +422,7 @@ def is_valid_decimal(value: Decimal | None) -> TypeIs[Decimal]:
 def is_valid_date(value: date | None) -> TypeIs[date]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `date \| None` | Y | Date to validate. |
@@ -435,7 +441,7 @@ def is_valid_date(value: date | None) -> TypeIs[date]:
 def is_valid_datetime(value: datetime | None) -> TypeIs[datetime]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `datetime \| None` | Y | Datetime to validate. |
@@ -456,7 +462,7 @@ def is_valid_currency(
 ) -> TypeIs[tuple[Decimal, str]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `tuple[Decimal, str] \| None` | Y | Currency tuple to validate. |
@@ -487,39 +493,21 @@ ISO_CURRENCY_CODE_LENGTH: int = 3
 
 ---
 
-### `DEFAULT_MAX_NESTING_DEPTH`
+### `MAX_DEPTH`
 
 ```python
-DEFAULT_MAX_NESTING_DEPTH: int = 100
+MAX_DEPTH: int = 100
 ```
 
 | Attribute | Value |
 |:----------|:------|
 | Type | `int` |
 | Value | 100 |
-| Location | `ftllexengine.syntax.parser.rules` |
+| Location | `ftllexengine.constants` |
 
-- Purpose: Default maximum nesting depth for placeable parsing.
-- Usage: Default value for ParseContext.max_nesting_depth and FluentParserV1.
-- Security: Prevents DoS attacks via deeply nested placeables.
-
----
-
-### `MAX_SERIALIZATION_DEPTH`
-
-```python
-MAX_SERIALIZATION_DEPTH: int = 100
-```
-
-| Attribute | Value |
-|:----------|:------|
-| Type | `int` |
-| Value | 100 |
-| Location | `ftllexengine.syntax.serializer` |
-
-- Purpose: Default maximum depth for AST serialization.
-- Usage: Default value for `serialize(max_depth=...)` parameter.
-- Security: Prevents stack overflow from adversarially constructed ASTs.
-- Version: Added in v0.35.0.
+- Purpose: Unified depth limit for parser, resolver, serializer, and validators.
+- Usage: Default for ParseContext.max_nesting_depth, FluentParserV1, serialize(max_depth=...).
+- Security: Prevents DoS via deeply nested placeables and stack overflow from adversarial ASTs.
+- Version: Unified from separate constants in v0.36.0.
 
 ---

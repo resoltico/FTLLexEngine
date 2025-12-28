@@ -1,13 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: ERRORS
-last_updated: 2025-12-26T18:00:00Z
-maintainer: claude-opus-4-5
-retrieval_hints:
-  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, ValidationResult, ValidationError, DiagnosticCode, Diagnostic, SerializationDepthError, SerializationValidationError]
-  answers: [what errors can occur, how to handle errors, error codes, validation errors, diagnostic formatting, serialization errors]
-  related: [DOC_01_Core.md, DOC_03_Parsing.md]
+afad: "3.0"
+version: "0.38.0"
+domain: ERRORS
+updated: "2025-12-28"
+route:
+  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, ValidationResult, DiagnosticCode, Diagnostic]
+  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?"]
 ---
 
 # Errors Reference
@@ -38,7 +36,7 @@ class FluentError(Exception):
     def __init__(self, message: str | Diagnostic) -> None: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message` | `str \| Diagnostic` | Y | Error message or structured diagnostic. |
@@ -56,7 +54,7 @@ class FluentError(Exception):
 class FluentSyntaxError(FluentError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -73,7 +71,7 @@ class FluentSyntaxError(FluentError): ...
 class FluentReferenceError(FluentError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -90,7 +88,7 @@ class FluentReferenceError(FluentError): ...
 class FluentCyclicReferenceError(FluentReferenceError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -107,7 +105,7 @@ class FluentCyclicReferenceError(FluentReferenceError): ...
 class FluentResolutionError(FluentError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -124,7 +122,7 @@ class FluentResolutionError(FluentError): ...
 class DepthLimitExceededError(FluentResolutionError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -156,7 +154,7 @@ class FluentParseError(FluentError):
     ) -> None: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message` | `str \| Diagnostic` | Y | Error message or diagnostic. |
@@ -177,7 +175,7 @@ class FluentParseError(FluentError):
 class SerializationValidationError(ValueError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -197,7 +195,7 @@ class SerializationValidationError(ValueError): ...
 class SerializationDepthError(ValueError): ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -233,7 +231,7 @@ class ValidationResult:
     def invalid(...) -> ValidationResult: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `errors` | `tuple[ValidationError, ...]` | Y | Syntax validation errors. |
@@ -259,7 +257,7 @@ def format(
 ) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `sanitize` | `bool` | N | Truncate content to prevent information leakage. |
@@ -286,7 +284,7 @@ class ValidationError:
     column: int | None = None
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `code` | `str` | Y | Error code (e.g., "parse-error"). |
@@ -313,7 +311,7 @@ def format(
 ) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `sanitize` | `bool` | N | Truncate content to prevent information leakage. |
@@ -341,7 +339,7 @@ class ValidationWarning:
     def format(self) -> str: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `code` | `str` | Y | Warning code (e.g., "duplicate-id"). |
@@ -365,7 +363,7 @@ class ValidationWarning:
 def format(self) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -421,7 +419,7 @@ class DiagnosticCode(Enum):
     PARSE_CURRENCY_CODE_INVALID = 4010
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -452,7 +450,7 @@ class Diagnostic:
     def format_error(self) -> str: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `code` | `DiagnosticCode` | Y | Error code. |
@@ -485,7 +483,7 @@ class SourceSpan:
     column: int
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `start` | `int` | Y | Start byte offset. |
@@ -509,7 +507,7 @@ class OutputFormat(StrEnum):
     JSON = "json"
 ```
 
-### Contract
+### Parameters
 | Value | Description |
 |:------|:------------|
 | `RUST` | Rust compiler-style output with hints and help URLs. |
@@ -539,7 +537,7 @@ class DiagnosticFormatter:
     def format_validation_result(self, result: ValidationResult) -> str: ...
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `output_format` | `OutputFormat` | Output style (rust, simple, json). |
@@ -563,7 +561,7 @@ class DiagnosticFormatter:
 def format(self, diagnostic: Diagnostic) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `diagnostic` | `Diagnostic` | Y | Diagnostic to format. |
@@ -582,7 +580,7 @@ def format(self, diagnostic: Diagnostic) -> str:
 def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `diagnostics` | `Iterable[Diagnostic]` | Y | Diagnostics to format. |
@@ -601,7 +599,7 @@ def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:
 def format_validation_result(self, result: ValidationResult) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `result` | `ValidationResult` | Y | Validation result to format. |

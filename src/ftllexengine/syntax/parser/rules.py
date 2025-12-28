@@ -267,15 +267,19 @@ def parse_simple_pattern(
     Stops at variant delimiters to allow proper parsing of inline and
     multiline select expressions.
 
+    v0.38.0: Added multiline continuation support for variant values.
+        Variant values can now span multiple lines when continuation lines
+        are indented, matching the behavior of top-level message patterns.
+
     Handles:
-    - Plain text
+    - Plain text with multi-line continuation (indented lines)
     - All placeable types: {$var}, {-term}, {NUMBER(...)}, {"string"}, {42}
 
     Stop conditions:
-    - Newline (\\n, \\r): End of variant value line
     - Close brace (}): End of containing select expression
     - Open bracket ([): Start of next variant key (with lookahead)
     - Asterisk (*): Start of default variant marker (only if followed by '[')
+    - Newline (\\n, \\r): End of variant value UNLESS followed by indented continuation
 
     Lookahead (v0.26.0):
         '*' and '[' are only treated as variant markers when they form valid
@@ -287,6 +291,7 @@ def parse_simple_pattern(
         "Hi {$name}"  -> Pattern([TextElement("Hi "), Placeable(...)])
         "[INFO] msg"  -> Pattern([TextElement("[INFO] msg")])  # [ is literal
         "3 * 5"  -> Pattern([TextElement("3 * 5")])  # * is literal
+        "Line 1\\n    Line 2" -> Pattern with multiline content (v0.38.0)
 
     Args:
         cursor: Current position in source
@@ -300,11 +305,8 @@ def parse_simple_pattern(
     while not cursor.is_eof:
         ch = cursor.current
 
-        # Stop conditions for simple patterns (variant values)
-        # These mark the end of a variant value in select expressions:
-        # - \n, \r: line end (for multiline variants)
-        # - }: end of select expression
-        if ch in ("\n", "\r", "}"):
+        # Stop condition: end of select expression
+        if ch == "}":
             break
 
         # Check variant markers with lookahead
@@ -312,6 +314,26 @@ def parse_simple_pattern(
         # - *: start of default variant marker (only if followed by [)
         if ch in ("[", "*") and _is_variant_marker(cursor):
             break
+
+        # Handle newlines - check for indented continuation (v0.38.0)
+        if ch in ("\n", "\r"):
+            if is_indented_continuation(cursor):
+                # Skip newline and consume indentation
+                cursor = cursor.advance()
+                if not cursor.is_eof and cursor.current == "\n":
+                    cursor = cursor.advance()  # Handle \r\n
+                # Skip leading spaces (continuation indent)
+                cursor = cursor.skip_spaces()
+                # Add a space to represent the line break in the pattern value
+                if elements and not isinstance(elements[-1], Placeable):
+                    # Append space to previous text element
+                    last_elem = elements[-1]
+                    elements[-1] = TextElement(value=last_elem.value + " ")
+                else:
+                    # Add new text element with space
+                    elements.append(TextElement(value=" "))
+                continue  # Continue parsing on next line
+            break  # Not a continuation, stop parsing pattern
 
         # Parse placeable expression
         if ch == "{":

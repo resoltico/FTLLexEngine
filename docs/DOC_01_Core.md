@@ -1,13 +1,11 @@
 ---
-spec_version: AFAD-v1
-project_version: 0.37.0
-context: CORE
-last_updated: 2025-12-26T18:00:00Z
-maintainer: claude-opus-4-5
-retrieval_hints:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, validate_resource, introspect_message]
-  answers: [how to format message, how to add translations, how to validate ftl, how to check message exists, how to use bundle]
-  related: [DOC_02_Types.md, DOC_04_Runtime.md, DOC_05_Errors.md]
+afad: "3.0"
+version: "0.38.0"
+domain: CORE
+updated: "2025-12-28"
+route:
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, thread_safe]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "how to make bundle thread safe?"]
 ---
 
 # Core API Reference
@@ -28,10 +26,11 @@ class FluentBundle:
         enable_cache: bool = False,
         cache_size: int = 1000,
         functions: FunctionRegistry | None = None,
+        thread_safe: bool = False,
     ) -> None: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locale` | `str` | Y | BCP 47 locale code (positional-only). |
@@ -39,12 +38,14 @@ class FluentBundle:
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry (v0.18.0+). |
+| `thread_safe` | `bool` | N | Enable thread-safe operations via RLock (v0.38.0+). |
 
 ### Constraints
 - Return: FluentBundle instance.
 - Raises: `ValueError` on invalid locale format.
 - State: Creates internal message/term registries.
-- Thread: Unsafe for writes, safe for reads after initialization.
+- Thread: When `thread_safe=False` (default): Unsafe for writes, safe for reads after initialization.
+- Thread: When `thread_safe=True`: All methods synchronized via internal RLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
 
@@ -62,16 +63,18 @@ def for_system_locale(
     enable_cache: bool = False,
     cache_size: int = 1000,
     functions: FunctionRegistry | None = None,
+    thread_safe: bool = False,
 ) -> FluentBundle:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry (v0.18.0+). |
+| `thread_safe` | `bool` | N | Enable thread-safe operations (v0.38.0+). |
 
 ### Constraints
 - Return: FluentBundle with system locale.
@@ -89,7 +92,7 @@ def for_system_locale(
 def __enter__(self) -> FluentBundle:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -109,16 +112,16 @@ def __exit__(
     self,
     exc_type: type[BaseException] | None,
     exc_val: BaseException | None,
-    exc_tb: TracebackType | None,
+    exc_tb: object | None,
 ) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `exc_type` | `type[BaseException] \| None` | N | Exception type. |
 | `exc_val` | `BaseException \| None` | N | Exception value. |
-| `exc_tb` | `TracebackType \| None` | N | Traceback object. |
+| `exc_tb` | `object \| None` | N | Traceback object. |
 
 ### Constraints
 - Return: None (does not suppress exceptions).
@@ -141,7 +144,7 @@ def add_resource(
 ) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `source` | `str` | Y | FTL source code (positional-only). |
@@ -169,7 +172,7 @@ def format_pattern(
 ) -> tuple[str, tuple[FluentError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `str` | Y | Message identifier (positional-only). |
@@ -195,7 +198,7 @@ def format_value(
 ) -> tuple[str, tuple[FluentError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `str` | Y | Message identifier. |
@@ -216,7 +219,7 @@ def format_value(
 def validate_resource(self, source: str) -> ValidationResult:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `source` | `str` | Y | FTL source code to validate. |
@@ -236,7 +239,7 @@ def validate_resource(self, source: str) -> ValidationResult:
 def has_message(self, message_id: str) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `str` | Y | Message identifier to check. |
@@ -249,6 +252,28 @@ def has_message(self, message_id: str) -> bool:
 
 ---
 
+## `FluentBundle.has_attribute`
+
+### Signature
+```python
+def has_attribute(self, message_id: str, attribute: str) -> bool:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message_id` | `str` | Y | Message identifier to check. |
+| `attribute` | `str` | Y | Attribute name to check. |
+
+### Constraints
+- Return: True if message exists AND has the specified attribute.
+- Raises: None.
+- State: Read-only.
+- Thread: Safe.
+- Version: Added in v0.38.0.
+
+---
+
 ## `FluentBundle.get_message_ids`
 
 ### Signature
@@ -256,7 +281,7 @@ def has_message(self, message_id: str) -> bool:
 def get_message_ids(self) -> list[str]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -275,7 +300,7 @@ def get_message_ids(self) -> list[str]:
 def get_message_variables(self, message_id: str) -> frozenset[str]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `str` | Y | Message identifier. |
@@ -295,7 +320,7 @@ def get_message_variables(self, message_id: str) -> frozenset[str]:
 def get_all_message_variables(self) -> dict[str, frozenset[str]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -314,7 +339,7 @@ def get_all_message_variables(self) -> dict[str, frozenset[str]]:
 def introspect_message(self, message_id: str) -> MessageIntrospection:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `str` | Y | Message identifier. |
@@ -334,7 +359,7 @@ def introspect_message(self, message_id: str) -> MessageIntrospection:
 def add_function(self, name: str, func: Callable[..., str]) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Function name (UPPERCASE convention). |
@@ -355,7 +380,7 @@ def add_function(self, name: str, func: Callable[..., str]) -> None:
 def clear_cache(self) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -374,7 +399,7 @@ def clear_cache(self) -> None:
 def get_cache_stats(self) -> dict[str, int | float] | None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -394,7 +419,7 @@ def get_cache_stats(self) -> dict[str, int | float] | None:
 def locale(self) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -414,7 +439,7 @@ def locale(self) -> str:
 def use_isolating(self) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -434,7 +459,7 @@ def use_isolating(self) -> bool:
 def cache_enabled(self) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -462,6 +487,23 @@ def cache_size(self) -> int:
 
 ---
 
+## `FluentBundle.is_thread_safe`
+
+### Signature
+```python
+@property
+def is_thread_safe(self) -> bool:
+```
+
+### Constraints
+- Return: True if bundle uses thread-safe operations.
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+- Version: Added in v0.38.0.
+
+---
+
 ## `FluentBundle.get_babel_locale`
 
 ### Signature
@@ -469,7 +511,7 @@ def cache_size(self) -> int:
 def get_babel_locale(self) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -498,7 +540,7 @@ class FluentLocalization:
     ) -> None: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locales` | `Iterable[LocaleCode]` | Y | Locale codes in fallback order. |
@@ -523,7 +565,7 @@ class FluentLocalization:
 def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locale` | `LocaleCode` | Y | Target locale (must be in chain). |
@@ -549,7 +591,7 @@ def format_value(
 ) -> tuple[str, tuple[FluentError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `MessageId` | Y | Message identifier. |
@@ -576,7 +618,7 @@ def format_pattern(
 ) -> tuple[str, tuple[FluentError, ...]]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `MessageId` | Y | Message identifier. |
@@ -598,7 +640,7 @@ def format_pattern(
 def has_message(self, message_id: MessageId) -> bool:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `MessageId` | Y | Message identifier. |
@@ -618,7 +660,7 @@ def has_message(self, message_id: MessageId) -> bool:
 def add_function(self, name: str, func: Callable[..., str]) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Function name. |
@@ -640,7 +682,7 @@ def add_function(self, name: str, func: Callable[..., str]) -> None:
 def get_bundles(self) -> Generator[FluentBundle]:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -675,7 +717,7 @@ def locales(self) -> tuple[LocaleCode, ...]:
 def get_load_summary(self) -> LoadSummary:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -698,7 +740,7 @@ class LoadStatus(StrEnum):
     ERROR = "error"
 ```
 
-### Contract
+### Parameters
 | Value | Description |
 |:------|:------------|
 | `SUCCESS` | Resource loaded successfully. |
@@ -732,7 +774,7 @@ class ResourceLoadResult:
     def is_error(self) -> bool: ...
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `locale` | `LocaleCode` | Locale code for this resource. |
@@ -771,7 +813,7 @@ class LoadSummary:
     def all_successful(self) -> bool: ...
 ```
 
-### Contract
+### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `results` | `tuple[ResourceLoadResult, ...]` | All individual load results. |
@@ -827,7 +869,7 @@ def cache_size(self) -> int:
 def get_babel_locale(self) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -846,7 +888,7 @@ def get_babel_locale(self) -> str:
 def validate_resource(self, ftl_source: FTLSource) -> ValidationResult:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `ftl_source` | `FTLSource` | Y | FTL source code to validate. |
@@ -866,7 +908,7 @@ def validate_resource(self, ftl_source: FTLSource) -> ValidationResult:
 def clear_cache(self) -> None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 
@@ -885,7 +927,7 @@ def clear_cache(self) -> None:
 def introspect_message(self, message_id: MessageId) -> MessageIntrospection | None:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message_id` | `MessageId` | Y | Message identifier. |
@@ -910,7 +952,7 @@ class PathResourceLoader:
     def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `base_path` | `str` | Y | Path template with {locale} placeholder. |
@@ -937,7 +979,7 @@ class ResourceLoader(Protocol):
     def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource: ...
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locale` | `LocaleCode` | Y | Locale code. |
@@ -958,7 +1000,7 @@ class ResourceLoader(Protocol):
 def normalize_locale(locale_code: str) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locale_code` | `str` | Y | BCP-47 or POSIX locale code. |
@@ -980,7 +1022,7 @@ def normalize_locale(locale_code: str) -> str:
 def get_babel_locale(locale_code: str) -> Locale:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `locale_code` | `str` | Y | BCP-47 or POSIX locale code. |
@@ -1002,7 +1044,7 @@ def get_babel_locale(locale_code: str) -> Locale:
 def get_system_locale(*, raise_on_failure: bool = False) -> str:
 ```
 
-### Contract
+### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `raise_on_failure` | `bool` | N | Raise RuntimeError if locale cannot be determined. |

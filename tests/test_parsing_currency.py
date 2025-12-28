@@ -54,8 +54,12 @@ class TestParseCurrency:
         assert code == "GBP"
 
     def test_parse_currency_jpy_symbol(self) -> None:
-        """Parse JPY with ¥ symbol (no decimals)."""
-        result, errors = parse_currency("¥12,345", "ja_JP")
+        """Parse JPY with Yen symbol (no decimals).
+
+        v0.38.0: Yen symbol is now ambiguous (JPY vs CNY).
+        Must use infer_from_locale=True for locale-aware resolution.
+        """
+        result, errors = parse_currency("¥12,345", "ja_JP", infer_from_locale=True)
 
         assert not errors
         assert result is not None

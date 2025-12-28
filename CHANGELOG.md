@@ -13,6 +13,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2025-12-28
+
+### Breaking Changes
+- Yen sign (`¥`, U+00A5) now treated as ambiguous currency symbol:
+  - Requires `default_currency="JPY"` or `infer_from_locale=True` for parsing
+  - Resolves to CNY for Chinese locales (`zh_*`), JPY otherwise
+  - Previously hardcoded to JPY regardless of locale context
+- `_babel_to_strptime()` internal API now returns 3 values `(pattern, has_era, has_timezone)` instead of 2
+
+### Added
+- `CurrencyDataProvider` class in `currency.py` encapsulating all currency data and loading logic:
+  - Replaces module-level global variables with instance attributes
+  - Provides `resolve_ambiguous_symbol()` for locale-aware symbol resolution
+  - Thread-safe lazy initialization via double-check locking pattern
+- Locale-aware resolution for ambiguous currency symbols:
+  - `_AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION` dict for context-sensitive mappings
+  - `_AMBIGUOUS_SYMBOL_DEFAULTS` dict for fallback when locale doesn't match
+- `_strip_timezone()` function in `dates.py` for timezone string stripping
+- `_preprocess_datetime_input()` unified preprocessing for era and timezone tokens
+- `_TIMEZONE_STRINGS` tuple with comprehensive US/European timezone names and abbreviations
+- `thread_safe` parameter to `FluentBundle.__init__()`:
+  - When `True`, all methods use internal RLock for synchronization
+  - `add_resource()` and `format_pattern()` become thread-safe
+  - Default `False` to avoid performance overhead for single-threaded patterns
+- `is_thread_safe` read-only property on `FluentBundle` for introspection
+- `has_attribute(message_id, attribute)` method on `FluentBundle` for attribute existence checking
+- Multiline variant value support in select expressions:
+  - Variant values can now span multiple indented lines
+  - Continuation lines are properly consumed and joined with spaces
+
+### Changed
+- Currency module architecture refactored to eliminate global mutable state:
+  - Module-level singleton `_provider = CurrencyDataProvider()` maintains API compatibility
+  - All global variable access replaced with provider method calls
+- `_babel_to_strptime()` returns separate flags for era and timezone tokens:
+  - Enables targeted preprocessing for each token type
+  - Timezone tokens (z/zzzz/v/V/O) now strip timezone names from input
+- Date/datetime parsing preprocessing unified via `_preprocess_datetime_input()`
+- `FluentBundle.add_resource()` and `format_pattern()` now support optional thread-safe operation
+
+### Fixed
+- Yen sign (`¥`) now correctly maps to CNY for Chinese locales, JPY for others
+- Global mutable state in `currency.py` replaced with encapsulated provider class
+- Date parsing now succeeds for patterns containing timezone tokens (e.g., `zzzz` in `en_US`)
+- Race condition in `FluentBundle` prevented via opt-in thread safety
+- Parser now handles multiline variant values in select expressions
+
 ## [0.37.0] - 2025-12-28
 
 ### Breaking Changes
@@ -276,6 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.38.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.38.0
 [0.37.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.37.0
 [0.36.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.36.0
 [0.35.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.35.0

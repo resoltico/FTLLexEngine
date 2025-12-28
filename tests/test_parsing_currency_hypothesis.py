@@ -37,8 +37,9 @@ class TestParseCurrencyHypothesis:
         # Format: symbol + amount (no locale formatting for simplicity)
         currency_str = f"{currency_symbol}{amount}"
 
-        # v0.7.0: Ambiguous symbols require default_currency
-        ambiguous_symbols = {"$": "USD", "¢": "USD", "₨": "INR", "₱": "PHP"}
+        # v0.38.0: Ambiguous symbols require default_currency
+        # Yen sign now ambiguous (JPY vs CNY based on locale)
+        ambiguous_symbols = {"$": "USD", "¢": "USD", "₨": "INR", "₱": "PHP", "¥": "JPY"}
         default_currency = ambiguous_symbols.get(currency_symbol)
 
         result, errors = parse_currency(
@@ -517,17 +518,22 @@ class TestCurrencyInferFromLocale:
         _parsed_amount, currency_code = result
         assert currency_code == "CAD"
 
-    def test_infer_from_locale_unmapped_locale_returns_error(self) -> None:
-        """COVERAGE: infer_from_locale with unmapped locale returns error."""
+    def test_infer_from_locale_uses_default_for_ambiguous(self) -> None:
+        """COVERAGE: infer_from_locale with ambiguous symbol uses default.
+
+        v0.38.0: Ambiguous symbols now have defaults in _AMBIGUOUS_SYMBOL_DEFAULTS.
+        When locale doesn't have a specific mapping, the default is used.
+        """
         currency_str = "$100.00"
 
         # Use a locale without territory (just language code) - won't be in mapping
-        # Base locales like "en", "de" have no territory and thus no currency
+        # v0.38.0: Now falls back to _AMBIGUOUS_SYMBOL_DEFAULTS["$"] = "USD"
         result, errors = parse_currency(
             currency_str, "en", infer_from_locale=True
         )
-        assert len(errors) > 0
-        assert result is None
+        assert len(errors) == 0
+        assert result is not None
+        assert result[1] == "USD"  # Falls back to default
 
     def test_ambiguous_symbol_no_default_returns_error(self) -> None:
         """COVERAGE: Ambiguous symbol without default returns error."""

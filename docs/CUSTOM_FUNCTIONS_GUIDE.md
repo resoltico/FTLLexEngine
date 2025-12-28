@@ -988,5 +988,5 @@ class TestFileSizeHypothesis:
 ---
 
 **Document Last Updated**: December 23, 2025
-**FTLLexEngine Version**: 0.33.0
+**FTLLexEngine Version**: 0.38.0
 **Python Requirement**: 3.13+

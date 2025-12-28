@@ -72,7 +72,7 @@ if is_valid_decimal(result):  # v0.28.0: simplified guard check
 
 Parse locale-formatted number string to `float`.
 
-**v0.8.0**: Returns `tuple[float, list[FluentParseError]]`.
+Returns `tuple[float, tuple[FluentParseError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_number
@@ -80,15 +80,15 @@ from ftllexengine.parsing import parse_number
 
 # US English
 result, errors = parse_number("1,234.5", "en_US")
-# result → 1234.5, errors → []
+# result → 1234.5, errors → ()
 
 # Latvian
 result, errors = parse_number("1 234,5", "lv_LV")
-# result → 1234.5, errors → []
+# result → 1234.5, errors → ()
 
 # German
 result, errors = parse_number("1.234,5", "de_DE")
-# result → 1234.5, errors → []
+# result → 1234.5, errors → ()
 
 # Error handling (v0.8.0)
 result, errors = parse_number("invalid", "en_US")
@@ -103,7 +103,7 @@ if errors:
 
 Parse locale-formatted number string to `Decimal` (financial precision).
 
-**v0.8.0**: Returns `tuple[Decimal, list[FluentParseError]]`.
+Returns `tuple[Decimal, tuple[FluentParseError, ...]]`.
 
 ```python
 from decimal import Decimal
@@ -129,7 +129,7 @@ float_vat = float_amount * 0.21  # → 21.105000000000004 - precision loss!
 
 Parse locale-formatted date string to `date` object.
 
-**v0.8.0**: Returns `tuple[date | None, list[FluentParseError]]`.
+Returns `tuple[date | None, tuple[FluentParseError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_date
@@ -171,7 +171,7 @@ result, errors = parse_date("2025-01-28", "en_US")
 
 Parse locale-formatted datetime string to `datetime` object.
 
-**v0.8.0**: Returns `tuple[datetime | None, list[FluentParseError]]`.
+Returns `tuple[datetime | None, tuple[FluentParseError, ...]]`.
 
 ```python
 from datetime import timezone
@@ -199,7 +199,7 @@ result, errors = parse_datetime("2025-01-28 14:30", "en_US", tzinfo=timezone.utc
 
 Parse locale-formatted currency string to `(Decimal, currency_code)` tuple.
 
-**v0.8.0**: Returns `tuple[tuple[Decimal, str] | None, list[FluentParseError]]`.
+Returns `tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_currency
@@ -678,4 +678,4 @@ result, errors = parse_date("2025-01-02", locale)  # Always Jan 2
 
 ---
 
-**FTLLexEngine v0.13.0** - Production-ready bi-directional localization
+**FTLLexEngine v0.38.0** - Production-ready bi-directional localization
