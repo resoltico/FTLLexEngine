@@ -1083,7 +1083,6 @@ def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | 
 
 def parse_inline_expression(
     cursor: Cursor,
-    context: ParseContext | None = None,  # noqa: ARG001 - Reserved for future use
 ) -> ParseResult[InlineExpression] | None:
     """Parse inline expression (variable, string, number, function, message, or term reference).
 
@@ -1100,7 +1099,6 @@ def parse_inline_expression(
 
     Args:
         cursor: Current position in source
-        context: Parse context (reserved for future use)
 
     Returns:
         ParseResult with InlineExpression on success, None on parse error
@@ -1168,7 +1166,7 @@ def parse_placeable(
         cursor at: "$n -> [one] 1 *[other] N}" -> parses to Placeable(SelectExpression(...))
         cursor at: "NUMBER($val)}" -> parses to Placeable(FunctionReference(...))
     """
-    # Create default context if not provided (backward compatibility)
+    # Create default context if not provided
     if context is None:
         context = ParseContext()
 
@@ -1188,7 +1186,7 @@ def parse_placeable(
     expr_start_pos = cursor.pos
 
     # Parse the inline expression using extracted helper
-    expr_result = parse_inline_expression(cursor, nested_context)
+    expr_result = parse_inline_expression(cursor)
     if expr_result is None:
         return expr_result
 

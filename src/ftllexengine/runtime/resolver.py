@@ -295,12 +295,13 @@ class FluentResolver:
                         # Mozilla-aligned error handling:
                         # Collect error, show readable fallback (not {ERROR: ...})
                         errors.append(e)
-                        # FormattingError carries a better fallback (the original value)
-                        if isinstance(e, FormattingError):
-                            fallback = e.fallback_value  # pylint: disable=no-member
-                        else:
-                            fallback = self._get_fallback_for_placeable(element.expression)
-                        result += fallback
+                        # Use pattern matching for type-safe fallback extraction
+                        match e:
+                            case FormattingError(fallback_value=fallback):
+                                # FormattingError carries the original value as fallback
+                                result += fallback
+                            case _:
+                                result += self._get_fallback_for_placeable(element.expression)
 
         return result
 
@@ -448,9 +449,12 @@ class FluentResolver:
                 case NumberLiteral(raw=raw_str):
                     # Handle int, float, and Decimal for exact numeric match.
                     # Use raw string representation for maximum precision.
-                    # Problem: float(1.1) != Decimal("1.1") due to IEEE 754 representation.
+                    # Problem: float(1.1) != Decimal("1.1") due to IEEE 754.
                     # Solution: Use NumberLiteral.raw (exact source string) for key,
                     # and convert selector to Decimal via str for comparison.
+                    # Edge case: Float arithmetic results (e.g., 0.1 + 0.2) may produce
+                    # values like 0.30000000000000004 that won't match literal "0.3".
+                    # For exact matching with computed values, use Decimal arithmetic.
                     # Note: Exclude bool since isinstance(True, int) is True in Python,
                     # but str(True) == "True" which is not a valid Decimal.
                     is_numeric = (

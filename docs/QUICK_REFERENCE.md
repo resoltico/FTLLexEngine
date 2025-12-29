@@ -817,6 +817,6 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 
 ---
 
-**Quick Reference Last Updated**: December 28, 2025
-**FTLLexEngine Version**: 0.40.0
+**Quick Reference Last Updated**: December 29, 2025
+**FTLLexEngine Version**: 0.41.0
 **Python Requirement**: 3.13+

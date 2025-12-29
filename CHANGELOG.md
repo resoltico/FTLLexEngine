@@ -13,6 +13,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0] - 2025-12-29
+
+### Breaking Changes
+- **`parse_inline_expression()` Signature Change**: Removed unused `context` parameter:
+  - Previous: `parse_inline_expression(cursor, context=None)`
+  - Current: `parse_inline_expression(cursor)`
+  - The `context` parameter was documented as "reserved for future use" but was never utilized
+  - Internal callers updated; external callers passing `context` will get `TypeError`
+- **`format_datetime()` Error Handling**: Invalid ISO 8601 strings now raise `FormattingError`:
+  - Previous: Returned `"{!DATETIME}"` fallback silently
+  - Current: Raises `FormattingError` with `fallback_value="{!DATETIME}"`
+  - Aligns with `format_number()` and `format_currency()` error propagation
+  - Resolver catches exception, collects error, uses `fallback_value` for output
+- **`FluentSerializer` Not Exported**: Removed from `syntax.serializer.__all__`:
+  - Class remains accessible via direct import: `from ftllexengine.syntax.serializer import FluentSerializer`
+  - Public API is `serialize()` function (per `syntax/__init__.py` design)
+- **Localization Empty Message ID Error**: Changed error message wording:
+  - Previous: `"Empty message ID"`
+  - Current: `"Empty or invalid message ID"`
+  - Both `format_value()` and `format_pattern()` now use consistent validation
+
+### Changed
+- **Pattern Matching for Error Type Narrowing**: `FluentResolver` uses `match/case` instead of `isinstance`:
+  - Eliminates `# pylint: disable=no-member` suppression
+  - Pattern matching extracts `FormattingError.fallback_value` in one step
+- **Unified Validation in `FluentLocalization`**: New `_handle_message_not_found()` helper:
+  - Single source of truth for message-not-found validation logic
+  - Both `format_value()` and `format_pattern()` delegate to helper
+  - Consistent error messages for empty, invalid, or missing message IDs
+
+### Fixed
+- **Datetime Error Collection**: Invalid ISO 8601 strings now properly collected as errors:
+  - Previous: Silent fallback bypassed error collection
+  - Fixed: `FormattingError` propagates through resolver, appears in `(result, errors)` tuple
+  - Callers can now detect and report datetime parsing failures
+
 ## [0.40.0] - 2025-12-29
 
 ### Breaking Changes
@@ -473,6 +509,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.41.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.41.0
 [0.40.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.40.0
 [0.39.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.39.0
 [0.38.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.38.0

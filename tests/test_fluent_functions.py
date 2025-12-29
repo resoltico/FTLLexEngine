@@ -284,18 +284,21 @@ class TestDatetimeFunctionErrorHandling:
     """Test datetime_format() function error handling."""
 
     def test_datetime_with_invalid_iso_string(self) -> None:
-        """datetime_format() handles invalid ISO string gracefully."""
-        result = datetime_format("not a date")
+        """datetime_format() raises FormattingError for invalid ISO string."""
+        with pytest.raises(FormattingError) as exc_info:
+            datetime_format("not a date")
 
-        # Should return Fluent error placeholder
-        assert result == "{!DATETIME}"
+        # Should have meaningful error message and fallback
+        assert "not ISO 8601" in str(exc_info.value)
+        assert exc_info.value.fallback_value == "{!DATETIME}"
 
     def test_datetime_with_partial_iso_string(self) -> None:
-        """datetime_format() handles incomplete ISO string."""
-        result = datetime_format("2025-10")
+        """datetime_format() raises FormattingError for incomplete ISO string."""
+        # "2025-10" is not valid ISO 8601 datetime format
+        with pytest.raises(FormattingError) as exc_info:
+            datetime_format("2025-10")
 
-        # May parse or return error
-        assert isinstance(result, str)
+        assert exc_info.value.fallback_value == "{!DATETIME}"
 
     def test_datetime_with_year_overflow(self) -> None:
         """datetime_format() handles year out of range for strftime."""
@@ -466,11 +469,12 @@ class TestDatetimeFunctionEdgeCases:
         assert "2025" in result or "25" in result
 
     def test_datetime_with_empty_string(self) -> None:
-        """datetime_format() handles empty string."""
-        result = datetime_format("")
+        """datetime_format() raises FormattingError for empty string."""
+        with pytest.raises(FormattingError) as exc_info:
+            datetime_format("")
 
-        # Should return error placeholder
-        assert result == "{!DATETIME}"
+        # Should have fallback value
+        assert exc_info.value.fallback_value == "{!DATETIME}"
 
 
 class TestDatetimeFunctionMockedErrors:

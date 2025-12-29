@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ftllexengine.core.errors import FormattingError
 from ftllexengine.runtime.functions import datetime_format, number_format
 
 
@@ -401,11 +402,12 @@ class TestDatetimeFormatStringConversions:
     def test_datetime_format_invalid_strings(self, invalid_string):
         """Kills: invalid string handling mutations.
 
-        Invalid strings should return error marker.
+        Invalid strings should raise FormattingError with fallback.
         """
-        result = datetime_format(invalid_string, "en-US", date_style="short")
-        # Should return error marker
-        assert "{!DATETIME}" in result or isinstance(result, str)
+        with pytest.raises(FormattingError) as exc_info:
+            datetime_format(invalid_string, "en-US", date_style="short")
+        # Should have fallback value for resolver to use
+        assert exc_info.value.fallback_value == "{!DATETIME}"
 
 
 if __name__ == "__main__":

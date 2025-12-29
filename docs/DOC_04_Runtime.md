@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.40.0"
+version: "0.41.0"
 domain: RUNTIME
 updated: "2025-12-29"
 route:
@@ -39,7 +39,7 @@ def number_format(
 
 ### Constraints
 - Return: Formatted number string.
-- Raises: Never. Returns str(value) on error.
+- Raises: `FormattingError` on formatting failure (invalid pattern, Babel error).
 - State: None.
 - Thread: Safe.
 
@@ -70,7 +70,7 @@ def datetime_format(
 
 ### Constraints
 - Return: Formatted datetime string.
-- Raises: Never. Returns ISO format on error.
+- Raises: `FormattingError` on invalid input (invalid ISO string, Babel failure).
 - State: None.
 - Thread: Safe.
 
@@ -101,7 +101,7 @@ def currency_format(
 
 ### Constraints
 - Return: Formatted currency string.
-- Raises: Never. Returns "{currency} {value}" on error.
+- Raises: `FormattingError` on formatting failure (invalid currency code, Babel error).
 - State: None.
 - Thread: Safe.
 

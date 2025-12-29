@@ -661,6 +661,37 @@ class FluentLocalization:
         bundle = self._get_or_create_bundle(locale)
         bundle.add_resource(ftl_source)
 
+    def _handle_message_not_found(
+        self,
+        message_id: MessageId,
+        errors: list[FluentError],
+    ) -> tuple[str, tuple[FluentError, ...]]:
+        """Handle message-not-found with consistent validation.
+
+        Uses pattern matching to distinguish between empty/invalid message IDs
+        and valid IDs that simply weren't found in any locale.
+
+        Args:
+            message_id: The message ID that was not found
+            errors: Mutable error list to append to
+
+        Returns:
+            Tuple of (fallback_value, errors_tuple)
+        """
+        match message_id:
+            case str() if message_id:
+                # Valid but not found - return ID wrapped in braces (Fluent convention)
+                diagnostic = Diagnostic(
+                    code=DiagnosticCode.MESSAGE_NOT_FOUND,
+                    message=f"Message '{message_id}' not found in any locale",
+                )
+                errors.append(FluentError(diagnostic))
+                return (FALLBACK_MISSING_MESSAGE.format(id=message_id), tuple(errors))
+            case _:
+                # Empty or invalid message ID
+                errors.append(FluentError("Empty or invalid message ID"))
+                return (FALLBACK_INVALID, tuple(errors))
+
     def format_value(
         self, message_id: MessageId, args: Mapping[str, FluentValue] | None = None
     ) -> tuple[str, tuple[FluentError, ...]]:
@@ -700,22 +731,8 @@ class FluentLocalization:
                 errors.extend(bundle_errors)
                 return (value, tuple(errors))
 
-        # No locale had the message - return fallback
-        # Use pattern matching for graceful degradation
-        match message_id:
-            case str() if message_id:
-                # Return message ID wrapped in braces (Fluent convention)
-                diagnostic = Diagnostic(
-                    code=DiagnosticCode.MESSAGE_NOT_FOUND,
-                    message=f"Message '{message_id}' not found in any locale",
-                )
-                errors.append(FluentError(diagnostic))
-                fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
-                return (fallback, tuple(errors))
-            case _:
-                # Invalid message ID - treat as simple string error
-                errors.append(FluentError("Empty message ID"))
-                return (FALLBACK_INVALID, tuple(errors))
+        # No locale had the message - delegate to helper for consistent handling
+        return self._handle_message_not_found(message_id, errors)
 
     def has_message(self, message_id: MessageId) -> bool:
         """Check if message exists in any locale.
@@ -772,14 +789,8 @@ class FluentLocalization:
                 errors.extend(bundle_errors)
                 return (value, tuple(errors))
 
-        # Not found - return fallback
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message=f"Message '{message_id}' not found in any locale",
-        )
-        errors.append(FluentError(diagnostic))
-        fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
-        return (fallback, tuple(errors))
+        # Not found - delegate to helper for consistent handling
+        return self._handle_message_not_found(message_id, errors)
 
     def add_function(self, name: str, func: Callable[..., str]) -> None:
         """Register custom function on all bundles.

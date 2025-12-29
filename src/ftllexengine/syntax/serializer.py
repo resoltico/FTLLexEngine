@@ -48,7 +48,6 @@ if TYPE_CHECKING:
     from ftllexengine.core.depth_guard import DepthGuard
 
 __all__ = [
-    "FluentSerializer",
     "SerializationDepthError",
     "SerializationValidationError",
     "serialize",

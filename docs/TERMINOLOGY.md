@@ -432,8 +432,8 @@ Complete alphabetical reference:
 
 ---
 
-**Terminology Guide Last Updated**: December 28, 2025
-**FTLLexEngine Version**: 0.40.0
+**Terminology Guide Last Updated**: December 29, 2025
+**FTLLexEngine Version**: 0.41.0
 
 **See Also**:
 - [README.md - Terminology Section](README.md#terminology)

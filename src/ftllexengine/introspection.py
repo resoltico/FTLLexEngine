@@ -122,7 +122,9 @@ class MessageIntrospection:
     """Whether message uses select expressions."""
 
     def get_variable_names(self) -> frozenset[str]:
-        """Get set of variable names (for backward compatibility).
+        """Get set of variable names.
+
+        Convenience method extracting names from VariableInfo objects.
 
         Returns:
             Frozen set of variable names without $ prefix.

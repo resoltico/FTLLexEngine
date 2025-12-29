@@ -189,7 +189,7 @@ class TestFormatValue:
 
         assert result == "{???}"
         assert len(errors) == 1
-        assert "Empty message ID" in str(errors[0])
+        assert "Empty or invalid message ID" in str(errors[0])
 
 
 class TestHasMessage:

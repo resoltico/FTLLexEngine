@@ -283,7 +283,7 @@ class TestErrorHandlingProperties:
 
         assert result == "{???}"
         assert len(errors) > 0
-        assert "Empty message ID" in str(errors[0])
+        assert "Empty or invalid message ID" in str(errors[0])
 
     @given(
         locales=st.lists(locale_codes(), min_size=1, max_size=3, unique=True),

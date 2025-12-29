@@ -14,6 +14,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.core.errors import FormattingError
 from ftllexengine.runtime.locale_context import LocaleContext
 
 
@@ -117,14 +118,15 @@ class TestDatetimeFormattingErrorPaths:
     """Test datetime formatting error paths."""
 
     def test_format_datetime_invalid_value_type(self) -> None:
-        """Invalid datetime type should trigger error path (lines 257-258)."""
+        """Invalid datetime string raises FormattingError with fallback."""
         ctx = LocaleContext.create_or_raise("en_US")
 
         # Pass something that can't be formatted as datetime
-        result = ctx.format_datetime("not-a-datetime")
+        with pytest.raises(FormattingError) as exc_info:
+            ctx.format_datetime("not-a-datetime")
 
-        # Should return fallback string
-        assert isinstance(result, str)
+        # Should have fallback value for resolver to use
+        assert exc_info.value.fallback_value == "{!DATETIME}"
 
     def test_format_datetime_babel_error_path(
         self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch

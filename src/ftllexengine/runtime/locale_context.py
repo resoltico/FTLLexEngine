@@ -401,9 +401,12 @@ class LocaleContext:
         if isinstance(value, str):
             try:
                 dt_value = datetime.fromisoformat(value)
-            except ValueError:
-                # Invalid datetime string - return Fluent error placeholder
-                return FALLBACK_FUNCTION_ERROR.format(name="DATETIME")
+            except ValueError as e:
+                # Invalid datetime string - raise FormattingError with fallback
+                # This ensures consistent error handling across all format_* methods
+                fallback = FALLBACK_FUNCTION_ERROR.format(name="DATETIME")
+                msg = f"Invalid datetime string '{value}': not ISO 8601 format"
+                raise FormattingError(msg, fallback_value=fallback) from e
         else:
             dt_value = value
 
