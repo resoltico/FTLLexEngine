@@ -11,11 +11,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.diagnostics.templates import ErrorTemplate
-from ftllexengine.runtime.depth_guard import (
+from ftllexengine.core.depth_guard import (
     DepthGuard,
     DepthLimitExceededError,
 )
+from ftllexengine.diagnostics.templates import ErrorTemplate
 
 
 class TestDepthGuardConstruction:

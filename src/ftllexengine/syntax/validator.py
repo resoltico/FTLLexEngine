@@ -15,9 +15,9 @@ References:
 """
 
 from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.diagnostics import ValidationResult
 from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.runtime.depth_guard import DepthGuard
 from ftllexengine.syntax.ast import (
     Annotation,
     Attribute,

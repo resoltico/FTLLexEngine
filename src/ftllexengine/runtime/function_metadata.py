@@ -14,9 +14,9 @@ Design Goals:
     - Type-safe (mypy --strict compliant)
     - Future-proof (easy to extend)
 
-Note (v0.36.0):
+Note:
     The `should_inject_locale()` and `get_expected_positional_args()` functions
-    were moved to FunctionRegistry as instance methods. Use:
+    live in FunctionRegistry as instance methods. Use:
     - registry.should_inject_locale(ftl_name)
     - registry.get_expected_positional_args(ftl_name)
 

@@ -36,9 +36,9 @@ from ftllexengine.syntax.ast import (
 
 
 def test_path_resource_loader_fallback_to_cwd():
-    """Test PathResourceLoader._get_root_dir() fallback when no static prefix.
+    """Test PathResourceLoader._resolved_root caching fallback when no static prefix.
 
-    Coverage Target: localization.py:237->243
+    Coverage Target: localization.py:225-237 (__post_init__)
 
     When base_path starts with {locale}, template_parts[0] will be empty string.
     After rstrip("/\\"), static_prefix will still be empty, so fallback to cwd.
@@ -46,10 +46,8 @@ def test_path_resource_loader_fallback_to_cwd():
     # Create loader with {locale} at start
     loader = PathResourceLoader("{locale}/data/messages.ftl")
 
-    root = loader._get_root_dir()
-
     # Should fall back to cwd since no static prefix before {locale}
-    assert root == Path.cwd().resolve()
+    assert loader._resolved_root == Path.cwd().resolve()
 
 
 # =============================================================================

@@ -68,59 +68,51 @@ from ftllexengine.validation.resource import (
 )
 
 # ============================================================================
-# CURRENCY: Double-Check Locking Coverage (line 286)
+# CURRENCY: functools.cache-based CLDR Loading
+# Note: The old double-check locking with CurrencyDataProvider was replaced
+# with @functools.cache which provides thread-safe lazy loading internally.
 # ============================================================================
 
 
-class TestCurrencyDoubleCheckLocking:
-    """Test concurrent access to trigger double-check locking second return.
+class TestCurrencyCachingBehavior:
+    """Test thread-safe caching via functools.cache."""
 
-    v0.38.0: Updated to use CurrencyDataProvider API instead of global state.
-    """
+    def test_concurrent_currency_maps_access(self) -> None:
+        """Concurrent calls to _get_currency_maps_full() return same cached object.
 
-    def test_concurrent_full_tier_loading(self) -> None:
-        """Concurrent calls to ensure_loaded() exercise double-check pattern.
-
-        The second return at line 286 is hit when multiple threads compete for
-        the lock and one finds the data already loaded after acquiring it.
+        functools.cache handles thread-safety internally.
         """
-        # Get module-level provider and reset its state for testing
-        # Note: This tests the internal state reset for coverage purposes
-        provider = currency_module._provider
-        provider._loaded = False
-        provider._symbol_map = {}
-        provider._ambiguous = set()
-        provider._locale_currencies = {}
-        provider._valid_codes = frozenset()
-
         barrier = threading.Barrier(4)
-        results: list[bool] = []
+        results: list[object] = []
 
-        def load_with_barrier() -> None:
+        def get_with_barrier() -> None:
             barrier.wait()  # Synchronize all threads
-            provider.ensure_loaded()
-            results.append(provider._loaded)
+            data = currency_module._get_currency_maps_full()
+            results.append(data)
 
-        threads = [threading.Thread(target=load_with_barrier) for _ in range(4)]
+        threads = [threading.Thread(target=get_with_barrier) for _ in range(4)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
-        # All threads should see loaded state
-        assert all(results)
-        assert provider._loaded
+        # All threads should get the exact same cached object
+        assert len(results) == 4
+        assert all(r is results[0] for r in results)
 
-    def test_full_tier_already_loaded_returns_immediately(self) -> None:
-        """When already loaded, ensure_loaded() returns at first check."""
-        provider = currency_module._provider
-        # Ensure loaded
-        provider.ensure_loaded()
-        assert provider._loaded
+    def test_currency_maps_structure(self) -> None:
+        """Verify cached currency maps have expected structure."""
+        data = currency_module._get_currency_maps_full()
 
-        # Call again - should return immediately at line 280
-        provider.ensure_loaded()
-        assert provider._loaded
+        # Should be a 4-tuple
+        assert len(data) == 4
+        symbol_map, ambiguous, locale_to_currency, valid_codes = data
+
+        # Each component should be the right type
+        assert isinstance(symbol_map, dict)
+        assert isinstance(ambiguous, set)
+        assert isinstance(locale_to_currency, dict)
+        assert isinstance(valid_codes, frozenset)
 
 
 # ============================================================================

@@ -6,16 +6,13 @@ Targets uncovered error paths in currency parsing:
 - Line 132->115: Locale with territory handling
 - Lines 135-136: Exception in locale data extraction
 - Lines 240-250: Locale parsing exceptions
-- Line 257: resolve_ambiguous_symbol returns None for non-ambiguous symbols
-- Line 259->277: resolve_ambiguous_symbol skips locale check when locale_code is None
-- Line 291: ensure_loaded double-check pattern (race condition)
-- Lines 547-549: Locale-to-currency fallback for ambiguous symbols
-- Lines 559-560: Unknown symbol error path
+- resolve_ambiguous_symbol: Returns None for non-ambiguous symbols
+- resolve_ambiguous_symbol: Locale-aware resolution with fallback
+- Locale-to-currency fallback for ambiguous symbols
+- Unknown symbol error path
 """
 
 from __future__ import annotations
-
-from unittest.mock import patch
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -297,135 +294,91 @@ class TestCurrencyParsingIntegration:
 
 
 class TestResolveAmbiguousSymbolNonAmbiguous:
-    """Test resolve_ambiguous_symbol with non-ambiguous symbols (line 257)."""
+    """Test resolve_ambiguous_symbol with non-ambiguous symbols."""
 
     def test_resolve_non_ambiguous_symbol_returns_none(self) -> None:
-        """Test that non-ambiguous symbols return None (line 257).
+        """Test that non-ambiguous symbols return None.
 
         resolve_ambiguous_symbol should return None for symbols that are
         NOT in the ambiguous set, allowing the caller to use the
         standard symbol-to-currency mapping instead.
         """
-        provider = currency_module._provider
-
         # Euro symbol is NOT ambiguous (always means EUR)
-        result = provider.resolve_ambiguous_symbol("€", "en_US")
+        result = currency_module.resolve_ambiguous_symbol("€", "en_US")
         assert result is None
 
         # Swiss Franc symbol is NOT in ambiguous set
-        result = provider.resolve_ambiguous_symbol("₣", "fr_CH")
+        result = currency_module.resolve_ambiguous_symbol("₣", "fr_CH")
         assert result is None
 
 
 # ============================================================================
-# LINE 259->277: resolve_ambiguous_symbol without locale
+# resolve_ambiguous_symbol without locale
 # ============================================================================
 
 
 class TestResolveAmbiguousSymbolNoLocale:
-    """Test resolve_ambiguous_symbol without locale_code (branch 259->277)."""
+    """Test resolve_ambiguous_symbol without locale_code."""
 
     def test_resolve_ambiguous_symbol_no_locale_uses_default(self) -> None:
         """Test ambiguous symbol resolution without locale falls back to default.
 
         When locale_code is None or empty, the code should skip the locale-specific
-        resolution path (lines 259-275) and use the default mapping (line 277).
+        resolution path and use the default mapping.
         """
-        provider = currency_module._provider
-
         # Yen symbol is ambiguous (JPY vs CNY) - without locale, should use default
-        result = provider.resolve_ambiguous_symbol("¥", None)
+        result = currency_module.resolve_ambiguous_symbol("¥", None)
 
         # Should return the default for Yen (typically JPY)
         assert result in {"JPY", "CNY"} or result is None
 
     def test_resolve_ambiguous_symbol_empty_locale_uses_default(self) -> None:
         """Test ambiguous symbol with empty string locale uses default."""
-        provider = currency_module._provider
-
         # Dollar symbol is ambiguous - without locale, uses default (USD)
-        result = provider.resolve_ambiguous_symbol("$", "")
+        result = currency_module.resolve_ambiguous_symbol("$", "")
 
         # Empty string is falsy, should use default
         assert result in {"USD"} or result is None
 
 
 # ============================================================================
-# LINE 291: ensure_loaded double-check pattern
+# functools.cache-based CLDR Loading
+# Note: The old CurrencyDataProvider class with ensure_loaded() pattern was
+# replaced with @functools.cache on _build_currency_maps_from_cldr().
+# Thread-safety is now handled by functools.cache internal locking.
 # ============================================================================
 
 
-class TestEnsureLoadedDoubleCheck:
-    """Test ensure_loaded double-check locking pattern (line 291)."""
+class TestCLDRCaching:
+    """Test that CLDR data is cached via functools.cache."""
 
-    def test_ensure_loaded_double_check_pattern(self) -> None:
-        """Test double-check pattern in ensure_loaded (line 291).
+    def test_currency_maps_caching(self) -> None:
+        """Test that _get_currency_maps_full is cached."""
+        # Call multiple times - should return same object (cached)
+        result1 = currency_module._get_currency_maps_full()
+        result2 = currency_module._get_currency_maps_full()
 
-        This tests the race condition handling where the _loaded flag
-        becomes True between the first check and acquiring the lock.
-        """
-        provider = currency_module._provider
+        # Should be the exact same object (identity check)
+        assert result1 is result2
 
-        # Ensure it's loaded first time
-        provider.ensure_loaded()
-        assert provider._loaded
-
-        # Call again - should hit the first check and return early
-        provider.ensure_loaded()
-        assert provider._loaded
-
-    def test_ensure_loaded_double_check_race_simulation(self) -> None:
-        """Simulate double-check after lock acquisition (line 291).
-
-        Create a fresh provider and simulate the race condition by
-        inserting the entry during lock acquisition.
-        """
-        # Create a new provider instance for isolated testing
-        new_provider = currency_module.CurrencyDataProvider()
-
-        # Ensure provider starts unloaded
-        assert not new_provider._loaded
-
-        # Store original build function
-        original_build = currency_module._build_currency_maps_from_cldr
-
-        call_count = [0]
-
-        def build_with_tracking() -> tuple:
-            call_count[0] += 1
-            return original_build()
-
-        # Patch to track calls
-        with patch.object(
-            currency_module,
-            "_build_currency_maps_from_cldr",
-            build_with_tracking,
-        ):
-            # First call - should load
-            new_provider.ensure_loaded()
-            assert new_provider._loaded
-            # Note: mypy incorrectly infers unreachable due to patch type inference
-            assert call_count[0] == 1  # type: ignore[unreachable]
-
-            # Second call - should NOT call build again (hits early return)
-            new_provider.ensure_loaded()
-            assert call_count[0] == 1  # Still 1 - early return worked
+        # Verify structure
+        assert len(result1) == 4  # (symbol_map, ambiguous, locale_to_currency, valid_codes)
 
 
 # ============================================================================
-# LINES 547-549: Locale-to-currency fallback
+# Locale-to-currency fallback
 # ============================================================================
 
 
 class TestLocaleToCurrencyFallback:
-    """Test locale-to-currency fallback for ambiguous symbols (lines 547-549)."""
+    """Test locale-to-currency fallback for ambiguous symbols."""
 
     def test_resolve_currency_code_locale_fallback(self) -> None:
         """Test _resolve_currency_code falls back to locale-to-currency.
 
         When an ambiguous symbol cannot be resolved via
         resolve_ambiguous_symbol, the code falls back to looking up
-        the locale's default currency (lines 547-549).
+        the locale's default currency.
         """
         # Use the internal _resolve_currency_code function
         resolve_fn = currency_module._resolve_currency_code
@@ -441,14 +394,13 @@ class TestLocaleToCurrencyFallback:
         )
 
         # Should either succeed with locale's default currency or return error
-        # Lines 547-549 try locale_to_currency.get(normalize_locale(locale_code))
         assert result is not None or error is not None
 
     def test_parse_currency_with_locale_currency_fallback(self) -> None:
         """Test parse_currency uses locale default when symbol is ambiguous.
 
-        This exercises lines 547-549 where the locale's default currency
-        is used when the ambiguous symbol resolution fails.
+        This exercises the locale-to-currency fallback where the locale's
+        default currency is used when the ambiguous symbol resolution fails.
         """
         # Use an ambiguous symbol that needs locale resolution
         # Pound sign is ambiguous (GBP, EGP, etc.)
@@ -460,126 +412,27 @@ class TestLocaleToCurrencyFallback:
             _amount, currency = result
             assert currency in {"GBP", "EGP", "GIP"}
 
-    def test_locale_to_currency_fallback_direct_path(self) -> None:
-        """Directly test lines 547-549 fallback to locale-to-currency.
-
-        This tests the specific path where:
-        1. Symbol is ambiguous
-        2. No default_currency
-        3. infer_from_locale=True
-        4. resolve_ambiguous_symbol returns None
-        5. locale_to_currency has a mapping for the locale
-        """
-        resolve_fn = currency_module._resolve_currency_code
-
-        # Get the full tier data BEFORE patching to avoid recursion
-        full_data = currency_module._get_currency_maps_full()
-        _, _, locale_to_currency, _ = full_data
-
-        # Find a locale that has a currency mapping but whose ambiguous symbol
-        # resolution will fail
-        # Use Swedish locale with krona - "kr" is ambiguous but might not have
-        # a specific resolution in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION
-        test_locale = "sv_SE"
-
-        # Create a mock provider class that returns None for resolve_ambiguous_symbol
-        class MockProvider:
-            """Mock provider that returns None for ambiguous resolution."""
-
-            def __init__(self, data: tuple) -> None:
-                self._data = data
-
-            def resolve_ambiguous_symbol(
-                self, _symbol: str, _locale_code: str | None
-            ) -> str | None:
-                return None  # Always fail resolution
-
-            def ensure_loaded(self) -> None:
-                pass
-
-            def get_full_tier_data(self) -> tuple:
-                return self._data
-
-        # Replace the provider temporarily
-        original_provider = currency_module._provider
-        currency_module._provider = MockProvider(full_data)  # type: ignore[assignment]
-
-        try:
-            result, error = resolve_fn(
-                "kr",  # Ambiguous symbol (krona)
-                test_locale,
-                "kr 100",
-                default_currency=None,
-                infer_from_locale=True,
-            )
-
-            # Should fall back to locale_to_currency (lines 547-549)
-            # and return the locale's default currency (SEK for Sweden)
-            # or return error if no mapping
-            if result is not None:
-                # If result, should be the locale's currency
-                assert result == "SEK" or result in locale_to_currency.values()
-            else:
-                # If no result, error should be present
-                assert error is not None
-        finally:
-            # Restore original provider
-            currency_module._provider = original_provider
-
-    def test_locale_to_currency_fallback_no_mapping(self) -> None:
-        """Test fallback path when locale_to_currency has no mapping (548->551).
+    def test_locale_to_currency_fallback_unknown_locale(self) -> None:
+        """Test fallback path when locale is unknown.
 
         This tests the branch where:
-        1. Symbol is ambiguous
+        1. Symbol is not in any mapping
         2. infer_from_locale=True
-        3. resolve_ambiguous_symbol returns None
-        4. locale_to_currency.get() also returns None (no mapping for locale)
-        5. Falls through to error (line 551)
+        3. Locale has no currency mapping (unknown locale)
         """
         resolve_fn = currency_module._resolve_currency_code
 
-        # Get the full tier data BEFORE patching
-        full_data = currency_module._get_currency_maps_full()
-        symbol_map, ambiguous, _, valid_codes = full_data
+        result, error = resolve_fn(
+            "kr",  # Ambiguous symbol
+            "xx_UNKNOWN",  # Locale with no currency mapping
+            "kr 100",
+            default_currency=None,
+            infer_from_locale=True,
+        )
 
-        # Create modified data with empty locale_to_currency
-        empty_locale_map: dict[str, str] = {}
-        modified_data = (symbol_map, ambiguous, empty_locale_map, valid_codes)
-
-        class MockProvider:
-            """Mock provider with empty locale_to_currency."""
-
-            def __init__(self, data: tuple) -> None:
-                self._data = data
-
-            def resolve_ambiguous_symbol(
-                self, _symbol: str, _locale_code: str | None
-            ) -> str | None:
-                return None  # Always fail resolution
-
-            def ensure_loaded(self) -> None:
-                pass
-
-            def get_full_tier_data(self) -> tuple:
-                return self._data
-
-        original_provider = currency_module._provider
-        currency_module._provider = MockProvider(modified_data)  # type: ignore[assignment]
-
-        try:
-            result, error = resolve_fn(
-                "kr",  # Ambiguous symbol
-                "xx_UNKNOWN",  # Locale with no currency mapping
-                "kr 100",
-                default_currency=None,
-                infer_from_locale=True,
-            )
-
-            # Should return error since no resolution or fallback available
-            assert result is None
-            assert error is not None
-        finally:
-            currency_module._provider = original_provider
+        # The "kr" symbol has a fallback default (SEK) in _AMBIGUOUS_SYMBOL_DEFAULTS
+        # Even with unknown locale, ambiguous symbols with defaults resolve successfully
+        assert result == "SEK" or error is not None
 
 
 # ============================================================================

@@ -1,10 +1,10 @@
 ---
 afad: "3.1"
-version: "0.39.0"
+version: "0.40.0"
 domain: ERRORS
-updated: "2025-12-28"
+updated: "2025-12-29"
 route:
-  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, ValidationResult, DiagnosticCode, Diagnostic]
+  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?"]
 ---
 
@@ -21,6 +21,7 @@ FluentError
     FluentCyclicReferenceError
   FluentResolutionError
     DepthLimitExceededError
+    FormattingError
   FluentParseError
 ```
 
@@ -164,6 +165,29 @@ class FluentParseError(FluentError):
 ### Constraints
 - Purpose: Bi-directional parsing errors.
 - Behavior: Returned in error list, never raised.
+
+---
+
+## `FormattingError`
+
+### Signature
+```python
+class FormattingError(FluentResolutionError):
+    fallback_value: str
+
+    def __init__(self, message: str, fallback_value: str) -> None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `str` | Y | Error description for debugging. |
+| `fallback_value` | `str` | Y | Value to use in output when formatting fails. |
+
+### Constraints
+- Purpose: Locale-aware formatting errors (number, datetime, currency).
+- Behavior: Raised by LocaleContext methods; resolver catches and uses fallback_value.
+- Import: `from ftllexengine.core.errors import FormattingError`
 
 ---
 

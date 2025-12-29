@@ -6,16 +6,16 @@ Functions NEVER raise exceptions - errors returned in tuple.
 Thread-safe. Uses Babel for currency symbol mapping and number parsing.
 All currency data sourced from Unicode CLDR via Babel.
 
-Tiered Loading Strategy (PERF-CURRENCY-INIT-001):
+Tiered Loading Strategy:
     - Fast Tier: Common currencies with hardcoded unambiguous symbols (immediate)
-    - Full Tier: Complete CLDR scan (lazy-loaded on first cache miss)
+    - Full Tier: Complete CLDR scan (lazy-loaded via @functools.cache on first access)
     This provides sub-millisecond cold start for common currencies while maintaining
     complete CLDR coverage for edge cases.
 
 Architecture:
-    CurrencyDataProvider encapsulates all currency data and loading logic.
-    - Instance attributes replace module-level global variables
-    - Locale-aware symbol resolution for ambiguous symbols
+    Uses @functools.cache for thread-safe, lazy-loaded CLDR data access.
+    - Locale-aware symbol resolution for ambiguous symbols via resolve_ambiguous_symbol()
+    - Consistent with dates.py pattern for CLDR data access
 
 Python 3.13+.
 """
@@ -23,7 +23,6 @@ Python 3.13+.
 
 import functools
 import re
-import threading
 from decimal import Decimal
 
 from babel import Locale, UnknownLocaleError
@@ -193,151 +192,66 @@ _SYMBOL_LOOKUP_LOCALE_IDS: tuple[str, ...] = (
 )
 
 # =============================================================================
-# Currency Data Provider
+# Locale-Aware Symbol Resolution
 # =============================================================================
-# Encapsulates all currency data and loading logic as instance state.
-# Replaces module-level global variables.
 
 
-class CurrencyDataProvider:
-    """Encapsulated currency data with locale-aware symbol resolution.
+def resolve_ambiguous_symbol(
+    symbol: str,
+    locale_code: str | None = None,
+) -> str | None:
+    """Resolve ambiguous symbol to currency code with locale context.
 
-    Provides:
-    - Tiered loading (fast tier immediate, full CLDR lazy-loaded)
-    - Locale-aware resolution for ambiguous symbols (e.g., Yen/Yuan)
-    - Thread-safe lazy initialization
+    Resolution order:
+    1. Exact locale match in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION
+    2. Locale prefix match (e.g., "zh" for "zh_CN", "zh_TW")
+    3. Default from _AMBIGUOUS_SYMBOL_DEFAULTS
 
-    Attributes:
-        _loaded: Whether full CLDR tier has been loaded
-        _lock: Threading lock for thread-safe initialization
-        _symbol_map: Symbol -> currency code mapping (full tier)
-        _ambiguous: Set of ambiguous symbols (full tier)
-        _locale_currencies: Locale -> currency mapping (full tier)
-        _valid_codes: Set of valid ISO 4217 codes (full tier)
+    Args:
+        symbol: The currency symbol to resolve
+        locale_code: Optional locale for context-sensitive resolution
+
+    Returns:
+        ISO 4217 currency code, or None if symbol not in ambiguous set
     """
+    if symbol not in _FAST_TIER_AMBIGUOUS_SYMBOLS:
+        return None
 
-    __slots__ = (
-        "_ambiguous",
-        "_loaded",
-        "_locale_currencies",
-        "_lock",
-        "_symbol_map",
-        "_valid_codes",
-    )
+    if locale_code:
+        # Normalize locale for lookup
+        normalized = normalize_locale(locale_code)
 
-    def __init__(self) -> None:
-        """Initialize with empty full tier state (lazy-loaded)."""
-        self._loaded: bool = False
-        self._lock: threading.Lock = threading.Lock()
-        self._symbol_map: dict[str, str] = {}
-        self._ambiguous: set[str] = set()
-        self._locale_currencies: dict[str, str] = {}
-        self._valid_codes: frozenset[str] = frozenset()
+        # Try exact locale match first
+        exact_key = (symbol, normalized)
+        if exact_key in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION:
+            return _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION[exact_key]
 
-    def resolve_ambiguous_symbol(
-        self,
-        symbol: str,
-        locale_code: str | None = None,
-    ) -> str | None:
-        """Resolve ambiguous symbol to currency code with locale context.
+        # Try locale prefix match (language code only)
+        # e.g., "zh" matches "zh_CN", "zh_TW", "zh_HK"
+        if "_" in normalized:
+            lang_prefix = normalized.split("_")[0]
+            prefix_key = (symbol, lang_prefix)
+            if prefix_key in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION:
+                return _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION[prefix_key]
 
-        Resolution order:
-        1. Exact locale match in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION
-        2. Locale prefix match (e.g., "zh" for "zh_CN", "zh_TW")
-        3. Default from _AMBIGUOUS_SYMBOL_DEFAULTS
-
-        Args:
-            symbol: The currency symbol to resolve
-            locale_code: Optional locale for context-sensitive resolution
-
-        Returns:
-            ISO 4217 currency code, or None if symbol not in ambiguous set
-        """
-        if symbol not in _FAST_TIER_AMBIGUOUS_SYMBOLS:
-            return None
-
-        if locale_code:
-            # Normalize locale for lookup
-            normalized = normalize_locale(locale_code)
-
-            # Try exact locale match first
-            exact_key = (symbol, normalized)
-            if exact_key in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION:
-                return _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION[exact_key]
-
-            # Try locale prefix match (language code only)
-            # e.g., "zh" matches "zh_CN", "zh_TW", "zh_HK"
-            if "_" in normalized:
-                lang_prefix = normalized.split("_")[0]
-                prefix_key = (symbol, lang_prefix)
-                if prefix_key in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION:
-                    return _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION[prefix_key]
-
-        # Fall back to default
-        return _AMBIGUOUS_SYMBOL_DEFAULTS.get(symbol)
-
-    def ensure_loaded(self) -> None:
-        """Ensure full CLDR tier is loaded (thread-safe, idempotent).
-
-        Called when fast tier doesn't have the needed data.
-        Uses double-check locking pattern for thread safety.
-        """
-        if self._loaded:
-            return
-
-        with self._lock:
-            # Double-check after acquiring lock
-            if self._loaded:
-                return  # type: ignore[unreachable]
-
-            # Perform full CLDR scan
-            symbol_map, ambiguous, locale_currencies, valid_codes = (
-                _build_currency_maps_from_cldr()
-            )
-
-            # Store in instance attributes
-            self._symbol_map = symbol_map
-            self._ambiguous = ambiguous
-            self._locale_currencies = locale_currencies
-            self._valid_codes = valid_codes
-            self._loaded = True
-
-    def get_full_tier_data(
-        self,
-    ) -> tuple[dict[str, str], set[str], dict[str, str], frozenset[str]]:
-        """Get full CLDR currency maps (lazy-loaded on first call).
-
-        Thread-safe. Triggers CLDR scan if not already loaded.
-
-        Returns:
-            Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes)
-        """
-        self.ensure_loaded()
-        return (
-            self._symbol_map,
-            self._ambiguous,
-            self._locale_currencies,
-            self._valid_codes,
-        )
+    # Fall back to default
+    return _AMBIGUOUS_SYMBOL_DEFAULTS.get(symbol)
 
 
-# Module-level singleton for API compatibility
-_provider = CurrencyDataProvider()
-
-
+@functools.cache
 def _build_currency_maps_from_cldr() -> tuple[
     dict[str, str], set[str], dict[str, str], frozenset[str]
 ]:
     """Build currency maps from Unicode CLDR data via Babel.
 
-    Scans all available locales and currencies in CLDR to build:
-    1. Symbol → ISO code mapping (for unambiguous symbols)
-    2. Set of ambiguous symbols (symbols used by multiple currencies)
-    3. Locale → default currency mapping (from territory data)
-    4. Set of all valid ISO 4217 currency codes (for validation)
+    Thread-safe via functools.cache internal locking.
+    Called once per process lifetime; subsequent calls return cached result.
 
-    This replaces hardcoded maps with dynamic CLDR data extraction.
-    Executed once at module initialization for optimal runtime performance.
+    Scans all available locales and currencies in CLDR to build:
+    1. Symbol -> ISO code mapping (for unambiguous symbols)
+    2. Set of ambiguous symbols (symbols used by multiple currencies)
+    3. Locale -> default currency mapping (from territory data)
+    4. Set of all valid ISO 4217 currency codes (for validation)
 
     Returns:
         Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes):
@@ -454,14 +368,13 @@ def _get_currency_maps_fast() -> tuple[
 def _get_currency_maps_full() -> tuple[dict[str, str], set[str], dict[str, str], frozenset[str]]:
     """Get full CLDR currency maps (lazy-loaded on first call).
 
-    Thread-safe. Triggers CLDR scan if not already loaded.
-    Delegates to CurrencyDataProvider singleton.
+    Thread-safe via functools.cache on _build_currency_maps_from_cldr.
 
     Returns:
         Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes)
         from complete CLDR data.
     """
-    return _provider.get_full_tier_data()
+    return _build_currency_maps_from_cldr()
 
 
 @functools.cache
@@ -540,7 +453,7 @@ def _resolve_currency_code(
             return (default_currency, None)
         if infer_from_locale:
             # Locale-aware resolution for ambiguous symbols
-            resolved = _provider.resolve_ambiguous_symbol(currency_str, locale_code)
+            resolved = resolve_ambiguous_symbol(currency_str, locale_code)
             if resolved:
                 return (resolved, None)
             # Fall back to locale-to-currency mapping

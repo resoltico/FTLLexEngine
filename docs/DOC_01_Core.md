@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.39.0"
+version: "0.40.0"
 domain: CORE
-updated: "2025-12-28"
+updated: "2025-12-29"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, thread_safe]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "how to make bundle thread safe?"]
@@ -27,6 +27,8 @@ class FluentBundle:
         cache_size: int = 1000,
         functions: FunctionRegistry | None = None,
         thread_safe: bool = False,
+        max_source_size: int | None = None,
+        max_nesting_depth: int | None = None,
     ) -> None: ...
 ```
 
@@ -39,6 +41,8 @@ class FluentBundle:
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
 | `thread_safe` | `bool` | N | Enable thread-safe operations via RLock. |
+| `max_source_size` | `int \| None` | N | Maximum FTL source size in bytes (default: 10 MB). |
+| `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 
 ### Constraints
 - Return: FluentBundle instance.
@@ -64,6 +68,8 @@ def for_system_locale(
     cache_size: int = 1000,
     functions: FunctionRegistry | None = None,
     thread_safe: bool = False,
+    max_source_size: int | None = None,
+    max_nesting_depth: int | None = None,
 ) -> FluentBundle:
 ```
 
@@ -75,6 +81,8 @@ def for_system_locale(
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
 | `thread_safe` | `bool` | N | Enable thread-safe operations. |
+| `max_source_size` | `int \| None` | N | Maximum FTL source size in bytes (default: 10 MB). |
+| `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 
 ### Constraints
 - Return: FluentBundle with system locale.

@@ -78,28 +78,26 @@ def test_formatter_json_output_exhaustive():
 # =============================================================================
 
 
-def test_path_resource_loader_get_root_dir_no_static_prefix():
-    """Test PathResourceLoader._get_root_dir() with edge cases.
+def test_path_resource_loader_resolved_root_no_static_prefix():
+    """Test PathResourceLoader._resolved_root caching with edge cases.
 
-    Coverage Target: localization.py:237-243
+    Coverage Target: localization.py:225-237 (__post_init__)
 
-    Tests the fallback logic when:
+    Tests the resolution logic cached at initialization when:
     - template_parts is empty or has no static prefix
     - Falls back to Path.cwd().resolve()
     """
     # Case 1: Template with {locale} at start - empty static prefix
     loader = PathResourceLoader("{locale}/messages.ftl")
-    root = loader._get_root_dir()
     # Should fall back to cwd since static_prefix would be empty string
-    assert root == Path.cwd().resolve()
+    assert loader._resolved_root == Path.cwd().resolve()
 
     # Case 2: Explicitly set root_dir overrides logic
     explicit_root = "/tmp/test_locales"
     loader_with_root = PathResourceLoader(
         "{locale}/messages.ftl", root_dir=explicit_root
     )
-    root_with_override = loader_with_root._get_root_dir()
-    assert root_with_override == Path(explicit_root).resolve()
+    assert loader_with_root._resolved_root == Path(explicit_root).resolve()
 
 
 def test_localization_add_function_to_created_bundle():
@@ -439,15 +437,13 @@ def test_path_resource_loader_edge_case_paths():
     """
     # Edge case: {locale} at start
     loader1 = PathResourceLoader("{locale}/data")
-    root1 = loader1._get_root_dir()
-    assert root1.is_absolute()
+    assert loader1._resolved_root.is_absolute()
 
     # Edge case: Complex path
     loader2 = PathResourceLoader("app/locales/{locale}/messages")
-    root2 = loader2._get_root_dir()
+    root2 = loader2._resolved_root
     assert "app" in str(root2) or root2 == Path("app/locales").resolve()
 
     # Edge case: Trailing slashes
     loader3 = PathResourceLoader("locales/{locale}//")
-    root3 = loader3._get_root_dir()
-    assert root3.is_absolute()
+    assert loader3._resolved_root.is_absolute()

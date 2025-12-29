@@ -205,7 +205,7 @@ class TestLocaleContextCustomPatternCoverage:
         assert "1,234.56" in result or "1234.56" in result
 
     def test_format_currency_code_display_fallback(
-        self, caplog: pytest.LogCaptureFixture
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Line 495: Fallback when pattern lacks currency placeholder.
 
@@ -225,6 +225,13 @@ class TestLocaleContextCustomPatternCoverage:
 
         # Use object.__setattr__ to bypass frozen dataclass
         object.__setattr__(ctx, "_babel_locale", mock_locale)
+
+        # Patch babel's format_currency to return a valid string for fallback
+        monkeypatch.setattr(
+            babel_numbers,
+            "format_currency",
+            lambda *_args, **_kwargs: "$100.00",
+        )
 
         try:
             with caplog.at_level(logging.DEBUG):
@@ -415,7 +422,9 @@ class TestLocaleContextCurrencyCodeFallback:
     2. standard_pattern doesn't have a 'pattern' attribute
     """
 
-    def test_format_currency_code_no_standard_pattern(self) -> None:
+    def test_format_currency_code_no_standard_pattern(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Branch 479->503: standard_pattern is None."""
         ctx = LocaleContext.create_or_raise("en_US")
         original_babel_locale = ctx._babel_locale
@@ -426,6 +435,13 @@ class TestLocaleContextCurrencyCodeFallback:
 
         object.__setattr__(ctx, "_babel_locale", mock_locale)
 
+        # Patch babel's format_currency to return a valid string for fallback
+        monkeypatch.setattr(
+            babel_numbers,
+            "format_currency",
+            lambda *_args, **_kwargs: "$100.00",
+        )
+
         try:
             result = ctx.format_currency(100.0, currency="USD", currency_display="code")
             # Should fall through to default (line 503)
@@ -433,7 +449,9 @@ class TestLocaleContextCurrencyCodeFallback:
         finally:
             object.__setattr__(ctx, "_babel_locale", original_babel_locale)
 
-    def test_format_currency_code_pattern_no_attr(self) -> None:
+    def test_format_currency_code_pattern_no_attr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Branch 479->503: standard_pattern lacks 'pattern' attribute."""
         ctx = LocaleContext.create_or_raise("en_US")
         original_babel_locale = ctx._babel_locale
@@ -444,6 +462,13 @@ class TestLocaleContextCurrencyCodeFallback:
         mock_locale.currency_formats = {"standard": mock_pattern}
 
         object.__setattr__(ctx, "_babel_locale", mock_locale)
+
+        # Patch babel's format_currency to return a valid string for fallback
+        monkeypatch.setattr(
+            babel_numbers,
+            "format_currency",
+            lambda *_args, **_kwargs: "$100.00",
+        )
 
         try:
             result = ctx.format_currency(100.0, currency="USD", currency_display="code")

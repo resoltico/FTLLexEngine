@@ -8,8 +8,8 @@ Particularly useful with mypy --strict for financial applications.
 
 Python 3.13+ with TypeIs support (PEP 742).
 
-v0.28.0: All guards now accept None and return False. This simplifies the pattern
-from `if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
+Note: All guards accept None and return False. This simplifies the pattern from
+`if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
 
 Example:
     >>> from ftllexengine.parsing import parse_decimal

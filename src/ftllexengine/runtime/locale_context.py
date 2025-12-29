@@ -32,6 +32,7 @@ from babel import dates as babel_dates
 from babel import numbers as babel_numbers
 
 from ftllexengine.constants import FALLBACK_FUNCTION_ERROR, MAX_LOCALE_CACHE_SIZE
+from ftllexengine.core.errors import FormattingError
 from ftllexengine.locale_utils import normalize_locale
 
 __all__ = ["LocaleContext"]
@@ -348,10 +349,11 @@ class LocaleContext:
             )
 
         except (ValueError, TypeError, InvalidOperation, AttributeError, KeyError) as e:
-            # Expected errors: invalid format pattern, non-numeric value, decimal conversion,
-            # missing locale data. Unexpected errors propagate for debugging.
-            logger.debug("Number formatting failed: %s", e)
-            return str(value)
+            # Formatting failed - raise FormattingError with fallback value
+            # The resolver will catch this error, collect it, and use the fallback
+            fallback = str(value)
+            msg = f"Number formatting failed for '{value}': {e}"
+            raise FormattingError(msg, fallback_value=fallback) from e
 
     def format_datetime(
         self,
@@ -448,10 +450,11 @@ class LocaleContext:
             )
 
         except (ValueError, OverflowError, AttributeError, KeyError) as e:
-            # Expected errors: year out of range, invalid datetime, missing locale data.
-            # Unexpected errors propagate for debugging.
-            logger.debug("DateTime formatting failed: %s", e)
-            return dt_value.isoformat()
+            # Formatting failed - raise FormattingError with fallback value
+            # The resolver will catch this error, collect it, and use the fallback
+            fallback = dt_value.isoformat()
+            msg = f"DateTime formatting failed for '{dt_value}': {e}"
+            raise FormattingError(msg, fallback_value=fallback) from e
 
     def format_currency(
         self,
@@ -578,7 +581,8 @@ class LocaleContext:
             )
 
         except (ValueError, TypeError, InvalidOperation, AttributeError, KeyError) as e:
-            # Expected errors: invalid currency code, non-numeric value, decimal conversion,
-            # missing locale data. Unexpected errors propagate for debugging.
-            logger.debug("Currency formatting failed: %s", e)
-            return f"{currency} {value}"
+            # Formatting failed - raise FormattingError with fallback value
+            # The resolver will catch this error, collect it, and use the fallback
+            fallback = f"{currency} {value}"
+            msg = f"Currency formatting failed for '{currency} {value}': {e}"
+            raise FormattingError(msg, fallback_value=fallback) from e

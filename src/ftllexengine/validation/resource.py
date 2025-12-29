@@ -38,36 +38,27 @@ logger = logging.getLogger(__name__)
 
 def _extract_syntax_errors(
     resource: Resource,
-    source: str,
+    line_cache: LineOffsetCache,
 ) -> list[ValidationError]:
     """Extract syntax errors from Junk entries.
 
     Converts Junk AST nodes (unparseable content) to structured
     ValidationError objects with line/column information.
 
-    Uses LineOffsetCache for O(n + M log n) total complexity instead of
-    O(M*N) when using Cursor.compute_line_col() for each entry.
-
     Args:
         resource: Parsed Resource AST (may contain Junk entries)
-        source: Original FTL source for position calculation
+        line_cache: Shared line offset cache for position lookups
 
     Returns:
         List of ValidationError objects for each Junk entry
     """
     errors: list[ValidationError] = []
 
-    # Build line offset cache once (O(n)) for efficient position lookups (O(log n) each)
-    line_cache: LineOffsetCache | None = None
-
     for entry in resource.entries:
         if isinstance(entry, Junk):
             line: int | None = None
             column: int | None = None
             if entry.span:
-                # Lazy initialization of cache - only create if we have Junk entries
-                if line_cache is None:
-                    line_cache = LineOffsetCache(source)
                 line, column = line_cache.get_line_col(entry.span.start)
 
             errors.append(
@@ -85,7 +76,7 @@ def _extract_syntax_errors(
 
 def _collect_entries(
     resource: Resource,
-    source: str,
+    line_cache: LineOffsetCache,
 ) -> tuple[dict[str, Message], dict[str, Term], list[ValidationWarning]]:
     """Collect message/term entries and check for structural issues.
 
@@ -95,7 +86,7 @@ def _collect_entries(
 
     Args:
         resource: Parsed Resource AST
-        source: Original FTL source for position calculation
+        line_cache: Shared line offset cache for position lookups
 
     Returns:
         Tuple of (messages_dict, terms_dict, warnings)
@@ -105,15 +96,9 @@ def _collect_entries(
     messages_dict: dict[str, Message] = {}
     terms_dict: dict[str, Term] = {}
 
-    # Build line offset cache once for efficient position lookups
-    line_cache: LineOffsetCache | None = None
-
     def _get_position(entry: Message | Term) -> tuple[int | None, int | None]:
         """Get line/column from entry's span if available."""
-        nonlocal line_cache
         if entry.span:
-            if line_cache is None:
-                line_cache = LineOffsetCache(source)
             return line_cache.get_line_col(entry.span.start)
         return None, None
 
@@ -176,7 +161,7 @@ def _collect_entries(
 def _check_undefined_references(
     messages_dict: dict[str, Message],
     terms_dict: dict[str, Term],
-    source: str,
+    line_cache: LineOffsetCache,
 ) -> list[ValidationWarning]:
     """Check for undefined message and term references.
 
@@ -186,22 +171,16 @@ def _check_undefined_references(
     Args:
         messages_dict: Map of message IDs to Message nodes
         terms_dict: Map of term IDs to Term nodes
-        source: Original FTL source for position calculation
+        line_cache: Shared line offset cache for position lookups
 
     Returns:
         List of warnings for undefined references
     """
     warnings: list[ValidationWarning] = []
 
-    # Build line offset cache once for efficient position lookups
-    line_cache: LineOffsetCache | None = None
-
     def _get_position(entry: Message | Term) -> tuple[int | None, int | None]:
         """Get line/column from entry's span if available."""
-        nonlocal line_cache
         if entry.span:
-            if line_cache is None:
-                line_cache = LineOffsetCache(source)
             return line_cache.get_line_col(entry.span.start)
         return None, None
 
@@ -405,14 +384,17 @@ def validate_resource(
     try:
         resource = parser.parse(source)
 
+        # Build line offset cache once for all validation passes (O(n))
+        line_cache = LineOffsetCache(source)
+
         # Pass 1: Extract syntax errors from Junk entries
-        errors = _extract_syntax_errors(resource, source)
+        errors = _extract_syntax_errors(resource, line_cache)
 
         # Pass 2: Collect entries and check structural issues
-        messages_dict, terms_dict, structure_warnings = _collect_entries(resource, source)
+        messages_dict, terms_dict, structure_warnings = _collect_entries(resource, line_cache)
 
         # Pass 3: Check undefined references
-        ref_warnings = _check_undefined_references(messages_dict, terms_dict, source)
+        ref_warnings = _check_undefined_references(messages_dict, terms_dict, line_cache)
 
         # Pass 4: Detect circular dependencies
         cycle_warnings = _detect_circular_references(messages_dict, terms_dict)

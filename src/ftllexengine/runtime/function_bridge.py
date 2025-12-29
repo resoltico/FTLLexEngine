@@ -253,7 +253,15 @@ class FunctionRegistry:
             ftl_name = getattr(func, "__name__", "unknown").upper()
 
         # Auto-generate parameter mappings from function signature
-        sig = signature(func)
+        try:
+            sig = signature(func)
+        except ValueError as e:
+            # Some callables (certain C functions, mock objects) don't have signatures
+            msg = (
+                f"Cannot register '{ftl_name}': callable has no inspectable signature. "
+                f"Use param_mapping parameter to provide explicit mappings. Error: {e}"
+            )
+            raise TypeError(msg) from e
         auto_map: dict[str, str] = {}
 
         for param_name in sig.parameters:

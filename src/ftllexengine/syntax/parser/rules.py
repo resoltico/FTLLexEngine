@@ -5,10 +5,6 @@ This module provides all parsing rules for FTL grammar constructs:
 - Expression parsing (inline expressions, select expressions, function calls)
 - Entry parsing (messages, terms, attributes, comments)
 
-v0.29.0: Improved documentation of lookahead patterns.
-v0.27.0: Merged entries.py to eliminate circular imports between entry and pattern parsing.
-v0.26.0: Merged patterns.py and expressions.py to eliminate circular imports.
-
 All grammar rules are co-located in a single module to:
 1. Eliminate circular imports between interdependent parsing functions
 2. Simplify the import graph
@@ -176,7 +172,7 @@ def _is_valid_variant_key_char(ch: str, is_first: bool) -> bool:
 
 
 def _is_variant_marker(cursor: Cursor) -> bool:
-    """Check if cursor is at a variant marker using lookahead.
+    """Check if cursor is at a variant marker using bounded lookahead.
 
     Distinguishes actual variant syntax from literal text:
     - '*' is a variant marker only if followed by '['
@@ -194,6 +190,11 @@ def _is_variant_marker(cursor: Cursor) -> bool:
     - [INFO] message - has text after ] on same line
     - [matrix * vector] - contains spaces and operators
 
+    Security:
+        Uses bounded lookahead (max 128 chars) to prevent O(N^2) parsing
+        on adversarial input like `[[[[...` with many unclosed brackets.
+        Variant keys are identifiers/numbers which are always short.
+
     Args:
         cursor: Current position in source
 
@@ -204,6 +205,10 @@ def _is_variant_marker(cursor: Cursor) -> bool:
         PLR0911 waiver: Multiple returns are intentional for early-exit
         pattern matching, which is clearer than nested conditionals.
     """
+    # Maximum lookahead distance - variant keys are short (identifiers/numbers)
+    # This prevents O(N^2) worst-case on adversarial input like [[[[...
+    max_lookahead = 128
+
     if cursor.is_eof:
         return False
 
@@ -222,10 +227,13 @@ def _is_variant_marker(cursor: Cursor) -> bool:
         scan = cursor.advance()
         is_first = True
         has_content = False
+        lookahead_count = 0
 
-        # Find the closing ]
-        while not scan.is_eof:
+        # Find the closing ] with bounded lookahead
+        while not scan.is_eof and lookahead_count < max_lookahead:
             c = scan.current
+            lookahead_count += 1
+
             if c == "]":
                 # Found closing bracket - now check what follows
                 if not has_content:
@@ -234,9 +242,15 @@ def _is_variant_marker(cursor: Cursor) -> bool:
                 # Check what comes after ]
                 after_bracket = scan.advance()
 
-                # Skip whitespace on same line
-                while not after_bracket.is_eof and after_bracket.current in (" ", "\t"):
+                # Skip whitespace on same line (also bounded)
+                ws_count = 0
+                while (
+                    not after_bracket.is_eof
+                    and after_bracket.current in (" ", "\t")
+                    and ws_count < max_lookahead
+                ):
                     after_bracket = after_bracket.advance()
+                    ws_count += 1
 
                 if after_bracket.is_eof:
                     return True  # EOF after ] - valid variant
@@ -255,7 +269,8 @@ def _is_variant_marker(cursor: Cursor) -> bool:
             is_first = False
             scan = scan.advance()
 
-        return False  # EOF before ']' - literal text
+        # Exceeded lookahead or EOF before ']' - treat as literal text
+        return False
 
     return False
 
@@ -270,9 +285,8 @@ def parse_simple_pattern(
     Stops at variant delimiters to allow proper parsing of inline and
     multiline select expressions.
 
-    v0.38.0: Added multiline continuation support for variant values.
-        Variant values can now span multiple lines when continuation lines
-        are indented, matching the behavior of top-level message patterns.
+    Supports multiline continuation: variant values can span multiple lines when
+    continuation lines are indented, matching the behavior of top-level patterns.
 
     Handles:
     - Plain text with multi-line continuation (indented lines)
@@ -284,7 +298,7 @@ def parse_simple_pattern(
     - Asterisk (*): Start of default variant marker (only if followed by '[')
     - Newline (\\n, \\r): End of variant value UNLESS followed by indented continuation
 
-    Lookahead (v0.26.0):
+    Lookahead:
         '*' and '[' are only treated as variant markers when they form valid
         variant syntax. Standalone '*' or '[' without matching pattern are
         treated as literal text, enabling values like "[INFO]" or "3 * 5".
@@ -294,7 +308,7 @@ def parse_simple_pattern(
         "Hi {$name}"  -> Pattern([TextElement("Hi "), Placeable(...)])
         "[INFO] msg"  -> Pattern([TextElement("[INFO] msg")])  # [ is literal
         "3 * 5"  -> Pattern([TextElement("3 * 5")])  # * is literal
-        "Line 1\\n    Line 2" -> Pattern with multiline content (v0.38.0)
+        "Line 1\\n    Line 2" -> Pattern with multiline content
 
     Args:
         cursor: Current position in source
@@ -318,7 +332,7 @@ def parse_simple_pattern(
         if ch in ("[", "*") and _is_variant_marker(cursor):
             break
 
-        # Handle newlines - check for indented continuation (v0.38.0)
+        # Handle newlines - check for indented continuation
         if ch in ("\n", "\r"):
             if is_indented_continuation(cursor):
                 # Skip newline and consume indentation
@@ -654,7 +668,7 @@ def parse_argument_expression(
 ) -> ParseResult[InlineExpression] | None:
     """Parse a single argument expression per FTL spec.
 
-    FTL Argument Grammar (v0.33.0):
+    FTL Argument Grammar:
         InlineExpression ::= StringLiteral | NumberLiteral | FunctionReference
                            | MessageReference | TermReference | VariableReference
                            | inline_placeable
@@ -1238,7 +1252,7 @@ def parse_placeable(
 
 
 # =============================================================================
-# Entry Parsing (v0.27.0: Merged from entries.py to eliminate circular imports)
+# Entry Parsing
 # =============================================================================
 
 

@@ -7,9 +7,9 @@ Methods are named visit_NodeName (PascalCase) rather than visit_node_name (snake
 This is an intentional architectural decision to maintain consistency with Python's
 AST visitor pattern. See: https://docs.python.org/3/library/ast.html#ast.NodeVisitor
 
-Type System (v0.36.0):
+Type Parameters:
 - ASTVisitor[T] is generic over return type T
-- ASTVisitor (no type param) defaults to T=ASTNode for backwards compatibility
+- ASTVisitor (no type param) defaults to T=ASTNode
 - ASTTransformer uses extended return type: ASTNode | None | list[ASTNode]
 
 Python 3.13+.
@@ -39,7 +39,7 @@ from .ast import (
 
 __all__ = ["ASTTransformer", "ASTVisitor"]
 
-# Type aliases for visitor return types (v0.36.0)
+# Type aliases for visitor return types
 type VisitorResult = ASTNode
 type TransformerResult = ASTNode | None | list[ASTNode]
 

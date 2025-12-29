@@ -165,19 +165,19 @@ class TestValidationResultFormat:
 # ============================================================================
 
 
-class TestPathResourceLoaderRootDir:
-    """Test PathResourceLoader._get_root_dir edge cases."""
+class TestPathResourceLoaderResolvedRoot:
+    """Test PathResourceLoader._resolved_root caching."""
 
-    def test_root_dir_fallback_to_cwd(self) -> None:
-        """Line 122: Test fallback to cwd when no static prefix."""
+    def test_resolved_root_fallback_to_cwd(self) -> None:
+        """Test fallback to cwd when no static prefix."""
         # Create loader with no static prefix in path_pattern
         # When base_path is just "{locale}", the static prefix is empty
         loader = PathResourceLoader("{locale}")
-        # The _get_root_dir() method should fall back to cwd
+        # The _resolved_root is cached at initialization and should be cwd
         expected = Path.cwd().resolve()
-        # Access via the internal method that handles fallback
+        # Access via the internal cached field
         # pylint: disable=protected-access
-        assert loader._get_root_dir() == expected
+        assert loader._resolved_root == expected
 
 
 # ============================================================================

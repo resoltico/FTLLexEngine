@@ -219,29 +219,22 @@ class PathResourceLoader:
 
     base_path: str
     root_dir: str | None = None
+    _resolved_root: Path = field(init=False, repr=False)
 
-    def _get_root_dir(self) -> Path:
-        """Get the fixed root directory for path validation.
-
-        Returns:
-            Resolved root directory Path.
-            If root_dir was specified, returns that.
-            Otherwise, extracts the static prefix from base_path (before {locale}).
-        """
+    def __post_init__(self) -> None:
+        """Cache resolved root directory at initialization."""
         if self.root_dir is not None:
-            return Path(self.root_dir).resolve()
-
-        # Extract static prefix from base_path template
-        # e.g., "locales/{locale}" -> "locales"
-        # e.g., "/app/locales/{locale}/messages" -> "/app/locales"
-        template_parts = self.base_path.split("{locale}")
-        if template_parts:
-            static_prefix = template_parts[0].rstrip("/\\")
-            if static_prefix:
-                return Path(static_prefix).resolve()
-
-        # Fallback to current directory if no static prefix
-        return Path.cwd().resolve()
+            resolved = Path(self.root_dir).resolve()
+        else:
+            # Extract static prefix from base_path template
+            # e.g., "locales/{locale}" -> "locales"
+            template_parts = self.base_path.split("{locale}")
+            if template_parts:
+                static_prefix = template_parts[0].rstrip("/\\")
+                resolved = Path(static_prefix).resolve() if static_prefix else Path.cwd().resolve()
+            else:
+                resolved = Path.cwd().resolve()
+        object.__setattr__(self, "_resolved_root", resolved)
 
     @staticmethod
     def _validate_locale(locale: LocaleCode) -> None:
@@ -293,8 +286,7 @@ class PathResourceLoader:
         # Security: Validate resource_id against path traversal attacks
         self._validate_resource_id(resource_id)
 
-        # Get fixed root directory (cannot be influenced by locale)
-        root_dir = self._get_root_dir()
+        # Use cached root directory (cannot be influenced by locale)
 
         # Substitute {locale} in path template
         locale_path = self.base_path.format(locale=locale)
@@ -303,7 +295,7 @@ class PathResourceLoader:
 
         # Security: Verify resolved path is within FIXED root directory
         # This prevents locale manipulation from escaping the intended directory
-        if not self._is_safe_path(root_dir, full_path):
+        if not self._is_safe_path(self._resolved_root, full_path):
             msg = (
                 f"Path traversal detected: resolved path escapes root directory. "
                 f"locale='{locale}', resource_id='{resource_id}'"

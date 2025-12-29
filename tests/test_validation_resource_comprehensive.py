@@ -12,6 +12,7 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
+from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.validation.resource import validate_resource
 
 
@@ -577,8 +578,8 @@ class TestMessageWithoutValueOrAttributes:
         # Create Resource with this message
         resource = Resource(entries=(message_with_no_content,))
 
-        # Call _collect_entries directly (empty string for source since we're testing AST directly)
-        _messages_dict, _terms_dict, warnings = _collect_entries(resource, "")
+        # Call _collect_entries directly with empty LineOffsetCache for AST-only testing
+        _messages_dict, _terms_dict, warnings = _collect_entries(resource, LineOffsetCache(""))
 
         # Should have warning about no value or attributes (line 113)
         no_value_warnings = [
@@ -645,8 +646,8 @@ class TestMissingBranchCoverage:
         junk_no_span = Junk(content="invalid", span=None)
         resource = Resource(entries=(junk_no_span,))
 
-        # Extract errors
-        errors = _extract_syntax_errors(resource, "source")
+        # Extract errors with LineOffsetCache
+        errors = _extract_syntax_errors(resource, LineOffsetCache("source"))
 
         # Should have error with line=None, column=None
         assert len(errors) == 1
@@ -693,8 +694,8 @@ class TestMissingBranchCoverage:
         messages_dict = {"existing_msg": existing_message}  # Message exists
         terms_dict = {"myterm": term_with_msg_ref}
 
-        # Check references (empty string for source since we're testing AST directly)
-        warnings = _check_undefined_references(messages_dict, terms_dict, "")
+        # Check references with empty LineOffsetCache for AST-only testing
+        warnings = _check_undefined_references(messages_dict, terms_dict, LineOffsetCache(""))
 
         # Should have NO warnings (message exists)
         # This tests branch 187->186 (if condition is False, continue to next iteration)

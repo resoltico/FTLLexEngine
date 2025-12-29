@@ -90,14 +90,14 @@ class TestNumberFormattingErrorPaths:
         assert isinstance(result, str)
 
     def test_format_number_value_error_path(
-        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """ValueError in format_number hits lines 175-176."""
+        """ValueError in format_number raises FormattingError with fallback."""
         from babel import numbers as babel_numbers
 
-        ctx = LocaleContext.create_or_raise("en_US")
+        from ftllexengine.core.errors import FormattingError
 
-        original_format_decimal = babel_numbers.format_decimal
+        ctx = LocaleContext.create_or_raise("en_US")
 
         def mock_format_decimal(*_args, **_kwargs):
             # Raise ValueError to hit the specific exception handler
@@ -106,16 +106,11 @@ class TestNumberFormattingErrorPaths:
 
         monkeypatch.setattr(babel_numbers, "format_decimal", mock_format_decimal)
 
-        with caplog.at_level(logging.WARNING):
-            result = ctx.format_number(123.45)
+        with pytest.raises(FormattingError) as exc_info:
+            ctx.format_number(123.45)
 
-        # Should have logged warning and returned fallback
-        assert isinstance(result, str)
-        # Verify fallback contains the original value
-        assert "123" in result
-
-        # Restore (monkeypatch handles this)
-        monkeypatch.setattr(babel_numbers, "format_decimal", original_format_decimal)
+        # Fallback should contain the original value
+        assert "123" in exc_info.value.fallback_value
 
 
 class TestDatetimeFormattingErrorPaths:
@@ -167,10 +162,12 @@ class TestCurrencyFormattingErrorPaths:
         assert isinstance(result, str)
 
     def test_format_currency_babel_error_path(
-        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Babel error in format_currency hits exception handler."""
+        """Babel error in format_currency raises FormattingError with fallback."""
         from babel import numbers as babel_numbers
+
+        from ftllexengine.core.errors import FormattingError
 
         ctx = LocaleContext.create_or_raise("en_US")
 
@@ -180,12 +177,11 @@ class TestCurrencyFormattingErrorPaths:
 
         monkeypatch.setattr(babel_numbers, "format_currency", mock_format_currency)
 
-        with caplog.at_level(logging.WARNING):
-            result = ctx.format_currency(100.0, currency="USD")
+        with pytest.raises(FormattingError) as exc_info:
+            ctx.format_currency(100.0, currency="USD")
 
-        # Should return fallback string
-        assert isinstance(result, str)
-        assert "100" in result or "USD" in result
+        # Fallback should contain currency and/or value
+        assert "100" in exc_info.value.fallback_value or "USD" in exc_info.value.fallback_value
 
 
 class TestLocaleContextValidLocales:
@@ -400,13 +396,15 @@ class TestCombinedDateTimeFormatting:
 
 
 class TestDateTimeExceptionHandling:
-    """Test datetime exception handling (lines 390-394)."""
+    """Test datetime exception handling raises FormattingError."""
 
     def test_format_datetime_overflow_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """COVERAGE: Lines 390-394 - OverflowError triggers fallback."""
+        """OverflowError raises FormattingError with ISO fallback."""
         from babel import dates as babel_dates
+
+        from ftllexengine.core.errors import FormattingError
 
         ctx = LocaleContext.create_or_raise("en-US")
 
@@ -417,17 +415,19 @@ class TestDateTimeExceptionHandling:
         monkeypatch.setattr(babel_dates, "format_date", mock_format_date)
 
         dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-        result = ctx.format_datetime(dt, date_style="short")
+        with pytest.raises(FormattingError) as exc_info:
+            ctx.format_datetime(dt, date_style="short")
 
-        # Should return ISO fallback
-        assert isinstance(result, str)
-        assert "2025" in result
+        # Fallback should be ISO format
+        assert "2025" in exc_info.value.fallback_value
 
     def test_format_datetime_attribute_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """COVERAGE: Lines 390-394 - AttributeError triggers fallback."""
+        """AttributeError raises FormattingError with fallback."""
         from babel import dates as babel_dates
+
+        from ftllexengine.core.errors import FormattingError
 
         ctx = LocaleContext.create_or_raise("en-US")
 
@@ -438,10 +438,11 @@ class TestDateTimeExceptionHandling:
         monkeypatch.setattr(babel_dates, "format_date", mock_format_date)
 
         dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
-        result = ctx.format_datetime(dt, date_style="short")
+        with pytest.raises(FormattingError) as exc_info:
+            ctx.format_datetime(dt, date_style="short")
 
-        # Should return ISO fallback
-        assert isinstance(result, str)
+        # Fallback should be present
+        assert exc_info.value.fallback_value is not None
 
 
 # ============================================================================

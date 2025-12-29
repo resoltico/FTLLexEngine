@@ -226,7 +226,7 @@ class FormatCache:
 
         Converts unhashable types (lists, dicts, sets) to hashable equivalents.
 
-        Performance Optimization (v0.36.0):
+        Performance Optimization:
             Fast path: If all args are already hashable primitives (the common case),
             skip the expensive _make_hashable() conversion entirely. This reduces
             overhead from O(N) conversions to O(N) type checks, which is faster

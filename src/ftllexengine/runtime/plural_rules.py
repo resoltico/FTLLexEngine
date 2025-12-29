@@ -40,7 +40,7 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
         >>> select_plural_category(42, "ja_JP")
         'other'
 
-    v0.9.0 Architecture:
+    Architecture:
         Uses Babel's Locale.plural_form which provides CLDR-compliant plural rules
         for all supported locales. This is more maintainable and complete than
         hardcoding rules for individual languages.

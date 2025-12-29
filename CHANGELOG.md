@@ -13,7 +13,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.39.0] - 2025-12-28
+## [0.40.0] - 2025-12-29
+
+### Breaking Changes
+- **Error Propagation Architecture**: Formatting functions now raise `FormattingError` instead of returning fallback values:
+  - `LocaleContext.format_number()`, `format_datetime()`, `format_currency()` raise `FormattingError`
+  - `FormattingError.fallback_value` contains the fallback string for resolver to use
+  - Resolver catches `FormattingError`, collects it as `FluentError`, and uses `fallback_value`
+  - Enables proper error reporting to callers via `(result, errors)` tuple pattern
+- **Currency Module Architecture**: `CurrencyDataProvider` singleton class removed:
+  - Module-level `@functools.cache` functions replace class-based singleton
+  - `_build_currency_maps_from_cldr()` cached for process lifetime
+  - Thread-safe via `functools.cache` internal locking
+  - Aligns with `dates.py` CLDR data access pattern
+- **Serializer Defaults**: `serialize()` and `FluentSerializer.serialize()` now default to `validate=True`:
+  - Invalid ASTs (e.g., SelectExpression without default variant) raise `SerializationValidationError`
+  - Previous default (`validate=False`) silently produced invalid FTL
+  - Use `validate=False` explicitly for trusted ASTs only
+- **Internal API Removals**:
+  - `_get_root_dir()` method removed from `PathResourceLoader`; use `_resolved_root` cached field
+  - `has_timezone` parameter removed from `_preprocess_datetime_input()` (was ignored)
+  - Version provenance comments removed from source files (CHANGELOG.md is single source of truth)
+- `introspect_message()` now raises `TypeError` for invalid input types:
+  - Accepts only `Message` or `Term` AST nodes
+  - Previously raised `AttributeError` deep in visitor traversal
+
+### Added
+- **Core Package** (`ftllexengine.core`): Shared infrastructure components:
+  - `ftllexengine.core.errors.FormattingError` for formatting function error propagation
+  - `ftllexengine.core.depth_guard.DepthGuard` moved from `syntax.parser.primitives`
+  - Resolves circular dependency between `syntax` and `runtime` packages
+- **Parser Security Configuration** on `FluentBundle`:
+  - `max_source_size` parameter (default: 10 MB) limits FTL source size
+  - `max_nesting_depth` parameter (default: 100) limits placeable nesting
+  - `max_source_size` and `max_nesting_depth` read-only properties for introspection
+- **Type Validation** in `introspect_message()`:
+  - Runtime check raises `TypeError("Expected Message or Term, got X")` for invalid types
+  - Provides clear error message at API boundary instead of deep `AttributeError`
+
+### Changed
+- **Error Propagation**: `LocaleContext` formatting methods propagate errors via `FormattingError`:
+  - Replaces silent fallback returns that masked configuration issues
+  - `FluentResolver` catches errors, adds to error list, uses `fallback_value`
+  - Callers can now detect and report formatting failures
+- **CLDR Data Access**: Currency module uses `@functools.cache` pattern:
+  - `_get_currency_maps()` returns merged fast-tier + full CLDR data
+  - `_get_currency_maps_full()` returns complete CLDR scan (lazy-loaded)
+  - Consistent with `dates.py` approach; removes class-based singleton
+- **Visitor Type Safety**: `IntrospectionVisitor` now typed as `ASTVisitor[None]`:
+  - Explicitly declares visitor returns `None` (side-effect only)
+  - `ReferenceExtractor` typed as `ASTVisitor[MessageReference | TermReference]`
+- **Validation Performance**: Shared `LineOffsetCache` across validation passes:
+  - Built once in `validate_resource()`, passed to all helper functions
+  - Eliminates redundant O(n) source scans per validation pass
+- **Path Resolution Performance**: `PathResourceLoader` caches resolved root:
+  - `_resolved_root` computed once in `__post_init__`
+  - Eliminates repeated `Path.resolve()` syscalls on each `load()` call
+- **Test Strategy**: `ftl_select_expressions()` now ensures valid SelectExpressions:
+  - Exactly one default variant (per Fluent spec)
+  - Unique variant keys (prevents duplicate key validation errors)
+
+### Fixed
+- **Parser DoS Vulnerability**: Quadratic lookahead in variant detection:
+  - `_is_variant_marker()` limited to prevent O(N^2) worst-case
+  - Crafted input with many `[` characters no longer causes quadratic scan
+- **Parser Performance**: String concatenation in loops replaced with list join:
+  - `parse_string_literal()` uses `chars.append()` + `"".join(chars)`
+  - Avoids O(N^2) worst-case from string immutability
+- **Validation Performance**: Redundant `LineOffsetCache` construction:
+  - Previous: Each helper function built separate cache (3-4x redundant scans)
+  - Fixed: Single cache shared across all validation passes
+- **Error Formatting Performance**: `ParseError` uses `LineOffsetCache`:
+  - Previous: O(N) line/column computation per error
+  - Fixed: O(log N) lookup via shared binary search index
+- **Silent Formatting Failures**: `LocaleContext` now propagates errors:
+  - Previous: Invalid patterns, missing locale data returned silent fallbacks
+  - Fixed: `FormattingError` raised, collected by resolver, reported to caller
+
+### Removed
+- `CurrencyDataProvider` class from `parsing/currency.py`
+- `_get_root_dir()` method from `PathResourceLoader`
+- `has_timezone` parameter from `_preprocess_datetime_input()`
+
+## [0.39.0] - 2025-12-29
 
 ### Breaking Changes
 - FTL identifier parsing now enforces ASCII-only characters per Fluent specification:
@@ -391,6 +473,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.40.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.40.0
 [0.39.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.39.0
 [0.38.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.38.0
 [0.37.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.37.0

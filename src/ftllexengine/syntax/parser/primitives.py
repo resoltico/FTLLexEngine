@@ -374,7 +374,8 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
         return None
 
     cursor = cursor.advance()  # Skip opening "
-    value = ""
+    # Use list accumulation to avoid O(N^2) string concatenation
+    chars: list[str] = []
 
     while not cursor.is_eof:
         ch = cursor.current
@@ -382,7 +383,7 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
         if ch == '"':
             # Closing quote - done!
             cursor = cursor.advance()
-            return ParseResult(value, cursor)
+            return ParseResult("".join(chars), cursor)
 
         if ch == "\\":
             # Escape sequence - use extracted helper
@@ -392,11 +393,11 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
                 return escape_result
 
             escaped_char, cursor = escape_result
-            value += escaped_char
+            chars.append(escaped_char)
 
         else:
             # Regular character
-            value += ch
+            chars.append(ch)
             cursor = cursor.advance()
 
     # EOF without closing quote

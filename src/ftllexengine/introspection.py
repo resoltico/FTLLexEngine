@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .constants import MAX_DEPTH
+from .core.depth_guard import DepthGuard
 from .enums import ReferenceKind, VariableContext
-from .runtime.depth_guard import DepthGuard
 from .syntax.ast import (
     FunctionReference,
     Message,
@@ -154,20 +154,20 @@ class MessageIntrospection:
 # ==============================================================================
 
 
-class IntrospectionVisitor(ASTVisitor):
+class IntrospectionVisitor(ASTVisitor[None]):
     """AST visitor that extracts variables, functions, and references from messages.
 
     Uses Python 3.13's pattern matching for elegant AST traversal and TypeIs
     for type-safe runtime narrowing.
 
-    Note on Traversal (v0.8.0):
+    Note on Traversal:
         This visitor intentionally overrides pattern traversal instead of calling
         super().visit_Pattern(). The FTL specification's Pattern structure is stable
         (elements only), and our introspection logic requires specific handling
         of each element type. Calling super() would invoke generic_visit() which
         is a no-op for this visitor pattern.
 
-    Depth Limiting (v0.32.0):
+    Depth Limiting:
         Includes DepthGuard to prevent stack overflow on adversarial or
         programmatically constructed deeply nested ASTs. While parser-produced
         ASTs have implicit limits, programmatic construction bypasses the parser.
@@ -313,7 +313,7 @@ class IntrospectionVisitor(ASTVisitor):
 # ==============================================================================
 
 
-class ReferenceExtractor(ASTVisitor):
+class ReferenceExtractor(ASTVisitor[MessageReference | TermReference]):
     """Extract message and term references from AST for validation.
 
     Specialized visitor that collects only MessageReference and TermReference
@@ -323,7 +323,7 @@ class ReferenceExtractor(ASTVisitor):
     This is intentionally simpler than IntrospectionVisitor - it does one thing
     well: extract reference IDs for dependency analysis.
 
-    Depth Limiting (v0.33.0):
+    Depth Limiting:
         Includes DepthGuard to prevent stack overflow on adversarial or
         programmatically constructed deeply nested ASTs.
 
@@ -420,6 +420,9 @@ def introspect_message(message: Message | Term) -> MessageIntrospection:
     Returns:
         Complete introspection result with variables, functions, and references
 
+    Raises:
+        TypeError: If message is not a Message or Term AST node
+
     Example:
         >>> from ftllexengine import FluentParserV1
         >>> parser = FluentParserV1()
@@ -429,7 +432,7 @@ def introspect_message(message: Message | Term) -> MessageIntrospection:
         >>> print(info.get_variable_names())
         frozenset({'name'})
     """
-    # Runtime validation for improper calls (type signature ensures correct usage at compile time)
+    # Validate input type at API boundary (runtime check for callers ignoring type hints)
     if not isinstance(message, (Message, Term)):
         msg = f"Expected Message or Term, got {type(message).__name__}"  # type: ignore[unreachable]
         raise TypeError(msg)

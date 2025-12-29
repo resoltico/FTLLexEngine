@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.39.0"
+version: "0.40.0"
 domain: PARSING
-updated: "2025-12-28"
+updated: "2025-12-29"
 route:
   keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax]
   questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?"]
@@ -48,7 +48,7 @@ def serialize(
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `resource` | `Resource` | Y | Resource AST node. |
-| `validate` | `bool` | N | Validate AST before serialization (default: False). |
+| `validate` | `bool` | N | Validate AST before serialization (default: True). |
 | `max_depth` | `int` | N | Maximum nesting depth (default: 100). |
 
 ### Constraints

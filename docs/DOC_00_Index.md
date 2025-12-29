@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.39.0"
+version: "0.40.0"
 domain: INDEX
-updated: "2025-12-28"
+updated: "2025-12-29"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?"]
@@ -96,6 +96,14 @@ from ftllexengine.analysis.graph import build_dependency_graph
 from ftllexengine.validation import validate_resource
 ```
 
+### Core Utilities (`from ftllexengine.core import ...`)
+```python
+from ftllexengine.core import (
+    DepthGuard, DepthLimitExceededError,  # Depth limiting
+    FormattingError,                       # Formatting errors with fallback
+)
+```
+
 ### Visitor (`from ftllexengine.syntax.visitor import ...`)
 ```python
 from ftllexengine.syntax.visitor import ASTVisitor
@@ -130,7 +138,7 @@ from ftllexengine.localization import (
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
-| FluentError, FluentReferenceError, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
+| FluentError, FluentReferenceError, FormattingError, DepthGuard, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, build_dependency_graph, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Introspection |
 
@@ -145,6 +153,10 @@ ftllexengine/
   enums.py                 # CommentType, VariableContext, ReferenceKind
   localization.py          # FluentLocalization, PathResourceLoader
   introspection.py         # MessageIntrospection, introspect_message, extract_references
+  core/
+    __init__.py            # Core exports (DepthGuard, FormattingError)
+    depth_guard.py         # DepthGuard, DepthLimitExceededError
+    errors.py              # FormattingError
   analysis/
     __init__.py            # Analysis API exports
     graph.py               # detect_cycles, build_dependency_graph
@@ -168,7 +180,6 @@ ftllexengine/
     functions.py           # Built-in functions, create_default_registry, get_shared_registry
     function_bridge.py     # FunctionRegistry, fluent_function
     plural_rules.py        # select_plural_category
-    depth_guard.py         # DepthGuard, DepthLimitExceededError
   parsing/
     __init__.py            # Parsing API exports
     numbers.py             # parse_number, parse_decimal

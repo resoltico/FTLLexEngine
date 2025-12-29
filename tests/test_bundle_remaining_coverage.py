@@ -315,3 +315,33 @@ button = Click
         assert bundle.has_attribute("button", "aria-label") is True
         assert bundle.has_attribute("button", "placeholder") is True
         assert bundle.has_attribute("button", "missing") is False
+
+
+class TestMaxSourceSizeProperty:
+    """Test max_source_size property getter (line 329)."""
+
+    def test_max_source_size_returns_configured_value(self) -> None:
+        """Test max_source_size property returns configured limit."""
+        bundle = FluentBundle("en", max_source_size=500_000)
+        assert bundle.max_source_size == 500_000
+
+    def test_max_source_size_returns_default_value(self) -> None:
+        """Test max_source_size property returns default when not specified."""
+        bundle = FluentBundle("en")
+        # Default is 10 MB from constants
+        assert bundle.max_source_size == 10_485_760
+
+
+class TestMaxNestingDepthProperty:
+    """Test max_nesting_depth property getter (line 343)."""
+
+    def test_max_nesting_depth_returns_configured_value(self) -> None:
+        """Test max_nesting_depth property returns configured limit."""
+        bundle = FluentBundle("en", max_nesting_depth=50)
+        assert bundle.max_nesting_depth == 50
+
+    def test_max_nesting_depth_returns_default_value(self) -> None:
+        """Test max_nesting_depth property returns default when not specified."""
+        bundle = FluentBundle("en")
+        # Default is 100 from constants
+        assert bundle.max_nesting_depth == 100

@@ -2,7 +2,7 @@
 
 Provides reusable depth tracking to prevent stack overflow from:
 - Deep Placeable nesting in resolution
-- Deep AST nesting in validation
+- Deep AST nesting in validation/serialization
 - Programmatically constructed adversarial ASTs
 
 Thread-safe: uses explicit state, no thread-local storage.
@@ -17,10 +17,7 @@ from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import FluentResolutionError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
-__all__ = ["MAX_DEPTH", "DepthGuard", "DepthLimitExceededError"]
-
-# Re-export MAX_DEPTH for backwards compatibility and convenient import.
-# Canonical source: ftllexengine.constants.MAX_DEPTH
+__all__ = ["DepthGuard", "DepthLimitExceededError"]
 
 
 class DepthLimitExceededError(FluentResolutionError):

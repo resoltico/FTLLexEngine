@@ -45,7 +45,7 @@ from .ast import (
 from .visitor import ASTVisitor
 
 if TYPE_CHECKING:
-    from ftllexengine.runtime.depth_guard import DepthGuard
+    from ftllexengine.core.depth_guard import DepthGuard
 
 __all__ = [
     "FluentSerializer",
@@ -180,7 +180,7 @@ class FluentSerializer(ASTVisitor):
         self,
         resource: Resource,
         *,
-        validate: bool = False,
+        validate: bool = True,
         max_depth: int = MAX_DEPTH,
     ) -> str:
         """Serialize Resource to FTL string.
@@ -190,8 +190,9 @@ class FluentSerializer(ASTVisitor):
 
         Args:
             resource: Resource AST node
-            validate: If True, validate AST before serialization (default: False).
+            validate: If True, validate AST before serialization (default: True).
                      Checks that SelectExpressions have exactly one default variant.
+                     Set to False only for trusted ASTs from the parser.
             max_depth: Maximum nesting depth (default: 100). Prevents stack
                       overflow from adversarial or malformed ASTs.
 
@@ -202,9 +203,8 @@ class FluentSerializer(ASTVisitor):
             SerializationValidationError: If validate=True and AST is invalid
             SerializationDepthError: If AST nesting exceeds max_depth
         """
-        # PLC0415: Runtime import to break circular dependency chain:
-        # serializer (syntax) imports depth_guard (runtime) imports diagnostics imports syntax
-        from ftllexengine.runtime.depth_guard import (  # noqa: PLC0415
+        # Runtime import to resolve circular dependency (core -> syntax -> core)
+        from ftllexengine.core.depth_guard import (  # noqa: PLC0415
             DepthGuard,
             DepthLimitExceededError,
         )
@@ -494,7 +494,7 @@ class FluentSerializer(ASTVisitor):
 def serialize(
     resource: Resource,
     *,
-    validate: bool = False,
+    validate: bool = True,
     max_depth: int = MAX_DEPTH,
 ) -> str:
     """Serialize Resource to FTL string.
@@ -503,8 +503,9 @@ def serialize(
 
     Args:
         resource: Resource AST node
-        validate: If True, validate AST before serialization (default: False).
+        validate: If True, validate AST before serialization (default: True).
                  Checks that SelectExpressions have exactly one default variant.
+                 Set to False only for trusted ASTs from the parser.
         max_depth: Maximum nesting depth (default: 100). Prevents stack
                   overflow from adversarial or malformed ASTs.
 

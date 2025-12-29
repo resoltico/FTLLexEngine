@@ -18,6 +18,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
+from ftllexengine.core.errors import FormattingError
 from ftllexengine.runtime.functions import currency_format
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -158,7 +159,11 @@ class TestCurrencyFunction:
 
 
 class TestCurrencyFunctionErrorHandling:
-    """Test currency_format() error handling."""
+    """Test currency_format() error handling.
+
+    FormattingError is raised with fallback_value for invalid inputs.
+    The resolver catches this exception and uses the fallback in output.
+    """
 
     def test_currency_invalid_code_returns_fallback(self) -> None:
         """Invalid currency code (XXX) returns graceful fallback."""
@@ -167,19 +172,22 @@ class TestCurrencyFunctionErrorHandling:
         # Should return fallback format
         assert "XXX" in result or "100" in result
 
-    def test_currency_with_string_value_returns_fallback(self) -> None:
-        """Non-numeric value returns fallback."""
-        result = currency_format("not a number", "en-US", currency="USD")  # type: ignore
-        assert isinstance(result, str)
-        # Should return fallback
-        assert "USD" in result or "not a number" in result
+    def test_currency_with_string_value_raises_formatting_error(self) -> None:
+        """Non-numeric value raises FormattingError with fallback."""
+        with pytest.raises(FormattingError) as exc_info:
+            currency_format("not a number", "en-US", currency="USD")  # type: ignore
 
-    def test_currency_with_none_returns_fallback(self) -> None:
-        """None value returns fallback."""
-        result = currency_format(None, "en-US", currency="EUR")  # type: ignore
-        assert isinstance(result, str)
-        # Should return fallback
-        assert "EUR" in result or "None" in result
+        # Fallback should include currency and/or value
+        fallback = exc_info.value.fallback_value
+        assert "USD" in fallback or "not a number" in fallback
+
+    def test_currency_with_none_raises_formatting_error(self) -> None:
+        """None value raises FormattingError with fallback."""
+        with pytest.raises(FormattingError) as exc_info:
+            currency_format(None, "en-US", currency="EUR")  # type: ignore
+
+        # Fallback should include currency
+        assert "EUR" in exc_info.value.fallback_value
 
     def test_currency_with_inf_returns_fallback(self) -> None:
         """Infinity value returns fallback."""

@@ -130,10 +130,10 @@ def parse_date(
         )
         return (None, tuple(errors))
 
-    for pattern, has_era, has_timezone in patterns:
+    for pattern, has_era, _has_timezone in patterns:
         try:
-            # v0.38.0: Unified preprocessing for era and timezone tokens
-            parse_value = _preprocess_datetime_input(value, has_era, has_timezone)
+            # Preprocess for era tokens before strptime
+            parse_value = _preprocess_datetime_input(value, has_era)
             return (datetime.strptime(parse_value, pattern).date(), tuple(errors))
         except ValueError:
             continue
@@ -237,10 +237,10 @@ def parse_datetime(
         )
         return (None, tuple(errors))
 
-    for pattern, has_era, has_timezone in patterns:
+    for pattern, has_era, _has_timezone in patterns:
         try:
-            # v0.38.0: Unified preprocessing for era and timezone tokens
-            parse_value = _preprocess_datetime_input(value, has_era, has_timezone)
+            # Preprocess for era tokens before strptime
+            parse_value = _preprocess_datetime_input(value, has_era)
             parsed = datetime.strptime(parse_value, pattern)
             if tzinfo is not None and parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=tzinfo)
@@ -272,7 +272,7 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool, bool], ...]:
 
     Results are cached per locale_code for performance.
 
-    v0.38.0: Returns 3-tuples with separate era and timezone flags.
+    Returns 3-tuples with separate era and timezone flags.
 
     Args:
         locale_code: BCP 47 locale identifier
@@ -367,7 +367,7 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool, bool], ..
 
     Results are cached per locale_code for performance.
 
-    v0.38.0: Returns 3-tuples with separate era and timezone flags.
+    Returns 3-tuples with separate era and timezone flags.
 
     Args:
         locale_code: BCP 47 locale identifier
@@ -503,7 +503,7 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
     "cc": "%w",  # Numeric weekday (stand-alone)
     "c": "%w",  # Numeric weekday (stand-alone)
     # Era (AD/BC) - strptime doesn't support era
-    # Map to None to signal that era stripping is needed (v0.33.0 fix)
+    # Map to None to signal that era stripping is needed
     # See _ERA_STRINGS and _strip_era() for runtime handling
     "GGGG": None,  # Full era name (Anno Domini)
     "GGG": None,  # Abbreviated era (AD)
@@ -520,7 +520,7 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
     # Second
     "ss": "%S",  # 2-digit second
     "s": "%S",  # Second
-    # Fractional seconds (v0.33.0)
+    # Fractional seconds
     # Python's %f expects 6 digits (microseconds); CLDR uses variable precision
     # Map to %f and accept precision mismatch as best-effort
     "SSSSSS": "%f",  # Microseconds (6 digits)
@@ -531,13 +531,13 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
     "S": "%f",  # 1 fractional digit
     # AM/PM
     "a": "%p",  # AM/PM marker
-    # Hour (1-24 and 0-11 variants) (v0.33.0)
+    # Hour (1-24 and 0-11 variants)
     # Python doesn't have direct equivalents; map to closest
     "kk": "%H",  # Hour 1-24 -> 0-23 (off-by-one at midnight)
     "k": "%H",  # Hour 1-24 -> 0-23
     "KK": "%I",  # Hour 0-11 -> 1-12 (off-by-one at noon)
     "K": "%I",  # Hour 0-11 -> 1-12
-    # Timezone tokens (v0.33.0)
+    # Timezone tokens
     # Python strptime has limited timezone support; map what's possible
     "ZZZZZ": "%z",  # Extended offset (e.g., +01:00) -> +HHMM
     "ZZZZ": "%z",  # Localized GMT (e.g., GMT+01:00) -> +HHMM (partial)
@@ -554,7 +554,7 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
     "XXX": "%z",  # ISO 8601 extended with Z
     "XX": "%z",  # ISO 8601 basic with Z
     "X": "%z",  # ISO 8601 basic with Z
-    # Timezone names - strptime has limited support (v0.33.0)
+    # Timezone names - strptime has limited support
     # These often fail in strptime; map to None like era tokens
     "zzzz": None,  # Full timezone name (e.g., Pacific Standard Time)
     "zzz": None,  # Abbreviated timezone (e.g., PST)
@@ -570,7 +570,7 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
     "O": None,  # Localized GMT short
 }
 
-# Era strings to strip from input when pattern contains era tokens (v0.33.0)
+# Era strings to strip from input when pattern contains era tokens
 # Sorted by length descending to match longer strings first
 # Covers common English and Latin era designations
 _ERA_STRINGS: tuple[str, ...] = (
@@ -587,8 +587,8 @@ _ERA_STRINGS: tuple[str, ...] = (
     "CE",  # Common Era
 )
 
-# NOTE: Timezone name stripping was removed in v0.39.0.
-# The previous English-only timezone stripping (_TIMEZONE_STRINGS) was incomplete:
+# NOTE: Timezone name stripping is not implemented.
+# English-only timezone stripping would be incomplete:
 # - Only worked for English timezone names (PST, EST, etc.)
 # - Failed for localized timezone names (French, Spanish, etc.)
 # - Created inconsistent behavior across locales
@@ -627,13 +627,8 @@ def _strip_era(value: str) -> str:
     return " ".join(result.split())
 
 
-def _preprocess_datetime_input(
-    value: str, has_era: bool, has_timezone: bool
-) -> str:
+def _preprocess_datetime_input(value: str, has_era: bool) -> str:
     """Preprocess datetime input by stripping unsupported tokens.
-
-    v0.38.0: Unified preprocessing for era and timezone tokens.
-    v0.39.0: Timezone stripping removed (was English-only, created i18n issues).
 
     Currently only handles era tokens. Timezone name tokens (z, zz, zzz, zzzz,
     v, V, O series) are stripped from the pattern but NOT from the input.
@@ -643,16 +638,10 @@ def _preprocess_datetime_input(
     Args:
         value: Date/datetime string to preprocess
         has_era: True if pattern contained era tokens (G/GG/GGG/GGGG)
-        has_timezone: True if pattern contained timezone tokens (z/v/V/O)
-            NOTE: This parameter is retained for API compatibility but
-            timezone stripping is no longer performed.
 
     Returns:
-        Preprocessed string with era text removed (timezone text NOT removed)
+        Preprocessed string with era text removed
     """
-    # Only strip era tokens. Timezone stripping was removed in v0.39.0.
-    # The has_timezone parameter is kept for signature compatibility but ignored.
-    _ = has_timezone  # Explicitly mark as unused
     if has_era:
         return _strip_era(value)
     return value
@@ -744,9 +733,9 @@ def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool, bool]:
 
     Babel uses Unicode CLDR date pattern syntax, Python uses strptime directives.
 
-    v0.38.0: Returns separate flags for era and timezone tokens (LOGIC-DATE-TZ-001).
-        Previously all None-mapped tokens set has_era=True, but only era text
-        was stripped. Now timezone tokens are tracked separately.
+    Returns separate flags for era and timezone tokens. Era tokens (G/GG/GGG/GGGG)
+    require preprocessing to strip era text. Timezone name tokens are tracked
+    separately but not stripped from input.
 
     Returns:
         Tuple of (strptime_pattern, has_era, has_timezone) where:

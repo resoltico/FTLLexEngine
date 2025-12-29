@@ -262,19 +262,42 @@ def ftl_variants(draw: st.DrawFn) -> Variant:
 
 @composite
 def ftl_select_expressions(draw: st.DrawFn) -> SelectExpression:
-    """Generate SelectExpression AST nodes with valid variants."""
+    """Generate SelectExpression AST nodes with valid variants.
+
+    Ensures:
+    - Exactly one default variant (per Fluent spec)
+    - Unique variant keys (per Fluent spec)
+    """
     selector = draw(ftl_variable_references())
-    variants_list = draw(st.lists(ftl_variants(), min_size=2, max_size=4))
 
-    # Ensure at least one default variant
-    if not any(v.default for v in variants_list):
-        variants_list[-1] = Variant(
-            key=variants_list[-1].key,
-            value=variants_list[-1].value,
-            default=True,
+    # Generate 2-4 unique variant keys using st.sampled_from predefined set
+    # This avoids expensive rejection-based uniqueness while ensuring valid keys
+    num_variants = draw(st.integers(min_value=2, max_value=4))
+
+    # Use predefined unique key names (efficient, no rejection needed)
+    available_keys = ["one", "two", "three", "four", "five", "other", "zero"]
+    key_names = draw(
+        st.lists(
+            st.sampled_from(available_keys),
+            min_size=num_variants,
+            max_size=num_variants,
+            unique=True,
         )
+    )
+    unique_keys = [Identifier(name=name) for name in key_names]
 
-    return SelectExpression(selector=selector, variants=tuple(variants_list))
+    # Generate variant values
+    values = [draw(ftl_patterns()) for _ in range(num_variants)]
+
+    # Choose exactly one variant to be the default
+    default_index = draw(st.integers(min_value=0, max_value=num_variants - 1))
+
+    variants = tuple(
+        Variant(key=unique_keys[i], value=values[i], default=i == default_index)
+        for i in range(num_variants)
+    )
+
+    return SelectExpression(selector=selector, variants=variants)
 
 
 @composite

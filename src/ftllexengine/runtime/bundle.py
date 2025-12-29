@@ -12,6 +12,8 @@ from ftllexengine.constants import (
     DEFAULT_CACHE_SIZE,
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
+    MAX_DEPTH,
+    MAX_SOURCE_SIZE,
 )
 from ftllexengine.diagnostics import (
     Diagnostic,
@@ -53,7 +55,7 @@ class FluentBundle:
     Main public API for Fluent localization. Aligned with Mozilla python-fluent
     error handling that returns (result, errors) tuples.
 
-    Thread Safety (v0.38.0):
+    Thread Safety:
         By default, bundles are NOT thread-safe. This is optimal for single-threaded
         usage or initialization-only patterns.
 
@@ -67,6 +69,11 @@ class FluentBundle:
         - format_pattern() and format_value() are safe for concurrent reads
         - add_resource() and add_function() are NOT thread-safe
         - Recommended: Complete initialization before sharing across threads
+
+    Parser Security:
+        Configurable limits prevent DoS attacks:
+        - max_source_size: Maximum FTL source size in bytes (default: 10 MB)
+        - max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
     Examples:
         >>> bundle = FluentBundle("lv_LV")
@@ -84,6 +91,9 @@ class FluentBundle:
         >>>
         >>> # Thread-safe bundle for concurrent access
         >>> safe_bundle = FluentBundle("en_US", thread_safe=True)
+        >>>
+        >>> # Custom security limits for stricter environments
+        >>> strict_bundle = FluentBundle("en_US", max_source_size=1_000_000)
     """
 
     __slots__ = (
@@ -92,6 +102,8 @@ class FluentBundle:
         "_function_registry",
         "_locale",
         "_lock",
+        "_max_nesting_depth",
+        "_max_source_size",
         "_messages",
         "_parser",
         "_terms",
@@ -130,6 +142,8 @@ class FluentBundle:
         cache_size: int = DEFAULT_CACHE_SIZE,
         functions: FunctionRegistry | None = None,
         thread_safe: bool = False,
+        max_source_size: int | None = None,
+        max_nesting_depth: int | None = None,
     ) -> None:
         """Initialize bundle for locale.
 
@@ -147,10 +161,14 @@ class FluentBundle:
                       - Share function registrations between bundles
                       - Override default function behavior
             thread_safe: Enable thread-safe operations (default: False)
-                        v0.38.0: When True, all methods use internal RLock for
-                        synchronization. This prevents race conditions when
-                        add_resource() is called concurrently with format_pattern().
-                        Leave False for single-threaded or init-then-read patterns.
+                        When True, all methods use internal RLock for synchronization.
+                        This prevents race conditions when add_resource() is called
+                        concurrently with format_pattern(). Leave False for
+                        single-threaded or init-then-read patterns.
+            max_source_size: Maximum FTL source size in bytes (default: 10 MB).
+                            Set to 0 to disable limit (not recommended for untrusted input).
+            max_nesting_depth: Maximum placeable nesting depth (default: 100).
+                              Prevents DoS via deeply nested { { { ... } } } structures.
 
         Raises:
             ValueError: If locale code is empty or has invalid format
@@ -167,6 +185,9 @@ class FluentBundle:
             >>>
             >>> # Thread-safe bundle for concurrent access
             >>> bundle = FluentBundle("en", thread_safe=True)
+            >>>
+            >>> # Stricter limits for untrusted input
+            >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
         """
         # Validate locale format
         FluentBundle._validate_locale_format(locale)
@@ -175,9 +196,16 @@ class FluentBundle:
         self._use_isolating = use_isolating
         self._messages: dict[str, Message] = {}
         self._terms: dict[str, Term] = {}
-        self._parser = FluentParserV1()
 
-        # Thread safety (v0.38.0)
+        # Parser security configuration
+        self._max_source_size = max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
+        self._max_nesting_depth = max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
+        self._parser = FluentParserV1(
+            max_source_size=self._max_source_size,
+            max_nesting_depth=self._max_nesting_depth,
+        )
+
+        # Thread safety
         self._thread_safe = thread_safe
         self._lock: threading.RLock | None = threading.RLock() if thread_safe else None
 
@@ -273,8 +301,6 @@ class FluentBundle:
     def is_thread_safe(self) -> bool:
         """Check if bundle uses thread-safe operations (read-only).
 
-        v0.38.0: New property for introspection.
-
         Returns:
             bool: True if thread-safe operations enabled, False otherwise
 
@@ -288,6 +314,34 @@ class FluentBundle:
         """
         return self._thread_safe
 
+    @property
+    def max_source_size(self) -> int:
+        """Maximum FTL source size in bytes (read-only).
+
+        Returns:
+            int: Maximum source size limit for add_resource()
+
+        Example:
+            >>> bundle = FluentBundle("en", max_source_size=1_000_000)
+            >>> bundle.max_source_size
+            1000000
+        """
+        return self._max_source_size
+
+    @property
+    def max_nesting_depth(self) -> int:
+        """Maximum placeable nesting depth (read-only).
+
+        Returns:
+            int: Maximum nesting depth limit for parser
+
+        Example:
+            >>> bundle = FluentBundle("en", max_nesting_depth=50)
+            >>> bundle.max_nesting_depth
+            50
+        """
+        return self._max_nesting_depth
+
     @classmethod
     def for_system_locale(
         cls,
@@ -297,6 +351,8 @@ class FluentBundle:
         cache_size: int = DEFAULT_CACHE_SIZE,
         functions: FunctionRegistry | None = None,
         thread_safe: bool = False,
+        max_source_size: int | None = None,
+        max_nesting_depth: int | None = None,
     ) -> "FluentBundle":
         """Factory method to create a FluentBundle using the system locale.
 
@@ -308,7 +364,9 @@ class FluentBundle:
             enable_cache: Enable format caching for performance
             cache_size: Maximum cache entries when caching enabled
             functions: Custom FunctionRegistry to use (default: standard registry)
-            thread_safe: Enable thread-safe operations (v0.38.0)
+            thread_safe: Enable thread-safe operations
+            max_source_size: Maximum FTL source size in bytes (default: 10 MB)
+            max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
         Returns:
             Configured FluentBundle instance for system locale
@@ -331,6 +389,8 @@ class FluentBundle:
             cache_size=cache_size,
             functions=functions,
             thread_safe=thread_safe,
+            max_source_size=max_source_size,
+            max_nesting_depth=max_nesting_depth,
         )
 
     def __repr__(self) -> str:
@@ -432,8 +492,7 @@ class FluentBundle:
         """Add FTL resource to bundle.
 
         Parses FTL source and adds messages/terms to registry.
-
-        v0.38.0: Thread-safe when bundle created with thread_safe=True.
+        Thread-safe when bundle created with thread_safe=True.
 
         Args:
             source: FTL file content [positional-only]
@@ -567,8 +626,7 @@ class FluentBundle:
 
         Mozilla python-fluent aligned API that returns both the formatted
         string and any errors encountered during resolution.
-
-        v0.38.0: Thread-safe when bundle created with thread_safe=True.
+        Thread-safe when bundle created with thread_safe=True.
 
         Args:
             message_id: Message identifier [positional-only]
@@ -718,8 +776,6 @@ class FluentBundle:
 
     def has_attribute(self, message_id: str, attribute: str) -> bool:
         """Check if message has specific attribute.
-
-        v0.38.0: New introspection API for attribute existence checking.
 
         Args:
             message_id: Message identifier

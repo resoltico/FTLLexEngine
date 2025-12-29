@@ -21,6 +21,8 @@ from ftllexengine.constants import (
     FALLBACK_MISSING_VARIABLE,
     MAX_DEPTH,
 )
+from ftllexengine.core.depth_guard import DepthGuard
+from ftllexengine.core.errors import FormattingError
 from ftllexengine.diagnostics import (
     ErrorTemplate,
     FluentCyclicReferenceError,
@@ -28,7 +30,6 @@ from ftllexengine.diagnostics import (
     FluentReferenceError,
     FluentResolutionError,
 )
-from ftllexengine.runtime.depth_guard import DepthGuard
 from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
 from ftllexengine.runtime.plural_rules import select_plural_category
 from ftllexengine.syntax import (
@@ -294,7 +295,11 @@ class FluentResolver:
                         # Mozilla-aligned error handling:
                         # Collect error, show readable fallback (not {ERROR: ...})
                         errors.append(e)
-                        fallback = self._get_fallback_for_placeable(element.expression)
+                        # FormattingError carries a better fallback (the original value)
+                        if isinstance(e, FormattingError):
+                            fallback = e.fallback_value  # pylint: disable=no-member
+                        else:
+                            fallback = self._get_fallback_for_placeable(element.expression)
                         result += fallback
 
         return result

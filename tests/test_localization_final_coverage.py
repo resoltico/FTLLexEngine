@@ -236,18 +236,16 @@ class TestFluentLocalizationGetLoadSummary:
             assert any(r.locale == "de" for r in not_found)
 
 
-class TestPathResourceLoaderGetRootDirFallback:
-    """Test PathResourceLoader._get_root_dir edge case fallback."""
+class TestPathResourceLoaderResolvedRootFallback:
+    """Test PathResourceLoader._resolved_root caching fallback."""
 
-    def test_get_root_dir_no_static_prefix_fallback(self) -> None:
-        """_get_root_dir returns cwd when no static prefix before {locale}."""
+    def test_resolved_root_no_static_prefix_fallback(self) -> None:
+        """_resolved_root is cwd when no static prefix before {locale}."""
         # Edge case: base_path starts with {locale}
         loader = PathResourceLoader("{locale}/messages")
 
-        root_dir = loader._get_root_dir()
-
         # Should fall back to current working directory
-        assert root_dir == Path.cwd().resolve()
+        assert loader._resolved_root == Path.cwd().resolve()
 
 
 class TestFluentLocalizationResourceLoadingErrors:

@@ -522,13 +522,13 @@ class TestPreprocessDatetimeInput:
     """Test _preprocess_datetime_input function (line 657)."""
 
     def test_preprocess_with_has_era_true(self) -> None:
-        """Test _preprocess_datetime_input with has_era=True (line 657).
+        """Test _preprocess_datetime_input with has_era=True.
 
-        This directly tests line 657: return _strip_era(value)
+        This directly tests the _strip_era branch.
         """
         value = "28 Jan 2025 AD"
 
-        result = _preprocess_datetime_input(value, has_era=True, has_timezone=False)
+        result = _preprocess_datetime_input(value, has_era=True)
 
         # Should strip era text
         assert "AD" not in result
@@ -538,20 +538,19 @@ class TestPreprocessDatetimeInput:
         """Test _preprocess_datetime_input with has_era=False."""
         value = "2025-01-28 14:30:00"
 
-        result = _preprocess_datetime_input(value, has_era=False, has_timezone=False)
+        result = _preprocess_datetime_input(value, has_era=False)
 
         # Should return unchanged
         assert result == value
 
-    def test_preprocess_with_both_flags(self) -> None:
-        """Test _preprocess_datetime_input with both has_era and has_timezone True."""
+    def test_preprocess_with_era_and_timezone_in_value(self) -> None:
+        """Test _preprocess_datetime_input preserves timezone in input."""
         value = "28 Jan 2025 AD PST"
 
-        result = _preprocess_datetime_input(value, has_era=True, has_timezone=True)
+        result = _preprocess_datetime_input(value, has_era=True)
 
-        # Only era is stripped (timezone stripping removed in v0.39.0)
+        # Era is stripped, timezone preserved in output
         assert "AD" not in result
-        # PST is NOT stripped (timezone parameter is ignored)
         assert "PST" in result
 
 

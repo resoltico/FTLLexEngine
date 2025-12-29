@@ -8,8 +8,6 @@ Module Organization:
 - primitives.py: Basic parsers (identifiers, numbers, strings)
 - whitespace.py: Whitespace handling and continuation detection
 - rules.py: All grammar rules (patterns, expressions, entries)
-  - v0.27.0: Merged entries.py to eliminate circular imports
-  - v0.26.0: Merged patterns.py + expressions.py to eliminate circular imports
 
 Public API:
     FluentParserV1: Main parser class

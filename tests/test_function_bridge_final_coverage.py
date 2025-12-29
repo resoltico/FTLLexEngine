@@ -171,3 +171,199 @@ class TestFrozenRegistryCopyIntegration:
         # Original only has first function
         assert "FUNC1" in registry
         assert "FUNC2" not in registry
+
+
+class TestFluentFunctionDecoratorWithParentheses:
+    """Test lines 134-148: fluent_function decorator WITH parentheses."""
+
+    def test_fluent_function_decorator_with_inject_locale_true(self) -> None:
+        """Test @fluent_function(inject_locale=True) decorator path (lines 134-148)."""
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
+        # Use decorator WITH parentheses
+        @fluent_function(inject_locale=True)
+        def my_format(value: str, locale_code: str, /) -> str:
+            return f"{value}_{locale_code}"
+
+        # Verify the function works
+        result = my_format("test", "en_US")
+        assert result == "test_en_US"
+
+        # Verify the locale injection marker was set
+        assert hasattr(my_format, "_ftl_requires_locale")
+        assert my_format._ftl_requires_locale is True
+
+    def test_fluent_function_decorator_with_inject_locale_false(self) -> None:
+        """Test @fluent_function(inject_locale=False) decorator path."""
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
+        # Use decorator WITH parentheses but inject_locale=False
+        @fluent_function(inject_locale=False)
+        def my_upper(value: str) -> str:
+            return value.upper()
+
+        # Verify the function works
+        result = my_upper("test")
+        assert result == "TEST"
+
+        # Verify the locale injection marker was NOT set
+        assert not getattr(my_upper, "_ftl_requires_locale", False)
+
+    def test_fluent_function_decorator_without_parentheses(self) -> None:
+        """Test @fluent_function decorator WITHOUT parentheses (line 147)."""
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
+        # Use decorator WITHOUT parentheses
+        @fluent_function
+        def my_simple(value: str) -> str:
+            return value.lower()
+
+        # Verify the function works
+        result = my_simple("TEST")
+        assert result == "test"
+
+        # When used without parentheses and without inject_locale, should not set marker
+        assert not getattr(my_simple, "_ftl_requires_locale", False)
+
+
+class TestRegisterWithUninspectableCallable:
+    """Test lines 258-264: ValueError when callable has no inspectable signature."""
+
+    def test_register_uninspectable_callable_raises_type_error(self) -> None:
+        """Test register() raises TypeError for callables without signatures (lines 258-264)."""
+        registry = FunctionRegistry()
+
+        # Create a mock callable that signature() cannot inspect
+        class UninspectableCallable:
+            def __call__(self, *args: object, **kwargs: object) -> str:  # noqa: ARG002
+                return "test"
+
+        # Manually break signature inspection by making it raise ValueError
+        from unittest.mock import patch  # noqa: PLC0415
+
+        uninspectable = UninspectableCallable()
+
+        with (
+            patch(
+                "ftllexengine.runtime.function_bridge.signature",
+                side_effect=ValueError("No signature"),
+            ),
+            pytest.raises(
+                TypeError,
+                match=r"Cannot register.*no inspectable signature.*param_mapping",
+            ),
+        ):
+            registry.register(uninspectable, ftl_name="UNINSPECTABLE")
+
+
+class TestShouldInjectLocaleWithMissingFunction:
+    """Test lines 575-579: should_inject_locale when function not in registry."""
+
+    def test_should_inject_locale_returns_false_for_missing_function(self) -> None:
+        """Test should_inject_locale returns False for non-existent function (lines 575-576)."""
+        registry = FunctionRegistry()
+
+        # Function doesn't exist in registry
+        result = registry.should_inject_locale("NONEXISTENT")
+
+        # Should return False (not raise)
+        assert result is False
+
+    def test_should_inject_locale_returns_false_for_function_without_marker(self) -> None:
+        """Test should_inject_locale when function has no marker.
+
+        Returns False when function exists but has no marker (lines 578-579).
+        """
+        registry = FunctionRegistry()
+
+        # Register a function without locale injection marker
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+            return value
+
+        registry.register(my_func, ftl_name="CUSTOM")
+
+        # Function exists, but doesn't have _ftl_requires_locale marker
+        result = registry.should_inject_locale("CUSTOM")
+
+        # Should return False (lines 578-579: getattr returns False)
+        assert result is False
+
+    def test_should_inject_locale_returns_true_for_function_with_marker(self) -> None:
+        """Test should_inject_locale returns True when function has marker set."""
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
+        registry = FunctionRegistry()
+
+        # Register a function with locale injection marker
+        @fluent_function(inject_locale=True)
+        def my_format(value: str, locale_code: str, /) -> str:
+            return f"{value}_{locale_code}"
+
+        registry.register(my_format, ftl_name="MYFORMAT")
+
+        # Function has marker, should return True
+        result = registry.should_inject_locale("MYFORMAT")
+
+        assert result is True
+
+
+class TestGetExpectedPositionalArgs:
+    """Test lines 605-608: get_expected_positional_args method."""
+
+    def test_get_expected_positional_args_for_builtin_function(self) -> None:
+        """Test get_expected_positional_args returns count for built-in (lines 605-608)."""
+        from ftllexengine.runtime.functions import create_default_registry  # noqa: PLC0415
+
+        registry = create_default_registry()
+
+        # NUMBER is a built-in function with 1 positional arg
+        result = registry.get_expected_positional_args("NUMBER")
+
+        assert result == 1
+
+    def test_get_expected_positional_args_for_custom_function(self) -> None:
+        """Test get_expected_positional_args returns None for custom function."""
+        registry = FunctionRegistry()
+
+        # Register a custom function
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+            return value
+
+        registry.register(my_func, ftl_name="CUSTOM")
+
+        # Custom function should return None (not in BUILTIN_FUNCTIONS)
+        result = registry.get_expected_positional_args("CUSTOM")
+
+        assert result is None
+
+
+class TestGetBuiltinMetadata:
+    """Test lines 626-628: get_builtin_metadata method."""
+
+    def test_get_builtin_metadata_for_builtin_function(self) -> None:
+        """Test get_builtin_metadata returns metadata for built-in (lines 626-628)."""
+        from ftllexengine.runtime.functions import create_default_registry  # noqa: PLC0415
+
+        registry = create_default_registry()
+
+        # NUMBER is a built-in function
+        metadata = registry.get_builtin_metadata("NUMBER")
+
+        # Should return metadata object
+        assert metadata is not None
+        assert metadata.requires_locale is True
+
+    def test_get_builtin_metadata_for_custom_function(self) -> None:
+        """Test get_builtin_metadata returns None for custom function."""
+        registry = FunctionRegistry()
+
+        # Register a custom function
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+            return value
+
+        registry.register(my_func, ftl_name="CUSTOM")
+
+        # Custom function should return None
+        metadata = registry.get_builtin_metadata("CUSTOM")
+
+        assert metadata is None

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from babel import dates as babel_dates
 
+from ftllexengine.core.errors import FormattingError
 from ftllexengine.runtime.functions import (
     create_default_registry,
     datetime_format,
@@ -122,38 +123,43 @@ class TestNumberFunction:
 
 
 class TestNumberFunctionErrorHandling:
-    """Test number_format() function error handling."""
+    """Test number_format() function error handling.
 
-    def test_number_with_string_value_returns_fallback(self) -> None:
-        """number_format() handles invalid string gracefully."""
-        result = number_format("not a number")  # type: ignore
+    FormattingError is raised with fallback_value for invalid inputs.
+    The resolver catches this exception and uses the fallback in output.
+    """
 
-        # Should return str representation without crashing
-        assert isinstance(result, str)
-        assert "not a number" in result
+    def test_number_with_string_value_raises_formatting_error(self) -> None:
+        """number_format() raises FormattingError for invalid string."""
+        with pytest.raises(FormattingError) as exc_info:
+            number_format("not a number")  # type: ignore
 
-    def test_number_with_none_returns_fallback(self) -> None:
-        """number_format() handles None gracefully."""
-        result = number_format(None)  # type: ignore
+        # Should include fallback value for resolver to use
+        assert "not a number" in exc_info.value.fallback_value
 
-        # Should return str representation
-        assert isinstance(result, str)
+    def test_number_with_none_raises_formatting_error(self) -> None:
+        """number_format() raises FormattingError for None."""
+        with pytest.raises(FormattingError) as exc_info:
+            number_format(None)  # type: ignore
 
-    def test_number_with_invalid_type_returns_fallback(self) -> None:
-        """number_format() handles invalid types gracefully."""
-        result = number_format([1, 2, 3])  # type: ignore
+        # Fallback should be string representation
+        assert exc_info.value.fallback_value is not None
 
-        # Should return str representation without crashing
-        assert isinstance(result, str)
+    def test_number_with_invalid_type_raises_formatting_error(self) -> None:
+        """number_format() raises FormattingError for invalid types."""
+        with pytest.raises(FormattingError) as exc_info:
+            number_format([1, 2, 3])  # type: ignore
+
+        # Fallback should be string representation
+        assert exc_info.value.fallback_value is not None
 
     def test_number_with_locale_error_handling(self) -> None:
-        """number_format() handles locale.Error gracefully."""
+        """number_format() handles valid input correctly."""
         # Save current locale
         old_locale = locale.getlocale()
 
         try:
-            # Try to trigger locale error by setting invalid locale
-            # This may or may not work depending on system
+            # Valid input should work fine
             result = number_format(123.45)
 
             # Should handle gracefully
@@ -163,12 +169,13 @@ class TestNumberFunctionErrorHandling:
             with suppress(locale.Error, ValueError, TypeError):
                 locale.setlocale(locale.LC_ALL, old_locale)
 
-    def test_number_with_dict_causes_type_error(self) -> None:
-        """number_format() handles TypeError from non-numeric types."""
-        result = number_format({"key": "value"})  # type: ignore
+    def test_number_with_dict_raises_formatting_error(self) -> None:
+        """number_format() raises FormattingError for dict types."""
+        with pytest.raises(FormattingError) as exc_info:
+            number_format({"key": "value"})  # type: ignore
 
-        # Should handle gracefully and return string representation
-        assert isinstance(result, str)
+        # Fallback should be string representation
+        assert exc_info.value.fallback_value is not None
 
 
 class TestDatetimeFunction:
@@ -470,7 +477,7 @@ class TestDatetimeFunctionMockedErrors:
     """Test datetime_format() function error handlers using mocking."""
 
     def test_datetime_handles_overflow_error(self) -> None:
-        """datetime_format() handles OverflowError gracefully."""
+        """datetime_format() raises FormattingError with fallback for OverflowError."""
         # Use a datetime that will cause OverflowError in Babel
         # Year 10000 is outside Babel's formatting range
         far_future_dt = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
@@ -479,11 +486,11 @@ class TestDatetimeFunctionMockedErrors:
         with patch("ftllexengine.runtime.locale_context.babel_dates.format_date") as mock_format:
             mock_format.side_effect = OverflowError("Year out of range")
 
-            result = datetime_format(far_future_dt, "en_US")
+            with pytest.raises(FormattingError) as exc_info:
+                datetime_format(far_future_dt, "en_US")
 
-            # Should return ISO format as fallback
-            assert isinstance(result, str)
-            assert result == "9999-12-31T23:59:59+00:00"
+            # Fallback should be ISO format
+            assert exc_info.value.fallback_value == "9999-12-31T23:59:59+00:00"
 
     def test_datetime_unexpected_error_propagates(self) -> None:
         """datetime_format() lets unexpected exceptions propagate (v0.28.0 behavior).

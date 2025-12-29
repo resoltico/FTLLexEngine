@@ -3,11 +3,11 @@
 Centralizes locale format normalization used throughout the codebase.
 Provides canonical locale handling to ensure consistent cache keys and lookups.
 
-Babel Import Pattern (v0.39.0):
+Babel Import Pattern:
     Babel is imported at module level, not lazily. While Babel loads CLDR data
-    at import time, the "lazy loading" pattern previously used here was defeated
-    by other modules (currency.py, dates.py, numbers.py) that import Babel at
-    module level. Importing any parsing module triggers Babel loading anyway.
+    at import time, the "lazy loading" pattern was defeated by other modules
+    (currency.py, dates.py, numbers.py) that import Babel at module level.
+    Importing any parsing module triggers Babel loading anyway.
 
     Consistency is preferred over partial optimization that provides no benefit.
 
