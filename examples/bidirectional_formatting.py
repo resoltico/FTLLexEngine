@@ -6,13 +6,10 @@ FTLLexEngine provides full bi-directional localization:
 
 This enables locale-aware forms, invoices, and financial applications.
 
-v0.28.0 API CHANGES:
-- Type guards (is_valid_decimal, is_valid_number) now accept None
-- Simplified pattern: `if is_valid_decimal(result)` instead of `if not errors and ...`
-
-v0.11.0 API CHANGES:
+API Notes:
+- Type guards (is_valid_decimal, is_valid_number) accept None for simplified patterns
 - All parse functions return tuple[result, tuple[FluentParseError, ...]] (immutable)
-- Functions never raise exceptions - errors in immutable tuple
+- Functions never raise exceptions - errors returned in immutable tuple
 
 Implementation:
 - Number/currency parsing: Babel's parse_decimal() (CLDR-compliant)
@@ -51,7 +48,7 @@ total = Kopa: { CURRENCY($total, currency: "EUR") }
     user_input = "1 234,56"
     print(f"User input (subtotal): {user_input}")
 
-    # v0.28.0: Type guards accept None - simplified pattern
+    # Type guards accept None - simplified pattern
     subtotal, _ = parse_decimal(user_input, "lv_LV")
     if not is_valid_decimal(subtotal):
         print("Failed to parse subtotal")
@@ -110,7 +107,7 @@ def example_form_validation() -> None:
             print("  Error: Amount is required")
             continue
 
-        # v0.8.0: Now returns tuple - no strict parameter
+        # Returns tuple (result, errors)
         amount, errors = parse_decimal(user_input, "de_DE")
         if errors:
             print(f"  Error: {errors[0]}")
@@ -151,7 +148,7 @@ def example_currency_parsing() -> None:
     for user_input, locale in test_cases:
         print(f"\nInput: {user_input:15} | Locale: {locale}")
 
-        # v0.8.0: Now returns tuple
+        # Returns tuple (result, errors)
         result, errors = parse_currency(user_input, locale)
         if errors:
             print(f"  Error: {errors[0]}")
@@ -186,29 +183,28 @@ formatted = { $curr ->
 
 def example_date_parsing() -> None:
     """Date parsing with locale-aware format detection."""
-    print("\n[Example 4] Date Parsing (US vs European)")
+    print("\n[Example 4] Date Parsing (Locale-Specific Patterns)")
     print("-" * 60)
 
-    # Same date string, different interpretations
-    date_string = "01/02/2025"
-
-    # US format (month-first)
-    # v0.8.0: Now returns tuple
-    us_date, errors = parse_date(date_string, "en_US")
-    print(f"Input: {date_string}")
+    # US format uses slashes: M/d/yy (2-digit year per CLDR)
+    us_string = "1/2/25"
+    us_date, errors = parse_date(us_string, "en_US")
+    print(f"US input: {us_string}")
     if not errors:
-        print(f"  US format (MM/DD/YYYY): {us_date}  # January 2, 2025")
+        print(f"  Parsed (M/d/yy): {us_date}  # January 2, 2025")
     else:
         print(f"  US format error: {errors[0]}")
 
-    # European format (day-first)
-    eu_date, errors = parse_date(date_string, "lv_LV")
+    # European format uses dots: dd.MM.yy (2-digit year per CLDR)
+    eu_string = "02.01.25"
+    eu_date, errors = parse_date(eu_string, "lv_LV")
+    print(f"\nEU input: {eu_string}")
     if not errors:
-        print(f"  EU format (DD/MM/YYYY): {eu_date}  # February 1, 2025")
+        print(f"  Parsed (dd.MM.yy): {eu_date}  # January 2, 2025")
     else:
         print(f"  EU format error: {errors[0]}")
 
-    # ISO 8601 (unambiguous)
+    # ISO 8601 (unambiguous, works for any locale)
     iso_string = "2025-01-02"
     iso_date, errors = parse_date(iso_string, "en_US")
     print(f"\nISO 8601: {iso_string}")
@@ -216,6 +212,8 @@ def example_date_parsing() -> None:
         print(f"  Always unambiguous: {iso_date}  # January 2, 2025")
     else:
         print(f"  ISO format error: {errors[0]}")
+
+    print("\nNote: CLDR patterns are locale-specific. Use ISO 8601 for interchange.")
 
 
 def example_roundtrip_validation() -> None:
@@ -235,7 +233,7 @@ def example_roundtrip_validation() -> None:
         # Format -> Parse -> Format
         formatted1, _ = bundle.format_pattern("price", {"amount": float(original_value)})
 
-        # v0.8.0: Now returns tuple
+        # Returns tuple (result, errors)
         result, errors = parse_currency(formatted1, locale)
         if errors:
             print(f"Locale: {locale} - Parse failed: {errors[0]}")
@@ -276,7 +274,7 @@ def example_csv_import() -> None:
         print(f"Row {row_num}: {date_str} | {description} | {amount_str}")
 
         # Parse date (ISO format - unambiguous)
-        # v0.8.0: Now returns tuple - no strict parameter
+        # Returns tuple (result, errors)
         date_result, errors = parse_date(date_str, locale)
         if errors:
             error_msg = f"Row {row_num}: Invalid date '{date_str}'"
@@ -285,7 +283,7 @@ def example_csv_import() -> None:
             continue
 
         # Parse amount (Latvian format)
-        # v0.8.0: Now returns tuple - no strict parameter
+        # Returns tuple (result, errors)
         amount, errors = parse_decimal(amount_str, locale)
         if errors:
             error_msg = f"Row {row_num}: Invalid amount '{amount_str}'"
@@ -308,7 +306,7 @@ def example_csv_import() -> None:
 if __name__ == "__main__":
     print("=" * 60)
     print("Bi-Directional Localization Examples")
-    print("FTLLexEngine v0.28.0+")
+    print("FTLLexEngine Bi-Directional Localization")
     print("=" * 60)
 
     example_invoice_processing()

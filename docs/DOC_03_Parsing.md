@@ -1,6 +1,6 @@
 ---
-afad: "3.0"
-version: "0.38.0"
+afad: "3.1"
+version: "0.39.0"
 domain: PARSING
 updated: "2025-12-28"
 route:
@@ -49,12 +49,12 @@ def serialize(
 |:----------|:-----|:----|:------------|
 | `resource` | `Resource` | Y | Resource AST node. |
 | `validate` | `bool` | N | Validate AST before serialization (default: False). |
-| `max_depth` | `int` | N | Maximum nesting depth (default: 100) (v0.35.0+). |
+| `max_depth` | `int` | N | Maximum nesting depth (default: 100). |
 
 ### Constraints
 - Return: FTL source string.
 - Raises: `SerializationValidationError` when `validate=True` and AST invalid.
-- Raises: `SerializationDepthError` when AST exceeds `max_depth` (v0.35.0+).
+- Raises: `SerializationDepthError` when AST exceeds `max_depth`.
 - State: None.
 - Thread: Safe.
 - Security: DepthGuard prevents stack overflow from adversarial ASTs.
@@ -311,7 +311,7 @@ def parse_date(
 - Raises: Never.
 - State: None.
 - Thread: Safe.
-- Preprocessing: Era strings (AD, BC, etc.) and timezone names stripped before parsing (v0.38.0+).
+- Preprocessing: Era strings (AD, BC, etc.) stripped. Timezone pattern tokens stripped from format.
 
 ---
 
@@ -339,7 +339,7 @@ def parse_datetime(
 - Raises: Never.
 - State: None.
 - Thread: Safe.
-- Preprocessing: Era strings (AD, BC, etc.) and timezone names stripped before parsing (v0.38.0+).
+- Preprocessing: Era strings (AD, BC, etc.) stripped. Timezone pattern tokens stripped from format.
 
 ---
 
@@ -369,8 +369,9 @@ def parse_currency(
 - Raises: Never.
 - State: None.
 - Thread: Safe.
-- Validation: ISO 4217 codes validated against CLDR data (v0.33.0+).
-- Ambiguous: Yen sign (`¥`) now ambiguous (v0.38.0+); resolves to CNY for `zh_*` locales, JPY otherwise.
+- Validation: ISO 4217 codes validated against CLDR data.
+- Ambiguous: Yen sign (`¥`) resolves to CNY for `zh_*` locales, JPY otherwise.
+- Ambiguous: Pound sign (`£`) resolves to EGP for `ar_*` locales, GBP otherwise.
 - Resolution: With `infer_from_locale=True`, ambiguous symbols use locale-aware defaults.
 
 ---
@@ -508,6 +509,5 @@ MAX_DEPTH: int = 100
 - Purpose: Unified depth limit for parser, resolver, serializer, and validators.
 - Usage: Default for ParseContext.max_nesting_depth, FluentParserV1, serialize(max_depth=...).
 - Security: Prevents DoS via deeply nested placeables and stack overflow from adversarial ASTs.
-- Version: Unified from separate constants in v0.36.0.
 
 ---

@@ -1,7 +1,7 @@
-"""Tests for v0.35.0 changes: Decimal variant matching and serializer depth guard.
+"""Tests for Decimal variant matching and serializer depth guard.
 
 This module tests:
-1. Decimal exact variant matching fix (fractional Decimals now match correctly)
+1. Decimal exact variant matching (fractional Decimals match correctly)
 2. Serializer depth guard (SerializationDepthError on deep nesting)
 3. Hypothesis property tests for numeric comparison invariants
 

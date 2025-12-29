@@ -62,6 +62,8 @@ from ftllexengine.syntax.ast import (
 from ftllexengine.syntax.cursor import Cursor, ParseResult
 from ftllexengine.syntax.parser.primitives import (
     _ASCII_DIGITS,
+    is_identifier_char,
+    is_identifier_start,
     parse_identifier,
     parse_number,
     parse_number_value,
@@ -165,11 +167,12 @@ def _is_valid_variant_key_char(ch: str, is_first: bool) -> bool:
         True if character is valid for variant key content
     """
     if is_first:
-        # First char: letter, underscore, or digit (for numbers)
-        return ch.isalpha() or ch == "_" or ch.isdigit()
-    # Subsequent chars: letter, digit, underscore, hyphen, or dot (for decimals)
+        # First char: ASCII letter (for identifiers), underscore, or digit (for numbers)
+        # Note: Uses ASCII-only check per Fluent spec for cross-implementation compatibility
+        return is_identifier_start(ch) or ch == "_" or ch in _ASCII_DIGITS
+    # Subsequent chars: ASCII alphanumeric, underscore, hyphen, or dot (for decimals)
     # Note: '.' is only valid in number literals, not identifiers
-    return ch.isalnum() or ch in ("_", "-", ".")
+    return is_identifier_char(ch) or ch == "."
 
 
 def _is_variant_marker(cursor: Cursor) -> bool:
@@ -362,7 +365,11 @@ def parse_simple_pattern(
                     break
                 cursor = cursor.advance()
 
-            if cursor.pos > text_start:
+            if cursor.pos > text_start:  # pragma: no branch
+                # Note: This condition is always True because entering the else block
+                # at line 355 means ch was not a stop character, so the inner while
+                # loop at 358 will always advance at least once before breaking.
+                # The False branch (cursor.pos == text_start) is structurally unreachable.
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
                 elements.append(TextElement(value=text))
 
@@ -691,8 +698,8 @@ def parse_argument_expression(
     # Hyphen: could be TermReference (-brand) or negative number (-123)
     if ch == "-":
         next_cursor = cursor.advance()
-        if not next_cursor.is_eof and next_cursor.current.isalpha():
-            # Term reference: -brand
+        if not next_cursor.is_eof and is_identifier_start(next_cursor.current):
+            # Term reference: -brand (ASCII letter after hyphen)
             term_result = parse_term_reference(cursor, context)
             if term_result is None:
                 return None
@@ -725,7 +732,8 @@ def parse_argument_expression(
         return ParseResult(placeable_result.value, placeable_result.cursor)
 
     # Identifier: function call (UPPERCASE) or message reference
-    if ch.isalpha() or ch == "_":
+    # Note: ASCII letter check per Fluent spec for identifier start
+    if is_identifier_start(ch) or ch == "_":
         id_result = parse_identifier(cursor)
         if id_result is None:
             return None
@@ -1012,8 +1020,8 @@ def _parse_inline_number_literal(cursor: Cursor) -> ParseResult[InlineExpression
 def _parse_inline_hyphen(cursor: Cursor) -> ParseResult[InlineExpression] | None:
     """Parse hyphen-prefixed expression: term reference (-brand) or negative number (-123)."""
     next_cursor = cursor.advance()
-    if not next_cursor.is_eof and next_cursor.current.isalpha():
-        # Term reference: -brand
+    if not next_cursor.is_eof and is_identifier_start(next_cursor.current):
+        # Term reference: -brand (ASCII letter after hyphen)
         term_result = parse_term_reference(cursor)
         if term_result is None:
             return None
@@ -1105,7 +1113,8 @@ def parse_inline_expression(
         case _ if ch in _ASCII_DIGITS:
             return _parse_inline_number_literal(cursor)
 
-        case _ if ch.isalpha() or ch == "_":
+        case _ if is_identifier_start(ch) or ch == "_":
+            # ASCII letter check per Fluent spec for identifier start
             return _parse_inline_identifier(cursor)
 
         case _:

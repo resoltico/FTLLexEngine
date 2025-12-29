@@ -344,11 +344,13 @@ l10n = FluentLocalization(['lv', 'en'], ['main.ftl'], loader)
 result, errors = l10n.format_value('hello')
 ```
 
+**Note**: `PathResourceLoader` is in `ftllexengine.localization`, not the main package.
+
 **Changes**:
 - ✅ **Similar API**: Both have FluentLocalization for multi-locale
 - ⚠️ **CRITICAL Return difference**:
   - fluent.runtime: Returns just string: `result = l10n.format_value('hello')`
-  - FTLLexEngine: Returns tuple: `result, errors = l10n.format_value('hello')` (errors is immutable tuple as of v0.11.0)
+  - FTLLexEngine: Returns tuple: `result, errors = l10n.format_value('hello')` (errors is immutable tuple)
 - ✅ **PathResourceLoader**: Similar to FluentResourceLoader
 
 ---
@@ -443,11 +445,11 @@ print(result)
 
 | fluent.runtime | FTLLexEngine | Notes |
 |----------------|--------------|-------|
-| `FluentFormatError` | `FluentError` (base) | Base exception |
-| N/A | `FluentSyntaxError` | Parse errors |
-| N/A | `FluentReferenceError` | Missing messages/variables |
-| N/A | `FluentResolutionError` | Runtime errors |
-| N/A | `FluentCyclicReferenceError` | Circular references |
+| `FluentFormatError` | `FluentError` (base) | Base exception (main package) |
+| N/A | `FluentSyntaxError` | Parse errors (main package) |
+| N/A | `FluentReferenceError` | Missing messages/variables (main package) |
+| N/A | `FluentResolutionError` | Runtime errors (main package) |
+| N/A | `FluentCyclicReferenceError` | Circular references (`ftllexengine.diagnostics`) |
 
 ---
 
@@ -501,7 +503,8 @@ result = l10n.format_value('welcome', {'name': 'Anna'})
 
 #### FTLLexEngine
 ```python
-from ftllexengine import FluentLocalization, PathResourceLoader
+from ftllexengine import FluentLocalization
+from ftllexengine.localization import PathResourceLoader
 
 # Similar API
 loader = PathResourceLoader('locales/{locale}')
@@ -610,7 +613,7 @@ def test_message_formatting():
     result, errors = bundle.format_pattern('hello')
 
     assert result == "Hello!"
-    assert errors == ()  # Empty tuple (v0.11.0)
+    assert errors == ()  # Empty immutable tuple
 ```
 
 **Benefits**:
@@ -649,7 +652,7 @@ from fluent.runtime import FluentResource  # Old library had wrapper class
 # ✅ FTLLexEngine - no wrapper needed
 bundle.add_resource(ftl_source)  # Direct string
 
-# Or if you need AST manipulation (v0.10.0)
+# Or if you need AST manipulation
 from ftllexengine import parse_ftl
 from ftllexengine.syntax.ast import Resource
 resource_ast = parse_ftl(ftl_source)
@@ -687,8 +690,9 @@ from ftllexengine import (
     FluentError,              # Base
     FluentReferenceError,     # Missing messages
     FluentResolutionError,    # Runtime errors
-    FluentCyclicReferenceError,  # Circular refs
 )
+# FluentCyclicReferenceError is in diagnostics submodule
+from ftllexengine.diagnostics import FluentCyclicReferenceError
 ```
 
 ---
@@ -709,7 +713,7 @@ from ftllexengine import (
 ⚠️ Constructor takes single locale, not list
 ⚠️ No FluentResource wrapper - direct string to `add_resource()`
 ⚠️ Different exception types (but same behavior)
-⚠️ Return immutable error tuples instead of mutable lists (v0.11.0: `tuple[FluentError, ...]`)
+⚠️ Return immutable error tuples instead of mutable lists (`tuple[FluentError, ...]`)
 ⚠️ Python 3.13+ required (vs 3.6+)
 
 ### What's New in FTLLexEngine
@@ -722,6 +726,11 @@ from ftllexengine import (
 ✨ `get_message_ids()` for listing messages
 ✨ Full `mypy --strict` type safety
 ✨ Python 3.13 modern features
+✨ **Bi-directional parsing** (not in fluent.runtime):
+  - `parse_number()`, `parse_decimal()` - locale-aware number parsing
+  - `parse_date()`, `parse_datetime()` - locale-aware date parsing
+  - `parse_currency()` - currency parsing with symbol detection
+  - Type guards: `is_valid_number()`, `is_valid_decimal()`, `is_valid_currency()`
 
 ---
 
@@ -769,8 +778,10 @@ from ftllexengine import (
 
 ---
 
-**Migration Guide Last Updated**: December 23, 2025
-**FTLLexEngine Version**: 0.38.0
+**Migration Guide Last Updated**: December 28, 2025
+**FTLLexEngine Version**: 0.39.0
 **fluent.runtime Version Referenced**: 0.4.0
+
+**Note**: For FTLLexEngine version-to-version upgrade guidance (e.g., v0.38.0 → v0.39.0), see [CHANGELOG.md](../CHANGELOG.md).
 
 **Feedback**: If you encounter migration issues not covered here, please open an issue!

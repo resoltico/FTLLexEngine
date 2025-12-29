@@ -13,6 +13,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2025-12-28
+
+### Breaking Changes
+- FTL identifier parsing now enforces ASCII-only characters per Fluent specification:
+  - Only ASCII letters `[a-zA-Z]` valid for identifier start
+  - Only ASCII alphanumerics, hyphen, underscore `[a-zA-Z0-9_-]` valid for continuation
+  - Unicode letters (e.g., `é`, `ñ`, `µ`) now rejected for cross-implementation compatibility
+  - Affects message IDs, term IDs, variant keys, function names, variable names
+- Pound sign (`£`, U+00A3) now treated as ambiguous currency symbol:
+  - Requires `default_currency="GBP"` or `infer_from_locale=True` for parsing
+  - Resolves to EGP for Arabic locales (`ar_*`), GBP for English locales, GBP default
+  - Previously hardcoded to GBP regardless of locale context
+- Timezone name stripping removed from date/datetime parsing:
+  - `_strip_timezone()` function removed
+  - `_TIMEZONE_STRINGS` tuple removed
+  - Timezone name tokens (`z`, `zz`, `zzz`, `zzzz`, `v`, `V`, `O` series) still stripped from pattern
+  - Input must be pre-stripped by caller or use UTC offset patterns (`Z`, `x`, `X` series)
+  - Previous English-only stripping created inconsistent i18n behavior
+
+### Added
+- `is_identifier_start()` predicate in `syntax.parser.primitives` for ASCII-only identifier start check
+- `is_identifier_char()` predicate in `syntax.parser.primitives` for ASCII-only identifier continuation check
+- Locale-specific pound sign resolution:
+  - `ar_EG` -> EGP (Egyptian Pound)
+  - `ar` -> EGP (Arabic locales default)
+  - `en_GB` -> GBP (British Pound)
+  - `en_GI` -> GIP (Gibraltar Pound)
+  - `en_FK` -> FKP (Falkland Islands Pound)
+  - `en_SH` -> SHP (Saint Helena Pound)
+  - `en_SS` -> SSP (South Sudanese Pound)
+
+### Changed
+- `DepthGuard.__enter__()` now validates depth limit BEFORE incrementing:
+  - Prevents state corruption when `DepthLimitExceededError` raised
+  - `__exit__` not called when `__enter__` raises; old code left depth permanently elevated
+- Boolean values excluded from plural category matching in select expressions:
+  - `True`/`False` no longer match `[one]`/`[other]` plural variants
+  - Python's `bool <: int` inheritance previously caused incorrect dispatch
+- Junk entry logging now uses `repr()` instead of `ascii()`:
+  - Preserves Unicode readability while escaping control characters
+  - `'Jānis'` instead of `'J\xe2nis'` in log output
+- Babel imported at module level in `locale_utils.py`:
+  - Lazy import pattern removed for consistency with other parsing modules
+  - All parsing modules already import Babel at top level; lazy pattern provided no benefit
+
+### Fixed
+- DepthGuard context manager state latch on error (critical bug):
+  - Previous: depth incremented before check, exception leaves state corrupted
+  - Fixed: depth limit validated before increment, no state mutation on failure
+- Boolean selector matching plural categories:
+  - Previous: `True` (value 1) matched `[one]` variant due to `isinstance(True, int)`
+  - Fixed: explicit boolean exclusion before plural category dispatch
+- Identifier parsing accepts Unicode letters:
+  - Previous: `isalpha()` accepted `µ`, `é`, `ñ` as identifier characters
+  - Fixed: ASCII-only enforcement via `is_identifier_start()` and `is_identifier_char()`
+- Pound sign (`£`) hardcoded to GBP regardless of locale:
+  - Previous: Fast tier forced `£ -> GBP` even in Egyptian locale
+  - Fixed: Locale-aware resolution via ambiguous symbol system
+- Timezone stripping only worked for English:
+  - Previous: Hardcoded English timezone names failed for localized input
+  - Fixed: Feature removed; users must pre-strip or use UTC offset patterns
+
+### Documented
+- Hour-24 limitation in `dates.py` module docstring:
+  - CLDR `k`/`kk` tokens (1-24) mapped to Python's `%H` (0-23)
+  - Input "24:00" will fail to parse
+  - Workaround: preprocess to normalize "24:00" to "00:00" with day increment
+
 ## [0.38.0] - 2025-12-28
 
 ### Breaking Changes
@@ -323,6 +391,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.39.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.39.0
 [0.38.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.38.0
 [0.37.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.37.0
 [0.36.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.36.0

@@ -1,9 +1,9 @@
-"""Tests for v0.15.0 changes.
+"""Tests for ValidationError, format_value, and introspect_message.
 
-Tests cover:
-- ValidationError line/column computation (MAINT-VALIDATE-LINE-COL-001)
-- format_value accepts Mapping type (DEBT-FORMAT-VALUE-PARAM-TYPE-001)
-- introspect_message accepts Term (TYPE-INTROSPECT-SIGNATURE-001)
+Tests for:
+- ValidationError line/column computation
+- format_value accepts Mapping type
+- introspect_message accepts Term
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from ftllexengine.syntax.parser import FluentParserV1
 
 
 class TestValidationErrorLineColumn:
-    """Tests for ValidationError line/column computation (v0.15.0).
+    """Tests for ValidationError line/column computation.
 
-    Validates that parse errors now include line and column information
+    Validates that parse errors include line and column information
     computed from the source span using the Cursor.
     """
 

@@ -1,9 +1,9 @@
-"""Tests for v0.16.0 changes.
+"""Tests for FluentBundle locale validation, date support, and currency precision.
 
 Tests for:
-- TYPE-DEF-MISSING-DATE-1: datetime.date support in FluentValue
-- STRUCT-INCONSISTENT-VALIDATION-1: FluentBundle.__init__ locale validation
-- LOGIC-CURRENCY-PRECISION-1: Currency code display with correct decimal places
+- datetime.date support in FluentValue
+- FluentBundle.__init__ locale validation
+- Currency code display with correct decimal places
 
 Python 3.13+.
 """
@@ -23,7 +23,7 @@ _LOCALE_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567
 
 
 class TestFluentBundleLocaleValidation:
-    """Test FluentBundle.__init__ locale validation (STRUCT-INCONSISTENT-VALIDATION-1)."""
+    """Test FluentBundle.__init__ locale validation."""
 
     def test_init_with_empty_locale_raises(self) -> None:
         """Empty locale raises ValueError in __init__."""

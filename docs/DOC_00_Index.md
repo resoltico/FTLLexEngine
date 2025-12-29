@@ -1,6 +1,6 @@
 ---
-afad: "3.0"
-version: "0.38.0"
+afad: "3.1"
+version: "0.39.0"
 domain: INDEX
 updated: "2025-12-28"
 route:
@@ -63,7 +63,7 @@ from ftllexengine.diagnostics import (
     FluentError, FluentSyntaxError, FluentReferenceError,
     FluentResolutionError, FluentCyclicReferenceError,
     ValidationResult, ValidationError, ValidationWarning,
-    DiagnosticFormatter, OutputFormat,  # v0.31.0+
+    DiagnosticFormatter, OutputFormat,
 )
 ```
 
@@ -105,7 +105,7 @@ from ftllexengine.syntax.visitor import ASTVisitor
 ```python
 from ftllexengine.runtime import (
     FluentBundle, FluentResolver, FunctionRegistry, ResolutionContext,
-    create_default_registry, get_shared_registry,  # v0.31.0+
+    create_default_registry, get_shared_registry,
     number_format, datetime_format, currency_format,
     select_plural_category,
 )
@@ -115,7 +115,7 @@ from ftllexengine.runtime import (
 ```python
 from ftllexengine.localization import (
     FluentLocalization, PathResourceLoader, ResourceLoader,
-    LoadStatus, LoadSummary, ResourceLoadResult,  # v0.31.0+
+    LoadStatus, LoadSummary, ResourceLoadResult,
     MessageId, LocaleCode, ResourceId, FTLSource,
 )
 ```

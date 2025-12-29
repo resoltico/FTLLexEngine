@@ -1,6 +1,6 @@
-"""Tests for v0.14.0 changes.
+"""Tests for FunctionRegistry, LocaleContext, and FormatCache.
 
-Tests new functionality and behavioral changes introduced in v0.14.0:
+Tests for:
 - FunctionRegistry.get_callable() public API
 - LocaleContext.create() always returns LocaleContext
 - LocaleContext.create_or_raise() raises ValueError for invalid locales

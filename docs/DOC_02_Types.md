@@ -1,6 +1,6 @@
 ---
-afad: "3.0"
-version: "0.38.0"
+afad: "3.1"
+version: "0.39.0"
 domain: TYPES
 updated: "2025-12-28"
 route:
@@ -740,7 +740,6 @@ class CommentType(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings. `str(CommentType.COMMENT) == "comment"`
 - Import: `from ftllexengine.enums import CommentType`
-- Version: Migrated to StrEnum in v0.30.0
 
 ---
 
@@ -766,7 +765,6 @@ class VariableContext(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings. `str(VariableContext.PATTERN) == "pattern"`
 - Import: `from ftllexengine.enums import VariableContext`
-- Version: Migrated to StrEnum in v0.30.0
 
 ---
 
@@ -788,6 +786,5 @@ class ReferenceKind(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings. `str(ReferenceKind.MESSAGE) == "message"`
 - Import: `from ftllexengine.enums import ReferenceKind`
-- Version: Migrated to StrEnum in v0.30.0
 
 ---

@@ -252,6 +252,46 @@ class TestParseArgumentExpressionProperties:
         assert result is None
 
 
+class TestParseSimplePatternCRLFContinuation:
+    """Test parse_simple_pattern with CRLF in indented continuation (line 327).
+
+    Line 327 handles the case where a \r is followed by \n (Windows CRLF)
+    in an indented continuation within a variant pattern.
+    """
+
+    def test_simple_pattern_crlf_with_continuation(self) -> None:
+        """Test parse_simple_pattern with CRLF and indented continuation (line 327).
+
+        When variant pattern has CRLF followed by indented continuation,
+        line 327 advances past the \n after already advancing past \r.
+        """
+        # Variant pattern text with CRLF followed by indented continuation
+        # Note: is_indented_continuation checks for space after newline
+        source = "First line\r\n    Second line}"
+        cursor = Cursor(source, 0)
+
+        result = parse_simple_pattern(cursor)
+
+        assert result is not None
+        pattern = result.value
+        # Should have parsed the multi-line continuation
+        # Text elements are merged with space separator
+        assert len(pattern.elements) >= 1
+
+    def test_simple_pattern_crlf_continuation_with_placeable(self) -> None:
+        """Test CRLF continuation with placeable in variant pattern (line 327)."""
+        # CRLF with indented continuation containing a placeable
+        source = "Value\r\n    { $var }}"
+        cursor = Cursor(source, 0)
+
+        result = parse_simple_pattern(cursor)
+
+        assert result is not None
+        pattern = result.value
+        # Should have text element and placeable
+        assert len(pattern.elements) >= 1
+
+
 class TestParseSimplePatternProperties:
     """Property-based tests for parse_simple_pattern."""
 

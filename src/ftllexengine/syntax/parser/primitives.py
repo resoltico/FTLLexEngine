@@ -36,6 +36,45 @@ _HEX_DIGITS: str = "0123456789abcdefABCDEF"
 # str.isdigit() returns True for Unicode digits which causes int() to fail.
 _ASCII_DIGITS: str = "0123456789"
 
+
+def is_identifier_start(ch: str) -> bool:
+    """Check if character can start an identifier per Fluent spec.
+
+    Fluent identifiers follow the pattern: [a-zA-Z][a-zA-Z0-9_-]*
+    Only ASCII letters are allowed as the first character.
+
+    This enforces Fluent specification compliance. Python's str.isalpha()
+    accepts Unicode letters (e.g., 'é', 'ñ', 'µ') which would create
+    interoperability issues with other Fluent implementations (JavaScript,
+    Rust) that enforce ASCII-only identifiers.
+
+    Args:
+        ch: Single character to check
+
+    Returns:
+        True if character is ASCII letter (a-z, A-Z), False otherwise
+    """
+    return len(ch) == 1 and ch.isascii() and ch.isalpha()
+
+
+def is_identifier_char(ch: str) -> bool:
+    """Check if character can continue an identifier per Fluent spec.
+
+    Fluent identifiers follow the pattern: [a-zA-Z][a-zA-Z0-9_-]*
+    Continuation characters must be ASCII alphanumeric, hyphen, or underscore.
+
+    This enforces Fluent specification compliance. Python's str.isalnum()
+    accepts Unicode alphanumerics which would create interoperability issues.
+
+    Args:
+        ch: Single character to check
+
+    Returns:
+        True if character is ASCII letter, ASCII digit, hyphen, or underscore
+    """
+    return len(ch) == 1 and ch.isascii() and (ch.isalnum() or ch in "-_")
+
+
 # Thread-local storage for parse error context
 _error_thread_local = thread_local()
 
@@ -90,13 +129,19 @@ def clear_parse_error() -> None:
 def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
     """Parse identifier: [a-zA-Z][a-zA-Z0-9_-]*
 
-    Fluent identifiers start with a letter and continue with letters,
-    digits, hyphens, or underscores.
+    Fluent identifiers start with an ASCII letter and continue with ASCII
+    letters, ASCII digits, hyphens, or underscores. Per Fluent specification,
+    only ASCII characters are valid in identifiers for cross-implementation
+    compatibility.
 
     Examples:
         hello → "hello"
         brand-name → "brand-name"
         file_name → "file_name"
+
+    Note:
+        Unicode letters (é, ñ, µ) are rejected to maintain compatibility
+        with JavaScript and Rust Fluent implementations.
 
     Args:
         cursor: Current position in source
@@ -108,10 +153,10 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
     # Clear any stale error context from previous parse attempts
     clear_parse_error()
 
-    # Check first character is alpha
-    if cursor.is_eof or not cursor.current.isalpha():
+    # Check first character is ASCII alpha (a-z, A-Z only)
+    if cursor.is_eof or not is_identifier_start(cursor.current):
         _set_parse_error(
-            "Expected identifier (must start with letter)",
+            "Expected identifier (must start with ASCII letter a-z or A-Z)",
             cursor.pos,
             ("a-z", "A-Z"),
         )
@@ -121,10 +166,10 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
     start_pos = cursor.pos
     cursor = cursor.advance()  # Skip first character
 
-    # Continue with alphanumeric, -, _
+    # Continue with ASCII alphanumeric, -, _
     while not cursor.is_eof:
         ch = cursor.current
-        if ch.isalnum() or ch in ("-", "_"):
+        if is_identifier_char(ch):
             cursor = cursor.advance()
         else:
             break

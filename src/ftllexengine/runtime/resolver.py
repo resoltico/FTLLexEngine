@@ -529,8 +529,12 @@ class FluentResolver:
             return self._resolve_pattern(exact_match.value, args, errors, context)
 
         # Pass 2: Plural category match (numeric selectors only)
-        # FluentValue includes Decimal for currency/financial values
-        if isinstance(selector_value, (int, float, Decimal)):
+        # FluentValue includes Decimal for currency/financial values.
+        # Note: Exclude bool since isinstance(True, int) is True in Python,
+        # but booleans should match [true]/[false] variants, not plural categories.
+        if isinstance(selector_value, (int, float, Decimal)) and not isinstance(
+            selector_value, bool
+        ):
             plural_category = select_plural_category(selector_value, self.locale)
             plural_match = self._find_plural_variant(expr.variants, plural_category)
             if plural_match is not None:

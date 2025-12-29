@@ -3,6 +3,14 @@
 Centralizes locale format normalization used throughout the codebase.
 Provides canonical locale handling to ensure consistent cache keys and lookups.
 
+Babel Import Pattern (v0.39.0):
+    Babel is imported at module level, not lazily. While Babel loads CLDR data
+    at import time, the "lazy loading" pattern previously used here was defeated
+    by other modules (currency.py, dates.py, numbers.py) that import Babel at
+    module level. Importing any parsing module triggers Babel loading anyway.
+
+    Consistency is preferred over partial optimization that provides no benefit.
+
 Python 3.13+.
 """
 
@@ -10,10 +18,8 @@ from __future__ import annotations
 
 import functools
 import os
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from babel import Locale
+from babel import Locale
 
 __all__ = [
     "get_babel_locale",
@@ -75,9 +81,6 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
-    # Lazy import: Babel loads CLDR data at import time; defer until needed
-    from babel import Locale  # noqa: PLC0415
-
     normalized = normalize_locale(locale_code)
     return Locale.parse(normalized)
 

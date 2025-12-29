@@ -61,12 +61,18 @@ class DepthGuard:
     current_depth: int = field(default=0, init=False)
 
     def __enter__(self) -> DepthGuard:
-        """Enter guarded section, increment depth."""
-        self.current_depth += 1
-        if self.current_depth > self.max_depth:
+        """Enter guarded section, increment depth.
+
+        Validates depth limit BEFORE incrementing to prevent state corruption
+        if DepthLimitExceededError is raised. Since __exit__ is not called when
+        __enter__ raises, incrementing first would leave current_depth permanently
+        elevated, causing all subsequent operations to fail.
+        """
+        if self.current_depth >= self.max_depth:
             raise DepthLimitExceededError(
                 ErrorTemplate.expression_depth_exceeded(self.max_depth)
             )
+        self.current_depth += 1
         return self
 
     def __exit__(

@@ -1,6 +1,6 @@
 ---
-afad: "3.0"
-version: "0.38.0"
+afad: "3.1"
+version: "0.39.0"
 domain: RUNTIME
 updated: "2025-12-28"
 route:
@@ -254,7 +254,6 @@ def register(
 - Raises: `ValueError` if parameter names collide after underscore stripping (e.g., `_value` and `value`).
 - State: Mutates registry.
 - Thread: Unsafe.
-- Version: Collision detection added in v0.33.0. TypeError for frozen added in v0.34.0.
 
 ---
 
@@ -296,7 +295,6 @@ def get_shared_registry() -> FunctionRegistry:
 - Thread: Safe for reads. Use `copy()` to get mutable registry for customization.
 - Performance: Avoids repeated registry creation for multi-bundle applications.
 - Import: `from ftllexengine.runtime.functions import get_shared_registry`
-- Version: Added in v0.31.0. Returns frozen registry since v0.34.0.
 
 ---
 
@@ -320,7 +318,6 @@ class FunctionCategory(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings. `str(FunctionCategory.FORMATTING) == "formatting"`
 - Import: `from ftllexengine.runtime.function_metadata import FunctionCategory`
-- Version: Migrated to StrEnum in v0.30.0
 
 ---
 
@@ -350,7 +347,6 @@ class FunctionMetadata:
 - Immutable: Frozen dataclass.
 - Thread: Safe.
 - Import: `from ftllexengine.runtime.function_metadata import FunctionMetadata`
-- Version: v0.27.0+
 
 ---
 
@@ -370,7 +366,6 @@ BUILTIN_FUNCTIONS: dict[str, FunctionMetadata] = {
 - Contents: Metadata for NUMBER, DATETIME, CURRENCY.
 - Read-only: Do not modify at runtime.
 - Import: `from ftllexengine.runtime.function_metadata import BUILTIN_FUNCTIONS`
-- Version: v0.27.0+
 
 ---
 
@@ -390,7 +385,6 @@ def is_builtin_with_locale_requirement(func: object) -> bool:
 - Return: True if func has `_ftl_requires_locale = True`.
 - Thread: Safe.
 - Import: `from ftllexengine.runtime.functions import is_builtin_with_locale_requirement`
-- Version: v0.27.0+
 
 ---
 
@@ -410,7 +404,6 @@ def get_expected_positional_args(ftl_name: str) -> int | None:
 - Return: Expected positional arg count, or None if not built-in.
 - Thread: Safe.
 - Import: `from ftllexengine.runtime.function_metadata import get_expected_positional_args`
-- Version: v0.27.0+
 
 ---
 
@@ -431,7 +424,6 @@ def should_inject_locale(self, ftl_name: str) -> bool:
 - Logic: Checks callable's `_ftl_requires_locale` attribute set by `@fluent_function(inject_locale=True)`.
 - Thread: Safe.
 - Access: Via `bundle._function_registry.should_inject_locale(name)` or registry instance.
-- Version: v0.37.0+ (moved from `function_metadata` module)
 
 ---
 
@@ -455,7 +447,6 @@ def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_
 - Return: Decorated function with Fluent metadata attributes.
 - Thread: Safe.
 - Import: `from ftllexengine import fluent_function`
-- Version: v0.37.0+
 
 ---
 
@@ -477,7 +468,6 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
 - Raises: Never. Returns "one" or "other" on invalid locale.
 - State: None.
 - Thread: Safe.
-- Version: Decimal support added in v0.30.0.
 
 ---
 
@@ -543,7 +533,6 @@ def validate_resource(
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
 - Import: `from ftllexengine.validation import validate_resource`
-- Version: Pass 5 semantic validation added in v0.33.0.
 
 ---
 
@@ -588,7 +577,6 @@ class ResolutionContext:
 - Complexity: contains() is O(1) via _seen set.
 - Import: `from ftllexengine.runtime import ResolutionContext`
 - Constants: `MAX_DEPTH` from `ftllexengine.constants`
-- Version: O(1) contains() added in v0.31.0. DepthGuard refactor in v0.33.0.
 
 ---
 
@@ -660,7 +648,6 @@ def expression_guard(self) -> DepthGuard:
 - Usage: Use as context manager (`with context.expression_guard:`).
 - Raises: DepthLimitExceededError when depth limit exceeded.
 - State: Read-only property returning internal DepthGuard.
-- Version: Added in v0.33.0. Replaces enter_expression/exit_expression.
 
 ---
 
@@ -675,7 +662,6 @@ def expression_depth(self) -> int:
 ### Constraints
 - Return: Current expression nesting depth.
 - State: Read-only property (delegates to expression_guard.current_depth).
-- Version: Changed to read-only property in v0.33.0.
 
 ---
 
@@ -859,7 +845,6 @@ MAX_DEPTH: int = 100
 - Purpose: Unified maximum depth for all recursion protection.
 - Usage: Message reference chains, expression nesting, serialization, validation.
 - Import: `from ftllexengine.constants import MAX_DEPTH`
-- Version: v0.37.0 unified `MAX_RESOLUTION_DEPTH` and `MAX_EXPRESSION_DEPTH`.
 
 ---
 
@@ -893,7 +878,7 @@ class DepthGuard:
 - Thread: Safe (explicit instance state, reentrant).
 - Usage: Context manager or manual increment/decrement.
 - Raises: DepthLimitExceededError when depth limit exceeded.
+- Behavior: `__enter__` validates limit BEFORE incrementing; prevents state corruption on exception.
 - Import: `from ftllexengine.runtime.depth_guard import DepthGuard`
-- Version: Added in v0.31.0.
 
 ---

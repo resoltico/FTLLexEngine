@@ -12,10 +12,10 @@ Tiered Loading Strategy (PERF-CURRENCY-INIT-001):
     This provides sub-millisecond cold start for common currencies while maintaining
     complete CLDR coverage for edge cases.
 
-Architecture (v0.38.0):
+Architecture:
     CurrencyDataProvider encapsulates all currency data and loading logic.
-    - Replaces module-level global variables with instance attributes
-    - Provides locale-aware symbol resolution for ambiguous symbols
+    - Instance attributes replace module-level global variables
+    - Locale-aware symbol resolution for ambiguous symbols
 
 Python 3.13+.
 """
@@ -53,7 +53,7 @@ ISO_CURRENCY_CODE_LENGTH: int = 3
 _FAST_TIER_UNAMBIGUOUS_SYMBOLS: dict[str, str] = {
     # European currencies
     "\u20ac": "EUR",  # Euro sign
-    "\u00a3": "GBP",  # Pound sign (unambiguous as GBP in practice)
+    # NOTE: Pound sign (U+00A3) is in ambiguous set (GBP, EGP, GIP, etc.)
     "\u20a4": "ITL",  # Lira sign (historical)
     # Asian currencies (truly unambiguous symbols)
     # NOTE: Yen sign (U+00A5) is NOT here - it's ambiguous (JPY vs CNY)
@@ -85,7 +85,6 @@ _FAST_TIER_UNAMBIGUOUS_SYMBOLS: dict[str, str] = {
 
 # Ambiguous symbols that require locale context or explicit currency code.
 # These are NOT in the fast tier unambiguous map - they require context.
-# v0.38.0: Yen sign added to ambiguous set (LOGIC-YEN-001 fix)
 _FAST_TIER_AMBIGUOUS_SYMBOLS: frozenset[str] = frozenset({
     "$",     # USD, CAD, AUD, NZD, SGD, HKD, MXN, ARS, CLP, COP, etc.
     "kr",    # SEK, NOK, DKK, ISK
@@ -93,10 +92,11 @@ _FAST_TIER_AMBIGUOUS_SYMBOLS: frozenset[str] = frozenset({
     "R$",    # BRL
     "S/",    # PEN
     "\u00a5",  # Yen/Yuan sign - JPY (Japanese) or CNY (Chinese)
+    "\u00a3",  # Pound sign - GBP (British), EGP (Egyptian), GIP (Gibraltar), etc.
 })
 
-# Locale-aware resolution for ambiguous symbols (v0.38.0)
-# Maps (symbol, locale_prefix) -> currency_code for context-sensitive resolution
+# Locale-aware resolution for ambiguous symbols.
+# Maps (symbol, locale_prefix) -> currency_code for context-sensitive resolution.
 _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION: dict[tuple[str, str], str] = {
     # Yen/Yuan sign: CNY for Chinese locales, JPY otherwise
     ("\u00a5", "zh"): "CNY",  # Chinese locales use Yuan
@@ -111,11 +111,21 @@ _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION: dict[tuple[str, str], str] = {
     ("$", "es_AR"): "ARS",
     ("$", "es_CL"): "CLP",
     ("$", "es_CO"): "COP",
+    # Pound sign: locale-specific resolution
+    ("\u00a3", "en_GB"): "GBP",  # British Pound
+    ("\u00a3", "en"): "GBP",     # English locales default to British
+    ("\u00a3", "ar_EG"): "EGP",  # Egyptian Pound
+    ("\u00a3", "ar"): "EGP",     # Arabic locales default to Egyptian
+    ("\u00a3", "en_GI"): "GIP",  # Gibraltar Pound
+    ("\u00a3", "en_FK"): "FKP",  # Falkland Islands Pound
+    ("\u00a3", "en_SH"): "SHP",  # Saint Helena Pound
+    ("\u00a3", "en_SS"): "SSP",  # South Sudanese Pound
 }
 
 # Default resolution for ambiguous symbols when locale doesn't match
 _AMBIGUOUS_SYMBOL_DEFAULTS: dict[str, str] = {
     "\u00a5": "JPY",  # Default to JPY for non-Chinese locales
+    "\u00a3": "GBP",  # Default to GBP when locale not recognized
     "$": "USD",       # Default to USD when locale not recognized
     "kr": "SEK",      # Default to SEK for Nordic kr
     "R": "ZAR",       # Default to ZAR for R
@@ -183,7 +193,7 @@ _SYMBOL_LOOKUP_LOCALE_IDS: tuple[str, ...] = (
 )
 
 # =============================================================================
-# Currency Data Provider (v0.38.0: ARCH-STATE-001 fix)
+# Currency Data Provider
 # =============================================================================
 # Encapsulates all currency data and loading logic as instance state.
 # Replaces module-level global variables.
@@ -191,8 +201,6 @@ _SYMBOL_LOOKUP_LOCALE_IDS: tuple[str, ...] = (
 
 class CurrencyDataProvider:
     """Encapsulated currency data with locale-aware symbol resolution.
-
-    v0.38.0: Introduced to replace global mutable state pattern.
 
     Provides:
     - Tiered loading (fast tier immediate, full CLDR lazy-loaded)
@@ -232,8 +240,6 @@ class CurrencyDataProvider:
         locale_code: str | None = None,
     ) -> str | None:
         """Resolve ambiguous symbol to currency code with locale context.
-
-        v0.38.0: Locale-aware resolution for LOGIC-YEN-001 fix.
 
         Resolution order:
         1. Exact locale match in _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION
@@ -449,7 +455,7 @@ def _get_currency_maps_full() -> tuple[dict[str, str], set[str], dict[str, str],
     """Get full CLDR currency maps (lazy-loaded on first call).
 
     Thread-safe. Triggers CLDR scan if not already loaded.
-    v0.38.0: Delegates to CurrencyDataProvider singleton.
+    Delegates to CurrencyDataProvider singleton.
 
     Returns:
         Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes)
@@ -533,7 +539,7 @@ def _resolve_currency_code(
         if default_currency:
             return (default_currency, None)
         if infer_from_locale:
-            # v0.38.0: Locale-aware resolution for ambiguous symbols
+            # Locale-aware resolution for ambiguous symbols
             resolved = _provider.resolve_ambiguous_symbol(currency_str, locale_code)
             if resolved:
                 return (resolved, None)

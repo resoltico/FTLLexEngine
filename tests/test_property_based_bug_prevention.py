@@ -1,8 +1,8 @@
-"""Property-based tests to prevent v0.27.0 bug categories.
+"""Property-based tests for common bug categories.
 
 This test module contains systematic property-based tests designed to catch
-the categories of bugs that were fixed in v0.27.0. These tests serve as
-regression guards and may reveal similar issues in other parts of the codebase.
+common categories of bugs. These tests serve as regression guards and may
+reveal similar issues in other parts of the codebase.
 
 Bug Categories Covered:
     1. Parameter Effect: Optional parameters must affect output when varied

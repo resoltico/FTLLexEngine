@@ -236,9 +236,10 @@ if errors:
 ```
 
 **Currency Symbol Handling**:
-- **Ambiguous**: $ (USD/CAD/AUD/SGD/HKD/NZD/MXN), ¢, ₨, ₱, kr
-- **Unambiguous**: € (EUR), £ (GBP), ¥ (JPY), ₹ (INR), ₽ (RUB), etc.
+- **Ambiguous**: $ (USD/CAD/AUD/SGD/HKD/NZD/MXN), ¢, ₨, ₱, kr, ¥ (JPY/CNY), £ (GBP/EGP/GIP/FKP/SHP/SSP)
+- **Unambiguous**: € (EUR), ₹ (INR), ₽ (RUB), etc.
 - **Always safe**: ISO codes (USD, CAD, EUR, etc.)
+- **Locale resolution**: ¥ -> CNY for zh_* locales, JPY otherwise. £ -> EGP for ar_* locales, GBP otherwise.
 
 **Supported currencies**: All ISO 4217 codes plus major currency symbols (€, $, £, ¥, etc.)
 
@@ -678,4 +679,4 @@ result, errors = parse_date("2025-01-02", locale)  # Always Jan 2
 
 ---
 
-**FTLLexEngine v0.38.0** - Production-ready bi-directional localization
+**FTLLexEngine v0.39.0** - Production-ready bi-directional localization

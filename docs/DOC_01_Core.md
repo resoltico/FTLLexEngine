@@ -1,6 +1,6 @@
 ---
-afad: "3.0"
-version: "0.38.0"
+afad: "3.1"
+version: "0.39.0"
 domain: CORE
 updated: "2025-12-28"
 route:
@@ -37,8 +37,8 @@ class FluentBundle:
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
-| `functions` | `FunctionRegistry \| None` | N | Custom function registry (v0.18.0+). |
-| `thread_safe` | `bool` | N | Enable thread-safe operations via RLock (v0.38.0+). |
+| `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
+| `thread_safe` | `bool` | N | Enable thread-safe operations via RLock. |
 
 ### Constraints
 - Return: FluentBundle instance.
@@ -73,15 +73,14 @@ def for_system_locale(
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
-| `functions` | `FunctionRegistry \| None` | N | Custom function registry (v0.18.0+). |
-| `thread_safe` | `bool` | N | Enable thread-safe operations (v0.38.0+). |
+| `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
+| `thread_safe` | `bool` | N | Enable thread-safe operations. |
 
 ### Constraints
 - Return: FluentBundle with system locale.
 - Raises: `RuntimeError` if locale cannot be determined.
 - State: Delegates to `get_system_locale(raise_on_failure=True)`.
 - Thread: Safe.
-- Version: Now uses unified `get_system_locale()` from locale_utils (v0.33.0).
 
 ---
 
@@ -270,7 +269,6 @@ def has_attribute(self, message_id: str, attribute: str) -> bool:
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
-- Version: Added in v0.38.0.
 
 ---
 
@@ -500,7 +498,6 @@ def is_thread_safe(self) -> bool:
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
-- Version: Added in v0.38.0.
 
 ---
 
@@ -553,7 +550,7 @@ class FluentLocalization:
 ### Constraints
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty or resource_ids without loader.
-- State: Lazy bundle initialization (v0.29.0+). Bundles created on first access.
+- State: Lazy bundle initialization. Bundles created on first access.
 - Thread: Unsafe for writes, safe for reads.
 
 ---
@@ -671,7 +668,7 @@ def add_function(self, name: str, func: Callable[..., str]) -> None:
 - Raises: None.
 - State: Stores function for existing and future bundles.
 - Thread: Unsafe.
-- Behavior: Preserves lazy bundle initialization (v0.33.0+). Functions are stored and applied when bundles are first accessed.
+- Behavior: Preserves lazy bundle initialization. Functions are stored and applied when bundles are first accessed.
 
 ---
 
@@ -726,7 +723,6 @@ def get_load_summary(self) -> LoadSummary:
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
-- Version: Added in v0.31.0.
 
 ---
 
@@ -750,7 +746,6 @@ class LoadStatus(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings.
 - Import: `from ftllexengine.localization import LoadStatus`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -787,7 +782,6 @@ class ResourceLoadResult:
 - Return: Immutable load result record.
 - State: Frozen dataclass.
 - Import: `from ftllexengine.localization import ResourceLoadResult`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -826,7 +820,6 @@ class LoadSummary:
 - Return: Immutable summary record.
 - State: Frozen dataclass. Statistics computed in __post_init__.
 - Import: `from ftllexengine.localization import LoadSummary`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -963,7 +956,7 @@ class PathResourceLoader:
 - Raises: `FileNotFoundError` if file missing, `OSError` on read error, `ValueError` on path traversal attempt.
 - State: None. Immutable dataclass.
 - Thread: Safe.
-- Security (v0.27.0+):
+- Security:
   - Validates `locale` parameter against directory traversal attacks (rejects "..", "/", "\\").
   - Validates `resource_id` against directory traversal attacks (rejects "..", absolute paths).
   - Empty locale codes are rejected.
@@ -1010,7 +1003,6 @@ def normalize_locale(locale_code: str) -> str:
 - State: None. Pure function.
 - Thread: Safe.
 - Import: `from ftllexengine.locale_utils import normalize_locale`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -1033,7 +1025,6 @@ def get_babel_locale(locale_code: str) -> Locale:
 - State: None. Cached pure function.
 - Thread: Safe (lru_cache internal locking).
 - Import: `from ftllexengine.locale_utils import get_babel_locale`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -1055,6 +1046,5 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 - State: Reads OS locale via locale.getlocale() and env vars LC_ALL, LC_MESSAGES, LANG.
 - Thread: Safe.
 - Import: `from ftllexengine.locale_utils import get_system_locale`
-- Version: Added in v0.31.0. `raise_on_failure` parameter added in v0.33.0.
 
 ---

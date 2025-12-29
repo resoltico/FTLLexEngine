@@ -7,6 +7,24 @@
 - Fixed: Date pattern tokenizer replaces regex word boundary approach
 - Optimized: Pattern generation is cached per locale
 
+Timezone Handling:
+    UTC offset patterns (Z, ZZ, ZZZ, ZZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx,
+    X, XX, XXX, XXXX, XXXXX) are fully supported via strptime %z.
+
+    Timezone NAME patterns (z, zz, zzz, zzzz, v, vvvv, V, VV, VVV, VVVV, O, OOOO)
+    are NOT supported for parsing. These tokens are stripped from the pattern,
+    but the input is NOT pre-processed. Users must pre-strip timezone names
+    from input or use UTC offset patterns instead.
+
+    This limitation exists because timezone names are locale-specific (e.g.,
+    "Pacific Standard Time" in English vs "Heure normale du Pacifique" in French)
+    and Python's strptime has no built-in timezone name parsing.
+
+Hour-24 Limitation:
+    CLDR patterns using k/kk tokens (hour 1-24) are mapped to Python's %H (0-23).
+    Input "24:00" will fail to parse. Users needing hour-24 support must
+    preprocess input to normalize "24:00" to "00:00" with day increment.
+
 Thread-safe. Uses Python 3.13 stdlib + Babel CLDR patterns.
 
 Python 3.13+.
@@ -569,53 +587,22 @@ _ERA_STRINGS: tuple[str, ...] = (
     "CE",  # Common Era
 )
 
-# Timezone strings to strip from input when pattern contains timezone tokens (v0.38.0)
-# Covers common timezone abbreviations and full names
-# Used when patterns contain z/zz/zzz/zzzz/v/V/O tokens
-_TIMEZONE_STRINGS: tuple[str, ...] = (
-    # US timezone full names (sorted by length descending)
-    "Pacific Daylight Time",
-    "Pacific Standard Time",
-    "Mountain Daylight Time",
-    "Mountain Standard Time",
-    "Central Daylight Time",
-    "Central Standard Time",
-    "Eastern Daylight Time",
-    "Eastern Standard Time",
-    "Atlantic Daylight Time",
-    "Atlantic Standard Time",
-    "Alaska Daylight Time",
-    "Alaska Standard Time",
-    "Hawaii-Aleutian Standard Time",
-    "Hawaii-Aleutian Daylight Time",
-    # European timezone full names
-    "Central European Time",
-    "Central European Summer Time",
-    "Eastern European Time",
-    "Eastern European Summer Time",
-    "Western European Time",
-    "Western European Summer Time",
-    "British Summer Time",
-    "Greenwich Mean Time",
-    "Coordinated Universal Time",
-    # Common abbreviations (sorted by length descending)
-    "HAST", "HADT",  # Hawaii-Aleutian
-    "AKST", "AKDT",  # Alaska
-    "PDT", "PST",    # Pacific
-    "MDT", "MST",    # Mountain
-    "CDT", "CST",    # Central
-    "EDT", "EST",    # Eastern
-    "ADT", "AST",    # Atlantic
-    "CEST", "CET",   # Central European
-    "EEST", "EET",   # Eastern European
-    "WEST", "WET",   # Western European
-    "BST",           # British Summer Time
-    "GMT",           # Greenwich Mean Time
-    "UTC",           # Coordinated Universal Time
-    # Generic timezone indicators
-    "Daylight Time",
-    "Standard Time",
-)
+# NOTE: Timezone name stripping was removed in v0.39.0.
+# The previous English-only timezone stripping (_TIMEZONE_STRINGS) was incomplete:
+# - Only worked for English timezone names (PST, EST, etc.)
+# - Failed for localized timezone names (French, Spanish, etc.)
+# - Created inconsistent behavior across locales
+#
+# Timezone name tokens (z, zz, zzz, zzzz, v, V, O) are now:
+# - Stripped from the pattern (mapped to None in _BABEL_TOKEN_MAP)
+# - NOT stripped from input (users must pre-strip or use UTC offset patterns)
+#
+# Supported timezone patterns:
+# - UTC offset patterns: Z, ZZ, ZZZ, ZZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx, X, XX, XXX, XXXX, XXXXX
+# - These are locale-agnostic and fully supported via strptime %z
+#
+# Unsupported timezone patterns (input must be pre-stripped by caller):
+# - Timezone name patterns: z, zz, zzz, zzzz, v, vvvv, V, VV, VVV, VVVV, O, OOOO
 
 
 def _strip_era(value: str) -> str:
@@ -640,51 +627,35 @@ def _strip_era(value: str) -> str:
     return " ".join(result.split())
 
 
-def _strip_timezone(value: str) -> str:
-    """Strip timezone designations from date/datetime string.
-
-    v0.38.0: LOGIC-DATE-TZ-001 fix.
-    Used when pattern contains timezone tokens (z/zzzz/v/V/O) since Python's
-    strptime cannot parse timezone names like "Pacific Standard Time" or "PST".
-
-    Args:
-        value: Date/datetime string potentially containing timezone text
-
-    Returns:
-        Date/datetime string with timezone text removed and whitespace normalized
-    """
-    result = value
-    for tz in _TIMEZONE_STRINGS:
-        # Case-insensitive replacement
-        idx = result.upper().find(tz.upper())
-        if idx != -1:
-            result = result[:idx] + result[idx + len(tz) :]
-    # Normalize whitespace (collapse multiple spaces)
-    return " ".join(result.split())
-
-
 def _preprocess_datetime_input(
     value: str, has_era: bool, has_timezone: bool
 ) -> str:
     """Preprocess datetime input by stripping unsupported tokens.
 
     v0.38.0: Unified preprocessing for era and timezone tokens.
-    Replaces the pattern of calling _strip_era() only when has_era is True.
+    v0.39.0: Timezone stripping removed (was English-only, created i18n issues).
+
+    Currently only handles era tokens. Timezone name tokens (z, zz, zzz, zzzz,
+    v, V, O series) are stripped from the pattern but NOT from the input.
+    Users must pre-strip timezone text from input or use UTC offset patterns
+    (Z, x, X series) which are locale-agnostic.
 
     Args:
         value: Date/datetime string to preprocess
         has_era: True if pattern contained era tokens (G/GG/GGG/GGGG)
         has_timezone: True if pattern contained timezone tokens (z/v/V/O)
+            NOTE: This parameter is retained for API compatibility but
+            timezone stripping is no longer performed.
 
     Returns:
-        Preprocessed string with unsupported token text removed
+        Preprocessed string with era text removed (timezone text NOT removed)
     """
-    result = value
+    # Only strip era tokens. Timezone stripping was removed in v0.39.0.
+    # The has_timezone parameter is kept for signature compatibility but ignored.
+    _ = has_timezone  # Explicitly mark as unused
     if has_era:
-        result = _strip_era(result)
-    if has_timezone:
-        result = _strip_timezone(result)
-    return result
+        return _strip_era(value)
+    return value
 
 
 def _tokenize_babel_pattern(pattern: str) -> list[str]:

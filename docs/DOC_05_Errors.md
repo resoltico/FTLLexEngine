@@ -1,6 +1,6 @@
 ---
-afad: "3.0"
-version: "0.38.0"
+afad: "3.1"
+version: "0.39.0"
 domain: ERRORS
 updated: "2025-12-28"
 route:
@@ -131,7 +131,6 @@ class DepthLimitExceededError(FluentResolutionError): ...
 - Cause: Adversarial input, malformed AST, or deep Placeable nesting.
 - Behavior: Raised immediately when limit exceeded.
 - Import: `from ftllexengine.runtime.depth_guard import DepthLimitExceededError`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -184,7 +183,6 @@ class SerializationValidationError(ValueError): ...
 - Raised: When `serialize(validate=True)` detects invalid AST.
 - Common: SelectExpression without exactly one default variant.
 - Import: `from ftllexengine.syntax import SerializationValidationError`
-- Version: Added in v0.29.0.
 
 ---
 
@@ -205,7 +203,6 @@ class SerializationDepthError(ValueError): ...
 - Raised: When AST depth exceeds `max_depth` parameter (default: 100).
 - Security: Prevents stack overflow from adversarially constructed ASTs.
 - Import: `from ftllexengine.syntax import SerializationDepthError`
-- Version: Added in v0.35.0.
 
 ---
 
@@ -267,7 +264,6 @@ def format(
 ### Constraints
 - Return: Formatted string with errors, annotations, optionally warnings.
 - Security: Set sanitize=True for multi-tenant applications.
-- Version: v0.27.0+
 
 ---
 
@@ -320,7 +316,6 @@ def format(
 ### Constraints
 - Return: Formatted error string with location and content.
 - Security: Set sanitize=True for multi-tenant applications.
-- Version: v0.27.0+
 
 ---
 
@@ -352,7 +347,6 @@ class ValidationWarning:
 - Return: Immutable warning record.
 - State: Frozen dataclass.
 - IDE: Line/column fields enable IDE/LSP integration for warning display.
-- Version: line/column fields added in v0.30.0.
 
 ---
 
@@ -370,7 +364,6 @@ def format(self) -> str:
 ### Constraints
 - Return: Formatted warning string with location (if available).
 - Format: `[code] at line N, column M: message (context: 'ctx')`
-- Version: v0.30.0+
 
 ---
 
@@ -517,7 +510,6 @@ class OutputFormat(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings. `str(OutputFormat.RUST) == "rust"`
 - Import: `from ftllexengine.diagnostics import OutputFormat`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -550,7 +542,6 @@ class DiagnosticFormatter:
 - State: Frozen dataclass.
 - Thread: Safe.
 - Import: `from ftllexengine.diagnostics import DiagnosticFormatter`
-- Version: Added in v0.31.0.
 
 ---
 
@@ -628,7 +619,7 @@ When resolution errors occur, FTLLexEngine returns readable fallback strings ins
 
 ### Constraints
 - Fallbacks preserve FTL-like syntax for debugging.
-- SelectExpression fallback shows selector context (v0.23.0+).
+- SelectExpression fallback shows selector context.
 - All fallbacks wrapped in braces for visual distinction.
 
 ---

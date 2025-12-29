@@ -58,7 +58,7 @@ ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     """Atheris entry point: parse fuzzed input and detect unexpected crashes."""
-    global _fuzz_stats  # noqa: PLW0603 - Required for crash-proof reporting
+    global _fuzz_stats  # noqa: PLW0602 - Required for crash-proof reporting
 
     _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
     _fuzz_stats["status"] = "running"

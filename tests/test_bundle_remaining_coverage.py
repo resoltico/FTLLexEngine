@@ -227,3 +227,91 @@ class TestValidationUndefinedReferences:
 
         # Should warn about undefined term
         assert len(result.warnings) > 0
+
+
+class TestIsThreadSafeProperty:
+    """Test is_thread_safe property (line 289)."""
+
+    def test_is_thread_safe_returns_true_when_enabled(self) -> None:
+        """Test is_thread_safe property returns True when thread_safe=True."""
+        bundle = FluentBundle("en", thread_safe=True)
+        assert bundle.is_thread_safe is True
+
+    def test_is_thread_safe_returns_false_by_default(self) -> None:
+        """Test is_thread_safe property returns False by default."""
+        bundle = FluentBundle("en")
+        assert bundle.is_thread_safe is False
+
+
+class TestThreadSafeAddResource:
+    """Test thread-safe add_resource path (lines 457-458)."""
+
+    def test_add_resource_uses_lock_when_thread_safe(self) -> None:
+        """Test add_resource acquires lock when thread_safe=True."""
+        bundle = FluentBundle("en", thread_safe=True)
+        bundle.add_resource("msg = Hello")
+
+        # Verify message was added successfully through the locked path
+        assert bundle.has_message("msg")
+        result, errors = bundle.format_pattern("msg")
+        assert result == "Hello"
+        assert errors == ()
+
+
+class TestThreadSafeFormatPattern:
+    """Test thread-safe format_pattern path (lines 608-609)."""
+
+    def test_format_pattern_uses_lock_when_thread_safe(self) -> None:
+        """Test format_pattern acquires lock when thread_safe=True."""
+        bundle = FluentBundle("en", thread_safe=True, use_isolating=False)
+        bundle.add_resource("greeting = Hello, { $name }!")
+
+        # Format through the locked path
+        result, errors = bundle.format_pattern("greeting", {"name": "World"})
+
+        assert result == "Hello, World!"
+        assert errors == ()
+
+
+class TestHasAttributeMethod:
+    """Test has_attribute method (lines 745-748)."""
+
+    def test_has_attribute_returns_true_when_attribute_exists(self) -> None:
+        """Test has_attribute returns True for existing attribute."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("""
+button = Click
+    .tooltip = Click to save
+""")
+        assert bundle.has_attribute("button", "tooltip") is True
+
+    def test_has_attribute_returns_false_for_missing_attribute(self) -> None:
+        """Test has_attribute returns False when attribute doesn't exist."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("""
+button = Click
+    .tooltip = Click to save
+""")
+        assert bundle.has_attribute("button", "nonexistent") is False
+
+    def test_has_attribute_returns_false_for_missing_message(self) -> None:
+        """Test has_attribute returns False when message doesn't exist (line 745-746)."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Hello")
+
+        # Message doesn't exist, should return False (not raise)
+        assert bundle.has_attribute("nonexistent", "tooltip") is False
+
+    def test_has_attribute_checks_multiple_attributes(self) -> None:
+        """Test has_attribute correctly identifies among multiple attributes."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("""
+button = Click
+    .tooltip = Tooltip text
+    .aria-label = Button label
+    .placeholder = Enter value
+""")
+        assert bundle.has_attribute("button", "tooltip") is True
+        assert bundle.has_attribute("button", "aria-label") is True
+        assert bundle.has_attribute("button", "placeholder") is True
+        assert bundle.has_attribute("button", "missing") is False

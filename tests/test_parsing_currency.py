@@ -1,8 +1,7 @@
 """Tests for currency parsing functions.
 
-v0.8.0: Updated for new tuple return type API.
-- parse_currency() returns tuple[tuple[Decimal, str] | None, list[FluentParseError]]
-- Removed strict parameter - functions never raise, errors in list
+parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]].
+Functions never raise exceptions - errors returned in tuple.
 
 Validates parse_currency() across multiple locales and currency formats.
 """
@@ -32,7 +31,7 @@ class TestParseCurrency:
         assert code == "EUR"
 
     def test_parse_currency_usd_symbol(self) -> None:
-        """Parse USD with $ symbol (v0.7.0: requires default_currency)."""
+        """Parse USD with $ symbol (ambiguous, requires default_currency)."""
         result, errors = parse_currency("$1,234.56", "en_US", default_currency="USD")
 
         assert not errors
@@ -43,8 +42,11 @@ class TestParseCurrency:
         assert code == "USD"
 
     def test_parse_currency_gbp_symbol(self) -> None:
-        """Parse GBP with £ symbol."""
-        result, errors = parse_currency("£999.99", "en_GB")
+        """Parse GBP with £ symbol (ambiguous: GBP, EGP, GIP, etc.).
+
+        Pound symbol requires locale-aware resolution via infer_from_locale=True.
+        """
+        result, errors = parse_currency("£999.99", "en_GB", infer_from_locale=True)
 
         assert not errors
         assert result is not None
@@ -54,10 +56,9 @@ class TestParseCurrency:
         assert code == "GBP"
 
     def test_parse_currency_jpy_symbol(self) -> None:
-        """Parse JPY with Yen symbol (no decimals).
+        """Parse JPY with Yen symbol (ambiguous: JPY vs CNY, no decimals).
 
-        v0.38.0: Yen symbol is now ambiguous (JPY vs CNY).
-        Must use infer_from_locale=True for locale-aware resolution.
+        Yen symbol requires locale-aware resolution via infer_from_locale=True.
         """
         result, errors = parse_currency("¥12,345", "ja_JP", infer_from_locale=True)
 
@@ -91,13 +92,13 @@ class TestParseCurrency:
         assert code == "EUR"
 
     def test_parse_currency_no_symbol_returns_error(self) -> None:
-        """No currency symbol returns error in list (v0.8.0 - no exceptions)."""
+        """No currency symbol returns error in tuple (no exceptions)."""
         result, errors = parse_currency("1,234.56", "en_US")
         assert len(errors) > 0
         assert result is None
 
     def test_parse_currency_invalid_returns_error(self) -> None:
-        """Invalid input returns error in list (v0.8.0 - no exceptions)."""
+        """Invalid input returns error in tuple (no exceptions)."""
         result, errors = parse_currency("invalid", "en_US")
         assert len(errors) > 0
         assert result is None
@@ -114,7 +115,7 @@ class TestRoundtripCurrency:
         formatted = currency_format(
             float(original_amount), "en-US", currency="USD", currency_display="symbol"
         )
-        # v0.7.0: $ is ambiguous - specify default_currency for roundtrip
+        # $ is ambiguous - specify default_currency for roundtrip
         result, errors = parse_currency(formatted, "en_US", default_currency="USD")
 
         assert not errors

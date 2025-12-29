@@ -493,6 +493,11 @@ if is_valid_currency(result):
 # Resolves to CNY for zh_* locales, JPY otherwise
 result, errors = parse_currency("¥1,234", "ja_JP")  # JPY
 result, errors = parse_currency("¥1,234", "zh_CN")  # CNY
+
+# Note: Pound sign (£) is ambiguous (v0.39.0+)
+# Resolves to EGP for ar_* locales, GBP otherwise
+result, errors = parse_currency("£100", "en_GB", infer_from_locale=True)  # GBP
+result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
 ```
 
 **Key Functions**:
@@ -813,5 +818,5 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 ---
 
 **Quick Reference Last Updated**: December 28, 2025
-**FTLLexEngine Version**: 0.38.0
+**FTLLexEngine Version**: 0.39.0
 **Python Requirement**: 3.13+

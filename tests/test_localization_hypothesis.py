@@ -43,15 +43,19 @@ def locale_codes(draw: st.DrawFn) -> str:
 
 @st.composite
 def message_identifiers(draw: st.DrawFn) -> str:
-    """Generate valid FTL message identifiers."""
-    # FTL identifiers: [a-zA-Z][a-zA-Z0-9_-]*
-    first_char = draw(st.characters(min_codepoint=97, max_codepoint=122))
+    """Generate valid FTL message identifiers.
+
+    Per Fluent spec, identifiers must be ASCII only: [a-zA-Z][a-zA-Z0-9_-]*
+    Unicode letters are NOT valid per Fluent specification.
+    """
+    import string  # noqa: PLC0415 - Isolated import for Hypothesis strategy
+
+    first_char = draw(st.sampled_from(string.ascii_letters))
     rest_chars = draw(
         st.text(
             min_size=0,
             max_size=20,
-            alphabet=st.characters(whitelist_categories=("Ll", "Lu", "Nd"))
-            | st.sampled_from(["-", "_"]),
+            alphabet=string.ascii_letters + string.digits + "-_",
         )
     )
     return first_char + rest_chars

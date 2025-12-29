@@ -37,9 +37,11 @@ class TestParseCurrencyHypothesis:
         # Format: symbol + amount (no locale formatting for simplicity)
         currency_str = f"{currency_symbol}{amount}"
 
-        # v0.38.0: Ambiguous symbols require default_currency
-        # Yen sign now ambiguous (JPY vs CNY based on locale)
-        ambiguous_symbols = {"$": "USD", "¢": "USD", "₨": "INR", "₱": "PHP", "¥": "JPY"}
+        # v0.38.0: Yen sign ambiguous (JPY vs CNY based on locale)
+        # v0.39.0: Pound sign ambiguous (GBP, EGP, etc. based on locale)
+        ambiguous_symbols = {
+            "$": "USD", "¢": "USD", "₨": "INR", "₱": "PHP", "¥": "JPY", "£": "GBP"
+        }
         default_currency = ambiguous_symbols.get(currency_symbol)
 
         result, errors = parse_currency(

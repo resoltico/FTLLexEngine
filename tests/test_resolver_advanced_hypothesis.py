@@ -345,8 +345,9 @@ class TestFunctionCallResolution:
     """Properties about function call resolution."""
 
     @given(
+        # Per Fluent spec, function names must be ASCII uppercase only (v0.39.0)
         func_name=st.text(
-            alphabet=st.characters(whitelist_categories=["Lu"]), min_size=3, max_size=10
+            alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ", min_size=3, max_size=10
         ),
         return_value=ftl_simple_text(),
     )

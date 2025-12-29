@@ -1,6 +1,6 @@
-"""Tests for v0.18.0 changes.
+"""Tests for create_default_registry and FluentBundle functions parameter.
 
-Tests cover:
+Tests for:
 - create_default_registry() factory function
 - FluentBundle functions parameter
 - FUNCTION_REGISTRY removal (no longer available)

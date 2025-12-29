@@ -32,6 +32,7 @@ from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.syntax.ast import Annotation, Comment, Junk, Message, Resource, Span, Term
 from ftllexengine.syntax.cursor import Cursor
+from ftllexengine.syntax.parser.primitives import is_identifier_start
 from ftllexengine.syntax.parser.rules import (
     ParseContext,
     parse_comment,
@@ -254,8 +255,9 @@ class FluentParserV1:
                 break
 
             # Check for valid entry start characters
-            # Per spec: Junk stops at #, -, or [a-zA-Z]
-            if cursor.current in ("#", "-") or cursor.current.isalpha():
+            # Per spec: Junk stops at #, -, or ASCII letter [a-zA-Z]
+            # Note: Uses is_identifier_start for ASCII-only check per Fluent spec
+            if cursor.current in ("#", "-") or is_identifier_start(cursor.current):
                 # Found valid entry start - restore to line start and stop
                 cursor = saved_cursor
                 break

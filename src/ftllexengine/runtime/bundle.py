@@ -480,13 +480,14 @@ class FluentBundle:
                         # Count junk entries, always log at WARNING level
                         # Syntax errors are functional failures regardless of source origin
                         junk_count += 1
-                        # Security: Use ascii() to escape control characters in untrusted content
-                        # Prevents log injection via ANSI escape codes or other control chars
+                        # Use repr() to escape control characters while preserving Unicode readability.
+                        # repr() escapes control chars (prevents ANSI injection) but keeps Unicode
+                        # letters readable (e.g., 'Jānis' instead of 'J\xe2nis').
                         source_desc = source_path or "<string>"
                         logger.warning(
                             "Syntax error in %s: %s",
                             source_desc,
-                            ascii(entry.content[:_LOG_TRUNCATE_WARNING]),
+                            repr(entry.content[:_LOG_TRUNCATE_WARNING]),
                         )
                     case _:
                         # Comments or other entry types don't need registration

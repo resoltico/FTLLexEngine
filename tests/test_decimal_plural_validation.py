@@ -1,10 +1,10 @@
-"""Tests for v0.30.0 changes.
+"""Tests for Decimal plural matching, cycle detection, and ValidationWarning.
 
-This module tests the specific fixes and improvements introduced in v0.30.0:
-- LOGIC-PLURALCAT-001: Decimal support in plural category matching
-- LOGIC-TERMSELF-001/BUILD-DEPS-001: Cross-type cycle detection
-- API-VALIDWARN-001: ValidationWarning with line/column position
-- STRUCT-ENUM-001: StrEnum migration for enum types
+Tests for:
+- Decimal support in plural category matching
+- Cross-type cycle detection
+- ValidationWarning with line/column position
+- StrEnum migration for enum types
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from ftllexengine.validation.resource import validate_resource
 
 
 class TestDecimalPluralMatching:
-    """Test Decimal type support in plural category matching (LOGIC-PLURALCAT-001)."""
+    """Test Decimal type support in plural category matching."""
 
     def test_decimal_selector_triggers_plural_matching(self) -> None:
         """Test that Decimal values trigger plural category matching."""
@@ -106,7 +106,7 @@ items = { $count ->
 
 
 class TestCrossTypeCycleDetection:
-    """Test cross-type cycle detection (LOGIC-TERMSELF-001, LOGIC-BUILD-DEPS-001)."""
+    """Test cross-type cycle detection."""
 
     def test_message_only_cycle_detected(self) -> None:
         """Test detection of message-only cycles."""
@@ -186,7 +186,7 @@ msg-b = { -common }
 
 
 class TestValidationWarningPosition:
-    """Test ValidationWarning with line/column position (API-VALIDWARN-001)."""
+    """Test ValidationWarning with line/column position."""
 
     def test_validation_warning_has_position_fields(self) -> None:
         """Test ValidationWarning dataclass has line and column fields."""
@@ -276,7 +276,7 @@ msg-duplicate = Duplicate definition
 
 
 class TestStrEnumMigration:
-    """Test StrEnum migration for enum types (STRUCT-ENUM-001)."""
+    """Test StrEnum migration for enum types."""
 
     def test_comment_type_is_str_enum(self) -> None:
         """Test CommentType is a StrEnum."""

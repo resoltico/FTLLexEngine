@@ -215,7 +215,7 @@ def generate_ftl_resource(fdp: atheris.FuzzedDataProvider) -> str:
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     """Atheris entry point: generate structured FTL and detect crashes."""
-    global _fuzz_stats  # noqa: PLW0603 - Required for crash-proof reporting
+    global _fuzz_stats  # noqa: PLW0602 - Required for crash-proof reporting
 
     _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
     _fuzz_stats["status"] = "running"
