@@ -318,9 +318,14 @@ class FluentSerializer(ASTVisitor):
                 output.append(f"{prefix}\n")
 
     def _serialize_junk(self, node: Junk, output: list[str]) -> None:
-        """Serialize Junk (keep as-is)."""
+        """Serialize Junk (keep as-is).
+
+        Only appends newline if content doesn't already end with one,
+        preventing redundant blank lines in parse/serialize cycles.
+        """
         output.append(node.content)
-        output.append("\n")
+        if not node.content.endswith("\n"):
+            output.append("\n")
 
     def _serialize_pattern(
         self, pattern: Pattern, output: list[str], depth_guard: DepthGuard
@@ -332,6 +337,9 @@ class FluentSerializer(ASTVisitor):
         - { must be serialized as {"{"} (Placeable containing StringLiteral)
         - } must be serialized as {"}"} (Placeable containing StringLiteral)
 
+        Multi-line patterns: Newlines in text elements are followed by
+        4-space indentation to create valid continuation lines for roundtrip.
+
         This ensures output is valid FTL that compliant parsers accept.
         """
         for element in pattern.elements:
@@ -339,6 +347,11 @@ class FluentSerializer(ASTVisitor):
                 # Per Fluent spec: no escape sequences in TextElements
                 # Literal braces must become Placeable(StringLiteral("{"/"}")
                 text = element.value
+
+                # Handle newlines: add indentation after each newline for continuation
+                if "\n" in text:
+                    text = text.replace("\n", "\n    ")
+
                 if "{" in text or "}" in text:
                     # Split and emit braces as StringLiteral Placeables
                     self._serialize_text_with_braces(text, output)

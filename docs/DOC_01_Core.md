@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.42.0"
+version: "0.43.0"
 domain: CORE
-updated: "2025-12-29"
+updated: "2025-12-30"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -768,6 +768,7 @@ class ResourceLoadResult:
     status: LoadStatus
     error: Exception | None = None
     source_path: str | None = None
+    junk_entries: tuple[Junk, ...] = ()
 
     @property
     def is_success(self) -> bool: ...
@@ -775,6 +776,8 @@ class ResourceLoadResult:
     def is_not_found(self) -> bool: ...
     @property
     def is_error(self) -> bool: ...
+    @property
+    def has_junk(self) -> bool: ...
 ```
 
 ### Parameters
@@ -785,10 +788,12 @@ class ResourceLoadResult:
 | `status` | `LoadStatus` | Load status (success, not_found, error). |
 | `error` | `Exception \| None` | Exception if status is ERROR. |
 | `source_path` | `str \| None` | Full path to resource (if available). |
+| `junk_entries` | `tuple[Junk, ...]` | Unparseable content found during parsing. |
 
 ### Constraints
 - Return: Immutable load result record.
 - State: Frozen dataclass.
+- Junk: `has_junk` property returns True if any Junk entries present.
 - Import: `from ftllexengine.localization import ResourceLoadResult`
 
 ---
@@ -804,15 +809,20 @@ class LoadSummary:
     successful: int  # computed
     not_found: int  # computed
     errors: int  # computed
+    junk_count: int  # computed
 
     def get_errors(self) -> tuple[ResourceLoadResult, ...]: ...
     def get_not_found(self) -> tuple[ResourceLoadResult, ...]: ...
     def get_successful(self) -> tuple[ResourceLoadResult, ...]: ...
     def get_by_locale(self, locale: LocaleCode) -> tuple[ResourceLoadResult, ...]: ...
+    def get_with_junk(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_all_junk(self) -> tuple[Junk, ...]: ...
     @property
     def has_errors(self) -> bool: ...
     @property
     def all_successful(self) -> bool: ...
+    @property
+    def has_junk(self) -> bool: ...
 ```
 
 ### Parameters
@@ -823,10 +833,12 @@ class LoadSummary:
 | `successful` | `int` | Number of successful loads. |
 | `not_found` | `int` | Number of resources not found. |
 | `errors` | `int` | Number of load errors. |
+| `junk_count` | `int` | Total Junk entries across all resources. |
 
 ### Constraints
 - Return: Immutable summary record.
 - State: Frozen dataclass. Statistics computed in __post_init__.
+- Junk: `get_with_junk()` returns results with Junk; `get_all_junk()` aggregates all Junk.
 - Import: `from ftllexengine.localization import LoadSummary`
 
 ---

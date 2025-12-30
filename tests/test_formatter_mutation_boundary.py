@@ -31,7 +31,7 @@ class TestNumberFormatBoundaries:
         Zero should be formatted correctly.
         """
         result = number_format(0, "en-US")
-        assert result == "0"
+        assert str(result) == "0"
 
     def test_number_format_negative_zero(self):
         """Kills: negative zero handling mutations.
@@ -39,7 +39,7 @@ class TestNumberFormatBoundaries:
         Negative zero should format as zero.
         """
         result = number_format(-0.0, "en-US")
-        assert "0" in result
+        assert "0" in str(result)
 
     def test_number_format_negative_number(self):
         """Kills: value >= 0 mutations.
@@ -47,7 +47,9 @@ class TestNumberFormatBoundaries:
         Negative numbers should format correctly.
         """
         result = number_format(-42, "en-US")
-        assert "-42" in result or "−42" in result  # Some locales use minus sign  # noqa: RUF001
+        result_str = str(result)
+        # Some locales use minus sign
+        assert "-42" in result_str or "−42" in result_str  # noqa: RUF001
 
     def test_number_format_very_large_number(self):
         """Kills: number size boundary mutations.
@@ -55,8 +57,9 @@ class TestNumberFormatBoundaries:
         Very large numbers should format without error.
         """
         result = number_format(1_000_000_000_000, "en-US")
-        assert isinstance(result, str)
-        assert len(result) > 0
+        result_str = str(result)
+        assert isinstance(result_str, str)
+        assert len(result_str) > 0
 
     def test_number_format_very_small_number(self):
         """Kills: small number boundary mutations.
@@ -64,7 +67,7 @@ class TestNumberFormatBoundaries:
         Very small decimals should format correctly.
         """
         result = number_format(0.000001, "en-US", maximum_fraction_digits=6)
-        assert isinstance(result, str)
+        assert isinstance(str(result), str)
 
     def test_number_format_with_infinity(self):
         """Kills: special value handling mutations.
@@ -72,9 +75,10 @@ class TestNumberFormatBoundaries:
         Infinity should be handled gracefully.
         """
         result = number_format(math.inf, "en-US")
-        assert isinstance(result, str)
+        result_str = str(result)
+        assert isinstance(result_str, str)
         # Either formatted as "inf" or fallback to str(value)
-        assert len(result) > 0
+        assert len(result_str) > 0
 
     def test_number_format_with_nan(self):
         """Kills: NaN handling mutations.
@@ -82,8 +86,9 @@ class TestNumberFormatBoundaries:
         NaN should be handled gracefully.
         """
         result = number_format(math.nan, "en-US")
-        assert isinstance(result, str)
-        assert len(result) > 0
+        result_str = str(result)
+        assert isinstance(result_str, str)
+        assert len(result_str) > 0
 
 
 class TestNumberFormatPrecisionBoundaries:
@@ -99,7 +104,7 @@ class TestNumberFormatPrecisionBoundaries:
         """
         result = number_format(5, "en-US", minimum_fraction_digits=0)
         # Should be "5" not "5.0"
-        assert result == "5"
+        assert str(result) == "5"
 
     def test_minimum_fraction_digits_one(self):
         """Kills: minimum_fraction_digits=1 → =0 mutations.
@@ -107,12 +112,13 @@ class TestNumberFormatPrecisionBoundaries:
         One minimum should show one decimal for integers.
         """
         result = number_format(5, "en-US", minimum_fraction_digits=1)
+        result_str = str(result)
         # Should be "5.0" (or locale equivalent)
-        assert "5" in result
+        assert "5" in result_str
         # Must have decimal point and at least one digit after
-        assert "." in result or "," in result, f"Expected decimal separator in {result}"
-        decimal_sep = "." if "." in result else ","
-        parts = result.split(decimal_sep)
+        assert "." in result_str or "," in result_str, f"Expected decimal separator in {result_str}"
+        decimal_sep = "." if "." in result_str else ","
+        parts = result_str.split(decimal_sep)
         assert len(parts) == 2
         assert len(parts[1]) >= 1
 
@@ -122,10 +128,11 @@ class TestNumberFormatPrecisionBoundaries:
         Two minimum should show two decimals.
         """
         result = number_format(5, "en-US", minimum_fraction_digits=2)
+        result_str = str(result)
         # Should be "5.00" (or locale equivalent)
-        assert "." in result or "," in result, f"Expected decimal separator in {result}"
-        decimal_sep = "." if "." in result else ","
-        parts = result.split(decimal_sep)
+        assert "." in result_str or "," in result_str, f"Expected decimal separator in {result_str}"
+        decimal_sep = "." if "." in result_str else ","
+        parts = result_str.split(decimal_sep)
         assert len(parts) == 2
         assert len(parts[1]) >= 2
 
@@ -136,7 +143,7 @@ class TestNumberFormatPrecisionBoundaries:
         """
         result = number_format(5.7, "en-US", maximum_fraction_digits=0)
         # Should be "6" (rounded)
-        assert "6" in result
+        assert "6" in str(result)
 
     def test_maximum_fraction_digits_one(self):
         """Kills: maximum_fraction_digits=1 → =0 mutations.
@@ -145,7 +152,7 @@ class TestNumberFormatPrecisionBoundaries:
         """
         result = number_format(5.789, "en-US", maximum_fraction_digits=1)
         # Should be "5.8" (rounded)
-        assert "5" in result
+        assert "5" in str(result)
 
     def test_maximum_fraction_digits_three(self):
         """Kills: maximum_fraction_digits=3 → =2 mutations.
@@ -154,7 +161,7 @@ class TestNumberFormatPrecisionBoundaries:
         """
         result = number_format(5.12345, "en-US", maximum_fraction_digits=3)
         # Should be "5.123" (rounded)
-        assert "5" in result
+        assert "5" in str(result)
 
 
 class TestNumberFormatGroupingBoundaries:
@@ -169,10 +176,11 @@ class TestNumberFormatGroupingBoundaries:
         Grouping enabled should add separators for large numbers.
         """
         result = number_format(1000, "en-US", use_grouping=True)
+        result_str = str(result)
         # Should have separator (comma or space depending on locale)
         # At minimum, result should be a string representation
-        assert isinstance(result, str)
-        assert "1000" in result or "1,000" in result or "1 000" in result
+        assert isinstance(result_str, str)
+        assert "1000" in result_str or "1,000" in result_str or "1 000" in result_str
 
     def test_use_grouping_false(self):
         """Kills: use_grouping=False → =True mutations.
@@ -180,9 +188,10 @@ class TestNumberFormatGroupingBoundaries:
         Grouping disabled should not add separators.
         """
         result = number_format(1000, "en-US", use_grouping=False)
-        assert isinstance(result, str)
+        result_str = str(result)
+        assert isinstance(result_str, str)
         # Result should be string representation
-        assert "1000" in result
+        assert "1000" in result_str
 
 
 class TestNumberFormatPrecisionCombinations:
@@ -197,10 +206,11 @@ class TestNumberFormatPrecisionCombinations:
         When min equals max, should show exact digits.
         """
         result = number_format(5, "en-US", minimum_fraction_digits=2, maximum_fraction_digits=2)
+        result_str = str(result)
         # Should be exactly "5.00"
-        assert "." in result or "," in result, f"Expected decimal separator in {result}"
-        decimal_sep = "." if "." in result else ","
-        parts = result.split(decimal_sep)
+        assert "." in result_str or "," in result_str, f"Expected decimal separator in {result_str}"
+        decimal_sep = "." if "." in result_str else ","
+        parts = result_str.split(decimal_sep)
         assert len(parts) == 2
         # Exactly 2 decimal digits
         assert len(parts[1]) == 2
@@ -215,7 +225,7 @@ class TestNumberFormatPrecisionCombinations:
             maximum_fraction_digits=3,
         )
         # Should show "5.5" (one decimal)
-        assert "5" in result
+        assert "5" in str(result)
 
     def test_trailing_zeros_stripped_beyond_minimum(self):
         """Kills: trailing zero stripping mutations.
@@ -227,7 +237,7 @@ class TestNumberFormatPrecisionCombinations:
             maximum_fraction_digits=3,
         )
         # Should be "5" not "5.000"
-        assert result == "5"
+        assert str(result) == "5"
 
 
 class TestDatetimeFormatBoundaries:

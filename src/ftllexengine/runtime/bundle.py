@@ -63,7 +63,7 @@ class FluentBundle:
 
     Parser Security:
         Configurable limits prevent DoS attacks:
-        - max_source_size: Maximum FTL source size in bytes (default: 10 MB)
+        - max_source_size: Maximum FTL source length in characters (default: 10M)
         - max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
     Examples:
@@ -146,7 +146,7 @@ class FluentBundle:
                       - Use pre-registered custom functions
                       - Share function registrations between bundles
                       - Override default function behavior
-            max_source_size: Maximum FTL source size in bytes (default: 10 MB).
+            max_source_size: Maximum FTL source length in characters (default: 10M).
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } } structures.
@@ -593,8 +593,7 @@ class FluentBundle:
         """Format message to string with error reporting.
 
         Mozilla python-fluent aligned API that returns both the formatted
-        string and any errors encountered during resolution.
-        Thread-safe when bundle created with thread_safe=True.
+        string and any errors encountered during resolution. Thread-safe.
 
         Args:
             message_id: Message identifier [positional-only]

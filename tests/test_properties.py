@@ -148,10 +148,11 @@ class TestNumberProperties:
 
     @given(ftl_numbers())
     @settings(max_examples=50)
-    def test_number_format_returns_string(self, number: int | float) -> None:
-        """Number formatting always returns a string."""
+    def test_number_format_returns_fluent_number(self, number: int | float) -> None:
+        """Number formatting always returns a FluentNumber."""
+        from ftllexengine.runtime.function_bridge import FluentNumber
         from ftllexengine.runtime.functions import number_format
 
         result = number_format(number)
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, FluentNumber)
+        assert len(str(result)) > 0

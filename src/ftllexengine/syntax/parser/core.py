@@ -58,8 +58,11 @@ def _has_blank_line_between(source: str, start: int, end: int) -> bool:
     blank lines between them. A blank line is defined as a line that contains
     only whitespace (spaces, per FTL spec).
 
+    Note: Line endings are normalized to LF before parsing, so only checking
+    for '\n' is sufficient.
+
     Args:
-        source: The full source string
+        source: The full source string (with normalized line endings)
         start: Start position (inclusive)
         end: End position (exclusive)
 
@@ -68,32 +71,42 @@ def _has_blank_line_between(source: str, start: int, end: int) -> bool:
     """
     region = source[start:end]
     # A blank line is when we see two consecutive newlines (possibly with spaces between)
-    # Examples of blank lines: "\n\n", "\n  \n", "\r\n\r\n"
+    # Examples of blank lines: "\n\n", "\n  \n"
     newline_count = 0
-    i = 0
-    while i < len(region):
-        if region[i] == "\n":
+    for ch in region:
+        if ch == "\n":
             newline_count += 1
             if newline_count >= 2:
                 return True
-            i += 1
-        elif region[i] == "\r":
-            # Handle \r\n as single newline
-            if i + 1 < len(region) and region[i + 1] == "\n":
-                i += 2
-            else:
-                i += 1
-            newline_count += 1
-            if newline_count >= 2:
-                return True
-        elif region[i] == " ":
+        elif ch == " ":
             # Spaces don't reset the newline counter (they can be part of blank line)
-            i += 1
+            pass
         else:
             # Non-blank character resets the counter
             newline_count = 0
-            i += 1
     return False
+
+
+def _is_at_column_one(cursor: Cursor) -> bool:
+    """Check if cursor is at column 1 (start of a line).
+
+    Per Fluent spec, top-level entries (messages, terms, comments) must start
+    at column 1. This function checks if the current position is at the
+    beginning of a line (after a newline or at start of file).
+
+    Note: Line endings are normalized to LF before parsing, so only checking
+    for '\n' is sufficient.
+
+    Args:
+        cursor: Current cursor position
+
+    Returns:
+        True if at column 1, False if indented
+    """
+    if cursor.pos == 0:
+        return True
+    # Check if previous character is a newline (normalized to LF)
+    return cursor.source[cursor.pos - 1] == "\n"
 
 
 def _merge_comments(first: Comment, second: Comment) -> Comment:
@@ -136,7 +149,7 @@ class FluentParserV1:
 
     Security:
     - Configurable max_source_size prevents DoS via large inputs
-    - Default limit: 10 MB (sufficient for any reasonable FTL file)
+    - Default limit: 10M characters (sufficient for any reasonable FTL file)
     - Configurable max_nesting_depth prevents DoS via deeply nested placeables
 
     Architecture:
@@ -145,7 +158,7 @@ class FluentParserV1:
     - No mutation - compiler enforces progress
 
     Attributes:
-        max_source_size: Maximum allowed source size in bytes (default: 10 MB)
+        max_source_size: Maximum allowed source length in characters (default: 10M)
         max_nesting_depth: Maximum allowed placeable nesting depth (default: 100)
     """
 
@@ -160,7 +173,7 @@ class FluentParserV1:
         """Initialize parser with optional size and nesting depth limits.
 
         Args:
-            max_source_size: Maximum source size in bytes (default: 10 MB).
+            max_source_size: Maximum source length in characters (default: 10M).
                             Set to None or 0 to disable size limit (not recommended).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } }.
@@ -174,7 +187,7 @@ class FluentParserV1:
 
     @property
     def max_source_size(self) -> int:
-        """Maximum allowed source size in bytes."""
+        """Maximum allowed source length in characters."""
         return self._max_source_size
 
     @property
@@ -224,11 +237,17 @@ class FluentParserV1:
         # Validate input size (DoS prevention)
         if self._max_source_size > 0 and len(source) > self._max_source_size:
             msg = (
-                f"Source size ({len(source):,} bytes) exceeds maximum "
-                f"({self._max_source_size:,} bytes). "
+                f"Source length ({len(source):,} characters) exceeds maximum "
+                f"({self._max_source_size:,} characters). "
                 "Configure max_source_size in FluentParserV1 constructor to increase limit."
             )
             raise ValueError(msg)
+
+        # Normalize line endings to LF per Fluent spec.
+        # This ensures consistent behavior across platforms and simplifies
+        # line/column tracking throughout the parser.
+        # Order matters: CRLF first (otherwise CR becomes LF and remaining LF stays)
+        source = source.replace("\r\n", "\n").replace("\r", "\n")
 
         cursor = Cursor(source, 0)
         entries: list[Message | Term | Junk | Comment] = []
@@ -244,8 +263,13 @@ class FluentParserV1:
         while not cursor.is_eof:
             # Per spec: blank_block ::= (blank_inline? line_end)+
             # Between resource entries, skip blank (spaces and newlines, NOT tabs)
+            # Track position before blank skipping for Junk content preservation.
+            # If entry is not at column 1, we include the leading whitespace in Junk.
             pos_before_blank = cursor.pos
             cursor = skip_blank(cursor)
+            # Track position after blank skipping for accurate blank line detection.
+            # This is where the next entry actually starts (after any blank lines).
+            pos_after_blank = cursor.pos
 
             if cursor.is_eof:
                 # Finalize pending comment before breaking
@@ -253,6 +277,36 @@ class FluentParserV1:
                     entries.append(pending_comment)
                     pending_comment = None
                 break
+
+            # Per Fluent spec, top-level entries must start at column 1.
+            # Indented content is treated as Junk.
+            if not _is_at_column_one(cursor):
+                # Finalize pending comment if any
+                if pending_comment is not None:
+                    entries.append(pending_comment)
+                    pending_comment = None
+                    pending_comment_end_pos = 0
+
+                # Consume the indented content as Junk.
+                # Use pos_before_blank to include leading whitespace in Junk content.
+                # This ensures serialization roundtrip preserves the original structure.
+                junk_start = pos_before_blank
+                cursor = self._consume_junk_lines(cursor)
+
+                # Create Junk entry for indented content
+                junk_content = cursor.source[junk_start : cursor.pos]
+                junk_span = Span(start=junk_start, end=cursor.pos)
+
+                annotation = Annotation(
+                    code=DiagnosticCode.PARSE_JUNK.name,
+                    message="Entry must start at column 1",
+                    span=Span(start=junk_start, end=junk_start),
+                )
+
+                entries.append(
+                    Junk(content=junk_content, annotations=(annotation,), span=junk_span)
+                )
+                continue
 
             # Parse comments (per Fluent spec: #, ##, ###)
             if cursor.current == "#":
@@ -263,13 +317,15 @@ class FluentParserV1:
 
                     # Check if we should merge with pending comment
                     if pending_comment is not None:
-                        # Merge if same type AND no blank lines between
+                        # Merge if same type AND no blank lines between.
+                        # Use pos_after_blank (where new comment starts) to correctly
+                        # detect blank lines between previous comment and this one.
                         if (
                             pending_comment.type == new_comment.type
                             and not _has_blank_line_between(
                                 cursor.source,
                                 pending_comment_end_pos,
-                                pos_before_blank,
+                                pos_after_blank,
                             )
                         ):
                             # Merge comments
@@ -297,11 +353,13 @@ class FluentParserV1:
             # a message/term (no blank lines) should be attached to that entry
             attach_comment: Comment | None = None
             if pending_comment is not None:
-                # Check if it's a single-hash comment with no blank line before entry
+                # Check if it's a single-hash comment with no blank line before entry.
+                # Use pos_after_blank (where message/term starts) to correctly detect
+                # blank lines between comment and the entry.
                 if (
                     pending_comment.type == CommentType.COMMENT
                     and not _has_blank_line_between(
-                        cursor.source, pending_comment_end_pos, pos_before_blank
+                        cursor.source, pending_comment_end_pos, pos_after_blank
                     )
                 ):
                     # Attach to following message/term

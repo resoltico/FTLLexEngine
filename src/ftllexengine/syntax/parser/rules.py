@@ -256,10 +256,10 @@ def _is_variant_marker(cursor: Cursor) -> bool:
                     return True  # EOF after ] - valid variant
 
                 # Valid if followed by: newline, }, [, or * (for *[other])
-                # Otherwise literal [text] - return the condition directly
-                return after_bracket.current in ("\n", "\r", "}", "[", "*")
+                # Note: Line endings are normalized to LF at parser entry.
+                return after_bracket.current in ("\n", "}", "[", "*")
 
-            if c in ("\n", "\r", "{", "}", " ", "\t", ",", ":", ";", "=", "+", "*", "/"):
+            if c in ("\n", "{", "}", " ", "\t", ",", ":", ";", "=", "+", "*", "/"):
                 # Invalid char for variant key - this is literal text
                 return False
             if not _is_valid_variant_key_char(c, is_first):
@@ -273,6 +273,77 @@ def _is_variant_marker(cursor: Cursor) -> bool:
         return False
 
     return False
+
+
+def _trim_pattern_blank_lines(
+    elements: list[TextElement | Placeable],
+) -> tuple[TextElement | Placeable, ...]:
+    """Trim leading and trailing blank lines from pattern elements.
+
+    Per Fluent spec, patterns should not include leading or trailing blank lines.
+    A blank line is defined as a line containing only whitespace.
+
+    This function:
+    1. Strips leading whitespace/blank lines from the first TextElement
+    2. Strips trailing blank lines from the last TextElement (but preserves
+       trailing whitespace on content lines - only removes after last newline)
+    3. Removes empty TextElements resulting from stripping
+
+    Args:
+        elements: List of pattern elements (TextElement or Placeable)
+
+    Returns:
+        Tuple of trimmed pattern elements
+    """
+    if not elements:
+        return ()
+
+    result = list(elements)
+
+    # Trim leading whitespace from first element if it's a TextElement
+    while result and isinstance(result[0], TextElement):
+        first = result[0]
+        stripped = first.value.lstrip()
+        if stripped:
+            # Keep non-empty content
+            result[0] = TextElement(value=stripped)
+            break
+        # Element was all whitespace - remove it
+        result.pop(0)
+
+    # Trim trailing BLANK LINES from last element if it's a TextElement.
+    # Per Fluent spec, only trailing blank lines should be removed,
+    # NOT trailing whitespace on content lines.
+    # Example: "Firefox   " should preserve trailing spaces,
+    # but "Firefox\n   \n" should become "Firefox".
+    while result and isinstance(result[-1], TextElement):
+        last = result[-1]
+        text = last.value
+
+        # Find the last newline in the text
+        last_newline = text.rfind("\n")
+
+        if last_newline == -1:
+            # No newlines - this is a single-line text element.
+            # Do NOT strip trailing whitespace (it's significant per Fluent spec).
+            break
+
+        # Check if everything after the last newline is whitespace (blank line)
+        after_newline = text[last_newline + 1 :]
+        if after_newline.strip():
+            # Content after last newline - preserve it all (including trailing spaces)
+            break
+
+        # Everything after last newline is whitespace - trim this blank line
+        trimmed = text[:last_newline]
+        if trimmed:
+            result[-1] = TextElement(value=trimmed)
+            # Continue loop to check for more trailing blank lines
+        else:
+            # Element was all whitespace - remove it
+            result.pop()
+
+    return tuple(result)
 
 
 def parse_simple_pattern(
@@ -296,7 +367,7 @@ def parse_simple_pattern(
     - Close brace (}): End of containing select expression
     - Open bracket ([): Start of next variant key (with lookahead)
     - Asterisk (*): Start of default variant marker (only if followed by '[')
-    - Newline (\\n, \\r): End of variant value UNLESS followed by indented continuation
+    - Newline (\\n): End of variant value UNLESS followed by indented continuation
 
     Lookahead:
         '*' and '[' are only treated as variant markers when they form valid
@@ -332,23 +403,23 @@ def parse_simple_pattern(
         if ch in ("[", "*") and _is_variant_marker(cursor):
             break
 
-        # Handle newlines - check for indented continuation
-        if ch in ("\n", "\r"):
+        # Handle newline - check for indented continuation.
+        # Note: Line endings are normalized to LF at parser entry.
+        if ch == "\n":
             if is_indented_continuation(cursor):
                 # Skip newline and consume indentation
                 cursor = cursor.advance()
-                if not cursor.is_eof and cursor.current == "\n":
-                    cursor = cursor.advance()  # Handle \r\n
                 # Skip leading spaces (continuation indent)
                 cursor = cursor.skip_spaces()
-                # Add a space to represent the line break in the pattern value
+                # Per Fluent spec, continuation lines are joined with newlines.
+                # The newline represents the line break in the pattern value.
                 if elements and not isinstance(elements[-1], Placeable):
-                    # Append space to previous text element
+                    # Append newline to previous text element
                     last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + " ")
+                    elements[-1] = TextElement(value=last_elem.value + "\n")
                 else:
-                    # Add new text element with space
-                    elements.append(TextElement(value=" "))
+                    # Add new text element with newline
+                    elements.append(TextElement(value="\n"))
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -371,8 +442,9 @@ def parse_simple_pattern(
             text_start = cursor.pos
             while not cursor.is_eof:  # pragma: no branch
                 ch = cursor.current
-                # Stop at: placeable start, line end, closing brace
-                if ch in ("{", "\n", "\r", "}"):
+                # Stop at: placeable start, newline, closing brace
+                # Note: Line endings are normalized to LF at parser entry.
+                if ch in ("{", "\n", "}"):
                     break
                 # Check variant markers with lookahead
                 if ch in ("[", "*") and _is_variant_marker(cursor):
@@ -387,7 +459,9 @@ def parse_simple_pattern(
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
                 elements.append(TextElement(value=text))
 
-    pattern = Pattern(elements=tuple(elements))
+    # Per Fluent spec, trim leading and trailing blank lines from patterns
+    trimmed_elements = _trim_pattern_blank_lines(elements)
+    pattern = Pattern(elements=trimmed_elements)
     return ParseResult(pattern, cursor)
 
 
@@ -418,23 +492,23 @@ def parse_pattern(
     while not cursor.is_eof:
         ch = cursor.current
 
-        # Stop conditions - but check for indented continuations first
-        if ch in ("\n", "\r"):
+        # Handle newline - check for indented continuation.
+        # Note: Line endings are normalized to LF at parser entry.
+        if ch == "\n":
             if is_indented_continuation(cursor):
                 # Skip newline and consume indentation
                 cursor = cursor.advance()
-                if not cursor.is_eof and cursor.current == "\n":
-                    cursor = cursor.advance()  # Handle \r\n
                 # Skip leading spaces (continuation indent)
                 cursor = cursor.skip_spaces()
-                # Add a space to represent the line break in the pattern value
+                # Per Fluent spec, continuation lines are joined with newlines.
+                # The newline represents the line break in the pattern value.
                 if elements and not isinstance(elements[-1], Placeable):
-                    # Append space to previous text element
+                    # Append newline to previous text element
                     last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + " ")
+                    elements[-1] = TextElement(value=last_elem.value + "\n")
                 else:
-                    # Add new text element with space
-                    elements.append(TextElement(value=" "))
+                    # Add new text element with newline
+                    elements.append(TextElement(value="\n"))
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -462,25 +536,28 @@ def parse_pattern(
             text_start = cursor.pos
             while not cursor.is_eof:
                 ch = cursor.current
-                # Stop at: placeable start or line end only.
+                # Stop at: placeable start or newline only.
                 # Note: '}', '[', '*' are valid text in top-level patterns.
                 # They only have special meaning inside select expressions (handled
                 # by parse_simple_pattern). An unescaped '}' is technically invalid
                 # FTL syntax, but treating it as text is more robust than skipping.
-                if ch in ("{", "\n", "\r"):
+                # Note: Line endings are normalized to LF at parser entry.
+                if ch in ("{", "\n"):
                     break
                 cursor = cursor.advance()
 
             if cursor.pos > text_start:  # pragma: no branch
                 # Note: False branch (cursor.pos == text_start) occurs when inner loop
                 # breaks immediately without consuming text. This happens when cursor
-                # starts on a stop char ('{', '\n', '\r'). However, outer loop (line 175)
-                # checks for '\n' and '\r' before text parsing, and '{' enters placeable
-                # parsing (line 201), so this condition is always True when reached.
+                # starts on a stop char ('{', '\n'). However, outer loop checks for '\n'
+                # before text parsing, and '{' enters placeable parsing, so this condition
+                # is always True when reached.
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
                 elements.append(TextElement(value=text))
 
-    pattern = Pattern(elements=tuple(elements))
+    # Per Fluent spec, trim leading and trailing blank lines from patterns
+    trimmed_elements = _trim_pattern_blank_lines(elements)
+    pattern = Pattern(elements=trimmed_elements)
     return ParseResult(pattern, cursor)
 
 
@@ -1289,11 +1366,10 @@ def parse_message_attributes(
     attributes: list[Attribute] = []
 
     while not cursor.is_eof:
-        # Advance to next line
-        if cursor.current in ("\n", "\r"):
+        # Advance to next line.
+        # Note: Line endings are normalized to LF at parser entry.
+        if cursor.current == "\n":
             cursor = cursor.advance()
-            if not cursor.is_eof and cursor.current == "\n":  # Handle \r\n
-                cursor = cursor.advance()
         else:
             break  # No newline, done with attributes
 
@@ -1512,13 +1588,12 @@ def parse_term(
 
     # Check for pattern starting on next line (multiline value pattern)
     # Example: -term =\n    value
-    if not cursor.is_eof and cursor.current in ("\n", "\r"):  # noqa: SIM102
+    # Note: Line endings are normalized to LF at parser entry.
+    if not cursor.is_eof and cursor.current == "\n":  # noqa: SIM102
         # Check if next line is indented (valid multiline pattern)
         if is_indented_continuation(cursor):
             # Multiline pattern - skip newline and leading indentation
             cursor = cursor.advance()
-            if not cursor.is_eof and cursor.current == "\n":  # Handle \r\n
-                cursor = cursor.advance()
             # Skip leading indentation before parsing
             # parse_pattern will handle continuation lines itself
             cursor = cursor.skip_spaces()
@@ -1539,11 +1614,10 @@ def parse_term(
     # Parse attributes (reuse attribute parsing logic)
     attributes: list[Attribute] = []
     while not cursor.is_eof:
-        # Skip to next line
-        if cursor.current in ("\n", "\r"):
+        # Skip to next line.
+        # Note: Line endings are normalized to LF at parser entry.
+        if cursor.current == "\n":
             cursor = cursor.advance()
-            if not cursor.is_eof and cursor.current == "\n":  # Handle \r\n
-                cursor = cursor.advance()
         else:
             # No newline, done with attributes
             break

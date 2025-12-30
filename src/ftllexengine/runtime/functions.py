@@ -27,7 +27,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FunctionRegistry
+from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FluentNumber, FunctionRegistry
 from .locale_context import LocaleContext
 
 __all__ = ["create_default_registry", "get_shared_registry"]
@@ -43,7 +43,7 @@ def number_format(
     maximum_fraction_digits: int = 3,
     use_grouping: bool = True,
     pattern: str | None = None,
-) -> str:
+) -> FluentNumber:
     """Format number with locale-specific separators.
 
     Python-native API with snake_case parameters. FunctionRegistry bridges
@@ -91,13 +91,16 @@ def number_format(
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
     ctx = LocaleContext.create(locale_code)
-    return ctx.format_number(
+    formatted = ctx.format_number(
         value,
         minimum_fraction_digits=minimum_fraction_digits,
         maximum_fraction_digits=maximum_fraction_digits,
         use_grouping=use_grouping,
         pattern=pattern,
     )
+    # Return FluentNumber preserving both formatted output and numeric value
+    # for proper plural category matching in select expressions.
+    return FluentNumber(value=value, formatted=formatted)
 
 
 def datetime_format(

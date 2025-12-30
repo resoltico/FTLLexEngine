@@ -81,8 +81,12 @@ def _collect_entries(
     """Collect message/term entries and check for structural issues.
 
     Performs the following checks:
-    - Duplicate message/term IDs
+    - Duplicate message IDs (within message namespace)
+    - Duplicate term IDs (within term namespace)
     - Messages without values or attributes
+
+    Note: Per Fluent spec, messages and terms have separate namespaces.
+    A message named "foo" and a term named "foo" are NOT duplicates.
 
     Args:
         resource: Parsed Resource AST
@@ -92,7 +96,10 @@ def _collect_entries(
         Tuple of (messages_dict, terms_dict, warnings)
     """
     warnings: list[ValidationWarning] = []
-    seen_ids: set[str] = set()
+    # Per Fluent spec, messages and terms have separate namespaces.
+    # A message "foo" and a term "-foo" can coexist without conflict.
+    seen_message_ids: set[str] = set()
+    seen_term_ids: set[str] = set()
     messages_dict: dict[str, Message] = {}
     terms_dict: dict[str, Term] = {}
 
@@ -105,8 +112,8 @@ def _collect_entries(
     for entry in resource.entries:
         match entry:
             case Message(id=msg_id, value=value, attributes=attributes):
-                # Check for duplicate message IDs
-                if msg_id.name in seen_ids:
+                # Check for duplicate message IDs within message namespace
+                if msg_id.name in seen_message_ids:
                     line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
@@ -120,7 +127,7 @@ def _collect_entries(
                             column=column,
                         )
                     )
-                seen_ids.add(msg_id.name)
+                seen_message_ids.add(msg_id.name)
                 messages_dict[msg_id.name] = entry
 
                 # Check for messages without values (only attributes)
@@ -137,8 +144,8 @@ def _collect_entries(
                     )
 
             case Term(id=term_id):
-                # Check for duplicate term IDs
-                if term_id.name in seen_ids:
+                # Check for duplicate term IDs within term namespace
+                if term_id.name in seen_term_ids:
                     line, column = _get_position(entry)
                     warnings.append(
                         ValidationWarning(
@@ -152,7 +159,7 @@ def _collect_entries(
                             column=column,
                         )
                     )
-                seen_ids.add(term_id.name)
+                seen_term_ids.add(term_id.name)
                 terms_dict[term_id.name] = entry
 
     return messages_dict, terms_dict, warnings

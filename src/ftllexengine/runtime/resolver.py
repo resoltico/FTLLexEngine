@@ -30,7 +30,7 @@ from ftllexengine.diagnostics import (
     FluentReferenceError,
     FluentResolutionError,
 )
-from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
+from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue, FunctionRegistry
 from ftllexengine.runtime.plural_rules import select_plural_category
 from ftllexengine.syntax import (
     Expression,
@@ -552,9 +552,21 @@ class FluentResolver:
         For typical FTL files with <5 variants, linear scan is more efficient
         than building dictionary indices. Exact matches always take precedence
         over plural category matches, regardless of variant order in FTL source.
+
+        Error handling:
+            If the selector expression fails (e.g., missing variable), the error
+            is collected and resolution falls back to the default variant. This
+            ensures robustness and matches the Fluent spec behavior.
         """
-        # Evaluate selector
-        selector_value = self._resolve_expression(expr.selector, args, errors, context)
+        # Evaluate selector with error resilience.
+        # If selector evaluation fails (e.g., missing variable), collect the error
+        # and fall back to the default variant per Fluent spec.
+        try:
+            selector_value = self._resolve_expression(expr.selector, args, errors, context)
+        except (FluentReferenceError, FluentResolutionError) as e:
+            # Collect the error but don't propagate - fall back to default variant
+            errors.append(e)
+            return self._resolve_fallback_variant(expr, args, errors, context)
 
         # Handle None consistently with _format_value (which returns "" for None).
         # None represents a missing/undefined value and should NOT match any identifier.
@@ -569,12 +581,21 @@ class FluentResolver:
 
         # Pass 2: Plural category match (numeric selectors only)
         # FluentValue includes Decimal for currency/financial values.
+        # FluentNumber wraps formatted numbers while preserving numeric identity.
         # Note: Exclude bool since isinstance(True, int) is True in Python,
         # but booleans should match [true]/[false] variants, not plural categories.
-        if isinstance(selector_value, (int, float, Decimal)) and not isinstance(
+        #
+        # Extract numeric value from FluentNumber for plural matching.
+        numeric_value: int | float | Decimal | None = None
+        if isinstance(selector_value, FluentNumber):
+            numeric_value = selector_value.value
+        elif isinstance(selector_value, (int, float, Decimal)) and not isinstance(
             selector_value, bool
         ):
-            plural_category = select_plural_category(selector_value, self.locale)
+            numeric_value = selector_value
+
+        if numeric_value is not None:
+            plural_category = select_plural_category(numeric_value, self.locale)
             plural_match = self._find_plural_variant(expr.variants, plural_category)
             if plural_match is not None:
                 return self._resolve_pattern(plural_match.value, args, errors, context)
@@ -585,6 +606,42 @@ class FluentResolver:
             return self._resolve_pattern(default_variant.value, args, errors, context)
 
         # Fallback: first variant
+        if expr.variants:
+            return self._resolve_pattern(expr.variants[0].value, args, errors, context)
+
+        raise FluentResolutionError(ErrorTemplate.no_variants())
+
+    def _resolve_fallback_variant(
+        self,
+        expr: SelectExpression,
+        args: Mapping[str, FluentValue],
+        errors: list[FluentError],
+        context: ResolutionContext,
+    ) -> str:
+        """Resolve fallback variant when selector evaluation fails.
+
+        Attempts to resolve in order:
+            1. Default variant (marked with *)
+            2. First variant
+
+        Args:
+            expr: The SelectExpression to resolve
+            args: Arguments for pattern resolution
+            errors: Error list for error collection
+            context: Resolution context
+
+        Returns:
+            Resolved variant pattern string
+
+        Raises:
+            FluentResolutionError: If no variants exist
+        """
+        # Try default variant first
+        default_variant = self._find_default_variant(expr.variants)
+        if default_variant is not None:
+            return self._resolve_pattern(default_variant.value, args, errors, context)
+
+        # Fall back to first variant
         if expr.variants:
             return self._resolve_pattern(expr.variants[0].value, args, errors, context)
 

@@ -3,20 +3,17 @@
 This example shows the recommended patterns for using FluentBundle in multi-threaded
 applications.
 
-Thread Safety (v0.42.0+):
+Thread Safety:
     FluentBundle is ALWAYS thread-safe. All public methods are synchronized
     via internal RLock. This prevents race conditions when add_resource()
     is called concurrently with format_pattern(). RLock overhead is negligible
     (~10ns per acquire) for typical usage patterns.
 
-    Breaking change: The thread_safe parameter and is_thread_safe property
-    were removed in v0.42.0. All bundles are now inherently thread-safe.
-
 Demonstrates:
 1. Single-threaded initialization pattern (recommended for static resources)
 2. Concurrent read operations (always safe)
 3. Thread-local bundles (alternative for per-thread customization)
-4. Dynamic resource loading (now always safe without manual locks)
+4. Dynamic resource loading (always safe without manual locks)
 
 WARNING: Examples use use_isolating=False for cleaner terminal output.
 NEVER disable bidi isolation in production applications that support RTL languages.

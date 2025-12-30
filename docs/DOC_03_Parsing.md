@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.42.0"
+version: "0.43.0"
 domain: PARSING
-updated: "2025-12-29"
+updated: "2025-12-30"
 route:
   keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax]
   questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?"]
@@ -82,7 +82,7 @@ class FluentParserV1:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `max_source_size` | `int \| None` | N | Maximum source size in bytes (default: 10 MB). |
+| `max_source_size` | `int \| None` | N | Maximum source size in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum nesting depth for placeables (default: 100). |
 
 ### Constraints
@@ -509,5 +509,44 @@ MAX_DEPTH: int = 100
 - Purpose: Unified depth limit for parser, resolver, serializer, and validators.
 - Usage: Default for ParseContext.max_nesting_depth, FluentParserV1, serialize(max_depth=...).
 - Security: Prevents DoS via deeply nested placeables and stack overflow from adversarial ASTs.
+
+---
+
+## Parsing Behavior
+
+### Line Ending Normalization
+
+Parser normalizes all line endings to LF before parsing.
+
+### Constraints
+- Normalization: CRLF (`\r\n`) and CR (`\r`) converted to LF (`\n`).
+- Timing: Applied before any parsing occurs.
+- Scope: Affects all line/column tracking and comment merging.
+- Rationale: Per Fluent spec, ensures consistent AST representation across platforms.
+
+---
+
+### Column-1 Enforcement
+
+Top-level entries must start at column 1 (beginning of line).
+
+### Constraints
+- Rule: Messages, terms, and comments must start at column 1.
+- Indented: Indented content at top level becomes Junk entry.
+- Error: Junk annotation includes "Entry must start at column 1".
+- Rationale: Per Fluent spec for message/term/comment positioning.
+
+---
+
+### Pattern Whitespace Handling
+
+Patterns have leading/trailing blank lines trimmed.
+
+### Constraints
+- Leading: Leading whitespace/blank lines removed from first TextElement.
+- Trailing: Trailing blank lines removed (but trailing spaces on content lines preserved).
+- Continuation: Multi-line patterns joined with newline (`\n`), not space.
+- Implementation: `_trim_pattern_blank_lines()` post-processes pattern elements.
+- Rationale: Per Fluent spec whitespace handling rules.
 
 ---

@@ -368,13 +368,20 @@ class LocaleContext:
         Implements Fluent DATETIME function semantics using Babel.
 
         Args:
-            value: datetime object or ISO string
+            value: datetime object or ISO 8601 string. Strings are converted
+                via datetime.fromisoformat() which accepts formats like:
+                - "2025-10-27" (date only)
+                - "2025-10-27T14:30:00" (date and time)
+                - "2025-10-27T14:30:00+00:00" (with timezone)
             date_style: Date format style (default: "medium")
             time_style: Time format style (default: None - date only)
             pattern: Custom datetime pattern (overrides style parameters)
 
         Returns:
             Formatted datetime string according to locale rules
+
+        Raises:
+            FormattingError: If string value is not valid ISO 8601 format
 
         Examples:
             >>> from datetime import datetime, UTC

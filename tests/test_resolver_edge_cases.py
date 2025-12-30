@@ -333,14 +333,14 @@ class TestResolverErrorPaths:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource(ftl)
 
-        # Missing variable returns fallback (errors in list)
+        # Missing variable returns default variant (errors in list)
         result, errors = bundle.format_pattern("test", {})
         assert len(errors) > 0  # Should have error
         assert isinstance(errors[0], FluentReferenceError)
         # Error contains diagnostic code
         assert "VARIABLE_NOT_PROVIDED" in str(errors[0])
-        # Result shows fallback with selector context (v0.23.0: improved fallback)
-        assert result == "{{$x} -> ...}"
+        # Result shows default variant value (selector resilience: fallback on failure)
+        assert result == "Default"
 
 
 # ============================================================================

@@ -317,7 +317,7 @@ class TestTypeNarrowingIntegration:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(value, "en_US")
-        result, errors = parse_number(formatted, "en_US")
+        result, errors = parse_number(str(formatted), "en_US")
 
         if not errors and result is not None and is_valid_number(result):
             # After type narrowing, mypy knows result is float
@@ -337,7 +337,7 @@ class TestTypeNarrowingIntegration:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=2)
-        result, errors = parse_decimal(formatted, "en_US")
+        result, errors = parse_decimal(str(formatted), "en_US")
 
         if not errors and result is not None and is_valid_decimal(result):
             # After type narrowing, mypy knows result is Decimal

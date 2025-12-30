@@ -59,7 +59,7 @@ class ResourceLoadResult:
     """Result of loading a single FTL resource.
 
     Tracks the outcome of loading a resource for a specific locale,
-    including any errors encountered.
+    including any errors encountered and any Junk entries from parsing.
 
     Attributes:
         locale: Locale code for this resource
@@ -67,6 +67,7 @@ class ResourceLoadResult:
         status: Load status (success, not_found, error)
         error: Exception if status is ERROR, None otherwise
         source_path: Full path to resource (if available)
+        junk_entries: Junk entries from parsing (unparseable content)
     """
 
     locale: LocaleCode
@@ -74,6 +75,7 @@ class ResourceLoadResult:
     status: LoadStatus
     error: Exception | None = None
     source_path: str | None = None
+    junk_entries: tuple[Junk, ...] = ()
 
     @property
     def is_success(self) -> bool:
@@ -90,6 +92,11 @@ class ResourceLoadResult:
         """Check if resource load failed with an error."""
         return self.status == LoadStatus.ERROR
 
+    @property
+    def has_junk(self) -> bool:
+        """Check if resource had unparseable content (Junk entries)."""
+        return len(self.junk_entries) > 0
+
 
 @dataclass(frozen=True, slots=True)
 class LoadSummary:
@@ -104,6 +111,7 @@ class LoadSummary:
         successful: Number of successful loads
         not_found: Number of resources not found
         errors: Number of load errors
+        junk_count: Total number of Junk entries across all resources
 
     Example:
         >>> l10n = FluentLocalization(['en', 'de'], ['ui.ftl'], loader)
@@ -111,6 +119,9 @@ class LoadSummary:
         >>> if summary.errors > 0:
         ...     for result in summary.get_errors():
         ...         print(f"Failed: {result.locale}/{result.resource_id}: {result.error}")
+        >>> if summary.has_junk:
+        ...     for result in summary.get_with_junk():
+        ...         print(f"Junk in {result.source_path}: {len(result.junk_entries)} entries")
     """
 
     results: tuple[ResourceLoadResult, ...]
@@ -118,6 +129,7 @@ class LoadSummary:
     successful: int = field(init=False)
     not_found: int = field(init=False)
     errors: int = field(init=False)
+    junk_count: int = field(init=False)
 
     def __post_init__(self) -> None:
         """Calculate summary statistics."""
@@ -130,6 +142,9 @@ class LoadSummary:
             self, "not_found", sum(1 for r in self.results if r.is_not_found)
         )
         object.__setattr__(self, "errors", sum(1 for r in self.results if r.is_error))
+        object.__setattr__(
+            self, "junk_count", sum(len(r.junk_entries) for r in self.results)
+        )
 
     def get_errors(self) -> tuple[ResourceLoadResult, ...]:
         """Get all results with errors."""
@@ -147,10 +162,30 @@ class LoadSummary:
         """Get all results for a specific locale."""
         return tuple(r for r in self.results if r.locale == locale)
 
+    def get_with_junk(self) -> tuple[ResourceLoadResult, ...]:
+        """Get all results with Junk entries (unparseable content)."""
+        return tuple(r for r in self.results if r.has_junk)
+
+    def get_all_junk(self) -> tuple[Junk, ...]:
+        """Get all Junk entries across all resources.
+
+        Returns:
+            Flattened tuple of all Junk entries from all resources.
+        """
+        junk_list: list[Junk] = []
+        for result in self.results:
+            junk_list.extend(result.junk_entries)
+        return tuple(junk_list)
+
     @property
     def has_errors(self) -> bool:
         """Check if any resources failed to load with errors."""
         return self.errors > 0
+
+    @property
+    def has_junk(self) -> bool:
+        """Check if any resources had Junk entries (unparseable content)."""
+        return self.junk_count > 0
 
     @property
     def all_successful(self) -> bool:
@@ -534,13 +569,14 @@ class FluentLocalization:
         try:
             ftl_source = resource_loader.load(locale, resource_id)
             bundle = self._get_or_create_bundle(locale)
-            bundle.add_resource(ftl_source, source_path=source_path)
+            junk_entries = bundle.add_resource(ftl_source, source_path=source_path)
             self._resources_loaded.add(locale)
             return ResourceLoadResult(
                 locale=locale,
                 resource_id=resource_id,
                 status=LoadStatus.SUCCESS,
                 source_path=source_path,
+                junk_entries=junk_entries,
             )
         except FileNotFoundError:
             # Resource doesn't exist for this locale - expected for optional locales

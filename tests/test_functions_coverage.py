@@ -36,8 +36,8 @@ class TestNumberFormatDecimalSeparator:
         # This will have "," but NO decimal separator
         result = number_format(1000, use_grouping=True, minimum_fraction_digits=0)
 
-        # Should contain thousands separator
-        assert "," in result or " " in result  # Different locales use different separators
+        # Should contain thousands separator (different locales use different separators)
+        assert "," in str(result) or " " in str(result)
         # Should NOT have decimal separator (since minimum_fraction_digits=0 and input is int)
 
     def test_number_format_formatted_has_comma_not_decimal_sep(self):
@@ -68,7 +68,7 @@ class TestNumberFormatDecimalSeparator:
             result = number_format(1234, use_grouping=True, maximum_fraction_digits=0)
 
             # Result has comma (thousands) but not decimal separator
-            assert "," in result or "1234" in result  # Grouping varies by locale
+            assert "," in str(result) or "1234" in str(result)  # Grouping varies by locale
             # If decimal_sep is ".", it's not in result (no decimal part)
             if decimal_sep == ".":
                 # The branch 88->108 is hit: formatted has "," but not decimal_sep "."
@@ -104,5 +104,5 @@ class TestNumberFormatDecimalSeparator:
 
         # Should be formatted as integer (no decimal separator)
         # Different locales format differently, but should be a valid number
-        assert len(result) > 0
-        assert result.replace(",", "").replace(" ", "").replace(".", "").isdigit()
+        assert len(str(result)) > 0
+        assert str(result).replace(",", "").replace(" ", "").replace(".", "").isdigit()

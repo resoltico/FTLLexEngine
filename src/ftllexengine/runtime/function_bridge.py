@@ -40,17 +40,55 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FluentFunction",
+    "FluentNumber",
     "FluentValue",
     "FunctionRegistry",
     "FunctionSignature",
     "fluent_function",
 ]
 
+@dataclass(frozen=True, slots=True)
+class FluentNumber:
+    """Wrapper for formatted numbers preserving numeric identity.
+
+    When NUMBER() formats a value, the result needs to:
+    1. Display the formatted string in output (e.g., "1,234.56")
+    2. Still match plural categories in select expressions (e.g., [one], [other])
+
+    FluentNumber carries both representations, allowing the resolver to:
+    - Use __str__ for final output (formatted string)
+    - Use .value for numeric matching (plural categories)
+
+    Attributes:
+        value: Original numeric value for matching
+        formatted: Locale-formatted string for display
+
+    Example:
+        >>> fn = FluentNumber(value=1, formatted="1.00")
+        >>> str(fn)  # Used in output
+        '1.00'
+        >>> fn.value  # Used for plural matching
+        1
+    """
+
+    value: int | float | Decimal
+    formatted: str
+
+    def __str__(self) -> str:
+        """Return formatted string for output."""
+        return self.formatted
+
+    def __repr__(self) -> str:
+        """Return detailed representation for debugging."""
+        return f"FluentNumber(value={self.value!r}, formatted={self.formatted!r})"
+
+
 # Type alias for Fluent-compatible function values.
 # This is the CANONICAL definition - imported by resolver.py and localization.py.
 # Defined here (not in resolver.py) to avoid circular imports.
 # Note: Includes both datetime.date and datetime.datetime for flexibility.
-type FluentValue = str | int | float | bool | Decimal | datetime | date | None
+# FluentNumber added for NUMBER() identity preservation in select expressions.
+type FluentValue = str | int | float | bool | Decimal | datetime | date | FluentNumber | None
 
 # Attribute name for marking functions that require locale injection.
 # Used by FunctionRegistry.should_inject_locale() and @fluent_function decorator.

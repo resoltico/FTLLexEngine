@@ -40,10 +40,10 @@ class TestFluentParserV1SourceSizeValidation:
     def test_parse_raises_value_error_on_oversized_source(self) -> None:
         """Test parse() raises ValueError when source exceeds limit (lines 82-87)."""
         parser = FluentParserV1(max_source_size=100)
-        oversized_source = "a" * 101  # 101 bytes > 100 byte limit
+        oversized_source = "a" * 101  # 101 chars > 100 char limit
 
         with pytest.raises(
-            ValueError, match=r"Source size \(101 bytes\) exceeds maximum \(100 bytes\)"
+            ValueError, match=r"Source length \(101 characters\) exceeds maximum \(100 characters\)"
         ):
             parser.parse(oversized_source)
 

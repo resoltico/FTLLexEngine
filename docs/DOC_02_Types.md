@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.42.0"
+version: "0.43.0"
 domain: TYPES
-updated: "2025-12-29"
+updated: "2025-12-30"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]

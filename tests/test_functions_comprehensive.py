@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from hypothesis import given
 from hypothesis import strategies as st
 
+from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import (
     create_default_registry,
     currency_format,
@@ -21,18 +22,18 @@ class TestNumberFormatBehavior:
     """Tests for number_format formatting behavior."""
 
     def test_number_format_with_invalid_locale_uses_fallback(self) -> None:
-        """Verify number_format with invalid locale uses en_US fallback (v0.14.0+)."""
+        """Verify number_format with invalid locale uses en_US fallback."""
         # Invalid locale should still format successfully using en_US fallback
         result = number_format(1234.5, "invalid-locale")
         # Should contain the number (formatted with en_US rules)
-        assert "1" in result
-        assert "234" in result
+        assert "1" in str(result)
+        assert "234" in str(result)
 
     @given(st.floats(allow_nan=False, allow_infinity=False, min_value=-1e10, max_value=1e10))
-    def test_number_format_always_returns_string(self, value: float) -> None:
-        """Property: number_format always returns a string for any finite float."""
+    def test_number_format_always_returns_fluent_number(self, value: float) -> None:
+        """Property: number_format always returns a FluentNumber for any finite float."""
         result = number_format(value, "en-US")
-        assert isinstance(result, str)
+        assert isinstance(result, FluentNumber)
 
     def test_number_format_invalid_locale_with_pattern(self) -> None:
         """Verify invalid locale with pattern still formats successfully."""
@@ -42,22 +43,22 @@ class TestNumberFormatBehavior:
             pattern="#,##0.00",
             minimum_fraction_digits=2,
         )
-        # Should return formatted string using en_US fallback
-        assert isinstance(result, str)
-        assert "42" in result
+        # Should return FluentNumber using en_US fallback
+        assert isinstance(result, FluentNumber)
+        assert "42" in str(result)
 
     def test_number_format_success_case_basic(self) -> None:
         """Verify number_format works correctly in success case."""
         result = number_format(1234.5, "en-US", minimum_fraction_digits=2)
         # Should format with locale-specific formatting
-        assert "1" in result
-        assert "234" in result
+        assert "1" in str(result)
+        assert "234" in str(result)
 
     def test_number_format_success_with_grouping(self) -> None:
         """Verify number_format with grouping enabled."""
         result = number_format(1000000, "en-US", use_grouping=True)
         # Should have thousands separators
-        assert "," in result or " " in result
+        assert "," in str(result) or " " in str(result)
 
 
 class TestDatetimeFormatBehavior:

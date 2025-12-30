@@ -46,8 +46,8 @@ class TestNumberLocaleContract:
     @pytest.mark.parametrize("value", [0, 1.5, 123.45, 1234567.89, -42])
     def test_number_basic_contract(self, locale: str, value: int | float) -> None:
         """NUMBER() respects bundle locale (contract test)."""
-        # Ground truth: Direct function call
-        expected = number_format(value, locale)
+        # Ground truth: Direct function call (FluentNumber, convert to str for comparison)
+        expected = str(number_format(value, locale))
 
         # System under test: FluentBundle (disable BIDI for fair comparison)
         bundle = FluentBundle(locale, use_isolating=False)
@@ -65,7 +65,8 @@ class TestNumberLocaleContract:
     def test_number_with_fraction_digits_contract(self, locale: str) -> None:
         """NUMBER() with minimumFractionDigits respects locale."""
         value = 42.1
-        expected = number_format(value, locale, minimum_fraction_digits=3)
+        # FluentNumber, convert to str for comparison
+        expected = str(number_format(value, locale, minimum_fraction_digits=3))
 
         bundle = FluentBundle(locale, use_isolating=False)
         bundle.add_resource("num = { NUMBER($val, minimumFractionDigits: 3) }")

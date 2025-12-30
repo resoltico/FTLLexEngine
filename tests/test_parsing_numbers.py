@@ -131,7 +131,7 @@ class TestRoundtrip:
 
         original = 1234.5
         formatted = number_format(original, "en-US", use_grouping=True)
-        parsed, errors = parse_number(formatted, "en_US")
+        parsed, errors = parse_number(str(formatted), "en_US")
         assert not errors
         assert parsed == original
 
@@ -141,7 +141,7 @@ class TestRoundtrip:
 
         original = 1234.5
         formatted = number_format(original, "lv-LV", use_grouping=True)
-        parsed, errors = parse_number(formatted, "lv_LV")
+        parsed, errors = parse_number(str(formatted), "lv_LV")
         assert not errors
         assert parsed == original
 
@@ -153,6 +153,6 @@ class TestRoundtrip:
         formatted = number_format(
             float(original), "lv-LV", minimum_fraction_digits=2, use_grouping=True
         )
-        parsed, errors = parse_decimal(formatted, "lv_LV")
+        parsed, errors = parse_decimal(str(formatted), "lv_LV")
         assert not errors
         assert parsed == original

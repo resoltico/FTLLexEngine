@@ -39,14 +39,15 @@ class TestMultilinePatternBasics:
         assert msg.value is not None
         assert msg.id.name == "key"
 
-        # Multiline creates separate TextElements for each text run
+        # Multiline creates separate TextElements for each text run.
+        # Per Fluent spec, continuation lines are joined with newlines.
         assert msg.value is not None
         assert len(msg.value.elements) == 2
         assert all(isinstance(e, TextElement) for e in msg.value.elements)
-        # First line gets trailing space from continuation
+        # First line gets trailing newline for continuation
         elem = msg.value.elements[0]
         assert isinstance(elem, TextElement)
-        assert elem.value == "Line one "
+        assert elem.value == "Line one\n"
         elem = msg.value.elements[1]
         assert isinstance(elem, TextElement)
         assert elem.value == "Line two"
@@ -64,14 +65,14 @@ class TestMultilinePatternBasics:
         msg = resource.entries[0]
         assert isinstance(msg, Message)
         assert msg.value is not None
-        # Three separate text runs
+        # Three separate text runs with trailing newlines for continuation
         assert len(msg.value.elements) == 3
         elem = msg.value.elements[0]
         assert isinstance(elem, TextElement)
-        assert elem.value == "First line "
+        assert elem.value == "First line\n"
         elem = msg.value.elements[1]
         assert isinstance(elem, TextElement)
-        assert elem.value == "Second line "
+        assert elem.value == "Second line\n"
         elem = msg.value.elements[2]
         assert isinstance(elem, TextElement)
         assert elem.value == "Third line"
@@ -88,11 +89,11 @@ class TestMultilinePatternBasics:
         msg = resource.entries[0]
         assert isinstance(msg, Message)
         assert msg.value is not None
-        # Two text elements
+        # Two text elements with trailing newlines for continuation
         assert len(msg.value.elements) == 2
         elem = msg.value.elements[0]
         assert isinstance(elem, TextElement)
-        assert elem.value == "One space "
+        assert elem.value == "One space\n"
         # Extra indentation is preserved after stripping common indent
         elem = msg.value.elements[1]
         assert isinstance(elem, TextElement)

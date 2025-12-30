@@ -31,13 +31,13 @@ from threading import RLock
 from typing import cast
 
 from ftllexengine.diagnostics import FluentError
-from ftllexengine.runtime.function_bridge import FluentValue
+from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 
 __all__ = ["FormatCache", "HashableValue"]
 
 # Type alias for hashable values produced by _make_hashable().
 # Recursive definition: primitives plus tuple/frozenset of self.
-# Note: Decimal, datetime, date are hashable and preserved unchanged.
+# Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged.
 type HashableValue = (
     str
     | int
@@ -46,6 +46,7 @@ type HashableValue = (
     | Decimal
     | datetime
     | date
+    | FluentNumber
     | None
     | tuple["HashableValue", ...]
     | frozenset["HashableValue"]

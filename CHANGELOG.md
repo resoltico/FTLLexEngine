@@ -13,6 +13,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2025-12-30
+
+### Breaking Changes
+- **Pattern Continuation Lines**: Now joined with newline (`\n`) instead of space:
+  - Previous: Multi-line patterns joined with single space
+  - Current: Continuation lines preserve line break per Fluent Spec 1.0 Section 4.5.2
+  - Affects pattern values spanning multiple indented lines
+- **Line Ending Normalization**: All line endings normalized to LF before parsing:
+  - CRLF (`\r\n`) and CR (`\r`) converted to LF (`\n`)
+  - Simplifies line/column tracking and comment merging logic
+  - Per Fluent spec requirement for consistent AST representation
+
+### Added
+- **Column-1 Enforcement**: Top-level entries must start at column 1:
+  - Indented entries now rejected as Junk with "Entry must start at column 1" annotation
+  - Per Fluent specification for message/term/comment positioning
+- **Pattern Blank Line Trimming**: Leading/trailing blank lines removed from patterns:
+  - `_trim_pattern_blank_lines()` post-processes pattern elements
+  - Per Fluent spec whitespace handling rules
+- **FluentNumber Class**: Preserves numeric identity after NUMBER() formatting:
+  - `FluentNumber(value, formatted)` stores both original numeric value and formatted string
+  - Enables proper plural category matching (`[one]`, `[other]`) in select expressions
+  - Previous: NUMBER() returned `str`, breaking plural matching
+- **Selector Resilience**: SelectExpression falls back to default variant on selector failure:
+  - `FluentReferenceError` and `FluentResolutionError` caught during selector evaluation
+  - Error collected, default variant used instead of failing entire placeable
+  - Per Fluent specification for graceful degradation
+- **Junk Reporting in FluentLocalization**: `ResourceLoadResult` and `LoadSummary` expose Junk entries:
+  - `ResourceLoadResult.junk_entries`: Junk entries from parsing this resource
+  - `ResourceLoadResult.has_junk`: Property to check for Junk presence
+  - `LoadSummary.junk_count`: Total Junk entries across all resources
+  - `LoadSummary.has_junk`: Property to check for any Junk
+  - `LoadSummary.get_with_junk()`: Get results containing Junk
+  - `LoadSummary.get_all_junk()`: Get flattened tuple of all Junk entries
+
+### Changed
+- **Comment Merging Logic**: Uses `pos_after_blank` for accurate blank line detection:
+  - Previous: Checked region before blank skipping (always empty)
+  - Current: Checks region after blank skipping (correct detection)
+- **Variant Key Normalization**: Uses `Decimal` for numeric key uniqueness:
+  - `[1]` and `[1.0]` now correctly detected as duplicate variants
+  - Previous: String comparison allowed both to coexist
+- **Namespace Separation**: Messages and terms use separate ID namespaces in validation:
+  - `seen_message_ids` and `seen_term_ids` tracked independently
+  - Message `foo` and term `-foo` no longer flagged as duplicates
+- **Documentation**: `max_source_size` now documented as "characters" not "bytes":
+  - Python `len(source)` measures character count, not byte count
+  - Updated in `FluentBundle`, `FluentParserV1` docstrings and error messages
+- **Junk Serialization**: Only adds newline if content doesn't already end with one:
+  - Prevents redundant blank lines in parse/serialize cycles
+- **datetime_format Documentation**: ISO 8601 string conversion now documented:
+  - Accepts `datetime | str` with `datetime.fromisoformat()` conversion
+  - Raises `FormattingError` for invalid ISO 8601 format
+
+### Fixed
+- **Comment Merging**: Comments separated by blank lines no longer incorrectly merged
+- **Pattern Joining**: Multi-line patterns preserve line breaks per Fluent spec
+- **Column-1 Entries**: Indented top-level content now creates Junk entries
+- **Line Ending Handling**: CR and CRLF line endings work correctly throughout parser
+- **Pattern Whitespace**: Leading/trailing blank lines trimmed from patterns
+- **Namespace Collision**: Messages and terms no longer share duplicate ID detection
+- **Variant Uniqueness**: Numeric keys compared by value, not string representation
+- **Selector Failures**: Graceful fallback instead of cascading failure
+- **Number Plural Matching**: NUMBER() output usable as selector for plural variants
+- **Junk Visibility**: FluentLocalization exposes parsing errors via load summary
+- **Thread-Safe Docstring**: format_pattern() docstring updated (was outdated)
+
 ## [0.42.0] - 2025-12-29
 
 ### Breaking Changes
@@ -566,6 +633,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.43.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.43.0
 [0.42.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.42.0
 [0.41.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.41.0
 [0.40.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.40.0

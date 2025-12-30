@@ -45,7 +45,7 @@ class TestNumberFormatParametricCombinations:
         Tests with grouping disabled to be locale-independent.
         """
         result = number_format(value, "en-US", use_grouping=False)
-        assert expected_contains in result
+        assert expected_contains in str(result)
 
     @pytest.mark.parametrize(
         ("min_frac", "max_frac", "value", "expected_decimal_digits"),
@@ -82,18 +82,19 @@ class TestNumberFormatParametricCombinations:
             maximum_fraction_digits=max_frac,
         )
 
+        result_str = str(result)
         # Count decimal digits
         if expected_decimal_digits == 0:
             # Should not have decimal part (integer formatting)
             # Note: "." or "," might appear as thousands separator, which is OK
-            assert isinstance(result, str)
+            assert isinstance(result_str, str)
         else:
             # Should have decimal separator with right number of digits
-            decimal_sep = "." if "." in result else ","
-            assert decimal_sep in result, (
-                f"Expected decimal separator for {expected_decimal_digits} digits in {result}"
+            decimal_sep = "." if "." in result_str else ","
+            assert decimal_sep in result_str, (
+                f"Expected decimal separator for {expected_decimal_digits} digits in {result_str}"
             )
-            parts = result.split(decimal_sep)
+            parts = result_str.split(decimal_sep)
             # Last part should have decimal digits
             decimal_part = parts[-1]
             assert len(decimal_part) >= expected_decimal_digits
@@ -115,10 +116,11 @@ class TestNumberFormatParametricCombinations:
         Grouping should work for various number sizes.
         """
         result = number_format(value, "en-US", use_grouping=use_grouping)
-        assert isinstance(result, str)
+        result_str = str(result)
+        assert isinstance(result_str, str)
         # Check that digits are present (may have separators if grouping=True)
-        digits_only = result.replace(",", "").replace(".", "")
-        assert str(value) in digits_only or str(value)[0] in result
+        digits_only = result_str.replace(",", "").replace(".", "")
+        assert str(value) in digits_only or str(value)[0] in result_str
 
     @pytest.mark.parametrize(
         ("value", "min_frac", "max_frac", "use_grouping"),
@@ -154,8 +156,9 @@ class TestNumberFormatParametricCombinations:
             maximum_fraction_digits=max_frac,
             use_grouping=use_grouping,
         )
-        assert isinstance(result, str)
-        assert len(result) > 0
+        result_str = str(result)
+        assert isinstance(result_str, str)
+        assert len(result_str) > 0
 
 
 class TestNumberFormatDefaultParameterMutations:
@@ -171,7 +174,7 @@ class TestNumberFormatDefaultParameterMutations:
         """
         # With default params, integer should have no decimals
         result = number_format(5, "en-US", use_grouping=False)
-        assert result == "5"
+        assert str(result) == "5"
 
     def test_default_maximum_fraction_digits_is_three(self):
         """Kills: maximum_fraction_digits=3 → =2 mutation.
@@ -181,7 +184,7 @@ class TestNumberFormatDefaultParameterMutations:
         # With default params, should allow up to 3 decimals
         result = number_format(5.12345, "en-US")  # More than 3 decimals
         # Should be rounded to 3 decimals
-        assert isinstance(result, str)
+        assert isinstance(str(result), str)
 
     def test_default_use_grouping_is_true(self):
         """Kills: use_grouping=True → =False mutation.
@@ -190,9 +193,10 @@ class TestNumberFormatDefaultParameterMutations:
         """
         # With default params, large numbers should have grouping
         result = number_format(1000, "en-US")
+        result_str = str(result)
         # Should be "1,000" with en-US locale
-        assert isinstance(result, str)
-        assert result == "1,000" or "1000" in result
+        assert isinstance(result_str, str)
+        assert result_str == "1,000" or "1000" in result_str
 
 
 class TestDatetimeFormatParametricCombinations:

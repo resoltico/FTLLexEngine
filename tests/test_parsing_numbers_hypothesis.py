@@ -35,7 +35,7 @@ class TestParseNumberHypothesis:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(value, "en_US")
-        result, errors = parse_number(formatted, "en_US")
+        result, errors = parse_number(str(formatted), "en_US")
 
         assert not errors
         assert isinstance(result, float)
@@ -57,7 +57,7 @@ class TestParseNumberHypothesis:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(value, locale)
-        parsed, errors = parse_number(formatted, locale)
+        parsed, errors = parse_number(str(formatted), locale)
 
         assert not errors
         assert parsed is not None
@@ -115,7 +115,7 @@ class TestParseDecimalHypothesis:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(float(value), "en_US")
-        result, errors = parse_decimal(formatted, "en_US")
+        result, errors = parse_decimal(str(formatted), "en_US")
 
         assert not errors
         assert isinstance(result, Decimal)
@@ -136,7 +136,7 @@ class TestParseDecimalHypothesis:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(float(value), locale, minimum_fraction_digits=2)
-        parsed, errors = parse_decimal(formatted, locale)
+        parsed, errors = parse_decimal(str(formatted), locale)
 
         assert not errors
         # Decimal must preserve exact value
@@ -155,7 +155,7 @@ class TestParseDecimalHypothesis:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=2)
-        parsed, errors = parse_decimal(formatted, "en_US")
+        parsed, errors = parse_decimal(str(formatted), "en_US")
 
         assert not errors
         assert parsed == value
@@ -174,7 +174,7 @@ class TestParseDecimalHypothesis:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=3)
-        parsed, errors = parse_decimal(formatted, "en_US")
+        parsed, errors = parse_decimal(str(formatted), "en_US")
 
         assert not errors
         assert parsed == value
@@ -217,7 +217,7 @@ class TestParseDecimalHypothesis:
         formatted = number_format(
             float(value), locale, use_grouping=True, minimum_fraction_digits=2
         )
-        parsed, errors = parse_decimal(formatted, locale)
+        parsed, errors = parse_decimal(str(formatted), locale)
 
         assert not errors
         # Should handle grouping separators correctly
@@ -241,13 +241,13 @@ class TestParsingMetamorphicProperties:
 
         # Path 1: Direct format -> parse
         formatted1 = number_format(float(value), "en_US", minimum_fraction_digits=2)
-        parsed1, errors1 = parse_decimal(formatted1, "en_US")
+        parsed1, errors1 = parse_decimal(str(formatted1), "en_US")
 
         # Path 2: Format with grouping -> parse
         formatted2 = number_format(
             float(value), "en_US", use_grouping=True, minimum_fraction_digits=2
         )
-        parsed2, errors2 = parse_decimal(formatted2, "en_US")
+        parsed2, errors2 = parse_decimal(str(formatted2), "en_US")
 
         assert not errors1
         assert not errors2
@@ -269,9 +269,9 @@ class TestParsingMetamorphicProperties:
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=2)
 
         # Parse multiple times
-        parsed1, errors1 = parse_decimal(formatted, "en_US")
-        parsed2, errors2 = parse_decimal(formatted, "en_US")
-        parsed3, errors3 = parse_decimal(formatted, "en_US")
+        parsed1, errors1 = parse_decimal(str(formatted), "en_US")
+        parsed2, errors2 = parse_decimal(str(formatted), "en_US")
+        parsed3, errors3 = parse_decimal(str(formatted), "en_US")
 
         assert not errors1
         assert not errors2
@@ -293,13 +293,13 @@ class TestParsingMetamorphicProperties:
 
         # First cycle
         formatted1 = number_format(float(value), "en_US", minimum_fraction_digits=2)
-        parsed1, errors1 = parse_decimal(formatted1, "en_US")
+        parsed1, errors1 = parse_decimal(str(formatted1), "en_US")
 
         assert not errors1
 
         # Second cycle
         formatted2 = number_format(float(parsed1), "en_US", minimum_fraction_digits=2)
-        parsed2, errors2 = parse_decimal(formatted2, "en_US")
+        parsed2, errors2 = parse_decimal(str(formatted2), "en_US")
 
         assert not errors2
         # Should stabilize
@@ -331,7 +331,7 @@ class TestParsingMetamorphicProperties:
         from ftllexengine.runtime.functions import number_format
 
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=2)
-        parsed, errors = parse_decimal(formatted, "en_US")
+        parsed, errors = parse_decimal(str(formatted), "en_US")
 
         assert not errors
         assert parsed is not None
@@ -369,7 +369,7 @@ class TestParsingMetamorphicProperties:
             formatted = number_format(
                 float(value), locale, use_grouping=True, minimum_fraction_digits=2
             )
-            parsed, errors = parse_decimal(formatted, locale)
+            parsed, errors = parse_decimal(str(formatted), locale)
 
             assert not errors
             assert parsed == value

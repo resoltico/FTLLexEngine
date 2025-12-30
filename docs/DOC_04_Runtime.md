@@ -1,14 +1,42 @@
 ---
 afad: "3.1"
-version: "0.42.0"
+version: "0.43.0"
 domain: RUNTIME
-updated: "2025-12-29"
+updated: "2025-12-30"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, formatting, locale]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?"]
 ---
 
 # Runtime Reference
+
+---
+
+## `FluentNumber`
+
+Wrapper preserving numeric identity through NUMBER() formatting.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FluentNumber:
+    value: int | float | Decimal
+    formatted: str
+```
+
+### Parameters
+| Field | Type | Req | Description |
+|:------|:-----|:----|:------------|
+| `value` | `int \| float \| Decimal` | Y | Original numeric value for plural matching. |
+| `formatted` | `str` | Y | Locale-formatted string for display. |
+
+### Constraints
+- Return: Frozen dataclass instance.
+- State: Immutable. Safe for caching.
+- Thread: Safe.
+- Usage: Returned by `number_format()`. Preserves numeric identity for select expressions.
+- Str: `str(fluent_number)` returns `formatted` for display.
+- Import: `from ftllexengine.runtime.function_bridge import FluentNumber`
 
 ---
 
@@ -17,20 +45,20 @@ route:
 ### Signature
 ```python
 def number_format(
-    value: int | float,
+    value: int | float | Decimal,
     locale_code: str = "en-US",
     *,
     minimum_fraction_digits: int = 0,
     maximum_fraction_digits: int = 3,
     use_grouping: bool = True,
     pattern: str | None = None,
-) -> str:
+) -> FluentNumber:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float` | Y | Number to format. |
+| `value` | `int \| float \| Decimal` | Y | Number to format. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `minimum_fraction_digits` | `int` | N | Minimum decimal places. |
 | `maximum_fraction_digits` | `int` | N | Maximum decimal places. |
@@ -38,10 +66,11 @@ def number_format(
 | `pattern` | `str \| None` | N | Custom Babel number pattern. |
 
 ### Constraints
-- Return: Formatted number string.
+- Return: `FluentNumber` with formatted string and original numeric value.
 - Raises: `FormattingError` on formatting failure (invalid pattern, Babel error).
 - State: None.
 - Thread: Safe.
+- Plural: Original value preserved for correct plural category matching in select expressions.
 
 ---
 

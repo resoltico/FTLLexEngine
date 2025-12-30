@@ -401,11 +401,26 @@ class SemanticValidator:
 
     @staticmethod
     def _variant_key_to_string(key: Identifier | NumberLiteral) -> str:
-        """Convert variant key to string for uniqueness checking."""
+        """Convert variant key to normalized string for uniqueness checking.
+
+        For numeric keys, uses Decimal normalization to ensure 1 == 1.0.
+        This prevents false negatives where [1] and [1.0] are incorrectly
+        treated as unique when they should be duplicates.
+        """
         if isinstance(key, Identifier):
             return key.name
-        # key must be NumberLiteral at this point
-        return str(key.value)
+        # key must be NumberLiteral at this point.
+        # Normalize numeric value using Decimal for proper equality.
+        # Decimal("1") == Decimal("1.0") and both normalize to "1".
+        from decimal import Decimal, InvalidOperation  # noqa: PLC0415
+
+        try:
+            # Convert to Decimal and normalize to canonical form
+            normalized = Decimal(str(key.value)).normalize()
+            return str(normalized)
+        except (ValueError, InvalidOperation):
+            # Fallback to string representation if Decimal conversion fails
+            return str(key.value)
 
 
 # ============================================================================
