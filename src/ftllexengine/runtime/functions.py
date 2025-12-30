@@ -22,6 +22,7 @@ Example:
 Python 3.13+. Uses Babel for i18n.
 """
 
+import functools
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -314,9 +315,16 @@ def create_default_registry() -> FunctionRegistry:
     return registry
 
 
-# Module-level cached default registry for sharing across bundles.
-# Initialized lazily on first access to avoid import-time side effects.
-_SHARED_REGISTRY: FunctionRegistry | None = None
+@functools.lru_cache(maxsize=1)
+def _create_shared_registry() -> FunctionRegistry:
+    """Thread-safe singleton factory for shared registry.
+
+    Uses lru_cache to ensure thread-safe initialization. The cache guarantees
+    that only one registry is ever created, even under concurrent access.
+    """
+    registry = create_default_registry()
+    registry.freeze()  # Protect from accidental modification
+    return registry
 
 
 def get_shared_registry() -> FunctionRegistry:
@@ -332,9 +340,11 @@ def get_shared_registry() -> FunctionRegistry:
         To add custom functions, use copy() or create_default_registry().
 
     Thread Safety:
-        Reading is thread-safe. The registry is frozen, so writes are not
-        possible. For custom functions, use create_default_registry() to get
-        a fresh, isolated copy.
+        Fully thread-safe. Uses functools.lru_cache internally to guarantee
+        that concurrent calls always return the same instance without race
+        conditions. The registry is frozen, so writes are not possible.
+        For custom functions, use create_default_registry() to get a fresh,
+        isolated copy.
 
     Performance:
         Using the shared registry avoids:
@@ -368,11 +378,4 @@ def get_shared_registry() -> FunctionRegistry:
     See Also:
         create_default_registry: Creates a new unfrozen registry for customization.
     """
-    # pylint: disable=global-statement
-    # Lazy initialization of module-level singleton.
-    # Global is intentional for shared state across calls.
-    global _SHARED_REGISTRY  # noqa: PLW0603
-    if _SHARED_REGISTRY is None:
-        _SHARED_REGISTRY = create_default_registry()
-        _SHARED_REGISTRY.freeze()  # Protect from accidental modification
-    return _SHARED_REGISTRY
+    return _create_shared_registry()

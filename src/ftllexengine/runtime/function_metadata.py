@@ -40,7 +40,7 @@ class FunctionCategory(StrEnum):
     CUSTOM = "custom"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FunctionMetadata:
     """Metadata for a built-in Fluent function.
 

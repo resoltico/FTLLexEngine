@@ -13,6 +13,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.0] - 2025-12-30
+
+### Breaking Changes
+- **FormattingError Signature**: Now accepts `str | Diagnostic` to match parent class:
+  - Previous: `FormattingError(message: str, fallback_value: str)`
+  - Current: `FormattingError(message: str | Diagnostic, fallback_value: str)`
+  - Fixes Liskov Substitution Principle violation in exception hierarchy
+  - Code passing `Diagnostic` objects to FormattingError now type-checks correctly
+
+### Added
+- **LocaleContext.is_fallback Property**: Detect when locale fallback occurred:
+  - `ctx.is_fallback` returns `True` if locale was unknown and fell back to en_US
+  - Enables programmatic detection without log parsing
+  - Fallback still logged as warning; property provides observability
+- **ParseResult[T] Type Alias**: Generic type for parsing function returns:
+  - `tuple[T | None, tuple[FluentParseError, ...]]` pattern
+  - Exported from `ftllexengine.parsing`
+  - Improves type safety and documentation for parse_* functions
+- **Word Boundary Era Stripping**: Prevents partial matches in date parsing:
+  - "bad" no longer matches "AD", "cereal" no longer matches "CE"
+  - Uses `_is_word_boundary()` helper for robust detection
+
+### Changed
+- **FunctionMetadata Memory**: Uses `slots=True` for smaller footprint:
+  - Reduces per-instance memory by ~40 bytes
+  - Matches other frozen dataclasses in codebase
+- **Serializer Module Import**: DepthGuard now imported at module level:
+  - Was: Runtime import inside `serialize()` with noqa comment
+  - Now: Standard module-level import (circular dependency resolved)
+  - Import order in `syntax/__init__.py` ensures ast loaded before serializer
+- **Unified Lookahead Bound**: `_is_variant_marker()` shares counter for whitespace:
+  - Inner whitespace loop now increments main `lookahead_count`
+  - Enforces documented 128-char bound consistently
+- **Explicit Entry Type Handling**: Bundle uses `case Comment()` not `case _`:
+  - Catch-all replaced with explicit Comment handling
+  - Future entry type extensions won't be silently dropped
+- **Module-Level Decimal Import**: `validator.py` imports Decimal at module level:
+  - Was: Runtime import inside `_variant_key_to_string()` with noqa comment
+  - Now: Standard module-level import (no circular dependency for stdlib)
+- **Thread-Safe Singleton Pattern**: `get_shared_registry()` uses `lru_cache`:
+  - Was: Global variable with check-then-act race condition
+  - Now: `functools.lru_cache(maxsize=1)` on helper function
+  - Eliminates race condition on first initialization
+- **DRY Position Helper**: `_get_entry_position()` extracted to module level:
+  - Was: Duplicated nested function in two validation functions
+  - Now: Single module-level helper shared by all callers
+
+### Fixed
+- **Singleton Race Condition**: `get_shared_registry()` thread-safe on first call
+- **Era Stripping Partial Match**: Date parsing no longer strips era substrings
+- **Unused Loop Variable**: Removed `_idx` from term reference positional arg loop
+- **Circular Import**: Serializer can now import DepthGuard at module level
+
+### Documentation
+- **parse_number() Precision Warning**: Docstring warns about float conversion loss
+- **parse_date/datetime Timezone Warning**: Docstrings warn timezone names unsupported
+- **README Thread-Safety**: Updated note that all FluentBundle methods are synchronized
+- **Fallback Constants Escaping**: Added comment explaining `{{`/`}}` Python escaping
+
 ## [0.43.0] - 2025-12-30
 
 ### Breaking Changes
@@ -633,6 +692,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.44.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.44.0
 [0.43.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.43.0
 [0.42.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.42.0
 [0.41.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.41.0

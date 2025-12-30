@@ -11,12 +11,16 @@ This module provides the inverse operations to ftllexengine.runtime.functions:
 All parsing functions are thread-safe and use Babel for CLDR-compliant parsing.
 
 Public API:
+    Type Aliases:
+        ParseResult[T] - Generic type for parsing function returns:
+                         tuple[T | None, tuple[FluentParseError, ...]]
+
     Parsing Functions:
-        parse_number - Returns tuple[float, tuple[FluentParseError, ...]]
-        parse_decimal - Returns tuple[Decimal, tuple[FluentParseError, ...]]
-        parse_date - Returns tuple[date | None, tuple[FluentParseError, ...]]
-        parse_datetime - Returns tuple[datetime | None, tuple[FluentParseError, ...]]
-        parse_currency - Returns tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]
+        parse_number - Returns ParseResult[float]
+        parse_decimal - Returns ParseResult[Decimal]
+        parse_date - Returns ParseResult[date]
+        parse_datetime - Returns ParseResult[datetime]
+        parse_currency - Returns ParseResult[tuple[Decimal, str]]
 
     Type Guards:
         is_valid_decimal - TypeIs guard for finite Decimal
@@ -35,6 +39,8 @@ Example:
 Python 3.13+. Uses Babel CLDR patterns + stdlib for all parsing.
 """
 
+from ftllexengine.diagnostics import FluentParseError
+
 from .currency import parse_currency
 from .dates import parse_date, parse_datetime
 from .guards import (
@@ -46,7 +52,23 @@ from .guards import (
 )
 from .numbers import parse_decimal, parse_number
 
+# Type alias for parsing function return values (defined after imports to satisfy linting)
+type ParseResult[T] = tuple[T | None, tuple[FluentParseError, ...]]
+"""Generic type alias for parsing function return values.
+
+All parse_* functions return this pattern:
+- First element: Parsed value (None on failure)
+- Second element: Tuple of errors (empty on success)
+
+Example:
+    >>> result, errors = parse_decimal("1,234.56", "en_US")
+    >>> if not errors:
+    ...     print(f"Parsed: {result}")
+"""
+
 __all__ = [
+    # Type alias
+    "ParseResult",
     # Type guards
     "is_valid_currency",
     "is_valid_date",

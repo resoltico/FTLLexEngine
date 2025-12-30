@@ -63,6 +63,12 @@ def parse_date(
     Only ISO 8601 and locale-specific CLDR patterns are supported.
     Ambiguous formats like "1/2/25" will ONLY match if locale CLDR pattern matches.
 
+    Warning:
+        Timezone names (PST, EST, CET, etc.) are NOT supported. The parser strips
+        timezone name tokens from patterns but does NOT strip them from input.
+        If your input contains timezone names, pre-strip them before calling this
+        function, or use UTC offset patterns (e.g., "+05:00") which are supported.
+
     Args:
         value: Date string (e.g., "28.01.25" for lv_LV, "2025-01-28" for ISO 8601)
         locale_code: BCP 47 locale identifier (e.g., "en_US", "lv_LV", "de_DE")
@@ -165,6 +171,12 @@ def parse_datetime(
     The `strict` parameter has been removed.
 
     Only ISO 8601 and locale-specific CLDR patterns are supported.
+
+    Warning:
+        Timezone names (PST, EST, CET, etc.) are NOT supported. The parser strips
+        timezone name tokens from patterns but does NOT strip them from input.
+        If your input contains timezone names, pre-strip them before calling this
+        function, or use UTC offset patterns (e.g., "+05:00") which are supported.
 
     Args:
         value: DateTime string (e.g., "2025-01-28 14:30" for ISO 8601)
@@ -605,11 +617,33 @@ _ERA_STRINGS: tuple[str, ...] = (
 # - Timezone name patterns: z, zz, zzz, zzzz, v, vvvv, V, VV, VVV, VVVV, O, OOOO
 
 
+def _is_word_boundary(text: str, idx: int, is_start: bool) -> bool:
+    """Check if position is at a word boundary.
+
+    A word boundary occurs when the adjacent character is non-alphanumeric
+    or the position is at the start/end of the string.
+
+    Args:
+        text: The text to check
+        idx: Position index
+        is_start: True to check start boundary, False for end boundary
+
+    Returns:
+        True if position is at a word boundary
+    """
+    if is_start:
+        return idx == 0 or not text[idx - 1].isalnum()
+    return idx >= len(text) or not text[idx].isalnum()
+
+
 def _strip_era(value: str) -> str:
     """Strip era designations from date string.
 
     Used when pattern contains era tokens (G/GG/GGG/GGGG) since Python's
     strptime doesn't support era parsing.
+
+    Uses word boundary detection to avoid stripping partial matches
+    (e.g., "bad" should not match "AD", "cereal" should not match "CE").
 
     Args:
         value: Date string potentially containing era text
@@ -619,10 +653,17 @@ def _strip_era(value: str) -> str:
     """
     result = value
     for era in _ERA_STRINGS:
-        # Case-insensitive replacement
-        idx = result.upper().find(era.upper())
+        # Case-insensitive search with word boundary validation
+        upper_result = result.upper()
+        upper_era = era.upper()
+        idx = upper_result.find(upper_era)
         if idx != -1:
-            result = result[:idx] + result[idx + len(era) :]
+            end_idx = idx + len(era)
+            # Only strip if both boundaries are word boundaries
+            if _is_word_boundary(result, idx, is_start=True) and _is_word_boundary(
+                result, end_idx, is_start=False
+            ):
+                result = result[:idx] + result[end_idx:]
     # Normalize whitespace (collapse multiple spaces)
     return " ".join(result.split())
 

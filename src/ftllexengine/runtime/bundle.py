@@ -31,7 +31,7 @@ from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver, FluentValue
-from ftllexengine.syntax import Junk, Message, Term
+from ftllexengine.syntax import Comment, Junk, Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
@@ -282,7 +282,11 @@ class FluentBundle:
 
     @property
     def max_source_size(self) -> int:
-        """Maximum FTL source size in bytes (read-only).
+        """Maximum FTL source size in characters (read-only).
+
+        Python measures string length in characters (code points), not bytes.
+        UTF-8 encoding means 1 character = 1-4 bytes, but this limit counts
+        characters as returned by len(source).
 
         Returns:
             int: Maximum source size limit for add_resource()
@@ -513,8 +517,8 @@ class FluentBundle:
                             source_desc,
                             repr(entry.content[:_LOG_TRUNCATE_WARNING]),
                         )
-                    case _:
-                        # Comments or other entry types don't need registration
+                    case Comment():
+                        # Comments don't need registration - they're documentation only
                         pass
 
             # Log summary with file context

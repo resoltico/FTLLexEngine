@@ -242,15 +242,14 @@ def _is_variant_marker(cursor: Cursor) -> bool:
                 # Check what comes after ]
                 after_bracket = scan.advance()
 
-                # Skip whitespace on same line (also bounded)
-                ws_count = 0
+                # Skip whitespace on same line (shares main lookahead counter)
                 while (
                     not after_bracket.is_eof
                     and after_bracket.current in (" ", "\t")
-                    and ws_count < max_lookahead
+                    and lookahead_count < max_lookahead
                 ):
                     after_bracket = after_bracket.advance()
-                    ws_count += 1
+                    lookahead_count += 1
 
                 if after_bracket.is_eof:
                     return True  # EOF after ] - valid variant

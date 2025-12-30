@@ -36,6 +36,24 @@ __all__ = ["validate_resource"]
 logger = logging.getLogger(__name__)
 
 
+def _get_entry_position(
+    entry: Message | Term,
+    line_cache: LineOffsetCache,
+) -> tuple[int | None, int | None]:
+    """Get line/column from entry's span if available.
+
+    Args:
+        entry: Message or Term with optional span
+        line_cache: Line offset cache for position lookup
+
+    Returns:
+        (line, column) tuple, or (None, None) if no span
+    """
+    if entry.span:
+        return line_cache.get_line_col(entry.span.start)
+    return None, None
+
+
 def _extract_syntax_errors(
     resource: Resource,
     line_cache: LineOffsetCache,
@@ -103,18 +121,12 @@ def _collect_entries(
     messages_dict: dict[str, Message] = {}
     terms_dict: dict[str, Term] = {}
 
-    def _get_position(entry: Message | Term) -> tuple[int | None, int | None]:
-        """Get line/column from entry's span if available."""
-        if entry.span:
-            return line_cache.get_line_col(entry.span.start)
-        return None, None
-
     for entry in resource.entries:
         match entry:
             case Message(id=msg_id, value=value, attributes=attributes):
                 # Check for duplicate message IDs within message namespace
                 if msg_id.name in seen_message_ids:
-                    line, column = _get_position(entry)
+                    line, column = _get_entry_position(entry, line_cache)
                     warnings.append(
                         ValidationWarning(
                             code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
@@ -132,7 +144,7 @@ def _collect_entries(
 
                 # Check for messages without values (only attributes)
                 if value is None and len(attributes) == 0:
-                    line, column = _get_position(entry)
+                    line, column = _get_entry_position(entry, line_cache)
                     warnings.append(
                         ValidationWarning(
                             code=DiagnosticCode.VALIDATION_NO_VALUE_OR_ATTRS.name,
@@ -146,7 +158,7 @@ def _collect_entries(
             case Term(id=term_id):
                 # Check for duplicate term IDs within term namespace
                 if term_id.name in seen_term_ids:
-                    line, column = _get_position(entry)
+                    line, column = _get_entry_position(entry, line_cache)
                     warnings.append(
                         ValidationWarning(
                             code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
@@ -185,16 +197,10 @@ def _check_undefined_references(
     """
     warnings: list[ValidationWarning] = []
 
-    def _get_position(entry: Message | Term) -> tuple[int | None, int | None]:
-        """Get line/column from entry's span if available."""
-        if entry.span:
-            return line_cache.get_line_col(entry.span.start)
-        return None, None
-
     # Check message references
     for msg_name, message in messages_dict.items():
         msg_refs, term_refs = extract_references(message)
-        line, column = _get_position(message)
+        line, column = _get_entry_position(message, line_cache)
 
         for ref in msg_refs:
             if ref not in messages_dict:
@@ -223,7 +229,7 @@ def _check_undefined_references(
     # Check term references
     for term_name, term in terms_dict.items():
         msg_refs, term_refs = extract_references(term)
-        line, column = _get_position(term)
+        line, column = _get_entry_position(term, line_cache)
 
         for ref in msg_refs:
             if ref not in messages_dict:

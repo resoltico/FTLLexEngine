@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.43.0"
+version: "0.44.0"
 domain: RUNTIME
 updated: "2025-12-30"
 route:
@@ -354,7 +354,7 @@ class FunctionCategory(StrEnum):
 
 ### Signature
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FunctionMetadata:
     python_name: str
     ftl_name: str
@@ -373,7 +373,7 @@ class FunctionMetadata:
 | `category` | `FunctionCategory` | N | Function category for documentation. |
 
 ### Constraints
-- Immutable: Frozen dataclass.
+- Immutable: Frozen dataclass with slots.
 - Thread: Safe.
 - Import: `from ftllexengine.runtime.function_metadata import FunctionMetadata`
 

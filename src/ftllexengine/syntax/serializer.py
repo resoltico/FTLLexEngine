@@ -15,9 +15,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.core.depth_guard import DepthGuard, DepthLimitExceededError
 from ftllexengine.enums import CommentType
 
 from .ast import (
@@ -43,9 +42,6 @@ from .ast import (
     VariableReference,
 )
 from .visitor import ASTVisitor
-
-if TYPE_CHECKING:
-    from ftllexengine.core.depth_guard import DepthGuard
 
 __all__ = [
     "SerializationDepthError",
@@ -202,12 +198,6 @@ class FluentSerializer(ASTVisitor):
             SerializationValidationError: If validate=True and AST is invalid
             SerializationDepthError: If AST nesting exceeds max_depth
         """
-        # Runtime import to resolve circular dependency (core -> syntax -> core)
-        from ftllexengine.core.depth_guard import (  # noqa: PLC0415
-            DepthGuard,
-            DepthLimitExceededError,
-        )
-
         if validate:
             _validate_resource(resource)
 

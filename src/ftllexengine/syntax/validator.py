@@ -14,6 +14,8 @@ References:
   (message attributes cannot be parameterized, only terms can)
 """
 
+from decimal import Decimal, InvalidOperation
+
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.diagnostics import ValidationResult
@@ -412,8 +414,6 @@ class SemanticValidator:
         # key must be NumberLiteral at this point.
         # Normalize numeric value using Decimal for proper equality.
         # Decimal("1") == Decimal("1.0") and both normalize to "1".
-        from decimal import Decimal, InvalidOperation  # noqa: PLC0415
-
         try:
             # Convert to Decimal and normalize to canonical form
             normalized = Decimal(str(key.value)).normalize()

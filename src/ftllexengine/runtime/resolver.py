@@ -443,7 +443,7 @@ class FluentResolver:
             # Evaluate positional arguments (less common but supported)
             # Positional args are typically used in function calls, not terms,
             # but we evaluate them for completeness. They're available but unnamed.
-            for _idx, pos_arg in enumerate(expr.arguments.positional):
+            for pos_arg in expr.arguments.positional:
                 # Note: Positional args in term references are unusual in practice.
                 # We evaluate them to collect any errors but don't add to term_args
                 # since there's no variable name to bind them to.

@@ -70,6 +70,8 @@ class LocaleContext:
         >>> ctx = LocaleContext.create('invalid-locale')
         >>> ctx.locale_code  # Original code preserved
         'invalid-locale'
+        >>> ctx.is_fallback  # Programmatic detection of fallback
+        True
 
     Thread Safety:
         LocaleContext is immutable and thread-safe. Multiple threads can
@@ -89,6 +91,7 @@ class LocaleContext:
 
     locale_code: str
     _babel_locale: Locale
+    is_fallback: bool = False
 
     @classmethod
     def clear_cache(cls) -> None:
@@ -189,19 +192,22 @@ class LocaleContext:
                 return cls._cache[cache_key]
 
         # Create new instance (Locale.parse is thread-safe)
+        used_fallback = False
         try:
             babel_locale = Locale.parse(cache_key)
         except UnknownLocaleError as e:
             logger.warning("Unknown locale '%s': %s. Falling back to en_US", locale_code, e)
             babel_locale = Locale.parse("en_US")
+            used_fallback = True
         except ValueError as e:
             logger.warning(
                 "Invalid locale format '%s': %s. Falling back to en_US", locale_code, e
             )
             babel_locale = Locale.parse("en_US")
+            used_fallback = True
 
         # Store with normalized cache_key, but preserve original locale_code for debugging
-        ctx = cls(locale_code=locale_code, _babel_locale=babel_locale)
+        ctx = cls(locale_code=locale_code, _babel_locale=babel_locale, is_fallback=used_fallback)
 
         # Add to cache with lock (double-check pattern for thread safety)
         with cls._cache_lock:

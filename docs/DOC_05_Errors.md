@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.43.0"
+version: "0.44.0"
 domain: ERRORS
 updated: "2025-12-30"
 route:
@@ -175,13 +175,13 @@ class FluentParseError(FluentError):
 class FormattingError(FluentResolutionError):
     fallback_value: str
 
-    def __init__(self, message: str, fallback_value: str) -> None: ...
+    def __init__(self, message: str | Diagnostic, fallback_value: str) -> None: ...
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Error description for debugging. |
+| `message` | `str \| Diagnostic` | Y | Error message or Diagnostic object. |
 | `fallback_value` | `str` | Y | Value to use in output when formatting fails. |
 
 ### Constraints

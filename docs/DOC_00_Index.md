@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.43.0"
+version: "0.44.0"
 domain: INDEX
 updated: "2025-12-30"
 route:
@@ -205,6 +205,7 @@ ftllexengine/
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
 | `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| None` | runtime/resolver.py (exported from root) |
+| `ParseResult[T]` | `tuple[T \| None, tuple[FluentParseError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |
 | `ResourceId` | `str` | localization.py |

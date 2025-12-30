@@ -7,6 +7,7 @@ Python 3.13+.
 """
 
 from ftllexengine.diagnostics import FluentResolutionError
+from ftllexengine.diagnostics.codes import Diagnostic
 
 __all__ = ["FormattingError"]
 
@@ -28,11 +29,11 @@ class FormattingError(FluentResolutionError):
         fallback_value: String to use in output when formatting fails
     """
 
-    def __init__(self, message: str, fallback_value: str) -> None:
+    def __init__(self, message: str | Diagnostic, fallback_value: str) -> None:
         """Initialize FormattingError.
 
         Args:
-            message: Error description for debugging
+            message: Error message string OR Diagnostic object
             fallback_value: Value to use in output when formatting fails
         """
         super().__init__(message)

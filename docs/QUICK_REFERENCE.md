@@ -595,6 +595,8 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 **`FluentValue`** (v0.24.0+): Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | None`.
 
+**`ParseResult[T]`** (v0.44.0+): Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FluentParseError, ...]]`. Import from `ftllexengine.parsing`.
+
 ---
 
 ## Thread Safety
@@ -805,5 +807,5 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 ---
 
 **Quick Reference Last Updated**: December 30, 2025
-**FTLLexEngine Version**: 0.43.0
+**FTLLexEngine Version**: 0.44.0
 **Python Requirement**: 3.13+

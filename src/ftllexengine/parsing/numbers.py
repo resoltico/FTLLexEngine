@@ -29,6 +29,14 @@ def parse_number(
 ) -> tuple[float | None, tuple[FluentParseError, ...]]:
     """Parse locale-aware number string to float.
 
+    Warning:
+        This function converts to float, which loses precision for large integers
+        and certain decimal values. For financial calculations or values requiring
+        exact precision, use parse_decimal() instead which returns Decimal.
+
+        Examples of precision loss:
+        - Large integers: 1234567890123456789 may round incorrectly
+        - Decimal fractions: 0.1 + 0.2 != 0.3 in float arithmetic
 
     Args:
         value: Number string (e.g., "1 234,56" for lv_LV)
@@ -60,6 +68,9 @@ def parse_number(
 
     Thread Safety:
         Thread-safe. Uses Babel (no global state).
+
+    See Also:
+        parse_decimal: For exact precision (financial calculations)
     """
     errors: list[FluentParseError] = []
 

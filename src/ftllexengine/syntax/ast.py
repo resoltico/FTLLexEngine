@@ -60,16 +60,22 @@ __all__ = [
 class Span:
     """Source position span per Fluent spec.
 
-    Tracks byte offsets in source text for error reporting and tooling.
+    Tracks character offsets in source text for error reporting and tooling.
+    Positions are 0-indexed character offsets in the normalized source
+    (after CRLF -> LF line ending normalization).
 
     Attributes:
-        start: Starting byte offset (inclusive)
-        end: Ending byte offset (exclusive)
+        start: Starting character offset (inclusive)
+        end: Ending character offset (exclusive)
 
     Example:
         Source: "hello = world"
         Message span: Span(start=0, end=13)
         Identifier "hello" span: Span(start=0, end=5)
+
+    Note:
+        Python strings measure positions in characters (code points), not bytes.
+        For CRLF files, positions refer to the normalized (LF-only) source.
     """
 
     start: int

@@ -96,7 +96,9 @@ DEFAULT_CACHE_SIZE: int = 1000
 # INPUT LIMITS
 # ============================================================================
 
-# Default maximum source size in bytes (10 MB).
+# Default maximum source size in characters (10 million characters).
+# Python measures string length in characters (code points), not bytes.
+# UTF-8 encoding means 1 character = 1-4 bytes, but len(source) counts characters.
 # Prevents DoS attacks via unbounded memory allocation from large FTL files.
 MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
 
@@ -111,8 +113,21 @@ MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
 FALLBACK_INVALID: str = "{???}"
 
 # Template patterns for contextual fallbacks (preserve what was expected)
-# These are format strings - use .format(name=...) or f-string equivalent
-FALLBACK_MISSING_MESSAGE: str = "{{{id}}}"  # e.g., {my-message}
-FALLBACK_MISSING_VARIABLE: str = "{{${name}}}"  # e.g., {$username}
-FALLBACK_MISSING_TERM: str = "{{-{name}}}"  # e.g., {-brand}
-FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # e.g., {!NUMBER}
+# These are Python format strings - use .format(name=...) or f-string equivalent.
+#
+# ESCAPING EXPLANATION:
+# Python format strings use {} for interpolation, so literal braces need escaping:
+#   {{ = literal {
+#   }} = literal }
+#   {var} = interpolated variable
+#
+# Examples after .format():
+#   "{{{id}}}".format(id="msg")      -> "{msg}"      (message fallback)
+#   "{{${name}}}".format(name="x")   -> "{$x}"       (variable fallback)
+#   "{{-{name}}}".format(name="term") -> "{-term}"   (term fallback)
+#   "{{!{name}}}".format(name="NUM")  -> "{!NUM}"    (function fallback)
+#
+FALLBACK_MISSING_MESSAGE: str = "{{{id}}}"  # -> {my-message}
+FALLBACK_MISSING_VARIABLE: str = "{{${name}}}"  # -> {$username}
+FALLBACK_MISSING_TERM: str = "{{-{name}}}"  # -> {-brand}
+FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # -> {!NUMBER}
