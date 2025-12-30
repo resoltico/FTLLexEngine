@@ -433,7 +433,7 @@ Complete alphabetical reference:
 ---
 
 **Terminology Guide Last Updated**: December 29, 2025
-**FTLLexEngine Version**: 0.41.0
+**FTLLexEngine Version**: 0.42.0
 
 **See Also**:
 - [README.md - Terminology Section](README.md#terminology)

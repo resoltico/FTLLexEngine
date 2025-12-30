@@ -24,6 +24,7 @@ Python 3.13+. Uses Babel for i18n.
 
 import logging
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FunctionRegistry
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def number_format(
-    value: int | float,
+    value: int | float | Decimal,
     locale_code: str = "en-US",
     *,
     minimum_fraction_digits: int = 0,
@@ -49,7 +50,7 @@ def number_format(
     to FTL camelCase (minimumFractionDigits → minimum_fraction_digits).
 
     Args:
-        value: Number to format
+        value: Number to format (int, float, or Decimal)
         locale_code: BCP 47 locale identifier (e.g., 'en-US', 'de-DE')
         minimum_fraction_digits: Minimum decimal places (default: 0)
         maximum_fraction_digits: Maximum decimal places (default: 3)
@@ -165,7 +166,7 @@ def datetime_format(
 
 
 def currency_format(
-    value: int | float,
+    value: int | float | Decimal,
     locale_code: str = "en-US",
     *,
     currency: str,
@@ -178,7 +179,7 @@ def currency_format(
     to FTL camelCase (currencyDisplay → currency_display).
 
     Args:
-        value: Monetary amount
+        value: Monetary amount (int, float, or Decimal)
         locale_code: BCP 47 locale identifier (e.g., 'en-US', 'de-DE')
         currency: ISO 4217 currency code (EUR, USD, JPY, BHD, etc.)
         currency_display: Display style (default: "symbol")

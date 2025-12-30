@@ -272,13 +272,17 @@ class FluentResolver:
         errors: list[FluentError],
         context: ResolutionContext,
     ) -> str:
-        """Resolve pattern by walking elements."""
-        result = ""
+        """Resolve pattern by walking elements.
+
+        Uses list accumulation with join() for O(N) performance instead of
+        repeated string concatenation which is O(N^2).
+        """
+        parts: list[str] = []
 
         for element in pattern.elements:
             match element:
                 case TextElement():
-                    result += element.value
+                    parts.append(element.value)
                 case Placeable():
                     try:
                         value = self._resolve_expression(element.expression, args, errors, context)
@@ -287,9 +291,9 @@ class FluentResolver:
                         # Wrap in Unicode bidi isolation marks (FSI/PDI)
                         # Per Unicode TR9, prevents RTL/LTR text interference
                         if self.use_isolating:
-                            result += f"{UNICODE_FSI}{formatted}{UNICODE_PDI}"
+                            parts.append(f"{UNICODE_FSI}{formatted}{UNICODE_PDI}")
                         else:
-                            result += formatted
+                            parts.append(formatted)
 
                     except (FluentReferenceError, FluentResolutionError) as e:
                         # Mozilla-aligned error handling:
@@ -299,11 +303,11 @@ class FluentResolver:
                         match e:
                             case FormattingError(fallback_value=fallback):
                                 # FormattingError carries the original value as fallback
-                                result += fallback
+                                parts.append(fallback)
                             case _:
-                                result += self._get_fallback_for_placeable(element.expression)
+                                parts.append(self._get_fallback_for_placeable(element.expression))
 
-        return result
+        return "".join(parts)
 
     def _resolve_expression(  # noqa: PLR0911  # Complex dispatch logic expected
         self,
@@ -382,7 +386,14 @@ class FluentResolver:
         errors: list[FluentError],
         context: ResolutionContext,
     ) -> str:
-        """Resolve term reference with cycle detection."""
+        """Resolve term reference with cycle detection and argument handling.
+
+        Per Fluent spec, terms can be parameterized with arguments:
+            -brand(case: "nominative")
+
+        Term arguments are evaluated and merged into the resolution context,
+        allowing term patterns to reference them as variables.
+        """
         term_id = expr.id.name
         if term_id not in self.terms:
             raise FluentReferenceError(ErrorTemplate.term_not_found(term_id))
@@ -419,9 +430,28 @@ class FluentResolver:
             # term_key already has '-' prefix, strip it for the template
             return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
 
+        # Evaluate term arguments and merge into resolution args
+        # Per Fluent spec: -term(arg: val) makes arg available as $arg in term pattern
+        term_args: dict[str, FluentValue] = dict(args)
+        if expr.arguments is not None:
+            # Evaluate named arguments (the primary use case for term args)
+            for named_arg in expr.arguments.named:
+                arg_name = named_arg.name.name
+                arg_value = self._resolve_expression(named_arg.value, args, errors, context)
+                term_args[arg_name] = arg_value
+
+            # Evaluate positional arguments (less common but supported)
+            # Positional args are typically used in function calls, not terms,
+            # but we evaluate them for completeness. They're available but unnamed.
+            for _idx, pos_arg in enumerate(expr.arguments.positional):
+                # Note: Positional args in term references are unusual in practice.
+                # We evaluate them to collect any errors but don't add to term_args
+                # since there's no variable name to bind them to.
+                self._resolve_expression(pos_arg, args, errors, context)
+
         try:
             context.push(term_key)
-            return self._resolve_pattern(pattern, args, errors, context)
+            return self._resolve_pattern(pattern, term_args, errors, context)
         finally:
             context.pop()
 

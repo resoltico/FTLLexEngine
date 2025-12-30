@@ -267,7 +267,8 @@ FluentBundle(
     enable_cache: bool = False,
     cache_size: int = 1000,
     functions: FunctionRegistry | None = None,
-    thread_safe: bool = False,
+    max_source_size: int | None = None,
+    max_nesting_depth: int | None = None,
 )
 ```
 
@@ -284,7 +285,7 @@ with FluentBundle("en", enable_cache=True) as bundle:
 
 **Key Methods**:
 ```python
-bundle.add_resource(ftl_source: str) -> None
+bundle.add_resource(ftl_source: str) -> tuple[Junk, ...]
 bundle.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tuple[FluentError, ...]]
 bundle.format_value(message_id, args=None) -> tuple[str, tuple[FluentError, ...]]
 bundle.validate_resource(ftl_source: str) -> ValidationResult
@@ -293,6 +294,7 @@ bundle.has_attribute(message_id: str, attribute: str) -> bool
 bundle.get_message_ids() -> list[str]
 bundle.get_message_variables(message_id: str) -> frozenset[str]
 bundle.introspect_message(message_id: str) -> MessageIntrospection
+bundle.introspect_term(term_id: str) -> MessageIntrospection
 bundle.add_function(name: str, func: Callable) -> None
 ```
 
@@ -300,7 +302,9 @@ bundle.add_function(name: str, func: Callable) -> None
 ```python
 bundle.locale -> str  # Read-only
 bundle.use_isolating -> bool  # Read-only
-bundle.is_thread_safe -> bool  # Read-only (v0.38.0+)
+bundle.cache_enabled -> bool  # Read-only
+bundle.max_source_size -> int  # Read-only
+bundle.max_nesting_depth -> int  # Read-only
 ```
 
 ---
@@ -322,7 +326,7 @@ FluentLocalization(
 
 **Key Methods**:
 ```python
-l10n.add_resource(locale: str, ftl_source: str) -> None
+l10n.add_resource(locale: str, ftl_source: str) -> tuple[Junk, ...]
 l10n.format_value(message_id, args=None) -> tuple[str, tuple[FluentError, ...]]
 l10n.has_message(message_id: str) -> bool
 l10n.get_bundles() -> Generator[FluentBundle]
@@ -595,39 +599,22 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 ## Thread Safety
 
-**Default**: FluentBundle is **NOT thread-safe** for writes, but **safe for concurrent reads**.
+**FluentBundle is always thread-safe** (v0.42.0+). All public methods are synchronized via internal RLock. RLock overhead is negligible (~10ns per acquire).
 
-**Opt-in Thread Safety (v0.38.0+)**: Use `thread_safe=True` for full thread-safe operation.
-
-### Pattern 1: Opt-in Thread Safety (Recommended for Dynamic Use)
+### Pattern 1: Shared Bundle (Recommended)
 
 ```python
-# Thread-safe bundle with RLock synchronization
-bundle = FluentBundle("en_US", thread_safe=True)
-
-# All operations are now thread-safe (reads AND writes)
-bundle.add_resource(ftl_source)  # Thread-safe
-bundle.add_function("CUSTOM", my_function)  # Thread-safe
-result, errors = bundle.format_pattern("msg")  # Thread-safe
-
-# Check thread safety status
-print(bundle.is_thread_safe)  # True
-```
-
-### Pattern 2: Single-Threaded Initialization (Default)
-
-```python
-# Startup phase (single-threaded)
+# Create bundle once, share across threads
 bundle = FluentBundle("en_US")
 bundle.add_resource(ftl_source)
-bundle.add_function("CUSTOM", my_function)
 
-# Runtime (multi-threaded) - SAFE for reads only
-# Multiple threads can call format_pattern() simultaneously
-result, errors = bundle.format_pattern("msg")
+# All operations are thread-safe (reads AND writes)
+bundle.add_resource(more_ftl)  # Thread-safe
+bundle.add_function("CUSTOM", my_function)  # Thread-safe
+result, errors = bundle.format_pattern("msg")  # Thread-safe
 ```
 
-### Pattern 3: Thread-Local Bundles
+### Pattern 2: Thread-Local Bundles (Per-Thread Customization)
 
 ```python
 import threading
@@ -818,5 +805,5 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 ---
 
 **Quick Reference Last Updated**: December 29, 2025
-**FTLLexEngine Version**: 0.41.0
+**FTLLexEngine Version**: 0.42.0
 **Python Requirement**: 3.13+

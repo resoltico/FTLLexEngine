@@ -21,6 +21,7 @@ Initialization Behavior:
 Python 3.13+.
 """
 
+import threading
 from collections.abc import Callable, Generator, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -32,6 +33,7 @@ from .diagnostics.codes import Diagnostic, DiagnosticCode
 from .diagnostics.errors import FluentError
 from .runtime.bundle import FluentBundle
 from .runtime.resolver import FluentValue
+from .syntax import Junk
 
 if TYPE_CHECKING:
     from .diagnostics import ValidationResult
@@ -389,6 +391,7 @@ class FluentLocalization:
         "_enable_cache",
         "_load_results",
         "_locales",
+        "_lock",
         "_pending_functions",
         "_resource_ids",
         "_resource_loader",
@@ -453,7 +456,10 @@ class FluentLocalization:
 
         # Pending functions: stored until bundle is created (lazy loading support)
         # Functions are applied to bundles when they are first accessed
-        self._pending_functions: dict[str, Callable[..., str]] = {}
+        self._pending_functions: dict[str, Callable[..., FluentValue]] = {}
+
+        # Thread safety: always enabled via RLock
+        self._lock = threading.RLock()
 
         # Resource loading is EAGER by design:
         # - Fail-fast: Critical errors (parse, permission) raised at construction
@@ -476,25 +482,28 @@ class FluentLocalization:
         When a new bundle is created, any pending functions (registered via
         add_function before the bundle was accessed) are automatically applied.
 
+        Thread-safe via internal RLock.
+
         Args:
             locale: Locale code (must be in _bundles dict)
 
         Returns:
             FluentBundle instance for the locale
         """
-        bundle = self._bundles[locale]
-        if bundle is None:
-            bundle = FluentBundle(
-                locale,
-                use_isolating=self._use_isolating,
-                enable_cache=self._enable_cache,
-                cache_size=self._cache_size,
-            )
-            # Apply any pending functions that were registered before bundle creation
-            for name, func in self._pending_functions.items():
-                bundle.add_function(name, func)
-            self._bundles[locale] = bundle
-        return bundle
+        with self._lock:
+            bundle = self._bundles[locale]
+            if bundle is None:
+                bundle = FluentBundle(
+                    locale,
+                    use_isolating=self._use_isolating,
+                    enable_cache=self._enable_cache,
+                    cache_size=self._cache_size,
+                )
+                # Apply any pending functions that were registered before bundle creation
+                for name, func in self._pending_functions.items():
+                    bundle.add_function(name, func)
+                self._bundles[locale] = bundle
+            return bundle
 
     def _load_single_resource(
         self,
@@ -641,25 +650,34 @@ class FluentLocalization:
         total = len(self._bundles)
         return f"FluentLocalization(locales={self._locales!r}, bundles={initialized}/{total})"
 
-    def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> None:
+    def add_resource(
+        self, locale: LocaleCode, ftl_source: FTLSource
+    ) -> tuple[Junk, ...]:
         """Add FTL resource to specific locale bundle.
 
         Allows dynamic resource loading without ResourceLoader.
+
+        Thread-safe via internal RLock.
 
         Args:
             locale: Locale code (must be in fallback chain)
             ftl_source: FTL source code
 
+        Returns:
+            Tuple of Junk entries encountered during parsing. Empty tuple if
+            parsing succeeded without errors.
+
         Raises:
             ValueError: If locale not in fallback chain.
             FluentSyntaxError: If FTL source contains critical syntax errors.
         """
-        if locale not in self._bundles:
-            msg = f"Locale '{locale}' not in fallback chain {self._locales}"
-            raise ValueError(msg)
+        with self._lock:
+            if locale not in self._bundles:
+                msg = f"Locale '{locale}' not in fallback chain {self._locales}"
+                raise ValueError(msg)
 
-        bundle = self._get_or_create_bundle(locale)
-        bundle.add_resource(ftl_source)
+            bundle = self._get_or_create_bundle(locale)
+            return bundle.add_resource(ftl_source)
 
     def _handle_message_not_found(
         self,
@@ -792,16 +810,18 @@ class FluentLocalization:
         # Not found - delegate to helper for consistent handling
         return self._handle_message_not_found(message_id, errors)
 
-    def add_function(self, name: str, func: Callable[..., str]) -> None:
+    def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
         """Register custom function on all bundles.
 
         Functions are applied immediately to any already-created bundles,
         and stored for deferred application to bundles created later.
         This preserves lazy bundle initialization.
 
+        Thread-safe via internal RLock.
+
         Args:
             name: Function name (UPPERCASE by convention)
-            func: Python function implementation
+            func: Python function implementation returning FluentValue
 
         Example:
             >>> l10n = FluentLocalization(['lv', 'en'])
@@ -813,13 +833,14 @@ class FluentLocalization:
             >>> result
             'HELLO'
         """
-        # Store for future bundle creation (lazy loading support)
-        self._pending_functions[name] = func
+        with self._lock:
+            # Store for future bundle creation (lazy loading support)
+            self._pending_functions[name] = func
 
-        # Apply to any already-created bundles
-        for bundle in self._bundles.values():
-            if bundle is not None:
-                bundle.add_function(name, func)
+            # Apply to any already-created bundles
+            for bundle in self._bundles.values():
+                if bundle is not None:
+                    bundle.add_function(name, func)
 
     def introspect_message(self, message_id: MessageId) -> "MessageIntrospection | None":
         """Get message introspection from first bundle with message.
@@ -888,10 +909,13 @@ class FluentLocalization:
 
         Calls clear_cache() on each bundle that has been created.
         Does not create new bundles.
+
+        Thread-safe via internal RLock.
         """
-        for bundle in self._bundles.values():
-            if bundle is not None:
-                bundle.clear_cache()
+        with self._lock:
+            for bundle in self._bundles.values():
+                if bundle is not None:
+                    bundle.clear_cache()
 
     def get_bundles(self) -> Generator[FluentBundle]:
         """Lazy generator yielding bundles in fallback order.

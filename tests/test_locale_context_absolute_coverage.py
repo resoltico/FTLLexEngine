@@ -45,8 +45,9 @@ class TestLocaleContextCacheInfo:
         assert isinstance(max_size, int)
         assert max_size > 0
         assert isinstance(info["locales"], tuple)
-        assert "en_US" in info["locales"]
-        assert "de_DE" in info["locales"]
+        # Cache keys are normalized to lowercase
+        assert "en_us" in info["locales"]
+        assert "de_de" in info["locales"]
 
     def test_cache_info_after_clear(self) -> None:
         """Test cache_info() returns empty after clearing."""

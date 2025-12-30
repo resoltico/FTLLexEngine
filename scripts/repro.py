@@ -131,7 +131,7 @@ Examples:
         1 for e in result.entries if hasattr(e, "id") and hasattr(e, "value")
     )
 
-    print(f"[OK] Parsed successfully")
+    print("[OK] Parsed successfully")
     print(f"     Entries: {entry_count}")
     print(f"     Messages/Terms: {message_count}")
 

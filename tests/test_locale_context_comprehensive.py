@@ -158,13 +158,13 @@ class TestLocaleContextCaching:
         # Both should use en_US fallback
         assert ctx1.locale_code == "xx-INVALID"
 
-    def test_create_caching_is_case_sensitive(self) -> None:
-        """create() cache treats locale codes as case-sensitive."""
+    def test_create_caching_is_case_insensitive(self) -> None:
+        """create() cache treats locale codes as case-insensitive (normalized)."""
         ctx1 = LocaleContext.create("en-US")
         ctx2 = LocaleContext.create("en-us")
         ctx3 = LocaleContext.create("EN-US")
 
-        # These are considered different cache keys
-        # But may return same locale context depending on normalization
-        assert ctx1 is not ctx2  # Different cache keys
-        assert ctx1 is not ctx3  # Different cache keys
+        # These all normalize to the same cache key (en_us)
+        # and return the same cached instance
+        assert ctx1 is ctx2
+        assert ctx1 is ctx3

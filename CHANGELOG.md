@@ -13,6 +13,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2025-12-29
+
+### Breaking Changes
+- **Thread-Safety Always On**: `FluentBundle.thread_safe` parameter removed:
+  - All bundles are now always thread-safe via internal RLock
+  - `is_thread_safe` property removed (would always return `True`)
+  - Simplifies API; thread-safe mode had negligible overhead (~10ns per acquire)
+- **`add_resource()` Returns Errors**: Now returns `tuple[Junk, ...]` instead of `None`:
+  - Returns tuple of Junk entries encountered during parsing
+  - Empty tuple indicates successful parse with no errors
+  - Enables programmatic error handling without redundant `validate_resource()` call
+  - Applies to both `FluentBundle.add_resource()` and `FluentLocalization.add_resource()`
+
+### Added
+- **`HashableValue` Type Alias**: Exported from `ftllexengine.runtime.cache`:
+  - Defines all possible hashable values for cache keys
+  - Recursive type: primitives plus `tuple[HashableValue, ...]` and `frozenset[HashableValue]`
+  - Improves type safety for cache key construction
+- **`introspect_term()` Method**: New method on `FluentBundle`:
+  - Introspects term dependencies similar to `introspect_message()`
+  - Returns `MessageIntrospection` with variables, message refs, term refs, and functions
+  - Raises `KeyError` if term not found
+- **Comment-Message Association**: Parser attaches single-hash comments to entries:
+  - Single-hash (`#`) comments directly preceding messages/terms are attached to `comment` field
+  - Group (`##`) and resource (`###`) comments remain as standalone entries
+  - Blank line between comment and entry prevents association
+  - Implements Fluent specification behavior
+
+### Changed
+- **Locale Normalization Lowercase**: `normalize_locale()` returns lowercase locale codes:
+  - BCP-47 locale codes are case-insensitive; lowercase is canonical form
+  - Prevents redundant cache entries for "en-US" vs "EN-US" vs "en_us"
+  - Applies to all internal locale lookups and cache keys
+- **Comment Joining**: Adjacent comments of same type are joined:
+  - Multiple consecutive single-hash (`#`) comments become one Comment node
+  - Content joined with newline separators
+  - Span covers entire joined region
+  - Implements Fluent specification behavior
+- **Function Type Hints Expanded**: `number_format()` and `currency_format()` accept `Decimal`:
+  - Type signature now `int | float | Decimal` matching `LocaleContext` methods
+  - Enables precise monetary calculations with `Decimal` type
+- **Term Argument Resolution**: Parameterized terms now properly resolve arguments:
+  - `-term(arg: $value)` correctly passes arguments to term pattern
+  - Arguments merged into resolution context for term's value
+
+### Fixed
+- **Surrogate Validation for `\uXXXX`**: Short Unicode escapes now reject surrogates:
+  - `\uD800` through `\uDFFF` now raise parse error
+  - Matches existing validation for `\UXXXXXX` escapes
+  - Prevents invalid UTF-16 surrogates in FTL strings
+- **Pattern Resolution Performance**: `_resolve_pattern()` uses O(N) join:
+  - Previous: O(N^2) string concatenation with `result +=`
+  - Fixed: Collect elements in list, return `"".join(parts)`
+- **IntrospectionVisitor Term Arguments**: Traverses `TermReference.arguments`:
+  - Previous: Only added term ID, missed nested variables/references
+  - Fixed: Variables in term call arguments (`-term(var: $nested)`) now detected
+
 ## [0.41.0] - 2025-12-29
 
 ### Breaking Changes
@@ -509,6 +566,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.42.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.42.0
 [0.41.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.41.0
 [0.40.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.40.0
 [0.39.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.39.0

@@ -107,7 +107,7 @@ class TestFunctionRegistrationProperties:
 
         bundle.add_function("UPPER", custom_upper)
         bundle.add_function("REVERSE", custom_reverse)
-        bundle.add_function("LENGTH", custom_length)  # type: ignore[arg-type]
+        bundle.add_function("LENGTH", custom_length)
 
         bundle.add_resource(
             """
@@ -155,7 +155,7 @@ class TestFunctionInvocationProperties:
     def test_integer_argument_passing(self, value: int) -> None:
         """Property: Integer arguments are handled."""
         bundle = FluentBundle("en-US")
-        bundle.add_function("LEN", custom_length)  # type: ignore[arg-type]
+        bundle.add_function("LEN", custom_length)
         bundle.add_resource("msg = { LEN($val) }")
 
         result, _ = bundle.format_pattern("msg", {"val": value})
@@ -174,7 +174,7 @@ class TestFunctionInvocationProperties:
     def test_float_argument_passing(self, value: float) -> None:
         """Property: Float arguments are handled."""
         bundle = FluentBundle("en-US")
-        bundle.add_function("LEN", custom_length)  # type: ignore[arg-type]
+        bundle.add_function("LEN", custom_length)
         bundle.add_resource("msg = { LEN($val) }")
 
         result, _ = bundle.format_pattern("msg", {"val": value})
@@ -210,7 +210,7 @@ class TestFunctionErrorHandlingProperties:
     def test_none_return_handled(self, value: str) -> None:
         """Property: Functions returning None are handled gracefully."""
         bundle = FluentBundle("en-US")
-        bundle.add_function("NONE", returning_none)  # type: ignore[arg-type]
+        bundle.add_function("NONE", returning_none)
         bundle.add_resource("msg = { NONE($val) }")
 
         result, _ = bundle.format_pattern("msg", {"val": value})

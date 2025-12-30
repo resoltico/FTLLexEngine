@@ -240,7 +240,7 @@ def test_roundtrip_multiple_messages():
 def test_roundtrip_mixed_entries():
     """Round-trip resource with messages and comments.
 
-    NOTE: Parser ignores standalone comments, so only messages survive roundtrip.
+    Per Fluent spec: Single-hash comments directly preceding messages attach to them.
     """
     entries = (
         Comment(content=" Header comment", type=CommentType.COMMENT),
@@ -261,11 +261,17 @@ def test_roundtrip_mixed_entries():
     serialized = serialize(resource)
     reparsed = parse(serialized)
 
-    # Per Fluent spec: Comments and messages are both preserved
-    comments = [e for e in reparsed.entries if isinstance(e, Comment)]
+    # Per Fluent spec: Single-hash comments attach to following messages
+    standalone_comments = [e for e in reparsed.entries if isinstance(e, Comment)]
     messages = [e for e in reparsed.entries if isinstance(e, Message)]
-    assert len(comments) == 2  # Comments are preserved per spec
+    assert len(standalone_comments) == 0  # Comments attached to messages
     assert len(messages) == 2  # Messages survive roundtrip
+
+    # Comments are preserved as attachments to messages
+    assert messages[0].comment is not None
+    assert "Header comment" in messages[0].comment.content
+    assert messages[1].comment is not None
+    assert "Another comment" in messages[1].comment.content
 
 
 def test_roundtrip_empty_resource():

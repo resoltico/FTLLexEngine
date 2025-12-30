@@ -268,12 +268,14 @@ Demonstrates:
 **Thread-safe FluentBundle usage** - Patterns for multi-threaded applications.
 
 Demonstrates:
-1. Single-threaded initialization (recommended pattern)
+1. Single-threaded initialization (recommended for static resources)
 2. Concurrent read operations with ThreadPoolExecutor
-3. Thread-local bundles (alternative for dynamic loading)
-4. Lock-based dynamic loading (if absolutely necessary)
+3. Thread-local bundles (for per-thread customization)
+4. Dynamic resource loading (always thread-safe as of v0.42.0)
 
 **Run**: `python examples/thread_safety.py`
+
+**Note**: As of v0.42.0, FluentBundle is always thread-safe. No manual locks or special parameters needed.
 
 ---
 

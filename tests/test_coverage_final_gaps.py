@@ -295,7 +295,8 @@ class TestLocaleContextCoverage:
         assert info["size"] == 2
         locales = info["locales"]
         assert isinstance(locales, tuple)
-        assert "en_US" in locales or "de_DE" in locales
+        # Cache keys are normalized to lowercase
+        assert "en_us" in locales or "de_de" in locales
 
     def test_format_datetime_string_pattern_fallback(self) -> None:
         """format_datetime when pattern is string, not DateTimePattern (line 440).

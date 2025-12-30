@@ -30,7 +30,16 @@ See Also:
 
 from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
-from ftllexengine.syntax.ast import Annotation, Comment, Junk, Message, Resource, Span, Term
+from ftllexengine.enums import CommentType
+from ftllexengine.syntax.ast import (
+    Annotation,
+    Comment,
+    Junk,
+    Message,
+    Resource,
+    Span,
+    Term,
+)
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser.primitives import is_identifier_start
 from ftllexengine.syntax.parser.rules import (
@@ -40,6 +49,79 @@ from ftllexengine.syntax.parser.rules import (
     parse_term,
 )
 from ftllexengine.syntax.parser.whitespace import skip_blank
+
+
+def _has_blank_line_between(source: str, start: int, end: int) -> bool:
+    """Check if the region contains a blank line (empty line or whitespace-only line).
+
+    Per Fluent spec, adjacent comments should only be joined if there are no
+    blank lines between them. A blank line is defined as a line that contains
+    only whitespace (spaces, per FTL spec).
+
+    Args:
+        source: The full source string
+        start: Start position (inclusive)
+        end: End position (exclusive)
+
+    Returns:
+        True if there's a blank line in the region, False otherwise
+    """
+    region = source[start:end]
+    # A blank line is when we see two consecutive newlines (possibly with spaces between)
+    # Examples of blank lines: "\n\n", "\n  \n", "\r\n\r\n"
+    newline_count = 0
+    i = 0
+    while i < len(region):
+        if region[i] == "\n":
+            newline_count += 1
+            if newline_count >= 2:
+                return True
+            i += 1
+        elif region[i] == "\r":
+            # Handle \r\n as single newline
+            if i + 1 < len(region) and region[i + 1] == "\n":
+                i += 2
+            else:
+                i += 1
+            newline_count += 1
+            if newline_count >= 2:
+                return True
+        elif region[i] == " ":
+            # Spaces don't reset the newline counter (they can be part of blank line)
+            i += 1
+        else:
+            # Non-blank character resets the counter
+            newline_count = 0
+            i += 1
+    return False
+
+
+def _merge_comments(first: Comment, second: Comment) -> Comment:
+    """Merge two adjacent comments of the same type into one.
+
+    Per Fluent spec, adjacent comment lines of the same type should be
+    joined into a single Comment node with content separated by newlines.
+
+    Args:
+        first: The first comment
+        second: The second comment (must be same type)
+
+    Returns:
+        New Comment with joined content and updated span
+    """
+    # Join content with newline
+    merged_content = first.content + "\n" + second.content
+
+    # Update span to cover both comments
+    new_span: Span | None = None
+    if first.span is not None and second.span is not None:
+        new_span = Span(start=first.span.start, end=second.span.end)
+    elif first.span is not None:
+        new_span = first.span
+    elif second.span is not None:
+        new_span = second.span
+
+    return Comment(content=merged_content, type=first.type, span=new_span)
 
 __all__ = ["FluentParserV1"]
 
@@ -100,7 +182,7 @@ class FluentParserV1:
         """Maximum allowed placeable nesting depth."""
         return self._max_nesting_depth
 
-    def parse(self, source: str) -> Resource:
+    def parse(self, source: str) -> Resource:  # noqa: PLR0915
         """Parse FTL source into AST Resource.
 
         Parses complete FTL file into messages, terms, and comments.
@@ -154,22 +236,54 @@ class FluentParserV1:
         # Create parse context with configured nesting depth limit
         context = ParseContext(max_nesting_depth=self._max_nesting_depth)
 
+        # Track last comment for joining adjacent comments of same type
+        pending_comment: Comment | None = None
+        pending_comment_end_pos: int = 0  # Position after the pending comment
+
         # Parse entries until EOF
         while not cursor.is_eof:
             # Per spec: blank_block ::= (blank_inline? line_end)+
             # Between resource entries, skip blank (spaces and newlines, NOT tabs)
+            pos_before_blank = cursor.pos
             cursor = skip_blank(cursor)
 
             if cursor.is_eof:
+                # Finalize pending comment before breaking
+                if pending_comment is not None:
+                    entries.append(pending_comment)
+                    pending_comment = None
                 break
 
             # Parse comments (per Fluent spec: #, ##, ###)
             if cursor.current == "#":
                 comment_result = parse_comment(cursor)
                 if comment_result is not None:
-                    comment_parse = comment_result
-                    entries.append(comment_parse.value)
-                    cursor = comment_parse.cursor
+                    new_comment = comment_result.value
+                    cursor = comment_result.cursor
+
+                    # Check if we should merge with pending comment
+                    if pending_comment is not None:
+                        # Merge if same type AND no blank lines between
+                        if (
+                            pending_comment.type == new_comment.type
+                            and not _has_blank_line_between(
+                                cursor.source,
+                                pending_comment_end_pos,
+                                pos_before_blank,
+                            )
+                        ):
+                            # Merge comments
+                            pending_comment = _merge_comments(
+                                pending_comment, new_comment
+                            )
+                            pending_comment_end_pos = cursor.pos
+                            continue
+                        # Different type or blank line - finalize pending
+                        entries.append(pending_comment)
+
+                    # Start new pending comment
+                    pending_comment = new_comment
+                    pending_comment_end_pos = cursor.pos
                     continue
                 # If comment parsing fails, skip the line
                 while not cursor.is_eof and cursor.current not in ("\n", "\r"):
@@ -178,13 +292,43 @@ class FluentParserV1:
                     cursor = cursor.advance()
                 continue
 
+            # Non-comment entry - check if pending comment should be attached
+            # Per Fluent spec: Single-hash comments (#) immediately preceding
+            # a message/term (no blank lines) should be attached to that entry
+            attach_comment: Comment | None = None
+            if pending_comment is not None:
+                # Check if it's a single-hash comment with no blank line before entry
+                if (
+                    pending_comment.type == CommentType.COMMENT
+                    and not _has_blank_line_between(
+                        cursor.source, pending_comment_end_pos, pos_before_blank
+                    )
+                ):
+                    # Attach to following message/term
+                    attach_comment = pending_comment
+                else:
+                    # Group/resource comments or comments with blank line: add to entries
+                    entries.append(pending_comment)
+                pending_comment = None
+                pending_comment_end_pos = 0
+
             # Try to parse term (starts with '-')
             if cursor.current == "-":
                 term_result = parse_term(cursor, context)
 
                 if term_result is not None:
                     term_parse = term_result
-                    entries.append(term_parse.value)
+                    term = term_parse.value
+                    # Attach comment if available
+                    if attach_comment is not None:
+                        term = Term(
+                            id=term.id,
+                            value=term.value,
+                            attributes=term.attributes,
+                            comment=attach_comment,
+                            span=term.span,
+                        )
+                    entries.append(term)
                     cursor = term_parse.cursor
                     continue
 
@@ -193,10 +337,23 @@ class FluentParserV1:
 
             if message_result is not None:
                 message_parse = message_result
-                entries.append(message_parse.value)
+                message = message_parse.value
+                # Attach comment if available
+                if attach_comment is not None:
+                    message = Message(
+                        id=message.id,
+                        value=message.value,
+                        attributes=message.attributes,
+                        comment=attach_comment,
+                        span=message.span,
+                    )
+                entries.append(message)
                 cursor = message_parse.cursor
             else:
-                # Parse error - create Junk entry and continue (robustness principle)
+                # Parse error - if we had a pending comment to attach, add it as entry
+                if attach_comment is not None:
+                    entries.append(attach_comment)
+
                 # Junk creation still preserves robustness
                 junk_start = cursor.pos
 
@@ -217,6 +374,10 @@ class FluentParserV1:
                 entries.append(
                     Junk(content=junk_content, annotations=(annotation,), span=junk_span)
                 )
+
+        # Finalize any remaining pending comment at EOF
+        if pending_comment is not None:
+            entries.append(pending_comment)
 
         return Resource(entries=tuple(entries))
 

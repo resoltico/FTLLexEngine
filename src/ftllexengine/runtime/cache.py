@@ -25,15 +25,34 @@ Python 3.13+.
 
 from collections import OrderedDict
 from collections.abc import Mapping
+from datetime import date, datetime
+from decimal import Decimal
 from threading import RLock
+from typing import cast
 
 from ftllexengine.diagnostics import FluentError
 from ftllexengine.runtime.function_bridge import FluentValue
 
-__all__ = ["FormatCache"]
+__all__ = ["FormatCache", "HashableValue"]
+
+# Type alias for hashable values produced by _make_hashable().
+# Recursive definition: primitives plus tuple/frozenset of self.
+# Note: Decimal, datetime, date are hashable and preserved unchanged.
+type HashableValue = (
+    str
+    | int
+    | float
+    | bool
+    | Decimal
+    | datetime
+    | date
+    | None
+    | tuple["HashableValue", ...]
+    | frozenset["HashableValue"]
+)
 
 # Internal type alias for cache keys (prefixed with _ per naming convention)
-type _CacheKey = tuple[str, tuple[tuple[str, FluentValue], ...], str | None, str]
+type _CacheKey = tuple[str, tuple[tuple[str, HashableValue], ...], str | None, str]
 
 # Internal type alias for cache values (prefixed with _ per naming convention)
 type _CacheValue = tuple[str, tuple[FluentError, ...]]
@@ -185,17 +204,17 @@ class FormatCache:
             }
 
     @staticmethod
-    def _make_hashable(value: object) -> object:
+    def _make_hashable(value: object) -> HashableValue:
         """Convert potentially unhashable value to hashable equivalent.
 
         Converts:
             - list -> tuple (recursively)
             - dict -> tuple of sorted key-value tuples (recursively)
             - set -> frozenset (recursively)
-            - Other values -> unchanged
+            - Other values -> unchanged (assumed hashable FluentValue)
 
         Args:
-            value: Value to convert
+            value: Value to convert (typically FluentValue or nested collection)
 
         Returns:
             Hashable equivalent of the value
@@ -213,7 +232,9 @@ class FormatCache:
             case set():
                 return frozenset(FormatCache._make_hashable(v) for v in value)
             case _:
-                return value
+                # FluentValue types are already hashable (str, int, float, etc.)
+                # Cast is safe: caller passes FluentValue or nested structures
+                return cast(HashableValue, value)
 
     @staticmethod
     def _make_key(
@@ -255,7 +276,7 @@ class FormatCache:
         """
         # Convert args dict to sorted tuple of tuples
         if args is None:
-            args_tuple: tuple[tuple[str, FluentValue], ...] = ()
+            args_tuple: tuple[tuple[str, HashableValue], ...] = ()
         else:
             try:
                 # Fast path: check if all values are hashable primitives
@@ -266,11 +287,8 @@ class FormatCache:
 
                 if needs_conversion:
                     # Slow path: convert unhashable types to hashable equivalents
-                    # Type ignore: _make_hashable recursively converts dicts/lists to tuples
-                    # for cache key hashing. Mypy returns `object` for the recursive helper,
-                    # but runtime values are always FluentValue compatible.
-                    converted_items: list[tuple[str, FluentValue]] = [
-                        (k, FormatCache._make_hashable(v))  # type: ignore[misc]
+                    converted_items: list[tuple[str, HashableValue]] = [
+                        (k, FormatCache._make_hashable(v))
                         for k, v in args.items()
                     ]
                     args_tuple = tuple(sorted(converted_items))

@@ -293,14 +293,16 @@ class TestLocaleContextCacheRaceCondition:
         LocaleContext.clear_cache()
 
         # First, create a context normally to get a valid instance
-        locale_code = "en_TEST_RACE"
+        locale_code = "en_US"
         ctx = LocaleContext.create(locale_code)
 
         # Clear cache and immediately re-add with lock (simulating race)
         # Access class-level cache via LocaleContext._cache and _cache_lock
+        # Note: cache key is normalized to lowercase
+        cache_key = locale_code.lower().replace("-", "_")
         with LocaleContext._cache_lock:
             LocaleContext._cache.clear()
-            LocaleContext._cache[locale_code] = ctx
+            LocaleContext._cache[cache_key] = ctx
 
         # Now call create - should hit the cache in the double-check
         result = LocaleContext.create(locale_code)

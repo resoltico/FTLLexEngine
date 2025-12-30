@@ -305,6 +305,28 @@ class TestParseEscapeSequence:
         assert escaped_char == "ä"
         assert new_cursor.pos == 5
 
+    def test_parse_escape_sequence_4digit_surrogate_low_fails(self) -> None:
+        """Verify \\uXXXX rejects low surrogate U+D800 (lines 306-311).
+
+        This tests the 4-digit Unicode escape surrogate validation,
+        which is different from the 6-digit version.
+        """
+        cursor = Cursor(source="uD800", pos=0)
+        result = parse_escape_sequence(cursor)
+        assert result is None
+
+    def test_parse_escape_sequence_4digit_surrogate_high_fails(self) -> None:
+        """Verify \\uXXXX rejects high surrogate U+DFFF (lines 306-311)."""
+        cursor = Cursor(source="uDFFF", pos=0)
+        result = parse_escape_sequence(cursor)
+        assert result is None
+
+    def test_parse_escape_sequence_4digit_surrogate_middle_fails(self) -> None:
+        """Verify \\uXXXX rejects surrogate in middle of range (lines 306-311)."""
+        cursor = Cursor(source="uDC00", pos=0)
+        result = parse_escape_sequence(cursor)
+        assert result is None
+
     def test_parse_escape_sequence_unicode_6digit(self) -> None:
         """Verify parse_escape_sequence handles \\UXXXXXX."""
         cursor = Cursor(source="U01F600", pos=0)  # Emoji

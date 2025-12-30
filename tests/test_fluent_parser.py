@@ -17,7 +17,6 @@ import pytest
 
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax import (
-    Comment,
     FunctionReference,
     Junk,
     Message,
@@ -144,36 +143,35 @@ thanks = Thanks!"""
         assert assert_is_message(resource.entries[0]).id.name == "tab-reports-1"
 
     def test_parse_comment_line(self, parser: FluentParserV1) -> None:
-        """Parser preserves comment lines per Fluent spec."""
+        """Parser attaches single-hash comments to following message per Fluent spec."""
         source = """# This is a comment
 hello = Hello"""
         resource = parser.parse(source)
 
-        # Per Fluent spec: Comments are preserved in AST
-        assert len(resource.entries) == 2
-        assert isinstance(resource.entries[0], Comment)
-        assert resource.entries[0].content == "This is a comment"
-        assert resource.entries[0].type == CommentType.COMMENT
-        assert isinstance(resource.entries[1], Message)
-        assert resource.entries[1].id.name == "hello"
+        # Per Fluent spec: Single-hash comment directly preceding message is attached
+        assert len(resource.entries) == 1
+        assert isinstance(resource.entries[0], Message)
+        assert resource.entries[0].id.name == "hello"
+        assert resource.entries[0].comment is not None
+        assert resource.entries[0].comment.content == "This is a comment"
+        assert resource.entries[0].comment.type == CommentType.COMMENT
 
     def test_parse_multiple_comments(self, parser: FluentParserV1) -> None:
-        """Parser preserves multiple comment lines per Fluent spec."""
+        """Parser joins adjacent single-hash comments and attaches to following message."""
         source = """# Comment 1
 # Comment 2
 # Comment 3
 hello = Hello"""
         resource = parser.parse(source)
 
-        # Per Fluent spec: All comments are preserved
-        assert len(resource.entries) == 4
-        assert isinstance(resource.entries[0], Comment)
-        assert resource.entries[0].content == "Comment 1"
-        assert isinstance(resource.entries[1], Comment)
-        assert resource.entries[1].content == "Comment 2"
-        assert isinstance(resource.entries[2], Comment)
-        assert resource.entries[2].content == "Comment 3"
-        assert isinstance(resource.entries[3], Message)
+        # Per Fluent spec: Adjacent single-hash comments are joined and attached to message
+        assert len(resource.entries) == 1
+        assert isinstance(resource.entries[0], Message)
+        assert resource.entries[0].id.name == "hello"
+        assert resource.entries[0].comment is not None
+        # Comments joined with newlines
+        assert resource.entries[0].comment.content == "Comment 1\nComment 2\nComment 3"
+        assert resource.entries[0].comment.type == CommentType.COMMENT
 
     def test_parse_message_with_blank_lines(self, parser: FluentParserV1) -> None:
         """Parser handles blank lines between messages."""

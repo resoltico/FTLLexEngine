@@ -56,19 +56,10 @@ class FluentBundle:
     error handling that returns (result, errors) tuples.
 
     Thread Safety:
-        By default, bundles are NOT thread-safe. This is optimal for single-threaded
-        usage or initialization-only patterns.
-
-        For concurrent access, use thread_safe=True:
-        - All methods become thread-safe via internal RLock
-        - add_resource() and format_pattern() are synchronized
-        - Cache operations are atomic with respect to message mutations
-        - Performance overhead from locking (~5-10% in high-contention scenarios)
-
-        Default (thread_safe=False):
-        - format_pattern() and format_value() are safe for concurrent reads
-        - add_resource() and add_function() are NOT thread-safe
-        - Recommended: Complete initialization before sharing across threads
+        FluentBundle is always thread-safe. All public methods are synchronized
+        via internal RLock. This prevents race conditions when add_resource()
+        is called concurrently with format_pattern(). RLock overhead is negligible
+        (~10ns per acquire) for typical usage patterns.
 
     Parser Security:
         Configurable limits prevent DoS attacks:
@@ -89,9 +80,6 @@ class FluentBundle:
         >>> assert result == 'Laipni lūdzam, Jānis!'
         >>> assert errors == ()
         >>>
-        >>> # Thread-safe bundle for concurrent access
-        >>> safe_bundle = FluentBundle("en_US", thread_safe=True)
-        >>>
         >>> # Custom security limits for stricter environments
         >>> strict_bundle = FluentBundle("en_US", max_source_size=1_000_000)
     """
@@ -107,7 +95,6 @@ class FluentBundle:
         "_messages",
         "_parser",
         "_terms",
-        "_thread_safe",
         "_use_isolating",
     )
 
@@ -141,7 +128,6 @@ class FluentBundle:
         enable_cache: bool = False,
         cache_size: int = DEFAULT_CACHE_SIZE,
         functions: FunctionRegistry | None = None,
-        thread_safe: bool = False,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
     ) -> None:
@@ -160,11 +146,6 @@ class FluentBundle:
                       - Use pre-registered custom functions
                       - Share function registrations between bundles
                       - Override default function behavior
-            thread_safe: Enable thread-safe operations (default: False)
-                        When True, all methods use internal RLock for synchronization.
-                        This prevents race conditions when add_resource() is called
-                        concurrently with format_pattern(). Leave False for
-                        single-threaded or init-then-read patterns.
             max_source_size: Maximum FTL source size in bytes (default: 10 MB).
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
@@ -172,6 +153,12 @@ class FluentBundle:
 
         Raises:
             ValueError: If locale code is empty or has invalid format
+
+        Thread Safety:
+            FluentBundle is always thread-safe. All public methods are synchronized
+            via internal RLock. This prevents race conditions when add_resource()
+            is called concurrently with format_pattern(). RLock overhead is negligible
+            (~10ns per acquire) for typical usage patterns.
 
         Example:
             >>> # Using default registry (standard functions)
@@ -182,9 +169,6 @@ class FluentBundle:
             >>> registry = create_default_registry()
             >>> registry.register(my_custom_func, ftl_name="CUSTOM")
             >>> bundle = FluentBundle("en", functions=registry)
-            >>>
-            >>> # Thread-safe bundle for concurrent access
-            >>> bundle = FluentBundle("en", thread_safe=True)
             >>>
             >>> # Stricter limits for untrusted input
             >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
@@ -205,9 +189,9 @@ class FluentBundle:
             max_nesting_depth=self._max_nesting_depth,
         )
 
-        # Thread safety
-        self._thread_safe = thread_safe
-        self._lock: threading.RLock | None = threading.RLock() if thread_safe else None
+        # Thread safety: always enabled via RLock
+        # RLock overhead is negligible (~10ns per acquire) and prevents subtle race conditions
+        self._lock = threading.RLock()
 
         # Function registry: use provided registry (copy it for isolation) or use shared default
         # Using the shared registry avoids re-registering built-in functions for each bundle.
@@ -224,11 +208,10 @@ class FluentBundle:
             self._cache = FormatCache(maxsize=cache_size)
 
         logger.info(
-            "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s, thread_safe=%s)",
+            "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s)",
             locale,
             use_isolating,
             "enabled" if enable_cache else "disabled",
-            thread_safe,
         )
 
     @property
@@ -298,23 +281,6 @@ class FluentBundle:
         return self._cache_size if self.cache_enabled else 0
 
     @property
-    def is_thread_safe(self) -> bool:
-        """Check if bundle uses thread-safe operations (read-only).
-
-        Returns:
-            bool: True if thread-safe operations enabled, False otherwise
-
-        Example:
-            >>> bundle = FluentBundle("en", thread_safe=True)
-            >>> bundle.is_thread_safe
-            True
-            >>> regular_bundle = FluentBundle("en")
-            >>> regular_bundle.is_thread_safe
-            False
-        """
-        return self._thread_safe
-
-    @property
     def max_source_size(self) -> int:
         """Maximum FTL source size in bytes (read-only).
 
@@ -350,7 +316,6 @@ class FluentBundle:
         enable_cache: bool = False,
         cache_size: int = DEFAULT_CACHE_SIZE,
         functions: FunctionRegistry | None = None,
-        thread_safe: bool = False,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
     ) -> "FluentBundle":
@@ -364,7 +329,6 @@ class FluentBundle:
             enable_cache: Enable format caching for performance
             cache_size: Maximum cache entries when caching enabled
             functions: Custom FunctionRegistry to use (default: standard registry)
-            thread_safe: Enable thread-safe operations
             max_source_size: Maximum FTL source size in bytes (default: 10 MB)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
@@ -388,7 +352,6 @@ class FluentBundle:
             enable_cache=enable_cache,
             cache_size=cache_size,
             functions=functions,
-            thread_safe=thread_safe,
             max_source_size=max_source_size,
             max_nesting_depth=max_nesting_depth,
         )
@@ -488,17 +451,22 @@ class FluentBundle:
 
     def add_resource(
         self, source: str, /, *, source_path: str | None = None
-    ) -> None:
+    ) -> tuple[Junk, ...]:
         """Add FTL resource to bundle.
 
         Parses FTL source and adds messages/terms to registry.
-        Thread-safe when bundle created with thread_safe=True.
+        Thread-safe (uses internal RLock).
 
         Args:
             source: FTL file content [positional-only]
             source_path: Optional path to source file for better error messages
                         (e.g., "locales/lv/ui.ftl"). Used as source identifier
                         in warning messages. Defaults to "<string>" if not provided.
+
+        Returns:
+            Tuple of Junk entries encountered during parsing. Empty tuple if
+            parsing succeeded without errors. Each Junk entry contains the
+            unparseable content and associated annotations.
 
         Raises:
             FluentSyntaxError: On critical parse error
@@ -510,23 +478,20 @@ class FluentBundle:
 
         Note:
             Parser continues after errors (robustness principle). Junk entries
-            are counted and reported in the summary log message.
+            are returned for programmatic error handling.
         """
-        if self._lock is not None:
-            with self._lock:
-                self._add_resource_impl(source, source_path)
-        else:
-            self._add_resource_impl(source, source_path)
+        with self._lock:
+            return self._add_resource_impl(source, source_path)
 
     def _add_resource_impl(
         self, source: str, source_path: str | None
-    ) -> None:
+    ) -> tuple[Junk, ...]:
         """Internal implementation of add_resource (no locking)."""
         try:
             resource = self._parser.parse(source)
 
             # Register messages and terms using structural pattern matching
-            junk_count = 0
+            junk_entries: list[Junk] = []
             for entry in resource.entries:
                 match entry:
                     case Message():
@@ -536,9 +501,9 @@ class FluentBundle:
                         self._terms[entry.id.name] = entry
                         logger.debug("Registered term: %s", entry.id.name)
                     case Junk():
-                        # Count junk entries, always log at WARNING level
+                        # Collect junk entries, always log at WARNING level
                         # Syntax errors are functional failures regardless of source origin
-                        junk_count += 1
+                        junk_entries.append(entry)
                         # Use repr() to escape control characters while preserving Unicode readability.
                         # repr() escapes control chars (prevents ANSI injection) but keeps Unicode
                         # letters readable (e.g., 'Jānis' instead of 'J\xe2nis').
@@ -553,6 +518,7 @@ class FluentBundle:
                         pass
 
             # Log summary with file context
+            junk_count = len(junk_entries)
             if source_path:
                 logger.info(
                     "Added resource %s: %d messages, %d terms, %d junk entries",
@@ -573,6 +539,8 @@ class FluentBundle:
             if self._cache is not None:
                 self._cache.clear()
                 logger.debug("Cache cleared after add_resource")
+
+            return tuple(junk_entries)
 
         except FluentSyntaxError as e:
             if source_path:
@@ -662,10 +630,8 @@ class FluentBundle:
             >>> assert result == 'Saglabā pašreizējo ierakstu datubāzē'
             >>> assert errors == ()
         """
-        if self._lock is not None:
-            with self._lock:
-                return self._format_pattern_impl(message_id, args, attribute)
-        return self._format_pattern_impl(message_id, args, attribute)
+        with self._lock:
+            return self._format_pattern_impl(message_id, args, attribute)
 
     def _format_pattern_impl(
         self,
@@ -772,7 +738,8 @@ class FluentBundle:
         Returns:
             True if message exists in bundle
         """
-        return message_id in self._messages
+        with self._lock:
+            return message_id in self._messages
 
     def has_attribute(self, message_id: str, attribute: str) -> bool:
         """Check if message has specific attribute.
@@ -798,10 +765,11 @@ class FluentBundle:
             >>> bundle.has_attribute("nonexistent", "tooltip")
             False
         """
-        if message_id not in self._messages:
-            return False
-        message = self._messages[message_id]
-        return any(attr.id.name == attribute for attr in message.attributes)
+        with self._lock:
+            if message_id not in self._messages:
+                return False
+            message = self._messages[message_id]
+            return any(attr.id.name == attribute for attr in message.attributes)
 
     def get_message_ids(self) -> list[str]:
         """Get all message IDs in bundle.
@@ -809,7 +777,8 @@ class FluentBundle:
         Returns:
             List of message identifiers
         """
-        return list(self._messages.keys())
+        with self._lock:
+            return list(self._messages.keys())
 
     def get_message_variables(self, message_id: str) -> frozenset[str]:
         """Get all variables required by a message (introspection API).
@@ -831,11 +800,12 @@ class FluentBundle:
             >>> vars = bundle.get_message_variables("greeting")
             >>> assert "name" in vars
         """
-        if message_id not in self._messages:
-            msg = f"Message '{message_id}' not found"
-            raise KeyError(msg)
+        with self._lock:
+            if message_id not in self._messages:
+                msg = f"Message '{message_id}' not found"
+                raise KeyError(msg)
 
-        return extract_variables(self._messages[message_id])
+            return extract_variables(self._messages[message_id])
 
     def get_all_message_variables(self) -> dict[str, frozenset[str]]:
         """Get variables for all messages in bundle (batch introspection API).
@@ -892,31 +862,60 @@ class FluentBundle:
             >>> assert "amount" in info.get_variable_names()
             >>> assert "NUMBER" in info.get_function_names()
         """
-        if message_id not in self._messages:
-            msg = f"Message '{message_id}' not found"
-            raise KeyError(msg)
+        with self._lock:
+            if message_id not in self._messages:
+                msg = f"Message '{message_id}' not found"
+                raise KeyError(msg)
 
-        return introspect_message(self._messages[message_id])
+            return introspect_message(self._messages[message_id])
 
-    def add_function(self, name: str, func: Callable[..., str]) -> None:
+    def introspect_term(self, term_id: str) -> "MessageIntrospection":
+        """Get complete introspection data for a term.
+
+        Returns comprehensive metadata about variables, functions, and references
+        used in the term. Mirrors introspect_message() for API symmetry.
+
+        Args:
+            term_id: Term identifier (without leading dash)
+
+        Returns:
+            MessageIntrospection with complete metadata
+
+        Raises:
+            KeyError: If term doesn't exist
+
+        Example:
+            >>> bundle.add_resource("-brand = { $case -> \\n    [nominative] Firefox\\n    *[other] Firefox\\n}")
+            >>> info = bundle.introspect_term("brand")
+            >>> assert "case" in info.get_variable_names()
+        """
+        with self._lock:
+            if term_id not in self._terms:
+                msg = f"Term '{term_id}' not found"
+                raise KeyError(msg)
+
+            return introspect_message(self._terms[term_id])
+
+    def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
         """Add custom function to bundle.
 
         Args:
             name: Function name (UPPERCASE by convention)
-            func: Callable function that returns a string
+            func: Callable function that returns a FluentValue
 
         Example:
             >>> def CUSTOM(value):
             ...     return value.upper()
             >>> bundle.add_function("CUSTOM", CUSTOM)
         """
-        self._function_registry.register(func, ftl_name=name)
-        logger.debug("Added custom function: %s", name)
+        with self._lock:
+            self._function_registry.register(func, ftl_name=name)
+            logger.debug("Added custom function: %s", name)
 
-        # Invalidate cache (functions changed)
-        if self._cache is not None:
-            self._cache.clear()
-            logger.debug("Cache cleared after add_function")
+            # Invalidate cache (functions changed)
+            if self._cache is not None:
+                self._cache.clear()
+                logger.debug("Cache cleared after add_function")
 
     def clear_cache(self) -> None:
         """Clear format cache.
@@ -930,9 +929,10 @@ class FluentBundle:
             >>> bundle.format_pattern("msg")  # Caches result
             >>> bundle.clear_cache()  # Manual invalidation
         """
-        if self._cache is not None:
-            self._cache.clear()
-            logger.debug("Cache manually cleared")
+        with self._lock:
+            if self._cache is not None:
+                self._cache.clear()
+                logger.debug("Cache manually cleared")
 
     def get_cache_stats(self) -> dict[str, int | float] | None:
         """Get cache statistics.

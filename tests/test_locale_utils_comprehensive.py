@@ -22,23 +22,31 @@ from ftllexengine.locale_utils import (
 
 
 class TestNormalizeLocale:
-    """Test normalize_locale function."""
+    """Test normalize_locale function.
+
+    As of v0.42.0, normalize_locale lowercases output for consistent cache keys.
+    BCP-47 is case-insensitive, so "en-US" and "EN-US" should be equivalent.
+    """
 
     def test_bcp47_to_posix(self) -> None:
-        """BCP-47 locale code converted to POSIX format."""
-        assert normalize_locale("en-US") == "en_US"
+        """BCP-47 locale code converted to lowercase POSIX format."""
+        assert normalize_locale("en-US") == "en_us"
+
+    def test_uppercase_input_lowercased(self) -> None:
+        """Uppercase input lowercased for consistent cache keys."""
+        assert normalize_locale("EN-US") == "en_us"
 
     def test_already_normalized(self) -> None:
-        """Already normalized locale returned unchanged."""
-        assert normalize_locale("en_US") == "en_US"
+        """Already normalized locale lowercased."""
+        assert normalize_locale("en_US") == "en_us"
 
     def test_simple_locale(self) -> None:
-        """Simple locale without region unchanged."""
+        """Simple locale without region unchanged (already lowercase)."""
         assert normalize_locale("en") == "en"
 
     def test_multiple_hyphens(self) -> None:
-        """Multiple hyphens all converted to underscores."""
-        assert normalize_locale("zh-Hans-CN") == "zh_Hans_CN"
+        """Multiple hyphens all converted to underscores and lowercased."""
+        assert normalize_locale("zh-Hans-CN") == "zh_hans_cn"
 
 
 class TestGetBabelLocale:
@@ -79,118 +87,121 @@ class TestGetBabelLocale:
 
 
 class TestGetSystemLocale:
-    """Test get_system_locale function with environment and OS detection."""
+    """Test get_system_locale function with environment and OS detection.
+
+    As of v0.42.0, all locale output is lowercased via normalize_locale.
+    """
 
     def test_getlocale_success(self) -> None:
-        """OS-level locale.getlocale() returns valid locale."""
+        """OS-level locale.getlocale() returns valid locale (lowercased)."""
         with patch("locale.getlocale", return_value=("en_US", "UTF-8")):
             result = get_system_locale()
-            assert result == "en_US"
+            assert result == "en_us"
 
     def test_getlocale_with_encoding(self) -> None:
-        """getlocale() result with encoding suffix stripped."""
+        """getlocale() result with encoding suffix stripped (lowercased)."""
         with patch("locale.getlocale", return_value=("de_DE.UTF-8", "UTF-8")):
             result = get_system_locale()
-            assert result == "de_DE"
+            assert result == "de_de"
 
     def test_getlocale_c_posix_filtered(self) -> None:
-        """getlocale() returning 'C' or 'POSIX' triggers fallback."""
+        """getlocale() returning 'C' or 'POSIX' triggers fallback (lowercased)."""
         with patch("locale.getlocale", return_value=("C", None)):  # noqa: SIM117
             with patch.dict(os.environ, {"LANG": "fr_FR"}, clear=False):
                 result = get_system_locale()
-                assert result == "fr_FR"
+                assert result == "fr_fr"
 
     def test_getlocale_posix_filtered(self) -> None:
-        """getlocale() returning 'POSIX' triggers env var fallback."""
+        """getlocale() returning 'POSIX' triggers env var fallback (lowercased)."""
         with patch("locale.getlocale", return_value=("POSIX", None)):  # noqa: SIM117
             with patch.dict(os.environ, {"LANG": "it_IT"}, clear=False):
                 result = get_system_locale()
-                assert result == "it_IT"
+                assert result == "it_it"
 
     def test_getlocale_none_fallback(self) -> None:
-        """getlocale() returning None triggers env var fallback."""
+        """getlocale() returning None triggers env var fallback (lowercased)."""
         with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
             with patch.dict(os.environ, {"LANG": "es_ES"}, clear=False):
                 result = get_system_locale()
-                assert result == "es_ES"
+                assert result == "es_es"
 
     def test_getlocale_valueerror_fallback(self) -> None:
-        """getlocale() raising ValueError triggers env var fallback."""
+        """getlocale() raising ValueError triggers env var fallback (lowercased)."""
         with patch("locale.getlocale", side_effect=ValueError("mock error")):  # noqa: SIM117
             with patch.dict(os.environ, {"LANG": "pt_BR"}, clear=False):
                 result = get_system_locale()
-                assert result == "pt_BR"
+                assert result == "pt_br"
 
     def test_getlocale_attributeerror_fallback(self) -> None:
-        """getlocale() raising AttributeError triggers env var fallback."""
+        """getlocale() raising AttributeError triggers env var fallback (lowercased)."""
         with patch("locale.getlocale", side_effect=AttributeError("mock error")):  # noqa: SIM117
             with patch.dict(os.environ, {"LANG": "ru_RU"}, clear=False):
                 result = get_system_locale()
-                assert result == "ru_RU"
+                assert result == "ru_ru"
 
     def test_lc_all_priority(self) -> None:
-        """LC_ALL environment variable has highest priority."""
+        """LC_ALL environment variable has highest priority (lowercased)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LC_ALL": "de_DE", "LC_MESSAGES": "fr_FR", "LANG": "en_US"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "de_DE"
+                assert result == "de_de"
 
     def test_lc_messages_fallback(self) -> None:
-        """LC_MESSAGES used if LC_ALL not set."""
+        """LC_MESSAGES used if LC_ALL not set (lowercased)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LC_MESSAGES": "fr_FR", "LANG": "en_US"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "fr_FR"
+                assert result == "fr_fr"
 
     def test_lang_fallback(self) -> None:
-        """LANG environment variable used as final fallback."""
+        """LANG environment variable used as final fallback (lowercased)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LANG": "ja_JP"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "ja_JP"
+                assert result == "ja_jp"
 
     def test_env_var_with_encoding(self) -> None:
-        """Environment variable with encoding suffix stripped."""
+        """Environment variable with encoding suffix stripped (lowercased)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LANG": "zh_CN.UTF-8"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "zh_CN"
+                assert result == "zh_cn"
 
     def test_env_var_c_filtered(self) -> None:
-        """Environment variable 'C' filtered out."""
+        """Environment variable 'C' filtered out (lowercased fallback)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LC_ALL": "C", "LANG": "ko_KR"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "ko_KR"
+                assert result == "ko_kr"
 
     def test_env_var_posix_filtered(self) -> None:
-        """Environment variable 'POSIX' filtered out."""
+        """Environment variable 'POSIX' filtered out (lowercased fallback)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LC_ALL": "POSIX", "LANG": "ar_SA"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "ar_SA"
+                assert result == "ar_sa"
 
     def test_env_var_empty_filtered(self) -> None:
-        """Empty environment variable filtered out."""
+        """Empty environment variable filtered out (lowercased fallback)."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LC_ALL": "", "LANG": "he_IL"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "he_IL"
+                assert result == "he_il"
 
     def test_bcp47_normalized(self) -> None:
-        """BCP-47 format in env var normalized to POSIX."""
+        """BCP-47 format in env var normalized to lowercase POSIX."""
         with patch("locale.getlocale", return_value=(None, None)):
             env = {"LANG": "pt-BR"}
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
-                assert result == "pt_BR"
+                assert result == "pt_br"
 
     def test_no_locale_default_fallback(self) -> None:
         """No locale detected returns en_US fallback by default."""
@@ -235,7 +246,7 @@ def test_property_normalize_locale_idempotent(locale_code: str) -> None:
 def test_property_normalize_locale_hyphen_to_underscore(
     lang: str, region: str
 ) -> None:
-    """Property: All hyphens converted to underscores."""
+    """Property: All hyphens converted to underscores and lowercased."""
     bcp47 = f"{lang}-{region}"
-    posix = f"{lang}_{region}"
+    posix = f"{lang}_{region}".lower()
     assert normalize_locale(bcp47) == posix

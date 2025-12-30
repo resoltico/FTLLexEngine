@@ -301,6 +301,14 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
 
         # Convert to character
         code_point = int(hex_digits, 16)
+        # Reject UTF-16 surrogate code points (invalid in UTF-8)
+        # Per Unicode Standard: D800-DFFF are surrogates, invalid in isolation
+        if _SURROGATE_RANGE_START <= code_point <= _SURROGATE_RANGE_END:
+            _set_parse_error(
+                f"Invalid surrogate code point: U+{hex_digits} (surrogates not allowed)",
+                cursor.pos,
+            )
+            return None
         return (chr(code_point), cursor)
 
     if escape_ch == "U":

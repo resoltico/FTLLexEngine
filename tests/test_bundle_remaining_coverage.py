@@ -229,26 +229,17 @@ class TestValidationUndefinedReferences:
         assert len(result.warnings) > 0
 
 
-class TestIsThreadSafeProperty:
-    """Test is_thread_safe property (line 289)."""
+class TestAlwaysOnThreadSafety:
+    """Test that FluentBundle is always thread-safe.
 
-    def test_is_thread_safe_returns_true_when_enabled(self) -> None:
-        """Test is_thread_safe property returns True when thread_safe=True."""
-        bundle = FluentBundle("en", thread_safe=True)
-        assert bundle.is_thread_safe is True
+    Thread safety is now always enabled (breaking change in v0.42.0).
+    The thread_safe parameter and is_thread_safe property were removed.
+    All public methods are synchronized via internal RLock.
+    """
 
-    def test_is_thread_safe_returns_false_by_default(self) -> None:
-        """Test is_thread_safe property returns False by default."""
+    def test_add_resource_is_thread_safe(self) -> None:
+        """Test add_resource acquires lock (always-on thread safety)."""
         bundle = FluentBundle("en")
-        assert bundle.is_thread_safe is False
-
-
-class TestThreadSafeAddResource:
-    """Test thread-safe add_resource path (lines 457-458)."""
-
-    def test_add_resource_uses_lock_when_thread_safe(self) -> None:
-        """Test add_resource acquires lock when thread_safe=True."""
-        bundle = FluentBundle("en", thread_safe=True)
         bundle.add_resource("msg = Hello")
 
         # Verify message was added successfully through the locked path
@@ -257,13 +248,9 @@ class TestThreadSafeAddResource:
         assert result == "Hello"
         assert errors == ()
 
-
-class TestThreadSafeFormatPattern:
-    """Test thread-safe format_pattern path (lines 608-609)."""
-
-    def test_format_pattern_uses_lock_when_thread_safe(self) -> None:
-        """Test format_pattern acquires lock when thread_safe=True."""
-        bundle = FluentBundle("en", thread_safe=True, use_isolating=False)
+    def test_format_pattern_is_thread_safe(self) -> None:
+        """Test format_pattern acquires lock (always-on thread safety)."""
+        bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("greeting = Hello, { $name }!")
 
         # Format through the locked path

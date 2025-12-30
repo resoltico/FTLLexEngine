@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.41.0"
+version: "0.42.0"
 domain: CORE
 updated: "2025-12-29"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, thread_safe]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "how to make bundle thread safe?"]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
 ---
 
 # Core API Reference
@@ -26,7 +26,6 @@ class FluentBundle:
         enable_cache: bool = False,
         cache_size: int = 1000,
         functions: FunctionRegistry | None = None,
-        thread_safe: bool = False,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
     ) -> None: ...
@@ -40,7 +39,6 @@ class FluentBundle:
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
-| `thread_safe` | `bool` | N | Enable thread-safe operations via RLock. |
 | `max_source_size` | `int \| None` | N | Maximum FTL source size in bytes (default: 10 MB). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 
@@ -48,8 +46,7 @@ class FluentBundle:
 - Return: FluentBundle instance.
 - Raises: `ValueError` on invalid locale format.
 - State: Creates internal message/term registries.
-- Thread: When `thread_safe=False` (default): Unsafe for writes, safe for reads after initialization.
-- Thread: When `thread_safe=True`: All methods synchronized via internal RLock.
+- Thread: Always thread-safe via internal RLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
 
@@ -67,7 +64,6 @@ def for_system_locale(
     enable_cache: bool = False,
     cache_size: int = 1000,
     functions: FunctionRegistry | None = None,
-    thread_safe: bool = False,
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
 ) -> FluentBundle:
@@ -80,7 +76,6 @@ def for_system_locale(
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
-| `thread_safe` | `bool` | N | Enable thread-safe operations. |
 | `max_source_size` | `int \| None` | N | Maximum FTL source size in bytes (default: 10 MB). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 
@@ -148,7 +143,7 @@ def add_resource(
     /,
     *,
     source_path: str | None = None
-) -> None:
+) -> tuple[Junk, ...]:
 ```
 
 ### Parameters
@@ -158,10 +153,10 @@ def add_resource(
 | `source_path` | `str \| None` | N | Path for error messages. |
 
 ### Constraints
-- Return: None.
+- Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
 - Raises: `FluentSyntaxError` on critical parse error.
 - State: Mutates internal message/term registries. Clears cache.
-- Thread: Unsafe.
+- Thread: Safe (RLock).
 
 ---
 
@@ -358,6 +353,27 @@ def introspect_message(self, message_id: str) -> MessageIntrospection:
 
 ---
 
+## `FluentBundle.introspect_term`
+
+### Signature
+```python
+def introspect_term(self, term_id: str) -> MessageIntrospection:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `term_id` | `str` | Y | Term identifier (without leading dash). |
+
+### Constraints
+- Return: MessageIntrospection with complete metadata.
+- Raises: `KeyError` if term not found.
+- State: Read-only.
+- Thread: Safe.
+- Version: Added in v0.42.0.
+
+---
+
 ## `FluentBundle.add_function`
 
 ### Signature
@@ -375,7 +391,7 @@ def add_function(self, name: str, func: Callable[..., str]) -> None:
 - Return: None.
 - Raises: None.
 - State: Mutates function registry. Clears cache.
-- Thread: Unsafe.
+- Thread: Safe (RLock).
 
 ---
 
@@ -493,22 +509,6 @@ def cache_size(self) -> int:
 
 ---
 
-## `FluentBundle.is_thread_safe`
-
-### Signature
-```python
-@property
-def is_thread_safe(self) -> bool:
-```
-
-### Constraints
-- Return: True if bundle uses thread-safe operations.
-- Raises: None.
-- State: Read-only property.
-- Thread: Safe.
-
----
-
 ## `FluentBundle.get_babel_locale`
 
 ### Signature
@@ -559,7 +559,7 @@ class FluentLocalization:
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty or resource_ids without loader.
 - State: Lazy bundle initialization. Bundles created on first access.
-- Thread: Unsafe for writes, safe for reads.
+- Thread: Safe (RLock).
 
 ---
 
@@ -567,7 +567,7 @@ class FluentLocalization:
 
 ### Signature
 ```python
-def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> None:
+def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk, ...]:
 ```
 
 ### Parameters
@@ -577,11 +577,11 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> None:
 | `ftl_source` | `FTLSource` | Y | FTL source code. |
 
 ### Constraints
-- Return: None.
+- Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
 - Raises: `ValueError` if locale not in fallback chain.
 - Raises: `FluentSyntaxError` if FTL source contains critical syntax errors.
 - State: Mutates target bundle.
-- Thread: Unsafe.
+- Thread: Safe (RLock).
 
 ---
 
@@ -675,7 +675,7 @@ def add_function(self, name: str, func: Callable[..., str]) -> None:
 - Return: None.
 - Raises: None.
 - State: Stores function for existing and future bundles.
-- Thread: Unsafe.
+- Thread: Safe (RLock).
 - Behavior: Preserves lazy bundle initialization. Functions are stored and applied when bundles are first accessed.
 
 ---

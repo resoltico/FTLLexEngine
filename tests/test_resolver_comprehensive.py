@@ -470,3 +470,144 @@ class TestResolverFullIntegration:
         assert var_value in result
         if text:
             assert text in result
+
+
+# ============================================================================
+# TextElement Branch Coverage (line 286->282)
+# ============================================================================
+
+
+class TestTextElementBranch:
+    """Test TextElement branch in pattern resolution."""
+
+    def test_pattern_with_only_text_no_placeables(self) -> None:
+        """Test pattern with only TextElement, no Placeable (line 286->282).
+
+        This tests the case where pattern.elements contains only TextElement
+        nodes, ensuring the TextElement branch is taken and not the Placeable branch.
+        """
+        bundle = FluentBundle("en_US")
+        bundle.add_resource("simple = This is plain text with no variables")
+
+        result, errors = bundle.format_pattern("simple")
+
+        assert result == "This is plain text with no variables"
+        assert errors == ()
+
+
+# ============================================================================
+# Term Reference with Positional Arguments (line 450)
+# ============================================================================
+
+
+class TestTermReferencePositionalArguments:
+    """Test term reference with positional arguments."""
+
+    def test_term_reference_with_positional_args(self) -> None:
+        """Test term reference with positional arguments (line 450).
+
+        While term references typically use named arguments, the resolver
+        evaluates positional arguments to collect any errors they might produce.
+        This tests line 450 where positional args are evaluated.
+        """
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+-my-term = Term value
+msg = { -my-term($arg1, $arg2) }
+""")
+
+        # Provide the variables referenced in positional args
+        result, errors = bundle.format_pattern("msg", {"arg1": "val1", "arg2": "val2"})
+
+        # Should resolve successfully
+        assert result == "Term value"
+        assert errors == ()
+
+    def test_term_reference_positional_args_trigger_errors(self) -> None:
+        """Test term reference positional args collect errors when variables missing.
+
+        This ensures line 450 evaluates positional args and collects any
+        errors they produce (like missing variables).
+        """
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+-my-term = Term value
+msg = { -my-term($missing_var) }
+""")
+
+        # Don't provide $missing_var - should collect error
+        _result, errors = bundle.format_pattern("msg", {})
+
+        # Term reference with missing variable should still resolve the term
+        # but collect the error from evaluating the positional arg
+        assert len(errors) >= 1
+
+
+# ============================================================================
+# Number Literal Variant Matching (line 479->474)
+# ============================================================================
+
+
+class TestNumberLiteralVariantMatching:
+    """Test exact number literal matching in select expressions."""
+
+    def test_exact_number_literal_match_with_integer(self) -> None:
+        """Test exact match with integer NumberLiteral (line 479).
+
+        This tests the NumberLiteral case in _find_exact_variant where
+        we match numeric selectors against number literal keys.
+        """
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+msg = { $count ->
+    [0] zero items
+    [1] one item
+    [42] exactly forty-two
+   *[other] many items
+}
+""")
+
+        # Test exact match with number literal key [42]
+        result, errors = bundle.format_pattern("msg", {"count": 42})
+
+        assert result == "exactly forty-two"
+        assert errors == ()
+
+    def test_exact_number_literal_match_with_float(self) -> None:
+        """Test exact match with float NumberLiteral.
+
+        This tests the Decimal comparison logic for float selectors.
+        """
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+msg = { $value ->
+    [3.14] pi
+    [2.71] euler
+   *[other] unknown
+}
+""")
+
+        # Test exact match with float literal
+        result, errors = bundle.format_pattern("msg", {"value": 3.14})
+
+        assert result == "pi"
+        assert errors == ()
+
+    def test_exact_number_literal_match_with_decimal(self) -> None:
+        """Test exact match with Decimal NumberLiteral.
+
+        This tests the Decimal comparison path for currency/financial values.
+        """
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+msg = { $amount ->
+    [99.99] special price
+   *[other] regular price
+}
+""")
+
+        # Use Decimal for exact financial value
+        result, errors = bundle.format_pattern("msg", {"amount": Decimal("99.99")})
+
+        assert result == "special price"
+        assert errors == ()

@@ -317,6 +317,23 @@ class TestDirectAPIUsage:
         assert info.message_id == "brand"
         assert "companyName" in info.get_variable_names()
 
+    def test_introspect_term_via_bundle(self) -> None:
+        """Introspect term via FluentBundle.introspect_term()."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("-brand = { $companyName }")
+
+        info = bundle.introspect_term("brand")
+
+        assert info.message_id == "brand"
+        assert "companyName" in info.get_variable_names()
+
+    def test_introspect_term_not_found(self) -> None:
+        """KeyError raised for non-existent term."""
+        bundle = FluentBundle("en")
+
+        with pytest.raises(KeyError, match=r"Term 'nonexistent' not found"):
+            bundle.introspect_term("nonexistent")
+
 
 class TestAttributeIntrospection:
     """Test introspection of message attributes."""

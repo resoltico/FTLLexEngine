@@ -38,18 +38,16 @@ Python 3.13+. No external dependencies.
 
 from __future__ import annotations
 
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+# ANSI color codes (disabled if NO_COLOR environment variable is set)
+import os
 import re
 import sys
 import tomllib
 from pathlib import Path
 from typing import NamedTuple
-
-# ==============================================================================
-# CONFIGURATION
-# ==============================================================================
-
-# ANSI color codes (disabled if NO_COLOR environment variable is set)
-import os
 
 NO_COLOR = os.environ.get("NO_COLOR", "") == "1"
 
@@ -368,8 +366,8 @@ def check_doc_frontmatter_versions(root: Path) -> CheckResult:
             name="doc_frontmatter_versions",
             passed=False,
             message=(
-                f"Documentation version mismatch:\n" + "\n".join(mismatched) +
-                f"\n  Resolution: Update project_version in frontmatter"
+                "Documentation version mismatch:\n" + "\n".join(mismatched) +
+                "\n  Resolution: Update project_version in frontmatter"
             ),
             is_critical=True,  # Documentation sync is critical
         )

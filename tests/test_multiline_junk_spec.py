@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from ftllexengine.syntax.ast import Comment, Junk, Message, Term
+from ftllexengine.syntax.ast import Junk, Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 
 
@@ -39,6 +39,7 @@ class TestMultilineJunkAggregation:
 
         Per spec: Junk ::= junk_line (junk_line - "#" - "-" - [a-zA-Z])*
         Lines that don't start with #, -, or letter should aggregate.
+        Per Fluent spec: Single-hash comments directly preceding messages attach to them.
         """
         # Use truly invalid lines (start with numbers, symbols)
         source = """123invalid line
@@ -49,8 +50,8 @@ msg = Valid message
 """
         resource = parser.parse(source)
 
-        # Should have: 1 Junk (3 lines), 1 Comment, 1 Message
-        assert len(resource.entries) == 3
+        # Should have: 1 Junk (3 lines), 1 Message (with attached comment)
+        assert len(resource.entries) == 2
 
         # First entry should be Junk containing all 3 invalid lines
         junk = resource.entries[0]
@@ -59,11 +60,12 @@ msg = Valid message
         assert "!!!another" in junk.content
         assert "...more" in junk.content
 
-        # Second entry should be Comment
-        assert isinstance(resource.entries[1], Comment)
-
-        # Third entry should be Message
-        assert isinstance(resource.entries[2], Message)
+        # Second entry should be Message with attached comment
+        msg = resource.entries[1]
+        assert isinstance(msg, Message)
+        assert msg.id.name == "msg"
+        assert msg.comment is not None
+        assert msg.comment.content == "This is a comment"
 
     def test_junk_consumes_until_term(self, parser: FluentParserV1) -> None:
         """Junk should stop consuming when hitting a term (-).

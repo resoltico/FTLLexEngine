@@ -243,6 +243,15 @@ class IntrospectionVisitor(ASTVisitor[None]):
             self.references.add(
                 ReferenceInfo(id=expr.id.name, kind=ReferenceKind.TERM, attribute=attr_name)
             )
+            # Visit term arguments to extract nested dependencies
+            # Term arguments like -term(case: $var) contain expressions
+            if expr.arguments:
+                for pos_arg in expr.arguments.positional:
+                    with self._depth_guard:
+                        self._visit_expression(pos_arg)
+                for named_arg in expr.arguments.named:
+                    with self._depth_guard:
+                        self._visit_expression(named_arg.value)
 
         elif SelectExpression.guard(expr):
             self.has_selectors = True

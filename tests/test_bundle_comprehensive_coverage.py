@@ -460,8 +460,8 @@ class TestForSystemLocaleErrorPaths:
         ):
             bundle = FluentBundle.for_system_locale()
 
-            # Should have used LC_ALL environment variable
-            assert bundle.locale == "de_DE"
+            # Should have used LC_ALL environment variable (normalized to lowercase)
+            assert bundle.locale == "de_de"
 
     def test_for_system_locale_tries_lc_messages_when_lc_all_missing(self) -> None:
         """Test for_system_locale tries LC_MESSAGES when LC_ALL is not set (lines 273-275)."""
@@ -471,7 +471,7 @@ class TestForSystemLocaleErrorPaths:
         ):
             bundle = FluentBundle.for_system_locale()
 
-            assert bundle.locale == "fr_FR"
+            assert bundle.locale == "fr_fr"
 
     def test_for_system_locale_tries_lang_when_others_missing(self) -> None:
         """Test for_system_locale tries LANG when LC_ALL and LC_MESSAGES
@@ -483,7 +483,7 @@ class TestForSystemLocaleErrorPaths:
         ):
             bundle = FluentBundle.for_system_locale()
 
-            assert bundle.locale == "es_ES"
+            assert bundle.locale == "es_es"
 
     def test_for_system_locale_raises_when_no_locale_found(self) -> None:
         """Test for_system_locale raises RuntimeError when locale
@@ -506,8 +506,8 @@ class TestForSystemLocaleErrorPaths:
         with patch("locale.getlocale", return_value=("en_US.UTF-8", None)):
             bundle = FluentBundle.for_system_locale()
 
-            # Should strip the encoding part
-            assert bundle.locale == "en_US"
+            # Should strip the encoding part and normalize to lowercase
+            assert bundle.locale == "en_us"
             assert "UTF-8" not in bundle.locale
 
     def test_for_system_locale_handles_locale_without_encoding(self) -> None:
@@ -516,5 +516,5 @@ class TestForSystemLocaleErrorPaths:
         with patch("locale.getlocale", return_value=("pl_PL", None)):
             bundle = FluentBundle.for_system_locale()
 
-            # Should use locale as-is
-            assert bundle.locale == "pl_PL"
+            # Should normalize to lowercase
+            assert bundle.locale == "pl_pl"

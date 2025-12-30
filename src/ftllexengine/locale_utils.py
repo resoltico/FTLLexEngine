@@ -29,30 +29,33 @@ __all__ = [
 
 
 def normalize_locale(locale_code: str) -> str:
-    """Convert BCP-47 locale code to POSIX format for Babel.
+    """Convert BCP-47 locale code to canonical lowercase POSIX format for Babel.
 
     BCP-47 uses hyphens (en-US), while Babel/POSIX uses underscores (en_US).
-    This function performs the necessary conversion for Babel API compatibility.
+    BCP-47 is case-insensitive, so this function lowercases for consistent
+    cache keys and comparisons.
 
     This is the canonical normalization function. All locale handling should
     normalize at the system boundary (entry point) using this function, then
     use the normalized form for cache keys and lookups.
 
     Args:
-        locale_code: BCP-47 locale code (e.g., "en-US", "pt-BR")
+        locale_code: BCP-47 locale code (e.g., "en-US", "pt-BR", "EN-US")
 
     Returns:
-        POSIX-formatted locale code (e.g., "en_US", "pt_BR")
+        Lowercase POSIX-formatted locale code (e.g., "en_us", "pt_br")
 
     Example:
         >>> normalize_locale("en-US")
-        'en_US'
+        'en_us'
+        >>> normalize_locale("EN-US")
+        'en_us'
         >>> normalize_locale("pt-BR")
-        'pt_BR'
+        'pt_br'
         >>> normalize_locale("en")  # Already normalized
         'en'
     """
-    return locale_code.replace("-", "_")
+    return locale_code.replace("-", "_").lower()
 
 
 @functools.lru_cache(maxsize=128)

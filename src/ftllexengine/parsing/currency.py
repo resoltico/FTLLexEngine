@@ -96,29 +96,30 @@ _FAST_TIER_AMBIGUOUS_SYMBOLS: frozenset[str] = frozenset({
 
 # Locale-aware resolution for ambiguous symbols.
 # Maps (symbol, locale_prefix) -> currency_code for context-sensitive resolution.
+# Keys use lowercase normalized locale format (BCP-47 is case-insensitive).
 _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION: dict[tuple[str, str], str] = {
     # Yen/Yuan sign: CNY for Chinese locales, JPY otherwise
     ("\u00a5", "zh"): "CNY",  # Chinese locales use Yuan
     # Dollar sign: locale-specific resolution
-    ("$", "en_US"): "USD",
-    ("$", "en_CA"): "CAD",
-    ("$", "en_AU"): "AUD",
-    ("$", "en_NZ"): "NZD",
-    ("$", "en_SG"): "SGD",
-    ("$", "en_HK"): "HKD",
-    ("$", "es_MX"): "MXN",
-    ("$", "es_AR"): "ARS",
-    ("$", "es_CL"): "CLP",
-    ("$", "es_CO"): "COP",
+    ("$", "en_us"): "USD",
+    ("$", "en_ca"): "CAD",
+    ("$", "en_au"): "AUD",
+    ("$", "en_nz"): "NZD",
+    ("$", "en_sg"): "SGD",
+    ("$", "en_hk"): "HKD",
+    ("$", "es_mx"): "MXN",
+    ("$", "es_ar"): "ARS",
+    ("$", "es_cl"): "CLP",
+    ("$", "es_co"): "COP",
     # Pound sign: locale-specific resolution
-    ("\u00a3", "en_GB"): "GBP",  # British Pound
+    ("\u00a3", "en_gb"): "GBP",  # British Pound
     ("\u00a3", "en"): "GBP",     # English locales default to British
-    ("\u00a3", "ar_EG"): "EGP",  # Egyptian Pound
+    ("\u00a3", "ar_eg"): "EGP",  # Egyptian Pound
     ("\u00a3", "ar"): "EGP",     # Arabic locales default to Egyptian
-    ("\u00a3", "en_GI"): "GIP",  # Gibraltar Pound
-    ("\u00a3", "en_FK"): "FKP",  # Falkland Islands Pound
-    ("\u00a3", "en_SH"): "SHP",  # Saint Helena Pound
-    ("\u00a3", "en_SS"): "SSP",  # South Sudanese Pound
+    ("\u00a3", "en_gi"): "GIP",  # Gibraltar Pound
+    ("\u00a3", "en_fk"): "FKP",  # Falkland Islands Pound
+    ("\u00a3", "en_sh"): "SHP",  # Saint Helena Pound
+    ("\u00a3", "en_ss"): "SSP",  # South Sudanese Pound
 }
 
 # Default resolution for ambiguous symbols when locale doesn't match
@@ -133,36 +134,37 @@ _AMBIGUOUS_SYMBOL_DEFAULTS: dict[str, str] = {
 }
 
 # Common locale-to-currency mappings for fast tier (no CLDR scan needed)
+# Keys use lowercase normalized locale format (BCP-47 is case-insensitive).
 _FAST_TIER_LOCALE_CURRENCIES: dict[str, str] = {
     # North America
-    "en_US": "USD", "es_US": "USD",
-    "en_CA": "CAD", "fr_CA": "CAD",
-    "es_MX": "MXN",
+    "en_us": "USD", "es_us": "USD",
+    "en_ca": "CAD", "fr_ca": "CAD",
+    "es_mx": "MXN",
     # Europe - Eurozone
-    "de_DE": "EUR", "de_AT": "EUR",
-    "fr_FR": "EUR", "it_IT": "EUR",
-    "es_ES": "EUR", "pt_PT": "EUR",
-    "nl_NL": "EUR", "fi_FI": "EUR",
-    "el_GR": "EUR", "et_EE": "EUR",
-    "lt_LT": "EUR", "lv_LV": "EUR",
-    "sk_SK": "EUR", "sl_SI": "EUR",
+    "de_de": "EUR", "de_at": "EUR",
+    "fr_fr": "EUR", "it_it": "EUR",
+    "es_es": "EUR", "pt_pt": "EUR",
+    "nl_nl": "EUR", "fi_fi": "EUR",
+    "el_gr": "EUR", "et_ee": "EUR",
+    "lt_lt": "EUR", "lv_lv": "EUR",
+    "sk_sk": "EUR", "sl_si": "EUR",
     # Europe - Non-Eurozone
-    "en_GB": "GBP", "de_CH": "CHF", "fr_CH": "CHF", "it_CH": "CHF",
-    "sv_SE": "SEK", "no_NO": "NOK", "da_DK": "DKK",
-    "pl_PL": "PLN", "cs_CZ": "CZK", "hu_HU": "HUF",
-    "ro_RO": "RON", "bg_BG": "BGN", "hr_HR": "HRK",
-    "uk_UA": "UAH", "ru_RU": "RUB", "is_IS": "ISK",
+    "en_gb": "GBP", "de_ch": "CHF", "fr_ch": "CHF", "it_ch": "CHF",
+    "sv_se": "SEK", "no_no": "NOK", "da_dk": "DKK",
+    "pl_pl": "PLN", "cs_cz": "CZK", "hu_hu": "HUF",
+    "ro_ro": "RON", "bg_bg": "BGN", "hr_hr": "HRK",
+    "uk_ua": "UAH", "ru_ru": "RUB", "is_is": "ISK",
     # Asia-Pacific
-    "ja_JP": "JPY", "zh_CN": "CNY", "zh_TW": "TWD", "zh_HK": "HKD",
-    "ko_KR": "KRW", "hi_IN": "INR", "th_TH": "THB",
-    "vi_VN": "VND", "id_ID": "IDR", "ms_MY": "MYR",
-    "fil_PH": "PHP", "en_SG": "SGD", "en_AU": "AUD", "en_NZ": "NZD",
+    "ja_jp": "JPY", "zh_cn": "CNY", "zh_tw": "TWD", "zh_hk": "HKD",
+    "ko_kr": "KRW", "hi_in": "INR", "th_th": "THB",
+    "vi_vn": "VND", "id_id": "IDR", "ms_my": "MYR",
+    "fil_ph": "PHP", "en_sg": "SGD", "en_au": "AUD", "en_nz": "NZD",
     # Middle East / Africa
-    "ar_SA": "SAR", "ar_EG": "EGP", "ar_AE": "AED",
-    "he_IL": "ILS", "tr_TR": "TRY",
-    "en_ZA": "ZAR", "pt_BR": "BRL",
+    "ar_sa": "SAR", "ar_eg": "EGP", "ar_ae": "AED",
+    "he_il": "ILS", "tr_tr": "TRY",
+    "en_za": "ZAR", "pt_br": "BRL",
     # South America
-    "es_AR": "ARS", "es_CL": "CLP", "es_CO": "COP", "es_PE": "PEN",
+    "es_ar": "ARS", "es_cl": "CLP", "es_co": "COP", "es_pe": "PEN",
 }
 
 # Fast tier valid ISO codes (subset for quick validation before full CLDR)

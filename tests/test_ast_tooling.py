@@ -60,17 +60,20 @@ goodbye = Goodbye!
         assert message.value is not None
 
     def test_parse_ftl_with_comments(self) -> None:
-        """Parse FTL with comments."""
+        """Parse FTL with comments attached to message per Fluent spec."""
         ftl = """
 # Resource comment
 hello = Hello!
 """
         resource = parse_ftl(ftl)
 
-        # First entry is comment, second is message
-        assert len(resource.entries) == 2
-        assert isinstance(resource.entries[0], Comment)
-        assert isinstance(resource.entries[1], Message)
+        # Per Fluent spec: Single-hash comment preceding message (no blank line)
+        # is attached to the message's comment field
+        assert len(resource.entries) == 1
+        assert isinstance(resource.entries[0], Message)
+        # Comment attached to message
+        assert resource.entries[0].comment is not None
+        assert resource.entries[0].comment.content == "Resource comment"
 
 
 class TestSerializeFTLFunction:
@@ -172,15 +175,18 @@ class TestASTTransformerPattern:
     """Test ASTTransformer for AST modifications."""
 
     def test_transformer_removes_comments(self) -> None:
-        """Transformer can remove comments."""
+        """Transformer can remove group comments (top-level entries)."""
         class RemoveCommentsTransformer(ASTTransformer):
             def visit_Comment(self, node: Comment) -> None:
                 return None  # Remove comments
 
+        # Use group comments (##) which remain as top-level entries
+        # Single-hash comments (#) are attached to following message per Fluent spec
         ftl = """
-# Comment 1
+## Group comment 1
 hello = Hello!
-# Comment 2
+
+## Group comment 2
 goodbye = Goodbye!
 """
         resource = parse_ftl(ftl)
@@ -190,7 +196,7 @@ goodbye = Goodbye!
         cleaned = transformer.transform(resource)
         assert isinstance(cleaned, Resource), f"Expected Resource, got {type(cleaned)}"
 
-        # Should have fewer entries (comments removed)
+        # Should have fewer entries (group comments removed)
         assert len(cleaned.entries) < original_count
         # All entries should be messages, not comments
         for entry in cleaned.entries:
