@@ -211,10 +211,20 @@ class FluentResolver:
             context: Resolution context for cycle detection and depth tracking.
                     If None, creates a fresh context for this resolution.
 
+                    Typical Usage: Leave as None (default). Each format_pattern()
+                    call creates a fresh context automatically.
+
+                    Advanced Usage: Provide a custom ResolutionContext when:
+                    - Batching multiple resolutions with shared cycle detection
+                    - Implementing custom depth limits via ResolutionContext(max_depth=N)
+                    - Building resolution pipelines that need cross-call state
+
+                    See ResolutionContext class for configuration options.
+
         Returns:
             Tuple of (formatted_string, errors)
             - formatted_string: Best-effort output (never empty)
-            - errors: Tuple of exceptions encountered (immutable)
+            - errors: Tuple of FluentError instances encountered (immutable)
 
         Note:
             Per Fluent spec, resolution never fails catastrophically.

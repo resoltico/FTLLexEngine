@@ -19,6 +19,9 @@ from collections.abc import Callable
 from dataclasses import Field, fields, replace
 from typing import ClassVar
 
+from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.core.depth_guard import DepthGuard
+
 from .ast import (
     ASTNode,
     Attribute,
@@ -78,7 +81,7 @@ class ASTVisitor[T = ASTNode]:
         >>> print(visitor.count)
     """
 
-    __slots__ = ("_instance_dispatch_cache",)
+    __slots__ = ("_depth_guard", "_instance_dispatch_cache")
 
     # Class-level dispatch table (method names only, not bound methods)
     # Built once per class definition via __init_subclass__
@@ -99,8 +102,21 @@ class ASTVisitor[T = ASTNode]:
                 node_type_name = name[6:]  # Skip "visit_"
                 cls._class_visit_methods[node_type_name] = name
 
-    def __init__(self) -> None:
-        """Initialize visitor with empty instance-level dispatch cache."""
+    def __init__(self, *, max_depth: int | None = None) -> None:
+        """Initialize visitor with depth guard and dispatch cache.
+
+        Subclasses MUST call super().__init__() to ensure depth protection
+        is properly initialized. Failure to do so will raise AttributeError
+        on first visit() call.
+
+        Args:
+            max_depth: Maximum traversal depth (default: MAX_DEPTH from constants).
+                      Controls depth protection against deeply nested ASTs.
+        """
+        # Depth guard prevents stack overflow from adversarial/malformed ASTs.
+        # Uses same MAX_DEPTH (100) as parser, resolver, serializer for consistency.
+        effective_max_depth = max_depth if max_depth is not None else MAX_DEPTH
+        self._depth_guard = DepthGuard(max_depth=effective_max_depth)
         # Instance cache for bound method references (faster than getattr each time)
         self._instance_dispatch_cache: dict[type[ASTNode], Callable[[ASTNode], T]] = {}
 
@@ -153,34 +169,45 @@ class ASTVisitor[T = ASTNode]:
         return ASTVisitor._fields_cache[node_type]
 
     def generic_visit(self, node: ASTNode) -> T:
-        """Default visitor (traverses children).
+        """Default visitor (traverses children with depth protection).
 
         Follows stdlib ast.NodeVisitor convention: automatically traverses
         all child nodes. Override visit_* methods to customize behavior.
+
+        Depth Protection:
+            Uses DepthGuard to prevent stack overflow from deeply nested or
+            adversarial ASTs. Raises DepthLimitExceededError if MAX_DEPTH (100)
+            is exceeded. This protects against programmatically constructed
+            malicious ASTs that bypass parser limits.
 
         Args:
             node: AST node to visit
 
         Returns:
             The node itself (identity)
+
+        Raises:
+            DepthLimitExceededError: If traversal depth exceeds MAX_DEPTH
         """
-        # Use cached fields to avoid repeated introspection (PERF-VISITOR-002)
-        for field in self._get_node_fields(type(node)):
-            value = getattr(node, field.name)
+        # Use depth guard to prevent stack overflow from adversarial ASTs
+        with self._depth_guard:
+            # Use cached fields to avoid repeated introspection (PERF-VISITOR-002)
+            for field in self._get_node_fields(type(node)):
+                value = getattr(node, field.name)
 
-            # Skip None values and non-node fields (str, int, bool, etc.)
-            if value is None or isinstance(value, (str, int, float, bool)):
-                continue
+                # Skip None values and non-node fields (str, int, bool, etc.)
+                if value is None or isinstance(value, (str, int, float, bool)):
+                    continue
 
-            # Handle tuple of nodes (entries, elements, attributes, variants, etc.)
-            if isinstance(value, tuple):
-                for item in value:
-                    # Only visit if item looks like an ASTNode (has dataclass fields)
-                    if hasattr(item, "__dataclass_fields__"):
-                        self.visit(item)
-            # Handle single child node
-            elif hasattr(value, "__dataclass_fields__"):
-                self.visit(value)
+                # Handle tuple of nodes (entries, elements, attributes, variants, etc.)
+                if isinstance(value, tuple):
+                    for item in value:
+                        # Only visit if item looks like an ASTNode (has dataclass fields)
+                        if hasattr(item, "__dataclass_fields__"):
+                            self.visit(item)
+                # Handle single child node
+                elif hasattr(value, "__dataclass_fields__"):
+                    self.visit(value)
 
         return node  # type: ignore[return-value]  # T defaults to ASTNode
 
@@ -253,85 +280,95 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
         return self.visit(node)
 
     def generic_visit(self, node: ASTNode) -> TransformerResult:
-        """Transform node children (default behavior).
+        """Transform node children (default behavior with depth protection).
 
         Recursively transforms all child nodes. Uses dataclasses.replace()
         to create new immutable nodes (AST nodes are frozen).
+
+        Depth Protection:
+            Uses inherited DepthGuard to prevent stack overflow from deeply
+            nested or adversarial ASTs. Raises DepthLimitExceededError if
+            MAX_DEPTH (100) is exceeded.
 
         Args:
             node: AST node to transform
 
         Returns:
             New node with transformed children
+
+        Raises:
+            DepthLimitExceededError: If traversal depth exceeds MAX_DEPTH
         """
-        # Use pattern matching for type-safe child transformation
-        match node:
-            case Resource(entries=entries):
-                return replace(node, entries=self._transform_list(entries))
-            case Message(id=id_node, value=value, attributes=attrs, comment=comment):
-                return replace(
-                    node,
-                    id=self.visit(id_node),
-                    value=self.visit(value) if value else None,
-                    attributes=self._transform_list(attrs),
-                    comment=self.visit(comment) if comment else None,
-                )
-            case Term(id=id_node, value=value, attributes=attrs, comment=comment):
-                return replace(
-                    node,
-                    id=self.visit(id_node),
-                    value=self.visit(value),
-                    attributes=self._transform_list(attrs),
-                    comment=self.visit(comment) if comment else None,
-                )
-            case Pattern(elements=elements):
-                return replace(node, elements=self._transform_list(elements))
-            case Placeable(expression=expr):
-                return replace(node, expression=self.visit(expr))
-            case SelectExpression(selector=selector, variants=variants):
-                return replace(
-                    node,
-                    selector=self.visit(selector),
-                    variants=self._transform_list(variants),
-                )
-            case Variant(key=key, value=value):
-                return replace(node, key=self.visit(key), value=self.visit(value))
-            case FunctionReference(id=id_node, arguments=args):
-                # FunctionReference.arguments is not optional - always present
-                return replace(
-                    node,
-                    id=self.visit(id_node),
-                    arguments=self.visit(args),
-                )
-            case MessageReference(id=id_node, attribute=attr):
-                return replace(
-                    node,
-                    id=self.visit(id_node),
-                    attribute=self.visit(attr) if attr else None,
-                )
-            case TermReference(id=id_node, attribute=attr, arguments=args):
-                return replace(
-                    node,
-                    id=self.visit(id_node),
-                    attribute=self.visit(attr) if attr else None,
-                    arguments=self.visit(args) if args else None,
-                )
-            case VariableReference(id=id_node):
-                return replace(node, id=self.visit(id_node))
-            case CallArguments(positional=pos, named=named):
-                return replace(
-                    node,
-                    positional=self._transform_list(pos),
-                    named=self._transform_list(named),
-                )
-            case NamedArgument(name=name, value=value):
-                return replace(node, name=self.visit(name), value=self.visit(value))
-            case Attribute(id=id_node, value=value):
-                return replace(node, id=self.visit(id_node), value=self.visit(value))
-            case _:
-                # Leaf nodes (Identifier, TextElement, StringLiteral, NumberLiteral, Comment, Junk)
-                # Return as-is (immutable)
-                return node
+        # Use depth guard to prevent stack overflow from adversarial ASTs
+        with self._depth_guard:
+            # Use pattern matching for type-safe child transformation
+            match node:
+                case Resource(entries=entries):
+                    return replace(node, entries=self._transform_list(entries))
+                case Message(id=id_node, value=value, attributes=attrs, comment=comment):
+                    return replace(
+                        node,
+                        id=self.visit(id_node),
+                        value=self.visit(value) if value else None,
+                        attributes=self._transform_list(attrs),
+                        comment=self.visit(comment) if comment else None,
+                    )
+                case Term(id=id_node, value=value, attributes=attrs, comment=comment):
+                    return replace(
+                        node,
+                        id=self.visit(id_node),
+                        value=self.visit(value),
+                        attributes=self._transform_list(attrs),
+                        comment=self.visit(comment) if comment else None,
+                    )
+                case Pattern(elements=elements):
+                    return replace(node, elements=self._transform_list(elements))
+                case Placeable(expression=expr):
+                    return replace(node, expression=self.visit(expr))
+                case SelectExpression(selector=selector, variants=variants):
+                    return replace(
+                        node,
+                        selector=self.visit(selector),
+                        variants=self._transform_list(variants),
+                    )
+                case Variant(key=key, value=value):
+                    return replace(node, key=self.visit(key), value=self.visit(value))
+                case FunctionReference(id=id_node, arguments=args):
+                    # FunctionReference.arguments is not optional - always present
+                    return replace(
+                        node,
+                        id=self.visit(id_node),
+                        arguments=self.visit(args),
+                    )
+                case MessageReference(id=id_node, attribute=attr):
+                    return replace(
+                        node,
+                        id=self.visit(id_node),
+                        attribute=self.visit(attr) if attr else None,
+                    )
+                case TermReference(id=id_node, attribute=attr, arguments=args):
+                    return replace(
+                        node,
+                        id=self.visit(id_node),
+                        attribute=self.visit(attr) if attr else None,
+                        arguments=self.visit(args) if args else None,
+                    )
+                case VariableReference(id=id_node):
+                    return replace(node, id=self.visit(id_node))
+                case CallArguments(positional=pos, named=named):
+                    return replace(
+                        node,
+                        positional=self._transform_list(pos),
+                        named=self._transform_list(named),
+                    )
+                case NamedArgument(name=name, value=value):
+                    return replace(node, name=self.visit(name), value=self.visit(value))
+                case Attribute(id=id_node, value=value):
+                    return replace(node, id=self.visit(id_node), value=self.visit(value))
+                case _:
+                    # Leaf nodes: Identifier, TextElement, StringLiteral,
+                    # NumberLiteral, Comment, Junk. Return as-is (immutable).
+                    return node
 
     def _transform_list(self, nodes: tuple[ASTNode, ...]) -> tuple[ASTNode, ...]:
         """Transform a tuple of nodes.

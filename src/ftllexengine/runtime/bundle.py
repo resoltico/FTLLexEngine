@@ -641,7 +641,7 @@ class FluentBundle:
         Returns:
             Tuple of (formatted_string, errors)
             - formatted_string: Best-effort formatted output (never empty)
-            - errors: Tuple of exceptions encountered during resolution (immutable)
+            - errors: Tuple of FluentError instances encountered during resolution (immutable)
 
         Note:
             This method handles expected formatting errors gracefully. All

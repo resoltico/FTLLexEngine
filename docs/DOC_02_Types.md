@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.45.0"
+version: "0.46.0"
 domain: TYPES
 updated: "2025-12-30"
 route:
@@ -556,7 +556,7 @@ class Annotation:
 ### Constraints
 - Return: Immutable annotation.
 - State: Frozen dataclass.
-- Version: `arguments` type changed from dict to tuple in v0.45.0.
+- Version: `arguments` type changed from dict to tuple in v0.46.0.
 
 ---
 
@@ -564,20 +564,48 @@ class Annotation:
 
 ### Signature
 ```python
-class ASTVisitor:
-    def __init__(self) -> None: ...
-    def visit(self, node: ASTNode) -> ASTNode: ...
-    def generic_visit(self, node: ASTNode) -> ASTNode: ...
+class ASTVisitor[T = ASTNode]:
+    def __init__(self, *, max_depth: int | None = None) -> None: ...
+    def visit(self, node: ASTNode) -> T: ...
+    def generic_visit(self, node: ASTNode) -> T: ...
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
+| `max_depth` | `int \| None` | N | Maximum traversal depth (default: 100). |
 
 ### Constraints
 - Return: Visited/transformed node.
-- State: Maintains dispatch cache.
+- State: Maintains dispatch cache and depth guard.
 - Thread: Not thread-safe (instance state).
+- Subclass: MUST call `super().__init__()` to initialize depth guard.
+- Raises: `DepthLimitExceededError` when traversal exceeds max_depth.
+
+---
+
+## `ASTTransformer`
+
+### Signature
+```python
+class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
+    def __init__(self, *, max_depth: int | None = None) -> None: ...
+    def transform(self, node: ASTNode) -> ASTNode | None | list[ASTNode]: ...
+    def generic_visit(self, node: ASTNode) -> ASTNode | None | list[ASTNode]: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `max_depth` | `int \| None` | N | Maximum traversal depth (default: 100). |
+
+### Constraints
+- Return: Modified node, None (removes), or list (expands).
+- State: Maintains dispatch cache and depth guard.
+- Thread: Not thread-safe (instance state).
+- Subclass: MUST call `super().__init__()` to initialize depth guard.
+- Raises: `DepthLimitExceededError` when traversal exceeds max_depth.
+- Immutable: Uses `dataclasses.replace()` for node modifications.
 
 ---
 

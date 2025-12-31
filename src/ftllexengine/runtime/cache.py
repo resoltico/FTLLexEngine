@@ -28,8 +28,8 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from decimal import Decimal
 from threading import RLock
-from typing import cast
 
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import FluentError
 from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 
@@ -205,37 +205,61 @@ class FormatCache:
             }
 
     @staticmethod
-    def _make_hashable(value: object) -> HashableValue:
+    def _make_hashable(value: object, depth: int = MAX_DEPTH) -> HashableValue:
         """Convert potentially unhashable value to hashable equivalent.
 
         Converts:
             - list -> tuple (recursively)
             - dict -> tuple of sorted key-value tuples (recursively)
             - set -> frozenset (recursively)
-            - Other values -> unchanged (assumed hashable FluentValue)
+            - Known FluentValue types -> unchanged (already hashable)
+
+        Depth Protection:
+            Uses explicit depth tracking consistent with codebase pattern
+            (parser, resolver, serializer all use MAX_DEPTH=100). Raises
+            TypeError when depth is exhausted, which is caught by _make_key
+            and results in graceful cache bypass.
 
         Args:
             value: Value to convert (typically FluentValue or nested collection)
+            depth: Remaining recursion depth (default: MAX_DEPTH)
 
         Returns:
             Hashable equivalent of the value
+
+        Raises:
+            TypeError: If depth limit exceeded or value is not a known hashable type
         """
+        if depth <= 0:
+            msg = "Maximum nesting depth exceeded in cache key conversion"
+            raise TypeError(msg)
+
         match value:
             case list():
-                return tuple(FormatCache._make_hashable(v) for v in value)
+                return tuple(FormatCache._make_hashable(v, depth - 1) for v in value)
             case dict():
                 return tuple(
                     sorted(
-                        (k, FormatCache._make_hashable(v))
+                        (k, FormatCache._make_hashable(v, depth - 1))
                         for k, v in value.items()
                     )
                 )
             case set():
-                return frozenset(FormatCache._make_hashable(v) for v in value)
+                return frozenset(FormatCache._make_hashable(v, depth - 1) for v in value)
+            case str() | int() | float() | bool() | None:
+                # Primitives are hashable
+                return value
+            case Decimal() | datetime() | date():
+                # These types are hashable and part of FluentValue
+                return value
+            case FluentNumber():
+                # FluentNumber is hashable (wraps numeric value with formatting)
+                return value
             case _:
-                # FluentValue types are already hashable (str, int, float, etc.)
-                # Cast is safe: caller passes FluentValue or nested structures
-                return cast(HashableValue, value)
+                # Unknown type - let hash() verification in _make_key catch failures
+                # This provides runtime safety while avoiding overly restrictive checks
+                msg = f"Unknown type in cache key: {type(value).__name__}"
+                raise TypeError(msg)
 
     @staticmethod
     def _make_key(
@@ -278,19 +302,11 @@ class FormatCache:
             args_tuple: tuple[tuple[str, HashableValue], ...] = ()
         else:
             try:
-                # Single-pass: check hashability and convert inline
-                # Avoids double iteration (any() check + list comprehension)
+                # Convert all values through _make_hashable for consistent type validation.
+                # _make_hashable handles primitives directly and converts collections.
                 items: list[tuple[str, HashableValue]] = []
                 for k, v in args.items():
-                    # Defensive: handle unhashable types that may bypass FluentValue type
-                    # at runtime. Cast to object prevents mypy type narrowing while
-                    # maintaining runtime safety for untrusted input.
-                    val: object = v
-                    if isinstance(val, (list, dict, set)):
-                        items.append((k, FormatCache._make_hashable(val)))
-                    else:
-                        # FluentValue types are already hashable
-                        items.append((k, cast(HashableValue, v)))
+                    items.append((k, FormatCache._make_hashable(v)))
                 args_tuple = tuple(sorted(items))
 
                 # Verify the result is actually hashable

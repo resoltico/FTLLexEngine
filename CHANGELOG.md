@@ -13,6 +13,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.46.0] - 2025-12-31
+
+### Breaking Changes
+- **ASTVisitor/ASTTransformer Initialization**: Subclasses MUST call `super().__init__()`:
+  - Depth guard now initialized in base class `__init__`
+  - Subclasses that skip `super().__init__()` will raise `AttributeError` on first visit
+  - Migration: Add `super().__init__()` to any custom visitor `__init__` methods
+- **ASTVisitor max_depth Parameter**: New optional constructor parameter:
+  - `ASTVisitor(max_depth=50)` configures depth limit (default: MAX_DEPTH=100)
+  - Subclasses can pass custom limits via `super().__init__(max_depth=N)`
+
+### Security
+- **ASTVisitor/ASTTransformer Depth Protection**: Guards against stack overflow:
+  - Programmatically constructed adversarial ASTs could bypass parser depth limits
+  - Now uses DepthGuard consistent with parser, resolver, and serializer
+  - Raises `DepthLimitExceededError` when MAX_DEPTH (100) exceeded
+  - Protects all visitor subclasses including validation, serialization, introspection
+- **FormatCache Depth Limiting**: `_make_hashable()` now tracks recursion depth:
+  - Deeply nested dict/list/set structures could exhaust stack
+  - Now raises `TypeError` at MAX_DEPTH (100), triggering graceful cache bypass
+  - Consistent with codebase depth protection pattern
+
+### Changed
+- **FormatCache Type Validation**: `_make_hashable()` uses explicit isinstance checks:
+  - Previous: `cast(HashableValue, value)` in catch-all case (type system lie)
+  - Now: Explicit pattern matching for known FluentValue types
+  - Unknown types raise `TypeError` with descriptive message
+  - Provides honest type representation and runtime safety
+- **FormatCache._make_key Simplification**: Single-pass value conversion:
+  - All values now processed through `_make_hashable()` uniformly
+  - Removes conditional path that used `cast()` for direct values
+  - Cleaner code flow with consistent type validation
+- **Introspection Visitor Slots**: Removed redundant `_depth_guard` from subclass `__slots__`:
+  - `_VariableFunctionCollector` and `_ReferenceCollector` inherit from ASTVisitor
+  - Depth guard now inherited from parent class
+  - Reduces memory overhead and fixes redefined-slots warnings
+
+### Documentation
+- **FALLBACK_FUNCTION_ERROR Design Rationale**: Documents "!" prefix choice:
+  - Uses "!" (not valid FTL syntax) to distinguish from message references
+  - Makes function errors immediately identifiable in output
+- **FluentResolver.resolve_message Context Parameter**: Expanded usage guidance:
+  - Documents typical vs advanced usage patterns
+  - Cross-references ResolutionContext class for configuration
+- **Error Terminology Consistency**: Standardized "FluentError instances" in docstrings:
+  - `FluentBundle.format_pattern` return documentation
+  - `FluentResolver.resolve_message` return documentation
+
 ## [0.45.0] - 2025-12-31
 
 ### Breaking Changes
@@ -785,6 +833,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.46.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.46.0
 [0.45.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.45.0
 [0.44.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.44.0
 [0.43.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.43.0

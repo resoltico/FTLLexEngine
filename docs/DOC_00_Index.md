@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.45.0"
+version: "0.46.0"
 domain: INDEX
 updated: "2025-12-30"
 route:
@@ -106,7 +106,7 @@ from ftllexengine.core import (
 
 ### Visitor (`from ftllexengine.syntax.visitor import ...`)
 ```python
-from ftllexengine.syntax.visitor import ASTVisitor
+from ftllexengine.syntax.visitor import ASTVisitor, ASTTransformer
 ```
 
 ### Runtime (`from ftllexengine.runtime import ...`)

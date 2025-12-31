@@ -142,4 +142,7 @@ FALLBACK_INVALID: str = "{???}"
 FALLBACK_MISSING_MESSAGE: str = "{{{id}}}"  # -> {my-message}
 FALLBACK_MISSING_VARIABLE: str = "{{${name}}}"  # -> {$username}
 FALLBACK_MISSING_TERM: str = "{{-{name}}}"  # -> {-brand}
+# Uses "!" prefix (not valid FTL syntax) to visually distinguish function errors
+# from message references like {msg}. This intentional deviation from FTL syntax
+# makes function errors immediately identifiable in output without ambiguity.
 FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # -> {!NUMBER}

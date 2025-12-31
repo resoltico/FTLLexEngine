@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .constants import MAX_DEPTH
-from .core.depth_guard import DepthGuard
 from .enums import ReferenceKind, VariableContext
 from .syntax.ast import (
     FunctionReference,
@@ -198,7 +197,6 @@ class IntrospectionVisitor(ASTVisitor[None]):
 
     __slots__ = (
         "_context",
-        "_depth_guard",
         "functions",
         "has_selectors",
         "references",
@@ -212,13 +210,12 @@ class IntrospectionVisitor(ASTVisitor[None]):
             max_depth: Maximum expression nesting depth (default: MAX_DEPTH).
                        Prevents stack overflow on adversarial ASTs.
         """
-        super().__init__()
+        super().__init__(max_depth=max_depth)
         self.variables: set[VariableInfo] = set()
         self.functions: set[FunctionCallInfo] = set()
         self.references: set[ReferenceInfo] = set()
         self.has_selectors: bool = False
         self._context: VariableContext = VariableContext.PATTERN
-        self._depth_guard: DepthGuard = DepthGuard(max_depth=max_depth)
 
     def visit_Pattern(self, node: Pattern) -> None:
         """Visit pattern and extract variables from all elements.
@@ -375,7 +372,7 @@ class ReferenceExtractor(ASTVisitor[MessageReference | TermReference]):
         Uses __slots__ to restrict attribute creation and reduce memory overhead.
     """
 
-    __slots__ = ("_depth_guard", "message_refs", "term_refs")
+    __slots__ = ("message_refs", "term_refs")
 
     def __init__(self, *, max_depth: int = MAX_DEPTH) -> None:
         """Initialize reference collector.
@@ -384,10 +381,9 @@ class ReferenceExtractor(ASTVisitor[MessageReference | TermReference]):
             max_depth: Maximum expression nesting depth (default: MAX_DEPTH).
                        Prevents stack overflow on adversarial ASTs.
         """
-        super().__init__()
+        super().__init__(max_depth=max_depth)
         self.message_refs: set[str] = set()
         self.term_refs: set[str] = set()
-        self._depth_guard: DepthGuard = DepthGuard(max_depth=max_depth)
 
     def visit_MessageReference(self, node: MessageReference) -> MessageReference:
         """Collect message reference ID.
