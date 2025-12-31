@@ -5,6 +5,7 @@ Targets the last remaining uncovered lines and branches.
 
 from unittest.mock import MagicMock
 
+from ftllexengine.constants import MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import FluentSyntaxError
 from ftllexengine.runtime.bundle import FluentBundle
 
@@ -315,8 +316,8 @@ class TestMaxSourceSizeProperty:
     def test_max_source_size_returns_default_value(self) -> None:
         """Test max_source_size property returns default when not specified."""
         bundle = FluentBundle("en")
-        # Default is 10 MB from constants
-        assert bundle.max_source_size == 10_485_760
+        # Default from constants module
+        assert bundle.max_source_size == MAX_SOURCE_SIZE
 
 
 class TestMaxNestingDepthProperty:

@@ -13,6 +13,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.0] - 2025-12-31
+
+### Breaking Changes
+- **FluentBundle Context Manager Behavior**: `__exit__` no longer clears messages/terms:
+  - Previous: Bundle cleared all registered messages and terms on context exit
+  - Now: Only format cache cleared; messages and terms preserved
+  - Bundle remains fully usable after exiting `with` block
+  - Migration: No action required (behavior is now less surprising)
+
+### Security
+- **ASTVisitor Depth Guard Bypass Closed**: Depth protection moved to `visit()` dispatcher:
+  - Previous: Depth guard only in `generic_visit()`, allowing bypass via custom visitor methods
+  - Now: Every `visit()` call increments depth counter, regardless of dispatch path
+  - Prevents stack overflow from adversarial ASTs traversed via custom `visit_*` methods
+  - Affects: ASTVisitor, ASTTransformer, and all subclasses
+
+### Fixed
+- **Date/Datetime Pattern Trailing Whitespace**: Normalized after skipped timezone tokens:
+  - Previous: Pattern `"HH:mm zzzz"` produced `"%H:%M "` with trailing space
+  - Now: Trailing whitespace stripped from strptime patterns
+  - Prevents "unconverted data remains" errors from timezone name inputs
+- **ZZZZ Timezone Token Handling**: Now correctly mapped to `None` (skipped):
+  - Previous: ZZZZ mapped to `%z` but CLDR format `"GMT-08:00"` is unparseable by strptime
+  - Now: ZZZZ silently skipped like other timezone name patterns (z, v, V, O series)
+  - Documentation updated to list ZZZZ as unsupported
+- **Production Assert Replaced with Defensive Check**: In `parse_currency()`:
+  - Previous: `assert currency_code is not None` could be disabled by `python -O`
+  - Now: Explicit `if` check with `RuntimeError` for invariant violation
+  - Provides protection regardless of Python optimization level
+
+### Documentation
+- **Character Offset Terminology**: Standardized across all source code:
+  - `SourceSpan`: Now documents "character offset" (not "byte offset")
+  - `position.py` functions: All docstrings updated to "character offset"
+  - Note: Python strings measure positions in characters (Unicode code points), not bytes
+- **Date Parsing Timezone Support**: Clarified ZZZZ limitation:
+  - Module docstring: ZZZZ produces "GMT-08:00" format, unparseable by strptime
+  - Inline comments: Updated supported/unsupported pattern lists
+- **ASTVisitor Depth Protection**: Docstrings updated for new guard location:
+  - `visit()`: Now documents depth protection and `DepthLimitExceededError`
+  - `generic_visit()`: Notes depth protection is handled by `visit()`
+
 ## [0.46.0] - 2025-12-31
 
 ### Breaking Changes
@@ -833,6 +875,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.47.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.47.0
 [0.46.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.46.0
 [0.45.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.45.0
 [0.44.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.44.0

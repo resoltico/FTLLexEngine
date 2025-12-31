@@ -8,10 +8,13 @@
 - Optimized: Pattern generation is cached per locale
 
 Timezone Handling:
-    UTC offset patterns (Z, ZZ, ZZZ, ZZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx,
-    X, XX, XXX, XXXX, XXXXX) are fully supported via strptime %z.
+    UTC offset patterns (Z, ZZ, ZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx,
+    X, XX, XXX, XXXX, XXXXX) are supported via strptime %z.
 
-    Timezone NAME patterns (z, zz, zzz, zzzz, v, vvvv, V, VV, VVV, VVVV, O, OOOO)
+    Localized GMT format (ZZZZ) produces "GMT-08:00" which Python's strptime
+    cannot parse. ZZZZ is silently skipped like timezone name patterns.
+
+    Timezone NAME patterns (z, zz, zzz, zzzz, ZZZZ, v, vvvv, V, VV, VVV, VVVV, O, OOOO)
     are NOT supported for parsing. These tokens are stripped from the pattern,
     but the input is NOT pre-processed. Users must pre-strip timezone names
     from input or use UTC offset patterns instead.
@@ -546,7 +549,7 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
     # Timezone tokens
     # Python strptime has limited timezone support; map what's possible
     "ZZZZZ": "%z",  # Extended offset (e.g., +01:00) -> +HHMM
-    "ZZZZ": "%z",  # Localized GMT (e.g., GMT+01:00) -> +HHMM (partial)
+    "ZZZZ": None,  # Localized GMT (e.g., GMT+01:00) - strptime cannot parse GMT prefix
     "ZZZ": "%z",  # RFC 822 offset (e.g., +0100)
     "ZZ": "%z",  # RFC 822 offset
     "Z": "%z",  # Basic offset
@@ -599,16 +602,18 @@ _ERA_STRINGS: tuple[str, ...] = (
 # - Failed for localized timezone names (French, Spanish, etc.)
 # - Created inconsistent behavior across locales
 #
-# Timezone name tokens (z, zz, zzz, zzzz, v, V, O) are now:
-# - Stripped from the pattern (mapped to None in _BABEL_TOKEN_MAP)
+# Timezone tokens mapped to None (silently skipped from pattern):
+# - Timezone name tokens (z, zz, zzz, zzzz, v, V, O series)
+# - Localized GMT format (ZZZZ) - produces "GMT-08:00" which strptime cannot parse
 # - NOT stripped from input (users must pre-strip or use UTC offset patterns)
 #
-# Supported timezone patterns:
-# - UTC offset patterns: Z, ZZ, ZZZ, ZZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx, X, XX, XXX, XXXX, XXXXX
-# - These are locale-agnostic and fully supported via strptime %z
+# Supported timezone patterns (mapped to strptime %z):
+# - UTC offset patterns: Z, ZZ, ZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx, X, XX, XXX, XXXX, XXXXX
+# - These are locale-agnostic and parse offset formats like +0100, +01:00
 #
 # Unsupported timezone patterns (input must be pre-stripped by caller):
 # - Timezone name patterns: z, zz, zzz, zzzz, v, vvvv, V, VV, VVV, VVVV, O, OOOO
+# - Localized GMT format: ZZZZ (produces "GMT-08:00" which strptime cannot parse)
 
 
 def _is_word_boundary(text: str, idx: int, is_start: bool) -> bool:
@@ -820,7 +825,7 @@ def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
             mapped = _BABEL_TOKEN_MAP[token]
             if mapped is None:
                 # Token maps to None - check if era (for preprocessing)
-                # Timezone tokens (z/v/V/O) also map to None but are silently skipped
+                # Timezone tokens (z/v/V/O/ZZZZ) also map to None but are silently skipped
                 if token.startswith("G"):
                     has_era = True
             else:
@@ -829,4 +834,9 @@ def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
             # Literal: pass through (punctuation, spaces, etc.)
             result_parts.append(token)
 
-    return ("".join(result_parts), has_era)
+    # Join and normalize trailing whitespace from skipped tokens
+    # Example: "HH:mm zzzz" -> tokens ["HH", ":", "mm", " ", "zzzz"]
+    # Without normalization: "%H:%M " (trailing space causes strptime failure)
+    # With normalization: "%H:%M" (trailing space removed)
+    result = "".join(result_parts).rstrip()
+    return (result, has_era)

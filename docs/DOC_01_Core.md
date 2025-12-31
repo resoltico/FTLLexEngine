@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.46.0"
+version: "0.47.0"
 domain: CORE
-updated: "2025-12-30"
+updated: "2025-12-31"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -128,7 +128,7 @@ def __exit__(
 ### Constraints
 - Return: None (does not suppress exceptions).
 - Raises: None.
-- State: Clears format cache on context exit.
+- State: Clears format cache only. Messages and terms preserved.
 - Thread: Safe.
 
 ---

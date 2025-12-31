@@ -54,30 +54,39 @@ class TestFluentBundleReprAndContextManager:
         assert stats_after is not None
         assert stats_after["size"] == 0
 
-    def test_context_manager_exit_clears_messages_and_terms(self) -> None:
-        """Test __exit__ clears message and term registries (lines 364-365)."""
+    def test_context_manager_exit_preserves_messages_and_terms(self) -> None:
+        """Context manager exit preserves messages and terms.
+
+        Changed in v0.47.0: __exit__ no longer clears messages/terms.
+        Bundle remains usable after exiting the with block.
+        """
         bundle = FluentBundle("en")
         bundle.add_resource("msg = Hello\n-term = Term")
 
-        assert len(bundle.get_message_ids()) > 0
+        msg_count_before = len(bundle.get_message_ids())
+        assert msg_count_before > 0
 
         with bundle:
             pass
 
-        # Messages and terms should be cleared
-        assert len(bundle.get_message_ids()) == 0
+        # Messages and terms should be preserved (not cleared)
+        assert len(bundle.get_message_ids()) == msg_count_before
+        # Bundle should still be usable
+        result, _ = bundle.format_pattern("msg")
+        assert result == "Hello"
 
     def test_context_manager_exit_without_cache(self) -> None:
-        """Test __exit__ works when cache is disabled (line 360 branch)."""
+        """Context manager exit works when cache is disabled."""
         bundle = FluentBundle("en", enable_cache=False)
         bundle.add_resource("msg = Test")
 
-        # Verify context manager exit completes without error when cache disabled
         with bundle:
             pass
 
-        # Verify resources still cleared on exit
-        assert len(bundle.get_message_ids()) == 0
+        # Messages should be preserved (bundle remains usable)
+        assert len(bundle.get_message_ids()) > 0
+        result, _ = bundle.format_pattern("msg")
+        assert result == "Test"
 
 
 class TestLocaleValidation:

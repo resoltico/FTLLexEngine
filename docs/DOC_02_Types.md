@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.46.0"
+version: "0.47.0"
 domain: TYPES
-updated: "2025-12-30"
+updated: "2025-12-31"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
@@ -581,6 +581,7 @@ class ASTVisitor[T = ASTNode]:
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
 - Raises: `DepthLimitExceededError` when traversal exceeds max_depth.
+- Depth: Guard in `visit()` protects all traversals (bypass-proof).
 
 ---
 
@@ -605,6 +606,7 @@ class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
 - Raises: `DepthLimitExceededError` when traversal exceeds max_depth.
+- Depth: Guard inherited from ASTVisitor.visit() (bypass-proof).
 - Immutable: Uses `dataclasses.replace()` for node modifications.
 
 ---

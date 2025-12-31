@@ -238,14 +238,14 @@ result, _ = system_bundle.format_pattern("system-locale", {"locale": system_bund
 print(result)
 # Output: Detected system locale: en_US (or your system locale)
 
-# Example 10: Context Manager Support (v0.13.0+)
+# Example 10: Context Manager Support
 print("\n" + "=" * 50)
-print("Example 10: Context Manager Support (v0.13.0+)")
+print("Example 10: Context Manager Support")
 print("=" * 50)
 
-# Context manager ensures proper resource cleanup
-# Useful for large bundles or when memory management matters
-with FluentBundle("en", use_isolating=False) as ctx_bundle:
+# Context manager clears format cache on exit but preserves messages/terms
+# Bundle remains fully usable after exiting the with block
+with FluentBundle("en", use_isolating=False, enable_cache=True) as ctx_bundle:
     ctx_bundle.add_resource("""
 ctx-hello = Hello from context manager!
 ctx-goodbye = Goodbye, { $name }!
@@ -259,8 +259,12 @@ ctx-goodbye = Goodbye, { $name }!
     print(result)
     # Output: Goodbye, World!
 
-# Bundle is automatically cleaned up after the with block
-print("[OK] Context manager exited cleanly")
+# Bundle remains usable after exiting - only cache is cleared
+result, _ = ctx_bundle.format_pattern("ctx-hello")
+print(f"After with block: {result}")
+# Output: Hello from context manager!
+
+print("[OK] Context manager exited cleanly (cache cleared, messages preserved)")
 
 print("\n" + "=" * 50)
 print("[SUCCESS] All examples completed successfully!")

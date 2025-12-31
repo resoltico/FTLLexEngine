@@ -184,6 +184,7 @@ class TestCheckMethod:
         guard.increment()
         guard.increment()
         guard.check()  # Should not raise
+        assert guard.current_depth == 2  # Verify depth tracked correctly
 
     def test_check_raises_at_limit(self):
         """check() raises DepthLimitExceededError when depth >= max_depth."""

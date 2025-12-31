@@ -150,8 +150,13 @@ class TestBlankLineHypothesisProperties:
     @given(
         lines=st.lists(
             st.text(
-                alphabet=st.characters(blacklist_characters=["\n"]),
-                min_size=1,  # Ensure non-empty lines
+                # Blacklist newlines AND whitespace categories (Zs=space, Zl=line, Zp=paragraph)
+                # because whitespace-only lines are treated as blank lines by the function
+                alphabet=st.characters(
+                    blacklist_categories=("Zs", "Zl", "Zp"),
+                    blacklist_characters=["\n"],
+                ),
+                min_size=1,  # Ensure non-empty lines with non-whitespace content
                 max_size=5,
             ),
             min_size=1,
@@ -159,11 +164,11 @@ class TestBlankLineHypothesisProperties:
         )
     )
     def test_single_newline_separated_lines_no_blank(self, lines: list[str]) -> None:
-        """Property: Single newlines between non-empty lines have no blank lines."""
+        """Property: Single newlines between non-whitespace lines have no blank lines."""
         source = "\n".join(lines)
-        # With min_size=1, all lines are non-empty, so no consecutive newlines
+        # Lines with non-whitespace chars separated by single newlines = no blank lines
         result = _has_blank_line_between(source, 0, len(source))
-        # No blank line when single newlines separate non-empty content
+        # No blank line when single newlines separate non-whitespace content
         assert result is False
 
     @given(st.integers(min_value=2, max_value=10))

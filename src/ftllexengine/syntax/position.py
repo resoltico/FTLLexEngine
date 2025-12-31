@@ -1,7 +1,12 @@
 """Position utilities for Fluent source code.
 
-Per Fluent spec, provides helper functions for converting byte offsets
+Per Fluent spec, provides helper functions for converting character offsets
 to line/column positions for error reporting and IDE integration.
+
+Note:
+    Python strings measure positions in characters (Unicode code points),
+    not bytes. For multi-byte UTF-8 characters, character offset differs
+    from byte offset. All positions in this module are character-based.
 
 References:
 - Fluent spec errors.md: lineOffset and columnOffset helpers
@@ -11,13 +16,13 @@ __all__ = ["column_offset", "line_offset"]
 
 
 def line_offset(source: str, pos: int) -> int:
-    """Get 0-based line number from byte offset.
+    """Get 0-based line number from character offset.
 
     Per Fluent spec: Helper function for error reporting.
 
     Args:
         source: Complete FTL source text
-        pos: Byte offset in source
+        pos: Character offset in source (0-indexed)
 
     Returns:
         0-based line number
@@ -46,13 +51,13 @@ def line_offset(source: str, pos: int) -> int:
 
 
 def column_offset(source: str, pos: int) -> int:
-    """Get 0-based column number from byte offset.
+    """Get 0-based column number from character offset.
 
     Per Fluent spec: Helper function for error reporting.
 
     Args:
         source: Complete FTL source text
-        pos: Byte offset in source
+        pos: Character offset in source (0-indexed)
 
     Returns:
         0-based column number (characters from line start)
@@ -94,7 +99,7 @@ def format_position(source: str, pos: int, zero_based: bool = True) -> str:
 
     Args:
         source: Complete FTL source text
-        pos: Byte offset in source
+        pos: Character offset in source (0-indexed)
         zero_based: If True, use 0-based indexing; if False, use 1-based
 
     Returns:
@@ -161,7 +166,7 @@ def get_error_context(source: str, pos: int, context_lines: int = 2, marker: str
 
     Args:
         source: Complete FTL source text
-        pos: Byte offset of error
+        pos: Character offset of error (0-indexed)
         context_lines: Number of lines to show before/after error
         marker: Character to use for error marker
 

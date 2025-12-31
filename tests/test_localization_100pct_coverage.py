@@ -269,8 +269,9 @@ class TestResourceIdValidation:
 
     def test_validate_resource_id_accepts_subdirectory(self) -> None:
         """Resource ID with subdirectory is accepted."""
-        # Should not raise
-        PathResourceLoader._validate_resource_id("subdir/main.ftl")
+        # Should not raise - returns None on success
+        result = PathResourceLoader._validate_resource_id("subdir/main.ftl")
+        assert result is None  # Validation methods return None on success
 
     @given(
         filename=st.text(

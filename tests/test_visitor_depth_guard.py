@@ -61,8 +61,9 @@ class TestASTVisitorDepthGuard:
         nested = create_deeply_nested_ast(10)
 
         visitor = ASTVisitor()
-        # Should not raise
-        visitor.generic_visit(nested)
+        # generic_visit returns the node itself (identity)
+        result = visitor.generic_visit(nested)
+        assert result is nested  # Visitor returns same node
 
     def test_visitor_rejects_excessive_depth(self) -> None:
         """Visitor raises error for ASTs exceeding depth limit."""
@@ -92,9 +93,10 @@ class TestASTVisitorDepthGuard:
 
         visitor = ASTVisitor()
 
-        # Multiple traversals should each start fresh
-        for _ in range(5):
-            visitor.generic_visit(nested)
+        # Multiple traversals should each start fresh and return the node
+        for i in range(5):
+            result = visitor.generic_visit(nested)
+            assert result is nested, f"Traversal {i + 1} should return same node"
 
     def test_visitor_subclass_inherits_depth_guard(self) -> None:
         """Visitor subclasses inherit depth guard from parent."""
@@ -127,9 +129,9 @@ class TestASTVisitorDepthGuard:
         visitor = BrokenVisitor()
         node = Identifier(name="test")
 
-        # Should fail when trying to use depth guard
+        # Should fail when trying to use depth guard (now in visit(), not generic_visit())
         with pytest.raises(AttributeError, match="_depth_guard"):
-            visitor.generic_visit(node)
+            visitor.visit(node)
 
 
 # ============================================================================
@@ -145,8 +147,9 @@ class TestASTTransformerDepthGuard:
         nested = create_deeply_nested_ast(10)
 
         transformer = ASTTransformer()
-        # Should not raise
-        transformer.transform(nested)
+        # Transform returns the (potentially modified) node
+        result = transformer.transform(nested)
+        assert result is not None  # Transformer returns a node (or None for removal)
 
     def test_transformer_rejects_excessive_depth(self) -> None:
         """Transformer raises error for ASTs exceeding depth limit."""
@@ -202,7 +205,8 @@ class TestDepthGuardIntegration:
         )
 
         visitor = ASTVisitor()
-        visitor.visit(resource)  # Should not raise
+        result = visitor.visit(resource)
+        assert result is resource  # Visitor returns same node on successful traversal
 
     def test_depth_guard_consistent_with_other_components(self) -> None:
         """Depth guard uses same MAX_DEPTH as parser, resolver, serializer."""
@@ -213,3 +217,38 @@ class TestDepthGuardIntegration:
         visitor = ASTVisitor()
         # The depth guard is created in __init__ with MAX_DEPTH
         assert visitor._depth_guard.max_depth == MAX_DEPTH
+
+    def test_custom_visitor_bypass_prevention(self) -> None:
+        """Custom visitor using visit() instead of generic_visit() is protected.
+
+        Tests fix for depth guard bypass vulnerability. Previously, if a custom
+        visitor called self.visit() on children instead of self.generic_visit(),
+        the depth guard was never triggered. Now the guard is in visit() itself,
+        so all traversals are protected regardless of custom visitor design.
+        """
+
+        class BypassAttemptVisitor(ASTVisitor):
+            """Visitor that avoids generic_visit() - was bypass vector."""
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.visit_count = 0
+
+            def visit_Placeable(self, node: Placeable) -> Placeable:
+                self.visit_count += 1
+                # Directly call visit() on child, NOT generic_visit()
+                if hasattr(node.expression, "__dataclass_fields__"):
+                    self.visit(node.expression)
+                return node
+
+            def visit_VariableReference(self, node: VariableReference) -> VariableReference:
+                self.visit_count += 1
+                return node
+
+        # Create deeply nested structure
+        nested = create_deeply_nested_ast(MAX_DEPTH + 10)
+
+        visitor = BypassAttemptVisitor()
+        # Must raise DepthLimitExceededError even without generic_visit() calls
+        with pytest.raises(DepthLimitExceededError):
+            visitor.visit(nested)

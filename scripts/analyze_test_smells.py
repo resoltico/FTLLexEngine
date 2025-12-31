@@ -42,6 +42,35 @@ from typing import Final, TypeIs
 # Type alias for function nodes (Python 3.12+ type statement)
 type FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 
+# Version info
+__version__: Final[str] = "1.2.0"
+
+# =============================================================================
+# OUTPUT ARCHITECTURE DIRECTIVE (OAD)
+# =============================================================================
+# Cross-agent legibility standard for AI/human hybrid workflows.
+# Format: [STATUS:8][COMPONENT:20][MESSAGE]
+# Supports NO_COLOR environment variable for CI/pipeline compatibility.
+
+# Line width for terminal output (narrow for AI agent context windows)
+OAD_LINE_WIDTH: Final[int] = 72
+
+# Fixed-width status tags (8 chars including brackets)
+OAD_OK: Final[str] = "[  OK  ]"
+OAD_FAIL: Final[str] = "[ FAIL ]"
+OAD_INFO: Final[str] = "[ INFO ]"
+OAD_WARN: Final[str] = "[ WARN ]"
+OAD_CRIT: Final[str] = "[ CRIT ]"
+OAD_HIGH: Final[str] = "[ HIGH ]"
+OAD_MED: Final[str] = "[MEDIUM]"
+OAD_LOW: Final[str] = "[ LOW  ]"
+
+# Component width for alignment
+OAD_COMPONENT_WIDTH: Final[int] = 20
+
+# JSON block markers for easy extraction
+JSON_BEGIN: Final[str] = "[SUMMARY-JSON-BEGIN]"
+JSON_END: Final[str] = "[SUMMARY-JSON-END]"
 
 # =============================================================================
 # CONSTANTS
@@ -86,17 +115,17 @@ MIN_HARDCODED_VALUES_FOR_HYPOTHESIS: Final[int] = 4
 
 # File patterns that exempt tests from specific checks
 MAGIC_VALUE_EXEMPT_PATTERNS: Final[frozenset[str]] = frozenset({
-    "plural", "unicode", "cache", "diagnostic", "code", "date", "parsing"
+    "plural", "unicode", "cache", "diagnostic", "code", "date", "parsing",
 })
 
 # File patterns for parser/AST tests (higher assertion threshold)
 PARSER_TEST_PATTERNS: Final[frozenset[str]] = frozenset({
-    "parser", "ast", "syntax", "parse"
+    "parser", "ast", "syntax", "parse",
 })
 
 # Logging fixture names (exempt from broad exception checks)
 LOGGING_FIXTURES: Final[frozenset[str]] = frozenset({
-    "caplog", "capsys", "capfd", "logger"
+    "caplog", "capsys", "capfd", "logger",
 })
 
 # Hardcoded path patterns indicating platform-specific test data
@@ -137,6 +166,28 @@ BAD_FILENAME_PATTERNS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
     (re.compile(r"_complete\.py$"), "Use descriptive name instead of 'complete'"),
     (re.compile(r"_v[0-9]+\.py$"), "Version suffix should be removed after migration"),
 )
+
+# Suppressed variable patterns - underscore prefixed names that hide test issues
+# These are variables that should typically be checked but are ignored with "_" prefix
+SUPPRESSED_RESULT_PATTERNS: Final[frozenset[str]] = frozenset({
+    # Common result/error suppression patterns
+    "_errors", "_error", "_result", "_results", "_output", "_value", "_values",
+    "_message", "_messages", "_response", "_exception", "_warnings",
+    # Bundle/locale specific suppressions
+    "_bundle", "_locale", "_context", "_parsed", "_formatted",
+    # Generic return value suppressions
+    "_ret", "_rv", "_return", "_status", "_code",
+})
+
+# Variable names that are legitimately ignored (not hiding test issues)
+LEGITIMATE_IGNORED_VARIABLES: Final[frozenset[str]] = frozenset({
+    "_",  # Standard throwaway variable
+    "_i", "_j", "_k", "_n",  # Loop counters when only count matters
+    "_unused", "_ignored",  # Explicit markers
+})
+
+# Minimum repetitions before flagging unused loop variable
+MIN_LOOP_REPETITIONS_FOR_SMELL: Final[int] = 3
 
 
 # =============================================================================
@@ -310,7 +361,7 @@ class SmellReport:
                     "name": smell.category,
                     "shortDescription": {"text": smell.category},
                     "defaultConfiguration": {
-                        "level": severity_to_level[smell.severity]
+                        "level": severity_to_level[smell.severity],
                     },
                 }
 
@@ -322,7 +373,7 @@ class SmellReport:
                     "physicalLocation": {
                         "artifactLocation": {"uri": str(smell.file)},
                         "region": {"startLine": smell.line},
-                    }
+                    },
                 }],
             })
 
@@ -336,7 +387,7 @@ class SmellReport:
                         "version": "1.0.0",
                         "informationUri": "https://github.com/example/test-smell-analyzer",
                         "rules": list(rules.values()),
-                    }
+                    },
                 },
                 "results": results,
             }],
@@ -358,6 +409,7 @@ class SmellReport:
         Args:
             filter_spec: Comma-separated severities or severity+ for that level and above
                          e.g., "critical,high" or "medium+"
+
         """
         if filter_spec.endswith("+"):
             # "medium+" means medium and above (medium, high, critical)
@@ -382,6 +434,7 @@ def parse_waiver_comment(line: str) -> set[str]:
 
     Returns:
         Set of waiver codes found (e.g., {"noqa", "broad-exception-caught"})
+
     """
     waivers: set[str] = set()
 
@@ -538,7 +591,7 @@ def is_coverage_or_error_test(node: FunctionNode, file_path: Path) -> TypeIs[Fun
     """Check if test is a coverage/error path test that may swallow exceptions."""
     # Keywords in test name that suggest legitimate exception swallowing
     name_keywords = {
-        "coverage", "error", "exception", "gaps", "edge", "platform", "compat", "protocol"
+        "coverage", "error", "exception", "gaps", "edge", "platform", "compat", "protocol",
     }
     # Keywords in file name that suggest comprehensive/coverage tests
     file_keywords = {"coverage", "comprehensive", "gaps", "edge"}
@@ -552,7 +605,7 @@ def is_coverage_or_error_test(node: FunctionNode, file_path: Path) -> TypeIs[Fun
     )
 
 
-def is_type_guard_conditional(node: ast.If) -> TypeIs[ast.If]:  # noqa: PLR0911
+def is_type_guard_conditional(node: ast.If) -> TypeIs[ast.If]:
     """Check if conditional is a type guard or result inspection (required for type narrowing)."""
     match node.test:
         # if x is not None:
@@ -604,7 +657,9 @@ def is_search_loop(loop_node: ast.For) -> TypeIs[ast.For]:
     return conditional_count > 0 and len(loop_node.body) <= 2
 
 
-def is_cleanup_loop(loop_node: ast.For | ast.While, func_node: ast.AST) -> TypeIs[ast.For | ast.While]:
+def is_cleanup_loop(
+    loop_node: ast.For | ast.While, func_node: ast.AST,
+) -> TypeIs[ast.For | ast.While]:
     """Check if loop is cleanup code (e.g., in finally block or teardown).
 
     Cleanup patterns:
@@ -651,7 +706,7 @@ class TestSmellDetector(ast.NodeVisitor):
     """AST visitor to detect test smells."""
 
     def __init__(
-        self, file_path: Path, source: str, config: Config | None = None
+        self, file_path: Path, source: str, config: Config | None = None,
     ) -> None:
         """Initialize detector with file path and source code."""
         self.file_path = file_path
@@ -718,6 +773,14 @@ class TestSmellDetector(ast.NodeVisitor):
         # Hypothesis reimagining candidates
         self._check_hypothesis_example_antipattern(node)
         self._check_non_hypothesis_candidate(node)
+        # Suppression pattern detections
+        self._check_suppressed_variables(node)
+        self._check_unused_loop_variables(node)
+        self._check_unchecked_bundle_results(node)
+        # Additional quality checks
+        self._check_assertions_in_except(node)
+        self._check_truthiness_only_assertions(node)
+        self._check_commented_assertions(node)
 
         self.generic_visit(node)
         self._in_test_function = old_in_test
@@ -741,7 +804,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 description=description,
                 snippet=snippet,
                 rule_id=rule_id or category.lower().replace(" ", "-"),
-            )
+            ),
         )
 
     def _get_line(self, lineno: int) -> str:
@@ -982,7 +1045,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         )
 
     def _check_try_except_instead_of_raises(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect try/except used instead of pytest.raises."""
         for child in ast.walk(node):
@@ -1065,7 +1128,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 description="Conditional logic makes test behavior unclear; use parametrize",
             )
 
-    def _is_result_guard_conditional(self, if_node: ast.If) -> bool:  # noqa: PLR0911
+    def _is_result_guard_conditional(self, if_node: ast.If) -> bool:
         """Check if conditional guards optional result inspection."""
         # if errors: / if result: / if log_messages: / if warnings:
         result_guard_names = {"errors", "result", "log_messages", "warnings", "messages"}
@@ -1103,7 +1166,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return False
 
     def _check_loops_without_hypothesis(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect loops in non-property-based tests."""
         if is_hypothesis_decorated(node):
@@ -1212,7 +1275,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return False
 
     def _is_setup_loop(
-        self, loop_node: ast.For | ast.While, func_node: FunctionNode
+        self, loop_node: ast.For | ast.While, func_node: FunctionNode,
     ) -> bool:
         """Check if loop appears before any assertions (setup phase)."""
         loop_lineno = loop_node.lineno
@@ -1388,7 +1451,7 @@ class TestSmellDetector(ast.NodeVisitor):
                     )
 
     def _check_duplicate_assertions(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect exact duplicate assertions (copy-paste errors).
 
@@ -1442,7 +1505,7 @@ class TestSmellDetector(ast.NodeVisitor):
                 )
 
     def _check_flaky_indicators(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect indicators of flaky tests (random without seed, uuid in assertions)."""
         # Skip Hypothesis tests - randomness is expected and managed
@@ -1499,7 +1562,7 @@ class TestSmellDetector(ast.NodeVisitor):
             )
 
     def _check_incomplete_cleanup(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect incomplete resource cleanup (tempfile without context, chdir without restore)."""
         chdir_calls: list[int] = []
@@ -1514,8 +1577,8 @@ class TestSmellDetector(ast.NodeVisitor):
                 case ast.Call(
                     func=ast.Attribute(
                         value=ast.Name(id="tempfile"),
-                        attr="NamedTemporaryFile" | "TemporaryFile" | "TemporaryDirectory"
-                    )
+                        attr="NamedTemporaryFile" | "TemporaryFile" | "TemporaryDirectory",
+                    ),
                 ):
                     if not self._is_inside_with(node, child):
                         self._add_smell(
@@ -1542,7 +1605,7 @@ class TestSmellDetector(ast.NodeVisitor):
             )
 
     def _is_inside_with(
-        self, func_node: FunctionNode, target: ast.AST
+        self, func_node: FunctionNode, target: ast.AST,
     ) -> bool:
         """Check if target node is inside a with statement."""
         target_line = getattr(target, "lineno", 0)
@@ -1561,7 +1624,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return False
 
     def _check_hardcoded_paths(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect hardcoded platform-specific paths in tests.
 
@@ -1609,7 +1672,7 @@ class TestSmellDetector(ast.NodeVisitor):
                             break
 
     def _check_hypothesis_example_antipattern(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect .example() anti-pattern in Hypothesis tests.
 
@@ -1676,7 +1739,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         )
 
     def _check_non_hypothesis_candidate(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> None:
         """Detect non-Hypothesis tests that could benefit from property-based testing.
 
@@ -1730,7 +1793,7 @@ class TestSmellDetector(ast.NodeVisitor):
             )
 
     def _count_parametrize_cases(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> int:
         """Count the number of cases in pytest.mark.parametrize decorators.
 
@@ -1750,7 +1813,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return total_cases
 
     def _find_hardcoded_example_iterations(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> int:
         """Find hardcoded lists/tuples being iterated in for loops."""
         max_examples = 0
@@ -1773,7 +1836,7 @@ class TestSmellDetector(ast.NodeVisitor):
         return max_examples
 
     def _count_similar_constant_assertions(
-        self, node: FunctionNode
+        self, node: FunctionNode,
     ) -> int:
         """Count assertions that compare against constant values.
 
@@ -1787,7 +1850,7 @@ class TestSmellDetector(ast.NodeVisitor):
                         left=ast.Call(),  # Function call on left
                         ops=[ast.Eq()],
                         comparators=[ast.Constant()],  # Constant on right
-                    )
+                    ),
                 ):
                     constant_assertions += 1
                 case ast.Assert(
@@ -1795,10 +1858,383 @@ class TestSmellDetector(ast.NodeVisitor):
                         left=ast.Constant(),  # Constant on left
                         ops=[ast.Eq()],
                         comparators=[ast.Call()],  # Function call on right
-                    )
+                    ),
                 ):
                     constant_assertions += 1
         return constant_assertions
+
+    def _check_suppressed_variables(self, node: FunctionNode) -> None:
+        """Detect underscore-prefixed variables that suppress important results.
+
+        Patterns like `result, _errors = bundle.format_value(...)` where
+        the underscore-prefixed variable should typically be checked but is ignored.
+
+        This is a code smell because:
+        1. If success is expected, the test should verify `not _errors`
+        2. If errors are expected, the test should verify error content
+        3. The underscore suggests "I don't care" but tests should care
+
+        Exemptions:
+        - Standard `_` throwaway variable (legitimate for truly unneeded values)
+        - Loop counters like `_i`, `_j` when only iteration count matters
+        - Variables explicitly named `_unused` or `_ignored`
+        """
+        for child in ast.walk(node):
+            match child:
+                # Tuple unpacking: value, _errors = func()
+                case ast.Assign(
+                    targets=[ast.Tuple(elts=elements)],
+                ) if len(elements) >= 2:
+                    for element in elements:
+                        if isinstance(element, ast.Name):
+                            var_name = element.id
+                            # Check if it's a suppression pattern
+                            if (
+                                var_name.startswith("_")
+                                and var_name not in LEGITIMATE_IGNORED_VARIABLES
+                            ):
+                                # Check against known suppression patterns
+                                if var_name in SUPPRESSED_RESULT_PATTERNS:
+                                    line_text = self._get_line(child.lineno)
+                                    self._add_smell(
+                                        category="Suppressed Variable",
+                                        severity=Severity.HIGH,
+                                        line=child.lineno,
+                                        description=(
+                                            f"Variable '{var_name}' suppresses important result; "
+                                            "should verify content or use explicit assertion"
+                                        ),
+                                        snippet=line_text.strip()[:70],
+                                        rule_id="suppressed-variable",
+                                    )
+                                # Check for any underscore-prefixed name that looks like a result
+                                elif var_name.startswith("_") and len(var_name) > 1:
+                                    # Pattern: _<something_that_looks_important>
+                                    important_suffixes = {
+                                        "error", "result", "value", "output", "response",
+                                        "message", "locale", "bundle", "parsed", "formatted",
+                                        "warning", "exception", "status", "code",
+                                    }
+                                    suffix = var_name[1:].lower()
+                                    if any(s in suffix for s in important_suffixes):
+                                        line_text = self._get_line(child.lineno)
+                                        self._add_smell(
+                                            category="Suppressed Variable",
+                                            severity=Severity.MEDIUM,
+                                            line=child.lineno,
+                                            description=(
+                                                f"Variable '{var_name}' may suppress important "
+                                                "result; consider explicit verification"
+                                            ),
+                                            snippet=line_text.strip()[:70],
+                                            rule_id="suppressed-variable-possible",
+                                        )
+
+    def _check_unused_loop_variables(self, node: FunctionNode) -> None:
+        """Detect loops where the loop variable is unused (repetitive test smell).
+
+        Patterns like:
+            for _ in range(10):
+                assert func() == expected  # Same assertion 10 times
+
+        This is a smell because:
+        1. Repeating the same assertion doesn't increase test coverage
+        2. If testing multiple cases, the loop variable should be used
+        3. Suggests copy-paste testing or misunderstanding of test purpose
+
+        Exemptions:
+        - Concurrency/stress tests (multiple threads, timing tests)
+        - Explicitly marked performance/benchmark tests
+        - Loops that use the iteration count for setup (not repeated assertions)
+        """
+        # Skip performance/stress/benchmark tests
+        name_lower = node.name.lower()
+        exempt_keywords = (
+            "performance", "stress", "benchmark", "concurrent", "thread",
+            "parallel", "race", "stability", "load",
+        )
+        if any(kw in name_lower for kw in exempt_keywords):
+            return
+
+        for child in walk_without_nested_definitions(node):
+            if not isinstance(child, ast.For):
+                continue
+
+            # Check if loop variable is underscore (unused)
+            target = child.target
+            if not isinstance(target, ast.Name):
+                continue
+
+            if target.id != "_":
+                continue  # Loop variable is used
+
+            # Check if iterating over range()
+            match child.iter:
+                case ast.Call(func=ast.Name(id="range"), args=args) if args:
+                    # Get the range count
+                    count_arg = args[-1] if len(args) >= 1 else None
+                    if isinstance(count_arg, ast.Constant) and isinstance(
+                        count_arg.value, int,
+                    ):
+                        iterations = count_arg.value
+                        if iterations >= MIN_LOOP_REPETITIONS_FOR_SMELL:
+                            # Check if loop body has assertions
+                            has_assertions = any(
+                                isinstance(stmt, ast.Assert)
+                                for stmt in ast.walk(child)
+                            )
+                            if has_assertions:
+                                line_text = self._get_line(child.lineno)
+                                self._add_smell(
+                                    category="Unused Loop Variable",
+                                    severity=Severity.MEDIUM,
+                                    line=child.lineno,
+                                    description=(
+                                        f"Loop repeats same assertion {iterations} times "
+                                        "without variation; use parametrize or vary input"
+                                    ),
+                                    snippet=line_text.strip()[:70],
+                                    rule_id="unused-loop-variable",
+                                )
+
+    def _is_variable_verified(self, node: FunctionNode, var_name: str) -> bool:
+        """Check if a variable is verified anywhere in the function.
+
+        Looks for:
+        - Assert statements that reference the variable
+        - If statements that check the variable
+        - For loops that iterate over the variable
+        """
+        for child in ast.walk(node):
+            is_verified = False
+            match child:
+                # Direct assertion on variable or negation
+                case ast.Assert(test=ast.Name(id=name)) if name == var_name:
+                    is_verified = True
+                case ast.Assert(
+                    test=ast.UnaryOp(op=ast.Not(), operand=ast.Name(id=name)),
+                ) if name == var_name:
+                    is_verified = True
+                # Comparison or length check assertion
+                case ast.Assert(
+                    test=ast.Compare(left=ast.Name(id=name)),
+                ) if name == var_name:
+                    is_verified = True
+                case ast.Assert(
+                    test=ast.Compare(
+                        left=ast.Call(func=ast.Name(id="len"), args=[ast.Name(id=name)]),
+                    ),
+                ) if name == var_name:
+                    is_verified = True
+                # Conditional checks or iteration
+                case ast.If(test=ast.Name(id=name)) if name == var_name:
+                    is_verified = True
+                case ast.If(
+                    test=ast.UnaryOp(op=ast.Not(), operand=ast.Name(id=name)),
+                ) if name == var_name:
+                    is_verified = True
+                case ast.For(iter=ast.Name(id=name)) if name == var_name:
+                    is_verified = True
+            if is_verified:
+                return True
+        return False
+
+    def _check_unchecked_bundle_results(self, node: FunctionNode) -> None:
+        """Detect bundle.format_* calls where results are not verified.
+
+        Patterns like:
+            result, errors = bundle.format_value("msg")
+            assert isinstance(result, str)  # Only checks type, not content
+            # errors is never checked!
+
+        This is a smell because:
+        1. Bundle operations return (result, errors) tuple
+        2. Tests should verify BOTH the result content AND error state
+        3. Just checking type or non-None doesn't verify correct behavior
+
+        This specifically targets FTL bundle testing patterns to ensure
+        individual message/bundle behavior is properly verified.
+        """
+        # Track format_* calls and what gets checked
+        format_calls: list[tuple[int, str, list[str]]] = []  # (line, method, var_names)
+
+        for child in ast.walk(node):
+            match child:
+                # Pattern: tuple unpacking from format_value or format_pattern
+                case ast.Assign(
+                    targets=[ast.Tuple(elts=[result_var, errors_var])],
+                    value=ast.Call(
+                        func=ast.Attribute(
+                            attr="format_value" | "format_pattern" as method,
+                        ),
+                    ),
+                ):
+                    result_name = (
+                        result_var.id if isinstance(result_var, ast.Name) else None
+                    )
+                    errors_name = (
+                        errors_var.id if isinstance(errors_var, ast.Name) else None
+                    )
+                    if result_name and errors_name:
+                        format_calls.append(
+                            (child.lineno, method, [result_name, errors_name]),
+                        )
+
+        # For each format call, check if errors are properly verified
+        for line, method, var_names in format_calls:
+            _result_name, errors_name = var_names
+
+            # Skip if errors var is underscore-prefixed (already caught by other check)
+            if errors_name.startswith("_"):
+                continue
+
+            if not self._is_variable_verified(node, errors_name):
+                line_text = self._get_line(line)
+                self._add_smell(
+                    category="Unchecked Bundle Result",
+                    severity=Severity.MEDIUM,
+                    line=line,
+                    description=(
+                        f"bundle.{method}() errors not verified; "
+                        f"'{errors_name}' should be checked"
+                    ),
+                    snippet=line_text.strip()[:70],
+                    rule_id="unchecked-bundle-result",
+                )
+
+    def _check_assertions_in_except(self, node: FunctionNode) -> None:
+        """Detect assertions inside except blocks (hidden test failures).
+
+        Patterns like:
+            try:
+                risky_operation()
+            except SomeException:
+                assert False, "Should not raise"  # This hides the actual exception
+
+        This is a smell because:
+        1. The actual exception details are lost
+        2. Use pytest.raises() or pytest.fail() with proper context instead
+        3. May mask unexpected exceptions
+
+        Exemptions:
+        - Re-raise after assertion
+        - Logging before assertion
+        - Hypothesis tests (may legitimately catch and check exceptions)
+        """
+        if is_hypothesis_decorated(node):
+            return
+
+        for child in ast.walk(node):
+            if not isinstance(child, ast.ExceptHandler):
+                continue
+
+            # Check if except block contains assertions
+            for stmt in child.body:
+                if isinstance(stmt, ast.Assert):
+                    # Check if it's assert False (explicit failure)
+                    match stmt.test:
+                        case ast.Constant(value=False):
+                            self._add_smell(
+                                category="Assertion in Except Block",
+                                severity=Severity.MEDIUM,
+                                line=stmt.lineno,
+                                description=(
+                                    "assert False in except block; "
+                                    "use pytest.raises() for expected exceptions"
+                                ),
+                                rule_id="assert-in-except",
+                            )
+
+    def _check_truthiness_only_assertions(self, node: FunctionNode) -> None:
+        """Detect assertions that only check truthiness without specific comparison.
+
+        Patterns like:
+            result = func()
+            assert result  # Only checks truthiness, not specific value
+
+        This is a smell because:
+        1. Empty string, empty list, 0 would all fail unexpectedly
+        2. Non-empty wrong value would pass unexpectedly
+        3. Should use specific comparisons: assert result == expected
+
+        Exemptions:
+        - assert not x (checking falsiness is more specific)
+        - assert x is not None (explicit None check)
+        - Boolean return values (when function name suggests boolean)
+        - Error checking patterns (assert errors, assert not errors)
+        """
+        # Track variable names that are likely booleans or errors
+        boolean_like_names = {
+            "is_", "has_", "can_", "should_", "was_", "valid", "success",
+            "found", "exists", "enabled", "disabled", "empty", "errors",
+        }
+
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Assert):
+                continue
+
+            match child.test:
+                # assert result (just a name, not a comparison)
+                case ast.Name(id=name):
+                    # Skip if name suggests boolean semantics
+                    if any(bp in name.lower() for bp in boolean_like_names):
+                        continue
+                    # Skip common result guard names
+                    if name in {"errors", "warnings", "result", "results"}:
+                        continue
+
+                    line_text = self._get_line(child.lineno)
+                    self._add_smell(
+                        category="Truthiness-Only Assertion",
+                        severity=Severity.LOW,
+                        line=child.lineno,
+                        description=(
+                            f"assert {name} only checks truthiness; "
+                            "consider specific comparison"
+                        ),
+                        snippet=line_text.strip()[:70],
+                        rule_id="truthiness-only-assert",
+                    )
+
+    def _check_commented_assertions(self, node: FunctionNode) -> None:
+        """Detect commented-out assertions that may indicate disabled tests.
+
+        Patterns like:
+            # assert result == expected  # TODO: fix later
+            # self.assertEqual(a, b)
+
+        This is a smell because:
+        1. Commented code suggests unfinished or broken tests
+        2. Should either fix the assertion or remove it entirely
+        3. May leave test without proper verification
+        """
+        # Check source lines within the function
+        if not hasattr(node, "lineno") or not hasattr(node, "end_lineno"):
+            return
+
+        start_line = node.lineno
+        end_line = node.end_lineno or start_line
+
+        for lineno in range(start_line, end_line + 1):
+            line = self._get_line(lineno).strip()
+            if not line.startswith("#"):
+                continue
+
+            # Check for commented assertion patterns
+            comment_content = line[1:].strip()
+            assertion_patterns = (
+                "assert ", "self.assert", "assertEqual", "assertTrue",
+                "assertFalse", "assertRaises", "pytest.raises",
+            )
+            if any(comment_content.startswith(p) for p in assertion_patterns):
+                self._add_smell(
+                    category="Commented Assertion",
+                    severity=Severity.MEDIUM,
+                    line=lineno,
+                    description="Commented-out assertion; fix or remove",
+                    snippet=line[:60],
+                    rule_id="commented-assertion",
+                )
 
 
 def check_bad_filename(file_path: Path) -> Smell | None:
@@ -1842,6 +2278,7 @@ def analyze_file(
 
     Returns:
         Tuple of (smells, test_count)
+
     """
     smells: list[Smell] = []
 
@@ -1920,6 +2357,7 @@ def analyze_directory(
 
     Returns:
         SmellReport with all detected smells.
+
     """
     # Load config from project root if not provided
     if config is None:
@@ -1941,7 +2379,7 @@ def analyze_directory(
 
         report.files_analyzed += 1
         smells, test_count = analyze_file(
-            test_file, config, respect_waivers=respect_waivers
+            test_file, config, respect_waivers=respect_waivers,
         )
         report.tests_analyzed += test_count
         for smell in smells:
@@ -1956,8 +2394,116 @@ def analyze_directory(
 # =============================================================================
 
 
+def _oad_line(status: str, component: str, message: str) -> str:
+    """Format a line in OAD (Output Architecture Directive) format.
+
+    Format: [STATUS:8][COMPONENT:20][MESSAGE]
+    Example: [  OK  ] Files Analyzed     : 201
+    """
+    comp_padded = f"{component:<{OAD_COMPONENT_WIDTH}}"
+    return f"{status} {comp_padded}: {message}"
+
+
+def _severity_to_oad(severity: Severity) -> str:
+    """Map severity to OAD status tag."""
+    return {
+        Severity.CRITICAL: OAD_CRIT,
+        Severity.HIGH: OAD_HIGH,
+        Severity.MEDIUM: OAD_MED,
+        Severity.LOW: OAD_LOW,
+    }[severity]
+
+
+def print_oad_report(report: SmellReport, *, verbose: bool = False) -> None:
+    """Print smell report in OAD format for AI agent consumption.
+
+    OAD (Output Architecture Directive) provides:
+    - Fixed-width status tags for reliable parsing
+    - Consistent alignment for visual scanning
+    - JSON summary block with extraction markers
+    - Narrow width (72 chars) for context window efficiency
+    """
+    w = OAD_LINE_WIDTH
+    print("=" * w)
+    print("TEST SMELL ANALYSIS REPORT (OAD FORMAT)")
+    print("=" * w)
+
+    # Summary section with fixed-width formatting
+    crit = report.count_by_severity(Severity.CRITICAL)
+    high = report.count_by_severity(Severity.HIGH)
+    med = report.count_by_severity(Severity.MEDIUM)
+    low = report.count_by_severity(Severity.LOW)
+
+    status = OAD_OK if crit == 0 and high == 0 else OAD_FAIL
+    print(_oad_line(status, "Analysis Status", "PASS" if status == OAD_OK else "FAIL"))
+    print(_oad_line(OAD_INFO, "Files Analyzed", str(report.files_analyzed)))
+    print(_oad_line(OAD_INFO, "Tests Analyzed", str(report.tests_analyzed)))
+    print(_oad_line(OAD_INFO, "Total Smells", str(len(report.smells))))
+
+    # Severity breakdown
+    print("-" * w)
+    if crit > 0:
+        print(_oad_line(OAD_CRIT, "Critical", str(crit)))
+    if high > 0:
+        print(_oad_line(OAD_HIGH, "High", str(high)))
+    if med > 0:
+        print(_oad_line(OAD_MED, "Medium", str(med)))
+    if low > 0:
+        print(_oad_line(OAD_LOW, "Low", str(low)))
+    print("=" * w)
+
+    if not report.smells:
+        print(_oad_line(OAD_OK, "Result", "No test smells detected"))
+        return
+
+    # Group by category
+    by_category: dict[str, list[Smell]] = {}
+    for smell in report.smells:
+        by_category.setdefault(smell.category, []).append(smell)
+
+    # Print each category
+    for category in sorted(by_category.keys()):
+        smells = by_category[category]
+        print()
+        print(f"[CATEGORY] {category} ({len(smells)})")
+        print("-" * w)
+
+        display_limit = None if verbose else 5
+        for smell in smells[:display_limit]:
+            tag = _severity_to_oad(smell.severity)
+            loc = f"{smell.file.name}:{smell.line}"
+            # Truncate description to fit width
+            max_desc = w - 10 - len(loc) - 3
+            desc = smell.description[:max_desc]
+            if len(smell.description) > max_desc:
+                desc = desc[: max_desc - 3] + "..."
+            print(f"{tag} {loc}")
+            print(f"         {desc}")
+
+        remaining = len(smells) - (display_limit or len(smells))
+        if remaining > 0:
+            print(f"         ... +{remaining} more (use --verbose)")
+
+    # JSON summary block for programmatic extraction
+    print()
+    print("=" * w)
+    print(JSON_BEGIN)
+    summary = {
+        "status": "pass" if crit == 0 and high == 0 else "fail",
+        "files": report.files_analyzed,
+        "tests": report.tests_analyzed,
+        "total": len(report.smells),
+        "critical": crit,
+        "high": high,
+        "medium": med,
+        "low": low,
+    }
+    print(json.dumps(summary, separators=(",", ":")))
+    print(JSON_END)
+
+
 def print_report(report: SmellReport, *, verbose: bool = False) -> None:
-    """Print smell report to stdout."""
+    """Print smell report to stdout (human-readable format)."""
     print("=" * 80)
     print("TEST SMELL ANALYSIS REPORT")
     print("=" * 80)
@@ -1995,9 +2541,20 @@ def print_report(report: SmellReport, *, verbose: bool = False) -> None:
             print(f"  ... and {len(smells) - 10} more (use --verbose to see all)")
 
 
-def print_json_report(report: SmellReport) -> None:
-    """Print smell report as JSON."""
-    print(json.dumps(report.to_dict(), indent=2))
+def print_json_report(report: SmellReport, *, compact: bool = False) -> None:
+    """Print smell report as JSON with extraction markers.
+
+    Args:
+        report: The smell report to print.
+        compact: If True, output single-line JSON (for piping).
+
+    """
+    print(JSON_BEGIN)
+    if compact:
+        print(json.dumps(report.to_dict(), separators=(",", ":")))
+    else:
+        print(json.dumps(report.to_dict(), indent=2))
+    print(JSON_END)
 
 
 def print_sarif_report(report: SmellReport) -> None:
@@ -2089,7 +2646,7 @@ def print_hypothesis_candidates_report(report: SmellReport, *, verbose: bool = F
 
     # Print anti-patterns first (higher priority)
     if anti_patterns:
-        print(f"\n🚨 HYPOTHESIS ANTI-PATTERNS ({len(anti_patterns)} found)")
+        print(f"\n[!] HYPOTHESIS ANTI-PATTERNS ({len(anti_patterns)} found)")
         print("-" * 80)
         print("These tests misuse Hypothesis features and should be fixed:")
         print()
@@ -2105,7 +2662,7 @@ def print_hypothesis_candidates_report(report: SmellReport, *, verbose: bool = F
 
     # Print candidates
     if reimagine_candidates:
-        print(f"\n💡 TESTS TO REIMAGINE AS PROPERTY-BASED ({len(reimagine_candidates)} found)")
+        print(f"\n[*] TESTS TO REIMAGINE AS PROPERTY-BASED ({len(reimagine_candidates)} found)")
         print("-" * 80)
         print("These tests could benefit from Hypothesis property-based testing:")
         print()
@@ -2176,7 +2733,12 @@ Documentation: https://hypothesis.readthedocs.io/
 def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Analyze test files for code smells and anti-patterns"
+        description="Analyze test files for code smells and anti-patterns",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "test_dir",
@@ -2191,13 +2753,28 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Show all occurrences and code snippets",
     )
+    parser.add_argument(
+        "--list-rules",
+        action="store_true",
+        help="List all available smell detection rules and exit",
+    )
 
     # Output format options (mutually exclusive)
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
+        "--oad",
+        action="store_true",
+        help="OAD format: fixed-width tags, narrow output for AI agents",
+    )
+    output_group.add_argument(
         "--json",
         action="store_true",
-        help="Output report as JSON",
+        help="Output report as JSON with extraction markers",
+    )
+    output_group.add_argument(
+        "--json-compact",
+        action="store_true",
+        help="Output report as single-line JSON (for piping)",
     )
     output_group.add_argument(
         "--sarif",
@@ -2247,6 +2824,81 @@ def parse_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+# All available detection rules with descriptions
+# Format: (rule_id, severity, description) tuples
+AVAILABLE_RULES: Final[tuple[tuple[str, str, str], ...]] = (
+    ("tests-without-assertions", "CRITICAL", "Tests with no assertions or verification"),
+    ("empty-test-body", "HIGH", "Tests with only docstring, no implementation"),
+    ("assertion-overload", "MEDIUM", "Tests with too many assertions (>10)"),
+    ("weak-assertions", "HIGH", "Tautological assertions like 'assert True'"),
+    ("singleton-equality", "MEDIUM", "Using == None instead of 'is None'"),
+    ("broad-exception-handling", "HIGH", "Bare except or catching generic Exception"),
+    ("exception-swallowing", "HIGH", "Except blocks that silently swallow with 'pass'"),
+    ("missing-pytest-raises", "MEDIUM", "Try/except instead of pytest.raises()"),
+    ("conditional-logic", "MEDIUM", "If statements in tests make behavior unclear"),
+    ("loops-in-tests", "MEDIUM", "Loops suggest multiple cases; use parametrize"),
+    ("magic-values", "LOW", "Large magic numbers without explanation"),
+    ("poor-test-naming", "MEDIUM", "Generic or too-short test names"),
+    ("io-in-unit-tests", "MEDIUM", "File I/O in tests; use fixtures"),
+    ("sleep-based-sync", "HIGH", "time.sleep() makes tests slow and flaky"),
+    ("time-dependent-tests", "MEDIUM", "Calls to now()/today() should be mocked"),
+    ("overuse-of-mocks", "MEDIUM", "Tests with too many mocks (>5)"),
+    ("print-in-tests", "LOW", "print() in tests; use logging or capsys"),
+    ("duplicate-assertions", "MEDIUM", "Same assertion appears multiple times"),
+    ("flaky-random", "HIGH", "Random calls without seed; non-deterministic"),
+    ("flaky-uuid", "MEDIUM", "uuid4() in assertions; generates new value each run"),
+    ("incomplete-cleanup-tempfile", "MEDIUM", "tempfile without context manager"),
+    ("incomplete-cleanup-chdir", "HIGH", "os.chdir() without restoring directory"),
+    ("hardcoded-path", "MEDIUM", "Platform-specific paths in tests"),
+    ("hypothesis-example-antipattern", "HIGH", ".example() bypasses property testing"),
+    ("non-hypothesis-candidate", "LOW", "Test could benefit from Hypothesis"),
+    ("suppressed-variable", "HIGH", "Underscore-prefixed var suppresses result"),
+    ("unused-loop-variable", "MEDIUM", "Loop repeats same test without variation"),
+    ("unchecked-bundle-result", "MEDIUM", "bundle.format_* errors not verified"),
+    ("assert-in-except", "MEDIUM", "assert False in except block"),
+    ("truthiness-only-assert", "LOW", "Assert only checks truthiness, not value"),
+    ("commented-assertion", "MEDIUM", "Commented-out assertion in test"),
+    ("bad-filename", "LOW", "Test filename follows bad naming pattern"),
+)
+
+
+def print_rules_list() -> None:
+    """Print all available detection rules in OAD format."""
+    w = OAD_LINE_WIDTH
+    print("=" * w)
+    print("AVAILABLE TEST SMELL DETECTION RULES")
+    print("=" * w)
+    print(_oad_line(OAD_INFO, "Total Rules", str(len(AVAILABLE_RULES))))
+    print()
+
+    # Group by severity
+    by_severity: dict[str, list[tuple[str, str]]] = {
+        "CRITICAL": [], "HIGH": [], "MEDIUM": [], "LOW": [],
+    }
+    for rule_id, severity, desc in AVAILABLE_RULES:
+        by_severity[severity].append((rule_id, desc))
+
+    severity_tags = {
+        "CRITICAL": OAD_CRIT, "HIGH": OAD_HIGH,
+        "MEDIUM": OAD_MED, "LOW": OAD_LOW,
+    }
+    for severity in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+        rules = by_severity[severity]
+        if rules:
+            print(f"{severity_tags[severity]} [{severity}] ({len(rules)} rules)")
+            print("-" * w)
+            for rule_id, desc in rules:
+                # Truncate description to fit OAD width
+                desc_trunc = desc if len(desc) < w else desc[: w - 7] + "..."
+                print(f"  {rule_id}")
+                print(f"    {desc_trunc}")
+            print()
+
+    print("=" * w)
+    print(_oad_line(OAD_INFO, "Suppress", "# test-smell: ignore[rule-id]"))
+    print(_oad_line(OAD_INFO, "Filter", "--filter-severity=high+"))
+
+
 def main(args: Sequence[str] | None = None) -> int:
     """Main entry point.
 
@@ -2255,8 +2907,14 @@ def main(args: Sequence[str] | None = None) -> int:
 
     Returns:
         Exit code: 0 success, 1 smells found, 2 configuration error
+
     """
     parsed = parse_args(args)
+
+    # Handle --list-rules before directory check
+    if parsed.list_rules:
+        print_rules_list()
+        return 0
 
     if not parsed.test_dir.is_dir():
         print(f"[ERROR] Directory not found: {parsed.test_dir}", file=sys.stderr)
@@ -2276,8 +2934,12 @@ def main(args: Sequence[str] | None = None) -> int:
         report.filter_by_severity(parsed.filter_severity)
 
     # Output format selection
-    if parsed.json:
+    if parsed.oad:
+        print_oad_report(report, verbose=parsed.verbose)
+    elif parsed.json:
         print_json_report(report)
+    elif parsed.json_compact:
+        print_json_report(report, compact=True)
     elif parsed.sarif:
         print_sarif_report(report)
     elif parsed.by_file:

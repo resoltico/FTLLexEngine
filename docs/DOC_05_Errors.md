@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.46.0"
+version: "0.47.0"
 domain: ERRORS
-updated: "2025-12-30"
+updated: "2025-12-31"
 route:
   keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?"]

@@ -585,8 +585,9 @@ class TestFluentFunctionProtocol:
             # If we get hints, verify return type
             if "return" in hints:
                 assert hints["return"] is FluentValue
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Type hints on Protocols can be tricky - this is acceptable
+        except (TypeError, NameError, AttributeError):
+            # Type hints on Protocols can fail: TypeError (forward refs), NameError
+            # (unresolved refs), AttributeError (missing __call__). All acceptable.
             pass
 
     def test_protocol_callable_implementation(self) -> None:

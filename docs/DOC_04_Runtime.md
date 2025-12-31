@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.46.0"
+version: "0.47.0"
 domain: RUNTIME
-updated: "2025-12-30"
+updated: "2025-12-31"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?"]

@@ -84,9 +84,14 @@ class DiagnosticCode(Enum):
 class SourceSpan:
     """Source code location for error reporting.
 
+    Note:
+        Python strings measure positions in characters (Unicode code points),
+        not bytes. For multi-byte UTF-8 characters, character offset differs
+        from byte offset.
+
     Attributes:
-        start: Starting byte offset
-        end: Ending byte offset (exclusive)
+        start: Starting character offset (0-indexed)
+        end: Ending character offset (exclusive)
         line: Line number (1-indexed)
         column: Column number (1-indexed)
     """

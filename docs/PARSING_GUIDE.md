@@ -668,15 +668,45 @@ result, _ = parse_date("01/02/2025", "lv_LV")  # → date(2025, 2, 1)
 result, errors = parse_date("2025-01-02", locale)  # Always Jan 2
 ```
 
+### Timezone Pattern Limitations
+
+**Problem**: `parse_datetime()` returns error with input containing timezone names
+
+**Cause**: Timezone name patterns (z, zz, zzz, zzzz, v, V series, O series, ZZZZ) are locale-specific and cannot be parsed by Python's `strptime`. These patterns are silently skipped during pattern conversion.
+
+**Unsupported patterns**:
+- Timezone names: `z`, `zz`, `zzz`, `zzzz` (e.g., "PST", "Pacific Standard Time")
+- Generic timezone: `v`, `vvvv` (e.g., "PT", "Pacific Time")
+- Location timezone: `V`, `VV`, `VVV`, `VVVV` (e.g., "America/Los_Angeles")
+- Localized GMT: `ZZZZ`, `O`, `OOOO` (e.g., "GMT-08:00")
+
+**Supported patterns**:
+- UTC offset: `Z`, `ZZ`, `ZZZ`, `ZZZZZ` (e.g., "-0800", "-08:00")
+- ISO offset: `x`, `xx`, `xxx`, `xxxx`, `xxxxx`, `X`, `XX`, `XXX`, `XXXX`, `XXXXX`
+
+**Solution**:
+```python
+from ftllexengine.parsing import parse_datetime
+
+# Wrong: Input with timezone name
+result, errors = parse_datetime("2025-01-28 14:30 PST", "en_US")
+# → errors (timezone name not parsed)
+
+# Correct: Pre-strip timezone name or use UTC offset
+result, errors = parse_datetime("2025-01-28 14:30", "en_US")
+# Or use ISO 8601 with offset
+result, errors = parse_datetime("2025-01-28T14:30:00-08:00", "en_US")
+```
+
 ---
 
 ## See Also
 
 - [docs/DOC_00_Index.md](docs/DOC_00_Index.md) - Complete API reference
 - [README.md](README.md) - Getting started
-- [CHANGELOG.md](CHANGELOG.md) - v0.8.0 breaking changes
+- [CHANGELOG.md](CHANGELOG.md) - Version history
 - [Babel Documentation](https://babel.pocoo.org/) - Number and date formatting patterns
 
 ---
 
-**FTLLexEngine v0.39.0** - Production-ready bi-directional localization
+**FTLLexEngine v0.47.0** - Production-ready bi-directional localization

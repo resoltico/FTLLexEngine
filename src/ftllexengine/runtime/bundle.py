@@ -414,8 +414,9 @@ class FluentBundle:
     def __enter__(self) -> "FluentBundle":
         """Enter context manager.
 
-        Enables use of FluentBundle with 'with' statement for automatic
-        resource cleanup on exit.
+        Enables use of FluentBundle with 'with' statement. The context manager
+        clears the format cache on exit (if caching is enabled), but preserves
+        messages and terms so the bundle remains usable after the with block.
 
         Returns:
             Self (the FluentBundle instance)
@@ -424,7 +425,9 @@ class FluentBundle:
             >>> with FluentBundle("en_US", enable_cache=True) as bundle:
             ...     bundle.add_resource("hello = Hello")
             ...     result = bundle.format_pattern("hello")
-            ... # Cache automatically cleared on exit
+            ... # Cache cleared on exit, but messages preserved
+            >>> bundle.format_pattern("hello")  # Still works
+            ('Hello', ())
         """
         return self
 
@@ -434,9 +437,10 @@ class FluentBundle:
         exc_val: BaseException | None,
         exc_tb: object | None,
     ) -> None:
-        """Exit context manager with cleanup.
+        """Exit context manager with cache cleanup.
 
-        Clears cache and resets internal state for clean exit.
+        Clears the format cache if caching is enabled. Messages and terms
+        are preserved so the bundle remains usable after the with block.
         Does not suppress exceptions.
 
         Args:
@@ -444,13 +448,10 @@ class FluentBundle:
             exc_val: Exception value (if any)
             exc_tb: Exception traceback (if any)
         """
-        # Clear cache if enabled
+        # Clear cache if enabled (transient resource)
+        # Messages and terms are preserved (bundle remains usable after exit)
         if self._cache is not None:
             self._cache.clear()
-
-        # Clear registries for clean exit
-        self._messages.clear()
-        self._terms.clear()
 
         logger.debug("FluentBundle context exited for locale: %s", self._locale)
 

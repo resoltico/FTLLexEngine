@@ -665,7 +665,11 @@ def parse_currency(
     if resolution_error is not None:
         errors.append(resolution_error)
         return (None, tuple(errors))
-    assert currency_code is not None  # Type narrowing: resolution succeeded
+    # Defensive check: resolution contract guarantees exactly one of (code, error) is None
+    # Using explicit check instead of assert ensures protection even with python -O
+    if currency_code is None:  # pragma: no cover - defensive check
+        msg = "Internal error: currency resolution succeeded but currency_code is None"
+        raise RuntimeError(msg)
 
     # Remove currency symbol/code to extract number
     # Use match position to remove ONLY the matched occurrence, not all instances.

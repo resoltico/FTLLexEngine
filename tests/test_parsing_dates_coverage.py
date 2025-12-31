@@ -651,3 +651,48 @@ class TestBabelToStrptimeTimezoneToken:
             assert has_era is False
             # The token should have been silently dropped (no output)
             assert "QQQ" not in strptime_pattern
+
+    def test_babel_to_strptime_zzzz_localized_gmt_skipped(self) -> None:
+        """ZZZZ (localized GMT format) is skipped since strptime cannot parse it.
+
+        CLDR ZZZZ produces "GMT-08:00" format which Python's strptime cannot
+        handle. Changed in v0.47.0: ZZZZ now maps to None (skipped).
+        """
+        pattern = "d MMM y HH:mm ZZZZ"
+
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
+
+        assert has_era is False
+        # ZZZZ should be completely removed from pattern
+        assert "ZZZZ" not in strptime_pattern
+        # Should not produce any %z since ZZZZ maps to None
+        assert "%z" not in strptime_pattern
+
+    def test_babel_to_strptime_trailing_whitespace_normalized(self) -> None:
+        """Trailing whitespace from skipped tokens is stripped.
+
+        Pattern "HH:mm zzzz" has tokens ["HH", ":", "mm", " ", "zzzz"].
+        When zzzz is skipped (None), the trailing space remains.
+        Changed in v0.47.0: trailing whitespace is normalized.
+        """
+        pattern = "HH:mm zzzz"
+
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
+
+        assert has_era is False
+        # Result should be "%H:%M" without trailing space
+        assert strptime_pattern == "%H:%M"
+        # Must not end with whitespace
+        assert strptime_pattern == strptime_pattern.rstrip()
+
+    def test_babel_to_strptime_multiple_trailing_spaces_normalized(self) -> None:
+        """Multiple trailing spaces from adjacent skipped tokens are stripped."""
+        # Pattern with multiple spaces before timezone
+        pattern = "HH:mm   zzzz"
+
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
+
+        assert has_era is False
+        # All trailing whitespace should be stripped
+        assert strptime_pattern == "%H:%M"
+        assert not strptime_pattern.endswith(" ")
