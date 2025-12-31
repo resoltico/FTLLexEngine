@@ -257,15 +257,19 @@ class TestCursorSkipWhitespaceMethod:
         assert new_cursor.pos == 0
 
     def test_skip_whitespace_mixed_whitespace(self) -> None:
-        """Verify skip_whitespace() skips space, newline, and carriage return."""
-        cursor = Cursor(source="  \n\r  hello", pos=0)
+        """Verify skip_whitespace() skips space and newline.
+
+        Note: CR is normalized to LF at parser entry, so skip_whitespace
+        only needs to handle space and LF.
+        """
+        cursor = Cursor(source="  \n  hello", pos=0)
         new_cursor = cursor.skip_whitespace()
-        assert new_cursor.pos == 6
+        assert new_cursor.pos == 5
         assert new_cursor.current == "h"
 
     def test_skip_whitespace_all_whitespace(self) -> None:
         """Verify skip_whitespace() handles all-whitespace string."""
-        cursor = Cursor(source=" \n\r ", pos=0)
+        cursor = Cursor(source=" \n ", pos=0)
         new_cursor = cursor.skip_whitespace()
         assert new_cursor.is_eof is True
 

@@ -95,11 +95,11 @@ class TestAnnotationDataclass:
         ann = Annotation(
             code="E001",
             message="Test",
-            arguments={"key": "value"},
+            arguments=(("key", "value"),),
             span=span,
         )
         assert ann.code == "E001"
-        assert ann.arguments == {"key": "value"}
+        assert ann.arguments == (("key", "value"),)
         assert ann.span is span
 
 

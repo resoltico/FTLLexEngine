@@ -242,10 +242,10 @@ class FluentSerializer(ASTVisitor):
         self, node: Message, output: list[str], depth_guard: DepthGuard
     ) -> None:
         """Serialize Message."""
-        # Comment if present
+        # Comment if present (attached comment, no blank line before message)
+        # Per Fluent spec, attached comments (#) should immediately precede their entry
         if node.comment:
             self._serialize_comment(node.comment, output)
-            output.append("\n")
 
         # Message ID
         output.append(node.id.name)
@@ -266,10 +266,10 @@ class FluentSerializer(ASTVisitor):
         self, node: Term, output: list[str], depth_guard: DepthGuard
     ) -> None:
         """Serialize Term."""
-        # Comment if present
+        # Comment if present (attached comment, no blank line before term)
+        # Per Fluent spec, attached comments (#) should immediately precede their entry
         if node.comment:
             self._serialize_comment(node.comment, output)
-            output.append("\n")
 
         # Term ID (with leading -)
         output.append(f"-{node.id.name} = ")

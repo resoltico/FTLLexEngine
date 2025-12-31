@@ -128,11 +128,13 @@ class SemanticValidator:
         if message is None:
             message = _VALIDATION_MESSAGES.get(code, "Unknown validation error")
 
+        # Convert kwargs dict to immutable tuple of (key, value) pairs
+        args_tuple = tuple(arguments.items()) if arguments else None
         errors.append(
             Annotation(
                 code=code.name,
                 message=message,
-                arguments=arguments if arguments else None,
+                arguments=args_tuple,
                 span=span,
             )
         )

@@ -265,12 +265,10 @@ class PathResourceLoader:
         else:
             # Extract static prefix from base_path template
             # e.g., "locales/{locale}" -> "locales"
+            # Note: split() always returns non-empty list, so template_parts[0] always exists
             template_parts = self.base_path.split("{locale}")
-            if template_parts:
-                static_prefix = template_parts[0].rstrip("/\\")
-                resolved = Path(static_prefix).resolve() if static_prefix else Path.cwd().resolve()
-            else:
-                resolved = Path.cwd().resolve()
+            static_prefix = template_parts[0].rstrip("/\\")
+            resolved = Path(static_prefix).resolve() if static_prefix else Path.cwd().resolve()
         object.__setattr__(self, "_resolved_root", resolved)
 
     @staticmethod
@@ -326,7 +324,9 @@ class PathResourceLoader:
         # Use cached root directory (cannot be influenced by locale)
 
         # Substitute {locale} in path template
-        locale_path = self.base_path.format(locale=locale)
+        # Use replace() instead of format() to avoid KeyError if template
+        # contains other braces like "{version}" for future extensibility
+        locale_path = self.base_path.replace("{locale}", locale)
         base_dir = Path(locale_path).resolve()
         full_path = (base_dir / resource_id).resolve()
 
@@ -370,16 +370,27 @@ class PathResourceLoader:
     def _is_safe_path(base_dir: Path, full_path: Path) -> bool:
         """Check if full_path is safely within base_dir.
 
+        Security Note:
+            Explicitly resolves both paths before comparison to prevent
+            path manipulation attacks. This follows defense-in-depth:
+            even if caller provides un-resolved paths, this method
+            canonicalizes them before the security check.
+
         Args:
-            base_dir: Base directory (resolved)
-            full_path: Full path to check (resolved)
+            base_dir: Base directory (will be resolved)
+            full_path: Full path to check (will be resolved)
 
         Returns:
-            True if full_path is within base_dir, False otherwise
+            True if resolved full_path is within resolved base_dir
         """
         try:
+            # Defense-in-depth: resolve() both paths to canonicalize
+            # This follows symlinks and normalizes path components
+            resolved_base = base_dir.resolve()
+            resolved_path = full_path.resolve()
+
             # Python 3.9+ method - check if full_path is relative to base_dir
-            full_path.relative_to(base_dir)
+            resolved_path.relative_to(resolved_base)
             return True
         except ValueError:
             # full_path is not within base_dir
@@ -477,11 +488,10 @@ class FluentLocalization:
         self._enable_cache = enable_cache
         self._cache_size = cache_size
 
-        # Bundle storage: bundles are created lazily on first access
+        # Bundle storage: only contains initialized bundles (no None markers)
+        # Bundles are created lazily on first access via _get_or_create_bundle
         # But resources are loaded eagerly at init time for fail-fast behavior
-        self._bundles: dict[LocaleCode, FluentBundle | None] = dict.fromkeys(
-            self._locales, None
-        )
+        self._bundles: dict[LocaleCode, FluentBundle] = {}
 
         # Track which locales have had resources loaded
         self._resources_loaded: set[LocaleCode] = set()
@@ -520,24 +530,26 @@ class FluentLocalization:
         Thread-safe via internal RLock.
 
         Args:
-            locale: Locale code (must be in _bundles dict)
+            locale: Locale code (must be in _locales tuple)
 
         Returns:
             FluentBundle instance for the locale
         """
         with self._lock:
-            bundle = self._bundles[locale]
-            if bundle is None:
-                bundle = FluentBundle(
-                    locale,
-                    use_isolating=self._use_isolating,
-                    enable_cache=self._enable_cache,
-                    cache_size=self._cache_size,
-                )
-                # Apply any pending functions that were registered before bundle creation
-                for name, func in self._pending_functions.items():
-                    bundle.add_function(name, func)
-                self._bundles[locale] = bundle
+            if locale in self._bundles:
+                return self._bundles[locale]
+
+            # Create new bundle
+            bundle = FluentBundle(
+                locale,
+                use_isolating=self._use_isolating,
+                enable_cache=self._enable_cache,
+                cache_size=self._cache_size,
+            )
+            # Apply any pending functions that were registered before bundle creation
+            for name, func in self._pending_functions.items():
+                bundle.add_function(name, func)
+            self._bundles[locale] = bundle
             return bundle
 
     def _load_single_resource(
@@ -561,7 +573,7 @@ class FluentLocalization:
         """
         # Construct source path for diagnostics
         if isinstance(resource_loader, PathResourceLoader):
-            locale_path = resource_loader.base_path.format(locale=locale)
+            locale_path = resource_loader.base_path.replace("{locale}", locale)
             source_path = f"{locale_path}/{resource_id}"
         else:
             source_path = f"{locale}/{resource_id}"
@@ -653,21 +665,24 @@ class FluentLocalization:
         """Get maximum cache size per bundle (read-only).
 
         Returns:
-            int: Maximum cache entries per bundle (0 if caching disabled)
+            int: Configured maximum cache entries per bundle
 
         Example:
             >>> l10n = FluentLocalization(['lv', 'en'], enable_cache=True, cache_size=500)
             >>> l10n.cache_size
             500
-            >>> l10n_no_cache = FluentLocalization(['lv', 'en'])
+            >>> # Cache size is returned even when caching is disabled
+            >>> l10n_no_cache = FluentLocalization(['lv', 'en'], cache_size=200)
             >>> l10n_no_cache.cache_size
-            0
+            200
+            >>> l10n_no_cache.cache_enabled
+            False
 
         Note:
             Returns configured size per bundle, not total across all bundles.
             Use cache_enabled to check if caching is active.
         """
-        return self._cache_size if self._enable_cache else 0
+        return self._cache_size
 
     def __repr__(self) -> str:
         """Return string representation for debugging.
@@ -681,9 +696,9 @@ class FluentLocalization:
             >>> repr(l10n)
             "FluentLocalization(locales=('lv', 'en'), bundles=2)"
         """
-        # Count only initialized bundles
-        initialized = sum(1 for b in self._bundles.values() if b is not None)
-        total = len(self._bundles)
+        # Count initialized bundles vs total locales
+        initialized = len(self._bundles)
+        total = len(self._locales)
         return f"FluentLocalization(locales={self._locales!r}, bundles={initialized}/{total})"
 
     def add_resource(
@@ -708,7 +723,7 @@ class FluentLocalization:
             FluentSyntaxError: If FTL source contains critical syntax errors.
         """
         with self._lock:
-            if locale not in self._bundles:
+            if locale not in self._locales:
                 msg = f"Locale '{locale}' not in fallback chain {self._locales}"
                 raise ValueError(msg)
 
@@ -875,8 +890,7 @@ class FluentLocalization:
 
             # Apply to any already-created bundles
             for bundle in self._bundles.values():
-                if bundle is not None:
-                    bundle.add_function(name, func)
+                bundle.add_function(name, func)
 
     def introspect_message(self, message_id: MessageId) -> "MessageIntrospection | None":
         """Get message introspection from first bundle with message.
@@ -950,8 +964,7 @@ class FluentLocalization:
         """
         with self._lock:
             for bundle in self._bundles.values():
-                if bundle is not None:
-                    bundle.clear_cache()
+                bundle.clear_cache()
 
     def get_bundles(self) -> Generator[FluentBundle]:
         """Lazy generator yielding bundles in fallback order.

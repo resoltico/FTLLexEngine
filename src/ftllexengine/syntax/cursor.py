@@ -231,20 +231,21 @@ class Cursor:
         return c
 
     def skip_whitespace(self) -> "Cursor":
-        """Skip whitespace characters (space, newline, carriage return).
+        """Skip whitespace characters (space and newline).
 
         Returns:
             New cursor advanced past all consecutive whitespace characters
 
         Note:
-            Skips space (U+0020), newline (U+000A), and carriage return (U+000D).
-            This matches Fluent parser specification for general whitespace.
+            Skips space (U+0020) and newline (U+000A).
+            CR (U+000D) is not checked because line endings are normalized
+            to LF at parser entry (see FluentParserV1.parse()).
 
         Example:
-            >>> cursor = Cursor("  \\n\\r  hello", 0)
+            >>> cursor = Cursor("  \\n  hello", 0)
             >>> new_cursor = cursor.skip_whitespace()
             >>> new_cursor.pos
-            6
+            5
             >>> new_cursor.current
             'h'
 
@@ -254,7 +255,7 @@ class Cursor:
             0
         """
         c = self
-        while not c.is_eof and c.current in (" ", "\n", "\r"):
+        while not c.is_eof and c.current in (" ", "\n"):
             c = c.advance()
         return c
 

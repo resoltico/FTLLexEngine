@@ -78,14 +78,15 @@ class TestPluralRuleInvariants:
         assert result1 == result2
 
     @given(n=numbers)
-    def test_unknown_locale_defaults_to_english(self, n: int | float) -> None:
-        """Unknown locale uses English rules."""
+    def test_unknown_locale_defaults_to_cldr_root(self, n: int | float) -> None:
+        """Unknown locale uses CLDR root rules (always 'other')."""
         assume(not (isinstance(n, float) and math.isnan(n)))  # Skip NaN
 
+        # CLDR root locale returns "other" for all values - the safest
+        # default that makes no language-specific assumptions.
         unknown_result = select_plural_category(n, "xx_XX")
-        english_result = select_plural_category(n, "en")
 
-        assert unknown_result == english_result
+        assert unknown_result == "other"
 
 
 # ============================================================================

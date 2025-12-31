@@ -122,11 +122,10 @@ class TestBabelToStrptimeEraToken:
         """Test _babel_to_strptime with era token 'G' (line 672)."""
         pattern = "d MMM y G"  # Day Month Year Era
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
         # Should mark has_era as True (line 672)
         assert has_era is True
-        assert has_timezone is False
         # Era token should be removed from pattern
         assert "G" not in strptime_pattern
 
@@ -134,11 +133,10 @@ class TestBabelToStrptimeEraToken:
         """Test _babel_to_strptime with era token 'GG'."""
         pattern = "y-MM-dd GG"
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
         # Should mark has_era as True
         assert has_era is True
-        assert has_timezone is False
         # Pattern should have era removed
         assert "GG" not in strptime_pattern
 
@@ -146,21 +144,19 @@ class TestBabelToStrptimeEraToken:
         """Test _babel_to_strptime with era token 'GGG'."""
         pattern = "GGG y MMMM d"
 
-        _strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        _strptime_pattern, has_era = _babel_to_strptime(pattern)
 
         # Should mark has_era as True
         assert has_era is True
-        assert has_timezone is False
 
     def test_babel_to_strptime_with_era_token_gggg(self) -> None:
         """Test _babel_to_strptime with era token 'GGGG'."""
         pattern = "d MMMM y GGGG"  # Full era name
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
         # Should mark has_era as True
         assert has_era is True
-        assert has_timezone is False
         # Full era token should be removed
         assert "GGGG" not in strptime_pattern
 
@@ -168,25 +164,26 @@ class TestBabelToStrptimeEraToken:
         """Test _babel_to_strptime without era token (has_era False)."""
         pattern = "d MMM y"  # No era token
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
         # Should mark has_era as False
         assert has_era is False
-        assert has_timezone is False
         # Should convert pattern correctly
         assert "%d" in strptime_pattern
         assert "%b" in strptime_pattern
         assert "%Y" in strptime_pattern
 
     def test_babel_to_strptime_with_timezone_token(self) -> None:
-        """v0.38.0: Test _babel_to_strptime with timezone token 'zzzz'."""
+        """Test _babel_to_strptime with timezone token 'zzzz'.
+
+        Timezone tokens are removed from patterns but not tracked separately
+        since timezone names are not stripped from input.
+        """
         pattern = "d MMM y HH:mm zzzz"  # With full timezone name
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        # Should mark has_timezone as True
         assert has_era is False
-        assert has_timezone is True
         # Timezone token should be removed from pattern
         assert "zzzz" not in strptime_pattern
 

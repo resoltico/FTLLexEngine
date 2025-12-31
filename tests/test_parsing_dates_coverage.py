@@ -560,16 +560,19 @@ class TestPreprocessDatetimeInput:
 
 
 class TestBabelToStrptimeTimezoneToken:
-    """Test _babel_to_strptime timezone token handling (branch 811->803)."""
+    """Test _babel_to_strptime timezone token handling.
+
+    Note: has_timezone was removed as dead code since timezone names
+    are not stripped from input. These tests verify timezone tokens
+    are still removed from strptime patterns.
+    """
 
     def test_babel_to_strptime_with_timezone_z(self) -> None:
         """Test _babel_to_strptime with timezone token 'z'."""
         pattern = "d MMM y HH:mm z"
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        # Should mark has_timezone as True
-        assert has_timezone is True
         assert has_era is False
         # Timezone token should be removed
         assert "z" not in strptime_pattern
@@ -578,9 +581,8 @@ class TestBabelToStrptimeTimezoneToken:
         """Test _babel_to_strptime with timezone token 'zzzz'."""
         pattern = "MMMM d, y 'at' h:mm a zzzz"
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        assert has_timezone is True
         assert has_era is False
         assert "zzzz" not in strptime_pattern
 
@@ -588,54 +590,53 @@ class TestBabelToStrptimeTimezoneToken:
         """Test _babel_to_strptime with timezone token 'v'."""
         pattern = "d MMM y HH:mm v"
 
-        _strptime_pattern, _has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        assert has_timezone is True
+        assert has_era is False
+        assert "v" not in strptime_pattern
 
     def test_babel_to_strptime_with_timezone_vvvv(self) -> None:
         """Test _babel_to_strptime with timezone token 'vvvv'."""
         pattern = "d MMM y HH:mm vvvv"
 
-        _strptime_pattern, _has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        assert has_timezone is True
+        assert has_era is False
+        assert "vvvv" not in strptime_pattern
 
     def test_babel_to_strptime_with_timezone_o(self) -> None:
         """Test _babel_to_strptime with timezone token 'O'."""
         pattern = "d MMM y HH:mm O"
 
-        _strptime_pattern, _has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        assert has_timezone is True
+        assert has_era is False
+        assert "O" not in strptime_pattern
 
     def test_babel_to_strptime_with_both_era_and_timezone(self) -> None:
         """Test _babel_to_strptime with both era and timezone tokens."""
         pattern = "d MMM y G HH:mm z"
 
-        strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+        strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-        # Both should be True
+        # Era should be True, timezone is removed but not tracked
         assert has_era is True
-        assert has_timezone is True
         # Both tokens should be removed
         assert "G" not in strptime_pattern
         assert "z" not in strptime_pattern
 
     def test_babel_to_strptime_none_token_fallthrough(self) -> None:
-        """Test _babel_to_strptime with None-mapped token that doesn't match era/timezone.
+        """Test _babel_to_strptime with None-mapped token that doesn't match era.
 
-        This tests the defensive code path (branch 811->803) where a token
-        maps to None but doesn't start with 'G' (era) or timezone prefixes.
-
-        Currently, all None-mapped tokens in _BABEL_TOKEN_MAP match one of these
-        conditions, but the code is defensive for future additions.
+        This tests the defensive code path where a token maps to None but
+        doesn't start with 'G' (era). Such tokens are silently dropped.
         """
         from unittest.mock import patch
 
         from ftllexengine.parsing import dates as dates_module
 
         # Create modified _BABEL_TOKEN_MAP with a None-mapped token that
-        # doesn't match era or timezone prefixes
+        # doesn't match era prefix
         original_map = dates_module._BABEL_TOKEN_MAP.copy()
         modified_map = original_map.copy()
         modified_map["QQQ"] = None  # Fictional token that maps to None
@@ -644,10 +645,9 @@ class TestBabelToStrptimeTimezoneToken:
             # Pattern with the fictional token
             pattern = "d MMM y QQQ HH:mm"
 
-            strptime_pattern, has_era, has_timezone = _babel_to_strptime(pattern)
+            strptime_pattern, has_era = _babel_to_strptime(pattern)
 
-            # Neither era nor timezone should be True
+            # Era should be False
             assert has_era is False
-            assert has_timezone is False
             # The token should have been silently dropped (no output)
             assert "QQQ" not in strptime_pattern

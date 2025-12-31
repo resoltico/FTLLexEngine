@@ -73,6 +73,12 @@ class ResolutionContext:
     Performance: Uses both list (for ordered path) and set (for O(1) lookup)
     to optimize cycle detection while preserving path information for errors.
 
+    Instance Lifecycle:
+        Each resolution operation creates a fresh ResolutionContext instance.
+        This ensures complete isolation between concurrent resolutions.
+        The per-resolution DepthGuard allocation is intentional for thread safety;
+        object pooling is not used to avoid synchronization overhead.
+
     Attributes:
         stack: Resolution stack for cycle detection (message keys being resolved)
         _seen: Set for O(1) membership checking (internal)
@@ -440,13 +446,13 @@ class FluentResolver:
                 arg_value = self._resolve_expression(named_arg.value, args, errors, context)
                 term_args[arg_name] = arg_value
 
-            # Evaluate positional arguments (less common but supported)
-            # Positional args are typically used in function calls, not terms,
-            # but we evaluate them for completeness. They're available but unnamed.
+            # Evaluate positional arguments (per Fluent spec, term arguments section)
+            # Reference: https://projectfluent.org/fluent/guide/terms.html#parameterized-terms
+            # The spec defines term arguments as named only (e.g., -term(case: "gen")).
+            # Positional arguments in term references are technically parsed but have
+            # no binding semantics - there's no parameter name to assign the value to.
+            # We evaluate them to catch expression errors but discard the result.
             for pos_arg in expr.arguments.positional:
-                # Note: Positional args in term references are unusual in practice.
-                # We evaluate them to collect any errors but don't add to term_args
-                # since there's no variable name to bind them to.
                 self._resolve_expression(pos_arg, args, errors, context)
 
         try:
@@ -477,7 +483,7 @@ class FluentResolver:
                     if key_name == selector_str:
                         return variant
                 case NumberLiteral(raw=raw_str):
-                    # Handle int, float, and Decimal for exact numeric match.
+                    # Handle int, float, Decimal, and FluentNumber for exact numeric match.
                     # Use raw string representation for maximum precision.
                     # Problem: float(1.1) != Decimal("1.1") due to IEEE 754.
                     # Solution: Use NumberLiteral.raw (exact source string) for key,
@@ -487,14 +493,23 @@ class FluentResolver:
                     # For exact matching with computed values, use Decimal arithmetic.
                     # Note: Exclude bool since isinstance(True, int) is True in Python,
                     # but str(True) == "True" which is not a valid Decimal.
-                    is_numeric = (
+                    #
+                    # FluentNumber wraps formatted numbers (from NUMBER() function) while
+                    # preserving the original numeric value for matching. Extract .value
+                    # for numeric comparison so [1000] matches FluentNumber(1000, "1,000").
+                    numeric_for_match: int | float | Decimal | None = None
+                    if isinstance(selector_value, FluentNumber):
+                        numeric_for_match = selector_value.value
+                    elif (
                         isinstance(selector_value, (int, float, Decimal))
                         and not isinstance(selector_value, bool)
-                    )
-                    if is_numeric:
+                    ):
+                        numeric_for_match = selector_value
+
+                    if numeric_for_match is not None:
                         # Use raw string for key to preserve exact source precision
                         key_decimal = Decimal(raw_str)
-                        sel_decimal = Decimal(str(selector_value))
+                        sel_decimal = Decimal(str(numeric_for_match))
                         if key_decimal == sel_decimal:
                             return variant
         return None
@@ -568,11 +583,13 @@ class FluentResolver:
             errors.append(e)
             return self._resolve_fallback_variant(expr, args, errors, context)
 
-        # Handle None consistently with _format_value (which returns "" for None).
-        # None represents a missing/undefined value and should NOT match any identifier.
-        # Using "" ensures None falls through to the default variant, which is the
-        # semantically correct behavior for missing data.
-        selector_str = "" if selector_value is None else str(selector_value)
+        # Use _format_value for consistent string representation.
+        # This ensures:
+        # - None -> "" (falls through to default variant)
+        # - bool -> "true"/"false" (matches FTL variant keys, not Python "True"/"False")
+        # - FluentNumber -> formatted string (display representation)
+        # - Other types -> str() representation
+        selector_str = self._format_value(selector_value)
 
         # Pass 1: Exact match (takes priority)
         exact_match = self._find_exact_variant(expr.variants, selector_value, selector_str)

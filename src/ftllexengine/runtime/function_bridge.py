@@ -145,12 +145,28 @@ def fluent_function[F: Callable[..., FluentValue]](
 
     Args:
         func: The function to decorate (auto-filled when used without parentheses)
-        inject_locale: If True, the bundle's locale code will be injected as the
-            second positional argument when the function is called from FTL.
+        inject_locale: If True, the bundle's locale code will be appended as
+            the final positional argument when the function is called from FTL.
             Use this for locale-aware formatting functions.
 
     Returns:
         Decorated function with Fluent metadata attributes set.
+
+    Locale Injection Protocol:
+        When inject_locale=True, the bundle's locale code is APPENDED after all
+        positional arguments provided by FTL. For single-argument functions (the
+        common case for formatting), this effectively makes locale the second
+        positional argument.
+
+        Expected function signature pattern:
+            def my_func(value: T, locale_code: str, *, keyword_args...) -> R
+
+        FTL call pattern:
+            { MY_FUNC($value, kwarg: "x") }  ->  my_func(value, locale_code, kwarg="x")
+
+        Built-in functions (NUMBER, DATETIME, CURRENCY) follow this pattern and
+        the resolver validates arity before injection. For custom functions, ensure
+        your signature matches the expected pattern.
 
     Example - Simple function (no locale):
         >>> @fluent_function
@@ -166,7 +182,7 @@ def fluent_function[F: Callable[..., FluentValue]](
         ...     return format_for_locale(value, locale_code)
         >>> bundle.add_function("MYFORMAT", my_format)
         >>> # FTL: { MY_FORMAT($count) }
-        >>> # Bundle automatically injects locale as second argument
+        >>> # Bundle appends locale: my_format(count_value, "en_US")
     """
 
     def decorator(fn: F) -> F:
@@ -387,6 +403,10 @@ class FunctionRegistry:
         # Do NOT catch KeyError, AttributeError, ArithmeticError, etc. These indicate
         # bugs in the custom function implementation and should propagate to expose
         # the real issue. Swallowing them masks debugging information.
+        #
+        # Type safety note: positional is Sequence[FluentValue] but custom functions
+        # may expect specific types. Type checking is enforced at runtime via
+        # TypeError, not at compile time. This is intentional for dynamic dispatch.
         try:
             return func_sig.callable(*positional, **python_kwargs)
         except (TypeError, ValueError) as e:

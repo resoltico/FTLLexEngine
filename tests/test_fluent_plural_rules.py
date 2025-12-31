@@ -40,10 +40,12 @@ class TestSelectPluralCategory:
         result = select_plural_category(2, "pl_PL")
         assert result == "few"  # Polish-specific category
 
-    def test_unknown_locale_falls_back_to_simple_rules(self) -> None:
-        """Unknown locale falls back to simple one/other rules."""
+    def test_unknown_locale_falls_back_to_cldr_root(self) -> None:
+        """Unknown locale falls back to CLDR root (always 'other')."""
+        # CLDR root locale returns "other" for all values - the safest
+        # default that makes no language-specific assumptions.
         result = select_plural_category(1, "unknown_UNKNOWN")
-        assert result == "one"
+        assert result == "other"
 
         result = select_plural_category(5, "unknown_UNKNOWN")
         assert result == "other"

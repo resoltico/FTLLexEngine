@@ -13,6 +13,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.45.0] - 2025-12-31
+
+### Breaking Changes
+- **Annotation.arguments Type**: Changed from `dict[str, str] | None` to `tuple[tuple[str, str], ...] | None`:
+  - Enforces immutability for frozen dataclass
+  - Preserves insertion order (dict order guarantee not always sufficient)
+  - Migration: Replace `annotation.arguments["key"]` with dict conversion or iteration
+
+### Added
+- **FluentBundle.cache_usage Property**: New property for current cache entries:
+  - `cache_size` returns configured limit regardless of `cache_enabled` state
+  - `cache_usage` returns current number of cached entries (0 if disabled)
+  - Separates configuration from runtime state
+- **Introspection Span Fields**: `VariableInfo`, `FunctionCallInfo`, `ReferenceInfo` now have `span` field:
+  - Enables IDE integration for go-to-definition and hover features
+  - Expression AST nodes (`VariableReference`, `MessageReference`, `TermReference`, `FunctionReference`) now track source positions
+  - Spans propagated through IntrospectionVisitor to info objects
+  - API extension is non-breaking (default value `None` for programmatic ASTs)
+- **MAX_LOOKAHEAD_CHARS Constant**: Centralized parser lookahead limit:
+  - Located in `ftllexengine.constants`
+  - Used by `_is_variant_marker()` for bounded lookahead (128 chars)
+  - Prevents O(N^2) parsing on adversarial input
+
+### Changed
+- **Plural Rule CLDR Root Fallback**: Unknown locales now use CLDR root locale:
+  - Previous: Hardcoded `abs(n) == 1` returned "one", else "other"
+  - Now: Babel's CLDR root locale returns "other" for all values
+  - Safer default that makes no language-specific assumptions
+- **Cache Key Single-Pass Conversion**: `FormatCache._make_key()` optimized:
+  - Previous: Two-pass (any() check + list comprehension)
+  - Now: Single-pass inline conversion with hashability check
+  - Performance improvement for cache key construction
+- **FluentLocalization Lazy Bundle Storage**: `_bundles` dict optimized:
+  - Previous: Pre-populated with `None` markers for all locales
+  - Now: Empty dict; bundles added on first access
+  - Eliminates null-check boilerplate in iteration methods
+- **Copy-on-Write Function Registry**: FluentBundle defers registry copying:
+  - Shared registry used directly until first `add_function()` call
+  - Reduces memory allocation for bundles that never add custom functions
+  - Transparent optimization (no API change)
+- **Currency Code Pattern Helper**: Extracted `_get_iso_code_pattern()` method:
+  - CLDR pattern manipulation for ISO code display centralized
+  - Defensive null checks prevent AttributeError on edge cases
+- **Whitespace Handling**: `skip_whitespace()` no longer checks for CR:
+  - CR is normalized to LF at parser entry (`FluentParserV1.parse()`)
+  - Simplifies whitespace definition (space + LF only)
+  - Documents normalization assumption in docstring
+
+### Fixed
+- **Serializer Comment Newline**: Removed extra newline after attached comments:
+  - Previous: Extra `\n` added after comment in `_serialize_message` and `_serialize_term`
+  - Now: Comments followed directly by entry without double newline
+  - Improves roundtrip fidelity for comment-attached entries
+- **Boolean Selector Stringification**: `True`/`False` now format as `"true"`/`"false"`:
+  - Previous: `str(True)` produced `"True"`, missing `[true]` variant
+  - Now: Uses `_format_value()` for consistent string conversion
+  - Matches Fluent spec boolean variant key expectations
+- **FluentNumber Variant Matching**: Extracts `.value` for numeric comparison:
+  - Previous: `FluentNumber(5)` didn't match `[5]` variant
+  - Now: Numeric comparison uses underlying value, not wrapper object
+- **Junk Annotation Propagation**: Preserves specific parser error codes:
+  - Previous: All Junk entries reported as generic "parse-error"
+  - Now: Iterates Junk annotations to extract specific codes/messages
+  - Improves error diagnostics granularity
+- **Template String Collision**: Uses `.replace()` instead of `.format()`:
+  - Previous: `{locale}` in paths could raise `KeyError` on FTL content
+  - Now: Only `{locale}` placeholder is replaced, FTL braces preserved
+
+### Removed
+- **has_timezone Dead Code**: Removed from `_babel_to_strptime()` and callers:
+  - Return type changed from `tuple[str, bool, bool]` to `tuple[str, bool]`
+  - Timezone tracking was unused (timezone names not stripped from input)
+  - Simplifies pattern extraction API
+
+### Security
+- **PathResourceLoader Path Resolution**: Defense-in-depth for path traversal:
+  - `_is_safe_path()` now explicitly `resolve()` both base and target paths
+  - Prevents symlink-based path traversal bypasses
+  - Complements existing `relative_to()` check
+
+### Documentation
+- **Locale Injection Protocol**: Documented in `fluent_function` decorator docstring:
+  - Locale code appended after all positional arguments
+  - For single-argument functions, locale becomes second positional arg
+  - Protocol consistent with current implementation
+- **DepthGuard Mutability Note**: Documents intentional non-frozen design
+- **LocaleContext Instance Sharing**: Clarifies Flyweight pattern for cache
+- **ReferenceInfo**: Enhanced docstring with examples
+- **DateTime Fallback Rationale**: Documents `"{1} {0}"` pattern choice
+- **CLDR Scan Latency**: Documents 200-500ms cold start for currency scan
+- **Function Bridge Type Safety**: Notes runtime vs compile-time type checking
+- **max_source_size Unit**: Fixed "bytes" to "characters" in docstring
+
 ## [0.44.0] - 2025-12-30
 
 ### Breaking Changes
@@ -692,6 +785,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.45.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.45.0
 [0.44.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.44.0
 [0.43.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.43.0
 [0.42.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.42.0

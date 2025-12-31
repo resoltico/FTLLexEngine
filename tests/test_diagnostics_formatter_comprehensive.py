@@ -635,16 +635,18 @@ class TestFormatValidationResult:
         """Validation result formats errors section."""
         formatter = DiagnosticFormatter()
 
-        # Create mock validation error
+        # Create mock validation error with all required attributes
         error1 = Mock()
         error1.code = "INVALID_SYNTAX"
         error1.message = "Syntax error"
+        error1.content = "bad syntax"
         error1.line = 5
         error1.column = 10
 
         error2 = Mock()
         error2.code = "MISSING_VALUE"
         error2.message = "Message has no value"
+        error2.content = "msg"
         error2.line = 10
         error2.column = None
 
@@ -659,7 +661,7 @@ class TestFormatValidationResult:
         output = formatter.format_validation_result(result)
 
         assert "Validation failed: 2 error(s), 0 warning(s)" in output
-        assert "\nErrors:" in output
+        assert "\nErrors (2):" in output
         assert "[INVALID_SYNTAX] at line 5, column 10: Syntax error" in output
         assert "[MISSING_VALUE] at line 10: Message has no value" in output
 
@@ -667,12 +669,20 @@ class TestFormatValidationResult:
         """Validation result formats warnings section."""
         formatter = DiagnosticFormatter()
 
-        # Create mock warning
+        # Create mock warning with all required attributes
         warning1 = Mock()
-        warning1.format = Mock(return_value="Warning: Unused message")
+        warning1.code = "UNUSED_MESSAGE"
+        warning1.message = "Unused message"
+        warning1.context = "hello"
+        warning1.line = 3
+        warning1.column = 1
 
         warning2 = Mock()
-        warning2.format = Mock(return_value="Warning: Deprecated syntax")
+        warning2.code = "DEPRECATED_SYNTAX"
+        warning2.message = "Deprecated syntax"
+        warning2.context = None
+        warning2.line = None
+        warning2.column = None
 
         result = Mock()
         result.is_valid = True
@@ -684,22 +694,24 @@ class TestFormatValidationResult:
 
         output = formatter.format_validation_result(result)
 
-        assert "\nWarnings:" in output
-        assert "Warning: Unused message" in output
-        assert "Warning: Deprecated syntax" in output
+        assert "\nWarnings (2):" in output
+        assert "[UNUSED_MESSAGE] at line 3, column 1: Unused message" in output
+        assert "[DEPRECATED_SYNTAX]: Deprecated syntax" in output
 
     def test_format_validation_result_with_annotations(self):
         """Validation result formats annotations section."""
         formatter = DiagnosticFormatter()
 
-        # Create mock annotations
+        # Create mock annotations with all required attributes
         annotation1 = Mock()
         annotation1.code = "PARSER_INFO"
         annotation1.message = "Parsed successfully"
+        annotation1.arguments = None
 
         annotation2 = Mock()
         annotation2.code = "PARSER_NOTE"
         annotation2.message = "Alternative syntax available"
+        annotation2.arguments = (("key", "value"),)
 
         result = Mock()
         result.is_valid = True
@@ -711,9 +723,9 @@ class TestFormatValidationResult:
 
         output = formatter.format_validation_result(result)
 
-        assert "\nAnnotations:" in output
-        assert "[PARSER_INFO] Parsed successfully" in output
-        assert "[PARSER_NOTE] Alternative syntax available" in output
+        assert "\nAnnotations (2):" in output
+        assert "[PARSER_INFO]: Parsed successfully" in output
+        assert "[PARSER_NOTE]: Alternative syntax available" in output
 
     def test_format_validation_error_minimal(self):
         """_format_validation_error with no line/column."""
@@ -722,6 +734,7 @@ class TestFormatValidationResult:
         error = Mock()
         error.code = "UNKNOWN_ERROR"
         error.message = "Something went wrong"
+        error.content = "error content"
         error.line = None
         error.column = None
 

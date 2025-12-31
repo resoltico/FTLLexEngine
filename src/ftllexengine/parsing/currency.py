@@ -12,6 +12,13 @@ Tiered Loading Strategy:
     This provides sub-millisecond cold start for common currencies while maintaining
     complete CLDR coverage for edge cases.
 
+Performance:
+    Cold start latency for the full CLDR scan is approximately 200-500ms depending
+    on Babel version and the number of locales installed. This scan runs once per
+    process (via @functools.cache) and only triggers when encountering an ambiguous
+    currency symbol not resolvable in the fast tier. Most applications using common
+    currencies (EUR, USD, GBP, JPY, CNY, INR, etc.) will never trigger the full scan.
+
 Architecture:
     Uses @functools.cache for thread-safe, lazy-loaded CLDR data access.
     - Locale-aware symbol resolution for ambiguous symbols via resolve_ambiguous_symbol()

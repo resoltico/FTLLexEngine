@@ -6,6 +6,23 @@ and string literals per the Fluent specification.
 Error Context:
     Functions store error context on failure via _set_parse_error().
     Retrieve with get_last_parse_error() for detailed diagnostics.
+
+Thread-Local State (Design Decision):
+    This module uses thread-local storage for parse error context.
+    While the resolver module uses explicit context passing, the parser
+    uses thread-locals for a different reason: primitive parsing functions
+    are called hundreds of times per parse, and threading error context
+    through every call would significantly increase signature noise and
+    call overhead.
+
+    The trade-off is acceptable here because:
+    1. Parser operations are synchronous and single-threaded per parse
+    2. Error context is only needed for the most recent primitive failure
+    3. Each thread maintains independent state (no cross-thread conflicts)
+    4. Context is set/get locally within the same call stack
+
+    For async frameworks that reuse threads, the caller is responsible
+    for calling clear_parse_error() before each parse operation.
 """
 
 from dataclasses import dataclass

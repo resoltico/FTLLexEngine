@@ -36,9 +36,16 @@ class DiagnosticFormatter:
     or machine-readable output. Supports multiple output formats and
     sanitization options.
 
+    Central Formatting Authority:
+        This class is the single source of truth for diagnostic formatting.
+        ValidationError.format(), ValidationWarning.format(), and
+        ValidationResult.format() all delegate to this class to ensure
+        consistent output style across all diagnostic types.
+
     Attributes:
         output_format: Output style (rust, simple, json)
         sanitize: Truncate content to prevent information leakage
+        redact_content: When sanitize=True, completely redact instead of truncate
         color: Enable ANSI color codes (for terminal output)
         max_content_length: Maximum content length when sanitizing
 
@@ -61,6 +68,7 @@ class DiagnosticFormatter:
 
     output_format: OutputFormat = OutputFormat.RUST
     sanitize: bool = False
+    redact_content: bool = False
     color: bool = False
     max_content_length: int = 100
 
@@ -92,11 +100,20 @@ class DiagnosticFormatter:
         """
         return "\n\n".join(self.format(d) for d in diagnostics)
 
-    def format_validation_result(self, result: "ValidationResult") -> str:
+    def format_validation_result(
+        self,
+        result: "ValidationResult",
+        *,
+        include_warnings: bool = True,
+    ) -> str:
         """Format a ValidationResult with all errors, warnings, and annotations.
+
+        Central formatting method for ValidationResult. Called by
+        ValidationResult.format() to ensure consistent output.
 
         Args:
             result: ValidationResult to format
+            include_warnings: If True (default), include warnings in output
 
         Returns:
             Formatted string with summary and details
@@ -104,8 +121,10 @@ class DiagnosticFormatter:
         parts: list[str] = []
 
         # Summary line
-        if result.is_valid:
-            parts.append("Validation passed")
+        if result.is_valid and (not include_warnings or not result.warnings):
+            parts.append("Validation passed: no errors or warnings")
+        elif result.is_valid:
+            parts.append(f"Validation passed with {result.warning_count} warning(s)")
         else:
             parts.append(
                 f"Validation failed: {result.error_count} error(s), "
@@ -114,44 +133,112 @@ class DiagnosticFormatter:
 
         # Format errors
         if result.errors:
-            parts.append("\nErrors:")
+            parts.append(f"\nErrors ({len(result.errors)}):")
             for error in result.errors:
-                formatted = self._format_validation_error(error)
+                formatted = self.format_error(error)
                 parts.append(f"  {formatted}")
-
-        # Format warnings
-        if result.warnings:
-            parts.append("\nWarnings:")
-            for warning in result.warnings:
-                parts.append(f"  {warning.format()}")
 
         # Format annotations (parser messages)
         if result.annotations:
-            parts.append("\nAnnotations:")
+            parts.append(f"\nAnnotations ({len(result.annotations)}):")
             for annotation in result.annotations:
-                parts.append(f"  [{annotation.code}] {annotation.message}")
+                formatted = self._format_annotation(annotation)
+                parts.append(f"  {formatted}")
+
+        # Format warnings if requested
+        if include_warnings and result.warnings:
+            parts.append(f"\nWarnings ({len(result.warnings)}):")
+            for warning in result.warnings:
+                formatted = self.format_warning(warning)
+                parts.append(f"  {formatted}")
 
         return "\n".join(parts)
 
-    def _format_validation_error(self, error: object) -> str:
+    def format_error(self, error: object) -> str:
         """Format a ValidationError object.
 
+        Central formatting method for ValidationError. Called by
+        ValidationError.format() to ensure consistent output.
+
         Args:
-            error: ValidationError-like object with code, message, line, column
+            error: ValidationError-like object with code, message, content, line, column
 
         Returns:
-            Formatted error string
+            Formatted error string with location and content
         """
         # Access attributes safely for duck typing
         code = getattr(error, "code", "UNKNOWN")
         message = getattr(error, "message", str(error))
+        content = getattr(error, "content", None)
         line = getattr(error, "line", None)
         column = getattr(error, "column", None)
 
-        if line is not None and column is not None:
-            return f"[{code}] at line {line}, column {column}: {message}"
+        # Build location string
+        location = ""
         if line is not None:
-            return f"[{code}] at line {line}: {message}"
+            location = f" at line {line}"
+            if column is not None:
+                location += f", column {column}"
+
+        # Build content display with sanitization
+        content_str = ""
+        if content is not None:
+            content_display = self._maybe_sanitize_content(content)
+            content_str = f" (content: {content_display!r})"
+
+        return f"[{code}]{location}: {message}{content_str}"
+
+    def format_warning(self, warning: object) -> str:
+        """Format a ValidationWarning object.
+
+        Central formatting method for ValidationWarning. Called by
+        ValidationWarning.format() to ensure consistent output.
+
+        Args:
+            warning: ValidationWarning-like object with code, message, context, line, column
+
+        Returns:
+            Formatted warning string with location and context
+        """
+        # Access attributes safely for duck typing
+        code = getattr(warning, "code", "UNKNOWN")
+        message = getattr(warning, "message", str(warning))
+        context = getattr(warning, "context", None)
+        line = getattr(warning, "line", None)
+        column = getattr(warning, "column", None)
+
+        # Build location string
+        location = ""
+        if line is not None:
+            location = f" at line {line}"
+            if column is not None:
+                location += f", column {column}"
+
+        # Build context string
+        context_str = f" (context: {context!r})" if context else ""
+
+        return f"[{code}]{location}: {message}{context_str}"
+
+    def _format_annotation(self, annotation: object) -> str:
+        """Format an AST Annotation object.
+
+        Args:
+            annotation: Annotation object with code, message, arguments
+
+        Returns:
+            Formatted annotation string
+        """
+        code = getattr(annotation, "code", "UNKNOWN")
+        message = getattr(annotation, "message", str(annotation))
+        arguments = getattr(annotation, "arguments", None)
+
+        # Sanitize message if needed
+        message = self._maybe_sanitize(message)
+
+        # Include arguments tuple if present
+        if arguments:
+            args_str = ", ".join(f"{k}={v!r}" for k, v in arguments)
+            return f"[{code}]: {message} ({args_str})"
         return f"[{code}]: {message}"
 
     def _format_rust(self, diagnostic: Diagnostic) -> str:
@@ -268,3 +355,25 @@ class DiagnosticFormatter:
         if self.sanitize and len(text) > self.max_content_length:
             return text[: self.max_content_length] + "..."
         return text
+
+    def _maybe_sanitize_content(self, content: str) -> str:
+        """Sanitize content field with optional redaction.
+
+        Handles both truncation and complete redaction based on formatter options.
+
+        Args:
+            content: Content string to possibly sanitize
+
+        Returns:
+            Original, truncated, or redacted content
+        """
+        if not self.sanitize:
+            return content
+
+        if self.redact_content:
+            return "[content redacted]"
+
+        if len(content) > self.max_content_length:
+            return content[: self.max_content_length] + "..."
+
+        return content

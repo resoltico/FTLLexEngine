@@ -100,20 +100,21 @@ class Annotation:
     Attributes:
         code: Error code (e.g., "E0001", "expected-token")
         message: Human-readable error message
-        arguments: Additional error context (optional)
+        arguments: Additional error context as immutable tuple of (key, value) pairs
         span: Location of the error (optional)
 
     Example:
         Annotation(
             code="expected-token",
             message="Expected '}' but found EOF",
+            arguments=(("found", "EOF"), ("expected", "}")),
             span=Span(start=10, end=10)
         )
     """
 
     code: str
     message: str
-    arguments: dict[str, str] | None = None
+    arguments: tuple[tuple[str, str], ...] | None = None
     span: Span | None = None
 
 
@@ -389,6 +390,7 @@ class VariableReference:
     """Variable reference: $variable"""
 
     id: Identifier
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs["VariableReference"]:
@@ -402,6 +404,7 @@ class MessageReference:
 
     id: Identifier
     attribute: Identifier | None = None
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs["MessageReference"]:
@@ -416,6 +419,7 @@ class TermReference:
     id: Identifier
     attribute: Identifier | None = None
     arguments: "CallArguments | None" = None
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs["TermReference"]:
@@ -429,6 +433,7 @@ class FunctionReference:
 
     id: Identifier
     arguments: "CallArguments"
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs["FunctionReference"]:

@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.44.0"
+version = "0.45.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -356,6 +356,6 @@ max-line-length = 100
 [tool.pylint.design]
 max-args = 7
 max-attributes = 10
-max-locals = 20  # Parser methods need local variables for token tracking
-max-branches = 20  # Parser dispatch methods + v0.7.0 currency disambiguation
-max-nested-blocks = 6  # v0.7.0 currency ambiguous symbol handling
+max-locals = 20
+max-branches = 20
+max-nested-blocks = 6

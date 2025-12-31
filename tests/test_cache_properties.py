@@ -372,3 +372,29 @@ class TestCacheInternalProperties:
 
         # Cache should have one entry per unique attribute
         assert len(cache) == len(seen_attrs)
+
+    @given(
+        num_operations=st.integers(min_value=0, max_value=100),
+    )
+    def test_cache_size_property_consistency(self, num_operations: int) -> None:
+        """Cache size property matches internal state.
+
+        Property: cache.size == len(cache._cache)
+        """
+        bundle = FluentBundle("en", enable_cache=True, cache_size=100)
+
+        # Add messages
+        ftl_source = "\n".join([f"msg{i} = Message {i}" for i in range(num_operations)])
+        bundle.add_resource(ftl_source)
+        cache = bundle._cache
+        assert cache is not None  # Type narrowing for mypy
+
+        # Format messages
+        for i in range(num_operations):
+            bundle.format_pattern(f"msg{i}")
+
+        # size property should match len() and stats
+        assert cache.size == len(cache)
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert cache.size == stats["size"]

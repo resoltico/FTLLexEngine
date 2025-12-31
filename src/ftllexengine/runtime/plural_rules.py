@@ -61,9 +61,16 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
         # Use cached locale parsing for performance
         locale_obj = get_babel_locale(locale)
     except (UnknownLocaleError, ValueError):
-        # Fallback for unknown/invalid locales
-        # Most common pattern: n == 1 → "one", else → "other"
-        return "one" if abs(n) == 1 else "other"
+        # Fallback to CLDR root locale for unknown/invalid locales
+        # CLDR root returns "other" for all values, which is the safest
+        # default since it makes no assumptions about language-specific rules.
+        # The previous abs(n) == 1 heuristic was too simplistic and didn't
+        # handle precision-based rules (e.g., 1 vs 1.0 distinctions).
+        try:
+            locale_obj = get_babel_locale("root")
+        except (UnknownLocaleError, ValueError):
+            # Should not happen, but ultimate fallback
+            return "other"
 
     # Get plural rule from Babel CLDR data
     # Babel always provides plural_form for valid locales

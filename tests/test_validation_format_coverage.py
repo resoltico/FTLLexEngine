@@ -178,11 +178,11 @@ class TestValidationResultFormatAnnotationArguments:
     """Test ValidationResult.format() with annotations that have arguments dict."""
 
     def test_format_annotation_with_arguments(self) -> None:
-        """Test lines 283-284: annotation with non-empty arguments dict."""
+        """Test lines 283-284: annotation with non-empty arguments tuple."""
         annotation = Annotation(
             code="expected-token",
             message="Expected '}' but found EOF",
-            arguments={"expected": "}", "found": "EOF"},
+            arguments=(("expected", "}"), ("found", "EOF")),
         )
         result = ValidationResult.invalid(annotations=(annotation,))
 
@@ -199,7 +199,7 @@ class TestValidationResultFormatAnnotationArguments:
         annotation = Annotation(
             code="invalid-character",
             message="Invalid character in identifier",
-            arguments={"char": "@"},
+            arguments=(("char", "@"),),
         )
         result = ValidationResult.invalid(annotations=(annotation,))
 
@@ -227,11 +227,11 @@ class TestValidationResultFormatAnnotationArguments:
         assert "=" not in formatted or "parse-error" in formatted
 
     def test_format_annotation_with_empty_arguments(self) -> None:
-        """Test annotation with empty arguments dict (falsy, takes else branch)."""
+        """Test annotation with empty arguments tuple (falsy, takes else branch)."""
         annotation = Annotation(
             code="warning",
             message="Warning message",
-            arguments={},
+            arguments=(),
         )
         result = ValidationResult.invalid(annotations=(annotation,))
 
@@ -246,7 +246,7 @@ class TestValidationResultFormatAnnotationArguments:
         annotation_with_args = Annotation(
             code="error-1",
             message="First error",
-            arguments={"key": "value"},
+            arguments=(("key", "value"),),
         )
         annotation_without_args = Annotation(
             code="error-2",
@@ -273,7 +273,7 @@ class TestValidationResultFormatAnnotationArguments:
         annotation = Annotation(
             code="long-error",
             message=long_message,
-            arguments={"detail": "important"},
+            arguments=(("detail", "important"),),
         )
         result = ValidationResult.invalid(annotations=(annotation,))
 
@@ -386,7 +386,7 @@ class TestValidationResultFormatWarnings:
         formatted = result.format()
 
         assert "Warnings (2):" in formatted
-        assert "[warn-1]: First warning (ctx1)" in formatted
+        assert "[warn-1]: First warning (context: 'ctx1')" in formatted
         assert "[warn-2]: Second warning" in formatted
 
     def test_format_with_warnings_context_optional(self) -> None:

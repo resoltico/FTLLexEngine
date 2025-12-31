@@ -85,15 +85,19 @@ class TestSkipBlank:
         assert new_cursor.current == "h"
 
     def test_skip_blank_mixed_whitespace(self) -> None:
-        """Verify skip_blank skips mixed spaces and newlines."""
-        cursor = Cursor(source="  \n \r  hello", pos=0)
+        """Verify skip_blank skips mixed spaces and newlines.
+
+        Note: CR is normalized to LF at parser entry, so skip_blank
+        only needs to handle space and LF.
+        """
+        cursor = Cursor(source="  \n   hello", pos=0)
         new_cursor = skip_blank(cursor)
-        assert new_cursor.pos == 7
+        assert new_cursor.pos == 6
         assert new_cursor.current == "h"
 
     def test_skip_blank_all_whitespace(self) -> None:
         """Verify skip_blank handles all-whitespace string."""
-        cursor = Cursor(source=" \n\r ", pos=0)
+        cursor = Cursor(source=" \n ", pos=0)
         new_cursor = skip_blank(cursor)
         assert new_cursor.is_eof is True
 
@@ -104,11 +108,16 @@ class TestSkipBlank:
         assert new_cursor.pos == 2
         assert new_cursor.current == "\t"
 
-    def test_skip_blank_crlf(self) -> None:
-        """Verify skip_blank handles CRLF line endings."""
-        cursor = Cursor(source="\r\nhello", pos=0)
+    def test_skip_blank_normalized_crlf(self) -> None:
+        """Verify skip_blank handles CRLF that has been normalized to LF.
+
+        Note: CRLF is normalized to LF at parser entry (FluentParserV1.parse()),
+        so by the time skip_blank is called, '\r\n' has become '\n'.
+        """
+        # Simulate post-normalization: CRLF becomes LF
+        cursor = Cursor(source="\nhello", pos=0)
         new_cursor = skip_blank(cursor)
-        assert new_cursor.pos == 2
+        assert new_cursor.pos == 1
         assert new_cursor.current == "h"
 
 
@@ -320,11 +329,19 @@ class TestWhitespaceEdgeCases:
         assert new_cursor.pos == 0
 
     def test_whitespace_with_carriage_return_only(self) -> None:
-        """Verify functions handle carriage return without newline."""
+        """Verify carriage return alone is not skipped as whitespace.
+
+        Note: Standalone CR is NOT considered whitespace by skip_blank.
+        CR is normalized to LF at parser entry (FluentParserV1.parse()),
+        but if a cursor is created directly with CR, it won't be skipped.
+        This matches the Fluent spec which defines whitespace as U+0020
+        and line endings as LF/CRLF (not standalone CR).
+        """
         cursor = Cursor(source="\rhello", pos=0)
         new_cursor = skip_blank(cursor)
-        assert new_cursor.pos == 1
-        assert new_cursor.current == "h"
+        # CR alone is not skipped since it's not valid whitespace
+        assert new_cursor.pos == 0
+        assert new_cursor.current == "\r"
 
     def test_is_indented_continuation_with_tab_indentation(self) -> None:
         """Verify is_indented_continuation returns False for tab indentation."""
@@ -349,21 +366,27 @@ class TestWhitespaceSpecCompliance:
         assert new_cursor2.pos == 0
 
     def test_blank_accepts_line_endings(self) -> None:
-        """Verify blank accepts line_end (LF, CRLF)."""
-        # LF (U+000A)
+        """Verify blank accepts LF line endings.
+
+        Note: CR and CRLF are normalized to LF at parser entry
+        (FluentParserV1.parse()), so skip_blank only needs to handle LF.
+        Standalone CR is NOT whitespace per Fluent spec.
+        """
+        # LF (U+000A) - accepted
         cursor1 = Cursor(source="\ntext", pos=0)
         new_cursor1 = skip_blank(cursor1)
         assert new_cursor1.current == "t"
 
-        # CRLF (U+000D U+000A)
-        cursor2 = Cursor(source="\r\ntext", pos=0)
+        # After normalization, CRLF becomes LF - which is accepted
+        # Simulating post-normalization
+        cursor2 = Cursor(source="\ntext", pos=0)
         new_cursor2 = skip_blank(cursor2)
         assert new_cursor2.current == "t"
 
-        # CR alone (U+000D)
+        # CR alone is NOT whitespace (not skipped)
         cursor3 = Cursor(source="\rtext", pos=0)
         new_cursor3 = skip_blank(cursor3)
-        assert new_cursor3.current == "t"
+        assert new_cursor3.current == "\r"  # CR is not skipped
 
     def test_continuation_special_chars(self) -> None:
         """Verify continuation correctly identifies special starting characters."""

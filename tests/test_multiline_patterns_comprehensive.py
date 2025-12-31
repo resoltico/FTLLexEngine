@@ -633,6 +633,29 @@ class TestMultilineWhitespaceHandling:
         # Three text elements
         assert len(msg.value.elements) == 3
 
+    def test_space_only_lines_preserved_as_blank(self):
+        """Space-only lines in multiline patterns are preserved as blank lines.
+
+        Per Fluent spec, lines containing only whitespace are blank lines.
+        Their indentation does not affect common indent calculation.
+        The spaces are consumed but the blank line is preserved via newlines.
+        """
+        # Use explicit string with space-only line (4 spaces on middle line)
+        source = "msg =\n    First line\n    \n    Third line\n"
+        parser = FluentParserV1()
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert msg.value is not None
+        # Two text elements (space-only line creates extra newline in first)
+        text_elements = [e for e in msg.value.elements if isinstance(e, TextElement)]
+        assert len(text_elements) == 2
+        # First element ends with two newlines (one for blank line)
+        assert text_elements[0].value == "First line\n\n"
+        # Second element is the third line (trimmed of leading indent)
+        assert text_elements[1].value == "Third line"
+
 
 class TestMultilineErrorCases:
     """Tests for error handling in multiline patterns."""

@@ -5,12 +5,23 @@ Consolidates all validation feedback from different stages:
 - Syntax-level: Structured validation errors
 - Semantic-level: Structured validation warnings
 
+Formatting Architecture:
+    All .format() methods delegate to DiagnosticFormatter to ensure
+    consistent output style. The formatter is created on-demand with
+    the appropriate options (sanitize, redact_content).
+
 Python 3.13+.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ftllexengine.syntax.ast import Annotation
+
+if TYPE_CHECKING:
+    from .formatter import DiagnosticFormatter
 
 __all__ = [
     "ValidationError",
@@ -24,8 +35,18 @@ __all__ = [
 # ============================================================================
 
 
-# Maximum content length before truncation when sanitizing
-_SANITIZE_MAX_CONTENT_LENGTH: int = 100
+def _get_formatter(
+    *,
+    sanitize: bool = False,
+    redact_content: bool = False,
+) -> DiagnosticFormatter:
+    """Create DiagnosticFormatter with specified options.
+
+    Local import to avoid circular dependency at module load time.
+    """
+    from .formatter import DiagnosticFormatter  # noqa: PLC0415
+
+    return DiagnosticFormatter(sanitize=sanitize, redact_content=redact_content)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +80,8 @@ class ValidationError:
     ) -> str:
         """Format error as human-readable string.
 
+        Delegates to DiagnosticFormatter for consistent output style.
+
         Args:
             sanitize: If True, truncate content to prevent information leakage.
                      Useful for multi-tenant applications where FTL content
@@ -75,23 +98,8 @@ class ValidationError:
             >>> error.format(sanitize=True)  # Truncates to 100 chars
             >>> error.format(sanitize=True, redact_content=True)  # Redacts entirely
         """
-        if sanitize:
-            if redact_content:
-                content_display = "[content redacted]"
-            elif len(self.content) > _SANITIZE_MAX_CONTENT_LENGTH:
-                content_display = self.content[:_SANITIZE_MAX_CONTENT_LENGTH] + "..."
-            else:
-                content_display = self.content
-        else:
-            content_display = self.content
-
-        location = ""
-        if self.line is not None:
-            location = f" at line {self.line}"
-            if self.column is not None:
-                location += f", column {self.column}"
-
-        return f"[{self.code}]{location}: {self.message} (content: {content_display!r})"
+        formatter = _get_formatter(sanitize=sanitize, redact_content=redact_content)
+        return formatter.format_error(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,17 +126,13 @@ class ValidationWarning:
     def format(self) -> str:
         """Format warning as human-readable string.
 
+        Delegates to DiagnosticFormatter for consistent output style.
+
         Returns:
             Formatted warning string with optional location information.
         """
-        location = ""
-        if self.line is not None:
-            location = f" at line {self.line}"
-            if self.column is not None:
-                location += f", column {self.column}"
-
-        context_str = f" (context: {self.context!r})" if self.context else ""
-        return f"[{self.code}]{location}: {self.message}{context_str}"
+        formatter = _get_formatter()
+        return formatter.format_warning(self)
 
 
 # ============================================================================
@@ -209,7 +213,7 @@ class ValidationResult:
         return len(self.warnings)
 
     @staticmethod
-    def valid() -> "ValidationResult":
+    def valid() -> ValidationResult:
         """Create a valid result with no errors, warnings, or annotations.
 
         Returns:
@@ -222,7 +226,7 @@ class ValidationResult:
         errors: tuple[ValidationError, ...] = (),
         warnings: tuple[ValidationWarning, ...] = (),
         annotations: tuple[Annotation, ...] = (),
-    ) -> "ValidationResult":
+    ) -> ValidationResult:
         """Create an invalid result with errors and/or annotations.
 
         Args:
@@ -238,7 +242,7 @@ class ValidationResult:
         )
 
     @staticmethod
-    def from_annotations(annotations: tuple[Annotation, ...]) -> "ValidationResult":
+    def from_annotations(annotations: tuple[Annotation, ...]) -> ValidationResult:
         """Create result from parser-level annotations only.
 
         Convenience factory for semantic validator usage.
@@ -262,6 +266,8 @@ class ValidationResult:
     ) -> str:
         """Format validation result as human-readable string.
 
+        Delegates to DiagnosticFormatter for consistent output style.
+
         Args:
             sanitize: If True, truncate error content to prevent information
                      leakage. Useful for multi-tenant applications where FTL
@@ -283,38 +289,5 @@ class ValidationResult:
             >>> result.format(sanitize=True)  # Truncated content
             >>> result.format(sanitize=True, redact_content=True)  # No content
         """
-        lines: list[str] = []
-
-        # Format errors with sanitization
-        if self.errors:
-            lines.append(f"Errors ({len(self.errors)}):")
-            for error in self.errors:
-                lines.append(f"  {error.format(sanitize=sanitize, redact_content=redact_content)}")
-
-        # Format annotations (parser-level errors)
-        if self.annotations:
-            lines.append(f"Annotations ({len(self.annotations)}):")
-            for annotation in self.annotations:
-                # Annotations have code, message, and optional arguments dict
-                content = annotation.message
-                if sanitize and len(content) > _SANITIZE_MAX_CONTENT_LENGTH:
-                    content = content[:_SANITIZE_MAX_CONTENT_LENGTH] + "..."
-
-                # Include arguments dict if present (preserves structured diagnostic data)
-                if annotation.arguments:
-                    args_str = ", ".join(f"{k}={v!r}" for k, v in annotation.arguments.items())
-                    lines.append(f"  [{annotation.code}]: {content} ({args_str})")
-                else:
-                    lines.append(f"  [{annotation.code}]: {content}")
-
-        # Format warnings if requested
-        if include_warnings and self.warnings:
-            lines.append(f"Warnings ({len(self.warnings)}):")
-            for warning in self.warnings:
-                context = f" ({warning.context})" if warning.context else ""
-                lines.append(f"  [{warning.code}]: {warning.message}{context}")
-
-        if not lines:
-            return "Validation passed: no errors or warnings"
-
-        return "\n".join(lines)
+        formatter = _get_formatter(sanitize=sanitize, redact_content=redact_content)
+        return formatter.format_validation_result(self, include_warnings=include_warnings)

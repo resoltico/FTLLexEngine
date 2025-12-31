@@ -7,7 +7,13 @@ Architecture:
     - LocaleContext: Immutable locale configuration container
     - Formatters use Babel (thread-safe, CLDR-based)
     - No dependency on Python's locale module (avoids global state)
-    - Each FluentBundle owns its LocaleContext (locale isolation)
+    - Locale isolation: Formatting never affects global state
+
+Instance Sharing:
+    LocaleContext instances are cached and shared between FluentBundle instances
+    for performance (Flyweight pattern). Since LocaleContext is frozen=True,
+    sharing is safe. "Locale isolation" refers to the absence of global state
+    mutation, not instance-level isolation between bundles.
 
 Design Principles:
     - Explicit over implicit (locale always visible)
@@ -446,11 +452,18 @@ class LocaleContext:
                 # Get locale's dateTimeFormat pattern for combining date and time
                 # Pattern uses {0} for time and {1} for date per CLDR spec
                 # Use multi-level fallback: requested style -> medium -> short -> hardcoded
+                #
+                # Ultimate fallback "{1} {0}" rationale:
+                # - {1} = date, {0} = time per CLDR convention
+                # - Space separator is universally acceptable (no locale uses no separator)
+                # - date-before-time order is most common globally (ISO 8601, CJK, most of Europe)
+                # - For locales where time-before-date is preferred (e.g., some EN variants),
+                #   Babel should always provide CLDR data, so this fallback rarely triggers
                 datetime_pattern = (
                     self.babel_locale.datetime_formats.get(date_style)
                     or self.babel_locale.datetime_formats.get("medium")
                     or self.babel_locale.datetime_formats.get("short")
-                    or "{1} {0}"  # Ultimate fallback (Western LTR order)
+                    or "{1} {0}"  # Ultimate fallback (Western LTR: date space time)
                 )
                 # DateTimePattern objects have format() method, strings use str.format()
                 if hasattr(datetime_pattern, "format"):
@@ -558,32 +571,19 @@ class LocaleContext:
                 )
 
             if currency_display == "code":
-                # Use CLDR pattern with double currency sign for ISO code display
-                # Get the standard currency format pattern from CLDR
-                locale_currency_formats = self.babel_locale.currency_formats
-                standard_pattern = locale_currency_formats.get("standard")
-                if standard_pattern and hasattr(standard_pattern, "pattern"):
-                    raw_pattern = standard_pattern.pattern
-                    # Guard: verify currency placeholder exists before replacement
-                    # Single U+00A4 = symbol, Double U+00A4 U+00A4 = ISO code per CLDR
-                    if "\xa4" in raw_pattern:
-                        code_pattern = raw_pattern.replace("\xa4", "\xa4\xa4")
-                        return str(
-                            babel_numbers.format_currency(
-                                value,
-                                currency,
-                                format=code_pattern,
-                                locale=self.babel_locale,
-                                currency_digits=True,
-                            )
+                # Try to get ISO code pattern (double currency sign per CLDR)
+                code_pattern = self._get_iso_code_pattern()
+                if code_pattern is not None:
+                    return str(
+                        babel_numbers.format_currency(
+                            value,
+                            currency,
+                            format=code_pattern,
+                            locale=self.babel_locale,
+                            currency_digits=True,
                         )
-                    # Pattern lacks currency placeholder; log and fall through
-                    logger.debug(
-                        "Currency pattern for locale %s lacks placeholder",
-                        self.locale_code,
                     )
                 # Fallback: use standard format if pattern extraction fails
-                # or pattern lacks currency placeholder
 
             # Default: symbol display using standard format
             return str(
@@ -602,3 +602,33 @@ class LocaleContext:
             fallback = f"{currency} {value}"
             msg = f"Currency formatting failed for '{currency} {value}': {e}"
             raise FormattingError(msg, fallback_value=fallback) from e
+
+    def _get_iso_code_pattern(self) -> str | None:
+        """Get CLDR pattern for ISO currency code display.
+
+        Per CLDR specification:
+        - Single currency sign (U+00A4) displays currency symbol
+        - Double currency sign (U+00A4 U+00A4) displays ISO code
+
+        This helper extracts the standard currency pattern and replaces
+        single currency signs with double signs for ISO code display.
+
+        Returns:
+            Modified pattern for ISO code display, or None if extraction fails.
+        """
+        locale_currency_formats = self.babel_locale.currency_formats
+        standard_pattern = locale_currency_formats.get("standard")
+        if standard_pattern is None or not hasattr(standard_pattern, "pattern"):
+            return None
+
+        raw_pattern = standard_pattern.pattern
+        # Guard: verify currency placeholder exists before replacement
+        # Single U+00A4 = symbol, Double U+00A4 U+00A4 = ISO code per CLDR
+        if "\xa4" not in raw_pattern:
+            logger.debug(
+                "Currency pattern for locale %s lacks placeholder",
+                self.locale_code,
+            )
+            return None
+
+        return str(raw_pattern.replace("\xa4", "\xa4\xa4"))

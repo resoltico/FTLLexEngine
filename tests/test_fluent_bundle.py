@@ -766,12 +766,17 @@ def test_cache_size_property_when_enabled():
 
 
 def test_cache_size_property_when_disabled():
-    """cache_size property returns 0 when caching disabled."""
+    """cache_size property returns configured limit even when caching disabled."""
     bundle = FluentBundle("en", enable_cache=False, cache_size=500)
-    assert bundle.cache_size == 0
+    # Returns configured limit regardless of cache_enabled state
+    assert bundle.cache_size == 500
+    assert bundle.cache_enabled is False
+    # Use cache_enabled to check if caching is active
 
 
 def test_cache_size_property_default():
-    """cache_size property returns 0 by default (cache disabled)."""
+    """cache_size property returns default (1000) even when cache disabled."""
     bundle = FluentBundle("en")
-    assert bundle.cache_size == 0
+    # Returns default configured limit (1000)
+    assert bundle.cache_size == 1000
+    assert bundle.cache_enabled is False

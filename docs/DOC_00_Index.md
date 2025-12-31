@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.44.0"
+version: "0.45.0"
 domain: INDEX
 updated: "2025-12-30"
 route:
@@ -149,7 +149,7 @@ from ftllexengine.localization import (
 ```
 ftllexengine/
   __init__.py              # Public API exports
-  constants.py             # MAX_DEPTH, cache limits, fallback strings
+  constants.py             # MAX_DEPTH, MAX_LOOKAHEAD_CHARS, cache limits, fallback strings
   enums.py                 # CommentType, VariableContext, ReferenceKind
   localization.py          # FluentLocalization, PathResourceLoader
   introspection.py         # MessageIntrospection, introspect_message, extract_references

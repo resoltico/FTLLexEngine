@@ -249,12 +249,10 @@ class FormatCache:
         Converts unhashable types (lists, dicts, sets) to hashable equivalents.
 
         Performance Optimization:
-            Fast path: If all args are already hashable primitives (the common case),
-            skip the expensive _make_hashable() conversion entirely. This reduces
-            overhead from O(N) conversions to O(N) type checks, which is faster
-            since type checks don't allocate new objects.
+            Single-pass conversion: iterates args once, converting unhashable values
+            (list, dict, set) inline as encountered. This avoids the double iteration
+            penalty of checking for unhashables first, then converting.
 
-            Slow path: Only invoked when args contain lists, dicts, or sets.
             Has O(N log N) complexity due to sorting for consistent key ordering.
 
             The sorting is REQUIRED for correctness: without it, format_pattern()
@@ -280,22 +278,20 @@ class FormatCache:
             args_tuple: tuple[tuple[str, HashableValue], ...] = ()
         else:
             try:
-                # Fast path: check if all values are hashable primitives
-                # This avoids creating intermediate conversion objects for the common case
-                needs_conversion = any(
-                    isinstance(v, (list, dict, set)) for v in args.values()
-                )
-
-                if needs_conversion:
-                    # Slow path: convert unhashable types to hashable equivalents
-                    converted_items: list[tuple[str, HashableValue]] = [
-                        (k, FormatCache._make_hashable(v))
-                        for k, v in args.items()
-                    ]
-                    args_tuple = tuple(sorted(converted_items))
-                else:
-                    # Fast path: values are already hashable, just sort keys
-                    args_tuple = tuple(sorted(args.items()))
+                # Single-pass: check hashability and convert inline
+                # Avoids double iteration (any() check + list comprehension)
+                items: list[tuple[str, HashableValue]] = []
+                for k, v in args.items():
+                    # Defensive: handle unhashable types that may bypass FluentValue type
+                    # at runtime. Cast to object prevents mypy type narrowing while
+                    # maintaining runtime safety for untrusted input.
+                    val: object = v
+                    if isinstance(val, (list, dict, set)):
+                        items.append((k, FormatCache._make_hashable(val)))
+                    else:
+                        # FluentValue types are already hashable
+                        items.append((k, cast(HashableValue, v)))
+                args_tuple = tuple(sorted(items))
 
                 # Verify the result is actually hashable
                 hash(args_tuple)
@@ -347,3 +343,12 @@ class FormatCache:
         """
         with self._lock:
             return self._unhashable_skips
+
+    @property
+    def size(self) -> int:
+        """Current number of cached entries.
+
+        Thread-safe.
+        """
+        with self._lock:
+            return len(self._cache)

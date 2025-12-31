@@ -45,6 +45,11 @@ class DepthGuard:
         with guard:
             self._validate_expression(expr)
 
+    Mutability Note:
+        Intentionally mutable (not frozen=True) to enable stateful depth
+        tracking via context manager protocol. The current_depth field is
+        incremented/decremented on __enter__/__exit__.
+
     Thread Safety:
         Uses explicit instance state, fully reentrant.
         Each call stack maintains its own DepthGuard instance.

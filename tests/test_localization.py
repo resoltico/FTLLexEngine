@@ -523,14 +523,16 @@ class TestCacheIntrospection:
         assert l10n.cache_size == 500
 
     def test_cache_size_property_when_disabled(self) -> None:
-        """cache_size property returns 0 when caching disabled."""
+        """cache_size returns configured limit even when caching disabled."""
         l10n = FluentLocalization(["en"], enable_cache=False, cache_size=500)
-        assert l10n.cache_size == 0
+        # Returns configured limit (for introspection), not current usage
+        assert l10n.cache_size == 500
 
     def test_cache_size_property_default(self) -> None:
-        """cache_size property returns 0 by default (cache disabled)."""
+        """cache_size returns default limit (1000) even when cache disabled."""
         l10n = FluentLocalization(["en"])
-        assert l10n.cache_size == 0
+        # Default cache_size is 1000, returned regardless of enable_cache
+        assert l10n.cache_size == 1000
 
     def test_bundle_cache_properties_reflect_localization_config(self) -> None:
         """Individual bundles reflect FluentLocalization cache config."""

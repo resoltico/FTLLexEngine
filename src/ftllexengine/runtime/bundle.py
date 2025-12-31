@@ -93,6 +93,7 @@ class FluentBundle:
         "_max_nesting_depth",
         "_max_source_size",
         "_messages",
+        "_owns_registry",
         "_parser",
         "_terms",
         "_use_isolating",
@@ -193,13 +194,18 @@ class FluentBundle:
         # RLock overhead is negligible (~10ns per acquire) and prevents subtle race conditions
         self._lock = threading.RLock()
 
-        # Function registry: use provided registry (copy it for isolation) or use shared default
+        # Function registry: copy-on-write optimization
         # Using the shared registry avoids re-registering built-in functions for each bundle.
-        # The copy() ensures bundles are isolated even when sharing the same source registry.
+        # Copy is deferred until add_function() is called (copy-on-write pattern).
         if functions is not None:
+            # User provided a registry - copy it for isolation
             self._function_registry = functions.copy()
+            self._owns_registry = True
         else:
-            self._function_registry = get_shared_registry().copy()
+            # Use shared registry directly (frozen, so safe to share)
+            # Will be copied on first add_function() call
+            self._function_registry = get_shared_registry()
+            self._owns_registry = False
 
         # Format cache (opt-in)
         self._cache: FormatCache | None = None
@@ -264,21 +270,48 @@ class FluentBundle:
         """Get maximum cache size configuration (read-only).
 
         Returns:
-            int: Maximum cache entries (0 if caching disabled)
+            int: Configured maximum cache entries
 
         Example:
             >>> bundle = FluentBundle("en", enable_cache=True, cache_size=500)
             >>> bundle.cache_size
             500
-            >>> bundle_no_cache = FluentBundle("en")
+            >>> # Cache size is returned even when caching is disabled
+            >>> bundle_no_cache = FluentBundle("en", cache_size=200)
             >>> bundle_no_cache.cache_size
-            0
+            200
+            >>> bundle_no_cache.cache_enabled
+            False
 
         Note:
-            Returns configured size even if cache is disabled.
+            Returns configured size regardless of whether caching is enabled.
             Use cache_enabled to check if caching is active.
         """
-        return self._cache_size if self.cache_enabled else 0
+        return self._cache_size
+
+    @property
+    def cache_usage(self) -> int:
+        """Get current number of cached format results (read-only).
+
+        Returns:
+            int: Number of entries currently in cache (0 if caching disabled)
+
+        Example:
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_size=500)
+            >>> bundle.add_resource("msg = Hello")
+            >>> bundle.format_pattern("msg", {})
+            ('Hello', [])
+            >>> bundle.cache_usage  # One entry cached
+            1
+            >>> bundle.cache_size   # Configured limit
+            500
+
+        Note:
+            Use with cache_size to calculate utilization: cache_usage / cache_size
+        """
+        if self._cache is None:
+            return 0
+        return self._cache.size
 
     @property
     def max_source_size(self) -> int:
@@ -333,7 +366,7 @@ class FluentBundle:
             enable_cache: Enable format caching for performance
             cache_size: Maximum cache entries when caching enabled
             functions: Custom FunctionRegistry to use (default: standard registry)
-            max_source_size: Maximum FTL source size in bytes (default: 10 MB)
+            max_source_size: Maximum FTL source size in characters (default: 10M)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
         Returns:
@@ -519,7 +552,8 @@ class FluentBundle:
                         )
                     case Comment():
                         # Comments don't need registration - they're documentation only
-                        pass
+                        logger.debug("Skipping comment entry")
+                        continue  # Explicit loop continuation for branch coverage
 
             # Log summary with file context
             junk_count = len(junk_entries)
@@ -912,6 +946,12 @@ class FluentBundle:
             >>> bundle.add_function("CUSTOM", CUSTOM)
         """
         with self._lock:
+            # Copy-on-write: copy the shared registry on first modification
+            if not self._owns_registry:
+                self._function_registry = self._function_registry.copy()
+                self._owns_registry = True
+                logger.debug("Registry copied on first add_function")
+
             self._function_registry.register(func, ftl_name=name)
             logger.debug("Added custom function: %s", name)
 

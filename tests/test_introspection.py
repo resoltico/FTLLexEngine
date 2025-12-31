@@ -401,3 +401,145 @@ price = Total: { NUMBER($amount, minimumFractionDigits: 2, maximumFractionDigits
         assert len(number_funcs) == 1
         assert "minimumFractionDigits" in number_funcs[0].named_args
         assert "maximumFractionDigits" in number_funcs[0].named_args
+
+
+class TestSpanTracking:
+    """Test source span tracking in introspection results."""
+
+    def test_variable_reference_span(self) -> None:
+        """Variable references include source position spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("greeting = Hello, { $name }!")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        # Should have exactly one variable with a span
+        assert len(info.variables) == 1
+        var_info = next(iter(info.variables))
+        assert var_info.name == "name"
+        assert var_info.span is not None
+        # Span should cover "$name" in "Hello, { $name }!"
+        # Pattern starts after "greeting = " (11 chars)
+        # "Hello, { " is 9 chars, so $name starts at position 20
+        assert var_info.span.start == 20
+        # $name is 5 characters long
+        assert var_info.span.end == 25
+
+    def test_function_reference_span(self) -> None:
+        """Function references include source position spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("price = { NUMBER($amount) }")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        # Should have one function with a span
+        assert len(info.functions) == 1
+        func_info = next(iter(info.functions))
+        assert func_info.name == "NUMBER"
+        assert func_info.span is not None
+        # "price = { " is 10 chars, NUMBER($amount) starts at 10
+        assert func_info.span.start == 10
+        # "NUMBER($amount)" is 15 chars
+        assert func_info.span.end == 25
+
+    def test_message_reference_span(self) -> None:
+        """Message references include source position spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("ref = { other-msg }")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        # Should have one message reference with a span
+        refs = [r for r in info.references if r.kind == ReferenceKind.MESSAGE]
+        assert len(refs) == 1
+        assert refs[0].id == "other-msg"
+        assert refs[0].span is not None
+        # "ref = { " is 8 chars, other-msg starts at 8
+        assert refs[0].span.start == 8
+        # "other-msg" is 9 chars
+        assert refs[0].span.end == 17
+
+    def test_term_reference_span(self) -> None:
+        """Term references include source position spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { -brand }")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        # Should have one term reference with a span
+        refs = [r for r in info.references if r.kind == ReferenceKind.TERM]
+        assert len(refs) == 1
+        assert refs[0].id == "brand"
+        assert refs[0].span is not None
+        # "msg = { " is 8 chars, -brand starts at 8
+        assert refs[0].span.start == 8
+        # Span includes trailing whitespace consumed for optional args check
+        assert refs[0].span.end == 15
+
+    def test_term_reference_with_attribute_span(self) -> None:
+        """Term references with attributes have correct spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { -brand.short }")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        refs = [r for r in info.references if r.kind == ReferenceKind.TERM]
+        assert len(refs) == 1
+        assert refs[0].id == "brand"
+        assert refs[0].attribute == "short"
+        assert refs[0].span is not None
+        # "-brand.short" starts at 8, includes trailing whitespace for args check
+        assert refs[0].span.start == 8
+        assert refs[0].span.end == 21
+
+    def test_multiple_variables_spans(self) -> None:
+        """Multiple variables each have distinct spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { $first } and { $second }")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        # Should have two variables with different spans
+        assert len(info.variables) == 2
+        vars_by_name = {v.name: v for v in info.variables}
+
+        first = vars_by_name["first"]
+        assert first.span is not None
+        # "msg = { " is 8 chars, $first starts at 8
+        assert first.span.start == 8
+
+        second = vars_by_name["second"]
+        assert second.span is not None
+        # " and { " is 7 chars after first } (at 15), so $second starts at 23
+        assert second.span.start == 23
+
+    def test_message_reference_with_attribute_span(self) -> None:
+        """Message references with attributes have correct spans."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { other.attr }")
+
+        entry = resource.entries[0]
+        assert isinstance(entry, Message)
+        info = introspect_message(entry)
+
+        refs = [r for r in info.references if r.kind == ReferenceKind.MESSAGE]
+        assert len(refs) == 1
+        assert refs[0].id == "other"
+        assert refs[0].attribute == "attr"
+        assert refs[0].span is not None
+        # "msg = { " is 8 chars, "other.attr" starts at 8
+        assert refs[0].span.start == 8
+        # "other.attr" is 10 chars
+        assert refs[0].span.end == 18

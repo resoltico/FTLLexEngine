@@ -22,13 +22,15 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.diagnostics.validation import (
-    _SANITIZE_MAX_CONTENT_LENGTH,
     ValidationError,
     ValidationResult,
 )
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.ast import Message, Pattern
 from ftllexengine.syntax.visitor import ASTVisitor
+
+# Default max content length used by DiagnosticFormatter for sanitization
+_DEFAULT_MAX_CONTENT_LENGTH: int = 100
 
 # ============================================================================
 # Bug Category 1: Parameter Effect Property
@@ -266,7 +268,7 @@ class TestSanitizationBoundsProperty:
         if sanitize and redact:
             # Content should be fully redacted
             assert "[content redacted]" in formatted or content == ""
-        elif sanitize and len(content) > _SANITIZE_MAX_CONTENT_LENGTH:
+        elif sanitize and len(content) > _DEFAULT_MAX_CONTENT_LENGTH:
             # Content should be truncated with ellipsis
             assert "..." in formatted, (
                 f"Long content should be truncated when sanitize=True: {formatted}"
@@ -286,7 +288,7 @@ class TestSanitizationBoundsProperty:
         formatted = result.format(sanitize=True, redact_content=False)
 
         # Verify content is truncated
-        assert "..." in formatted or len(long_content) <= _SANITIZE_MAX_CONTENT_LENGTH
+        assert "..." in formatted or len(long_content) <= _DEFAULT_MAX_CONTENT_LENGTH
 
 
 # ============================================================================

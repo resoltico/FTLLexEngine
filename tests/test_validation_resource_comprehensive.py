@@ -605,24 +605,23 @@ class TestFluentSyntaxErrorHandling:
         Lines 339-346 catch FluentSyntaxError and convert it to ValidationError.
         This is defensive code for catastrophic parse failures.
         """
-        from unittest.mock import patch
+        from unittest.mock import Mock
 
         from ftllexengine.diagnostics import FluentSyntaxError
 
-        # Mock the parser to raise FluentSyntaxError
-        with patch("ftllexengine.validation.resource.FluentParserV1") as mock_parser_class:
-            mock_parser = mock_parser_class.return_value
-            mock_parser.parse.side_effect = FluentSyntaxError("Catastrophic parse error")
+        # Create a mock parser that raises FluentSyntaxError
+        mock_parser = Mock()
+        mock_parser.parse.side_effect = FluentSyntaxError("Catastrophic parse error")
 
-            # Call validate_resource - should catch the exception
-            result = validate_resource("test", parser=mock_parser)
+        # Call validate_resource - should catch the exception
+        result = validate_resource("test", parser=mock_parser)
 
-            # Should have converted exception to validation error (lines 341-346)
-            assert len(result.errors) == 1
-            assert result.errors[0].code == "VALIDATION_CRITICAL_PARSE_ERROR"
-            assert "Catastrophic parse error" in result.errors[0].message
-            assert not result.is_valid
-            assert len(result.warnings) == 0
+        # Should have converted exception to validation error (lines 341-346)
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "VALIDATION_CRITICAL_PARSE_ERROR"
+        assert "Catastrophic parse error" in result.errors[0].message
+        assert not result.is_valid
+        assert len(result.warnings) == 0
 
 
 # ============================================================================

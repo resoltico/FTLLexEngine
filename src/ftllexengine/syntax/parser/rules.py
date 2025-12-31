@@ -31,7 +31,7 @@ Security:
 
 from dataclasses import dataclass
 
-from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.constants import MAX_DEPTH, MAX_LOOKAHEAD_CHARS
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     Attribute,
@@ -126,6 +126,9 @@ def parse_variable_reference(cursor: Cursor) -> ParseResult[VariableReference] |
         Success(ParseResult(VariableReference, new_cursor)) on success
         Failure(ParseError(...)) if not a variable reference
     """
+    # Capture start position for span
+    start_pos = cursor.pos
+
     # Expect $
     if cursor.is_eof or cursor.current != "$":
         return None  # "Expected variable reference (starts with $)", cursor, expected=["$"]
@@ -138,7 +141,10 @@ def parse_variable_reference(cursor: Cursor) -> ParseResult[VariableReference] |
         return result
 
     parse_result = result
-    var_ref = VariableReference(id=Identifier(parse_result.value))
+    var_ref = VariableReference(
+        id=Identifier(parse_result.value),
+        span=Span(start=start_pos, end=parse_result.cursor.pos),
+    )
     return ParseResult(var_ref, parse_result.cursor)
 
 
@@ -205,9 +211,9 @@ def _is_variant_marker(cursor: Cursor) -> bool:
         PLR0911 waiver: Multiple returns are intentional for early-exit
         pattern matching, which is clearer than nested conditionals.
     """
-    # Maximum lookahead distance - variant keys are short (identifiers/numbers)
+    # Use centralized lookahead limit - variant keys are short (identifiers/numbers)
     # This prevents O(N^2) worst-case on adversarial input like [[[[...
-    max_lookahead = 128
+    max_lookahead = MAX_LOOKAHEAD_CHARS
 
     if cursor.is_eof:
         return False
@@ -769,6 +775,8 @@ def parse_argument_expression(
     if cursor.is_eof:
         return None
 
+    # Capture start position for span (used by identifier-based expressions)
+    start_pos = cursor.pos
     ch = cursor.current
 
     # Variable reference: $var
@@ -842,7 +850,11 @@ def parse_argument_expression(
 
         # Message reference (or identifier for named argument name)
         return ParseResult(
-            MessageReference(id=Identifier(name)), cursor_after_id
+            MessageReference(
+                id=Identifier(name),
+                span=Span(start=start_pos, end=cursor_after_id.pos),
+            ),
+            cursor_after_id,
         )
 
     return None  # "Expected argument expression"
@@ -973,6 +985,9 @@ def parse_function_reference(
         Success(ParseResult(FunctionReference, cursor_after_))) on success
         Failure(ParseError(...)) on parse error
     """
+    # Capture start position for span
+    start_pos = cursor.pos
+
     # Parse function name (must be uppercase identifier)
     id_result = parse_identifier(cursor)
     if id_result is None:
@@ -1008,7 +1023,11 @@ def parse_function_reference(
 
     cursor = cursor.advance()  # Skip )
 
-    func_ref = FunctionReference(id=Identifier(func_name), arguments=args_parse.value)
+    func_ref = FunctionReference(
+        id=Identifier(func_name),
+        arguments=args_parse.value,
+        span=Span(start=start_pos, end=cursor.pos),
+    )
     return ParseResult(func_ref, cursor)
 
 
@@ -1033,6 +1052,9 @@ def parse_term_reference(
         Success(ParseResult(TermReference, new_cursor)) on success
         Failure(ParseError(...)) on parse error
     """
+    # Capture start position for span
+    start_pos = cursor.pos
+
     # Expect '-' prefix
     if cursor.is_eof or cursor.current != "-":
         return None  # "Expected '-' at start of term reference", cursor, expected=["-"]
@@ -1083,7 +1105,10 @@ def parse_term_reference(
         arguments = args_parse.value
 
     term_ref = TermReference(
-        id=Identifier(id_parse.value), attribute=attribute, arguments=arguments
+        id=Identifier(id_parse.value),
+        attribute=attribute,
+        arguments=arguments,
+        span=Span(start=start_pos, end=cursor.pos),
     )
 
     return ParseResult(term_ref, cursor)
@@ -1133,6 +1158,9 @@ def _parse_message_attribute(cursor: Cursor) -> tuple[Identifier | None, Cursor]
 
 def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | None:
     """Parse identifier-based expression: function call or message reference."""
+    # Capture start position for span
+    start_pos = cursor.pos
+
     id_result = parse_identifier(cursor)
     if id_result is None:
         return None
@@ -1152,7 +1180,11 @@ def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | 
     # Message reference with optional attribute
     attribute, final_cursor = _parse_message_attribute(cursor_after_id)
     return ParseResult(
-        MessageReference(id=Identifier(name), attribute=attribute),
+        MessageReference(
+            id=Identifier(name),
+            attribute=attribute,
+            span=Span(start=start_pos, end=final_cursor.pos),
+        ),
         final_cursor,
     )
 

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.44.0"
+version: "0.45.0"
 domain: TYPES
 updated: "2025-12-30"
 route:
@@ -338,6 +338,7 @@ class NumberLiteral:
 @dataclass(frozen=True, slots=True)
 class VariableReference:
     id: Identifier
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs[VariableReference]: ...
@@ -347,10 +348,12 @@ class VariableReference:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Variable identifier (without $). |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable variable reference.
 - State: Frozen dataclass.
+- Span: Populated by parser for source-tracked ASTs.
 
 ---
 
@@ -362,6 +365,7 @@ class VariableReference:
 class MessageReference:
     id: Identifier
     attribute: Identifier | None = None
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs[MessageReference]: ...
@@ -372,10 +376,12 @@ class MessageReference:
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Message identifier. |
 | `attribute` | `Identifier \| None` | N | Attribute name if present. |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable message reference.
 - State: Frozen dataclass.
+- Span: Populated by parser for source-tracked ASTs.
 
 ---
 
@@ -388,6 +394,7 @@ class TermReference:
     id: Identifier
     attribute: Identifier | None = None
     arguments: CallArguments | None = None
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs[TermReference]: ...
@@ -399,10 +406,12 @@ class TermReference:
 | `id` | `Identifier` | Y | Term identifier (without -). |
 | `attribute` | `Identifier \| None` | N | Attribute name if present. |
 | `arguments` | `CallArguments \| None` | N | Parameterized term args. |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable term reference.
 - State: Frozen dataclass.
+- Span: Populated by parser for source-tracked ASTs.
 
 ---
 
@@ -414,6 +423,7 @@ class TermReference:
 class FunctionReference:
     id: Identifier
     arguments: CallArguments
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs[FunctionReference]: ...
@@ -424,10 +434,12 @@ class FunctionReference:
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Function name (e.g., NUMBER). |
 | `arguments` | `CallArguments` | Y | Function arguments. |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable function reference.
 - State: Frozen dataclass.
+- Span: Populated by parser for source-tracked ASTs.
 
 ---
 
@@ -529,7 +541,7 @@ class Span:
 class Annotation:
     code: str
     message: str
-    arguments: dict[str, str] | None = None
+    arguments: tuple[tuple[str, str], ...] | None = None
     span: Span | None = None
 ```
 
@@ -538,12 +550,13 @@ class Annotation:
 |:----------|:-----|:----|:------------|
 | `code` | `str` | Y | Error code. |
 | `message` | `str` | Y | Error message. |
-| `arguments` | `dict[str, str] \| None` | N | Additional context. |
+| `arguments` | `tuple[tuple[str, str], ...] \| None` | N | Additional context as key-value pairs. |
 | `span` | `Span \| None` | N | Error location. |
 
 ### Constraints
 - Return: Immutable annotation.
 - State: Frozen dataclass.
+- Version: `arguments` type changed from dict to tuple in v0.45.0.
 
 ---
 
@@ -655,6 +668,7 @@ type FluentValue = str | int | float | bool | Decimal | datetime | date | None
 class VariableInfo:
     name: str
     context: VariableContext
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -662,10 +676,12 @@ class VariableInfo:
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Variable name (without $ prefix). |
 | `context` | `VariableContext` | Y | Context where variable appears. |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable variable metadata.
 - State: Frozen dataclass.
+- Span: Populated from VariableReference.span for parser-produced ASTs.
 - Import: `from ftllexengine.introspection import VariableInfo`
 
 ---
@@ -679,6 +695,7 @@ class FunctionCallInfo:
     name: str
     positional_args: tuple[str, ...]
     named_args: frozenset[str]
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -687,10 +704,12 @@ class FunctionCallInfo:
 | `name` | `str` | Y | Function name (e.g., 'NUMBER'). |
 | `positional_args` | `tuple[str, ...]` | Y | Positional argument variable names. |
 | `named_args` | `frozenset[str]` | Y | Named argument keys. |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable function call metadata.
 - State: Frozen dataclass.
+- Span: Populated from FunctionReference.span for parser-produced ASTs.
 - Import: `from ftllexengine.introspection import FunctionCallInfo`
 
 ---
@@ -704,6 +723,7 @@ class ReferenceInfo:
     id: str
     kind: ReferenceKind
     attribute: str | None
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -712,10 +732,12 @@ class ReferenceInfo:
 | `id` | `str` | Y | Referenced message or term ID. |
 | `kind` | `ReferenceKind` | Y | Reference type (MESSAGE or TERM). |
 | `attribute` | `str \| None` | N | Attribute name if present. |
+| `span` | `Span \| None` | N | Source position for IDE integration. |
 
 ### Constraints
 - Return: Immutable reference metadata.
 - State: Frozen dataclass.
+- Span: Populated from MessageReference.span or TermReference.span for parser-produced ASTs.
 - Import: `from ftllexengine.introspection import ReferenceInfo`
 
 ---

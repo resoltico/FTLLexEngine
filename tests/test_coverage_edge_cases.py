@@ -132,7 +132,7 @@ class TestValidationResultFormat:
         output = result.format(include_warnings=True)
         assert "Warnings (1):" in output
         assert "[duplicate-id]" in output
-        assert "(hello)" in output
+        assert "(context: 'hello')" in output
 
     def test_format_with_warning_no_context(self) -> None:
         """Lines 286-287: Test warning formatting without context."""

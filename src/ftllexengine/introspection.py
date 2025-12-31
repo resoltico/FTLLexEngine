@@ -27,6 +27,7 @@ from .syntax.ast import (
     Pattern,
     Placeable,
     SelectExpression,
+    Span,
     Term,
     TermReference,
     TextElement,
@@ -57,7 +58,6 @@ __all__ = [
 class VariableInfo:
     """Immutable metadata about a variable reference in a message.
 
-
     Uses Python 3.13's frozen dataclass with slots for low memory overhead.
     """
 
@@ -66,6 +66,9 @@ class VariableInfo:
 
     context: VariableContext
     """Context where variable appears."""
+
+    span: Span | None = None
+    """Source position span for IDE integration."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,21 +84,35 @@ class FunctionCallInfo:
     named_args: frozenset[str]
     """Named argument keys."""
 
+    span: Span | None = None
+    """Source position span for IDE integration."""
+
 
 @dataclass(frozen=True, slots=True)
 class ReferenceInfo:
     """Immutable metadata about message/term references.
 
+    Tracks cross-message and term references for dependency analysis,
+    cycle detection, and impact assessment. Each reference captures
+    what is being referenced and how.
+
+    Examples:
+        - { msg } -> ReferenceInfo(id="msg", kind=MESSAGE, attribute=None)
+        - { -term } -> ReferenceInfo(id="term", kind=TERM, attribute=None)
+        - { msg.attr } -> ReferenceInfo(id="msg", kind=MESSAGE, attribute="attr")
     """
 
     id: str
-    """Referenced message or term ID."""
+    """Referenced message or term ID (without - prefix for terms)."""
 
     kind: ReferenceKind
-    """Reference type."""
+    """Reference type: MESSAGE or TERM."""
 
     attribute: str | None
-    """Attribute name if accessing an attribute."""
+    """Attribute name if accessing .attr syntax, otherwise None."""
+
+    span: Span | None = None
+    """Source position span for IDE integration."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,8 +243,11 @@ class IntrospectionVisitor(ASTVisitor[None]):
     def _visit_expression(self, expr: "Expression | InlineExpression") -> None:
         """Visit an expression and extract metadata using pattern matching."""
         # Use Python 3.13 TypeIs for type-safe narrowing via static .guard() methods
+        # Spans are propagated from AST expression nodes to Info objects for IDE integration.
         if VariableReference.guard(expr):
-            self.variables.add(VariableInfo(name=expr.id.name, context=self._context))
+            self.variables.add(
+                VariableInfo(name=expr.id.name, context=self._context, span=expr.span)
+            )
 
         elif FunctionReference.guard(expr):
             self._extract_function_call(expr)
@@ -235,13 +255,23 @@ class IntrospectionVisitor(ASTVisitor[None]):
         elif MessageReference.guard(expr):
             attr_name = expr.attribute.name if expr.attribute else None
             self.references.add(
-                ReferenceInfo(id=expr.id.name, kind=ReferenceKind.MESSAGE, attribute=attr_name)
+                ReferenceInfo(
+                    id=expr.id.name,
+                    kind=ReferenceKind.MESSAGE,
+                    attribute=attr_name,
+                    span=expr.span,
+                )
             )
 
         elif TermReference.guard(expr):
             attr_name = expr.attribute.name if expr.attribute else None
             self.references.add(
-                ReferenceInfo(id=expr.id.name, kind=ReferenceKind.TERM, attribute=attr_name)
+                ReferenceInfo(
+                    id=expr.id.name,
+                    kind=ReferenceKind.TERM,
+                    attribute=attr_name,
+                    span=expr.span,
+                )
             )
             # Visit term arguments to extract nested dependencies
             # Term arguments like -term(case: $var) contain expressions
@@ -307,7 +337,10 @@ class IntrospectionVisitor(ASTVisitor[None]):
                 self._context = old_context
 
         func_info = FunctionCallInfo(
-            name=func.id.name, positional_args=tuple(positional), named_args=frozenset(named)
+            name=func.id.name,
+            positional_args=tuple(positional),
+            named_args=frozenset(named),
+            span=func.span,
         )
         self.functions.add(func_info)
 

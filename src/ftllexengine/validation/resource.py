@@ -15,7 +15,10 @@ Architecture:
 Python 3.13+.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
 from ftllexengine.diagnostics import (
@@ -28,8 +31,10 @@ from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.introspection import extract_references
 from ftllexengine.syntax import Junk, Message, Resource, Term
 from ftllexengine.syntax.cursor import LineOffsetCache
-from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.validator import SemanticValidator
+
+if TYPE_CHECKING:
+    from ftllexengine.syntax.parser import FluentParserV1
 
 __all__ = ["validate_resource"]
 
@@ -63,6 +68,10 @@ def _extract_syntax_errors(
     Converts Junk AST nodes (unparseable content) to structured
     ValidationError objects with line/column information.
 
+    Propagates annotations from Junk nodes to preserve specific error codes
+    and messages from the parser. If a Junk entry has no annotations, falls
+    back to a generic parse error.
+
     Args:
         resource: Parsed Resource AST (may contain Junk entries)
         line_cache: Shared line offset cache for position lookups
@@ -74,20 +83,44 @@ def _extract_syntax_errors(
 
     for entry in resource.entries:
         if isinstance(entry, Junk):
-            line: int | None = None
-            column: int | None = None
-            if entry.span:
-                line, column = line_cache.get_line_col(entry.span.start)
+            # Propagate annotations from Junk to preserve specific parser errors
+            if entry.annotations:
+                for annotation in entry.annotations:
+                    # Use annotation's span if available, otherwise fall back to Junk span
+                    ann_line: int | None = None
+                    ann_column: int | None = None
+                    if annotation.span:
+                        ann_line, ann_column = line_cache.get_line_col(
+                            annotation.span.start
+                        )
+                    elif entry.span:
+                        ann_line, ann_column = line_cache.get_line_col(entry.span.start)
 
-            errors.append(
-                ValidationError(
-                    code=DiagnosticCode.VALIDATION_PARSE_ERROR.name,
-                    message="Failed to parse FTL content",
-                    content=entry.content,
-                    line=line,
-                    column=column,
+                    errors.append(
+                        ValidationError(
+                            code=annotation.code,
+                            message=annotation.message,
+                            content=entry.content,
+                            line=ann_line,
+                            column=ann_column,
+                        )
+                    )
+            else:
+                # Fallback for Junk without annotations (shouldn't happen normally)
+                line: int | None = None
+                column: int | None = None
+                if entry.span:
+                    line, column = line_cache.get_line_col(entry.span.start)
+
+                errors.append(
+                    ValidationError(
+                        code=DiagnosticCode.VALIDATION_PARSE_ERROR.name,
+                        message="Failed to parse FTL content",
+                        content=entry.content,
+                        line=line,
+                        column=column,
+                    )
                 )
-            )
 
     return errors
 
@@ -392,7 +425,12 @@ def validate_resource(
         Thread-safe. Creates isolated parser if not provided.
     """
     if parser is None:
-        parser = FluentParserV1()
+        # Local import to avoid import-time overhead for callers not providing parser
+        from ftllexengine.syntax.parser import (  # noqa: PLC0415
+            FluentParserV1 as ParserClass,
+        )
+
+        parser = ParserClass()
 
     try:
         resource = parser.parse(source)

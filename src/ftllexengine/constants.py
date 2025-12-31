@@ -21,6 +21,8 @@ __all__ = [
     "DEFAULT_CACHE_SIZE",
     # Input limits
     "MAX_SOURCE_SIZE",
+    # Parser limits
+    "MAX_LOOKAHEAD_CHARS",
     # Fallback strings
     "FALLBACK_INVALID",
     "FALLBACK_MISSING_MESSAGE",
@@ -101,6 +103,16 @@ DEFAULT_CACHE_SIZE: int = 1000
 # UTF-8 encoding means 1 character = 1-4 bytes, but len(source) counts characters.
 # Prevents DoS attacks via unbounded memory allocation from large FTL files.
 MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
+
+# ============================================================================
+# PARSER LIMITS
+# ============================================================================
+
+# Maximum lookahead distance for variant marker detection.
+# Used by _is_variant_marker() to distinguish variant keys [x] from literal text.
+# Bounded lookahead prevents O(N^2) parsing on pathological inputs.
+# 128 characters is ample for any legitimate variant key (identifier + number).
+MAX_LOOKAHEAD_CHARS: int = 128
 
 # ============================================================================
 # FALLBACK STRINGS

@@ -9,6 +9,7 @@ from decimal import Decimal
 from hypothesis import given
 from hypothesis import strategies as st
 
+from ftllexengine import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
@@ -513,3 +514,136 @@ class TestNumericVariantEdgeCases:
 
         result, _errors = resolver.resolve_message(message, {"amount": decimal_str})
         assert "exact" in result
+
+
+class TestResolverFormattingErrorFallback:
+    """Test FormattingError fallback handling in resolver."""
+
+    def test_formatting_error_uses_fallback_value(self) -> None:
+        """FormattingError fallback value is used in pattern resolution.
+
+        This tests line 312 in resolver.py.
+        """
+        bundle = FluentBundle("en", use_isolating=False)
+
+        # Create a scenario that triggers FormattingError with fallback
+        # The NUMBER function with invalid options can trigger this
+        bundle.add_resource("""
+msg = Value: { NUMBER($value, minimumFractionDigits: "invalid") }
+""")
+
+        # This should trigger a FormattingError
+        result, errors = bundle.format_pattern("msg", {"value": 42})
+
+        # Should have an error
+        assert len(errors) > 0
+        # Result should contain fallback (the original value)
+        assert "42" in result
+
+
+class TestResolverTermNamedArguments:
+    """Test term references with named arguments."""
+
+    def test_term_reference_with_named_arguments(self) -> None:
+        """Term references can have named arguments.
+
+        This tests lines 445-447 in resolver.py.
+        """
+        bundle = FluentBundle("en", use_isolating=False)
+
+        # Term with named arguments
+        bundle.add_resource("""
+-brand = { $case ->
+    [nominative] Firefox
+    *[other] Firefox
+}
+msg = Welcome to { -brand(case: "nominative") }
+""")
+
+        result, errors = bundle.format_pattern("msg")
+
+        # Should successfully resolve with named arguments
+        assert len(errors) == 0
+        assert "Firefox" in result
+
+    def test_term_reference_multiple_named_arguments(self) -> None:
+        """Term with multiple named arguments."""
+        bundle = FluentBundle("en", use_isolating=False)
+
+        bundle.add_resource("""
+-product = { $version } { $edition ->
+    [pro] Professional
+    *[standard] Standard
+}
+msg = Using { -product(version: "2.0", edition: "pro") }
+""")
+
+        result, errors = bundle.format_pattern("msg")
+
+        # Should resolve both arguments
+        assert len(errors) == 0
+        assert "2.0" in result
+        assert "Professional" in result
+
+
+class TestResolverFluentNumberVariantMatching:
+    """Test FluentNumber handling in variant selection."""
+
+    def test_fluent_number_matches_numeric_variant_key(self) -> None:
+        """FluentNumber value extraction for numeric variant matching.
+
+        This tests line 502 in resolver.py.
+        """
+        bundle = FluentBundle("en", use_isolating=False)
+
+        # Register NUMBER function that returns FluentNumber
+        bundle.add_resource("""
+msg = { NUMBER($count) ->
+    [1000] Exactly one thousand
+    *[other] Other value
+}
+""")
+
+        # NUMBER() function produces FluentNumber, should match [1000]
+        result, errors = bundle.format_pattern("msg", {"count": 1000})
+
+        assert len(errors) == 0
+        assert "Exactly one thousand" in result
+
+    def test_fluent_number_plural_category_selection(self) -> None:
+        """FluentNumber value extraction for CLDR plural matching.
+
+        This tests line 608 in resolver.py.
+        """
+        bundle = FluentBundle("en", use_isolating=False)
+
+        bundle.add_resource("""
+msg = { NUMBER($count) ->
+    [one] One item
+    *[other] Many items
+}
+""")
+
+        # NUMBER(1) produces FluentNumber(1, "1") -> should match "one" category
+        result, errors = bundle.format_pattern("msg", {"count": 1})
+
+        assert len(errors) == 0
+        assert "One item" in result
+
+    def test_fluent_number_with_formatted_display(self) -> None:
+        """FluentNumber preserves numeric value while showing formatted string."""
+
+        bundle = FluentBundle("en", use_isolating=False)
+
+        bundle.add_resource("""
+msg = { NUMBER($amount, minimumFractionDigits: 2) ->
+    [1000] Exactly one thousand
+    *[other] Other
+}
+""")
+
+        # Should extract numeric value 1000 from FluentNumber for matching
+        result, errors = bundle.format_pattern("msg", {"amount": 1000})
+
+        assert len(errors) == 0
+        assert "Exactly one thousand" in result

@@ -149,18 +149,22 @@ class TestBlankLineHypothesisProperties:
 
     @given(
         lines=st.lists(
-            st.text(alphabet=st.characters(blacklist_characters=["\n"]), max_size=5),
+            st.text(
+                alphabet=st.characters(blacklist_characters=["\n"]),
+                min_size=1,  # Ensure non-empty lines
+                max_size=5,
+            ),
             min_size=1,
             max_size=10,
         )
     )
     def test_single_newline_separated_lines_no_blank(self, lines: list[str]) -> None:
-        """Property: Single newlines between content have no blank lines."""
+        """Property: Single newlines between non-empty lines have no blank lines."""
         source = "\n".join(lines)
-        if "\n\n" not in source:
-            result = _has_blank_line_between(source, 0, len(source))
-            # No blank line when single newlines separate content
-            assert result is False
+        # With min_size=1, all lines are non-empty, so no consecutive newlines
+        result = _has_blank_line_between(source, 0, len(source))
+        # No blank line when single newlines separate non-empty content
+        assert result is False
 
     @given(st.integers(min_value=2, max_value=10))
     def test_multiple_consecutive_newlines_always_blank(self, count: int) -> None:
