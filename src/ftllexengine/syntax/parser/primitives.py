@@ -369,6 +369,14 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
 def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
     """Parse string literal: "text"
 
+    Per Fluent EBNF:
+        StringLiteral ::= '"' quoted_char* '"'
+        quoted_char ::= (any_char - special_quoted_char - line_end) | escape
+        line_end ::= CRLF | LF | EOF
+
+    Line endings (LF, CRLF) are forbidden in string literals per spec.
+    Use escape sequences (\\n) for newlines in strings.
+
     Supports escape sequences:
         \\" → "
         \\\\ → \\
@@ -410,6 +418,15 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
             cursor = cursor.advance()
             return ParseResult("".join(chars), cursor)
 
+        # Per Fluent spec: line endings (LF, CRLF) are forbidden in string literals
+        # quoted_char ::= (any_char - special_quoted_char - line_end)
+        if ch in ("\n", "\r"):
+            _set_parse_error(
+                "Line endings not allowed in string literals (use \\n escape)",
+                cursor.pos,
+            )
+            return None
+
         if ch == "\\":
             # Escape sequence - use extracted helper
             cursor = cursor.advance()
@@ -421,7 +438,7 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
             chars.append(escaped_char)
 
         else:
-            # Regular character
+            # Regular character (control chars except line endings are allowed per spec)
             chars.append(ch)
             cursor = cursor.advance()
 

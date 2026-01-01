@@ -486,11 +486,48 @@ def _resolve_currency_code(
 
 
 @functools.cache
-def _get_currency_pattern() -> re.Pattern[str]:
-    """Lazy-compile currency detection regex on first use.
+def _get_currency_pattern_fast() -> re.Pattern[str]:
+    """Compile fast-tier currency detection regex (no CLDR scan).
 
-    Constructs pattern from CLDR-derived symbol maps, eliminating the need
-    for hardcoded symbol lists that miss locale-specific symbols.
+    Uses only fast-tier symbols for immediate pattern matching without
+    triggering the expensive CLDR scan. Most common currencies (EUR, USD,
+    GBP, JPY, etc.) are covered by the fast tier.
+
+    Thread-safe via functools.cache internal locking.
+
+    Returns:
+        Compiled regex pattern matching:
+        - ISO 4217 3-letter currency codes (e.g., EUR, USD, JPY) - matched first
+        - Fast tier symbols only (unambiguous and ambiguous)
+    """
+    # Use fast tier only - no CLDR scan triggered
+    fast_symbols, fast_ambiguous, _, _ = _get_currency_maps_fast()
+
+    # Collect all fast tier symbols
+    all_symbols: set[str] = set(fast_symbols.keys()) | fast_ambiguous
+
+    # Sort by length descending to match longer symbols first
+    sorted_symbols = sorted(all_symbols, key=len, reverse=True)
+
+    # Escape special regex characters in symbols
+    escaped_symbols = [re.escape(sym) for sym in sorted_symbols]
+
+    # Build pattern: ISO codes FIRST, then symbols
+    if escaped_symbols:
+        symbols_pattern = "|".join(escaped_symbols)
+        pattern = rf"([A-Z]{{{ISO_CURRENCY_CODE_LENGTH}}}|{symbols_pattern})"
+    else:
+        pattern = rf"([A-Z]{{{ISO_CURRENCY_CODE_LENGTH}}})"
+
+    return re.compile(pattern)
+
+
+@functools.cache
+def _get_currency_pattern_full() -> re.Pattern[str]:
+    """Compile full CLDR currency detection regex (lazy-loaded).
+
+    Constructs pattern from complete CLDR-derived symbol maps. Only called
+    when fast-tier pattern fails to match and full coverage is needed.
 
     Thread-safe via functools.cache internal locking.
     Called once per process lifetime; subsequent calls return cached result.
@@ -498,7 +535,7 @@ def _get_currency_pattern() -> re.Pattern[str]:
     Returns:
         Compiled regex pattern matching:
         - ISO 4217 3-letter currency codes (e.g., EUR, USD, JPY) - matched first
-        - All symbols from currency maps (unambiguous and ambiguous)
+        - All symbols from CLDR currency maps (unambiguous and ambiguous)
 
     Pattern Priority:
         1. ISO codes (3 uppercase ASCII letters) - matched first to avoid
@@ -632,11 +669,17 @@ def parse_currency(
         )
         return (None, tuple(errors))
 
-    # Extract currency symbol or code using dynamic CLDR-derived pattern
-    # Pattern includes all symbols from currency maps and 3-letter ISO codes.
-    # Sorted by length to match longer symbols first.
-    currency_pattern = _get_currency_pattern()
-    match = currency_pattern.search(value)
+    # Extract currency symbol or code using tiered pattern matching.
+    # Try fast tier first (no CLDR scan), fall back to full tier if needed.
+    # This provides sub-millisecond cold start for common currencies.
+    fast_pattern = _get_currency_pattern_fast()
+    match = fast_pattern.search(value)
+
+    if not match:
+        # Fast tier didn't match - try full CLDR pattern
+        # This triggers the CLDR scan only when truly needed
+        full_pattern = _get_currency_pattern_full()
+        match = full_pattern.search(value)
 
     if not match:
         diagnostic = ErrorTemplate.parse_currency_failed(

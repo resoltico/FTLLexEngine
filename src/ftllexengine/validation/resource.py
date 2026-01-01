@@ -214,21 +214,35 @@ def _check_undefined_references(
     messages_dict: dict[str, Message],
     terms_dict: dict[str, Term],
     line_cache: LineOffsetCache,
+    *,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
 ) -> list[ValidationWarning]:
     """Check for undefined message and term references.
 
     Validates that all message and term references in the resource
-    point to defined entries.
+    point to defined entries. Optionally considers entries already
+    present in a bundle for cross-resource reference validation.
 
     Args:
-        messages_dict: Map of message IDs to Message nodes
-        terms_dict: Map of term IDs to Term nodes
+        messages_dict: Map of message IDs to Message nodes from current resource
+        terms_dict: Map of term IDs to Term nodes from current resource
         line_cache: Shared line offset cache for position lookups
+        known_messages: Optional set of message IDs already in bundle
+        known_terms: Optional set of term IDs already in bundle
 
     Returns:
         List of warnings for undefined references
     """
     warnings: list[ValidationWarning] = []
+
+    # Combine current resource entries with known bundle entries
+    all_messages = set(messages_dict.keys())
+    all_terms = set(terms_dict.keys())
+    if known_messages is not None:
+        all_messages |= known_messages
+    if known_terms is not None:
+        all_terms |= known_terms
 
     # Check message references
     for msg_name, message in messages_dict.items():
@@ -236,7 +250,7 @@ def _check_undefined_references(
         line, column = _get_entry_position(message, line_cache)
 
         for ref in msg_refs:
-            if ref not in messages_dict:
+            if ref not in all_messages:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
@@ -248,7 +262,7 @@ def _check_undefined_references(
                 )
 
         for ref in term_refs:
-            if ref not in terms_dict:
+            if ref not in all_terms:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
@@ -265,7 +279,7 @@ def _check_undefined_references(
         line, column = _get_entry_position(term, line_cache)
 
         for ref in msg_refs:
-            if ref not in messages_dict:
+            if ref not in all_messages:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
@@ -277,7 +291,7 @@ def _check_undefined_references(
                 )
 
         for ref in term_refs:
-            if ref not in terms_dict:
+            if ref not in all_terms:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
@@ -392,6 +406,8 @@ def validate_resource(
     source: str,
     *,
     parser: FluentParserV1 | None = None,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
 ) -> ValidationResult:
     """Validate FTL resource without adding to a bundle.
 
@@ -408,6 +424,10 @@ def validate_resource(
     Args:
         source: FTL file content
         parser: Optional parser instance (creates default if not provided)
+        known_messages: Optional set of message IDs already in bundle (for
+            cross-resource reference validation)
+        known_terms: Optional set of term IDs already in bundle (for
+            cross-resource reference validation)
 
     Returns:
         ValidationResult with parse errors and semantic warnings
@@ -444,8 +464,14 @@ def validate_resource(
         # Pass 2: Collect entries and check structural issues
         messages_dict, terms_dict, structure_warnings = _collect_entries(resource, line_cache)
 
-        # Pass 3: Check undefined references
-        ref_warnings = _check_undefined_references(messages_dict, terms_dict, line_cache)
+        # Pass 3: Check undefined references (with bundle context if provided)
+        ref_warnings = _check_undefined_references(
+            messages_dict,
+            terms_dict,
+            line_cache,
+            known_messages=known_messages,
+            known_terms=known_terms,
+        )
 
         # Pass 4: Detect circular dependencies
         cycle_warnings = _detect_circular_references(messages_dict, terms_dict)

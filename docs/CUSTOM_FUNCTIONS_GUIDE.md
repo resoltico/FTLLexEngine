@@ -67,12 +67,12 @@ However, domain-specific applications often require custom formatters for specia
 
 ## Function Naming Conventions
 
-### FTL Naming Standard: UPPERCASE
+### FTL Naming Convention: UPPERCASE (Recommended)
 
-All FTL functions use UPPERCASE names to match the Fluent specification:
+By convention, FTL functions use UPPERCASE names to distinguish them from message references:
 
 ```python
-# CORRECT - FTL convention
+# RECOMMENDED - FTL convention (UPPERCASE)
 def FILESIZE(bytes_count: int | float) -> str:
     ...
 
@@ -84,15 +84,20 @@ def MARKDOWN(text: str) -> str:
 ```
 
 ```python
-# WRONG - Don't use snake_case or camelCase
-def file_size(bytes_count: int | float) -> str:  # ❌ Wrong
+# VALID BUT NOT RECOMMENDED - lowercase/camelCase works but breaks convention
+def filesize(bytes_count: int | float) -> str:  # Works, but unconventional
     ...
 
-def phoneNumber(number: str) -> str:  # ❌ Wrong
+def phoneNumber(number: str) -> str:  # Works, but unconventional
     ...
 ```
 
-**Rationale**: FTL syntax is case-sensitive. `FILESIZE()` in FTL must match the registered Python function name exactly.
+**Rationale**: FTL syntax is case-sensitive. UPPERCASE names are a convention that:
+1. Visually distinguishes functions from message references in FTL code
+2. Matches the style of built-in functions (NUMBER, DATETIME)
+3. Makes function calls immediately recognizable
+
+**Note**: As of v0.48.0, function names can use any case (lowercase, camelCase, UPPERCASE). UPPERCASE remains the recommended convention for consistency with built-in functions.
 
 ### Python Linters
 

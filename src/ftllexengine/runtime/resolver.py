@@ -446,9 +446,13 @@ class FluentResolver:
             # term_key already has '-' prefix, strip it for the template
             return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
 
-        # Evaluate term arguments and merge into resolution args
-        # Per Fluent spec: -term(arg: val) makes arg available as $arg in term pattern
-        term_args: dict[str, FluentValue] = dict(args)
+        # Evaluate term arguments - terms are ISOLATED from calling context
+        # Per Fluent spec: terms can ONLY access explicitly passed arguments
+        # https://projectfluent.org/fluent/guide/terms.html
+        # "Terms receive such data from messages in which they are used"
+        # This means ONLY explicit parameterization like -term(arg: val), NOT
+        # implicit access to the calling message's $variables.
+        term_args: dict[str, FluentValue] = {}
         if expr.arguments is not None:
             # Evaluate named arguments (the primary use case for term args)
             for named_arg in expr.arguments.named:

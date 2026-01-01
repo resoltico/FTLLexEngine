@@ -21,7 +21,7 @@ from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.parsing import parse_currency
-from ftllexengine.parsing.currency import _get_currency_maps, _get_currency_pattern
+from ftllexengine.parsing.currency import _get_currency_maps, _get_currency_pattern_full
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.ast import (
     Annotation,
@@ -74,7 +74,7 @@ class TestParsingCurrencyCoverage:
         """
         # Clear caches to start fresh
         _get_currency_maps.cache_clear()
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
 
         # Get the original maps and force pattern to be built with them
         original_symbol_map, original_ambiguous, original_locale_map, original_valid_codes = (
@@ -82,7 +82,7 @@ class TestParsingCurrencyCoverage:
         )
 
         # Build the regex pattern with original maps (includes €)
-        _ = _get_currency_pattern()
+        _ = _get_currency_pattern_full()
 
         # Now create modified maps that DON'T include €
         modified_map = {k: v for k, v in original_symbol_map.items() if k != "€"}
@@ -106,7 +106,7 @@ class TestParsingCurrencyCoverage:
 
         # Clean up - restore caches
         _get_currency_maps.cache_clear()
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
 
 
 class TestLocaleContextCacheLimitCoverage:

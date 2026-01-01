@@ -248,10 +248,11 @@ def _is_variant_marker(cursor: Cursor) -> bool:
                 # Check what comes after ]
                 after_bracket = scan.advance()
 
-                # Skip whitespace on same line (shares main lookahead counter)
+                # Skip inline whitespace (ONLY space per spec, NOT tab)
+                # Per Fluent EBNF: blank_inline ::= "\u0020"+
                 while (
                     not after_bracket.is_eof
-                    and after_bracket.current in (" ", "\t")
+                    and after_bracket.current == " "
                     and lookahead_count < max_lookahead
                 ):
                     after_bracket = after_bracket.advance()
@@ -364,6 +365,11 @@ def parse_simple_pattern(
     Supports multiline continuation: variant values can span multiple lines when
     continuation lines are indented, matching the behavior of top-level patterns.
 
+    Per Fluent spec, common indentation handling:
+    - The first continuation line's indentation sets the "common indent" baseline
+    - Subsequent continuation lines have only the common indent stripped
+    - Extra indentation beyond the common baseline is preserved in the pattern
+
     Handles:
     - Plain text with multi-line continuation (indented lines)
     - All placeable types: {$var}, {-term}, {NUMBER(...)}, {"string"}, {42}
@@ -394,6 +400,8 @@ def parse_simple_pattern(
         ParseResult(Pattern, new_cursor) on success, None on parse error
     """
     elements: list[TextElement | Placeable] = []
+    # Track common indentation (set on first continuation line)
+    common_indent: int | None = None
 
     while not cursor.is_eof:
         ch = cursor.current
@@ -412,19 +420,29 @@ def parse_simple_pattern(
         # Note: Line endings are normalized to LF at parser entry.
         if ch == "\n":
             if is_indented_continuation(cursor):
-                # Skip newline and consume indentation
+                # Skip newline
                 cursor = cursor.advance()
-                # Skip leading spaces (continuation indent)
-                cursor = cursor.skip_spaces()
+
+                # Track common indentation from first continuation line
+                if common_indent is None:
+                    common_indent = _count_leading_spaces(cursor)
+                    # Skip the common indent
+                    cursor = cursor.skip_spaces()
+                    extra_spaces = ""
+                else:
+                    # Skip only common indent, preserve extra spaces
+                    cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
+
                 # Per Fluent spec, continuation lines are joined with newlines.
                 # The newline represents the line break in the pattern value.
+                newline_text = "\n" + extra_spaces
                 if elements and not isinstance(elements[-1], Placeable):
-                    # Append newline to previous text element
+                    # Append newline (and extra spaces) to previous text element
                     last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + "\n")
+                    elements[-1] = TextElement(value=last_elem.value + newline_text)
                 else:
-                    # Add new text element with newline
-                    elements.append(TextElement(value="\n"))
+                    # Add new text element with newline (and extra spaces)
+                    elements.append(TextElement(value=newline_text))
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -470,6 +488,51 @@ def parse_simple_pattern(
     return ParseResult(pattern, cursor)
 
 
+def _count_leading_spaces(cursor: Cursor) -> int:
+    """Count leading spaces at current position (for common indentation tracking).
+
+    Args:
+        cursor: Current position (at start of line content after newline)
+
+    Returns:
+        Number of leading space characters (U+0020 only, not tabs)
+    """
+    count = 0
+    scan = cursor
+    while not scan.is_eof and scan.current == " ":
+        count += 1
+        scan = scan.advance()
+    return count
+
+
+def _skip_common_indent(cursor: Cursor, common_indent: int) -> tuple[Cursor, str]:
+    """Skip common indentation and return any extra spaces.
+
+    Per Fluent spec, only the common indentation is stripped from continuation
+    lines. Extra indentation beyond the common baseline is preserved.
+
+    Args:
+        cursor: Current position (at start of line content after newline)
+        common_indent: Number of spaces to strip (common indentation)
+
+    Returns:
+        Tuple of (new cursor position, extra spaces to preserve)
+    """
+    # Skip common indent spaces
+    skipped = 0
+    while skipped < common_indent and not cursor.is_eof and cursor.current == " ":
+        cursor = cursor.advance()
+        skipped += 1
+
+    # Collect extra spaces beyond common indent
+    extra_spaces: list[str] = []
+    while not cursor.is_eof and cursor.current == " ":
+        extra_spaces.append(" ")
+        cursor = cursor.advance()
+
+    return cursor, "".join(extra_spaces)
+
+
 def parse_pattern(
     cursor: Cursor,
     context: ParseContext | None = None,
@@ -479,6 +542,11 @@ def parse_pattern(
     Use this for top-level message/attribute patterns. For variant patterns
     inside select expressions, use parse_simple_pattern() which has simpler
     stop conditions (no multi-line continuation).
+
+    Per Fluent spec, common indentation handling:
+    - The first continuation line's indentation sets the "common indent" baseline
+    - Subsequent continuation lines have only the common indent stripped
+    - Extra indentation beyond the common baseline is preserved in the pattern
 
     Handles:
     - Plain text with multi-line continuation (indented lines)
@@ -493,6 +561,8 @@ def parse_pattern(
         ParseResult with Pattern on success, None on parse error
     """
     elements: list[TextElement | Placeable] = []
+    # Track common indentation (set on first continuation line)
+    common_indent: int | None = None
 
     while not cursor.is_eof:
         ch = cursor.current
@@ -501,19 +571,29 @@ def parse_pattern(
         # Note: Line endings are normalized to LF at parser entry.
         if ch == "\n":
             if is_indented_continuation(cursor):
-                # Skip newline and consume indentation
+                # Skip newline
                 cursor = cursor.advance()
-                # Skip leading spaces (continuation indent)
-                cursor = cursor.skip_spaces()
+
+                # Track common indentation from first continuation line
+                if common_indent is None:
+                    common_indent = _count_leading_spaces(cursor)
+                    # Skip the common indent
+                    cursor = cursor.skip_spaces()
+                    extra_spaces = ""
+                else:
+                    # Skip only common indent, preserve extra spaces
+                    cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
+
                 # Per Fluent spec, continuation lines are joined with newlines.
                 # The newline represents the line break in the pattern value.
+                newline_text = "\n" + extra_spaces
                 if elements and not isinstance(elements[-1], Placeable):
-                    # Append newline to previous text element
+                    # Append newline (and extra spaces) to previous text element
                     last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + "\n")
+                    elements[-1] = TextElement(value=last_elem.value + newline_text)
                 else:
-                    # Add new text element with newline
-                    elements.append(TextElement(value="\n"))
+                    # Add new text element with newline (and extra spaces)
+                    elements.append(TextElement(value=newline_text))
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -829,7 +909,7 @@ def parse_argument_expression(
             return None
         return ParseResult(placeable_result.value, placeable_result.cursor)
 
-    # Identifier: function call (UPPERCASE) or message reference
+    # Identifier: function call (any case per spec) or message reference
     # Note: ASCII letter check per Fluent spec for identifier start
     if is_identifier_start(ch) or ch == "_":
         id_result = parse_identifier(cursor)
@@ -839,14 +919,13 @@ def parse_argument_expression(
         name = id_result.value
         cursor_after_id = id_result.cursor
 
-        # Check if uppercase identifier followed by '(' -> function call
-        if name.isupper():
-            lookahead = skip_blank_inline(cursor_after_id)
-            if not lookahead.is_eof and lookahead.current == "(":
-                func_result = parse_function_reference(cursor, context)
-                if func_result is None:
-                    return None
-                return ParseResult(func_result.value, func_result.cursor)
+        # Check if identifier followed by '(' -> function call (any case per spec)
+        lookahead = skip_blank_inline(cursor_after_id)
+        if not lookahead.is_eof and lookahead.current == "(":
+            func_result = parse_function_reference(cursor, context)
+            if func_result is None:
+                return None
+            return ParseResult(func_result.value, func_result.cursor)
 
         # Message reference (or identifier for named argument name)
         return ParseResult(
@@ -968,14 +1047,18 @@ def parse_function_reference(
     cursor: Cursor,
     context: ParseContext | None = None,
 ) -> ParseResult[FunctionReference] | None:
-    """Parse function reference: FUNCTION(args)
+    """Parse function reference: identifier(args)
 
-    Function names must be uppercase identifiers.
+    Per Fluent 1.0 spec, function names follow the standard Identifier grammar
+    which allows any case. The convention of uppercase function names (NUMBER,
+    DATETIME) is stylistic, not syntactic.
+
+    FTL EBNF: FunctionReference ::= Identifier CallArguments
 
     Examples:
         NUMBER($value)
-        NUMBER($value, minimumFractionDigits: 2)
-        DATETIME($date, dateStyle: "full")
+        number($value)
+        DateTime($date, dateStyle: "full")
 
     Args:
         cursor: Position at start of function name
@@ -988,17 +1071,13 @@ def parse_function_reference(
     # Capture start position for span
     start_pos = cursor.pos
 
-    # Parse function name (must be uppercase identifier)
+    # Parse function name (any case per spec)
     id_result = parse_identifier(cursor)
     if id_result is None:
         return id_result
 
     id_parse = id_result
     func_name = id_parse.value
-
-    # Validate function name is uppercase
-    if not func_name.isupper():
-        return None  # f"Function name must be uppercase: '{func_name}'", id_parse.cursor
 
     # Per spec: FunctionReference uses blank? before "("
     cursor = skip_blank_inline(id_parse.cursor)
@@ -1132,12 +1211,20 @@ def _parse_inline_number_literal(cursor: Cursor) -> ParseResult[InlineExpression
     return ParseResult(NumberLiteral(value=num_value, raw=num_str), num_result.cursor)
 
 
-def _parse_inline_hyphen(cursor: Cursor) -> ParseResult[InlineExpression] | None:
-    """Parse hyphen-prefixed expression: term reference (-brand) or negative number (-123)."""
+def _parse_inline_hyphen(
+    cursor: Cursor,
+    context: ParseContext | None = None,
+) -> ParseResult[InlineExpression] | None:
+    """Parse hyphen-prefixed expression: term reference (-brand) or negative number (-123).
+
+    Args:
+        cursor: Current position in source
+        context: Parse context for nested placeable depth tracking
+    """
     next_cursor = cursor.advance()
     if not next_cursor.is_eof and is_identifier_start(next_cursor.current):
         # Term reference: -brand (ASCII letter after hyphen)
-        term_result = parse_term_reference(cursor)
+        term_result = parse_term_reference(cursor, context)
         if term_result is None:
             return None
         return ParseResult(term_result.value, term_result.cursor)
@@ -1156,8 +1243,20 @@ def _parse_message_attribute(cursor: Cursor) -> tuple[Identifier | None, Cursor]
     return Identifier(attr_id_result.value), attr_id_result.cursor
 
 
-def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | None:
-    """Parse identifier-based expression: function call or message reference."""
+def _parse_inline_identifier(
+    cursor: Cursor,
+    context: ParseContext | None = None,
+) -> ParseResult[InlineExpression] | None:
+    """Parse identifier-based expression: function call or message reference.
+
+    Per Fluent 1.0 spec, function names follow the standard Identifier grammar
+    which allows any case. The convention of uppercase function names (NUMBER,
+    DATETIME) is stylistic, not syntactic.
+
+    Args:
+        cursor: Current position in source
+        context: Parse context for nested placeable depth tracking
+    """
     # Capture start position for span
     start_pos = cursor.pos
 
@@ -1168,14 +1267,15 @@ def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | 
     name = id_result.value
     cursor_after_id = id_result.cursor
 
-    # Check if uppercase identifier followed by '(' -> function call
-    if name.isupper():
-        lookahead = skip_blank_inline(cursor_after_id)
-        if not lookahead.is_eof and lookahead.current == "(":
-            func_result = parse_function_reference(cursor)
-            if func_result is None:
-                return None
-            return ParseResult(func_result.value, func_result.cursor)
+    # Check if identifier followed by '(' -> function call (any case per spec)
+    # Per Fluent spec: FunctionReference ::= Identifier CallArguments
+    # Identifier allows any case; uppercase is convention, not requirement
+    lookahead = skip_blank_inline(cursor_after_id)
+    if not lookahead.is_eof and lookahead.current == "(":
+        func_result = parse_function_reference(cursor, context)
+        if func_result is None:
+            return None
+        return ParseResult(func_result.value, func_result.cursor)
 
     # Message reference with optional attribute
     attribute, final_cursor = _parse_message_attribute(cursor_after_id)
@@ -1191,22 +1291,30 @@ def _parse_inline_identifier(cursor: Cursor) -> ParseResult[InlineExpression] | 
 
 def parse_inline_expression(
     cursor: Cursor,
+    context: ParseContext | None = None,
 ) -> ParseResult[InlineExpression] | None:
-    """Parse inline expression (variable, string, number, function, message, or term reference).
+    """Parse inline expression per Fluent spec.
 
     Uses character-based dispatch for efficient parsing. Each expression type
     has a dedicated handler function.
+
+    Per Fluent EBNF:
+        InlineExpression ::= StringLiteral | NumberLiteral | FunctionReference
+                           | MessageReference | TermReference | VariableReference
+                           | inline_placeable
 
     Handles:
     - Variable references: $var
     - String literals: "text"
     - Number literals: 42 or -123
-    - Function calls: NUMBER(args)
+    - Function calls: FUNC(args) or func(args) (any case per spec)
     - Message references: identifier or identifier.attribute
     - Term references: -term-id or -term-id.attribute
+    - Nested placeables: { expr } (inline_placeable per spec)
 
     Args:
         cursor: Current position in source
+        context: Parse context for nested placeable depth tracking
 
     Returns:
         ParseResult with InlineExpression on success, None on parse error
@@ -1228,14 +1336,22 @@ def parse_inline_expression(
             return _parse_inline_string_literal(cursor)
 
         case "-":
-            return _parse_inline_hyphen(cursor)
+            return _parse_inline_hyphen(cursor, context)
+
+        case "{":
+            # Nested placeable: { expr } per spec (inline_placeable)
+            # Advance past opening brace and delegate to parse_placeable
+            placeable_result = parse_placeable(cursor.advance(), context)
+            if placeable_result is None:
+                return None
+            return ParseResult(placeable_result.value, placeable_result.cursor)
 
         case _ if ch in _ASCII_DIGITS:
             return _parse_inline_number_literal(cursor)
 
         case _ if is_identifier_start(ch) or ch == "_":
             # ASCII letter check per Fluent spec for identifier start
-            return _parse_inline_identifier(cursor)
+            return _parse_inline_identifier(cursor, context)
 
         case _:
             return None
@@ -1293,8 +1409,8 @@ def parse_placeable(
     # Capture start position before parsing expression (for select expression span)
     expr_start_pos = cursor.pos
 
-    # Parse the inline expression using extracted helper
-    expr_result = parse_inline_expression(cursor)
+    # Parse the inline expression with nested context for depth tracking
+    expr_result = parse_inline_expression(cursor, nested_context)
     if expr_result is None:
         return expr_result
 

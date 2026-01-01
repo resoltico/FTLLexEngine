@@ -83,11 +83,16 @@ msg = { $val ->
         result = parse_function_reference(cursor)
         assert result is None
 
-    def test_function_reference_line_451_not_uppercase(self) -> None:
-        """Target line 451: Function name validation (not uppercase)."""
+    def test_function_reference_lowercase_valid(self) -> None:
+        """Test lowercase function names are now valid per Fluent 1.0 spec.
+
+        The isupper() check was removed in v0.48.0 for spec compliance.
+        """
         cursor = Cursor(source="lowercase()", pos=0)
         result = parse_function_reference(cursor)
-        assert result is None
+        # Lowercase function names are now valid
+        assert result is not None
+        assert result.value.id.name == "lowercase"
 
     def test_function_reference_line_458_missing_paren(self) -> None:
         """Target line 458: Missing '(' after function name."""
@@ -192,11 +197,11 @@ class TestCurrencyUncoveredLine:
         """Target line 209: Pattern construction fallback when no symbols."""
         from ftllexengine.parsing.currency import (  # noqa: PLC0415
             _get_currency_maps,
-            _get_currency_pattern,
+            _get_currency_pattern_full,
         )
 
         # Clear the pattern cache before test
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
 
         # Mock _get_currency_maps to return empty maps (with empty valid_codes)
         with patch(
@@ -204,7 +209,7 @@ class TestCurrencyUncoveredLine:
             return_value=({}, set(), {}, frozenset()),
         ):
             # Clear cache again after patching to force regeneration
-            _get_currency_pattern.cache_clear()
+            _get_currency_pattern_full.cache_clear()
 
             # This triggers the fallback pattern (ISO codes only)
             # Just verify parsing still works (will only match ISO codes)
@@ -212,7 +217,7 @@ class TestCurrencyUncoveredLine:
             assert result is not None or len(_errors) > 0
 
         # Clear caches to restore normal operation after test
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
         _get_currency_maps.cache_clear()
 
 

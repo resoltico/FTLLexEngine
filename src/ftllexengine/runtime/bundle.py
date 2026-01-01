@@ -619,7 +619,13 @@ class FluentBundle:
             ftllexengine.validation.validate_resource: Standalone validation function
         """
         # Delegate to validation module, reusing bundle's parser for consistency
-        return _validate_resource_impl(source, parser=self._parser)
+        # Pass existing bundle entries for cross-resource reference validation
+        return _validate_resource_impl(
+            source,
+            parser=self._parser,
+            known_messages=frozenset(self._messages.keys()),
+            known_terms=frozenset(self._terms.keys()),
+        )
 
     def format_pattern(
         self,

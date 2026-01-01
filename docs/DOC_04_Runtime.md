@@ -546,6 +546,8 @@ def validate_resource(
     source: str,
     *,
     parser: FluentParserV1 | None = None,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
 ) -> ValidationResult:
 ```
 
@@ -554,14 +556,18 @@ def validate_resource(
 |:----------|:-----|:----|:------------|
 | `source` | `str` | Y | FTL file content. |
 | `parser` | `FluentParserV1 \| None` | N | Parser instance (creates default if not provided). |
+| `known_messages` | `frozenset[str] \| None` | N | Message IDs from other resources (cross-resource validation). |
+| `known_terms` | `frozenset[str] \| None` | N | Term IDs from other resources (cross-resource validation). |
 
 ### Constraints
 - Return: ValidationResult with errors, warnings, and semantic annotations.
 - Validation Passes: (1) Syntax errors, (2) Structural issues, (3) Undefined refs, (4) Cycles, (5) Semantic (Fluent spec E0001-E0013).
+- Cross-Resource: References to `known_messages`/`known_terms` do not produce undefined warnings.
 - Raises: Never. Critical parse errors returned as ValidationError.
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
 - Import: `from ftllexengine.validation import validate_resource`
+- Version: `known_messages`/`known_terms` added in v0.48.0.
 
 ---
 

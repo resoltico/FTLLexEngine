@@ -366,10 +366,10 @@ class TestParseCurrencyWithBuiltMaps:
 
 
 class TestBuildCurrencyPatternFallback:
-    """Test fallback case in _get_currency_pattern (line 209)."""
+    """Test fallback case in _get_currency_pattern_full (line 209)."""
 
     def test_build_pattern_fallback_when_no_symbols(self) -> None:
-        """Test _get_currency_pattern fallback when no symbols exist.
+        """Test _get_currency_pattern_full fallback when no symbols exist.
 
         This tests line 209, the else branch that creates an ISO-code-only
         pattern when both symbol_map and ambiguous_symbols are empty.
@@ -379,11 +379,11 @@ class TestBuildCurrencyPatternFallback:
 
         from ftllexengine.parsing.currency import (
             _get_currency_maps,
-            _get_currency_pattern,
+            _get_currency_pattern_full,
         )
 
         # Clear the pattern cache before test
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
 
         # Mock _get_currency_maps to return empty maps (with empty valid_codes)
         with patch(
@@ -391,10 +391,10 @@ class TestBuildCurrencyPatternFallback:
             return_value=({}, set(), {}, frozenset()),
         ):
             # Clear cache again after patching to force regeneration
-            _get_currency_pattern.cache_clear()
+            _get_currency_pattern_full.cache_clear()
 
             # Call the function - it will use our mock
-            pattern = _get_currency_pattern()
+            pattern = _get_currency_pattern_full()
 
             # Should return ISO-code-only pattern
             assert pattern is not None
@@ -418,5 +418,5 @@ class TestBuildCurrencyPatternFallback:
             assert match is None
 
         # Clear caches to restore normal operation after test
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
         _get_currency_maps.cache_clear()

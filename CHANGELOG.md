@@ -13,6 +13,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-01-01
+
+### Breaking Changes
+- **Function Name Case Sensitivity Removed**: Lowercase function names now allowed:
+  - Previous: Function names required uppercase (`NUMBER()`, `DATETIME()`)
+  - Now: Any valid identifier accepted (`number()`, `dateTime()`, `NUMBER()`)
+  - Per Fluent 1.0 EBNF: `Function ::= Identifier` with no case restriction
+  - Migration: Existing uppercase names continue to work unchanged
+- **Term Scope Isolation**: Terms no longer inherit calling context variables:
+  - Previous: `{ -term }` from message with `$name` could access `$name` in term
+  - Now: Terms receive empty variable scope; must use explicit arguments
+  - Per Fluent spec: Terms are self-contained; use `-term(name: $name)` for passing values
+  - Migration: Add explicit arguments to term references where needed
+
+### Added
+- **Nested Placeable Support**: Placeables inside placeables now parse correctly:
+  - `{ { $var } }` - nested variable reference
+  - `{ { 123 } }` - nested number literal
+  - `{ { "text" } }` - nested string literal
+  - Per Fluent EBNF: `InlinePlaceable ::= "{" InlineExpression "}"`
+- **Cross-Resource Validation**: New parameters for `validate_resource()`:
+  - `known_messages: frozenset[str]` - message IDs from other resources
+  - `known_terms: frozenset[str]` - term IDs from other resources
+  - References to known entries no longer produce undefined warnings
+  - `FluentBundle.validate_resource()` automatically passes existing entries
+- **Fast-Tier Currency Pattern**: Two-tier parsing for common currencies:
+  - Fast tier: USD, EUR, GBP, JPY, CNY with common symbols
+  - Falls back to full CLDR scan only when fast pattern fails
+  - Reduces cold-start latency for common currency operations
+- **ParseContext Propagation**: Depth tracking through expression parsing:
+  - `ParseContext` passed through all expression parsing functions
+  - Enables consistent nesting depth limits across parser
+
+### Fixed
+- **String Literal Line Endings**: Now rejected per Fluent specification:
+  - Previous: LF/CR in string literals accepted silently
+  - Now: Returns parse error; use `\\n` escape sequence for newlines
+  - Per Fluent EBNF: `quoted_char ::= (any_char - special_quoted_char - line_end)`
+- **Tab Before Variant Marker**: Now rejected per Fluent specification:
+  - Previous: Tab before `*[other]` accepted as indentation
+  - Now: Only spaces allowed for variant indentation
+  - Per Fluent spec: Tabs prohibited in FTL content
+
+### Changed
+- **Thread-Local Parse Error Cleanup**: `clear_parse_error()` called at parser entry:
+  - Prevents stale error context from previous parse operations
+  - Ensures clean error state for each parse invocation
+
 ## [0.47.0] - 2025-12-31
 
 ### Breaking Changes
@@ -875,6 +923,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.48.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.48.0
 [0.47.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.47.0
 [0.46.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.46.0
 [0.45.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.45.0

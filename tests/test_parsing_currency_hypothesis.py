@@ -110,7 +110,7 @@ class TestParseCurrencyHypothesis:
         """Test defensive code: symbol in regex but not in mapping."""
         from unittest.mock import patch
 
-        from ftllexengine.parsing.currency import _get_currency_pattern
+        from ftllexengine.parsing.currency import _get_currency_pattern_full
 
         # Get original maps and create modified version missing € symbol
         original_symbol_map, original_ambiguous, original_locale_map, original_valid_codes = (
@@ -120,7 +120,7 @@ class TestParseCurrencyHypothesis:
         del modified_map["€"]
 
         # Clear pattern cache before test
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
 
         # Mock _get_currency_maps to return modified maps
         mock_return = (
@@ -131,7 +131,7 @@ class TestParseCurrencyHypothesis:
             return_value=mock_return,
         ):
             # Clear cache again after patching to force regeneration
-            _get_currency_pattern.cache_clear()
+            _get_currency_pattern_full.cache_clear()
 
             # Now € is in the regex but not in the map - should return error
             result, errors = parse_currency("€100.50", "en_US")
@@ -139,7 +139,7 @@ class TestParseCurrencyHypothesis:
             assert result is None
 
         # Clean up - restore cache
-        _get_currency_pattern.cache_clear()
+        _get_currency_pattern_full.cache_clear()
 
     @given(
         invalid_number=st.one_of(

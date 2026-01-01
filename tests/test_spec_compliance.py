@@ -138,15 +138,19 @@ msg = { greeting.formal(case: "nominative") }
         assert entries_by_type.get("Message") == 1  # greeting
         assert entries_by_type.get("Junk") == 1  # invalid msg
 
-    def test_rejects_message_without_attribute_and_arguments(self):
-        """Reject message(...) syntax without attribute."""
+    def test_parses_lowercase_function_reference(self):
+        """Lowercase function names are valid per Fluent 1.0 spec.
+
+        After removing the isupper() restriction (v0.48.0), 'greeting(...)'
+        parses as a FunctionReference, not a message reference with args.
+        """
         parser = FluentParserV1()
         resource = parser.parse('msg = { greeting(case: "nominative") }')
 
-        # Should create Junk entry
+        # Should parse as valid Message with FunctionReference
         assert len(resource.entries) == 1
         entry = resource.entries[0]
-        assert type(entry).__name__ == "Junk"
+        assert type(entry).__name__ == "Message"
 
     def test_accepts_term_with_attribute_and_arguments(self):
         """Accept term.attr(...) syntax (VALID per spec)."""

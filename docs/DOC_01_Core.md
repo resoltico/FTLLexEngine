@@ -228,9 +228,11 @@ def validate_resource(self, source: str) -> ValidationResult:
 
 ### Constraints
 - Return: ValidationResult with errors and warnings.
+- Cross-Resource: References to existing bundle messages/terms do not produce undefined warnings.
 - Raises: Never.
 - State: None. Does not modify bundle.
 - Thread: Safe.
+- Version: Cross-resource validation added in v0.48.0.
 
 ---
 

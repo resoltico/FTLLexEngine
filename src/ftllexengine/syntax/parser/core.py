@@ -41,7 +41,7 @@ from ftllexengine.syntax.ast import (
     Term,
 )
 from ftllexengine.syntax.cursor import Cursor
-from ftllexengine.syntax.parser.primitives import is_identifier_start
+from ftllexengine.syntax.parser.primitives import clear_parse_error, is_identifier_start
 from ftllexengine.syntax.parser.rules import (
     ParseContext,
     parse_comment,
@@ -234,6 +234,11 @@ class FluentParserV1:
             - :func:`~ftllexengine.syntax.parser.rules.parse_term` - Term parsing
             - :func:`~ftllexengine.syntax.parser.rules.parse_comment` - Comment parsing
         """
+        # Clear any stale parse error context from previous operations.
+        # This is critical for async frameworks that reuse threads, ensuring
+        # clean error state for each parse operation.
+        clear_parse_error()
+
         # Validate input size (DoS prevention)
         if self._max_source_size > 0 and len(source) > self._max_source_size:
             msg = (
@@ -341,9 +346,26 @@ class FluentParserV1:
                     pending_comment = new_comment
                     pending_comment_end_pos = cursor.pos
                     continue
-                # If comment parsing fails, skip the line
+                # If comment parsing fails, create Junk entry (not silent skip)
+                # This maintains parser transparency and enables roundtrip fidelity
+                junk_start = cursor.pos
                 while not cursor.is_eof and cursor.current not in ("\n", "\r"):
                     cursor = cursor.advance()
+                junk_end = cursor.pos
+                junk_content = cursor.source[junk_start:junk_end]
+                # Create annotation for the malformed comment
+                annotation = Annotation(
+                    code=DiagnosticCode.PARSE_JUNK.name,
+                    message="Invalid comment syntax (too many # characters or malformed)",
+                    span=Span(start=junk_start, end=junk_end),
+                )
+                entries.append(
+                    Junk(
+                        content=junk_content,
+                        annotations=(annotation,),
+                        span=Span(start=junk_start, end=junk_end),
+                    )
+                )
                 if not cursor.is_eof:
                     cursor = cursor.advance()
                 continue

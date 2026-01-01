@@ -224,16 +224,20 @@ class TestAdditionalUncoveredLines:
         # Should return None when number parsing fails (line 296)
         assert result is None
 
-    def test_function_name_not_uppercase_line_443(self) -> None:
-        """Test function reference with non-uppercase name (line 443)."""
+    def test_function_name_lowercase_is_valid(self) -> None:
+        """Test function reference with lowercase name is now valid.
 
+        Per Fluent 1.0 spec, function names are identifiers without case restrictions.
+        The isupper() check was removed in v0.48.0 for spec compliance.
+        """
         source = "lowercase()"
         cursor = Cursor(source, 0)
 
         result = parse_function_reference(cursor)
 
-        # Should return None for non-uppercase function name (line 443)
-        assert result is None
+        # Lowercase function names are now valid per spec
+        assert result is not None
+        assert result.value.id.name == "lowercase"
 
     def test_named_argument_not_identifier_line_367(self) -> None:
         """Test named argument when name is not identifier (line 367)."""
