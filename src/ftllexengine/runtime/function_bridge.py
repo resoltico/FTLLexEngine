@@ -25,6 +25,8 @@ Example:
 Python 3.13+. Zero external dependencies.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -580,7 +582,7 @@ class FunctionRegistry:
         """
         return f"FunctionRegistry(functions={len(self._functions)})"
 
-    def copy(self) -> "FunctionRegistry":
+    def copy(self) -> FunctionRegistry:
         """Create an unfrozen copy of this registry.
 
         Returns:
@@ -665,7 +667,7 @@ class FunctionRegistry:
         metadata = BUILTIN_FUNCTIONS.get(ftl_name)
         return metadata.expected_positional_args if metadata else None
 
-    def get_builtin_metadata(self, ftl_name: str) -> "FunctionMetadata | None":
+    def get_builtin_metadata(self, ftl_name: str) -> FunctionMetadata | None:
         """Get metadata for a built-in function.
 
         Args:

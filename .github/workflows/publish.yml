@@ -10,8 +10,12 @@ permissions:
 
 jobs:
   build:
-    name: Build & Verify Quality
+    name: Build & Verify Quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +36,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Make scripts executable
         run: chmod +x ./scripts/lint.sh ./scripts/test.sh
@@ -105,7 +109,7 @@ jobs:
       - name: Run Quality Checks (Lint & Test)
         run: |
           echo "::group::Linting"
-          uv run scripts/lint.sh
+          PY_VERSION=${{ matrix.python-version }} uv run scripts/lint.sh
           echo "::endgroup::"
 
           echo "::group::Testing"
@@ -113,6 +117,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload coverage reports to Codecov
+        if: matrix.python-version == '3.13'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -120,12 +125,15 @@ jobs:
           fail_ci_if_error: false
 
       - name: Build package
+        if: matrix.python-version == '3.13'
         run: uv build
 
       - name: Check package metadata
+        if: matrix.python-version == '3.13'
         run: uv run twine check dist/*
 
       - name: Verify package integrity
+        if: matrix.python-version == '3.13'
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
@@ -162,9 +170,11 @@ jobs:
           echo "✓ Package integrity verified"
 
       - name: Debug Artifacts
+        if: matrix.python-version == '3.13'
         run: ls -laR dist/
 
       - name: Store build artifacts
+        if: matrix.python-version == '3.13'
         uses: actions/upload-artifact@v4
         with:
           name: dist

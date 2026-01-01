@@ -11,6 +11,31 @@ set -e
 # Environment Auto-Detection
 # =============================================================================
 
+# Check Python version compatibility (Atheris requires 3.11-3.13)
+PY_VERSION=$(uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+
+if [[ "$PY_VERSION" == "3.14" ]] || [[ "$PY_VERSION" > "3.14" ]]; then
+    echo ""
+    echo "=============================================================================="
+    echo "[ERROR] Python $PY_VERSION is not supported by Atheris."
+    echo "=============================================================================="
+    echo ""
+    echo "Atheris native fuzzing requires Python 3.11-3.13."
+    echo "Python 3.14+ is not yet supported by the Atheris project."
+    echo ""
+    echo "Options:"
+    echo "  1. Switch to Python 3.13:"
+    echo "     uv run --python 3.13 ./scripts/fuzz.sh --native"
+    echo ""
+    echo "  2. Use property-based fuzzing (works on Python 3.14):"
+    echo "     ./scripts/fuzz.sh          # Hypothesis tests"
+    echo "     ./scripts/fuzz.sh --deep   # HypoFuzz coverage"
+    echo ""
+    echo "See docs/FUZZING_GUIDE.md for Python version requirements."
+    echo "=============================================================================="
+    exit 3
+fi
+
 # Check if Atheris is available
 if ! uv run python -c "import atheris" 2>/dev/null; then
     echo ""

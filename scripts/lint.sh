@@ -37,6 +37,11 @@ FAILED=false
 IS_GHA="${GITHUB_ACTIONS:-false}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Python version targeting (default: 3.13)
+# Set PY_VERSION env var to override (e.g., PY_VERSION=3.14)
+PY_VERSION="${PY_VERSION:-3.13}"
+PY_VERSION_NODOT="${PY_VERSION//./}"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-clean) CLEAN_CACHE=false; shift ;;
@@ -77,6 +82,7 @@ pre_flight_diagnostics() {
 
     echo "[  OK  ] Environment         : Valid uv context detected"
     echo "[ INFO ] Python Version      : $(python --version)"
+    echo "[ INFO ] Target Version      : $PY_VERSION (linter target)"
     
     # Direct internal tool verification
     local status=0
@@ -133,7 +139,7 @@ record_result() {
 # --- 3. RUNNERS (Wrapped with set +e for robustness) ---
 run_ruff() {
     log_group_start "Lint: Ruff"
-    log_info "Running Ruff on: ${TARGETS[*]}"
+    log_info "Running Ruff on: ${TARGETS[*]} (target: py${PY_VERSION_NODOT})"
 
     local start_time="${EPOCHREALTIME}"
     local file_count=0
@@ -146,7 +152,7 @@ run_ruff() {
     set -e
 
     set +e
-    ruff check --config "$PYPROJECT_CONFIG" "${TARGETS[@]}"
+    ruff check --config "$PYPROJECT_CONFIG" --target-version "py${PY_VERSION_NODOT}" "${TARGETS[@]}"
     local ruff_exit_code=$?
     set -e
 
@@ -165,12 +171,13 @@ run_ruff() {
 
 run_mypy() {
     log_group_start "Lint: MyPy"
+    log_info "Using Python version: $PY_VERSION"
     local mypy_global_status=0
 
     for dir in "${TARGETS[@]}"; do
-        local conf_args=("--config-file" "$PYPROJECT_CONFIG")
+        local conf_args=("--config-file" "$PYPROJECT_CONFIG" "--python-version" "$PY_VERSION")
         if [[ "$dir" != "src" && -f "$dir/mypy.ini" ]]; then
-            conf_args=("--config-file" "$dir/mypy.ini")
+            conf_args=("--config-file" "$dir/mypy.ini" "--python-version" "$PY_VERSION")
         fi
         log_info "Checking $dir..."
 
@@ -210,12 +217,13 @@ run_mypy() {
 
 run_pylint() {
     log_group_start "Lint: Pylint"
+    log_info "Using Python version: $PY_VERSION"
     local pylint_global_status=0
 
     for dir in "${TARGETS[@]}"; do
-        local conf_args=("--rcfile" "$PYPROJECT_CONFIG")
+        local conf_args=("--rcfile" "$PYPROJECT_CONFIG" "--py-version" "$PY_VERSION")
         if [[ "$dir" != "src" && -f "$dir/.pylintrc" ]]; then
-            conf_args=("--rcfile" "$dir/.pylintrc")
+            conf_args=("--rcfile" "$dir/.pylintrc" "--py-version" "$PY_VERSION")
         fi
         log_info "Analyzing $dir..."
 

@@ -6,6 +6,8 @@ Includes type guards as static methods (eliminates circular imports).
 Python 3.13+. Zero external dependencies.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import TypeIs
 
@@ -125,7 +127,7 @@ class Identifier:
     name: str
 
     @staticmethod
-    def guard(key: object) -> TypeIs["Identifier"]:
+    def guard(key: object) -> TypeIs[Identifier]:
         """Type guard for Identifier (used in variant keys)."""
         return isinstance(key, Identifier)
 
@@ -139,7 +141,7 @@ class Identifier:
 class Resource:
     """Root AST node containing all entries."""
 
-    entries: tuple["Entry", ...]
+    entries: tuple[Entry, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,13 +156,13 @@ class Message:
     """
 
     id: Identifier
-    value: "Pattern | None"
-    attributes: tuple["Attribute", ...]
-    comment: "Comment | None" = None
+    value: Pattern | None
+    attributes: tuple[Attribute, ...]
+    comment: Comment | None = None
     span: Span | None = None
 
     @staticmethod
-    def guard(entry: object) -> TypeIs["Message"]:
+    def guard(entry: object) -> TypeIs[Message]:
         """Type guard for Message (used in entry filtering)."""
         return isinstance(entry, Message)
 
@@ -174,13 +176,13 @@ class Term:
     """
 
     id: Identifier
-    value: "Pattern"
-    attributes: tuple["Attribute", ...]
-    comment: "Comment | None" = None
+    value: Pattern
+    attributes: tuple[Attribute, ...]
+    comment: Comment | None = None
     span: Span | None = None
 
     @staticmethod
-    def guard(entry: object) -> TypeIs["Term"]:
+    def guard(entry: object) -> TypeIs[Term]:
         """Type guard for Term (used in entry filtering)."""
         return isinstance(entry, Term)
 
@@ -196,7 +198,7 @@ class Attribute:
     """
 
     id: Identifier
-    value: "Pattern"
+    value: Pattern
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +212,7 @@ class Comment:
     span: Span | None = None
 
     @staticmethod
-    def guard(entry: object) -> TypeIs["Comment"]:
+    def guard(entry: object) -> TypeIs[Comment]:
         """Type guard for Comment (used in entry filtering)."""
         return isinstance(entry, Comment)
 
@@ -246,7 +248,7 @@ class Junk:
     span: Span | None = None
 
     @staticmethod
-    def guard(entry: object) -> TypeIs["Junk"]:
+    def guard(entry: object) -> TypeIs[Junk]:
         """Type guard for Junk (used in entry filtering)."""
         return isinstance(entry, Junk)
 
@@ -260,7 +262,7 @@ class Junk:
 class Pattern:
     """Text pattern with optional placeables."""
 
-    elements: tuple["PatternElement", ...]
+    elements: tuple[PatternElement, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,7 +272,7 @@ class TextElement:
     value: str
 
     @staticmethod
-    def guard(elem: object) -> TypeIs["TextElement"]:
+    def guard(elem: object) -> TypeIs[TextElement]:
         """Type guard for TextElement.
 
         Enables type-safe narrowing without circular imports.
@@ -292,10 +294,10 @@ class TextElement:
 class Placeable:
     """Dynamic content: { expression }"""
 
-    expression: "Expression"
+    expression: Expression
 
     @staticmethod
-    def guard(elem: object) -> TypeIs["Placeable"]:
+    def guard(elem: object) -> TypeIs[Placeable]:
         """Type guard for Placeable."""
         return isinstance(elem, Placeable)
 
@@ -317,11 +319,11 @@ class SelectExpression:
         }
     """
 
-    selector: "InlineExpression"
-    variants: tuple["Variant", ...]
+    selector: InlineExpression
+    variants: tuple[Variant, ...]
 
     @staticmethod
-    def guard(expr: object) -> TypeIs["SelectExpression"]:
+    def guard(expr: object) -> TypeIs[SelectExpression]:
         """Type guard for SelectExpression."""
         return isinstance(expr, SelectExpression)
 
@@ -332,8 +334,8 @@ class Variant:
 
     """
 
-    key: "VariantKey"
-    value: "Pattern"
+    key: VariantKey
+    value: Pattern
     default: bool = False
 
 
@@ -375,7 +377,7 @@ class NumberLiteral:
     """Original source representation (for serialization)."""
 
     @staticmethod
-    def guard(key: object) -> TypeIs["NumberLiteral"]:
+    def guard(key: object) -> TypeIs[NumberLiteral]:
         """Type guard for NumberLiteral (used in variant keys)."""
         return isinstance(key, NumberLiteral)
 
@@ -393,7 +395,7 @@ class VariableReference:
     span: Span | None = None
 
     @staticmethod
-    def guard(expr: object) -> TypeIs["VariableReference"]:
+    def guard(expr: object) -> TypeIs[VariableReference]:
         """Type guard for VariableReference."""
         return isinstance(expr, VariableReference)
 
@@ -407,7 +409,7 @@ class MessageReference:
     span: Span | None = None
 
     @staticmethod
-    def guard(expr: object) -> TypeIs["MessageReference"]:
+    def guard(expr: object) -> TypeIs[MessageReference]:
         """Type guard for MessageReference."""
         return isinstance(expr, MessageReference)
 
@@ -418,11 +420,11 @@ class TermReference:
 
     id: Identifier
     attribute: Identifier | None = None
-    arguments: "CallArguments | None" = None
+    arguments: CallArguments | None = None
     span: Span | None = None
 
     @staticmethod
-    def guard(expr: object) -> TypeIs["TermReference"]:
+    def guard(expr: object) -> TypeIs[TermReference]:
         """Type guard for TermReference."""
         return isinstance(expr, TermReference)
 
@@ -432,11 +434,11 @@ class FunctionReference:
     """Function call: FUNCTION(arg1, key: value)"""
 
     id: Identifier
-    arguments: "CallArguments"
+    arguments: CallArguments
     span: Span | None = None
 
     @staticmethod
-    def guard(expr: object) -> TypeIs["FunctionReference"]:
+    def guard(expr: object) -> TypeIs[FunctionReference]:
         """Type guard for FunctionReference."""
         return isinstance(expr, FunctionReference)
 
@@ -445,8 +447,8 @@ class FunctionReference:
 class CallArguments:
     """Function call arguments."""
 
-    positional: tuple["InlineExpression", ...]
-    named: tuple["NamedArgument", ...]
+    positional: tuple[InlineExpression, ...]
+    named: tuple[NamedArgument, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -454,7 +456,7 @@ class NamedArgument:
     """Named argument: name: value"""
 
     name: Identifier
-    value: "InlineExpression"
+    value: InlineExpression
 
 
 # ============================================================================

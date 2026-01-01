@@ -26,6 +26,8 @@ Pattern Reference:
     - F# FParsec
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from ftllexengine.diagnostics import ErrorTemplate
@@ -131,7 +133,7 @@ class Cursor:
             return None
         return self.source[target_pos]
 
-    def advance(self, count: int = 1) -> "Cursor":
+    def advance(self, count: int = 1) -> Cursor:
         """Return new cursor advanced by count positions.
 
         Args:
@@ -202,7 +204,7 @@ class Cursor:
         """
         return self.source[self.pos : end_pos]
 
-    def skip_spaces(self) -> "Cursor":
+    def skip_spaces(self) -> Cursor:
         """Skip space characters (U+0020 only).
 
         Returns:
@@ -230,7 +232,7 @@ class Cursor:
             c = c.advance()
         return c
 
-    def skip_whitespace(self) -> "Cursor":
+    def skip_whitespace(self) -> Cursor:
         """Skip whitespace characters (space and newline).
 
         Returns:
@@ -259,7 +261,7 @@ class Cursor:
             c = c.advance()
         return c
 
-    def expect(self, char: str) -> "Cursor | None":
+    def expect(self, char: str) -> Cursor | None:
         """Consume character if it matches expected, return None otherwise.
 
         Args:
@@ -316,7 +318,7 @@ class Cursor:
         """
         return self.source[self.pos : self.pos + n]
 
-    def skip_line_end(self) -> "Cursor":
+    def skip_line_end(self) -> Cursor:
         """Skip LF, CR, or CRLF line ending.
 
         Returns:
@@ -349,7 +351,7 @@ class Cursor:
             return self.advance()
         return self
 
-    def skip_to_line_end(self) -> "Cursor":
+    def skip_to_line_end(self) -> Cursor:
         """Advance to the next line ending character.
 
         Returns:

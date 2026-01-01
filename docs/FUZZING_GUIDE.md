@@ -8,7 +8,7 @@ RETRIEVAL_HINTS:
 
 **Purpose**: Run and understand the parser fuzzing infrastructure.
 **Audience**: Developers and AI agents new to fuzzing.
-**Last Updated**: 2025-12-28
+**Last Updated**: 2026-01-01
 
 ---
 
@@ -66,7 +66,7 @@ Common options:
 | `--workers N` | Use N parallel workers |
 | `--json` | Output JSON (for CI) |
 
-**v0.37.0+**: Added `--structured` (grammar-aware fuzzing) and `--repro` (crash reproduction).
+The `--structured` mode uses grammar-aware fuzzing for better coverage. The `--repro` mode reproduces crash files and generates `@example` decorators.
 
 ---
 
@@ -438,7 +438,7 @@ Run the verification script:
 ```
 
 Common issues:
-- Wrong Python version (need 3.13 or earlier)
+- Python 3.14+: Atheris requires Python 3.11-3.13 (see Python Version Requirements below)
 - Missing LLVM (`brew install llvm`)
 - Using Apple Clang instead of LLVM Clang
 
@@ -470,6 +470,37 @@ Add more seeds to `fuzz/seeds/`. Check what's missing:
 macOS limits Unix socket paths. The scripts set `TMPDIR=/tmp` automatically. If running directly:
 ```bash
 TMPDIR=/tmp uv run hypothesis fuzz ...
+```
+
+---
+
+## Python Version Requirements
+
+Different fuzzing tools have different Python version requirements:
+
+| Fuzzing Mode | Python Versions | Tool | Notes |
+|--------------|-----------------|------|-------|
+| `./scripts/fuzz.sh` | 3.13, 3.14 | Hypothesis | Property-based tests |
+| `./scripts/fuzz.sh --deep` | 3.13, 3.14 | HypoFuzz | Coverage-guided |
+| `./scripts/fuzz.sh --native` | 3.11-3.13 | Atheris | libFuzzer-based |
+| `./scripts/fuzz.sh --structured` | 3.11-3.13 | Atheris | Grammar-aware |
+| `./scripts/fuzz.sh --perf` | 3.11-3.13 | Atheris | ReDoS detection |
+
+### Why Atheris Requires Python 3.13 or Earlier
+
+Atheris uses libFuzzer which is compiled against specific Python ABIs. The Atheris project has not yet released a version supporting Python 3.14.
+
+### Running Native Fuzzing on Python 3.14
+
+If your default Python is 3.14, switch to 3.13 for native fuzzing:
+
+```bash
+# Run native fuzzing with Python 3.13
+uv run --python 3.13 ./scripts/fuzz.sh --native
+
+# Property-based fuzzing works on Python 3.14
+./scripts/fuzz.sh          # Works on 3.14
+./scripts/fuzz.sh --deep   # Works on 3.14
 ```
 
 ---
@@ -528,3 +559,4 @@ Parse the summary to detect findings programmatically. Exit codes:
 - `0`: Pass (no findings)
 - `1`: Finding (failures detected)
 - `2`: Error (script failed to run)
+- `3`: Python version incompatible (Atheris modes require Python 3.11-3.13)

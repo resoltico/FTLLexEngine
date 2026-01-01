@@ -13,6 +13,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-01-01
+
+### Added
+- **Python 3.14 CI Support**: Full test and lint matrix for Python 3.13 and 3.14:
+  - GitHub Actions workflows run both versions in parallel
+  - `test.yml` workflow for PR-triggered multi-version testing
+  - `publish.yml` expanded to test both versions before release
+- **Multi-Version Linting**: `PY_VERSION` environment variable for lint.sh:
+  - `PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh` targets Python 3.14
+  - Ruff, Mypy, and Pylint all respect the version parameter
+  - Default remains Python 3.13 for backwards compatibility
+- **Atheris Python Version Detection**: Fuzzing scripts now detect Python 3.14+ and provide clear guidance:
+  - `fuzz.sh`, `fuzz-atheris.sh`, `check-atheris.sh` check Python version before attempting Atheris import
+  - Exit code 3 indicates Python version incompatibility (Atheris requires 3.11-3.13)
+  - Error messages explain alternatives: switch to Python 3.13 or use Hypothesis-based fuzzing
+
+### Changed
+- **PEP 563 Annotations**: Added `from __future__ import annotations` to 9 source files:
+  - Enables forward references without quotes on both Python 3.13 and 3.14
+  - Required for compatibility with Python 3.14's PEP 649 (deferred evaluation)
+  - Files: `bundle.py`, `function_bridge.py`, `locale_context.py`, `ast.py`, `cursor.py`, `rules.py`, `formatter.py`, `introspection.py`, `localization.py`
+
+### Documentation
+- **README.md**: Added Python Version Support table showing test/lint/fuzz coverage
+- **CONTRIBUTING.md**: Added comprehensive Multi-Version Development section with:
+  - Prerequisites for installing Python versions with uv
+  - Quick reference table for version-specific commands
+  - Explanation of `PY_VERSION` environment variable behavior
+  - CI behavior documentation
+- **FUZZING_GUIDE.md**: Added Python Version Requirements section:
+  - Table showing which fuzzing modes work on which Python versions
+  - Instructions for running native fuzzing on Python 3.14 systems
+  - Updated troubleshooting to clarify Atheris version requirements
+
 ## [0.48.0] - 2026-01-01
 
 ### Breaking Changes
@@ -923,6 +957,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.49.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.49.0
 [0.48.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.48.0
 [0.47.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.47.0
 [0.46.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.46.0

@@ -29,6 +29,8 @@ Security:
     deeply nested placeables (e.g., { { { { ... } } } }).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from ftllexengine.constants import MAX_DEPTH, MAX_LOOKAHEAD_CHARS
@@ -97,7 +99,7 @@ class ParseContext:
         """Check if maximum nesting depth has been exceeded."""
         return self.current_depth >= self.max_nesting_depth
 
-    def enter_placeable(self) -> "ParseContext":
+    def enter_placeable(self) -> ParseContext:
         """Create new context with incremented depth for entering a placeable."""
         return ParseContext(
             max_nesting_depth=self.max_nesting_depth,

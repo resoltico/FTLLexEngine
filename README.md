@@ -56,6 +56,15 @@ uv add ftllexengine
 
 **Requirements**: Python >= 3.13, Babel >= 2.17
 
+### Python Version Support
+
+| Version | Tests | Linting | Fuzzing |
+|:--------|:------|:--------|:--------|
+| 3.13    | Full  | Full    | Full    |
+| 3.14    | Full  | Full    | Limited (Atheris incompatible) |
+
+Both versions run the complete test suite (4,600+ tests) and full static analysis (Ruff, Mypy, Pylint) in CI.
+
 ---
 
 ## What Problems Does This Solve?

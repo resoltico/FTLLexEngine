@@ -3,6 +3,8 @@
 Python 3.13+. External dependency: Babel (CLDR locale data).
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 from collections.abc import Callable, Mapping
@@ -355,7 +357,7 @@ class FluentBundle:
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
-    ) -> "FluentBundle":
+    ) -> FluentBundle:
         """Factory method to create a FluentBundle using the system locale.
 
         Detects and uses the current system locale (from locale.getlocale(),
@@ -411,7 +413,7 @@ class FluentBundle:
             f"terms={len(self._terms)})"
         )
 
-    def __enter__(self) -> "FluentBundle":
+    def __enter__(self) -> FluentBundle:
         """Enter context manager.
 
         Enables use of FluentBundle with 'with' statement. The context manager
@@ -885,7 +887,7 @@ class FluentBundle:
             for message_id in self.get_message_ids()
         }
 
-    def introspect_message(self, message_id: str) -> "MessageIntrospection":
+    def introspect_message(self, message_id: str) -> MessageIntrospection:
         """Get complete introspection data for a message.
 
         Returns comprehensive metadata about variables, functions, and references
@@ -913,7 +915,7 @@ class FluentBundle:
 
             return introspect_message(self._messages[message_id])
 
-    def introspect_term(self, term_id: str) -> "MessageIntrospection":
+    def introspect_term(self, term_id: str) -> MessageIntrospection:
         """Get complete introspection data for a term.
 
         Returns comprehensive metadata about variables, functions, and references

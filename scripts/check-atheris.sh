@@ -9,6 +9,7 @@
 #   0: Atheris is ready
 #   1: Atheris not installed or not working
 #   2: LLVM not installed (macOS)
+#   3: Python version incompatible (requires 3.11-3.13)
 
 set -e
 
@@ -29,6 +30,26 @@ echo ""
 echo -n "Python version... "
 PYTHON_VERSION=$(uv run python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
 echo -e "${GREEN}$PYTHON_VERSION${NC}"
+
+# Check 1b: Python version compatibility
+if [[ "$PYTHON_VERSION" == "3.14" ]] || [[ "$PYTHON_VERSION" > "3.14" ]]; then
+    echo ""
+    echo -e "${YELLOW}[WARN]${NC} Python $PYTHON_VERSION is not supported by Atheris."
+    echo ""
+    echo "Atheris native fuzzing requires Python 3.11-3.13."
+    echo "Python 3.14+ is not yet supported by the Atheris project."
+    echo ""
+    echo "Options:"
+    echo -e "${BOLD}1. Switch to Python 3.13:${NC}"
+    echo "   uv run --python 3.13 ./scripts/check-atheris.sh"
+    echo ""
+    echo -e "${BOLD}2. Use property-based fuzzing (works on Python 3.14):${NC}"
+    echo "   ./scripts/fuzz.sh          # Hypothesis tests"
+    echo "   ./scripts/fuzz.sh --deep   # HypoFuzz coverage"
+    echo ""
+    echo "See docs/FUZZING_GUIDE.md for Python version requirements."
+    exit 3
+fi
 
 # Check 2: Atheris import
 echo -n "Atheris import... "

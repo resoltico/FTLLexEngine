@@ -567,7 +567,6 @@ def validate_resource(
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
 - Import: `from ftllexengine.validation import validate_resource`
-- Version: `known_messages`/`known_terms` added in v0.48.0.
 
 ---
 

@@ -97,7 +97,7 @@ def phoneNumber(number: str) -> str:  # Works, but unconventional
 2. Matches the style of built-in functions (NUMBER, DATETIME)
 3. Makes function calls immediately recognizable
 
-**Note**: As of v0.48.0, function names can use any case (lowercase, camelCase, UPPERCASE). UPPERCASE remains the recommended convention for consistency with built-in functions.
+**Note**: Function names can use any case (lowercase, camelCase, UPPERCASE). UPPERCASE remains the recommended convention for consistency with built-in functions.
 
 ### Python Linters
 

@@ -232,7 +232,6 @@ def validate_resource(self, source: str) -> ValidationResult:
 - Raises: Never.
 - State: None. Does not modify bundle.
 - Thread: Safe.
-- Version: Cross-resource validation added in v0.48.0.
 
 ---
 

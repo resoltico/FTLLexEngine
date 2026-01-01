@@ -4,6 +4,8 @@ Centralizes diagnostic output formatting with configurable options.
 Python 3.13+. Zero external dependencies.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -102,7 +104,7 @@ class DiagnosticFormatter:
 
     def format_validation_result(
         self,
-        result: "ValidationResult",
+        result: ValidationResult,
         *,
         include_warnings: bool = True,
     ) -> str:

@@ -49,6 +49,36 @@ disable_colors() {
     NC=''
 }
 
+# Check Python version for Atheris compatibility (requires Python 3.11-3.13)
+check_atheris_python_version() {
+    local py_version
+    py_version=$(uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+
+    # Compare version - 3.14 and higher are not supported
+    if [[ "$py_version" == "3.14" ]] || [[ "$py_version" > "3.14" ]]; then
+        if [[ "$JSON_OUTPUT" == "true" ]]; then
+            echo '{"mode":"'"$MODE"'","status":"error","error":"python_version_unsupported","python_version":"'"$py_version"'"}'
+            exit 3
+        else
+            echo -e "${RED}[ERROR]${NC} Python $py_version is not supported by Atheris."
+            echo ""
+            echo "Atheris native fuzzing requires Python 3.11-3.13."
+            echo "Python 3.14+ is not yet supported by the Atheris project."
+            echo ""
+            echo "Options:"
+            echo "  1. Switch to Python 3.13:"
+            echo "     uv run --python 3.13 ./scripts/fuzz.sh $MODE"
+            echo ""
+            echo "  2. Use property-based fuzzing (works on Python 3.14):"
+            echo "     ./scripts/fuzz.sh          # Hypothesis tests"
+            echo "     ./scripts/fuzz.sh --deep   # HypoFuzz coverage"
+            echo ""
+            echo "See docs/FUZZING_GUIDE.md for Python version requirements."
+            exit 3
+        fi
+    fi
+}
+
 # Disable colors if not a terminal
 if [[ ! -t 1 ]]; then
     disable_colors
@@ -105,6 +135,7 @@ EXIT CODES:
     0   All tests passed, no findings
     1   Findings detected (failures or crashes)
     2   Error (script or environment failure)
+    3   Python version incompatible (Atheris requires 3.11-3.13)
 
 See docs/FUZZING_GUIDE.md for detailed documentation.
 EOF
@@ -391,6 +422,9 @@ run_deep() {
 run_native() {
     print_header
 
+    # Check Python version compatibility (Atheris requires 3.11-3.13)
+    check_atheris_python_version
+
     # Check if Atheris is available
     if ! uv run python -c "import atheris" 2>/dev/null; then
         if [[ "$JSON_OUTPUT" == "true" ]]; then
@@ -433,6 +467,9 @@ run_native() {
 # Mode: perf - Atheris performance fuzzing
 run_perf() {
     print_header
+
+    # Check Python version compatibility (Atheris requires 3.11-3.13)
+    check_atheris_python_version
 
     # Check if Atheris is available
     if ! uv run python -c "import atheris" 2>/dev/null; then
@@ -540,6 +577,9 @@ run_corpus() {
 # Mode: structured - Atheris structure-aware fuzzing
 run_structured() {
     print_header
+
+    # Check Python version compatibility (Atheris requires 3.11-3.13)
+    check_atheris_python_version
 
     # Check if Atheris is available
     if ! uv run python -c "import atheris" 2>/dev/null; then

@@ -25,6 +25,8 @@ Design Principles:
 Python 3.13+. Uses Babel for i18n.
 """
 
+from __future__ import annotations
+
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -92,7 +94,7 @@ class LocaleContext:
     # Class-level cache for LocaleContext instances (identity caching)
     # OrderedDict provides LRU semantics with O(1) operations
     # Note: ClassVar is excluded from dataclass fields
-    _cache: ClassVar[OrderedDict[str, "LocaleContext"]] = OrderedDict()
+    _cache: ClassVar[OrderedDict[str, LocaleContext]] = OrderedDict()
     _cache_lock: ClassVar[RLock] = RLock()
 
     locale_code: str
@@ -158,7 +160,7 @@ class LocaleContext:
             }
 
     @classmethod
-    def create(cls, locale_code: str) -> "LocaleContext":
+    def create(cls, locale_code: str) -> LocaleContext:
         """Create LocaleContext with graceful fallback for invalid locales.
 
         Factory method that validates locale code before construction.
@@ -228,7 +230,7 @@ class LocaleContext:
             return ctx
 
     @classmethod
-    def create_or_raise(cls, locale_code: str) -> "LocaleContext":
+    def create_or_raise(cls, locale_code: str) -> LocaleContext:
         """Create LocaleContext or raise on validation failure.
 
         Strict validation method that raises ValueError for invalid locales.

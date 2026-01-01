@@ -21,6 +21,8 @@ Initialization Behavior:
 Python 3.13+.
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Callable, Generator, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -892,7 +894,7 @@ class FluentLocalization:
             for bundle in self._bundles.values():
                 bundle.add_function(name, func)
 
-    def introspect_message(self, message_id: MessageId) -> "MessageIntrospection | None":
+    def introspect_message(self, message_id: MessageId) -> MessageIntrospection | None:
         """Get message introspection from first bundle with message.
 
         Args:
@@ -933,7 +935,7 @@ class FluentLocalization:
         bundle = self._get_or_create_bundle(primary_locale)
         return bundle.get_babel_locale()
 
-    def validate_resource(self, ftl_source: FTLSource) -> "ValidationResult":
+    def validate_resource(self, ftl_source: FTLSource) -> ValidationResult:
         """Validate FTL resource without adding to bundles.
 
         Uses primary locale's bundle for validation.

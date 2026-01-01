@@ -96,6 +96,77 @@ uv run ruff check src/ tests/
 uv run pylint src/ftllexengine
 ```
 
+## Multi-Version Development (Python 3.13 / 3.14)
+
+FTLLexEngine supports Python 3.13 and 3.14. CI automatically tests both versions in parallel. For local development, you can manually switch between versions.
+
+### Prerequisites
+
+Ensure both Python versions are installed:
+
+```bash
+# Check available versions
+uv python list
+
+# Install if needed
+uv python install 3.13
+uv python install 3.14
+```
+
+### Default Development (Python 3.13)
+
+Standard commands use Python 3.13 (the baseline):
+
+```bash
+uv run scripts/lint.sh      # Lints targeting py313
+uv run scripts/test.sh      # Tests on Python 3.13
+```
+
+### Testing Against Python 3.14
+
+**Linting** requires two switches:
+1. **`--python 3.14`**: Tells uv which interpreter to use
+2. **`PY_VERSION=3.14`**: Tells lint.sh which version to target for static analysis
+
+**Testing** requires only `--python 3.14`. Unlike linters (which have a separate "target version" setting), pytest simply runs on whatever interpreter is active.
+
+```bash
+# Run linting with Python 3.14 target (needs both switches)
+PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh
+
+# Run tests on Python 3.14 (only needs interpreter switch)
+uv run --python 3.14 scripts/test.sh
+
+# Run both (full verification)
+PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh && uv run --python 3.14 scripts/test.sh
+```
+
+### Quick Reference
+
+| Task | Command |
+|------|---------|
+| Lint (3.13 default) | `uv run scripts/lint.sh` |
+| Lint (3.14 explicit) | `PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh` |
+| Test (3.13 default) | `uv run scripts/test.sh` |
+| Test (3.14 explicit) | `uv run --python 3.14 scripts/test.sh` |
+| Full 3.14 verification | `PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh && uv run --python 3.14 scripts/test.sh` |
+
+### What the Environment Variable Does
+
+`PY_VERSION` controls the **target version** for static analysis tools:
+
+| Tool | Without `PY_VERSION` | With `PY_VERSION=3.14` |
+|------|---------------------|------------------------|
+| Ruff | `--target-version py313` | `--target-version py314` |
+| Mypy | `--python-version 3.13` | `--python-version 3.14` |
+| Pylint | `--py-version 3.13` | `--py-version 3.14` |
+
+This ensures linters check against the correct Python version's syntax rules and stdlib type stubs.
+
+### CI Behavior
+
+GitHub Actions automatically runs both versions in parallel via matrix strategy. You do not need to manually test both versions before every PR - CI handles this. However, if CI fails on 3.14 specifically, use the commands above to reproduce locally.
+
 ## Property-Based Testing
 
 FTLLexEngine uses Hypothesis for property-based testing. When Hypothesis discovers edge cases, they are automatically saved to `.hypothesis/examples/` and replayed on subsequent test runs.
@@ -119,9 +190,9 @@ Fixes #123
 Use imperative mood.
 
 CI requirements:
-- All tests pass (3,581+ tests)
-- Type checking passes (mypy --strict)
-- Linting passes (ruff, pylint)
+- All tests pass on Python 3.13 and 3.14 (4,600+ tests each)
+- Type checking passes (mypy --strict) on both versions
+- Linting passes (ruff, pylint) on both versions
 - Coverage 95%+
 
 Before submitting:

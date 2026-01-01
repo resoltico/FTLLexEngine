@@ -1,0 +1,64 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Make scripts executable
+        run: chmod +x ./scripts/lint.sh ./scripts/test.sh
+
+      - name: Detect package name
+        id: detect
+        run: |
+          set -euo pipefail
+          PACKAGE_NAME=$(find src -mindepth 1 -maxdepth 1 -type d -not -name "*.egg-info" -not -name "__pycache__" | head -n 1 | xargs basename)
+          if [ -z "$PACKAGE_NAME" ]; then
+            echo "::error::Could not detect package in src/"
+            exit 1
+          fi
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Detected package: $PACKAGE_NAME"
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-groups --locked
+          echo "Locked environment synchronized"
+
+      - name: Run Linters
+        run: |
+          echo "::group::Linting (target: Python ${{ matrix.python-version }})"
+          PY_VERSION=${{ matrix.python-version }} uv run scripts/lint.sh
+          echo "::endgroup::"
+
+      - name: Run Tests
+        run: |
+          echo "::group::Testing"
+          uv run scripts/test.sh --ci
+          echo "::endgroup::"
+
+      - name: Verify package import
+        run: |
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE} v{${PACKAGE}.__version__}')"

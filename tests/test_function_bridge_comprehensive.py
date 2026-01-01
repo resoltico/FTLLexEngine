@@ -574,8 +574,10 @@ class TestFluentFunctionProtocol:
         assert "locale_code" in params
         assert "kwargs" in params
 
-        # Verify return annotation - FluentValue (not str) to allow flexible return types
-        assert sig.return_annotation is FluentValue
+        # Verify return annotation - FluentValue (may be stringified with PEP 563)
+        # With `from __future__ import annotations`, annotation is a string
+        return_ann = sig.return_annotation
+        assert return_ann is FluentValue or return_ann == "FluentValue"
 
     def test_protocol_type_hints(self) -> None:
         """Verify FluentFunction Protocol type hints."""

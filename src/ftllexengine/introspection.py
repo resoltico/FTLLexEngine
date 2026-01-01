@@ -14,6 +14,8 @@ Key features:
 Python 3.13+.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -227,7 +229,7 @@ class IntrospectionVisitor(ASTVisitor[None]):
         for element in node.elements:
             self._visit_pattern_element(element)
 
-    def _visit_pattern_element(self, element: "PatternElement") -> None:
+    def _visit_pattern_element(self, element: PatternElement) -> None:
         """Visit a pattern element (TextElement or Placeable)."""
         match element:
             case TextElement():
@@ -237,7 +239,7 @@ class IntrospectionVisitor(ASTVisitor[None]):
                 with self._depth_guard:
                     self._visit_expression(expr)
 
-    def _visit_expression(self, expr: "Expression | InlineExpression") -> None:
+    def _visit_expression(self, expr: Expression | InlineExpression) -> None:
         """Visit an expression and extract metadata using pattern matching."""
         # Use Python 3.13 TypeIs for type-safe narrowing via static .guard() methods
         # Spans are propagated from AST expression nodes to Info objects for IDE integration.
