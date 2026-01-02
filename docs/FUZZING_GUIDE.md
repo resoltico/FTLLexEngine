@@ -54,7 +54,8 @@ All fuzzing operations use `./scripts/fuzz.sh`:
 | `./scripts/fuzz.sh --structured` | Structure-aware fuzzing (better coverage) | Until Ctrl+C |
 | `./scripts/fuzz.sh --perf` | Performance/ReDoS detection | Until Ctrl+C |
 | `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | Instant |
-| `./scripts/fuzz.sh --list` | List captured failures | Instant |
+| `./scripts/fuzz.sh --list` | List captured failures (with ages) | Instant |
+| `./scripts/fuzz.sh --clean` | Remove all failure artifacts | Instant |
 | `./scripts/fuzz.sh --corpus` | Check seed corpus health | Instant |
 
 Common options:
@@ -516,6 +517,8 @@ uv run --python 3.13 ./scripts/fuzz.sh --native
 | Native fuzzing (1 min) | `./scripts/fuzz.sh --native --time 60` |
 | Performance fuzzing | `./scripts/fuzz.sh --perf --time 60` |
 | List failures | `./scripts/fuzz.sh --list` |
+| Clean all artifacts | `./scripts/fuzz.sh --clean` |
+| Reproduce crash | `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
 | Check corpus | `./scripts/fuzz.sh --corpus` |
 | Replay failures | `uv run pytest tests/ -x -v` |
 
@@ -554,6 +557,39 @@ The `first_failure` object is included when failures are detected, containing:
 - `test`: Full test path (file::function)
 - `input`: Falsifying example (truncated to 200 chars)
 - `error`: Exception type
+
+### Crash Reproduction JSON
+
+The repro script also supports JSON output:
+
+```bash
+uv run python scripts/repro.py --json .fuzz_corpus/crash_*
+```
+
+Output (finding):
+```json
+{
+  "result": "finding",
+  "file": ".fuzz_corpus/crash_abc123",
+  "input_length": 42,
+  "has_invalid_utf8": false,
+  "exception_type": "KeyError",
+  "exception_message": "unexpected_key",
+  "example_decorator": "@example(ftl='...')"
+}
+```
+
+Output (pass):
+```json
+{
+  "result": "pass",
+  "file": "fuzz/seeds/01_simple.ftl",
+  "input_length": 150,
+  "has_invalid_utf8": false,
+  "entry_count": 5,
+  "message_count": 4
+}
+```
 
 Parse the summary to detect findings programmatically. Exit codes:
 - `0`: Pass (no findings)

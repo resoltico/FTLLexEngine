@@ -121,11 +121,14 @@ def pytest_collection_modifyitems(
     if "fuzz" in str(marker_expr):
         return
 
-    # Check if user is running a specific file (not the full test suite)
+    # Check if user is running a specific fuzz file (not the full test suite)
     # In this case, respect their explicit choice
     args = config.invocation_params.args
     for arg in args:
-        if "test_grammar_based_fuzzing" in str(arg):
+        arg_str = str(arg)
+        # Match all fuzz-related test files by common patterns
+        fuzz_patterns = ("_fuzzing", "test_concurrent", "test_resolver_cycles")
+        if any(p in arg_str for p in fuzz_patterns):
             return
 
     # Skip fuzz-marked tests in normal test runs

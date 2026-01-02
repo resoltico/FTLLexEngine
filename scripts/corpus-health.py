@@ -57,9 +57,11 @@ GRAMMAR_FEATURES = [
     "variable_reference",
     "message_reference",
     "term_reference",
+    "term_arguments",       # -term(arg: value)
     "function_call",
     "string_literal",
     "number_literal",
+    "numeric_variant_key",  # [1], [3.14]
     "multiline_pattern",
     "nested_placeable",
 ]
@@ -127,6 +129,9 @@ def extract_features(resource: Resource) -> set[str]:
                 features.add("select_expression")
                 visit_node(node.selector)
                 for variant in node.variants:
+                    # Check for numeric variant keys like [1], [3.14]
+                    if isinstance(variant.key, NumberLiteral):
+                        features.add("numeric_variant_key")
                     if variant.value:
                         visit_node(variant.value)
             case VariableReference():
@@ -135,6 +140,8 @@ def extract_features(resource: Resource) -> set[str]:
                 features.add("message_reference")
             case TermReference():
                 features.add("term_reference")
+                if node.arguments is not None:
+                    features.add("term_arguments")
             case FunctionReference():
                 features.add("function_call")
             case StringLiteral():

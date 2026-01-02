@@ -8,6 +8,27 @@
 set -e
 
 # =============================================================================
+# Bash Version Check (EPOCHREALTIME requires bash 5.0+)
+# =============================================================================
+
+if ((BASH_VERSINFO[0] < 5)); then
+    echo ""
+    echo "=============================================================================="
+    echo "[FATAL] Bash v5.0+ required. Found: ${BASH_VERSION}"
+    echo "=============================================================================="
+    echo ""
+    echo "This script uses EPOCHREALTIME which requires bash 5.0+."
+    echo ""
+    echo "On macOS, install modern bash:"
+    echo "  brew install bash"
+    echo ""
+    echo "Then run with:"
+    echo "  /opt/homebrew/bin/bash ./scripts/fuzz-atheris.sh"
+    echo ""
+    exit 1
+fi
+
+# =============================================================================
 # Environment Auto-Detection
 # =============================================================================
 
@@ -94,7 +115,8 @@ EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
 END_TIME="${EPOCHREALTIME}"
-DURATION=$(printf "%.3f" "$(echo "$END_TIME - $START_TIME" | bc)")
+# Use Python for duration calculation (avoids bc dependency)
+DURATION=$(python3 -c "print(f'{$END_TIME - $START_TIME:.3f}')" 2>/dev/null || echo "0.000")
 
 # Count crash artifacts
 CRASH_COUNT=$(find "$CORPUS_DIR" -name 'crash_*' -type f 2>/dev/null | wc -l | tr -d ' ')

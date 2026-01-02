@@ -4,8 +4,9 @@ This package contains Atheris-based fuzz targets for detecting crashes
 and performance issues in the FTL parser. Requires Atheris installation.
 
 Targets:
-    stability.py - Detects unexpected exceptions
-    perf.py - Detects algorithmic complexity issues
+    stability.py - Detects unexpected exceptions (byte-level chaos)
+    structured.py - Detects crashes via grammar-aware generation
+    perf.py - Detects algorithmic complexity issues (ReDoS)
 
 See docs/FUZZING_GUIDE.md for usage.
 """

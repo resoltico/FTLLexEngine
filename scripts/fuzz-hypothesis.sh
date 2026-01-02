@@ -56,7 +56,8 @@ EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
 END_TIME=$(date +%s.%N)
-DURATION=$(echo "$END_TIME - $START_TIME" | bc 2>/dev/null | xargs printf "%.2f" 2>/dev/null || echo "0.00")
+# Use Python for duration calculation (avoids bc dependency)
+DURATION=$(python3 -c "print(f'{$END_TIME - $START_TIME:.2f}')" 2>/dev/null || echo "0.00")
 
 # Count examples after fuzzing
 if [[ -d "$EXAMPLES_DIR" ]]; then

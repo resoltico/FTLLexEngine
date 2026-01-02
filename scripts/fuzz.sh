@@ -98,6 +98,7 @@ MODES:
     --structured    Structure-aware fuzzing with Atheris (requires setup)
     --perf          Performance fuzzing to detect ReDoS (Atheris)
     --list          List all captured failures
+    --clean         Remove all captured failures and crash artifacts
     --corpus        Check seed corpus health
     --repro FILE    Reproduce a crash and generate @example decorator
     --help          Show this help message
@@ -167,6 +168,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --list)
             MODE="list"
+            shift
+            ;;
+        --clean)
+            MODE="clean"
             shift
             ;;
         --corpus)
@@ -271,6 +276,13 @@ run_check() {
     # Determine target
     TEST_TARGET="${TARGET:-tests/test_grammar_based_fuzzing.py}"
 
+    # Start progress indicator in non-verbose, non-JSON mode
+    PROGRESS_PID=""
+    if [[ "$VERBOSE" == "false" && "$JSON_OUTPUT" == "false" ]]; then
+        (while true; do sleep 10; echo -n "."; done) &
+        PROGRESS_PID=$!
+    fi
+
     # Run pytest
     set +e
     if [[ "$JSON_OUTPUT" == "true" ]]; then
@@ -281,6 +293,13 @@ run_check() {
         EXIT_CODE=${PIPESTATUS[0]}
     fi
     set -e
+
+    # Stop progress indicator
+    if [[ -n "$PROGRESS_PID" ]]; then
+        kill "$PROGRESS_PID" 2>/dev/null || true
+        wait "$PROGRESS_PID" 2>/dev/null || true
+        echo ""  # Newline after dots
+    fi
 
     # Parse results
     TESTS_PASSED=$(echo "$OUTPUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' || echo "0")
@@ -315,9 +334,10 @@ run_check() {
 
     # Output
     if [[ "$JSON_OUTPUT" == "true" ]]; then
-        # Escape special characters for JSON
-        FIRST_FAILURE_INPUT_ESCAPED=$(echo "$FIRST_FAILURE_INPUT" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr -d '\n')
-        FIRST_FAILURE_ERROR_ESCAPED=$(echo "$FIRST_FAILURE_ERROR" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
+        # Escape special characters for JSON using Python's json.dumps for correctness
+        # This handles newlines, carriage returns, control characters, and Unicode properly
+        FIRST_FAILURE_INPUT_ESCAPED=$(printf '%s' "$FIRST_FAILURE_INPUT" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read())[1:-1])" 2>/dev/null || echo "")
+        FIRST_FAILURE_ERROR_ESCAPED=$(printf '%s' "$FIRST_FAILURE_ERROR" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read())[1:-1])" 2>/dev/null || echo "")
 
         if [[ -n "$FIRST_FAILURE_TEST" ]]; then
             echo '{"mode":"check","status":"'"$STATUS"'","tests_passed":"'"$TESTS_PASSED"'","tests_failed":"'"$TESTS_FAILED"'","hypothesis_failures":"'"$HYPOTHESIS_FAILURES"'","first_failure":{"test":"'"$FIRST_FAILURE_TEST"'","input":"'"$FIRST_FAILURE_INPUT_ESCAPED"'","error":"'"$FIRST_FAILURE_ERROR_ESCAPED"'"}}'
@@ -506,6 +526,27 @@ run_perf() {
     exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/perf.py" $EXTRA_ARGS
 }
 
+# Helper: Calculate human-readable file age
+file_age() {
+    local file="$1"
+    local now
+    local file_time
+    local age_sec
+    now=$(date +%s)
+    file_time=$(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null)
+    age_sec=$((now - file_time))
+
+    if [[ $age_sec -lt 60 ]]; then
+        echo "${age_sec}s ago"
+    elif [[ $age_sec -lt 3600 ]]; then
+        echo "$((age_sec / 60))m ago"
+    elif [[ $age_sec -lt 86400 ]]; then
+        echo "$((age_sec / 3600))h ago"
+    else
+        echo "$((age_sec / 86400))d ago"
+    fi
+}
+
 # Mode: list - Show captured failures
 run_list() {
     FAILURES_DIR="$PROJECT_ROOT/.hypothesis/failures"
@@ -541,15 +582,19 @@ run_list() {
             if [[ $HYPOTHESIS_COUNT -gt 0 ]]; then
                 echo -e "${BOLD}Hypothesis/HypoFuzz Failures:${NC} $HYPOTHESIS_COUNT"
                 echo "  Location: .hypothesis/failures/"
-                echo "  Latest:   $(ls -t "$FAILURES_DIR"/failures_*.txt 2>/dev/null | head -1)"
+                # Show files with ages, newest first
+                ls -t "$FAILURES_DIR"/failures_*.txt 2>/dev/null | head -5 | while read -r f; do
+                    echo "  - $(basename "$f") ($(file_age "$f"))"
+                done
                 echo ""
             fi
 
             if [[ $CRASH_COUNT -gt 0 ]]; then
                 echo -e "${BOLD}Atheris Crashes:${NC} $CRASH_COUNT"
                 echo "  Location: .fuzz_corpus/"
-                find "$CRASH_DIR" -name "crash_*" -type f 2>/dev/null | head -5 | while read -r f; do
-                    echo "  - $(basename "$f")"
+                # Show files with ages, newest first
+                ls -t "$CRASH_DIR"/crash_* 2>/dev/null | head -5 | while read -r f; do
+                    echo "  - $(basename "$f") ($(file_age "$f"))"
                 done
                 echo ""
             fi
@@ -559,6 +604,38 @@ run_list() {
             echo "  2. Add @example() decorator or create unit test"
             echo "  3. Fix the bug and verify with ./scripts/fuzz.sh"
         fi
+        echo ""
+    fi
+}
+
+# Mode: clean - Remove failure artifacts
+run_clean() {
+    FAILURES_DIR="$PROJECT_ROOT/.hypothesis/failures"
+    CRASH_DIR="$PROJECT_ROOT/.fuzz_corpus"
+
+    # Count before cleaning
+    HYPOTHESIS_COUNT=0
+    CRASH_COUNT=0
+
+    if [[ -d "$FAILURES_DIR" ]]; then
+        HYPOTHESIS_COUNT=$(find "$FAILURES_DIR" -name "failures_*.txt" -type f 2>/dev/null | wc -l | tr -d ' ')
+    fi
+
+    if [[ -d "$CRASH_DIR" ]]; then
+        CRASH_COUNT=$(find "$CRASH_DIR" -name "crash_*" -type f 2>/dev/null | wc -l | tr -d ' ')
+    fi
+
+    # Clean
+    rm -f "$FAILURES_DIR"/failures_*.txt 2>/dev/null || true
+    rm -f "$CRASH_DIR"/crash_* 2>/dev/null || true
+
+    if [[ "$JSON_OUTPUT" == "true" ]]; then
+        echo '{"mode":"clean","status":"ok","hypothesis_removed":"'"$HYPOTHESIS_COUNT"'","crashes_removed":"'"$CRASH_COUNT"'"}'
+    else
+        print_header
+        print_pass "Cleaned failure artifacts."
+        echo ""
+        echo "Removed: $HYPOTHESIS_COUNT Hypothesis failures, $CRASH_COUNT crash files"
         echo ""
     fi
 }
@@ -663,6 +740,9 @@ case $MODE in
         ;;
     list)
         run_list
+        ;;
+    clean)
+        run_clean
         ;;
     corpus)
         run_corpus

@@ -13,6 +13,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-01-02
+
+### Added
+- **Fuzzing Infrastructure Overhaul**: Comprehensive improvements to testing and fuzzing scripts:
+  - `fuzz.sh --clean` mode: Remove all captured failures and crash artifacts
+  - `fuzz.sh --list` file ages: Shows relative age (e.g., "2h ago", "5d ago") for each failure
+  - `repro.py --json` flag: Machine-readable JSON output for automation
+  - `repro.py` input size limit: 10 MB maximum to prevent memory exhaustion
+  - Progress indicator in `fuzz.sh` for long-running non-verbose tests
+- **Structure-Aware Fuzzing Enhancements**:
+  - `structured.py` numeric variant key generation: FTL supports `[1]`, `[3.14]`, `[-1]` as variant keys
+  - Randomized default variant position: `*[default]` can appear anywhere, not just at end
+- **Seed Corpus Improvements**:
+  - Deep nesting examples: `{ { { { { $level5 } } } } }` in seed corpus
+  - Attribute-only message patterns: Messages with only `.attr = value` (no main value)
+  - `corpus-health.py` feature detection: `term_arguments` and `numeric_variant_key`
+
+### Changed
+- **bc Dependency Eliminated**: All fuzzing scripts now use Python for duration calculations:
+  - `fuzz-atheris.sh`, `fuzz-hypothesis.sh`, `run-property-tests.sh` no longer require `bc`
+  - Improves portability across systems without GNU coreutils
+- **JSON Output Consistency**: All fuzzing tools use proper JSON escaping:
+  - `fuzz.sh` uses `python3 -c "import json,sys; ..."` for escape sequences
+  - Handles newlines, control characters, and Unicode correctly
+- **Crash-Proof Reporting**: `perf.py` and `structured.py` emit JSON summary on any exit:
+  - `atexit` handler guarantees output even on crash or Ctrl+C
+  - Logging suppressed during fuzzing to reduce noise
+
+### Fixed
+- **Bash 5.0+ Version Guard**: `fuzz-atheris.sh` now detects bash version at startup:
+  - Provides clear error message with installation instructions for macOS
+  - Prevents cryptic EPOCHREALTIME errors on older bash versions
+- **Mypy Configuration**: `fuzz.structured` added to pyproject.toml overrides:
+  - Eliminates type errors for Atheris-specific patterns
+- **Test Infrastructure**: `conftest.py` properly detects all fuzz test files:
+  - Pattern expanded to include `test_concurrent` and `test_resolver_cycles`
+
+### Removed
+- **Dead Code**: `scripts/replay-failures.sh` deleted:
+  - Functionality superseded by `./scripts/fuzz.sh --repro`
+
 ## [0.49.0] - 2026-01-01
 
 ### Added
@@ -957,6 +998,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.50.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.50.0
 [0.49.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.49.0
 [0.48.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.48.0
 [0.47.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.47.0

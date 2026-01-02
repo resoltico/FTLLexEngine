@@ -147,6 +147,39 @@ def generate_message_with_attribute(fdp: atheris.FuzzedDataProvider) -> str:
     return f"{msg_id} = {value}\n    .{attr_name} = {attr_value}"
 
 
+def generate_variant_key(fdp: atheris.FuzzedDataProvider) -> str:
+    """Generate a variant key (identifier or numeric literal).
+
+    FTL supports both text identifiers and numeric literals as variant keys:
+    - Text: [one], [other], [custom-key]
+    - Numeric: [0], [1], [3.14], [-1]
+    """
+    if not fdp.remaining_bytes():
+        return "other"
+
+    # 40% chance of numeric key (covers plural/ordinal cases)
+    if fdp.ConsumeIntInRange(0, 9) < 4:
+        # Generate numeric literal
+        is_decimal = fdp.ConsumeBool() if fdp.remaining_bytes() else False
+        is_negative = fdp.ConsumeBool() if fdp.remaining_bytes() else False
+
+        int_part = fdp.ConsumeIntInRange(0, 999) if fdp.remaining_bytes() else 1
+
+        if is_decimal and fdp.remaining_bytes():
+            decimal_part = fdp.ConsumeIntInRange(0, 99)
+            num_str = f"{int_part}.{decimal_part:02d}"
+        else:
+            num_str = str(int_part)
+
+        if is_negative:
+            num_str = f"-{num_str}"
+
+        return num_str
+    else:
+        # Generate text identifier key
+        return generate_identifier(fdp, max_len=10)
+
+
 def generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate message with select expression."""
     msg_id = generate_identifier(fdp)
@@ -154,14 +187,18 @@ def generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
 
     # Generate 2-4 variants
     num_variants = fdp.ConsumeIntInRange(2, 4) if fdp.remaining_bytes() else 2
+
+    # Randomize default variant position (can be any position, not always last)
+    default_idx = fdp.ConsumeIntInRange(0, num_variants - 1) if fdp.remaining_bytes() else num_variants - 1
+
     variants = []
 
     for i in range(num_variants):
         if not fdp.remaining_bytes():
             break
-        key = generate_identifier(fdp, max_len=10)
+        key = generate_variant_key(fdp)
         val = generate_text(fdp, max_len=30)
-        prefix = "*" if i == num_variants - 1 else " "
+        prefix = "*" if i == default_idx else " "
         variants.append(f"   {prefix}[{key}] {val}")
 
     variants_str = "\n".join(variants)

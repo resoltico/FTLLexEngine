@@ -11,8 +11,23 @@ Usage:
 
 from __future__ import annotations
 
+import atexit
+import json
+import logging
 import sys
 import time
+
+# Crash-proof reporting: ensure summary is always emitted
+_fuzz_stats: dict[str, int | str] = {"status": "incomplete", "iterations": 0, "findings": 0}
+
+
+def _emit_final_report() -> None:
+    """Emit JSON summary on exit (crash-proof reporting)."""
+    report = json.dumps(_fuzz_stats)
+    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr)
+
+
+atexit.register(_emit_final_report)
 
 try:
     import atheris
@@ -25,6 +40,9 @@ except ImportError:
     print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
     print("-" * 80, file=sys.stderr)
     sys.exit(1)
+
+# Suppress parser logging during fuzzing (reduces I/O noise in timing measurements)
+logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports():
     from ftllexengine.syntax.parser import FluentParserV1
@@ -53,6 +71,11 @@ def compute_threshold(input_size: int) -> float:
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     """Atheris entry point: parse fuzzed input and measure time."""
+    global _fuzz_stats  # noqa: PLW0602 - Required for crash-proof reporting
+
+    _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
+    _fuzz_stats["status"] = "running"
+
     fdp = atheris.FuzzedDataProvider(data)
 
     try:
@@ -71,6 +94,7 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
 
     threshold = compute_threshold(len(source))
     if duration > threshold:
+        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
         ratio = duration / threshold
         print()
         print("=" * 80)

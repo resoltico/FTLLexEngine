@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.50.0"
 domain: TESTING
-updated: "2025-12-31"
+updated: "2026-01-02"
 route:
   keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh]
   questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?"]
@@ -256,7 +256,8 @@ Single entry point for all fuzzing operations. Recommended over individual scrip
 | `--structured` | Atheris grammar-aware generation |
 | `--perf` | Performance/ReDoS detection |
 | `--repro FILE` | Reproduce crash file |
-| `--list` | List captured failures |
+| `--list` | List captured failures (with ages) |
+| `--clean` | Remove all failure artifacts |
 | `--corpus` | Check seed corpus health |
 
 ### Options
@@ -275,6 +276,7 @@ Single entry point for all fuzzing operations. Recommended over individual scrip
 | 0 | All tests passed, no findings |
 | 1 | Findings detected |
 | 2 | Error (environment/script) |
+| 3 | Python version incompatible (Atheris requires 3.11-3.13) |
 
 ---
 
@@ -515,6 +517,8 @@ When Atheris finds a crash, use the `--repro` tool for fast reproduction:
 The `scripts/repro.py` tool closes the feedback loop:
 - `--repro FILE`: Full traceback reproduction
 - `--example`: Generates copy-paste `@example()` decorator
+- `--json`: Machine-readable JSON output for automation
+- Size limit: 10 MB maximum input to prevent memory exhaustion
 
 **Crash-proof reporting**: Fuzz targets now emit `[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`
 on exit via atexit handler, ensuring metadata is never lost on crash.
