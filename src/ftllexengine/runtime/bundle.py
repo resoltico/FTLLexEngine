@@ -23,6 +23,7 @@ from ftllexengine.diagnostics import (
     ErrorTemplate,
     FluentError,
     FluentReferenceError,
+    FluentResolutionError,
     FluentSyntaxError,
     ValidationResult,
 )
@@ -701,6 +702,30 @@ class FluentBundle:
             )
             error = FluentReferenceError(diagnostic)
             # Don't cache errors
+            return (FALLBACK_INVALID, (error,))
+
+        # Validate args is None or a Mapping (defensive check for callers ignoring type hints)
+        if args is not None and not isinstance(args, Mapping):
+            logger.warning(  # type: ignore[unreachable]
+                "Invalid args type: expected Mapping or None, got %s", type(args).__name__
+            )
+            diagnostic = Diagnostic(
+                code=DiagnosticCode.INVALID_ARGUMENT,
+                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
+            )
+            error = FluentResolutionError(diagnostic)
+            return (FALLBACK_INVALID, (error,))
+
+        # Validate attribute is None or a string
+        if attribute is not None and not isinstance(attribute, str):
+            logger.warning(  # type: ignore[unreachable]
+                "Invalid attribute type: expected str or None, got %s", type(attribute).__name__
+            )
+            diagnostic = Diagnostic(
+                code=DiagnosticCode.INVALID_ARGUMENT,
+                message=f"Invalid attribute type: expected str or None, got {type(attribute).__name__}",
+            )
+            error = FluentResolutionError(diagnostic)
             return (FALLBACK_INVALID, (error,))
 
         # Check if message exists

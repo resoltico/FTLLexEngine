@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.51.0"
 domain: RUNTIME
-updated: "2025-12-31"
+updated: "2026-01-03"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?"]
@@ -110,7 +110,7 @@ def datetime_format(
 ### Signature
 ```python
 def currency_format(
-    value: int | float,
+    value: int | float | Decimal,
     locale_code: str = "en-US",
     *,
     currency: str,
@@ -122,7 +122,7 @@ def currency_format(
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float` | Y | Monetary amount. |
+| `value` | `int \| float \| Decimal` | Y | Monetary amount. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `currency` | `str` | Y | ISO 4217 currency code. |
 | `currency_display` | `Literal[...]` | N | Display style. |
@@ -874,7 +874,7 @@ MAX_DEPTH: int = 100
 | Type | `int` |
 | Value | 100 |
 | Location | `ftllexengine.constants` |
-| Re-exported | `ftllexengine.runtime.depth_guard` |
+| Re-exported | `ftllexengine.core.depth_guard` |
 
 - Purpose: Unified maximum depth for all recursion protection.
 - Usage: Message reference chains, expression nesting, serialization, validation.
@@ -913,6 +913,6 @@ class DepthGuard:
 - Usage: Context manager or manual increment/decrement.
 - Raises: DepthLimitExceededError when depth limit exceeded.
 - Behavior: `__enter__` validates limit BEFORE incrementing; prevents state corruption on exception.
-- Import: `from ftllexengine.runtime.depth_guard import DepthGuard`
+- Import: `from ftllexengine.core.depth_guard import DepthGuard`
 
 ---

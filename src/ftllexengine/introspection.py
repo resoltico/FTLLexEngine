@@ -16,6 +16,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -45,10 +46,37 @@ __all__ = [
     "MessageIntrospection",
     "ReferenceInfo",
     "VariableInfo",
+    "clear_introspection_cache",
     "extract_references",
     "extract_variables",
     "introspect_message",
 ]
+
+# ==============================================================================
+# MODULE-LEVEL CACHE
+# ==============================================================================
+
+# WeakKeyDictionary allows automatic cleanup when Message/Term objects are garbage
+# collected. This avoids the id() reuse problem of regular dicts and provides
+# proper cache invalidation without manual management.
+#
+# Thread safety: WeakKeyDictionary is NOT thread-safe for concurrent writes.
+# However, introspection is a pure read operation on immutable AST nodes, and
+# the worst case of a cache miss is redundant computation (no corruption).
+_introspection_cache: weakref.WeakKeyDictionary[Message | Term, MessageIntrospection] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def clear_introspection_cache() -> None:
+    """Clear the introspection cache.
+
+    Useful for testing or when memory pressure is a concern. In normal usage,
+    the WeakKeyDictionary automatically cleans up entries when Message/Term
+    objects are garbage collected.
+    """
+    _introspection_cache.clear()
+
 
 # ==============================================================================
 # INTROSPECTION METADATA (Frozen Dataclasses with Slots)
@@ -451,13 +479,20 @@ def extract_references(entry: Message | Term) -> tuple[frozenset[str], frozenset
 # ==============================================================================
 
 
-def introspect_message(message: Message | Term) -> MessageIntrospection:
+def introspect_message(
+    message: Message | Term,
+    *,
+    use_cache: bool = True,
+) -> MessageIntrospection:
     """Introspect a message or term and extract all metadata.
 
     This is the primary entry point for message/term introspection.
 
     Args:
         message: Message or Term AST node to introspect
+        use_cache: If True (default), use WeakKeyDictionary cache for repeated
+            introspection of the same Message/Term. Disable for benchmarking or
+            when cache invalidation is needed.
 
     Returns:
         Complete introspection result with variables, functions, and references
@@ -479,6 +514,12 @@ def introspect_message(message: Message | Term) -> MessageIntrospection:
         msg = f"Expected Message or Term, got {type(message).__name__}"  # type: ignore[unreachable]
         raise TypeError(msg)
 
+    # Check cache first
+    if use_cache:
+        cached = _introspection_cache.get(message)
+        if cached is not None:
+            return cached
+
     visitor = IntrospectionVisitor()
 
     # Visit message value pattern via proper dispatch
@@ -490,13 +531,19 @@ def introspect_message(message: Message | Term) -> MessageIntrospection:
     for attr in message.attributes:
         visitor.visit(attr.value)
 
-    return MessageIntrospection(
+    result = MessageIntrospection(
         message_id=message.id.name,
         variables=frozenset(visitor.variables),
         functions=frozenset(visitor.functions),
         references=frozenset(visitor.references),
         has_selectors=visitor.has_selectors,
     )
+
+    # Store in cache for future lookups
+    if use_cache:
+        _introspection_cache[message] = result
+
+    return result
 
 
 def extract_variables(message: Message | Term) -> frozenset[str]:

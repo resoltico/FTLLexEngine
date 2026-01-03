@@ -1,9 +1,13 @@
-<!--
-RETRIEVAL_HINTS:
+---
+afad: "3.1"
+version: "0.51.0"
+domain: reference
+updated: "2026-01-03"
+route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste]
-  answers: [how to format message, how to parse number, how to use bundle, common patterns]
-  related: [../README.md, DOC_01_Core.md, PARSING_GUIDE.md]
--->
+  questions: ["how to format message?", "how to parse number?", "how to use bundle?"]
+---
+
 # FTLLexEngine Quick Reference
 
 **One-page cheat sheet for common tasks**
@@ -15,10 +19,35 @@ Python 3.13+ | [Full API Documentation](DOC_00_Index.md) | [Examples](../example
 ## Installation
 
 ```bash
+# Parser-only (no external dependencies)
 pip install ftllexengine
+
+# Full runtime with locale formatting
+pip install ftllexengine[babel]
 ```
 
-**Requirements**: Python 3.13+, Babel>=2.17.0
+**Requirements**: Python 3.13+ | Babel>=2.17.0 (optional for locale formatting)
+
+---
+
+## Parser-Only Usage (No Babel Required)
+
+```python
+from ftllexengine import parse_ftl, serialize_ftl
+
+# Parse FTL source to AST
+resource = parse_ftl("""
+hello = Hello, World!
+greeting = Welcome, { $name }!
+""")
+
+# Inspect AST
+for entry in resource.entries:
+    print(f"Message: {entry.id.name}")
+
+# Serialize back to FTL string
+ftl_source = serialize_ftl(resource)
+```
 
 ---
 
@@ -320,7 +349,8 @@ FluentLocalization(
     *,
     use_isolating: bool = True,
     enable_cache: bool = False,
-    cache_size: int = 1000
+    cache_size: int = 1000,
+    on_fallback: Callable[[FallbackInfo], None] | None = None,
 )
 ```
 
@@ -337,7 +367,7 @@ l10n.get_bundles() -> Generator[FluentBundle]
 l10n.locales -> tuple[str, ...]  # Read-only
 ```
 
-**Caching** (v0.13.0+): Enable `enable_cache=True` for 50x speedup on repeated format calls.
+**Caching**: Enable `enable_cache=True` for 50x speedup on repeated format calls.
 
 ---
 
@@ -478,7 +508,7 @@ price-name = { CURRENCY($amount, currency: "EUR", currencyDisplay: "name") }
 from ftllexengine.parsing import parse_decimal, parse_date, parse_currency
 from ftllexengine.parsing import is_valid_decimal, is_valid_date, is_valid_currency
 
-# Parse numbers (v0.28.0: guards accept None)
+# Parse numbers (guards accept None)
 result, errors = parse_decimal("1 234,56", "lv_LV")
 if is_valid_decimal(result):
     amount = result  # Decimal('1234.56')
@@ -493,12 +523,12 @@ result, errors = parse_currency("1 234,56 €", "lv_LV")
 if is_valid_currency(result):
     amount, currency = result  # (Decimal('1234.56'), 'EUR')
 
-# Note: Yen sign (¥) is ambiguous (v0.38.0+)
+# Note: Yen sign (¥) is ambiguous
 # Resolves to CNY for zh_* locales, JPY otherwise
 result, errors = parse_currency("¥1,234", "ja_JP")  # JPY
 result, errors = parse_currency("¥1,234", "zh_CN")  # CNY
 
-# Note: Pound sign (£) is ambiguous (v0.39.0+)
+# Note: Pound sign (£) is ambiguous
 # Resolves to EGP for ar_* locales, GBP otherwise
 result, errors = parse_currency("£100", "en_GB", infer_from_locale=True)  # GBP
 result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
@@ -593,15 +623,15 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
     return bundle
 ```
 
-**`FluentValue`** (v0.24.0+): Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | None`.
+**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | FluentNumber | None`.
 
-**`ParseResult[T]`** (v0.44.0+): Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FluentParseError, ...]]`. Import from `ftllexengine.parsing`.
+**`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FluentParseError, ...]]`. Import from `ftllexengine.parsing`.
 
 ---
 
 ## Thread Safety
 
-**FluentBundle is always thread-safe** (v0.42.0+). All public methods are synchronized via internal RLock. RLock overhead is negligible (~10ns per acquire).
+**FluentBundle is always thread-safe**. All public methods are synchronized via internal RLock. RLock overhead is negligible (~10ns per acquire).
 
 ### Pattern 1: Shared Bundle (Recommended)
 
@@ -734,7 +764,7 @@ for entry in resource.entries:
 # Serialize back to FTL
 ftl_output = serialize_ftl(resource)
 
-# v0.29.0: Validate AST before serialization
+# Validate AST before serialization
 from ftllexengine.syntax import SerializationValidationError
 
 try:
@@ -742,7 +772,7 @@ try:
 except SerializationValidationError as e:
     print(f"Invalid AST: {e}")
 
-# v0.35.0: Depth guard prevents stack overflow from malicious ASTs
+# Depth guard prevents stack overflow from malicious ASTs
 from ftllexengine.syntax import SerializationDepthError
 
 try:
@@ -806,6 +836,4 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 
 ---
 
-**Quick Reference Last Updated**: January 1, 2026
-**FTLLexEngine Version**: 0.50.0
 **Python Requirement**: 3.13+

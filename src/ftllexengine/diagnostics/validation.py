@@ -16,6 +16,7 @@ Python 3.13+.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from ftllexengine.syntax.ast import Annotation
@@ -27,7 +28,25 @@ __all__ = [
     "ValidationError",
     "ValidationResult",
     "ValidationWarning",
+    "WarningSeverity",
 ]
+
+
+class WarningSeverity(StrEnum):
+    """Severity levels for validation warnings.
+
+    Provides semantic differentiation between warning types:
+    - CRITICAL: Will cause runtime failure (e.g., undefined reference)
+    - WARNING: May cause issues (e.g., duplicate ID, missing value)
+    - INFO: Informational only (e.g., style suggestions)
+
+    Use severity to filter or prioritize warnings in tooling:
+        critical_warnings = [w for w in warnings if w.severity == WarningSeverity.CRITICAL]
+    """
+
+    CRITICAL = "critical"  # Will cause runtime failure
+    WARNING = "warning"  # May cause issues
+    INFO = "info"  # Informational only
 
 
 # ============================================================================
@@ -112,9 +131,15 @@ class ValidationWarning:
         context: Additional context (e.g., the duplicate ID name)
         line: Line number where warning occurred (1-indexed, optional)
         column: Column number where warning occurred (1-indexed, optional)
+        severity: Warning severity level (CRITICAL, WARNING, INFO)
 
     The optional line/column fields enable IDE integration (LSP servers)
     to display warning squiggles at the correct source location.
+
+    Severity levels:
+        CRITICAL: Will cause runtime failure (e.g., undefined reference to message)
+        WARNING: May cause issues (e.g., duplicate ID overwrites previous)
+        INFO: Informational only (e.g., unused term)
     """
 
     code: str
@@ -122,6 +147,7 @@ class ValidationWarning:
     context: str | None = None
     line: int | None = None
     column: int | None = None
+    severity: WarningSeverity = WarningSeverity.WARNING
 
     def format(self) -> str:
         """Format warning as human-readable string.

@@ -121,6 +121,7 @@ class Diagnostic:
         received_type: Actual type received (format errors)
         ftl_location: FTL file location (format errors)
         severity: Error severity level
+        resolution_path: Resolution stack at time of error (for debugging nested references)
     """
 
     code: DiagnosticCode
@@ -134,6 +135,7 @@ class Diagnostic:
     received_type: str | None = None
     ftl_location: str | None = None
     severity: Literal["error", "warning"] = "error"
+    resolution_path: tuple[str, ...] | None = None
 
     def format_error(self) -> str:
         """Format diagnostic like Rust compiler.
@@ -175,6 +177,10 @@ class Diagnostic:
 
         if self.received_type:
             parts.append(f"  = received: {self.received_type}")
+
+        if self.resolution_path:
+            path_str = " -> ".join(self.resolution_path)
+            parts.append(f"  = resolution path: {path_str}")
 
         if self.hint:
             parts.append(f"  = help: {self.hint}")

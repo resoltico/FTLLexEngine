@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.51.0"
 domain: TYPES
-updated: "2025-12-31"
+updated: "2026-01-03"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
@@ -523,13 +523,14 @@ class Span:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `start` | `int` | Y | Start byte offset (inclusive). |
-| `end` | `int` | Y | End byte offset (exclusive). |
+| `start` | `int` | Y | Start character offset (inclusive). |
+| `end` | `int` | Y | End character offset (exclusive). |
 
 ### Constraints
 - Return: Immutable span.
 - Raises: `ValueError` if start < 0 or end < start.
 - State: Frozen dataclass.
+- Note: Positions are character offsets (code points), not bytes.
 
 ---
 
@@ -640,6 +641,82 @@ class MessageIntrospection:
 ### Constraints
 - Return: Immutable introspection result.
 - State: Frozen dataclass.
+- Import: `from ftllexengine.introspection import MessageIntrospection`
+
+---
+
+## `introspect_message`
+
+Function that extracts complete metadata from a Message or Term AST node.
+
+### Signature
+```python
+def introspect_message(
+    message: Message | Term,
+    *,
+    use_cache: bool = True,
+) -> MessageIntrospection:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `Message \| Term` | Y | AST node to introspect. |
+| `use_cache` | `bool` | N | Use WeakKeyDictionary cache (default: True). |
+
+### Constraints
+- Return: MessageIntrospection with variables, functions, references.
+- Raises: `TypeError` if message is not Message or Term.
+- State: Caches result in WeakKeyDictionary when use_cache=True.
+- Thread: Safe (worst case: redundant computation on cache miss).
+- Cache: WeakKeyDictionary auto-cleans when AST nodes garbage collected.
+- Import: `from ftllexengine.introspection import introspect_message`
+
+---
+
+## `clear_introspection_cache`
+
+Function that clears the introspection WeakKeyDictionary cache.
+
+### Signature
+```python
+def clear_introspection_cache() -> None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: None.
+- Raises: Never.
+- State: Clears module-level introspection cache.
+- Thread: Safe.
+- Usage: Testing, memory pressure. Normal usage relies on WeakKeyDictionary auto-cleanup.
+- Import: `from ftllexengine.introspection import clear_introspection_cache`
+
+---
+
+## `extract_variables`
+
+Function that extracts variable names from a Message or Term (simplified API).
+
+### Signature
+```python
+def extract_variables(message: Message | Term) -> frozenset[str]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `Message \| Term` | Y | AST node to analyze. |
+
+### Constraints
+- Return: Frozen set of variable names (without $ prefix).
+- Raises: Never.
+- State: Delegates to introspect_message (uses cache).
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import extract_variables`
 
 ---
 
@@ -668,7 +745,7 @@ type ASTNode = Resource | Message | Term | ... # Union of all AST types
 
 ### Signature
 ```python
-type FluentValue = str | int | float | bool | Decimal | datetime | date | None
+type FluentValue = str | int | float | bool | Decimal | datetime | date | FluentNumber | None
 ```
 
 ### Parameters
@@ -681,12 +758,13 @@ type FluentValue = str | int | float | bool | Decimal | datetime | date | None
 | `Decimal` | Precise decimal arguments (currency). |
 | `datetime` | Date-time arguments. |
 | `date` | Date-only arguments. |
+| `FluentNumber` | Formatted number from NUMBER() function. |
 | `None` | Absent/null arguments. |
 
 ### Constraints
 - PEP 695 type alias. Export: `from ftllexengine import FluentValue`.
 - Used for type-hinting resolver arguments: `args: dict[str, FluentValue]`.
-- Location: `runtime/resolver.py`, exported from package root.
+- Location: `runtime/function_bridge.py`, exported from package root.
 
 ---
 

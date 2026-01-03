@@ -13,6 +13,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-01-03
+
+### Security
+- **Expression Depth Guard Bypass Fixed**: Placeable dispatch in resolver now applies expression depth guard:
+  - Previous: Pattern -> Placeable -> SelectExpression -> Variant recursion bypassed depth limiting
+  - Now: `expression_guard` applied at Pattern->Placeable entry point, catching all nested expressions
+  - Prevents stack overflow from deeply nested SelectExpression chains
+
+### Breaking Changes
+- **Babel Now Optional**: Core syntax parsing works without Babel:
+  - `pip install ftllexengine` installs parser-only (no external dependencies)
+  - `pip install ftllexengine[babel]` or `ftllexengine[full]` includes Babel
+  - `FluentBundle`, `FluentLocalization`, parsing modules require Babel
+  - Clear error messages when importing Babel-dependent components without Babel installed
+
+### Added
+- **Fallback Observability**: `FluentLocalization` now supports fallback tracking:
+  - `on_fallback` callback parameter invoked when message resolved from non-primary locale
+  - `FallbackInfo` dataclass provides `requested_locale`, `resolved_locale`, and `message_id`
+  - Enables monitoring which translations are missing
+- **Introspection Caching**: `introspect_message()` now uses WeakKeyDictionary cache:
+  - Repeated introspection of same Message/Term returns cached result
+  - `use_cache=False` parameter to disable caching (benchmarking, testing)
+  - `clear_introspection_cache()` function for manual cache management
+  - Automatic cleanup when Message/Term objects are garbage collected
+- **Diagnostic Resolution Path**: `Diagnostic` dataclass gains `resolution_path` field:
+  - Tracks message resolution stack at time of error
+  - Helps debug errors in deeply nested message references
+  - Displayed in `format_error()` output as `= resolution path: msg1 -> msg2 -> ...`
+- **Warning Severity Levels**: `ValidationWarning` gains `severity` field:
+  - `WarningSeverity.CRITICAL`: Will cause runtime failure (undefined reference)
+  - `WarningSeverity.WARNING`: May cause issues (duplicate ID)
+  - `WarningSeverity.INFO`: Informational only
+  - Enables filtering/prioritizing warnings in CI tooling
+- **API Boundary Validation**: Defensive type checking for public APIs:
+  - `format_pattern()` and `format_value()` validate `args` is `Mapping | None`
+  - `format_pattern()` validates `attribute` is `str | None`
+  - Invalid types return error tuple instead of raising `TypeError`
+
+### Changed
+- **Package Dependencies**: `dependencies = []` (empty) in pyproject.toml:
+  - Babel moved to `[project.optional-dependencies]` as `babel` and `full` extras
+  - Babel added to `[dependency-groups]` dev group for testing
+- **Lazy Import Architecture**: `__init__.py` uses `__getattr__` for Babel-dependent components:
+  - `FluentBundle`, `FluentLocalization`, `FluentValue`, `fluent_function` lazy-loaded
+  - Clear error message when Babel not installed
+
+### Fixed
+- **Validation Warning Severity**: All validation warnings now have appropriate severity:
+  - Undefined references and circular references marked CRITICAL
+  - Duplicate IDs and missing values marked WARNING
+
 ## [0.50.0] - 2026-01-02
 
 ### Added
@@ -998,6 +1050,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.51.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.51.0
 [0.50.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.50.0
 [0.49.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.49.0
 [0.48.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.48.0

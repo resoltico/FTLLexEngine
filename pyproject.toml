@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.50.0"
+version = "0.51.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -55,15 +55,27 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
     "Typing :: Typed",
 ]
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+# Babel provides CLDR locale data for locale-aware formatting and parsing.
+# Required for: FluentBundle, FluentLocalization, parsing modules
+# Not required for: syntax parsing (parse_ftl, serialize_ftl), AST manipulation
+babel = [
+    "Babel>=2.17.0,<3.0.0",
+]
+
+# Full installation with all optional dependencies
+full = [
     "Babel>=2.17.0,<3.0.0",
 ]
 
 [dependency-groups]
 dev = [
+    "Babel>=2.17.0,<3.0.0",  # Required for tests (locale formatting, parsing)
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
-    "hypothesis>=6.148.8",
+    "hypothesis>=6.148.9",
     "hypofuzz>=25.11.1",
     "mypy>=1.19.1",
     "pylint>=4.0.4",
@@ -243,6 +255,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # PRODUCTION CODE - Architectural patterns only (real bugs fixed separately)
+
+# Package init: Lazy imports for optional Babel dependency + TYPE_CHECKING imports for hints
+"src/ftllexengine/__init__.py" = ["PLC0415", "F401"]
 
 # Visitor pattern: N802 (visit_NodeName methods follow stdlib ast.NodeVisitor convention)
 "src/ftllexengine/introspection.py" = ["N802"]

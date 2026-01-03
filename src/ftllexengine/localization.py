@@ -57,6 +57,30 @@ class LoadStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class FallbackInfo:
+    """Information about a locale fallback event.
+
+    Provided to the on_fallback callback when FluentLocalization resolves
+    a message using a fallback locale instead of the primary locale.
+
+    Attributes:
+        requested_locale: The primary (first) locale in the chain
+        resolved_locale: The locale that actually contained the message
+        message_id: The message identifier that was resolved
+
+    Example:
+        >>> def log_fallback(info: FallbackInfo) -> None:
+        ...     print(f"Fallback: {info.message_id} resolved from "
+        ...           f"{info.resolved_locale} (requested {info.requested_locale})")
+        >>> l10n = FluentLocalization(['lv', 'en'], on_fallback=log_fallback)
+    """
+
+    requested_locale: LocaleCode
+    resolved_locale: LocaleCode
+    message_id: MessageId
+
+
+@dataclass(frozen=True, slots=True)
 class ResourceLoadResult:
     """Result of loading a single FTL resource.
 
@@ -440,6 +464,7 @@ class FluentLocalization:
         "_load_results",
         "_locales",
         "_lock",
+        "_on_fallback",
         "_pending_functions",
         "_resource_ids",
         "_resource_loader",
@@ -456,6 +481,7 @@ class FluentLocalization:
         use_isolating: bool = True,
         enable_cache: bool = False,
         cache_size: int = DEFAULT_CACHE_SIZE,
+        on_fallback: Callable[[FallbackInfo], None] | None = None,
     ) -> None:
         """Initialize multi-locale localization.
 
@@ -467,6 +493,11 @@ class FluentLocalization:
             enable_cache: Enable format caching for performance (default: False)
                          Cache provides 50x speedup on repeated format calls.
             cache_size: Maximum cache entries when caching enabled (default: DEFAULT_CACHE_SIZE)
+            on_fallback: Optional callback invoked when a message is resolved from
+                        a fallback locale instead of the primary locale. Useful for
+                        debugging and monitoring which messages are missing translations.
+                        The callback receives a FallbackInfo with requested_locale,
+                        resolved_locale, and message_id.
 
         Raises:
             ValueError: If locales is empty
@@ -489,6 +520,7 @@ class FluentLocalization:
         self._use_isolating = use_isolating
         self._enable_cache = enable_cache
         self._cache_size = cache_size
+        self._on_fallback = on_fallback
 
         # Bundle storage: only contains initialized bundles (no None markers)
         # Bundles are created lazily on first access via _get_or_create_bundle
@@ -790,6 +822,17 @@ class FluentLocalization:
         """
         errors: list[FluentError] = []
 
+        # Validate args is None or a Mapping (defensive check)
+        if args is not None and not isinstance(args, Mapping):
+            diagnostic = Diagnostic(  # type: ignore[unreachable]
+                code=DiagnosticCode.INVALID_ARGUMENT,
+                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
+            )
+            errors.append(FluentError(diagnostic))
+            return (FALLBACK_INVALID, tuple(errors))
+
+        primary_locale = self._locales[0] if self._locales else None
+
         # Try each locale in priority order (fallback chain)
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
@@ -800,6 +843,20 @@ class FluentLocalization:
                 value, bundle_errors = bundle.format_pattern(message_id, args)
                 # FluentBundle.format_pattern returns tuple[FluentError, ...]
                 errors.extend(bundle_errors)
+
+                # Invoke fallback callback if message resolved from non-primary locale
+                if (
+                    self._on_fallback is not None
+                    and primary_locale is not None
+                    and locale != primary_locale
+                ):
+                    fallback_info = FallbackInfo(
+                        requested_locale=primary_locale,
+                        resolved_locale=locale,
+                        message_id=message_id,
+                    )
+                    self._on_fallback(fallback_info)
+
                 return (value, tuple(errors))
 
         # No locale had the message - delegate to helper for consistent handling
@@ -851,6 +908,27 @@ class FluentLocalization:
         """
         errors: list[FluentError] = []
 
+        # Validate args is None or a Mapping (defensive check)
+        if args is not None and not isinstance(args, Mapping):
+            diagnostic = Diagnostic(  # type: ignore[unreachable]
+                code=DiagnosticCode.INVALID_ARGUMENT,
+                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
+            )
+            errors.append(FluentError(diagnostic))
+            return (FALLBACK_INVALID, tuple(errors))
+
+        # Validate attribute is None or a string
+        if attribute is not None and not isinstance(attribute, str):
+            attr_type = type(attribute).__name__  # type: ignore[unreachable]
+            diagnostic = Diagnostic(
+                code=DiagnosticCode.INVALID_ARGUMENT,
+                message=f"Invalid attribute type: expected str or None, got {attr_type}",
+            )
+            errors.append(FluentError(diagnostic))
+            return (FALLBACK_INVALID, tuple(errors))
+
+        primary_locale = self._locales[0] if self._locales else None
+
         # Try each locale in fallback order
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
@@ -858,6 +936,20 @@ class FluentLocalization:
             if bundle.has_message(message_id):
                 value, bundle_errors = bundle.format_pattern(message_id, args, attribute=attribute)
                 errors.extend(bundle_errors)
+
+                # Invoke fallback callback if message resolved from non-primary locale
+                if (
+                    self._on_fallback is not None
+                    and primary_locale is not None
+                    and locale != primary_locale
+                ):
+                    fallback_info = FallbackInfo(
+                        requested_locale=primary_locale,
+                        resolved_locale=locale,
+                        message_id=message_id,
+                    )
+                    self._on_fallback(fallback_info)
+
                 return (value, tuple(errors))
 
         # Not found - delegate to helper for consistent handling
@@ -990,6 +1082,8 @@ __all__ = [
     "LoadStatus",
     "LoadSummary",
     "ResourceLoadResult",
+    # Fallback observability
+    "FallbackInfo",
     # Type aliases for user code type annotations
     "MessageId",
     "LocaleCode",

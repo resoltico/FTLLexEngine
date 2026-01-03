@@ -1,5 +1,8 @@
 """FTL Linter Example - Demonstrating AST Parser Tooling API.
 
+PARSER-ONLY: This example works WITHOUT Babel. Install with:
+    pip install ftllexengine  (no [babel] extra needed)
+
 This example shows how to use FTLLexEngine's AST parser API to build
 a simple FTL linter that detects common issues:
 

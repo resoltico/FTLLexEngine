@@ -301,7 +301,16 @@ class FluentResolver:
                     parts.append(element.value)
                 case Placeable():
                     try:
-                        value = self._resolve_expression(element.expression, args, errors, context)
+                        # Track expression depth to prevent stack overflow from deeply
+                        # nested SelectExpressions. The guard must be applied HERE at
+                        # the Pattern->Placeable entry point, not just in _resolve_expression
+                        # for nested Placeables. Without this, the recursion path:
+                        # Pattern -> Placeable -> SelectExpression -> Variant Pattern -> ...
+                        # bypasses depth limiting entirely.
+                        with context.expression_guard:
+                            value = self._resolve_expression(
+                                element.expression, args, errors, context
+                            )
                         formatted = self._format_value(value)
 
                         # Wrap in Unicode bidi isolation marks (FSI/PDI)
@@ -344,7 +353,7 @@ class FluentResolver:
             case SelectExpression():
                 return self._resolve_select_expression(expr, args, errors, context)
             case VariableReference():
-                return self._resolve_variable_reference(expr, args)
+                return self._resolve_variable_reference(expr, args, context)
             case MessageReference():
                 return self._resolve_message_reference(expr, args, errors, context)
             case TermReference():
@@ -363,12 +372,21 @@ class FluentResolver:
                 raise FluentResolutionError(ErrorTemplate.unknown_expression(type(expr).__name__))
 
     def _resolve_variable_reference(
-        self, expr: VariableReference, args: Mapping[str, FluentValue]
+        self,
+        expr: VariableReference,
+        args: Mapping[str, FluentValue],
+        context: ResolutionContext,
     ) -> FluentValue:
         """Resolve variable reference from args."""
         var_name = expr.id.name
         if var_name not in args:
-            raise FluentReferenceError(ErrorTemplate.variable_not_provided(var_name))
+            # Include resolution path for debugging nested references
+            resolution_path = tuple(context.stack) if context.stack else None
+            raise FluentReferenceError(
+                ErrorTemplate.variable_not_provided(
+                    var_name, resolution_path=resolution_path
+                )
+            )
         return args[var_name]
 
     def _resolve_message_reference(

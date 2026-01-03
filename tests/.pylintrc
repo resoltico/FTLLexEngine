@@ -161,6 +161,12 @@ disable =
     # Example: from ftllexengine.runtime.functions import number_format
     import-outside-toplevel,
 
+    # E0611: no-name-in-module
+    # Reason: ftllexengine uses lazy imports via __getattr__ for Babel-dependent
+    # components (FluentBundle, FluentLocalization, FluentValue, fluent_function).
+    # Pylint cannot resolve these at static analysis time. See src/__init__.py.
+    no-name-in-module,
+
     # C0411: wrong-import-order
     # Reason: Ruff handles import ordering (isort)
     wrong-import-order,

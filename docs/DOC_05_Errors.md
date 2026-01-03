@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.51.0"
 domain: ERRORS
-updated: "2025-12-31"
+updated: "2026-01-03"
 route:
   keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?"]
@@ -131,7 +131,7 @@ class DepthLimitExceededError(FluentResolutionError): ...
 - Purpose: Maximum expression/nesting depth exceeded.
 - Cause: Adversarial input, malformed AST, or deep Placeable nesting.
 - Behavior: Raised immediately when limit exceeded.
-- Import: `from ftllexengine.runtime.depth_guard import DepthLimitExceededError`
+- Import: `from ftllexengine.core.depth_guard import DepthLimitExceededError`
 
 ---
 
@@ -343,6 +343,32 @@ def format(
 
 ---
 
+## `WarningSeverity`
+
+Severity levels for validation warnings.
+
+### Signature
+```python
+class WarningSeverity(StrEnum):
+    CRITICAL = "critical"
+    WARNING = "warning"
+    INFO = "info"
+```
+
+### Parameters
+| Value | Description |
+|:------|:------------|
+| `CRITICAL` | Will cause runtime failure (undefined reference). |
+| `WARNING` | May cause issues (duplicate ID, missing value). |
+| `INFO` | Informational only (style suggestions). |
+
+### Constraints
+- StrEnum: Members ARE strings. `str(WarningSeverity.CRITICAL) == "critical"`
+- Usage: Filter warnings by severity in tooling.
+- Import: `from ftllexengine.diagnostics import WarningSeverity`
+
+---
+
 ## `ValidationWarning`
 
 ### Signature
@@ -354,6 +380,7 @@ class ValidationWarning:
     context: str | None = None
     line: int | None = None
     column: int | None = None
+    severity: WarningSeverity = WarningSeverity.WARNING
 
     def format(self) -> str: ...
 ```
@@ -366,11 +393,13 @@ class ValidationWarning:
 | `context` | `str \| None` | N | Additional context. |
 | `line` | `int \| None` | N | Line number (1-indexed). |
 | `column` | `int \| None` | N | Column number (1-indexed). |
+| `severity` | `WarningSeverity` | N | Severity level (default: WARNING). |
 
 ### Constraints
 - Return: Immutable warning record.
 - State: Frozen dataclass.
 - IDE: Line/column fields enable IDE/LSP integration for warning display.
+- Severity: Enables filtering by importance (CRITICAL > WARNING > INFO).
 
 ---
 
@@ -463,6 +492,7 @@ class Diagnostic:
     received_type: str | None = None
     ftl_location: str | None = None
     severity: Literal["error", "warning"] = "error"
+    resolution_path: tuple[str, ...] | None = None
 
     def format_error(self) -> str: ...
 ```
@@ -481,10 +511,12 @@ class Diagnostic:
 | `received_type` | `str \| None` | N | Actual type received. |
 | `ftl_location` | `str \| None` | N | FTL file location. |
 | `severity` | `Literal[...]` | N | "error" or "warning". |
+| `resolution_path` | `tuple[str, ...] \| None` | N | Resolution stack for debugging nested references. |
 
 ### Constraints
 - Return: Immutable diagnostic record.
 - State: Frozen dataclass.
+- Resolution Path: Shows message reference chain (e.g., `("welcome", "greeting", "base")`).
 
 ---
 

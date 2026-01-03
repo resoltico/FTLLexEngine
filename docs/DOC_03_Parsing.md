@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.51.0"
 domain: PARSING
-updated: "2025-12-31"
+updated: "2026-01-03"
 route:
   keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax]
   questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?"]
@@ -39,7 +39,7 @@ def parse(source: str) -> Resource:
 def serialize(
     resource: Resource,
     *,
-    validate: bool = False,
+    validate: bool = True,
     max_depth: int = MAX_DEPTH,
 ) -> str:
 ```

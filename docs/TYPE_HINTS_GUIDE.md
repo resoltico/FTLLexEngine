@@ -1,12 +1,17 @@
-<!--
-RETRIEVAL_HINTS:
+---
+afad: "3.1"
+version: "0.51.0"
+domain: type-hints
+updated: "2026-01-03"
+route:
   keywords: [type hints, typing, mypy, type safety, pep 695, typeis, type guards, annotations]
-  answers: [how to use type hints, mypy configuration, type safe code, python typing]
-  related: [DOC_02_Types.md, QUICK_REFERENCE.md]
--->
+  questions: ["how to use type hints?", "how to configure mypy?", "how to write type safe code?"]
+---
+
 # Type Hints Guide - FTLLexEngine
 
-**Comprehensive guide to using Python 3.13+ type hints with FTLLexEngine**
+**Purpose**: Leverage Python 3.13+ type hints with FTLLexEngine.
+**Prerequisites**: Basic Python typing knowledge.
 
 FTLLexEngine is built with modern Python 3.13+ features and provides full `mypy --strict` type safety. This guide shows how to leverage type hints for better code quality and IDE support.
 
@@ -24,7 +29,7 @@ def format_message(bundle: FluentBundle, msg_id: MessageId) -> str:
     """Format message with proper type annotations."""
     result, errors = bundle.format_pattern(msg_id)
     if errors:
-        # errors is tuple[FluentError, ...] - fully typed (v0.11.0: immutable)
+        # errors is tuple[FluentError, ...] - fully typed, immutable
         for error in errors:
             print(f"Error: {error}")
     return result
@@ -77,7 +82,7 @@ FTLLexEngine uses `TypeIs` for runtime type narrowing:
 from typing import TypeIs
 from ftllexengine import Message, Term, parse_ftl
 
-# Using built-in type guards (v0.9.0: static methods)
+# Using built-in type guards (static methods)
 ftl_source = "hello = World"
 resource = parse_ftl(ftl_source)
 
@@ -228,7 +233,7 @@ class MessageFormatter:
 
         Args:
             msg_id: Message that had errors
-            errors: Tuple of errors encountered (immutable as of v0.11.0)
+            errors: Tuple of errors encountered (immutable)
         """
         for error in errors:
             logger.warning(
@@ -517,7 +522,7 @@ def handle_errors(errors: tuple[FluentError, ...]) -> None:
     """Handle translation errors with exhaustive matching.
 
     Args:
-        errors: Tuple of errors from formatting (immutable as of v0.11.0)
+        errors: Tuple of errors from formatting (immutable)
     """
     for error in errors:
         match error:
@@ -561,7 +566,7 @@ class ErrorReport:
         """Categorize errors by severity.
 
         Args:
-            errors: Tuple of translation errors (immutable as of v0.11.0)
+            errors: Tuple of translation errors (immutable)
 
         Returns:
             Categorized error report
@@ -728,7 +733,7 @@ from ftllexengine import parse_ftl, Message
 resource = parse_ftl(ftl_source)
 
 for entry in resource.entries:
-    # ✅ Good - type guard provides narrowing (v0.9.0: static method)
+    # ✅ Good - type guard provides narrowing (static method)
     if Message.guard(entry):
         # entry is Message here
         print(entry.value)
@@ -783,7 +788,7 @@ msg = resource.entries[0]
 # ❌ Type error - entry might not be Message
 print(msg.value)  # Error: entry could be Term, Comment, Junk
 
-# ✅ Fixed - use type guard (v0.9.0: static method)
+# ✅ Fixed - use type guard (static method)
 if Message.guard(msg):
     print(msg.value)  # Safe - type narrowed to Message
 ```
@@ -808,9 +813,7 @@ if Message.guard(msg):
 
 ---
 
-**Type Hints Guide Last Updated**: December 23, 2025
-**FTLLexEngine Version**: 0.38.0
-**Python Version**: 3.13+
+**Python Requirement**: 3.13+
 
 **See Also**:
 - [DOC_00_Index.md](DOC_00_Index.md) - Complete API reference

@@ -1,5 +1,8 @@
 """FTL Transformer Example - Demonstrating AST Modification API.
 
+PARSER-ONLY: This example works WITHOUT Babel. Install with:
+    pip install ftllexengine  (no [babel] extra needed)
+
 This example shows how to use FTLLexEngine's ASTTransformer to modify
 FTL files programmatically:
 

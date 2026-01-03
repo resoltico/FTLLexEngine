@@ -1,14 +1,17 @@
-<!--
-RETRIEVAL_HINTS:
+---
+afad: "3.1"
+version: "0.51.0"
+domain: custom-functions
+updated: "2026-01-03"
+route:
   keywords: [custom functions, add_function, fluent functions, factory pattern, locale-aware, formatting functions]
-  answers: [how to create custom function, add custom function, locale-aware function, extend ftllexengine]
-  related: [DOC_04_Runtime.md, QUICK_REFERENCE.md]
--->
+  questions: ["how to create custom function?", "how to add custom function?", "how to make locale-aware function?"]
+---
+
 # Advanced Custom Functions Guide
 
-**Comprehensive guide to extending FTLLexEngine with custom formatting functions**
-
-Python 3.13+ | FTLLexEngine
+**Purpose**: Extend FTLLexEngine with custom formatting functions.
+**Prerequisites**: Basic FluentBundle usage.
 
 ---
 
@@ -342,7 +345,7 @@ result, _ = bundle_lv.format_pattern("greet", {"name": "Anna"})
 # → "Sveiki, Anna!"
 ```
 
-### Alternative: Automatic Locale Injection (v0.37.0+)
+### Alternative: Automatic Locale Injection
 
 Instead of using the factory pattern, use the `@fluent_function` decorator for automatic locale injection:
 
@@ -992,6 +995,4 @@ class TestFileSizeHypothesis:
 
 ---
 
-**Document Last Updated**: December 23, 2025
-**FTLLexEngine Version**: 0.38.0
 **Python Requirement**: 3.13+

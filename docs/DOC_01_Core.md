@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.51.0"
 domain: CORE
-updated: "2025-12-31"
+updated: "2026-01-03"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -39,7 +39,7 @@ class FluentBundle:
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
-| `max_source_size` | `int \| None` | N | Maximum FTL source size in bytes (default: 10 MB). |
+| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 
 ### Constraints
@@ -76,7 +76,7 @@ def for_system_locale(
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
-| `max_source_size` | `int \| None` | N | Maximum FTL source size in bytes (default: 10 MB). |
+| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 
 ### Constraints
@@ -379,14 +379,14 @@ def introspect_term(self, term_id: str) -> MessageIntrospection:
 
 ### Signature
 ```python
-def add_function(self, name: str, func: Callable[..., str]) -> None:
+def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Function name (UPPERCASE convention). |
-| `func` | `Callable[..., str]` | Y | Python function returning string. |
+| `func` | `Callable[..., FluentValue]` | Y | Python function returning FluentValue. |
 
 ### Constraints
 - Return: None.
@@ -503,9 +503,9 @@ def cache_size(self) -> int:
 ```
 
 ### Constraints
-- Return: Maximum cache entries (0 if caching disabled).
+- Return: Configured maximum cache entries.
 - Raises: None.
-- State: Read-only property.
+- State: Read-only property. Returns configured value regardless of cache_enabled.
 - Thread: Safe.
 
 ---
@@ -543,6 +543,7 @@ class FluentLocalization:
         use_isolating: bool = True,
         enable_cache: bool = False,
         cache_size: int = 1000,
+        on_fallback: Callable[[FallbackInfo], None] | None = None,
     ) -> None: ...
 ```
 
@@ -555,12 +556,14 @@ class FluentLocalization:
 | `use_isolating` | `bool` | N | Wrap interpolated values in bidi marks. |
 | `enable_cache` | `bool` | N | Enable format caching. |
 | `cache_size` | `int` | N | Max cache entries per bundle. |
+| `on_fallback` | `Callable[[FallbackInfo], None] \| None` | N | Callback on fallback locale resolution. |
 
 ### Constraints
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty or resource_ids without loader.
 - State: Lazy bundle initialization. Bundles created on first access.
 - Thread: Safe (RLock).
+- Fallback: `on_fallback` invoked when message resolved from non-primary locale.
 
 ---
 
@@ -663,14 +666,14 @@ def has_message(self, message_id: MessageId) -> bool:
 
 ### Signature
 ```python
-def add_function(self, name: str, func: Callable[..., str]) -> None:
+def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Function name. |
-| `func` | `Callable[..., str]` | Y | Python function. |
+| `func` | `Callable[..., FluentValue]` | Y | Python function returning FluentValue. |
 
 ### Constraints
 - Return: None.
@@ -732,6 +735,35 @@ def get_load_summary(self) -> LoadSummary:
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
+
+---
+
+## `FallbackInfo`
+
+Dataclass providing fallback event metadata when FluentLocalization resolves a message from a non-primary locale.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FallbackInfo:
+    requested_locale: LocaleCode
+    resolved_locale: LocaleCode
+    message_id: MessageId
+```
+
+### Parameters
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `requested_locale` | `LocaleCode` | Primary locale that was requested. |
+| `resolved_locale` | `LocaleCode` | Locale that actually contained the message. |
+| `message_id` | `MessageId` | Message identifier that triggered fallback. |
+
+### Constraints
+- Return: Frozen dataclass instance.
+- State: Immutable.
+- Thread: Safe.
+- Usage: Passed to `on_fallback` callback in FluentLocalization.
+- Import: `from ftllexengine.localization import FallbackInfo`
 
 ---
 
@@ -869,9 +901,9 @@ def cache_size(self) -> int:
 ```
 
 ### Constraints
-- Return: Maximum cache entries per bundle (0 if caching disabled).
+- Return: Configured maximum cache entries per bundle.
 - Raises: None.
-- State: Read-only property.
+- State: Read-only property. Returns configured value regardless of cache_enabled.
 - Thread: Safe.
 
 ---
@@ -1020,7 +1052,7 @@ def normalize_locale(locale_code: str) -> str:
 | `locale_code` | `str` | Y | BCP-47 or POSIX locale code. |
 
 ### Constraints
-- Return: POSIX-formatted locale code (hyphens to underscores).
+- Return: Lowercase POSIX-formatted locale code (hyphens to underscores, lowercased).
 - State: None. Pure function.
 - Thread: Safe.
 - Import: `from ftllexengine.locale_utils import normalize_locale`

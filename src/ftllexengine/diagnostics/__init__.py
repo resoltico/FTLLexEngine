@@ -17,7 +17,12 @@ from .errors import (
 )
 from .formatter import DiagnosticFormatter, OutputFormat
 from .templates import ErrorTemplate
-from .validation import ValidationError, ValidationResult, ValidationWarning
+from .validation import (
+    ValidationError,
+    ValidationResult,
+    ValidationWarning,
+    WarningSeverity,
+)
 
 __all__ = [
     "Diagnostic",
@@ -35,4 +40,5 @@ __all__ = [
     "ValidationError",
     "ValidationResult",
     "ValidationWarning",
+    "WarningSeverity",
 ]

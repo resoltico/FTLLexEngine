@@ -1,0 +1,121 @@
+# Pylint configuration for example code
+# Location: examples/.pylintrc
+# Invoked by: scripts/lint.sh when analyzing examples/
+#
+# ============================================================================
+# ARCHITECTURAL PHILOSOPHY
+# ============================================================================
+#
+# Example code has different quality goals than production code:
+#
+# PRODUCTION CODE (10.00/10):
+# - Long-lived, user-facing, security-critical
+# - Optimized for maintainability and extensibility
+# - Zero tolerance for technical debt
+#
+# EXAMPLE CODE (9.00/10 target):
+# - Educational, demonstrative, user-facing
+# - Optimized for clarity and copy-paste friendliness
+# - Shows best practices while remaining approachable
+#
+# ============================================================================
+
+[MAIN]
+
+# Python version (must match pyproject.toml)
+py-version = 3.13
+
+# Files or directories to exclude
+ignore-patterns = ^__pycache__.*,
+                  ^.*\.pyc$
+
+# Use all CPU cores for parallel linting
+jobs = 0
+
+# ============================================================================
+# MESSAGES CONTROL
+# ============================================================================
+
+[MESSAGES CONTROL]
+
+# Disable checks that are inappropriate for example code
+disable =
+    # ========================================================================
+    # NAMING CONVENTIONS
+    # ========================================================================
+
+    # C0103: invalid-name
+    # Reason: Examples may use short variable names for clarity
+    invalid-name,
+
+    # ========================================================================
+    # DOCUMENTATION
+    # ========================================================================
+
+    # C0114: missing-module-docstring
+    # Examples have docstrings but may be briefer
+    missing-module-docstring,
+
+    # C0116: missing-function-docstring
+    # Example functions may be self-documenting
+    missing-function-docstring,
+
+    # ========================================================================
+    # DESIGN
+    # ========================================================================
+
+    # R0903: too-few-public-methods
+    too-few-public-methods,
+
+    # R0913: too-many-arguments
+    too-many-arguments,
+
+    # ========================================================================
+    # IMPORTS
+    # ========================================================================
+
+    # C0415: import-outside-toplevel
+    # Examples may import inside functions for clarity
+    import-outside-toplevel,
+
+    # E0611: no-name-in-module
+    # Reason: ftllexengine uses lazy imports via __getattr__ for Babel-dependent
+    # components (FluentBundle, FluentLocalization, FluentValue, fluent_function).
+    # Pylint cannot resolve these at static analysis time. See src/__init__.py.
+    no-name-in-module,
+
+    # R0801: duplicate-code
+    # Reason: Examples may share similar FTL sample strings for pedagogical purposes.
+    # Each example should be self-contained and runnable without cross-references.
+    duplicate-code,
+
+    # ========================================================================
+    # CODE STYLE
+    # ========================================================================
+
+    # W0511: fixme
+    fixme,
+
+    # C0301: line-too-long
+    # Reason: Examples may have descriptive comments
+    line-too-long,
+
+# ============================================================================
+# FORMAT
+# ============================================================================
+
+[FORMAT]
+
+# Maximum line length (matches pyproject.toml)
+max-line-length = 100
+
+# ============================================================================
+# DESIGN
+# ============================================================================
+
+[DESIGN]
+
+# Reasonable limits for example code
+max-args = 10
+max-locals = 20
+max-branches = 15

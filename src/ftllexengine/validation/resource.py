@@ -26,6 +26,7 @@ from ftllexengine.diagnostics import (
     ValidationError,
     ValidationResult,
     ValidationWarning,
+    WarningSeverity,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.introspection import extract_references
@@ -170,6 +171,7 @@ def _collect_entries(
                             context=msg_id.name,
                             line=line,
                             column=column,
+                            severity=WarningSeverity.WARNING,
                         )
                     )
                 seen_message_ids.add(msg_id.name)
@@ -185,6 +187,7 @@ def _collect_entries(
                             context=msg_id.name,
                             line=line,
                             column=column,
+                            severity=WarningSeverity.WARNING,
                         )
                     )
 
@@ -202,6 +205,7 @@ def _collect_entries(
                             context=term_id.name,
                             line=line,
                             column=column,
+                            severity=WarningSeverity.WARNING,
                         )
                     )
                 seen_term_ids.add(term_id.name)
@@ -258,6 +262,7 @@ def _check_undefined_references(
                         context=ref,
                         line=line,
                         column=column,
+                        severity=WarningSeverity.CRITICAL,
                     )
                 )
 
@@ -270,6 +275,7 @@ def _check_undefined_references(
                         context=f"-{ref}",
                         line=line,
                         column=column,
+                        severity=WarningSeverity.CRITICAL,
                     )
                 )
 
@@ -287,6 +293,7 @@ def _check_undefined_references(
                         context=ref,
                         line=line,
                         column=column,
+                        severity=WarningSeverity.CRITICAL,
                     )
                 )
 
@@ -299,6 +306,7 @@ def _check_undefined_references(
                         context=f"-{ref}",
                         line=line,
                         column=column,
+                        severity=WarningSeverity.CRITICAL,
                     )
                 )
 
@@ -396,6 +404,7 @@ def _detect_circular_references(
                     code=DiagnosticCode.VALIDATION_CIRCULAR_REFERENCE.name,
                     message=msg,
                     context=cycle_str,
+                    severity=WarningSeverity.CRITICAL,
                 )
             )
 

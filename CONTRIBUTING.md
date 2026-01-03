@@ -1,8 +1,13 @@
-<!--
-RETRIEVAL_HINTS:
+---
+afad: "3.1"
+version: "0.51.0"
+domain: contributing
+updated: "2026-01-03"
+route:
   keywords: [contributing, development, setup, pull request, code style, workflow]
-  answers: [how to contribute, development setup, pr process, code standards]
--->
+  questions: ["how to contribute?", "how to set up development?", "how to submit PR?"]
+---
+
 # Contributing
 
 ## Setup

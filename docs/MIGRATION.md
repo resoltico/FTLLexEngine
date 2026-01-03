@@ -1,9 +1,13 @@
-<!--
-RETRIEVAL_HINTS:
+---
+afad: "3.1"
+version: "0.51.0"
+domain: migration
+updated: "2026-01-03"
+route:
   keywords: [migration, fluent.runtime, upgrade, breaking changes, mozilla fluent, python fluent]
-  answers: [how to migrate from fluent.runtime, upgrade to ftllexengine, breaking changes]
-  related: [../CHANGELOG.md, ../README.md]
--->
+  questions: ["how to migrate from fluent.runtime?", "how to upgrade to ftllexengine?"]
+---
+
 # Migration Guide: fluent.runtime → FTLLexEngine
 
 **Complete guide for migrating from Mozilla's fluent.runtime to FTLLexEngine**
@@ -778,10 +782,10 @@ from ftllexengine.diagnostics import FluentCyclicReferenceError
 
 ---
 
-**Migration Guide Last Updated**: December 28, 2025
-**FTLLexEngine Version**: 0.39.0
 **fluent.runtime Version Referenced**: 0.4.0
 
-**Note**: For FTLLexEngine version-to-version upgrade guidance (e.g., v0.38.0 → v0.39.0), see [CHANGELOG.md](../CHANGELOG.md).
+**Note**: Babel is optional. Parser-only installation (`pip install ftllexengine`) works without external dependencies. For locale-aware formatting, install with `pip install ftllexengine[babel]`.
+
+**Note**: For FTLLexEngine version-to-version upgrade guidance, see [CHANGELOG.md](../CHANGELOG.md).
 
 **Feedback**: If you encounter migration issues not covered here, please open an issue!

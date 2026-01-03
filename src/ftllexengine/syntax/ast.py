@@ -144,7 +144,7 @@ class Resource:
     entries: tuple[Entry, ...]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class Message:
     """Message definition.
 
@@ -167,7 +167,7 @@ class Message:
         return isinstance(entry, Message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class Term:
     """Term definition (private, prefixed with -).
 

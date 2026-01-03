@@ -5,7 +5,7 @@ RETRIEVAL_HINTS:
   related: [docs/QUICK_REFERENCE.md, docs/DOC_00_Index.md, docs/PARSING_GUIDE.md, docs/TERMINOLOGY.md]
 -->
 
-[![FTLLexEngine Device, A Steampunk-Inspired Concept Render](https://raw.githubusercontent.com/resoltico/FTLLexEngine/main/images/FTLLexEngine_device.png)](https://github.com/resoltico/FTLLexEngine)
+[![FTLLexEngine Art](https://raw.githubusercontent.com/resoltico/FTLLexEngine/main/images/FTLLexEngine.jpg)](https://github.com/resoltico/FTLLexEngine)
 
 -----
 
@@ -51,10 +51,25 @@ The library can serve you well as **single-language infrastructure** or as a ful
 ## Installation
 
 ```bash
+# Parser-only (no external dependencies)
 uv add ftllexengine
+
+# Full runtime with locale formatting (requires Babel)
+uv add ftllexengine[babel]
 ```
 
-**Requirements**: Python >= 3.13, Babel >= 2.17
+**Requirements**: Python >= 3.13 | Babel >= 2.17 (optional for locale formatting)
+
+**What works without Babel:**
+- FTL syntax parsing (`parse_ftl()`)
+- AST serialization (`serialize_ftl()`)
+- AST manipulation and transformation
+- Validation and introspection
+
+**What requires Babel:**
+- `FluentBundle` (locale-aware message formatting)
+- `FluentLocalization` (multi-locale fallback chains)
+- Bidirectional parsing (numbers, dates, currency)
 
 ### Python Version Support
 

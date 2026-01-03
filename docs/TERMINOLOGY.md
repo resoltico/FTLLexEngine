@@ -1,12 +1,17 @@
-<!--
-RETRIEVAL_HINTS:
+---
+afad: "3.1"
+version: "0.51.0"
+domain: terminology
+updated: "2026-01-03"
+route:
   keywords: [terminology, definitions, glossary, fluent terms, message, term, pattern, placeable, resource]
-  answers: [what is a message, what is a term, what is a pattern, fluent terminology]
-  related: [../README.md, DOC_02_Types.md]
--->
+  questions: ["what is a message?", "what is a term?", "what is a pattern?", "fluent terminology?"]
+---
+
 # FTLLexEngine Terminology Guide
 
-**Official terminology reference for FTLLexEngine project**
+**Purpose**: Standard terminology reference for FTLLexEngine.
+**Prerequisites**: None.
 
 This document establishes the standard terminology used throughout FTLLexEngine's codebase, documentation, and communication. Consistent terminology improves clarity and reduces confusion.
 
@@ -432,10 +437,7 @@ Complete alphabetical reference:
 
 ---
 
-**Terminology Guide Last Updated**: January 1, 2026
-**FTLLexEngine Version**: 0.50.0
-
 **See Also**:
-- [README.md - Terminology Section](README.md#terminology)
-- [docs/DOC_00_Index.md](docs/DOC_00_Index.md) - Complete API reference
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+- [README.md](README.md) - Project overview
+- [DOC_00_Index.md](DOC_00_Index.md) - Complete API reference
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Quick examples

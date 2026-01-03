@@ -1,14 +1,17 @@
-<!--
-RETRIEVAL_HINTS:
-  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, fuzz.sh]
-  answers: [how to run fuzzing, how to fuzz, what is fuzzing, how to find bugs, crash investigation, how to detect failures]
-  related: [scripts/fuzz.sh, fuzz/stability.py, fuzz/structured.py, fuzz/perf.py, tests/test_grammar_based_fuzzing.py, tests/strategies.py]
--->
+---
+afad: "3.1"
+version: "0.51.0"
+domain: fuzzing
+updated: "2026-01-03"
+route:
+  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security]
+  questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?"]
+---
+
 # Fuzzing Guide
 
 **Purpose**: Run and understand the parser fuzzing infrastructure.
-**Audience**: Developers and AI agents new to fuzzing.
-**Last Updated**: 2026-01-01
+**Prerequisites**: Basic pytest knowledge.
 
 ---
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.47.0"
+version: "0.51.0"
 domain: INDEX
-updated: "2025-12-31"
+updated: "2026-01-03"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?"]
@@ -53,7 +53,8 @@ from ftllexengine.syntax.ast import (
 from ftllexengine.syntax import (
     FluentParserV1, ASTVisitor, ASTTransformer,
     Cursor, ParseError, ParseResult,
-    parse, serialize, SerializationValidationError,
+    parse, serialize,
+    SerializationValidationError, SerializationDepthError,
 )
 ```
 
@@ -61,8 +62,8 @@ from ftllexengine.syntax import (
 ```python
 from ftllexengine.diagnostics import (
     FluentError, FluentSyntaxError, FluentReferenceError,
-    FluentResolutionError, FluentCyclicReferenceError,
-    ValidationResult, ValidationError, ValidationWarning,
+    FluentResolutionError, FluentCyclicReferenceError, FluentParseError,
+    ValidationResult, ValidationError, ValidationWarning, WarningSeverity,
     DiagnosticFormatter, OutputFormat,
 )
 ```
@@ -71,7 +72,7 @@ from ftllexengine.diagnostics import (
 ```python
 from ftllexengine.introspection import (
     introspect_message, MessageIntrospection,
-    extract_variables, extract_references,
+    extract_variables, extract_references, clear_introspection_cache,
     VariableInfo, FunctionCallInfo, ReferenceInfo,
 )
 ```
@@ -123,7 +124,7 @@ from ftllexengine.runtime import (
 ```python
 from ftllexengine.localization import (
     FluentLocalization, PathResourceLoader, ResourceLoader,
-    LoadStatus, LoadSummary, ResourceLoadResult,
+    LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo,
     MessageId, LocaleCode, ResourceId, FTLSource,
 )
 ```
@@ -171,7 +172,6 @@ ftllexengine/
       core.py              # Parser main entry point
       primitives.py        # get_last_parse_error, clear_parse_error, ParseErrorContext
       rules.py             # ParseContext, pattern/expression parsing
-      entries.py           # Message, Term, Comment parsing
       whitespace.py        # Whitespace handling
   runtime/
     __init__.py            # Runtime exports
@@ -204,7 +204,7 @@ ftllexengine/
 
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
-| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| None` | runtime/resolver.py (exported from root) |
+| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None` | runtime/function_bridge.py (exported from root) |
 | `ParseResult[T]` | `tuple[T \| None, tuple[FluentParseError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |

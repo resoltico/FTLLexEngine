@@ -102,11 +102,16 @@ class ErrorTemplate:
         )
 
     @staticmethod
-    def variable_not_provided(variable_name: str) -> Diagnostic:
+    def variable_not_provided(
+        variable_name: str,
+        *,
+        resolution_path: tuple[str, ...] | None = None,
+    ) -> Diagnostic:
         """Variable not provided in arguments.
 
         Args:
             variable_name: The variable name (without leading $)
+            resolution_path: Optional resolution stack for debugging nested references
 
         Returns:
             Diagnostic for VARIABLE_NOT_PROVIDED
@@ -118,6 +123,7 @@ class ErrorTemplate:
             span=None,
             hint=f"Pass '{variable_name}' in the arguments dictionary",
             help_url=f"{ErrorTemplate._DOCS_BASE}/variables.html",
+            resolution_path=resolution_path,
         )
 
     @staticmethod
