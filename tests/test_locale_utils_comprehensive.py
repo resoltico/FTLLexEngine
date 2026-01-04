@@ -6,7 +6,9 @@ Includes property-based tests with Hypothesis for locale normalization.
 Python 3.13+.
 """
 
+import builtins
 import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -84,6 +86,45 @@ class TestGetBabelLocale:
         """Invalid locale raises ValueError."""
         with pytest.raises(ValueError, match="not a valid locale identifier"):
             get_babel_locale("invalid_locale_code_xyz")
+
+    def test_babel_not_installed_raises_import_error(self) -> None:
+        """ImportError with helpful message when Babel not installed (lines 104-109)."""
+        # Save the original import and modules
+        original_import = builtins.__import__
+        saved_babel = sys.modules.get("babel")
+        saved_locale = sys.modules.get("babel.core")
+
+        # Clear lru_cache for get_babel_locale
+        get_babel_locale.cache_clear()
+
+        def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
+            if name == "babel" or name.startswith("babel."):
+                no_babel_msg = "No module named 'babel'"
+                raise ImportError(no_babel_msg)
+            return original_import(name, globs, locs, fromlist, level)
+
+        builtins.__import__ = mock_import
+        # Also remove babel from sys.modules to force reimport
+        if "babel" in sys.modules:
+            del sys.modules["babel"]
+        if "babel.core" in sys.modules:
+            del sys.modules["babel.core"]
+
+        try:
+            with pytest.raises(
+                ImportError,
+                match=r"get_babel_locale\(\) requires Babel.*pip install ftllexengine\[babel\]",
+            ):
+                get_babel_locale("en-US")
+        finally:
+            builtins.__import__ = original_import
+            # Restore babel modules
+            if saved_babel is not None:
+                sys.modules["babel"] = saved_babel
+            if saved_locale is not None:
+                sys.modules["babel.core"] = saved_locale
+            # Clear cache again to reset state
+            get_babel_locale.cache_clear()
 
 
 class TestGetSystemLocale:

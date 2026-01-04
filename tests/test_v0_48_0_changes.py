@@ -148,16 +148,30 @@ class TestLineEndingsInStringLiterals:
         assert result is None
 
     def test_carriage_return_rejected(self) -> None:
-        """Carriage return rejected in string literal."""
-        cursor = Cursor(source='"line1\rline2"', pos=0)
-        result = parse_string_literal(cursor)
-        assert result is None
+        """Carriage return in source rejected (normalized to LF then rejected).
+
+        Note: Line endings are normalized to LF at parser entry point.
+        CR becomes LF, which is then rejected in string literals.
+        """
+        bundle = FluentBundle("en_US")
+        # CR in source is normalized to LF, which triggers rejection
+        bundle.add_resource('msg = { "line1\rline2" }')
+        result, errors = bundle.format_pattern("msg")
+        # Should have error due to line ending in string literal
+        assert len(errors) > 0 or "{" in result
 
     def test_crlf_rejected(self) -> None:
-        """CRLF sequence rejected in string literal."""
-        cursor = Cursor(source='"line1\r\nline2"', pos=0)
-        result = parse_string_literal(cursor)
-        assert result is None
+        """CRLF sequence in source rejected (normalized to LF then rejected).
+
+        Note: Line endings are normalized to LF at parser entry point.
+        CRLF becomes LF, which is then rejected in string literals.
+        """
+        bundle = FluentBundle("en_US")
+        # CRLF in source is normalized to LF, which triggers rejection
+        bundle.add_resource('msg = { "line1\r\nline2" }')
+        result, errors = bundle.format_pattern("msg")
+        # Should have error due to line ending in string literal
+        assert len(errors) > 0 or "{" in result
 
     def test_escaped_newline_allowed(self) -> None:
         """Escaped newline (\\n) is allowed."""

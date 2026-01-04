@@ -166,9 +166,15 @@ class TestIsIndentedContinuation:
         result = is_indented_continuation(cursor)
         assert result is False
 
-    def test_is_indented_continuation_crlf(self) -> None:
-        """Verify is_indented_continuation handles CRLF."""
-        cursor = Cursor(source="\r\n  hello", pos=0)
+    def test_is_indented_continuation_normalized_line_ending(self) -> None:
+        """Verify is_indented_continuation works with normalized line endings.
+
+        Note: Line endings (CRLF, CR) are normalized to LF at parser entry point,
+        so this function only needs to handle LF. This test verifies correct
+        behavior with normalized input.
+        """
+        # CRLF is normalized to LF at parser entry point before this function is called
+        cursor = Cursor(source="\n  hello", pos=0)
         result = is_indented_continuation(cursor)
         assert result is True
 
@@ -226,9 +232,13 @@ class TestSkipMultilinePatternStart:
         assert new_cursor.pos == 0
         assert new_cursor.current == "v"
 
-    def test_skip_multiline_pattern_start_crlf(self) -> None:
-        """Verify skip_multiline_pattern_start handles CRLF."""
-        cursor = Cursor(source="\r\n  value", pos=0)
+    def test_skip_multiline_pattern_start_normalized_line_ending(self) -> None:
+        """Verify skip_multiline_pattern_start handles normalized line endings.
+
+        Note: CRLF is normalized to LF at parser entry point before this
+        function is called. This test verifies correct behavior with normalized input.
+        """
+        cursor = Cursor(source="\n  value", pos=0)
         new_cursor = skip_multiline_pattern_start(cursor)
         assert new_cursor.current == "v"
 

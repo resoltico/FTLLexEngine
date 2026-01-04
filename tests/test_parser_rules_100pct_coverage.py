@@ -20,6 +20,7 @@ from ftllexengine.syntax.parser.rules import (
     ParseContext,
     _trim_pattern_blank_lines,
     parse_argument_expression,
+    parse_term_reference,  # Not in __all__ but accessible
 )
 
 
@@ -230,3 +231,61 @@ class TestArgumentExpressionHypothesis:
         assert result is not None
         assert isinstance(result.value, NumberLiteral)
         assert result.value.value == number
+
+
+class TestTermReferenceDepthExceeded:
+    """Tests for term reference parsing at depth limit (line 1209 coverage)."""
+
+    def test_term_with_arguments_at_depth_limit_returns_none(self) -> None:
+        """Term reference with arguments at depth limit returns None (line 1209).
+
+        When parsing -term(arg: value) and the nesting depth is exceeded,
+        the parser returns None to prevent DoS from deeply nested structures.
+        """
+        # Create context at depth limit
+        context = ParseContext(max_nesting_depth=2)
+        # Increment depth to be at the limit
+        nested_context = context.enter_nesting()
+        nested_context = nested_context.enter_nesting()
+
+        # Verify we're at depth limit
+        assert nested_context.is_depth_exceeded()
+
+        # Parse term reference with arguments at this depth
+        # The cursor starts at '-' as parse_term_reference expects
+        cursor = Cursor('-brand(case: "nom")', 0)
+
+        # Should return None because depth exceeded when trying to parse args
+        result = parse_term_reference(cursor, nested_context)
+        assert result is None
+
+    def test_term_without_arguments_at_depth_limit_succeeds(self) -> None:
+        """Term reference without arguments at depth limit still succeeds.
+
+        The depth check only applies when parsing arguments (the '(' path).
+        """
+        context = ParseContext(max_nesting_depth=2)
+        nested_context = context.enter_nesting()
+        nested_context = nested_context.enter_nesting()
+
+        assert nested_context.is_depth_exceeded()
+
+        # Term without arguments should still parse
+        cursor = Cursor("-brand", 0)
+        result = parse_term_reference(cursor, nested_context)
+
+        # Should succeed because no arguments to parse
+        assert result is not None
+        assert result.value.id.name == "brand"
+
+    def test_term_with_arguments_below_depth_limit_succeeds(self) -> None:
+        """Term reference with arguments below depth limit succeeds."""
+        context = ParseContext(max_nesting_depth=10)
+
+        cursor = Cursor('-term(case: "gen")', 0)
+        result = parse_term_reference(cursor, context)
+
+        # Should parse successfully
+        assert result is not None
+        assert result.value.id.name == "term"
+        assert result.value.arguments is not None

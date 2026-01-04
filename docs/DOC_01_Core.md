@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.51.0"
+version: "0.52.0"
 domain: CORE
 updated: "2026-01-03"
 route:
@@ -1055,6 +1055,7 @@ def normalize_locale(locale_code: str) -> str:
 - Return: Lowercase POSIX-formatted locale code (hyphens to underscores, lowercased).
 - State: None. Pure function.
 - Thread: Safe.
+- Babel: NOT required. Pure string manipulation.
 - Import: `from ftllexengine.locale_utils import normalize_locale`
 
 ---
@@ -1074,9 +1075,11 @@ def get_babel_locale(locale_code: str) -> Locale:
 
 ### Constraints
 - Return: Babel Locale object (cached).
+- Raises: `ImportError` if Babel not installed.
 - Raises: `babel.core.UnknownLocaleError` on invalid locale.
 - State: None. Cached pure function.
 - Thread: Safe (lru_cache internal locking).
+- Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
 - Import: `from ftllexengine.locale_utils import get_babel_locale`
 
 ---
@@ -1098,6 +1101,7 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 - Raises: `RuntimeError` if raise_on_failure=True and locale cannot be determined.
 - State: Reads OS locale via locale.getlocale() and env vars LC_ALL, LC_MESSAGES, LANG.
 - Thread: Safe.
+- Babel: NOT required. Uses only stdlib.
 - Import: `from ftllexengine.locale_utils import get_system_locale`
 
 ---

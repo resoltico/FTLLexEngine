@@ -418,9 +418,10 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
             cursor = cursor.advance()
             return ParseResult("".join(chars), cursor)
 
-        # Per Fluent spec: line endings (LF, CRLF) are forbidden in string literals
+        # Per Fluent spec: line endings are forbidden in string literals
         # quoted_char ::= (any_char - special_quoted_char - line_end)
-        if ch in ("\n", "\r"):
+        # Note: Line endings normalized to LF at parser entry point
+        if ch == "\n":
             _set_parse_error(
                 "Line endings not allowed in string literals (use \\n escape)",
                 cursor.pos,

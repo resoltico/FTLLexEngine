@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.51.0"
+version: "0.52.0"
 domain: PARSING
 updated: "2026-01-03"
 route:
@@ -189,19 +189,20 @@ class ParseContext:
     current_depth: int = 0
 
     def is_depth_exceeded(self) -> bool: ...
-    def enter_placeable(self) -> ParseContext: ...
+    def enter_nesting(self) -> ParseContext: ...
 ```
 
 ### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
-| `max_nesting_depth` | `int` | Maximum allowed nesting depth for placeables. |
+| `max_nesting_depth` | `int` | Maximum nesting depth for placeables and function calls. |
 | `current_depth` | `int` | Current nesting depth (0 = top level). |
 
 ### Constraints
 - Immutable: Uses slots for memory efficiency.
 - Thread: Safe (explicit parameter passing, no global state).
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
+- Security: Tracks depth for BOTH placeables and function calls (DoS prevention).
 - Import: `from ftllexengine.syntax.parser import ParseContext`
 
 ---
@@ -224,11 +225,11 @@ def is_depth_exceeded(self) -> bool:
 
 ---
 
-## `ParseContext.enter_placeable`
+## `ParseContext.enter_nesting`
 
 ### Signature
 ```python
-def enter_placeable(self) -> ParseContext:
+def enter_nesting(self) -> ParseContext:
 ```
 
 ### Parameters
@@ -239,6 +240,7 @@ def enter_placeable(self) -> ParseContext:
 - Return: New ParseContext with incremented depth.
 - State: None (returns new instance).
 - Thread: Safe.
+- Usage: Called when entering placeables, function calls, or term calls with arguments.
 
 ---
 

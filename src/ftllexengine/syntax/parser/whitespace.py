@@ -73,14 +73,21 @@ def is_indented_continuation(cursor: Cursor) -> bool:
 
     Returns:
         True if next line is an indented continuation, False otherwise
+
+    Note:
+        Line endings are normalized to LF at parser entry point.
     """
-    if cursor.is_eof or cursor.current not in ("\n", "\r"):
+    if cursor.is_eof or cursor.current != "\n":
         return False
 
-    # Skip the newline(s)
+    # Skip the newline and any subsequent blank lines
+    # Pattern values can have blank lines before the indented content:
+    #   msg =
+    #
+    #       value
     next_cursor = cursor.advance()
-    if not next_cursor.is_eof and next_cursor.current == "\n":
-        next_cursor = next_cursor.advance()  # Handle \r\n
+    while not next_cursor.is_eof and next_cursor.current == "\n":
+        next_cursor = next_cursor.advance()
 
     # Check if next line starts with space (U+0020 only, NOT tab)
     if next_cursor.is_eof or next_cursor.current != " ":
@@ -110,11 +117,12 @@ def skip_multiline_pattern_start(cursor: Cursor) -> Cursor:
     cursor = skip_blank_inline(cursor)
 
     # Check for pattern starting on next line
-    if not cursor.is_eof and cursor.current in ("\n", "\r"):  # noqa: SIM102
+    # Note: Line endings normalized to LF at parser entry point
+    if not cursor.is_eof and cursor.current == "\n":  # noqa: SIM102
         if is_indented_continuation(cursor):
-            # Multiline pattern - skip newline and leading indentation
+            # Multiline pattern - skip newlines (including blank lines) and leading indentation
             cursor = cursor.advance()
-            if not cursor.is_eof and cursor.current == "\n":  # Handle \r\n (CRLF)
+            while not cursor.is_eof and cursor.current == "\n":
                 cursor = cursor.advance()
             # Skip leading indentation (ONLY spaces per spec)
             cursor = skip_blank_inline(cursor)

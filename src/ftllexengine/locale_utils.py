@@ -4,12 +4,17 @@ Centralizes locale format normalization used throughout the codebase.
 Provides canonical locale handling to ensure consistent cache keys and lookups.
 
 Babel Import Pattern:
-    Babel is imported at module level, not lazily. While Babel loads CLDR data
-    at import time, the "lazy loading" pattern was defeated by other modules
-    (currency.py, dates.py, numbers.py) that import Babel at module level.
-    Importing any parsing module triggers Babel loading anyway.
+    Babel is imported lazily inside get_babel_locale() to support parser-only
+    installations without the optional Babel dependency. This allows:
+    - ftllexengine.syntax (parser) to work without Babel
+    - ftllexengine.parsing/runtime to raise clear errors when Babel is missing
 
-    Consistency is preferred over partial optimization that provides no benefit.
+    Functions that do NOT require Babel:
+    - normalize_locale() - Pure string manipulation
+    - get_system_locale() - Uses only stdlib locale module
+
+    Functions that REQUIRE Babel:
+    - get_babel_locale() - Creates Babel Locale objects
 
 Python 3.13+.
 """
@@ -18,8 +23,10 @@ from __future__ import annotations
 
 import functools
 import os
+from typing import TYPE_CHECKING
 
-from babel import Locale
+if TYPE_CHECKING:
+    from babel import Locale
 
 __all__ = [
     "get_babel_locale",
@@ -38,6 +45,9 @@ def normalize_locale(locale_code: str) -> str:
     This is the canonical normalization function. All locale handling should
     normalize at the system boundary (entry point) using this function, then
     use the normalized form for cache keys and lookups.
+
+    Note:
+        This function does NOT require Babel. It performs pure string manipulation.
 
     Args:
         locale_code: BCP-47 locale code (e.g., "en-US", "pt-BR", "EN-US")
@@ -67,6 +77,10 @@ def get_babel_locale(locale_code: str) -> Locale:
 
     Thread-safe via lru_cache internal locking.
 
+    Note:
+        This function REQUIRES the optional Babel dependency.
+        Install with: pip install ftllexengine[babel]
+
     Args:
         locale_code: Locale code (BCP-47 or POSIX format accepted)
 
@@ -74,6 +88,7 @@ def get_babel_locale(locale_code: str) -> Locale:
         Babel Locale object
 
     Raises:
+        ImportError: If Babel is not installed
         babel.core.UnknownLocaleError: If locale is not recognized
         ValueError: If locale format is invalid
 
@@ -84,8 +99,17 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
+    try:
+        from babel import Locale as BabelLocale  # noqa: PLC0415
+    except ImportError as e:
+        msg = (
+            "get_babel_locale() requires Babel for CLDR locale data. "
+            "Install with: pip install ftllexengine[babel]"
+        )
+        raise ImportError(msg) from e
+
     normalized = normalize_locale(locale_code)
-    return Locale.parse(normalized)
+    return BabelLocale.parse(normalized)
 
 
 def get_system_locale(*, raise_on_failure: bool = False) -> str:
@@ -99,6 +123,9 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 
     Normalizes the result to POSIX format for Babel compatibility.
     Filters out "C" and "POSIX" pseudo-locales.
+
+    Note:
+        This function does NOT require Babel. It uses only stdlib modules.
 
     Args:
         raise_on_failure: If True, raise RuntimeError when locale cannot be

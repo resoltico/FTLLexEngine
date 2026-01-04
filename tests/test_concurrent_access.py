@@ -5,8 +5,16 @@ Tests for thread safety of FluentBundle:
 - No race conditions in resolution
 - Consistent results across threads
 
-Note: This file is marked with pytest.mark.fuzz and is excluded from normal
-test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
+Structure:
+    - TestConcurrentFormatPatternBasic: Essential tests (run in every CI build)
+    - TestConcurrentFormatPatternIntensive: Property-based tests (fuzz-marked)
+    - TestConcurrentConsistency: Fuzz-marked intensive tests
+    - TestConcurrentWithReferences: Fuzz-marked intensive tests
+    - TestConcurrentErrorHandling: Fuzz-marked intensive tests
+
+Note: use_isolating=False is used throughout because these tests verify thread
+safety behavior, not Unicode directional isolation. This makes assertions cleaner
+and is independent of the isolation feature being tested elsewhere.
 """
 
 from __future__ import annotations
@@ -20,21 +28,22 @@ from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
 
-# Mark all tests in this file as fuzzing tests
-pytestmark = pytest.mark.fuzz
+# =============================================================================
+# Essential Concurrency Tests (Run in every CI build)
+# =============================================================================
 
 
-# -----------------------------------------------------------------------------
-# Thread Safety Tests
-# -----------------------------------------------------------------------------
+class TestConcurrentFormatPatternBasic:
+    """Essential thread safety tests that run in every CI build.
 
-
-class TestConcurrentFormatPattern:
-    """Tests for concurrent format_pattern() calls."""
+    These verify the core thread safety guarantees of FluentBundle without
+    intensive property-based testing. They complete quickly and catch
+    regressions in concurrent access patterns.
+    """
 
     def test_concurrent_same_message(self) -> None:
         """Multiple threads formatting the same message."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("greeting = Hello, { $name }!")
 
         results: list[str] = []
@@ -64,7 +73,7 @@ class TestConcurrentFormatPattern:
 
     def test_concurrent_different_messages(self) -> None:
         """Multiple threads formatting different messages."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
 msg1 = First message
@@ -95,7 +104,7 @@ msg3 = Third message
 
     def test_concurrent_with_variables(self) -> None:
         """Concurrent formatting with different variable values."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("count = You have { $n } items.")
 
         results: list[tuple[int, str]] = []
@@ -119,7 +128,7 @@ msg3 = Third message
 
     def test_concurrent_select_expressions(self) -> None:
         """Concurrent formatting with select expressions."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
 items = { $count ->
@@ -154,14 +163,24 @@ items = { $count ->
                 assert "items" in result
 
 
+# =============================================================================
+# Intensive Concurrency Tests (Fuzz-marked, run with pytest -m fuzz)
+# =============================================================================
+
+
+@pytest.mark.fuzz
 class TestConcurrentConsistency:
-    """Tests for result consistency across threads."""
+    """Intensive tests for result consistency across threads.
+
+    These are property-based tests with many threads - designed for dedicated
+    fuzzing runs, not every CI build.
+    """
 
     @given(st.integers(min_value=10, max_value=50))
     @settings(max_examples=20, deadline=None)
     def test_deterministic_results(self, thread_count: int) -> None:
         """Property: Same input produces same output across threads."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("msg = Fixed message with { $var }")
 
         results: list[str] = []
@@ -185,7 +204,7 @@ class TestConcurrentConsistency:
 
     def test_no_data_corruption(self) -> None:
         """Verify no data corruption with many concurrent operations."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
 user = User { $id } is { $status }
@@ -218,12 +237,17 @@ user = User { $id } is { $status }
             assert status in result
 
 
+@pytest.mark.fuzz
 class TestConcurrentWithReferences:
-    """Tests for concurrent resolution with message references."""
+    """Intensive tests for concurrent resolution with message references.
+
+    Tests reference chain resolution under heavy concurrent load.
+    Designed for dedicated fuzzing runs.
+    """
 
     def test_concurrent_reference_chains(self) -> None:
         """Concurrent resolution of reference chains."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
 base = World
@@ -251,7 +275,7 @@ welcome = { greeting } Welcome!
 
     def test_concurrent_term_resolution(self) -> None:
         """Concurrent resolution of terms."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
 -brand = Firefox
@@ -285,12 +309,17 @@ about = About { -brand }
         assert all("Firefox" in r for r in about_results)
 
 
+@pytest.mark.fuzz
 class TestConcurrentErrorHandling:
-    """Tests for concurrent error handling."""
+    """Intensive tests for concurrent error handling.
+
+    Tests error path behavior under heavy concurrent load.
+    Designed for dedicated fuzzing runs.
+    """
 
     def test_concurrent_missing_messages(self) -> None:
         """Concurrent access to missing messages."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("exists = This exists")
 
         results: list[tuple[str, int]] = []
@@ -321,7 +350,7 @@ class TestConcurrentErrorHandling:
 
     def test_concurrent_missing_variables(self) -> None:
         """Concurrent formatting with missing variables."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         results: list[tuple[str, int]] = []

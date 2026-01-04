@@ -7,8 +7,13 @@ Tests for cycle detection in message resolution:
 - Term cycles
 - Mixed message/term cycles
 
-Note: This file is marked with pytest.mark.fuzz and is excluded from normal
-test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
+Structure:
+    - TestDirectCycles: Essential tests (run in every CI build)
+    - TestIndirectCycles: Essential tests (run in every CI build)
+    - TestDeepChains: Essential tests (run in every CI build)
+    - TestResolutionContext: Essential tests (run in every CI build)
+    - TestCycleDetectionProperties: Property-based tests (fuzz-marked)
+    - TestComplexCyclePatterns: Complex edge cases (fuzz-marked)
 """
 
 from __future__ import annotations
@@ -22,13 +27,9 @@ from ftllexengine.diagnostics import FluentCyclicReferenceError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.resolver import ResolutionContext
 
-# Mark all tests in this file as fuzzing tests
-pytestmark = pytest.mark.fuzz
-
-
-# -----------------------------------------------------------------------------
-# Unit Tests: Known Cycle Patterns
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Essential Cycle Detection Tests (Run in every CI build)
+# =============================================================================
 
 
 class TestDirectCycles:
@@ -207,11 +208,12 @@ class TestResolutionContext:
         assert path == ["a", "b", "c", "a"]
 
 
-# -----------------------------------------------------------------------------
-# Property Tests: Cycle Detection
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Intensive Cycle Detection Tests (Fuzz-marked, run with pytest -m fuzz)
+# =============================================================================
 
 
+@pytest.mark.fuzz
 class TestCycleDetectionProperties:
     """Property-based tests for cycle detection."""
 
@@ -289,6 +291,7 @@ class TestCycleDetectionProperties:
         assert not any(isinstance(e, FluentCyclicReferenceError) for e in errors)
 
 
+@pytest.mark.fuzz
 class TestComplexCyclePatterns:
     """Tests for complex cycle patterns."""
 

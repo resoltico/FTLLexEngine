@@ -708,21 +708,29 @@ class FluentResolver:
         Uses FunctionRegistry to handle camelCase → snake_case parameter conversion.
         Uses metadata system to determine if locale injection is needed.
 
+        Security:
+            Wraps argument resolution in expression_guard to prevent DoS via deeply
+            nested function calls like NUMBER(A(B(C(...)))). Each nested call
+            consumes stack frames during resolution.
+
         Returns FluentValue which the resolver will convert to string for final output.
         """
         func_name = func_ref.id.name
 
-        # Evaluate positional arguments
-        positional_values: list[FluentValue] = [
-            self._resolve_expression(arg, args, errors, context)
-            for arg in func_ref.arguments.positional
-        ]
+        # Evaluate arguments within depth guard (DoS prevention)
+        # Function arguments can contain nested function calls: NUMBER(ABS(FLOOR($x)))
+        # Without depth tracking, deeply nested calls can exhaust the Python stack.
+        with context.expression_guard:
+            positional_values: list[FluentValue] = [
+                self._resolve_expression(arg, args, errors, context)
+                for arg in func_ref.arguments.positional
+            ]
 
-        # Evaluate named arguments (camelCase from FTL)
-        named_values: dict[str, FluentValue] = {
-            arg.name.name: self._resolve_expression(arg.value, args, errors, context)
-            for arg in func_ref.arguments.named
-        }
+            # Evaluate named arguments (camelCase from FTL)
+            named_values: dict[str, FluentValue] = {
+                arg.name.name: self._resolve_expression(arg.value, args, errors, context)
+                for arg in func_ref.arguments.named
+            }
 
         # Check if locale injection is needed (metadata-driven, not magic tuple)
         # This correctly handles custom functions with same name as built-ins

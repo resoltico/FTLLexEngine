@@ -13,9 +13,15 @@ Profile auto-detection:
 Override manually: HYPOTHESIS_PROFILE=verbose pytest tests/
 
 Fuzzing Test Separation:
-Tests marked with @pytest.mark.fuzz are excluded from normal test runs.
-These are intensive property tests designed for fuzzing, not unit testing.
-Run them via: ./scripts/run-property-tests.sh or pytest -m fuzz
+Tests marked with @pytest.mark.fuzz at class level are excluded from normal runs.
+This allows test files to contain both essential tests (unmarked, run in CI) and
+intensive property tests (fuzz-marked, run with dedicated fuzzing).
+
+Marker pattern:
+- Essential tests: No marker, run in every CI build
+- Intensive tests: @pytest.mark.fuzz at class level, skipped in normal runs
+
+Run fuzz-marked tests: ./scripts/run-property-tests.sh or pytest -m fuzz
 """
 
 import pytest

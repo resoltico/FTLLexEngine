@@ -349,7 +349,8 @@ class FluentParserV1:
                 # If comment parsing fails, create Junk entry (not silent skip)
                 # This maintains parser transparency and enables roundtrip fidelity
                 junk_start = cursor.pos
-                while not cursor.is_eof and cursor.current not in ("\n", "\r"):
+                # Note: Line endings normalized to LF at parse entry (line 255)
+                while not cursor.is_eof and cursor.current != "\n":
                     cursor = cursor.advance()
                 junk_end = cursor.pos
                 junk_content = cursor.source[junk_start:junk_end]

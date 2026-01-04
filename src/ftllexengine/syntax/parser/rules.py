@@ -87,8 +87,15 @@ class ParseContext:
     - Easier testing (no state reset needed)
     - Clear dependency flow
 
+    Security:
+        Tracks nesting depth for BOTH placeables and function calls to prevent
+        stack overflow DoS attacks. Deeply nested constructs like:
+        - { { { ... } } } (nested placeables)
+        - { A(B(C(D(...)))) } (nested function calls)
+        Both consume stack frames and must be bounded.
+
     Attributes:
-        max_nesting_depth: Maximum allowed nesting depth for placeables
+        max_nesting_depth: Maximum allowed nesting depth for placeables and calls
         current_depth: Current nesting depth (0 = top level)
     """
 
@@ -99,8 +106,12 @@ class ParseContext:
         """Check if maximum nesting depth has been exceeded."""
         return self.current_depth >= self.max_nesting_depth
 
-    def enter_placeable(self) -> ParseContext:
-        """Create new context with incremented depth for entering a placeable."""
+    def enter_nesting(self) -> ParseContext:
+        """Create new context with incremented depth for entering nested construct.
+
+        Used for both placeables and function/term calls with arguments.
+        Each recursive descent into nested syntax increments depth.
+        """
         return ParseContext(
             max_nesting_depth=self.max_nesting_depth,
             current_depth=self.current_depth + 1,
@@ -1057,6 +1068,10 @@ def parse_function_reference(
 
     FTL EBNF: FunctionReference ::= Identifier CallArguments
 
+    Security:
+        Function calls increment nesting depth to prevent DoS via deeply nested
+        calls like NUMBER(A(B(C(...)))). Each level consumes stack frames.
+
     Examples:
         NUMBER($value)
         number($value)
@@ -1064,12 +1079,21 @@ def parse_function_reference(
 
     Args:
         cursor: Position at start of function name
-        context: Parse context for nested placeable depth tracking
+        context: Parse context for nesting depth tracking
 
     Returns:
         Success(ParseResult(FunctionReference, cursor_after_))) on success
-        Failure(ParseError(...)) on parse error
+        None on parse error or nesting depth exceeded
     """
+    # Create default context if not provided
+    if context is None:
+        context = ParseContext()
+
+    # Check nesting depth limit (DoS prevention)
+    # Function calls can nest arbitrarily: A(B(C(D(...))))
+    if context.is_depth_exceeded():
+        return None
+
     # Capture start position for span
     start_pos = cursor.pos
 
@@ -1090,8 +1114,11 @@ def parse_function_reference(
 
     cursor = cursor.advance()  # Skip (
 
-    # Parse arguments
-    args_result = parse_call_arguments(cursor, context)
+    # Create nested context with incremented depth for argument parsing
+    nested_context = context.enter_nesting()
+
+    # Parse arguments with nested context
+    args_result = parse_call_arguments(cursor, nested_context)
     if args_result is None:
         return args_result
 
@@ -1125,14 +1152,22 @@ def parse_term_reference(
 
     Term references can have optional attribute access and arguments.
 
+    Security:
+        Term calls with arguments increment nesting depth to prevent DoS via
+        deeply nested calls. Arguments can contain nested expressions.
+
     Args:
         cursor: Current position (should be at '-')
-        context: Parse context for nested placeable depth tracking
+        context: Parse context for nesting depth tracking
 
     Returns:
         Success(ParseResult(TermReference, new_cursor)) on success
-        Failure(ParseError(...)) on parse error
+        None on parse error or nesting depth exceeded
     """
+    # Create default context if not provided
+    if context is None:
+        context = ParseContext()
+
     # Capture start position for span
     start_pos = cursor.pos
 
@@ -1169,9 +1204,14 @@ def parse_term_reference(
 
     arguments: CallArguments | None = None
     if not cursor.is_eof and cursor.current == "(":
-        # Parse call arguments (reuse function argument parsing)
+        # Check nesting depth limit (DoS prevention) before parsing arguments
+        if context.is_depth_exceeded():
+            return None
+
+        # Parse call arguments with incremented depth
         cursor = cursor.advance()  # Skip '('
-        args_result = parse_call_arguments(cursor, context)
+        nested_context = context.enter_nesting()
+        args_result = parse_call_arguments(cursor, nested_context)
         if args_result is None:
             return args_result
 
@@ -1399,11 +1439,11 @@ def parse_placeable(
     # Check nesting depth limit (DoS prevention)
     if context.is_depth_exceeded():
         # Nesting depth exceeded - return None to signal parse failure
-        # This prevents stack overflow from deeply nested { { { ... } } }
+        # This prevents stack overflow from deeply nested constructs
         return None
 
     # Create child context with incremented depth for nested parsing
-    nested_context = context.enter_placeable()
+    nested_context = context.enter_nesting()
 
     # Per spec: inline_placeable ::= "{" blank? (SelectExpression | InlineExpression) blank? "}"
     cursor = skip_blank_inline(cursor)

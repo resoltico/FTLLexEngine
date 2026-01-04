@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-01-04
+
+### Security
+- **Parser Depth Guard for Function Calls**: Nested function calls now count toward nesting depth limit:
+  - Previous: `{ NUMBER(A(B(C(...)))) }` bypassed depth limit (only placeables counted)
+  - Now: Each function call increments depth, preventing stack overflow via deeply nested calls
+  - Term references with arguments (`-term(arg)`) also tracked
+  - `ParseContext.enter_nesting()` replaces `enter_placeable()` for unified depth tracking
+- **Resolver Depth Guard for Function Arguments**: Function argument resolution now wrapped in expression guard:
+  - Previous: `_resolve_function_call` evaluated arguments without depth protection
+  - Now: Argument resolution uses `context.expression_guard` to prevent stack overflow
+  - Closes DoS vector independent of parser fix (adversarial AST construction)
+
+### Changed
+- **Babel Import Made Lazy**: `locale_utils.py` now imports Babel on-demand:
+  - `normalize_locale()` and `get_system_locale()` work without Babel (stdlib only)
+  - `get_babel_locale()` imports Babel at call time with clear error message
+  - Enables direct import of locale_utils without triggering ImportError
+
+### Fixed
+- **Dead Code Removed**: Carriage return (`\r`) checks removed from parser:
+  - Line endings are normalized to LF at parser entry (`FluentParserV1.parse()`)
+  - Removed unreachable `\r` checks in `core.py`, `whitespace.py`, `primitives.py`
+  - Reduces cognitive load by accurately reflecting normalized state
+
 ## [0.51.0] - 2026-01-03
 
 ### Security
@@ -1050,6 +1075,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.52.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.52.0
 [0.51.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.51.0
 [0.50.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.50.0
 [0.49.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.49.0
