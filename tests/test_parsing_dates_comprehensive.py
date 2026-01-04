@@ -42,7 +42,8 @@ class TestBabelDatetimeFormatConversion:
         mock_date_format.pattern = "M/d/yy"
         mock_locale.date_formats = {"short": mock_date_format}
 
-        with patch("ftllexengine.parsing.dates.Locale") as mock_locale_class:
+        # Patch at the original Babel module (lazy import in dates.py)
+        with patch("babel.Locale") as mock_locale_class:
             mock_locale_class.parse.return_value = mock_locale
 
             # This should execute lines 288-289

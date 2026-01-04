@@ -601,22 +601,25 @@ class TestBranches424And426CommentLineEndings:
         # Cursor should be positioned after the \n
         assert result.cursor.is_eof or result.cursor.pos == len(source)
 
-    def test_comment_with_cr_only_branch_424_false(self) -> None:
-        """Test parse_comment with CR followed by non-LF (branch 424->430 true, 426 not taken).
+    def test_comment_with_cr_only_not_recognized_as_line_end(self) -> None:
+        """Test parse_comment with non-normalized CR-only (not a line ending).
 
-        When comment ends with \\r not followed by \\n, line 424 condition is True,
-        but line 426 elif is not taken.
+        Cursor expects LF-normalized input. CR is NOT recognized as a line ending.
+        CR/CRLF must be normalized to LF at parser entry (FluentParserV1.parse()).
+
+        With non-normalized input, CR becomes part of the comment content.
         """
-        source = "# Comment\rmsg = Other"  # \r followed by 'm' (not \n)
+        source = "# Comment\rmsg = Other"  # \r is NOT a line ending
         cursor = Cursor(source, 0)
 
         result = rules.parse_comment(cursor)
 
         # Should parse successfully
         assert result is not None
-        assert result.value.content == "Comment"
-        # Cursor should be after \r
-        assert cursor.source[result.cursor.pos] == "m"
+        # CR is included in content because it's not a line ending
+        assert result.value.content == "Comment\rmsg = Other"
+        # Cursor should be at EOF (no LF found)
+        assert result.cursor.is_eof
 
     def test_comment_at_eof_no_line_ending(self) -> None:
         """Test parse_comment at EOF with no line ending (neither branch 424 nor 426)."""

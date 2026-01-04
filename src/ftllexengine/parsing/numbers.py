@@ -5,16 +5,17 @@
 - Removed `strict` parameter - functions NEVER raise, errors returned in tuple
 - Consistent with format_*() "never raise" philosophy
 
+Babel Dependency:
+    This module requires Babel for CLDR data. Import is deferred to function call
+    time to support parser-only installations. Clear error message provided when
+    Babel is missing.
+
 Thread-safe. Uses Babel for CLDR-compliant parsing.
 
 Python 3.13+.
 """
 
 from decimal import Decimal, InvalidOperation
-
-from babel import Locale, UnknownLocaleError
-from babel.numbers import NumberFormatError
-from babel.numbers import parse_decimal as babel_parse_decimal
 
 from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -47,6 +48,9 @@ def parse_number(
         - result: Parsed float, or None if parsing failed
         - errors: Tuple of FluentParseError (empty tuple on success)
 
+    Raises:
+        BabelImportError: If Babel is not installed
+
     Examples:
         >>> result, errors = parse_number("1,234.5", "en_US")
         >>> result
@@ -73,6 +77,16 @@ def parse_number(
         parse_decimal: For exact precision (financial calculations)
     """
     errors: list[FluentParseError] = []
+
+    # Lazy import to support parser-only installations
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+        from babel.numbers import NumberFormatError  # noqa: PLC0415
+        from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
+    except ImportError as e:
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+        raise BabelImportError("parse_number") from e  # noqa: EM101
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -130,6 +144,9 @@ def parse_decimal(
         - result: Parsed Decimal, or None if parsing failed
         - errors: Tuple of FluentParseError (empty tuple on success)
 
+    Raises:
+        BabelImportError: If Babel is not installed
+
     Examples:
         >>> result, errors = parse_decimal("1,234.56", "en_US")
         >>> result
@@ -159,6 +176,16 @@ def parse_decimal(
         Thread-safe. Uses Babel (no global state).
     """
     errors: list[FluentParseError] = []
+
+    # Lazy import to support parser-only installations
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+        from babel.numbers import NumberFormatError  # noqa: PLC0415
+        from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
+    except ImportError as e:
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+        raise BabelImportError("parse_decimal") from e  # noqa: EM101
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))

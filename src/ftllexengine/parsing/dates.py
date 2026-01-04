@@ -7,6 +7,11 @@
 - Fixed: Date pattern tokenizer replaces regex word boundary approach
 - Optimized: Pattern generation is cached per locale
 
+Babel Dependency:
+    This module requires Babel for CLDR data. Import is deferred to function call
+    time to support parser-only installations. Clear error message provided when
+    Babel is missing.
+
 Timezone Handling:
     UTC offset patterns (Z, ZZ, ZZZ, ZZZZZ, x, xx, xxx, xxxx, xxxxx,
     X, XX, XXX, XXXX, XXXXX) are supported via strptime %z.
@@ -35,8 +40,7 @@ Python 3.13+.
 
 from datetime import date, datetime, timezone
 from functools import cache
-
-from babel import Locale, UnknownLocaleError
+from typing import Any
 
 from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -293,8 +297,14 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     Returns:
         Tuple of (strptime_pattern, has_era) pairs to try.
         has_era is True if the pattern contains era tokens requiring preprocessing.
-        Empty tuple if locale parsing fails.
+        Empty tuple if locale parsing fails or Babel is not installed.
     """
+    # Lazy import to support parser-only installations
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+    except ImportError:
+        return ()
+
     try:
         locale = Locale.parse(normalize_locale(locale_code))
 
@@ -316,7 +326,7 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         return ()
 
 
-def _extract_datetime_separator(locale: Locale, style: str = "medium") -> str:
+def _extract_datetime_separator(locale: Any, style: str = "medium") -> str:
     """Extract the date-time separator from locale's CLDR dateTimeFormat.
 
     CLDR dateTimeFormat patterns use {0} for time and {1} for date, e.g.:
@@ -385,8 +395,14 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     Returns:
         Tuple of (strptime_pattern, has_era) pairs to try.
         has_era is True if the pattern contains era tokens requiring preprocessing.
-        Empty tuple if locale parsing fails.
+        Empty tuple if locale parsing fails or Babel is not installed.
     """
+    # Lazy import to support parser-only installations
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+    except ImportError:
+        return ()
+
     try:
         locale = Locale.parse(normalize_locale(locale_code))
 

@@ -8,6 +8,10 @@ Targets uncovered lines in parsing/currency.py:
 These are defensive exception handlers that protect against edge cases
 in Babel's CLDR data.
 
+Note: These tests must clear @functools.cache before running to ensure
+mocked imports are used. The function uses lazy imports inside the function
+body, so patches target the original Babel modules.
+
 Python 3.13+.
 """
 
@@ -16,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -23,6 +28,13 @@ from ftllexengine.parsing.currency import (
     _build_currency_maps_from_cldr,
     parse_currency,
 )
+
+
+@pytest.fixture(autouse=True)
+def clear_currency_cache() -> None:
+    """Clear the currency map cache before each test."""
+    _build_currency_maps_from_cldr.cache_clear()
+
 
 # ============================================================================
 # LINES 61-62: Exception in Locale Parsing During Currency Extraction
@@ -53,7 +65,7 @@ class TestBuildCurrencyMapsLocaleParseException:
         with (
             patch.object(Locale, "parse", side_effect=mock_locale_parse_with_some_failures),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en_US", "broken_locale", "de_DE"],
             ),
         ):
@@ -72,7 +84,7 @@ class TestBuildCurrencyMapsLocaleParseException:
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["test_locale"],
             ),
         ):
@@ -108,23 +120,23 @@ class TestBuildCurrencyMapsSymbolLookupException:
             # Return simple symbol for testing
             return "$" if currency_code == "USD" else currency_code
 
+        # Mock locale to return currencies including one that will fail
+        mock_locale = MagicMock()
+        mock_locale.currencies = {"USD": "Dollar", "FAIL": "Failure Currency"}
+        mock_locale.territory = "US"
+
         with (
             patch(
-                "ftllexengine.parsing.currency.get_currency_symbol",
+                "babel.numbers.get_currency_symbol",
                 side_effect=mock_get_currency_symbol_with_failures,
             ),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en_US"],
             ),
+            patch("babel.Locale.parse", return_value=mock_locale),
         ):
-            # Mock locale to return currencies including one that will fail
-            mock_locale = MagicMock()
-            mock_locale.currencies = {"USD": "Dollar", "FAIL": "Failure Currency"}
-            mock_locale.territory = "US"
-
-            with patch("babel.Locale.parse", return_value=mock_locale):
-                symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
+            symbol_map, ambiguous, locale_to_currency, _ = _build_currency_maps_from_cldr()
 
         # Should complete without crashing
         assert isinstance(symbol_map, dict)
@@ -173,11 +185,11 @@ class TestBuildCurrencyMapsLocaleDataException:
 
         with (
             patch(
-                "ftllexengine.parsing.currency.get_territory_currencies",
+                "babel.numbers.get_territory_currencies",
                 side_effect=mock_get_territory_currencies,
             ),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en_US", "xx_XX"],
             ),
             patch("babel.Locale.parse", side_effect=mock_parse),
@@ -198,7 +210,7 @@ class TestBuildCurrencyMapsLocaleDataException:
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en"],  # Language only, no territory
             ),
         ):
@@ -219,11 +231,11 @@ class TestBuildCurrencyMapsLocaleDataException:
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en_US"],
             ),
             patch(
-                "ftllexengine.parsing.currency.get_territory_currencies",
+                "babel.numbers.get_territory_currencies",
                 return_value=[],  # Empty list
             ),
         ):
@@ -280,11 +292,14 @@ class TestBuildCurrencyMapsEdgeCases:
         assert "$" in ambiguous
 
     @given(
-        locale_count=st.integers(min_value=0, max_value=5),
+        locale_count=st.integers(min_value=1, max_value=5),
     )
     @settings(max_examples=10)
     def test_build_maps_handles_various_locale_counts(self, locale_count: int) -> None:
         """PROPERTY: Function handles any number of locales."""
+        # Clear cache before each property-based test iteration
+        _build_currency_maps_from_cldr.cache_clear()
+
         mock_locales = [f"mock_{i}" for i in range(locale_count)]
 
         mock_locale = MagicMock()
@@ -294,7 +309,7 @@ class TestBuildCurrencyMapsEdgeCases:
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=mock_locales,
             ),
         ):

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.52.0"
+version: "0.53.0"
 domain: parsing
-updated: "2026-01-03"
+updated: "2026-01-04"
 route:
   keywords: [parsing, parse_number, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms]
   questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?"]

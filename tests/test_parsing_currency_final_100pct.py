@@ -8,6 +8,10 @@ Targets the last remaining uncovered lines:
 - Lines 444-445: Invalid ISO code error path
 - Lines 460-462: Locale-to-currency fallback for ambiguous symbols
 
+Note: These tests must clear @functools.cache before running to ensure
+mocked imports are used. The function uses lazy imports inside the function
+body, so patches target the original Babel modules.
+
 Python 3.13+.
 """
 
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from babel import UnknownLocaleError
 
 from ftllexengine.parsing.currency import (
@@ -24,15 +29,18 @@ from ftllexengine.parsing.currency import (
 )
 
 
+@pytest.fixture(autouse=True)
+def clear_currency_cache() -> None:
+    """Clear the currency map cache before each test."""
+    _build_currency_maps_from_cldr.cache_clear()
+    _get_currency_maps.cache_clear()
+
+
 class TestLines278To280LocaleCurrenciesException:
     """Test lines 278-280: Exception when accessing locale.currencies."""
 
     def test_build_maps_handles_key_error_in_currencies_access(self) -> None:
         """Test KeyError when accessing locale.currencies.keys() (lines 278-280)."""
-        # Clear cache to force fresh build
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
         # Create a mock locale that raises KeyError when accessing currencies.keys()
         mock_locale = MagicMock()
 
@@ -42,7 +50,7 @@ class TestLines278To280LocaleCurrenciesException:
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["test_locale"],
             ),
         ):
@@ -55,19 +63,12 @@ class TestLines278To280LocaleCurrenciesException:
             assert isinstance(locale_to_currency, dict)
             assert isinstance(codes, frozenset)
 
-        # Clear cache after test
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
 
 class TestLines304To306GetCurrencySymbolException:
     """Test lines 304-306: Exception in get_currency_symbol call."""
 
     def test_build_maps_handles_attribute_error_in_symbol_lookup(self) -> None:
         """Test AttributeError in get_currency_symbol (lines 304-306)."""
-        # Clear cache to force fresh build
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
 
         def mock_get_currency_symbol_raises(
             currency_code: str, locale: object = None  # noqa: ARG001
@@ -84,12 +85,12 @@ class TestLines304To306GetCurrencySymbolException:
 
         with (
             patch(
-                "ftllexengine.parsing.currency.get_currency_symbol",
+                "babel.numbers.get_currency_symbol",
                 side_effect=mock_get_currency_symbol_raises,
             ),
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en_US"],
             ),
         ):
@@ -101,10 +102,6 @@ class TestLines304To306GetCurrencySymbolException:
             assert isinstance(locale_to_currency, dict)
             assert isinstance(codes, frozenset)
 
-        # Clear cache after test
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
 
 class TestLine341LocaleWithoutUnderscore:
     """Test line 341: Branch when locale_str does NOT contain '_'."""
@@ -115,10 +112,6 @@ class TestLine341LocaleWithoutUnderscore:
         When locale_str does NOT contain "_", the if condition on line 341 is False,
         and the locale is not added to locale_to_currency dict.
         """
-        # Clear cache to force fresh build
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
         # Create mock locale without territory (str representation has no "_")
         mock_locale = MagicMock()
         mock_locale.territory = "XX"  # Has territory
@@ -129,11 +122,11 @@ class TestLine341LocaleWithoutUnderscore:
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["en"],
             ),
             patch(
-                "ftllexengine.parsing.currency.get_territory_currencies",
+                "babel.numbers.get_territory_currencies",
                 return_value=["GBP"],
             ),
         ):
@@ -146,19 +139,12 @@ class TestLine341LocaleWithoutUnderscore:
             assert isinstance(ambiguous, set)
             assert isinstance(codes, frozenset)
 
-        # Clear cache after test
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
 
 class TestLines344To346GetTerritoryCurrenciesException:
     """Test lines 344-346: Exception in get_territory_currencies call."""
 
     def test_build_maps_handles_unknown_locale_error_in_territory_lookup(self) -> None:
         """Test UnknownLocaleError in get_territory_currencies (lines 344-346)."""
-        # Clear cache to force fresh build
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
 
         def mock_get_territory_currencies_raises(territory: str) -> list[str]:  # noqa: ARG001
             """Mock that raises UnknownLocaleError."""
@@ -173,12 +159,12 @@ class TestLines344To346GetTerritoryCurrenciesException:
 
         with (
             patch(
-                "ftllexengine.parsing.currency.get_territory_currencies",
+                "babel.numbers.get_territory_currencies",
                 side_effect=mock_get_territory_currencies_raises,
             ),
             patch("babel.Locale.parse", return_value=mock_locale),
             patch(
-                "ftllexengine.parsing.currency.locale_identifiers",
+                "babel.localedata.locale_identifiers",
                 return_value=["xx_XX"],
             ),
         ):
@@ -190,10 +176,6 @@ class TestLines344To346GetTerritoryCurrenciesException:
             assert isinstance(locale_to_currency, dict)
             assert isinstance(codes, frozenset)
 
-        # Clear cache after test
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
 
 class TestLines444To445InvalidISOCode:
     """Test lines 444-445: Invalid ISO code error path."""
@@ -204,10 +186,6 @@ class TestLines444To445InvalidISOCode:
         When a 3-letter uppercase code is provided that looks like ISO
         but isn't in the valid_iso_codes set, lines 444-445 return error.
         """
-        # Clear cache to ensure we have valid CLDR data loaded
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
         # Use an invalid ISO code - AAA is not a valid ISO 4217 code
         result, errors = parse_currency("AAA 100", "en_US")
 
@@ -235,10 +213,6 @@ class TestLines460To462LocaleToCurrencyFallback:
         When infer_from_locale=True and resolve_ambiguous_symbol returns None,
         the code falls back to locale_to_currency mapping (lines 460-462).
         """
-        # Clear cache to ensure fresh data
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
         # Mock resolve_ambiguous_symbol to return None to force fallback
         with patch(
             "ftllexengine.parsing.currency.resolve_ambiguous_symbol",
@@ -258,16 +232,8 @@ class TestLines460To462LocaleToCurrencyFallback:
             # If locale not in map, error is expected
             assert len(errors) > 0
 
-        # Clear cache after test
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
     def test_parse_currency_ambiguous_symbol_fallback_when_not_in_fast_tier(self) -> None:
         """Test locale_to_currency fallback for locales only in CLDR."""
-        # Clear cache
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
         # Mock resolve_ambiguous_symbol to return None for this specific call
         with patch(
             "ftllexengine.parsing.currency.resolve_ambiguous_symbol",
@@ -284,10 +250,6 @@ class TestLines460To462LocaleToCurrencyFallback:
         else:
             assert len(errors) > 0
 
-        # Clear cache
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
     def test_parse_currency_ambiguous_symbol_no_resolution_available(self) -> None:
         """Test branch 461->464: No resolution when locale not in map.
 
@@ -295,10 +257,6 @@ class TestLines460To462LocaleToCurrencyFallback:
         locale_to_currency map, the code falls through to line 464 (error).
         This tests the branch 461->464.
         """
-        # Clear cache
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()
-
         # Mock both resolve_ambiguous_symbol AND locale_to_currency to force the branch
         with (
             patch(
@@ -325,7 +283,3 @@ class TestLines460To462LocaleToCurrencyFallback:
         # The key is that branch 461->464 is taken (inferred is None/False)
         assert result is None
         assert len(errors) > 0
-
-        # Clear cache
-        _build_currency_maps_from_cldr.cache_clear()
-        _get_currency_maps.cache_clear()

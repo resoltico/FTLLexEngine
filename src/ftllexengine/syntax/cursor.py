@@ -10,15 +10,18 @@ Design Philosophy:
     - Every advance() returns NEW cursor (prevents infinite loops)
     - Line:column computed on-demand (O(n) only for errors)
 
+Input Normalization Requirement:
+    Cursor expects LF-normalized input. All line endings (CRLF, CR) must be
+    converted to LF before creating a Cursor. FluentParserV1.parse() performs
+    this normalization automatically.
+
+    If using Cursor directly (not through FluentParserV1), normalize input:
+        source = source.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+        cursor = Cursor(source, 0)
+
 Line Ending Support:
     - LF (Unix, \\n): Fully supported
-    - CRLF (Windows, \\r\\n): Supported (\\n is the line delimiter)
-    - CR-only (Classic Mac, \\r): NOT supported
-
-    Both Cursor.compute_line_col() and LineOffsetCache use \\n as the line
-    delimiter. CRLF files work correctly because the \\n is still present.
-    Files using CR-only line endings (pre-OSX Mac format) will produce
-    incorrect line numbers.
+    - CRLF/CR: Must be normalized to LF before Cursor creation
 
 Pattern Reference:
     - Rust nom parser combinator library
@@ -319,47 +322,39 @@ class Cursor:
         return self.source[self.pos : self.pos + n]
 
     def skip_line_end(self) -> Cursor:
-        """Skip LF, CR, or CRLF line ending.
+        """Skip LF line ending.
 
         Returns:
-            New cursor advanced past the line ending, or unchanged if not at line end.
+            New cursor advanced past the line ending, or unchanged if not at LF.
 
-        Handles:
-            - LF (Unix, \\n): Skip 1 character
-            - CRLF (Windows, \\r\\n): Skip 2 characters
-            - CR (Mac, \\r): Skip 1 character
+        Note:
+            Cursor expects LF-normalized input. CRLF and CR-only line endings
+            must be converted to LF before Cursor creation. FluentParserV1.parse()
+            performs this normalization automatically.
 
         Example:
             >>> cursor = Cursor("hello\\nworld", 5)  # At \\n
             >>> new_cursor = cursor.skip_line_end()
             >>> new_cursor.pos
             6
-            >>> cursor = Cursor("hello\\r\\nworld", 5)  # At \\r in \\r\\n
-            >>> new_cursor = cursor.skip_line_end()
-            >>> new_cursor.pos
-            7
         """
-        if self.is_eof:
-            return self
-        if self.current == "\r":
-            cursor = self.advance()
-            # Handle CRLF
-            if not cursor.is_eof and cursor.current == "\n":
-                return cursor.advance()
-            return cursor
-        if self.current == "\n":
+        if not self.is_eof and self.current == "\n":
             return self.advance()
         return self
 
     def skip_to_line_end(self) -> Cursor:
-        """Advance to the next line ending character.
+        """Advance to the next LF character.
 
         Returns:
-            New cursor positioned at \\n or \\r (does not consume line ending).
+            New cursor positioned at \\n (does not consume line ending).
 
         Note:
             Stops AT the line ending, does not skip past it.
             Use skip_line_end() after this to consume the line ending.
+
+            Cursor expects LF-normalized input. CRLF and CR-only line endings
+            must be converted to LF before Cursor creation. FluentParserV1.parse()
+            performs this normalization automatically.
 
         Example:
             >>> cursor = Cursor("hello\\nworld", 0)
@@ -370,7 +365,7 @@ class Cursor:
             '\\n'
         """
         cursor = self
-        while not cursor.is_eof and cursor.current not in ("\n", "\r"):
+        while not cursor.is_eof and cursor.current != "\n":
             cursor = cursor.advance()
         return cursor
 

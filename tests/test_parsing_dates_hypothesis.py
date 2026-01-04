@@ -406,8 +406,8 @@ class TestDateParsingEdgeCases:
             real_locale = original_parse(locale_str)
             return MockLocale(real_locale)
 
-        # Patch in the dates module namespace
-        monkeypatch.setattr("ftllexengine.parsing.dates.Locale.parse", mock_parse)
+        # Patch at the original Babel module (lazy import in dates.py)
+        monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
         # v0.8.0: No fallback patterns - should return None with error
         # Non-ISO format without CLDR patterns = failure
@@ -438,7 +438,8 @@ class TestDateParsingEdgeCases:
             real_locale = original_parse(locale_str)
             return MockLocale(real_locale)
 
-        monkeypatch.setattr("ftllexengine.parsing.dates.Locale.parse", mock_parse)
+        # Patch at the original Babel module (lazy import in dates.py)
+        monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
         # ISO format should still work (uses fromisoformat path, not CLDR)
         result, errors = parse_date("2025-01-28", "en_US")
@@ -467,7 +468,8 @@ class TestDateParsingEdgeCases:
             real_locale = original_parse(locale_str)
             return MockLocale(real_locale)
 
-        monkeypatch.setattr("ftllexengine.parsing.dates.Locale.parse", mock_parse)
+        # Patch at the original Babel module (lazy import in dates.py)
+        monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
         # v0.8.0: No fallback patterns - should return None with error
         # Non-ISO format without CLDR patterns = failure
@@ -498,7 +500,8 @@ class TestDateParsingEdgeCases:
             real_locale = original_parse(locale_str)
             return MockLocale(real_locale)
 
-        monkeypatch.setattr("ftllexengine.parsing.dates.Locale.parse", mock_parse)
+        # Patch at the original Babel module (lazy import in dates.py)
+        monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
         # ISO format should still work (uses fromisoformat path, not CLDR)
         result, errors = parse_datetime("2025-01-28T14:30:00", "en_US")
@@ -515,7 +518,8 @@ class TestDateParsingEdgeCases:
             msg = "Simulated locale parsing failure"
             raise RuntimeError(msg)
 
-        monkeypatch.setattr("ftllexengine.parsing.dates.Locale.parse", mock_parse)
+        # Patch at the original Babel module (lazy import in dates.py)
+        monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
         # v0.8.0: No fallback patterns - should return None with error
         result, _errors = parse_date("01/28/2025", "en_US")
@@ -530,7 +534,8 @@ class TestDateParsingEdgeCases:
             msg = "Simulated locale parsing failure"
             raise RuntimeError(msg)
 
-        monkeypatch.setattr("ftllexengine.parsing.dates.Locale.parse", mock_parse)
+        # Patch at the original Babel module (lazy import in dates.py)
+        monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
         # v0.8.0: No fallback patterns - should return None with error
         result, _errors = parse_datetime("01/28/2025 14:30:00", "en_US")

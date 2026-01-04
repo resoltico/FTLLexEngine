@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.52.0"
+version: "0.53.0"
 domain: PARSING
-updated: "2026-01-03"
+updated: "2026-01-04"
 route:
   keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax]
   questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?"]

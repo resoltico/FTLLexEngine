@@ -13,6 +13,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-01-04
+
+### Added
+- **Centralized Babel Compatibility Layer**: New `ftllexengine.core.babel_compat` module:
+  - `is_babel_available()`: Check if Babel is installed (cached result)
+  - `require_babel(feature)`: Assert Babel available, raise `BabelImportError` if not
+  - `BabelImportError`: Custom exception with helpful installation instructions
+  - `get_babel_locale()`, `get_locale_class()`, `get_unknown_locale_error()`: Lazy accessors
+  - `get_babel_numbers()`, `get_babel_dates()`: Module-level lazy imports
+  - All Babel-dependent modules now use consistent lazy import pattern
+- **SelectExpression Span Tracking**: `SelectExpression` AST node now includes `span` field:
+  - Tracks source location (start/end position) for tooling support
+  - Enables better error messages and IDE integration
+
+### Changed
+- **Babel Import Pattern Unified**: All Babel-dependent modules refactored:
+  - `runtime/plural_rules.py`: Uses lazy import inside `select_plural_category()`
+  - `runtime/locale_context.py`: Lazy imports in `create()`, `format_*()` methods
+  - `parsing/currency.py`: Lazy imports in `_build_currency_maps_from_cldr()`
+  - `parsing/numbers.py`: Lazy imports in `parse_number()`, `parse_decimal()`
+  - `parsing/dates.py`: Lazy imports in `_get_date_patterns()`, `_get_datetime_patterns()`
+  - Consistent error messaging via `BabelImportError` when Babel missing
+- **Cursor Line Ending Simplification**: Cursor now expects LF-normalized input:
+  - `skip_line_end()`: Only recognizes `\n` as line ending
+  - `skip_to_line_end()`: Only scans for `\n` character
+  - Module docstring documents LF-normalization requirement
+  - `FluentParserV1.parse()` continues to normalize CRLF/CR to LF before parsing
+  - Direct Cursor usage requires pre-normalization: `source.replace("\r\n", "\n").replace("\r", "\n")`
+
+### Removed
+- **Dead CR Handling in Cursor**: Removed unreachable carriage return code:
+  - Previous `skip_line_end()` had CR/CRLF handling that never executed
+  - Parser normalizes line endings at entry point, making CR checks redundant
+  - Reduces code complexity and clarifies actual behavior
+
 ## [0.52.0] - 2026-01-04
 
 ### Security
@@ -1075,6 +1110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.53.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.53.0
 [0.52.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.52.0
 [0.51.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.51.0
 [0.50.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.50.0

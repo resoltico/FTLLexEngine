@@ -311,7 +311,6 @@ class Placeable:
 class SelectExpression:
     """Conditional expression with variants.
 
-
     Example:
         { $count ->
             [one] 1 item
@@ -321,6 +320,7 @@ class SelectExpression:
 
     selector: InlineExpression
     variants: tuple[Variant, ...]
+    span: Span | None = None
 
     @staticmethod
     def guard(expr: object) -> TypeIs[SelectExpression]:

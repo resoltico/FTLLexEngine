@@ -494,7 +494,8 @@ class TestDatetimeFunctionMockedErrors:
         far_future_dt = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
 
         # Patch babel.dates.format_date to raise OverflowError
-        with patch("ftllexengine.runtime.locale_context.babel_dates.format_date") as mock_format:
+        # Note: With lazy imports, patch at the original Babel module location
+        with patch("babel.dates.format_date") as mock_format:
             mock_format.side_effect = OverflowError("Year out of range")
 
             with pytest.raises(FormattingError) as exc_info:

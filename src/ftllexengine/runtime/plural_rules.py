@@ -4,16 +4,17 @@ Provides plural category selection for all locales using Babel's CLDR data.
 
 This eliminates 300+ lines of manual rule implementation and supports all CLDR locales.
 
-Python 3.13+. Depends on Babel for CLDR data.
+Babel Dependency:
+    This module requires Babel for CLDR data. Import is deferred to function call
+    time to support parser-only installations. Clear error message provided when
+    Babel is missing.
+
+Python 3.13+.
 
 Reference: https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
 """
 
 from decimal import Decimal
-
-from babel.core import UnknownLocaleError
-
-from ftllexengine.locale_utils import get_babel_locale
 
 __all__ = ["select_plural_category"]
 
@@ -27,6 +28,9 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
 
     Returns:
         Plural category: "zero", "one", "two", "few", "many", or "other"
+
+    Raises:
+        BabelImportError: If Babel is not installed
 
     Examples:
         >>> select_plural_category(0, "lv_LV")
@@ -57,6 +61,16 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
         Uses cached locale parsing via get_babel_locale() to avoid
         repeated Locale.parse() overhead in hot paths.
     """
+    # Lazy import to support parser-only installations
+    try:
+        from babel.core import UnknownLocaleError  # noqa: PLC0415
+    except ImportError as e:
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+        raise BabelImportError("select_plural_category") from e  # noqa: EM101
+
+    from ftllexengine.locale_utils import get_babel_locale  # noqa: PLC0415
+
     try:
         # Use cached locale parsing for performance
         locale_obj = get_babel_locale(locale)

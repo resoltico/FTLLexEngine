@@ -772,7 +772,7 @@ def parse_variant(
 def parse_select_expression(
     cursor: Cursor,
     selector: InlineExpression,
-    _start_pos: int,
+    start_pos: int,
     context: ParseContext | None = None,
 ) -> ParseResult[SelectExpression] | None:
     """Parse select expression after seeing selector and ->
@@ -791,7 +791,7 @@ def parse_select_expression(
     Args:
         cursor: Current position (should be after ->)
         selector: The selector expression (e.g., VariableReference($count))
-        _start_pos: Start position of the selector (reserved for future span tracking)
+        start_pos: Start position of the select expression (for span tracking)
         context: Parse context for depth tracking
 
     Returns:
@@ -833,7 +833,9 @@ def parse_select_expression(
     if default_count > 1:
         return None  # "Select expression must have exactly one default variant, found multiple"
 
-    select_expr = SelectExpression(selector=selector, variants=tuple(variants))
+    # Create span from start position to current position (end of last variant)
+    span = Span(start=start_pos, end=cursor.pos)
+    select_expr = SelectExpression(selector=selector, variants=tuple(variants), span=span)
     return ParseResult(select_expr, cursor)
 
 

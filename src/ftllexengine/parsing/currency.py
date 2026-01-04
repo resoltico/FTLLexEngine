@@ -6,6 +6,11 @@ Functions NEVER raise exceptions - errors returned in tuple.
 Thread-safe. Uses Babel for currency symbol mapping and number parsing.
 All currency data sourced from Unicode CLDR via Babel.
 
+Babel Dependency:
+    This module requires Babel for CLDR data. Import is deferred to function call
+    time to support parser-only installations. Clear error message provided when
+    Babel is missing.
+
 Tiered Loading Strategy:
     - Fast Tier: Common currencies with hardcoded unambiguous symbols (immediate)
     - Full Tier: Complete CLDR scan (lazy-loaded via @functools.cache on first access)
@@ -31,15 +36,6 @@ Python 3.13+.
 import functools
 import re
 from decimal import Decimal
-
-from babel import Locale, UnknownLocaleError
-from babel.localedata import locale_identifiers
-from babel.numbers import (
-    NumberFormatError,
-    get_currency_symbol,
-    get_territory_currencies,
-    parse_decimal,
-)
 
 from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -268,7 +264,20 @@ def _build_currency_maps_from_cldr() -> tuple[
         - ambiguous_symbols: Symbols that map to multiple currencies
         - locale_to_currency: Locale code → default ISO 4217 currency code
         - valid_codes: Frozenset of all valid ISO 4217 currency codes from CLDR
+        Returns empty maps if Babel is not installed (fast tier still available).
     """
+    # Lazy import to support parser-only installations
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+        from babel.localedata import locale_identifiers  # noqa: PLC0415
+        from babel.numbers import (  # noqa: PLC0415
+            get_currency_symbol,
+            get_territory_currencies,
+        )
+    except ImportError:
+        # Babel not installed - return empty maps, fast tier still available
+        return ({}, set(), {}, frozenset())
+
     # Step 1: Build symbol → currency codes mapping
     # Key insight: A symbol is ambiguous if multiple currency codes use it
     symbol_to_codes: dict[str, set[str]] = {}
@@ -639,6 +648,18 @@ def parse_currency(
         Thread-safe. Uses Babel (no global state).
     """
     errors: list[FluentParseError] = []
+
+    # Lazy import to support parser-only installations
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+        from babel.numbers import (  # noqa: PLC0415
+            NumberFormatError,
+            parse_decimal,
+        )
+    except ImportError as e:
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+        raise BabelImportError("parse_currency") from e  # noqa: EM101
 
     # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):

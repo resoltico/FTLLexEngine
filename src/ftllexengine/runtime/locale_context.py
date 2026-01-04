@@ -3,6 +3,11 @@
 This module provides locale-aware formatting without global state mutation.
 Uses Babel for CLDR-compliant number, date, and currency formatting.
 
+Babel Dependency:
+    This module requires Babel for CLDR data. Import is deferred to function call
+    time to support parser-only installations. Clear error message provided when
+    Babel is missing.
+
 Architecture:
     - LocaleContext: Immutable locale configuration container
     - Formatters use Babel (thread-safe, CLDR-based)
@@ -33,15 +38,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from threading import RLock
-from typing import ClassVar, Literal
-
-from babel import Locale, UnknownLocaleError
-from babel import dates as babel_dates
-from babel import numbers as babel_numbers
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 from ftllexengine.constants import FALLBACK_FUNCTION_ERROR, MAX_LOCALE_CACHE_SIZE
 from ftllexengine.core.errors import FormattingError
 from ftllexengine.locale_utils import normalize_locale
+
+if TYPE_CHECKING:
+    from babel import Locale
 
 __all__ = ["LocaleContext"]
 
@@ -199,6 +203,14 @@ class LocaleContext:
                 cls._cache.move_to_end(cache_key)
                 return cls._cache[cache_key]
 
+        # Lazy import to support parser-only installations
+        try:
+            from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+        except ImportError as e:
+            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+            raise BabelImportError("LocaleContext.create") from e  # noqa: EM101
+
         # Create new instance (Locale.parse is thread-safe)
         used_fallback = False
         try:
@@ -255,6 +267,14 @@ class LocaleContext:
                 ...
             ValueError: Unknown locale identifier 'invalid-locale'
         """
+        # Lazy import to support parser-only installations
+        try:
+            from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+        except ImportError as e:
+            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+            raise BabelImportError("LocaleContext.create_or_raise") from e  # noqa: EM101
+
         try:
             normalized = normalize_locale(locale_code)
             babel_locale = Locale.parse(normalized)
@@ -319,6 +339,9 @@ class LocaleContext:
             Uses Babel's format_decimal() which implements CLDR rules.
             Matches Intl.NumberFormat behavior in JavaScript.
         """
+        # Lazy import to support parser-only installations
+        from babel import numbers as babel_numbers  # noqa: PLC0415
+
         try:
             # Use custom pattern if provided
             if pattern is not None:
@@ -416,6 +439,9 @@ class LocaleContext:
             Uses Babel's format_datetime() which implements CLDR rules.
             Matches Intl.DateTimeFormat behavior in JavaScript.
         """
+        # Lazy import to support parser-only installations
+        from babel import dates as babel_dates  # noqa: PLC0415
+
         # Type narrowing: convert str to datetime
         dt_value: datetime
 
@@ -544,6 +570,9 @@ class LocaleContext:
             - BHD, KWD, OMR: 3 decimals
             - Most others: 2 decimals
         """
+        # Lazy import to support parser-only installations
+        from babel import numbers as babel_numbers  # noqa: PLC0415
+
         try:
             # Use custom pattern if provided (overrides currency_display)
             if pattern is not None:

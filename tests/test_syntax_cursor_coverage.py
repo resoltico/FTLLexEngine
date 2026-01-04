@@ -260,21 +260,40 @@ class TestCursorSkipLineEnd:
 
         assert result.pos == 6  # Skipped past LF
 
-    def test_skip_line_end_at_cr(self) -> None:
-        """Test skip_line_end at standalone CR."""
+    def test_skip_line_end_at_cr_not_skipped(self) -> None:
+        """Test skip_line_end does NOT skip standalone CR.
+
+        Cursor expects LF-normalized input. CR/CRLF must be converted to LF
+        before creating a Cursor. FluentParserV1.parse() does this automatically.
+        If using Cursor directly with non-normalized input, CR is not recognized.
+        """
         cursor = Cursor("hello\rworld", 5)  # At '\r'
 
         result = cursor.skip_line_end()
 
-        assert result.pos == 6  # Skipped past CR
+        # CR is NOT a recognized line ending - cursor unchanged
+        assert result.pos == 5
+        assert result is cursor
 
-    def test_skip_line_end_at_crlf(self) -> None:
-        """Test skip_line_end at CRLF sequence."""
+    def test_skip_line_end_at_crlf_only_skips_lf(self) -> None:
+        """Test skip_line_end with CRLF requires LF position.
+
+        Cursor expects LF-normalized input. If non-normalized CRLF is passed,
+        skip_line_end only recognizes the LF portion. For proper handling,
+        normalize input before Cursor creation.
+        """
         cursor = Cursor("hello\r\nworld", 5)  # At '\r' in '\r\n'
 
         result = cursor.skip_line_end()
 
-        assert result.pos == 7  # Skipped both CR and LF
+        # At CR position - not recognized as line ending
+        assert result.pos == 5
+        assert result is cursor
+
+        # But if we advance to the LF position:
+        cursor_at_lf = Cursor("hello\r\nworld", 6)  # At '\n'
+        result_lf = cursor_at_lf.skip_line_end()
+        assert result_lf.pos == 7  # Skipped past LF
 
     def test_skip_line_end_at_eof(self) -> None:
         """Test skip_line_end at EOF."""

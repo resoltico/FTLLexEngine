@@ -2,6 +2,10 @@
 
 Tests the defensive nested exception handler that catches failures
 when even the 'root' locale cannot be loaded.
+
+Note: With lazy imports in plural_rules.py, patch the original module
+location (ftllexengine.locale_utils.get_babel_locale) not the importing
+module location.
 """
 
 from unittest.mock import patch
@@ -22,7 +26,8 @@ class TestPluralRulesUltimateFallback:
         in Babel, but exists as defensive programming.
         """
         # Mock get_babel_locale to fail for both the invalid locale AND root
-        with patch("ftllexengine.runtime.plural_rules.get_babel_locale") as mock_get:
+        # Patch at the source location since lazy import happens inside function
+        with patch("ftllexengine.locale_utils.get_babel_locale") as mock_get:
             # First call (invalid locale) raises
             # Second call (root) also raises
             mock_get.side_effect = UnknownLocaleError("mocked failure")
@@ -33,7 +38,8 @@ class TestPluralRulesUltimateFallback:
 
     def test_ultimate_fallback_with_value_error(self) -> None:
         """Return 'other' when get_babel_locale raises ValueError."""
-        with patch("ftllexengine.runtime.plural_rules.get_babel_locale") as mock_get:
+        # Patch at the source location since lazy import happens inside function
+        with patch("ftllexengine.locale_utils.get_babel_locale") as mock_get:
             # Both calls raise ValueError instead of UnknownLocaleError
             mock_get.side_effect = ValueError("mocked failure")
 
