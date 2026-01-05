@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.54.0"
+version: "0.55.0"
 domain: ERRORS
-updated: "2026-01-04"
+updated: "2026-01-05"
 route:
   keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]
@@ -488,6 +488,22 @@ class DiagnosticCode(Enum):
     PARSE_CURRENCY_SYMBOL_UNKNOWN = 4008
     PARSE_AMOUNT_INVALID = 4009
     PARSE_CURRENCY_CODE_INVALID = 4010
+
+    # Validation errors (5000-5099) - Fluent spec semantic validation
+    VALIDATION_TERM_NO_VALUE = 5004
+    VALIDATION_SELECT_NO_DEFAULT = 5005
+    VALIDATION_SELECT_NO_VARIANTS = 5006
+    VALIDATION_VARIANT_DUPLICATE = 5007
+    VALIDATION_NAMED_ARG_DUPLICATE = 5010
+
+    # Validation warnings (5100-5199) - Resource-level validation
+    VALIDATION_PARSE_ERROR = 5100
+    VALIDATION_CRITICAL_PARSE_ERROR = 5101
+    VALIDATION_DUPLICATE_ID = 5102
+    VALIDATION_NO_VALUE_OR_ATTRS = 5103
+    VALIDATION_UNDEFINED_REFERENCE = 5104
+    VALIDATION_CIRCULAR_REFERENCE = 5105
+    VALIDATION_CHAIN_DEPTH_EXCEEDED = 5106
 ```
 
 ### Parameters
@@ -495,8 +511,8 @@ class DiagnosticCode(Enum):
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Purpose: Unique error code identifiers.
-- State: Enum values.
+- Purpose: Unique error code identifiers for diagnostics.
+- Ranges: 1000-1999 (reference), 2000-2999 (resolution), 3000-3999 (syntax), 4000-4999 (parsing), 5000-5199 (validation).
 
 ---
 

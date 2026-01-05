@@ -55,13 +55,15 @@ class TestFluentBundleLocaleValidation:
         bundle = FluentBundle("en")
         assert bundle.locale == "en"
 
-    @given(st.text(min_size=1, max_size=10, alphabet=_LOCALE_ALPHABET).filter(
-        lambda s: s.replace("_", "").replace("-", "").isalnum()
-    ))
+    @given(
+        st.from_regex(r"[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)?", fullmatch=True)
+    )
     @settings(max_examples=50)
     def test_valid_locale_formats_accepted(self, locale: str) -> None:
-        """Valid locale formats are accepted by __init__."""
-        # Locales must have at least one alphanumeric character (not just separators)
+        """Valid locale formats are accepted by __init__.
+
+        BCP 47 format: alphanumeric starting with letter, optional underscore-delimited subtag.
+        """
         bundle = FluentBundle(locale)
         assert bundle.locale == locale
 

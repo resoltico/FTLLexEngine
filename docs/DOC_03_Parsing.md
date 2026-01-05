@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.54.0"
+version: "0.55.0"
 domain: PARSING
-updated: "2026-01-04"
+updated: "2026-01-05"
 route:
   keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax, BabelImportError]
   questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?", "what exceptions do parsing functions raise?"]

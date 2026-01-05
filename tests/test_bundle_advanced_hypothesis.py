@@ -22,13 +22,7 @@ class TestBundleMessageRegistry:
     """Properties about message registration and retrieval."""
 
     @given(
-        locale=st.text(
-            alphabet=st.characters(
-                whitelist_categories=("Ll", "Lu"), whitelist_characters="_"
-            ),
-            min_size=2,
-            max_size=10,
-        ).filter(lambda s: s.replace("_", "").replace("-", "").isalnum()),
+        locale=st.from_regex(r"[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)?", fullmatch=True),
         msg_id=ftl_identifiers(),
         msg_value=ftl_simple_text(),
     )

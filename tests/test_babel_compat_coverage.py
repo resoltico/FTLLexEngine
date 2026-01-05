@@ -1,20 +1,13 @@
-"""Tests for edge cases and branch coverage in Babel-dependent modules.
+"""Coverage tests for babel_compat module and Babel-dependent code paths.
 
-This file focuses on:
-1. Testing require_babel() raise path via mocking
-2. Testing _strip_era() word boundary logic for dates.py
-3. Note: Babel-not-installed ImportError paths cannot be easily tested without
-   subprocess isolation since Babel is installed in the test environment and
-   Python caches imports at multiple levels.
+This file provides coverage for:
+1. babel_compat.py: require_babel() raise path, helper functions
+2. dates.py: _strip_era() word boundary logic, _is_word_boundary()
+3. Babel integration: Locale class, UnknownLocaleError, module accessors
 
-Target modules and their defensive ImportError handlers:
-- babel_compat.py lines 61-62: _check_babel_available ImportError
-- babel_compat.py line 124: require_babel raise (testable via mock)
-- numbers.py lines 86-89, 185-188: BabelImportError raise
-- currency.py lines 277-279, 659-662: BabelImportError raise/fallback
-- dates.py lines 307-311, 411-415: BabelImportError raise
-- locale_context.py lines 209-212, 273-276: BabelImportError raise
-- plural_rules.py lines 67-70: BabelImportError raise
+Note: BabelImportError raise paths in parsing modules cannot be easily tested
+without subprocess isolation since Babel is installed in the test environment
+and Python caches imports at multiple levels.
 """
 
 from __future__ import annotations

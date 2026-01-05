@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-01-05
+
+### Breaking Changes
+- **Locale Code Validation Now ASCII-Only**: `FluentBundle` now rejects locale codes containing non-ASCII characters:
+  - Previous: Unicode characters like `e_FR` (with accented e) passed validation
+  - Now: Raises `ValueError` with message "(must be ASCII alphanumeric)"
+  - Enforces BCP 47 compliance for locale identifiers
+  - Prevents confusing Babel lookup failures from invalid locale propagation
+
+### Added
+- **Reference Chain Depth Validation**: `validate_resource()` now detects reference chains exceeding MAX_DEPTH:
+  - New diagnostic code: `VALIDATION_CHAIN_DEPTH_EXCEEDED` (5106)
+  - Warns when message/term chains would cause runtime `MAX_DEPTH_EXCEEDED`
+  - Example: `msg-150 -> msg-149 -> ... -> msg-0` (150 refs) triggers warning
+  - Prevents deploying FTL files that pass validation but fail at runtime
+- **Cache Entry Size Limit**: `FormatCache` now supports `max_entry_size` parameter:
+  - Default: 10,000 characters (prevents caching very large results)
+  - New property: `oversize_skips` tracks entries skipped due to size
+  - New stat: `get_stats()` includes `max_entry_size` and `oversize_skips`
+  - Protects against memory exhaustion from caching large formatted strings
+- **Message/Term Overwrite Warning**: `FluentBundle.add_resource()` now logs overwrite events:
+  - `logger.warning("Overwriting existing message 'X' with new definition")`
+  - `logger.warning("Overwriting existing term '-X' with new definition")`
+  - Improves observability for cross-file duplicate detection
+  - Last Write Wins semantics preserved (warning only, no behavior change)
+
+### Changed
+- **Validation Architecture Extended**: `validate_resource()` now includes 6 passes:
+  - Pass 1: Syntax errors (Junk entries)
+  - Pass 2: Structural (duplicates, empty messages)
+  - Pass 3: Undefined references
+  - Pass 4: Circular dependencies
+  - Pass 5: **NEW** Chain depth analysis
+  - Pass 6: Fluent spec compliance (E0001-E0013)
+- **Dependency Graph Utilities Refactored**: Validation internals reorganized:
+  - `_build_dependency_graph()`: Shared graph construction
+  - `_compute_longest_paths()`: Memoized iterative DFS for path analysis
+  - `_detect_long_chains()`: Uses shared utilities for chain depth check
+
 ## [0.54.0] - 2026-01-05
 
 ### Breaking Changes
@@ -1134,6 +1173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.55.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.55.0
 [0.54.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.54.0
 [0.53.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.53.0
 [0.52.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.52.0

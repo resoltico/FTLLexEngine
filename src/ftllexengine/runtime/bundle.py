@@ -6,6 +6,7 @@ Python 3.13+. External dependency: Babel (CLDR locale data).
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
@@ -50,6 +51,10 @@ logger = logging.getLogger(__name__)
 # Debug messages are high-volume, shorter (50 chars) keeps logs manageable.
 _LOG_TRUNCATE_WARNING: int = 100
 _LOG_TRUNCATE_DEBUG: int = 50
+
+# BCP 47 locale code pattern (ASCII-only alphanumerics with underscore/hyphen separators).
+# Rejects non-ASCII characters like accented letters (e.g., "e_FR" with accented e).
+_LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*$")
 
 
 class FluentBundle:
@@ -106,21 +111,23 @@ class FluentBundle:
     def _validate_locale_format(locale: str) -> None:
         """Validate locale code format.
 
-        Checks that locale is non-empty and contains only alphanumeric
-        characters with optional underscore or hyphen separators.
+        Checks that locale is non-empty and contains only ASCII alphanumeric
+        characters with optional underscore or hyphen separators. Enforces
+        BCP 47 compliance by rejecting non-ASCII characters.
 
         Args:
             locale: Locale code to validate
 
         Raises:
-            ValueError: If locale code is empty or has invalid format
+            ValueError: If locale code is empty, contains non-ASCII characters,
+                or has invalid format
         """
         if not locale:
             msg = "Locale code cannot be empty"
             raise ValueError(msg)
 
-        if not locale.replace("_", "").replace("-", "").isalnum():
-            msg = f"Invalid locale code format: '{locale}'"
+        if not _LOCALE_PATTERN.match(locale):
+            msg = f"Invalid locale code format: '{locale}' (must be ASCII alphanumeric)"
             raise ValueError(msg)
 
     def __init__(
@@ -536,11 +543,23 @@ class FluentBundle:
             for entry in resource.entries:
                 match entry:
                     case Message():
-                        self._messages[entry.id.name] = entry
-                        logger.debug("Registered message: %s", entry.id.name)
+                        msg_id = entry.id.name
+                        if msg_id in self._messages:
+                            logger.warning(
+                                "Overwriting existing message '%s' with new definition",
+                                msg_id,
+                            )
+                        self._messages[msg_id] = entry
+                        logger.debug("Registered message: %s", msg_id)
                     case Term():
-                        self._terms[entry.id.name] = entry
-                        logger.debug("Registered term: %s", entry.id.name)
+                        term_id = entry.id.name
+                        if term_id in self._terms:
+                            logger.warning(
+                                "Overwriting existing term '-%s' with new definition",
+                                term_id,
+                            )
+                        self._terms[term_id] = entry
+                        logger.debug("Registered term: %s", term_id)
                     case Junk():
                         # Collect junk entries, always log at WARNING level
                         # Syntax errors are functional failures regardless of source origin

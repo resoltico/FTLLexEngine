@@ -292,7 +292,14 @@ class FluentSerializer(ASTVisitor):
         self._serialize_pattern(node.value, output, depth_guard)
 
     def _serialize_comment(self, node: Comment, output: list[str]) -> None:
-        """Serialize Comment."""
+        """Serialize Comment.
+
+        Note: Content should NOT have trailing newlines. The parser produces
+        content without trailing newlines (e.g., "Line1\\nLine2", not "Line1\\nLine2\\n").
+        If manually constructed AST nodes include trailing newlines, they will
+        produce extra empty comment lines, which is arguably the correct behavior
+        for the content provided.
+        """
         if node.type is CommentType.COMMENT:
             prefix = "#"
         elif node.type is CommentType.GROUP:

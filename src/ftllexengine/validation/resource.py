@@ -10,7 +10,8 @@ Architecture:
     - _collect_entries(): Pass 2 - Collect messages/terms, check duplicates
     - _check_undefined_references(): Pass 3 - Validate message/term references
     - _detect_circular_references(): Pass 4 - Check for reference cycles
-    - SemanticValidator: Pass 5 - Fluent spec compliance
+    - _detect_long_chains(): Pass 5 - Check for chains exceeding MAX_DEPTH
+    - SemanticValidator: Pass 6 - Fluent spec compliance
 
 Python 3.13+.
 """
@@ -21,6 +22,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import (
     FluentSyntaxError,
     ValidationError,
@@ -411,6 +413,153 @@ def _detect_circular_references(
     return warnings
 
 
+def _build_dependency_graph(
+    messages_dict: dict[str, Message],
+    terms_dict: dict[str, Term],
+) -> dict[str, set[str]]:
+    """Build unified dependency graph for messages and terms.
+
+    Creates a graph with type-prefixed nodes (msg:name, term:name) for
+    both cycle detection and chain depth analysis.
+
+    Args:
+        messages_dict: Map of message IDs to Message nodes
+        terms_dict: Map of term IDs to Term nodes
+
+    Returns:
+        Graph as adjacency list (node -> set of dependencies)
+    """
+    graph: dict[str, set[str]] = {}
+
+    for msg_name, message in messages_dict.items():
+        msg_refs, term_refs = extract_references(message)
+        deps: set[str] = set()
+        for ref in msg_refs:
+            if ref in messages_dict:
+                deps.add(f"msg:{ref}")
+        for ref in term_refs:
+            if ref in terms_dict:
+                deps.add(f"term:{ref}")
+        graph[f"msg:{msg_name}"] = deps
+
+    for term_name, term in terms_dict.items():
+        msg_refs, term_refs = extract_references(term)
+        deps = set()
+        for ref in msg_refs:
+            if ref in messages_dict:
+                deps.add(f"msg:{ref}")
+        for ref in term_refs:
+            if ref in terms_dict:
+                deps.add(f"term:{ref}")
+        graph[f"term:{term_name}"] = deps
+
+    return graph
+
+
+def _compute_longest_paths(
+    graph: dict[str, set[str]],
+) -> dict[str, tuple[int, list[str]]]:
+    """Compute longest path from each node using memoized iterative DFS.
+
+    Args:
+        graph: Dependency graph as adjacency list
+
+    Returns:
+        Map from node to (path_length, path_nodes)
+    """
+    longest_path: dict[str, tuple[int, list[str]]] = {}
+    in_stack: set[str] = set()
+
+    for start in graph:
+        if start in longest_path:
+            continue
+
+        # Iterative DFS with two-phase processing
+        stack: list[tuple[str, int, list[str]]] = [(start, 0, list(graph.get(start, set())))]
+
+        while stack:
+            node, phase, children = stack.pop()
+
+            if phase == 0:
+                if node in longest_path or node in in_stack:
+                    continue
+
+                in_stack.add(node)
+                stack.append((node, 1, children))
+
+                for child in children:
+                    if child not in longest_path and child not in in_stack:
+                        stack.append((child, 0, list(graph.get(child, set()))))
+            else:
+                in_stack.discard(node)
+                best_depth, best_path = 0, []
+                for child in children:
+                    if child in longest_path:
+                        child_depth, child_path = longest_path[child]
+                        if child_depth + 1 > best_depth:
+                            best_depth = child_depth + 1
+                            best_path = child_path
+                longest_path[node] = (best_depth, [node, *best_path])
+
+    return longest_path
+
+
+def _detect_long_chains(
+    messages_dict: dict[str, Message],
+    terms_dict: dict[str, Term],
+    max_depth: int = MAX_DEPTH,
+) -> list[ValidationWarning]:
+    """Detect reference chains that exceed maximum depth.
+
+    Computes the longest reference chain path in the dependency graph.
+    Warns if any chain exceeds max_depth (would fail at runtime).
+
+    Args:
+        messages_dict: Map of message IDs to Message nodes
+        terms_dict: Map of term IDs to Term nodes
+        max_depth: Maximum allowed chain depth (default: MAX_DEPTH)
+
+    Returns:
+        List of warnings for chains exceeding max_depth
+    """
+    graph = _build_dependency_graph(messages_dict, terms_dict)
+    if not graph:
+        return []
+
+    longest_paths = _compute_longest_paths(graph)
+
+    # Find the longest chain
+    max_chain_depth, max_chain_path = 0, []
+    for _node, (_, path) in longest_paths.items():
+        if len(path) > max_chain_depth:
+            max_chain_depth = len(path)
+            max_chain_path = path
+
+    if max_chain_depth <= max_depth:
+        return []
+
+    # Format path for human-readable output
+    formatted = [
+        node[4:] if node.startswith("msg:") else f"-{node[5:]}"
+        for node in max_chain_path[:10]
+    ]
+    chain_str = " -> ".join(formatted)
+    if len(max_chain_path) > 10:
+        chain_str += f" -> ... ({len(max_chain_path)} total)"
+
+    return [
+        ValidationWarning(
+            code=DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name,
+            message=(
+                f"Reference chain depth ({max_chain_depth}) exceeds maximum ({max_depth}); "
+                f"will fail at runtime with MAX_DEPTH_EXCEEDED"
+            ),
+            context=chain_str,
+            severity=WarningSeverity.WARNING,
+        )
+    ]
+
+
 def validate_resource(
     source: str,
     *,
@@ -428,7 +577,8 @@ def validate_resource(
     2. Structural: Duplicate IDs, messages without values
     3. References: Undefined message/term references
     4. Cycles: Circular dependency detection
-    5. Semantic: Fluent spec compliance (E0001-E0013)
+    5. Chain depth: Reference chains exceeding MAX_DEPTH
+    6. Semantic: Fluent spec compliance (E0001-E0013)
 
     Args:
         source: FTL file content
@@ -485,13 +635,16 @@ def validate_resource(
         # Pass 4: Detect circular dependencies
         cycle_warnings = _detect_circular_references(messages_dict, terms_dict)
 
-        # Pass 5: Fluent spec compliance (E0001-E0013)
+        # Pass 5: Detect long reference chains (would fail at runtime)
+        chain_warnings = _detect_long_chains(messages_dict, terms_dict)
+
+        # Pass 6: Fluent spec compliance (E0001-E0013)
         semantic_validator = SemanticValidator()
         semantic_result = semantic_validator.validate(resource)
         semantic_annotations = semantic_result.annotations
 
         # Combine all warnings
-        all_warnings = structure_warnings + ref_warnings + cycle_warnings
+        all_warnings = structure_warnings + ref_warnings + cycle_warnings + chain_warnings
 
         logger.debug(
             "Validated resource: %d errors, %d warnings, %d annotations",

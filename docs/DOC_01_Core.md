@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.54.0"
+version: "0.55.0"
 domain: CORE
-updated: "2026-01-04"
+updated: "2026-01-05"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -34,7 +34,7 @@ class FluentBundle:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `locale` | `str` | Y | BCP 47 locale code (positional-only). |
+| `locale` | `str` | Y | BCP 47 locale code (positional-only, ASCII alphanumeric only). |
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
@@ -44,7 +44,7 @@ class FluentBundle:
 
 ### Constraints
 - Return: FluentBundle instance.
-- Raises: `ValueError` on invalid locale format.
+- Raises: `ValueError` on invalid locale format (must be ASCII alphanumeric with underscore/hyphen separators).
 - State: Creates internal message/term registries.
 - Thread: Always thread-safe via internal RLock.
 - Context: Supports context manager protocol (__enter__/__exit__).

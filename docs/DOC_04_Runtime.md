@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.54.0"
+version: "0.55.0"
 domain: RUNTIME
-updated: "2026-01-04"
+updated: "2026-01-05"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?"]
@@ -561,7 +561,8 @@ def validate_resource(
 
 ### Constraints
 - Return: ValidationResult with errors, warnings, and semantic annotations.
-- Validation Passes: (1) Syntax errors, (2) Structural issues, (3) Undefined refs, (4) Cycles, (5) Semantic (Fluent spec E0001-E0013).
+- Validation Passes: (1) Syntax errors, (2) Structural issues, (3) Undefined refs, (4) Cycles, (5) Chain depth, (6) Semantic (Fluent spec E0001-E0013).
+- Chain Depth: Warns if reference chains exceed MAX_DEPTH (would fail at runtime with MAX_DEPTH_EXCEEDED).
 - Cross-Resource: References to `known_messages`/`known_terms` do not produce undefined warnings.
 - Raises: Never. Critical parse errors returned as ValidationError.
 - State: None (creates isolated parser if not provided).
