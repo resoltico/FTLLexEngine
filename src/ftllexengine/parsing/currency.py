@@ -1,7 +1,7 @@
 """Currency parsing with locale awareness.
 
 API: parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]].
-Functions NEVER raise exceptions - errors returned in tuple.
+Parse errors returned in tuple. Raises BabelImportError if Babel not installed.
 
 Thread-safe. Uses Babel for currency symbol mapping and number parsing.
 All currency data sourced from Unicode CLDR via Babel.
@@ -585,9 +585,6 @@ def parse_currency(
 ) -> tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]:
     """Parse locale-aware currency string to (amount, currency_code).
 
-    No longer raises exceptions. Errors are returned in tuple.
-    The `strict` parameter has been removed.
-
     Extracts both numeric value and currency code from formatted string.
 
     Ambiguous currency symbols ($, kr) require explicit default_currency
@@ -604,6 +601,9 @@ def parse_currency(
         Tuple of (result, errors):
         - result: Tuple of (amount, currency_code), or None if parsing failed
         - errors: Tuple of FluentParseError (empty tuple on success)
+
+    Raises:
+        BabelImportError: If Babel is not installed
 
     Examples:
         >>> result, errors = parse_currency("EUR100.50", "en_US")  # Unambiguous symbol
@@ -729,11 +729,9 @@ def parse_currency(
     if resolution_error is not None:
         errors.append(resolution_error)
         return (None, tuple(errors))
-    # Defensive check: resolution contract guarantees exactly one of (code, error) is None
-    # Using explicit check instead of assert ensures protection even with python -O
-    if currency_code is None:  # pragma: no cover - defensive check
-        msg = "Internal error: currency resolution succeeded but currency_code is None"
-        raise RuntimeError(msg)
+    # Type narrowing: resolution contract guarantees exactly one of (code, error) is None.
+    # At this point, resolution_error is None so currency_code is guaranteed non-None.
+    assert currency_code is not None  # nosec B101 - type narrowing, not runtime validation
 
     # Remove currency symbol/code to extract number
     # Use match position to remove ONLY the matched occurrence, not all instances.

@@ -9,7 +9,7 @@ This enables locale-aware forms, invoices, and financial applications.
 API Notes:
 - Type guards (is_valid_decimal, is_valid_number) accept None for simplified patterns
 - All parse functions return tuple[result, tuple[FluentParseError, ...]] (immutable)
-- Functions never raise exceptions - errors returned in immutable tuple
+- Parse errors returned in tuple; BabelImportError raised if Babel not installed
 
 Implementation:
 - Number/currency parsing: Babel's parse_decimal() (CLDR-compliant)
@@ -160,9 +160,8 @@ def example_currency_parsing() -> None:
 
             # Format back in same locale
             bundle = FluentBundle(locale, use_isolating=False)
-            bundle.add_resource("formatted = { CURRENCY($amount, currency: $curr) }")
 
-            # Create select expression for dynamic currency
+            # Dynamic currency requires SelectExpression (FTL parameters must be literals)
             ftl_source = """
 formatted = { $curr ->
     [EUR] { CURRENCY($amount, currency: "EUR") }

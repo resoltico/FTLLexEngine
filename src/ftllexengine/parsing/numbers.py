@@ -2,8 +2,8 @@
 
 - parse_number() returns tuple[float | None, tuple[FluentParseError, ...]]
 - parse_decimal() returns tuple[Decimal | None, tuple[FluentParseError, ...]]
-- Removed `strict` parameter - functions NEVER raise, errors returned in tuple
-- Consistent with format_*() "never raise" philosophy
+- Parse errors returned in tuple
+- Raises BabelImportError if Babel is not installed
 
 Babel Dependency:
     This module requires Babel for CLDR data. Import is deferred to function call

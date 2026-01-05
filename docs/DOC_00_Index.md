@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.53.0"
+version: "0.54.0"
 domain: INDEX
 updated: "2026-01-04"
 route:
@@ -139,7 +139,7 @@ from ftllexengine.localization import (
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
-| FluentError, FluentReferenceError, FormattingError, DepthGuard, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
+| FluentError, FluentReferenceError, FormattingError, BabelImportError, DepthGuard, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, build_dependency_graph, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Introspection |
 

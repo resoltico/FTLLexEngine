@@ -30,28 +30,36 @@ class TestBabelDatetimeFormatConversion:
 
     def test_babel_datetime_format_with_mock(self) -> None:
         """Test lines 288-289 by mocking babel to return pattern object."""
-        # Create a mock pattern object
-        mock_pattern = Mock()
-        mock_pattern.pattern = "M/d/yy, h:mm a"
+        from ftllexengine.parsing import dates
 
-        # Mock the entire Locale structure properly
-        mock_locale = Mock()
-        mock_locale.datetime_formats = {"short": mock_pattern, "medium": mock_pattern}
-        # Also need date_formats for the fallback path
-        mock_date_format = Mock()
-        mock_date_format.pattern = "M/d/yy"
-        mock_locale.date_formats = {"short": mock_date_format}
+        # Clear caches before testing to avoid interference from prior tests
+        dates._get_datetime_patterns.cache_clear()
+        dates._get_date_patterns.cache_clear()
 
-        # Patch at the original Babel module (lazy import in dates.py)
-        with patch("babel.Locale") as mock_locale_class:
-            mock_locale_class.parse.return_value = mock_locale
+        try:
+            # Create a mock pattern object
+            mock_pattern = Mock()
+            mock_pattern.pattern = "M/d/yy, h:mm a"
 
-            # This should execute lines 288-289
-            from ftllexengine.parsing.dates import _get_datetime_patterns
+            # Mock the entire Locale structure properly
+            mock_locale = Mock()
+            mock_locale.datetime_formats = {"short": mock_pattern, "medium": mock_pattern}
+            # Also need date_formats for the fallback path
+            mock_date_format = Mock()
+            mock_date_format.pattern = "M/d/yy"
+            mock_locale.date_formats = {"short": mock_date_format}
 
-            patterns = _get_datetime_patterns("en_US")
-            # Should have at least one pattern from the mock
-            assert len(patterns) > 0
+            # Patch at the original Babel module (lazy import in dates.py)
+            with patch("babel.Locale") as mock_locale_class:
+                mock_locale_class.parse.return_value = mock_locale
+
+                patterns = dates._get_datetime_patterns("test_mock_locale")
+                # Should have at least one pattern from the mock
+                assert len(patterns) > 0
+        finally:
+            # CRITICAL: Clear caches after mock to avoid polluting subsequent tests
+            dates._get_datetime_patterns.cache_clear()
+            dates._get_date_patterns.cache_clear()
 
     def test_parse_datetime_with_working_formats(self) -> None:
         """Test datetime parsing with formats that actually work.
@@ -234,3 +242,83 @@ class TestDatetimeParsingIntegration:
             assert result.day == day
             assert result.hour == hour
             assert result.minute == minute
+
+
+# ============================================================================
+# BabelImportError Tests
+# ============================================================================
+
+
+class TestBabelImportErrorBehavior:
+    """Tests for BabelImportError raised when Babel is not installed.
+
+    These tests verify the v0.54.0 behavior change where dates.py raises
+    BabelImportError instead of silently returning empty patterns.
+    """
+
+    def test_babel_import_error_structure(self) -> None:
+        """BabelImportError has correct structure and message format."""
+        from ftllexengine.core.babel_compat import BabelImportError
+
+        # Verify error is created with correct structure
+        error = BabelImportError("parse_date")
+        assert error.feature == "parse_date"
+        assert "parse_date" in str(error)
+        assert "pip install ftllexengine[babel]" in str(error)
+        assert isinstance(error, ImportError)
+
+    def test_get_date_patterns_returns_patterns_when_babel_available(self) -> None:
+        """_get_date_patterns returns valid patterns when Babel is installed."""
+        from ftllexengine.parsing import dates
+
+        # Clear cache to ensure fresh call
+        dates._get_date_patterns.cache_clear()
+
+        # Call should succeed when Babel is installed
+        patterns = dates._get_date_patterns("en_US")
+
+        # Should return tuple of patterns
+        assert isinstance(patterns, tuple)
+        assert len(patterns) > 0  # Should have at least some patterns
+        # Each pattern is (strptime_pattern, has_era) tuple
+        for pattern, has_era in patterns:
+            assert isinstance(pattern, str)
+            assert isinstance(has_era, bool)
+
+    def test_get_datetime_patterns_returns_patterns_when_babel_available(self) -> None:
+        """_get_datetime_patterns returns valid patterns when Babel is installed."""
+        from ftllexengine.parsing import dates
+
+        # Clear cache to ensure fresh call
+        dates._get_datetime_patterns.cache_clear()
+
+        # Call should succeed when Babel is installed
+        patterns = dates._get_datetime_patterns("en_US")
+
+        # Should return tuple of patterns
+        assert isinstance(patterns, tuple)
+        assert len(patterns) > 0  # Should have at least some patterns
+        # Each pattern is (strptime_pattern, has_era) tuple
+        for pattern, has_era in patterns:
+            assert isinstance(pattern, str)
+            assert isinstance(has_era, bool)
+
+    def test_parse_date_works_when_babel_available(self) -> None:
+        """parse_date works correctly when Babel is installed."""
+        result, errors = parse_date("2025-01-28", "en_US")
+        assert not errors
+        assert result is not None
+        assert result.year == 2025
+        assert result.month == 1
+        assert result.day == 28
+
+    def test_parse_datetime_works_when_babel_available(self) -> None:
+        """parse_datetime works correctly when Babel is installed."""
+        result, errors = parse_datetime("2025-01-28 14:30", "en_US")
+        assert not errors
+        assert result is not None
+        assert result.year == 2025
+        assert result.month == 1
+        assert result.day == 28
+        assert result.hour == 14
+        assert result.minute == 30

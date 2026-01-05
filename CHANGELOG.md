@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-01-05
+
+### Breaking Changes
+- **Date Parsing BabelImportError**: `parse_date()` and `parse_datetime()` now raise `BabelImportError` when Babel is not installed:
+  - Previous: Functions silently returned empty patterns, causing misleading "No matching date pattern found" errors
+  - Now: Clear `BabelImportError` with installation instructions on first call
+  - Users without Babel will see explicit guidance instead of confusing parse failures
+  - Aligns date parsing with number and currency parsing behavior
+
+### Changed
+- **Parsing Module Exception Contract Clarified**: Updated docstrings across all parsing functions:
+  - `parsing/__init__.py`: Now documents two error paths (parse errors in tuple, BabelImportError raised)
+  - `parse_number()`, `parse_decimal()`: Module docstring updated to match existing `Raises:` section
+  - `parse_currency()`: Removed misleading "No longer raises exceptions" claim, added `Raises:` section
+  - `parse_date()`, `parse_datetime()`: Removed misleading "No longer raises exceptions" claim, added `Raises:` section
+  - `_get_date_patterns()`, `_get_datetime_patterns()`: Updated docstrings to document BabelImportError
+- **Currency Parsing Simplified**: Replaced defensive RuntimeError with type narrowing assertion:
+  - Previous: Raised RuntimeError for "impossible" internal state (currency_code is None after successful resolution)
+  - Now: Uses `assert` for type narrowing (code contract guarantees exactly one of code/error is None)
+  - Reduces noise and aligns with type system guarantees
+
+### Fixed
+- **Documentation Contract Violation**: Parsing module docstrings previously claimed "Functions NEVER raise exceptions" while implementations raised `BabelImportError`. Documentation now accurately reflects actual behavior.
+
 ## [0.53.0] - 2026-01-04
 
 ### Added
@@ -1110,6 +1134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.54.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.54.0
 [0.53.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.53.0
 [0.52.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.52.0
 [0.51.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.51.0

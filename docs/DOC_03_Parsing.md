@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.53.0"
+version: "0.54.0"
 domain: PARSING
 updated: "2026-01-04"
 route:
-  keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax]
-  questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?"]
+  keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax, BabelImportError]
+  questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?", "what exceptions do parsing functions raise?"]
 ---
 
 # Parsing Reference
@@ -262,9 +262,10 @@ def parse_number(
 
 ### Constraints
 - Return: Tuple of (float or None, errors).
-- Raises: Never.
+- Raises: `BabelImportError` if Babel not installed.
 - State: None.
 - Thread: Safe.
+- Dependency: Requires Babel for CLDR data.
 
 ---
 
@@ -286,9 +287,10 @@ def parse_decimal(
 
 ### Constraints
 - Return: Tuple of (Decimal or None, errors).
-- Raises: Never.
+- Raises: `BabelImportError` if Babel not installed.
 - State: None.
 - Thread: Safe.
+- Dependency: Requires Babel for CLDR data.
 
 ---
 
@@ -310,9 +312,10 @@ def parse_date(
 
 ### Constraints
 - Return: Tuple of (date or None, errors).
-- Raises: Never.
+- Raises: `BabelImportError` if Babel not installed.
 - State: None.
 - Thread: Safe.
+- Dependency: Requires Babel for CLDR data.
 - Preprocessing: Era strings (AD, BC, etc.) stripped. Timezone pattern tokens stripped from format.
 
 ---
@@ -338,9 +341,10 @@ def parse_datetime(
 
 ### Constraints
 - Return: Tuple of (datetime or None, errors).
-- Raises: Never.
+- Raises: `BabelImportError` if Babel not installed.
 - State: None.
 - Thread: Safe.
+- Dependency: Requires Babel for CLDR data.
 - Preprocessing: Era strings (AD, BC, etc.) stripped. Timezone pattern tokens stripped from format.
 
 ---
@@ -368,9 +372,10 @@ def parse_currency(
 
 ### Constraints
 - Return: Tuple of ((amount, currency_code) or None, errors).
-- Raises: Never.
+- Raises: `BabelImportError` if Babel not installed.
 - State: None.
 - Thread: Safe.
+- Dependency: Requires Babel for CLDR data.
 - Validation: ISO 4217 codes validated against CLDR data.
 - Ambiguous: Yen sign (`¥`) resolves to CNY for `zh_*` locales, JPY otherwise.
 - Ambiguous: Pound sign (`£`) resolves to EGP for `ar_*` locales, GBP otherwise.

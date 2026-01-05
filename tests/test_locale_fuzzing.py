@@ -284,7 +284,7 @@ class TestLocaleFallbackProperties:
 
     def test_russian_plural_rules(self) -> None:
         """Russian has complex plural rules (one, few, many, other)."""
-        bundle = FluentBundle("ru-RU")
+        bundle = FluentBundle("ru-RU", use_isolating=False)
         bundle.add_resource(
             """
 items = { $count ->
@@ -320,8 +320,8 @@ items = { $count ->
         assert category_two == "two"
 
     def test_latvian_plural_rules(self) -> None:
-        """Latvian has special rules for numbers ending in 1 (except 11)."""
-        bundle = FluentBundle("lv-LV")
+        """Latvian has special rules: zero for 0, 11-19, etc; one for 1, 21, 31, etc."""
+        bundle = FluentBundle("lv-LV", use_isolating=False)
         bundle.add_resource(
             """
 items = { $count ->
@@ -332,11 +332,13 @@ items = { $count ->
 """
         )
 
-        # In Latvian: 1 = one, 21 = one, 11 = other
+        # CLDR Latvian rules: zero for n%10=0 or n%100=11..19, one for n%10=1 and n%100!=11
+        cat_0 = select_plural_category(0, "lv-LV")
         cat_1 = select_plural_category(1, "lv-LV")
         cat_21 = select_plural_category(21, "lv-LV")
         cat_11 = select_plural_category(11, "lv-LV")
 
+        assert cat_0 == "zero"
         assert cat_1 == "one"
         assert cat_21 == "one"
-        assert cat_11 == "other"  # Special case for 11
+        assert cat_11 == "zero"  # 11 falls into zero category (n%100=11..19)

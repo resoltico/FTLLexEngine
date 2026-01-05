@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.53.0"
+version: "0.54.0"
 domain: ERRORS
 updated: "2026-01-04"
 route:
-  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, ValidationResult, DiagnosticCode, Diagnostic]
-  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?"]
+  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
+  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]
 ---
 
 # Errors Reference
@@ -23,6 +23,8 @@ FluentError
     DepthLimitExceededError
     FormattingError
   FluentParseError
+
+BabelImportError (ImportError)
 ```
 
 ---
@@ -165,6 +167,29 @@ class FluentParseError(FluentError):
 ### Constraints
 - Purpose: Bi-directional parsing errors.
 - Behavior: Returned in error list, never raised.
+
+---
+
+## `BabelImportError`
+
+### Signature
+```python
+class BabelImportError(ImportError):
+    feature: str
+
+    def __init__(self, feature: str) -> None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `feature` | `str` | Y | Feature name requiring Babel (e.g., "parse_date"). |
+
+### Constraints
+- Purpose: Raised when Babel is required but not installed.
+- Behavior: Provides installation instructions in error message.
+- Raised by: `parse_number()`, `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`.
+- Import: `from ftllexengine.core import BabelImportError`
 
 ---
 

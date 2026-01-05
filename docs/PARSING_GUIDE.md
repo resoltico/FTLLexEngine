@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.53.0"
+version: "0.54.0"
 domain: parsing
 updated: "2026-01-04"
 route:
-  keywords: [parsing, parse_number, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms]
-  questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?"]
+  keywords: [parsing, parse_number, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
+  questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
 ---
 
 # Parsing Guide - Bi-Directional Localization
@@ -564,6 +564,27 @@ if is_valid_decimal(result):  # guards accept None
 ---
 
 ## Troubleshooting
+
+### BabelImportError When Parsing
+
+**Problem**: Calling `parse_number()`, `parse_date()`, or other parsing functions raises `BabelImportError`
+
+**Cause**: Parsing functions require Babel for CLDR locale data. Babel is not installed.
+
+**Solution**:
+```bash
+# Install with Babel support
+pip install ftllexengine[babel]
+
+# Or install Babel separately
+pip install Babel
+```
+
+**Context**: FTLLexEngine supports two installation modes:
+- **Parser-only** (`pip install ftllexengine`): Syntax parsing only, no Babel dependency
+- **Full runtime** (`pip install ftllexengine[babel]`): Includes Babel for locale-aware formatting and parsing
+
+All functions in `ftllexengine.parsing` require Babel and will raise `BabelImportError` if Babel is not installed. This is a configuration error, not a parse error.
 
 ### Parse Returns Errors
 

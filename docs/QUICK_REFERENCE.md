@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.53.0"
+version: "0.54.0"
 domain: reference
 updated: "2026-01-04"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste]
-  questions: ["how to format message?", "how to parse number?", "how to use bundle?"]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError]
+  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?"]
 ---
 
 # FTLLexEngine Quick Reference
@@ -543,6 +543,8 @@ result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
 
 **Implementation**: Uses Babel for number parsing, Python 3.13 stdlib (`strptime`, `fromisoformat`) with Babel CLDR patterns for date parsing.
 
+**Babel Required**: All parsing functions raise `BabelImportError` if Babel is not installed. Install with `pip install ftllexengine[babel]`.
+
 **See**: [PARSING_GUIDE.md](PARSING_GUIDE.md) for complete guide with best practices and examples.
 
 ---
@@ -737,11 +739,12 @@ from ftllexengine import (
     FluentResolutionError,    # Runtime error during resolution
 )
 
-# Specialized exceptions from diagnostics module
+# Specialized exceptions from core/diagnostics modules
 from ftllexengine.diagnostics import FluentCyclicReferenceError
+from ftllexengine.core import BabelImportError  # Raised when Babel not installed
 ```
 
-**Note**: All exceptions inherit from `FluentError` and are returned in errors list, NOT raised.
+**Note**: FluentError subclasses are returned in errors list, NOT raised. `BabelImportError` is raised when parsing functions are called without Babel installed.
 
 ---
 

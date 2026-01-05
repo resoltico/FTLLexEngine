@@ -1,8 +1,11 @@
 """Bi-directional localization: Parse locale-aware display strings back to Python types.
 
-- Functions NEVER raise exceptions - errors are returned in tuple
-- Removed `strict` parameter from all functions
-- Consistent with format_*() "never raise" philosophy
+Exception Contract:
+    - Parse errors (malformed input, unknown locale): Returned in error tuple
+    - Configuration errors (missing Babel): Raises BabelImportError
+
+All parsing functions require Babel for CLDR data. If Babel is not installed,
+functions raise BabelImportError with installation instructions.
 
 This module provides the inverse operations to ftllexengine.runtime.functions:
 - Formatting: Python data -> locale-aware display string

@@ -2,10 +2,9 @@
 
 - parse_date() returns tuple[date | None, tuple[FluentParseError, ...]]
 - parse_datetime() returns tuple[datetime | None, tuple[FluentParseError, ...]]
-- Removed `strict` parameter - functions NEVER raise, errors returned in tuple
-- Consistent with format_*() "never raise" philosophy
-- Fixed: Date pattern tokenizer replaces regex word boundary approach
-- Optimized: Pattern generation is cached per locale
+- Parse errors returned in tuple
+- Raises BabelImportError if Babel is not installed
+- Pattern generation is cached per locale
 
 Babel Dependency:
     This module requires Babel for CLDR data. Import is deferred to function call
@@ -64,9 +63,6 @@ def parse_date(
 ) -> tuple[date | None, tuple[FluentParseError, ...]]:
     """Parse locale-aware date string to date object.
 
-    No longer raises exceptions. Errors are returned in tuple.
-    The `strict` parameter has been removed.
-
     Only ISO 8601 and locale-specific CLDR patterns are supported.
     Ambiguous formats like "1/2/25" will ONLY match if locale CLDR pattern matches.
 
@@ -84,6 +80,9 @@ def parse_date(
         Tuple of (result, errors):
         - result: Parsed date object, or None if parsing failed
         - errors: Tuple of FluentParseError (empty tuple on success)
+
+    Raises:
+        BabelImportError: If Babel is not installed
 
     Examples:
         >>> result, errors = parse_date("2025-01-28", "en_US")  # ISO 8601
@@ -174,9 +173,6 @@ def parse_datetime(
 ) -> tuple[datetime | None, tuple[FluentParseError, ...]]:
     """Parse locale-aware datetime string to datetime object.
 
-    No longer raises exceptions. Errors are returned in tuple.
-    The `strict` parameter has been removed.
-
     Only ISO 8601 and locale-specific CLDR patterns are supported.
 
     Warning:
@@ -194,6 +190,9 @@ def parse_datetime(
         Tuple of (result, errors):
         - result: Parsed datetime object, or None if parsing failed
         - errors: Tuple of FluentParseError (empty tuple on success)
+
+    Raises:
+        BabelImportError: If Babel is not installed
 
     Examples:
         >>> result, errors = parse_datetime("2025-01-28 14:30", "en_US")  # ISO 8601
@@ -297,13 +296,19 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     Returns:
         Tuple of (strptime_pattern, has_era) pairs to try.
         has_era is True if the pattern contains era tokens requiring preprocessing.
-        Empty tuple if locale parsing fails or Babel is not installed.
+        Empty tuple if locale parsing fails.
+
+    Raises:
+        BabelImportError: If Babel is not installed
     """
     # Lazy import to support parser-only installations
     try:
         from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    except ImportError:
-        return ()
+    except ImportError as e:
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+        feature = "parse_date"
+        raise BabelImportError(feature) from e
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -395,13 +400,19 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     Returns:
         Tuple of (strptime_pattern, has_era) pairs to try.
         has_era is True if the pattern contains era tokens requiring preprocessing.
-        Empty tuple if locale parsing fails or Babel is not installed.
+        Empty tuple if locale parsing fails.
+
+    Raises:
+        BabelImportError: If Babel is not installed
     """
     # Lazy import to support parser-only installations
     try:
         from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    except ImportError:
-        return ()
+    except ImportError as e:
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+
+        feature = "parse_datetime"
+        raise BabelImportError(feature) from e
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
