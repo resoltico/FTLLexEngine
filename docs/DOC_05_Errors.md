@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.56.0"
+version: "0.57.0"
 domain: ERRORS
 updated: "2026-01-06"
 route:
@@ -504,6 +504,8 @@ class DiagnosticCode(Enum):
     VALIDATION_UNDEFINED_REFERENCE = 5104
     VALIDATION_CIRCULAR_REFERENCE = 5105
     VALIDATION_CHAIN_DEPTH_EXCEEDED = 5106
+    VALIDATION_DUPLICATE_ATTRIBUTE = 5107
+    VALIDATION_SHADOW_WARNING = 5108
 ```
 
 ### Parameters

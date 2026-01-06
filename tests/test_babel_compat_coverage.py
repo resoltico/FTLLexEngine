@@ -12,6 +12,7 @@ and Python caches imports at multiple levels.
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -20,6 +21,7 @@ from babel.core import UnknownLocaleError
 
 from ftllexengine.core.babel_compat import (
     BabelImportError,
+    _check_babel_available,
     get_babel_dates,
     get_babel_numbers,
     get_locale_class,
@@ -27,6 +29,63 @@ from ftllexengine.core.babel_compat import (
     require_babel,
 )
 from ftllexengine.parsing.dates import _is_word_boundary, _strip_era
+
+# ============================================================================
+# babel_compat.py coverage: lines 61-62 (_check_babel_available ImportError)
+# ============================================================================
+
+
+class TestCheckBabelAvailableImportError:
+    """Test _check_babel_available() ImportError path (lines 61-62)."""
+
+    def test_check_babel_available_handles_import_error(self) -> None:
+        """_check_babel_available returns False when import fails (lines 61-62)."""
+        # Clear the lru_cache to force function re-execution
+        _check_babel_available.cache_clear()
+
+        # Temporarily hide babel from sys.modules to trigger ImportError
+        babel_module = sys.modules.pop("babel", None)
+        babel_core = sys.modules.pop("babel.core", None)
+        babel_dates = sys.modules.pop("babel.dates", None)
+        babel_numbers = sys.modules.pop("babel.numbers", None)
+
+        try:
+            # Patch sys.modules to prevent babel import
+            with patch.dict(sys.modules, {"babel": None}):
+                # Mock the import to raise ImportError
+                original_import = __import__
+
+                def mock_import_babel(
+                    name: str,
+                    globals_dict: dict[str, object] | None = None,
+                    locals_dict: dict[str, object] | None = None,
+                    fromlist: tuple[str, ...] = (),
+                    level: int = 0,
+                ) -> object:
+                    if name == "babel":
+                        msg = "Mocked: Babel not installed"
+                        raise ImportError(msg)
+                    return original_import(name, globals_dict, locals_dict, fromlist, level)
+
+                with patch("builtins.__import__", side_effect=mock_import_babel):
+                    result = _check_babel_available()
+                    assert result is False
+        finally:
+            # Restore babel modules
+            if babel_module is not None:
+                sys.modules["babel"] = babel_module
+            if babel_core is not None:
+                sys.modules["babel.core"] = babel_core
+            if babel_dates is not None:
+                sys.modules["babel.dates"] = babel_dates
+            if babel_numbers is not None:
+                sys.modules["babel.numbers"] = babel_numbers
+
+            # Restore cache for subsequent tests
+            _check_babel_available.cache_clear()
+            # Verify Babel is actually available after mock
+            assert _check_babel_available() is True
+
 
 # ============================================================================
 # babel_compat.py coverage: line 124 (require_babel raise)

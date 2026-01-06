@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.56.0"
+version: "0.57.0"
 domain: custom-functions
 updated: "2026-01-06"
 route:

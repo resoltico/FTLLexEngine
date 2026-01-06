@@ -124,6 +124,11 @@ disable =
     # Reason: Tests may have complex conditional logic
     too-many-branches,
 
+    # W0124: confusing-with-statement
+    # Reason: Python 3.9+ parenthesized context managers are clear and Ruff-preferred
+    # Pattern: with (ctx1, ctx2, pytest.raises(...), ctx3): ...
+    confusing-with-statement,
+
     # R0911: too-many-return-statements
     # Reason: Test helpers may need many return paths
     too-many-return-statements,

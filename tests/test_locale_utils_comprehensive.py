@@ -88,14 +88,19 @@ class TestGetBabelLocale:
             get_babel_locale("invalid_locale_code_xyz")
 
     def test_babel_not_installed_raises_import_error(self) -> None:
-        """ImportError with helpful message when Babel not installed (lines 104-109)."""
+        """BabelImportError with helpful message when Babel not installed (lines 102-108)."""
         # Save the original import and modules
         original_import = builtins.__import__
         saved_babel = sys.modules.get("babel")
         saved_locale = sys.modules.get("babel.core")
 
-        # Clear lru_cache for get_babel_locale
+        # Clear lru_cache for get_babel_locale and babel_compat's _check_babel_available
         get_babel_locale.cache_clear()
+        from ftllexengine.core.babel_compat import (  # noqa: PLC0415
+            _check_babel_available,
+        )
+
+        _check_babel_available.cache_clear()
 
         def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
             if name == "babel" or name.startswith("babel."):
@@ -113,7 +118,10 @@ class TestGetBabelLocale:
         try:
             with pytest.raises(
                 ImportError,
-                match=r"get_babel_locale\(\) requires Babel.*pip install ftllexengine\[babel\]",
+                match=(
+                    r"get_babel_locale requires Babel for CLDR locale data.*"
+                    r"pip install ftllexengine\[babel\]"
+                ),
             ):
                 get_babel_locale("en-US")
         finally:
@@ -125,6 +133,7 @@ class TestGetBabelLocale:
                 sys.modules["babel.core"] = saved_locale
             # Clear cache again to reset state
             get_babel_locale.cache_clear()
+            _check_babel_available.cache_clear()
 
 
 class TestGetSystemLocale:

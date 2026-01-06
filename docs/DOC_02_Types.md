@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.56.0"
+version: "0.57.0"
 domain: TYPES
 updated: "2026-01-06"
 route:
@@ -260,7 +260,6 @@ class SelectExpression:
 ### Constraints
 - Return: Immutable select expression.
 - State: Frozen dataclass.
-- Version: `span` added in v0.53.0.
 
 ---
 
@@ -560,7 +559,6 @@ class Annotation:
 ### Constraints
 - Return: Immutable annotation.
 - State: Frozen dataclass.
-- Version: `arguments` type changed from dict to tuple in v0.46.0.
 
 ---
 

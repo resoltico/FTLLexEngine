@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.56.0"
+version: "0.57.0"
 domain: CORE
 updated: "2026-01-06"
 route:
@@ -371,7 +371,6 @@ def introspect_term(self, term_id: str) -> MessageIntrospection:
 - Raises: `KeyError` if term not found.
 - State: Read-only.
 - Thread: Safe.
-- Version: Added in v0.42.0.
 
 ---
 
@@ -1075,7 +1074,7 @@ def get_babel_locale(locale_code: str) -> Locale:
 
 ### Constraints
 - Return: Babel Locale object (cached).
-- Raises: `ImportError` if Babel not installed.
+- Raises: `BabelImportError` if Babel not installed.
 - Raises: `babel.core.UnknownLocaleError` on invalid locale.
 - State: None. Cached pure function.
 - Thread: Safe (lru_cache internal locking).

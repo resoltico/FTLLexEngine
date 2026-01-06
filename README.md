@@ -22,7 +22,7 @@ FTLLexEngine helps you write clean text messages that correctly handle counts li
 
 It follows the [Fluent specification](https://projectfluent.org/) used by projects like Firefox.
 
-You can use it for English-only apps or for apps that support many languages.
+You can use it for single-language apps or for apps that support many languages.
 
 ---
 
@@ -70,8 +70,6 @@ uv add ftllexengine[babel]
 |:--------|:------|:--------|:--------|
 | 3.13    | Full  | Full    | Full    |
 | 3.14    | Full  | Full    | Limited (Atheris incompatible) |
-
-Both versions run the complete test suite (4,600+ tests) and full static analysis (Ruff, Mypy, Pylint) in CI.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.56.0"
+version: "0.57.0"
 domain: RUNTIME
 updated: "2026-01-06"
 route:
@@ -561,9 +561,11 @@ def validate_resource(
 
 ### Constraints
 - Return: ValidationResult with errors, warnings, and semantic annotations.
-- Validation Passes: (1) Syntax errors, (2) Structural issues, (3) Undefined refs, (4) Cycles, (5) Chain depth, (6) Semantic (Fluent spec E0001-E0013).
+- Validation Passes: (1) Syntax errors, (2) Structural issues + duplicate attributes + shadow conflicts, (3) Undefined refs, (4) Cycles (intra-resource and cross-resource), (5) Chain depth, (6) Semantic (Fluent spec E0001-E0013).
 - Chain Depth: Warns if reference chains exceed MAX_DEPTH (would fail at runtime with MAX_DEPTH_EXCEEDED).
-- Cross-Resource: References to `known_messages`/`known_terms` do not produce undefined warnings.
+- Cross-Resource: References to `known_messages`/`known_terms` do not produce undefined warnings. Cycles detected across resource boundaries. Shadow warnings emitted when current resource redefines known entry.
+- Duplicate Attributes: Emits VALIDATION_DUPLICATE_ATTRIBUTE (5107) for duplicate attribute IDs within entry.
+- Shadow Warnings: Emits VALIDATION_SHADOW_WARNING (5108) when entry ID matches known bundle entry.
 - Raises: Never. Critical parse errors returned as ValidationError.
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
@@ -943,6 +945,5 @@ class GlobalDepthGuard:
 - Security: Custom functions calling `bundle.format_pattern()` cannot bypass limits.
 - Raises: `FluentResolutionError` when global depth limit exceeded.
 - Internal: Used automatically by `FluentResolver.resolve_message()`.
-- Version: Added in v0.56.0.
 
 ---

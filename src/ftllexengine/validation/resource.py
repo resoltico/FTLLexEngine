@@ -131,6 +131,9 @@ def _extract_syntax_errors(
 def _collect_entries(
     resource: Resource,
     line_cache: LineOffsetCache,
+    *,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
 ) -> tuple[dict[str, Message], dict[str, Term], list[ValidationWarning]]:
     """Collect message/term entries and check for structural issues.
 
@@ -138,6 +141,8 @@ def _collect_entries(
     - Duplicate message IDs (within message namespace)
     - Duplicate term IDs (within term namespace)
     - Messages without values or attributes
+    - Duplicate attribute IDs within entries
+    - Shadow warnings when entry ID conflicts with known entry
 
     Note: Per Fluent spec, messages and terms have separate namespaces.
     A message named "foo" and a term named "foo" are NOT duplicates.
@@ -145,6 +150,8 @@ def _collect_entries(
     Args:
         resource: Parsed Resource AST
         line_cache: Shared line offset cache for position lookups
+        known_messages: Optional set of message IDs already in bundle
+        known_terms: Optional set of term IDs already in bundle
 
     Returns:
         Tuple of (messages_dict, terms_dict, warnings)
@@ -179,6 +186,43 @@ def _collect_entries(
                 seen_message_ids.add(msg_id.name)
                 messages_dict[msg_id.name] = entry
 
+                # Check for shadow conflict with known messages
+                if known_messages and msg_id.name in known_messages:
+                    line, column = _get_entry_position(entry, line_cache)
+                    warnings.append(
+                        ValidationWarning(
+                            code=DiagnosticCode.VALIDATION_SHADOW_WARNING.name,
+                            message=(
+                                f"Message '{msg_id.name}' shadows existing message "
+                                f"(this definition will override the earlier one)"
+                            ),
+                            context=msg_id.name,
+                            line=line,
+                            column=column,
+                            severity=WarningSeverity.WARNING,
+                        )
+                    )
+
+                # Check for duplicate attribute IDs within this message
+                seen_message_attr_ids: set[str] = set()
+                for attr in attributes:
+                    if attr.id.name in seen_message_attr_ids:
+                        line, column = _get_entry_position(entry, line_cache)
+                        warnings.append(
+                            ValidationWarning(
+                                code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name,
+                                message=(
+                                    f"Message '{msg_id.name}' has duplicate attribute "
+                                    f"'{attr.id.name}' (later will override earlier)"
+                                ),
+                                context=f"{msg_id.name}.{attr.id.name}",
+                                line=line,
+                                column=column,
+                                severity=WarningSeverity.WARNING,
+                            )
+                        )
+                    seen_message_attr_ids.add(attr.id.name)
+
                 # Check for messages without values (only attributes)
                 if value is None and len(attributes) == 0:
                     line, column = _get_entry_position(entry, line_cache)
@@ -193,7 +237,7 @@ def _collect_entries(
                         )
                     )
 
-            case Term(id=term_id):
+            case Term(id=term_id, attributes=attributes):
                 # Check for duplicate term IDs within term namespace
                 if term_id.name in seen_term_ids:
                     line, column = _get_entry_position(entry, line_cache)
@@ -212,6 +256,43 @@ def _collect_entries(
                     )
                 seen_term_ids.add(term_id.name)
                 terms_dict[term_id.name] = entry
+
+                # Check for shadow conflict with known terms
+                if known_terms and term_id.name in known_terms:
+                    line, column = _get_entry_position(entry, line_cache)
+                    warnings.append(
+                        ValidationWarning(
+                            code=DiagnosticCode.VALIDATION_SHADOW_WARNING.name,
+                            message=(
+                                f"Term '{term_id.name}' shadows existing term "
+                                f"(this definition will override the earlier one)"
+                            ),
+                            context=term_id.name,
+                            line=line,
+                            column=column,
+                            severity=WarningSeverity.WARNING,
+                        )
+                    )
+
+                # Check for duplicate attribute IDs within this term
+                seen_term_attr_ids: set[str] = set()
+                for attr in attributes:
+                    if attr.id.name in seen_term_attr_ids:
+                        line, column = _get_entry_position(entry, line_cache)
+                        warnings.append(
+                            ValidationWarning(
+                                code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name,
+                                message=(
+                                    f"Term '{term_id.name}' has duplicate attribute "
+                                    f"'{attr.id.name}' (later will override earlier)"
+                                ),
+                                context=f"{term_id.name}.{attr.id.name}",
+                                line=line,
+                                column=column,
+                                severity=WarningSeverity.WARNING,
+                            )
+                        )
+                    seen_term_attr_ids.add(attr.id.name)
 
     return messages_dict, terms_dict, warnings
 
@@ -318,6 +399,9 @@ def _check_undefined_references(
 def _detect_circular_references(
     messages_dict: dict[str, Message],
     terms_dict: dict[str, Term],
+    *,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
 ) -> list[ValidationWarning]:
     """Detect circular dependencies in messages and terms.
 
@@ -328,10 +412,13 @@ def _detect_circular_references(
     - Message-only cycles (msg:A -> msg:B -> msg:A)
     - Term-only cycles (term:A -> term:B -> term:A)
     - Cross-type cycles (msg:A -> term:B -> msg:A)
+    - Cross-resource cycles (current resource -> known entry -> current resource)
 
     Args:
-        messages_dict: Map of message IDs to Message nodes
-        terms_dict: Map of term IDs to Term nodes
+        messages_dict: Map of message IDs to Message nodes from current resource
+        terms_dict: Map of term IDs to Term nodes from current resource
+        known_messages: Optional set of message IDs already in bundle
+        known_terms: Optional set of term IDs already in bundle
 
     Returns:
         List of warnings for circular references
@@ -348,13 +435,13 @@ def _detect_circular_references(
         msg_refs, term_refs = extract_references(message)
         node_key = f"msg:{msg_name}"
         deps: set[str] = set()
-        # Message references: only add if target exists
+        # Message references: add edge if target exists in current resource or known entries
         for ref in msg_refs:
-            if ref in messages_dict:
+            if ref in messages_dict or (known_messages and ref in known_messages):
                 deps.add(f"msg:{ref}")
-        # Term references: only add if target exists
+        # Term references: add edge if target exists in current resource or known entries
         for ref in term_refs:
-            if ref in terms_dict:
+            if ref in terms_dict or (known_terms and ref in known_terms):
                 deps.add(f"term:{ref}")
         unified_deps[node_key] = deps
 
@@ -363,15 +450,29 @@ def _detect_circular_references(
         msg_refs, term_refs = extract_references(term)
         node_key = f"term:{term_name}"
         deps = set()
-        # Message references: only add if target exists
+        # Message references: add edge if target exists in current resource or known entries
         for ref in msg_refs:
-            if ref in messages_dict:
+            if ref in messages_dict or (known_messages and ref in known_messages):
                 deps.add(f"msg:{ref}")
-        # Term references: only add if target exists
+        # Term references: add edge if target exists in current resource or known entries
         for ref in term_refs:
-            if ref in terms_dict:
+            if ref in terms_dict or (known_terms and ref in known_terms):
                 deps.add(f"term:{ref}")
         unified_deps[node_key] = deps
+
+    # Add known entries as nodes (with no outgoing edges since we don't have their ASTs)
+    # This allows cycle detection to find cycles that go through known entries
+    if known_messages:
+        for known_msg in known_messages:
+            node_key = f"msg:{known_msg}"
+            if node_key not in unified_deps:
+                unified_deps[node_key] = set()
+
+    if known_terms:
+        for known_term in known_terms:
+            node_key = f"term:{known_term}"
+            if node_key not in unified_deps:
+                unified_deps[node_key] = set()
 
     # Detect all cycles in the unified graph
     for cycle in detect_cycles(unified_deps):
@@ -621,7 +722,12 @@ def validate_resource(
         errors = _extract_syntax_errors(resource, line_cache)
 
         # Pass 2: Collect entries and check structural issues
-        messages_dict, terms_dict, structure_warnings = _collect_entries(resource, line_cache)
+        messages_dict, terms_dict, structure_warnings = _collect_entries(
+            resource,
+            line_cache,
+            known_messages=known_messages,
+            known_terms=known_terms,
+        )
 
         # Pass 3: Check undefined references (with bundle context if provided)
         ref_warnings = _check_undefined_references(
@@ -633,7 +739,12 @@ def validate_resource(
         )
 
         # Pass 4: Detect circular dependencies
-        cycle_warnings = _detect_circular_references(messages_dict, terms_dict)
+        cycle_warnings = _detect_circular_references(
+            messages_dict,
+            terms_dict,
+            known_messages=known_messages,
+            known_terms=known_terms,
+        )
 
         # Pass 5: Detect long reference chains (would fail at runtime)
         chain_warnings = _detect_long_chains(messages_dict, terms_dict)

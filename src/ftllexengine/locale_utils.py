@@ -4,17 +4,16 @@ Centralizes locale format normalization used throughout the codebase.
 Provides canonical locale handling to ensure consistent cache keys and lookups.
 
 Babel Import Pattern:
-    Babel is imported lazily inside get_babel_locale() to support parser-only
-    installations without the optional Babel dependency. This allows:
-    - ftllexengine.syntax (parser) to work without Babel
-    - ftllexengine.parsing/runtime to raise clear errors when Babel is missing
+    Babel imports are handled through ftllexengine.core.babel_compat for
+    consistency. This ensures parser-only installations work without Babel
+    while providing clear error messages when Babel features are needed.
 
     Functions that do NOT require Babel:
     - normalize_locale() - Pure string manipulation
     - get_system_locale() - Uses only stdlib locale module
 
     Functions that REQUIRE Babel:
-    - get_babel_locale() - Creates Babel Locale objects
+    - get_babel_locale() - Creates Babel Locale objects via babel_compat
 
 Python 3.13+.
 """
@@ -88,7 +87,7 @@ def get_babel_locale(locale_code: str) -> Locale:
         Babel Locale object
 
     Raises:
-        ImportError: If Babel is not installed
+        BabelImportError: If Babel is not installed
         babel.core.UnknownLocaleError: If locale is not recognized
         ValueError: If locale format is invalid
 
@@ -99,14 +98,13 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
-    try:
-        from babel import Locale as BabelLocale  # noqa: PLC0415
-    except ImportError as e:
-        msg = (
-            "get_babel_locale() requires Babel for CLDR locale data. "
-            "Install with: pip install ftllexengine[babel]"
-        )
-        raise ImportError(msg) from e
+    from ftllexengine.core.babel_compat import (  # noqa: PLC0415
+        get_locale_class,
+        require_babel,
+    )
+
+    require_babel("get_babel_locale")
+    BabelLocale = get_locale_class()  # noqa: N806
 
     normalized = normalize_locale(locale_code)
     return BabelLocale.parse(normalized)

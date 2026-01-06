@@ -5,6 +5,8 @@ for the optional Babel dependency.
 """
 
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from ftllexengine.core.babel_compat import (
     BabelImportError,
@@ -210,3 +212,285 @@ class TestIntegration:
         except error_class:
             caught = True
         assert caught, "Expected UnknownLocaleError for xx_YY"
+
+
+# ============================================================================
+# Property-Based Tests (Hypothesis)
+# ============================================================================
+
+
+class TestBabelImportErrorProperties:
+    """Property-based tests for BabelImportError exception class."""
+
+    @given(feature_name=st.text(min_size=1))
+    @example(feature_name="format_currency")
+    @example(feature_name="parse_number")
+    @example(feature_name="FluentBundle.format")
+    def test_babel_import_error_properties(self, feature_name: str) -> None:
+        """BabelImportError maintains invariants across all feature names.
+
+        Properties tested:
+        1. Error is an ImportError subclass
+        2. Feature name appears in error message
+        3. Install instructions appear in error message
+        4. Feature attribute matches constructor argument
+        """
+        error = BabelImportError(feature_name)
+
+        # Property 1: Type inheritance
+        assert isinstance(error, ImportError)
+
+        # Property 2: Feature name in message
+        assert feature_name in str(error)
+
+        # Property 3: Install instructions in message
+        assert "pip install ftllexengine[babel]" in str(error)
+
+        # Property 4: Attribute storage
+        assert error.feature == feature_name
+
+
+class TestRequireBabelProperties:
+    """Property-based tests for require_babel function."""
+
+    @given(feature_name=st.text(min_size=1))
+    @example(feature_name="format_currency")
+    @example(feature_name="LocaleContext.create")
+    def test_require_babel_accepts_any_feature_name(self, feature_name: str) -> None:
+        """require_babel accepts any non-empty feature name when Babel is available.
+
+        Property: When Babel is available, require_babel never raises regardless
+        of the feature name provided.
+        """
+        # In test environment, Babel is available, so this should never raise
+        require_babel(feature_name)  # Should not raise
+
+
+class TestIsBabelAvailableProperties:
+    """Property-based tests for is_babel_available function."""
+
+    def test_is_babel_available_idempotence(self) -> None:
+        """is_babel_available is idempotent (returns same value on repeated calls).
+
+        Property: f(f(x)) = f(x)
+        """
+        result1 = is_babel_available()
+        result2 = is_babel_available()
+        result3 = is_babel_available()
+
+        assert result1 == result2 == result3
+
+    def test_is_babel_available_returns_boolean(self) -> None:
+        """is_babel_available always returns exactly True or False.
+
+        Property: Result is always a boolean type (no truthy/falsy values).
+        """
+        result = is_babel_available()
+        assert isinstance(result, bool)
+        assert result in {True, False}
+
+
+# Valid locale codes strategy
+_VALID_LOCALE_CODES = st.sampled_from(
+    [
+        "en",
+        "en_US",
+        "en-US",
+        "de",
+        "de_DE",
+        "de-DE",
+        "fr",
+        "fr_FR",
+        "fr-FR",
+        "es",
+        "es_ES",
+        "es-ES",
+        "pt",
+        "pt_BR",
+        "pt-BR",
+        "zh",
+        "zh_CN",
+        "zh-CN",
+        "ja",
+        "ja_JP",
+        "ja-JP",
+        "ko",
+        "ko_KR",
+        "ko-KR",
+        "ar",
+        "ar_SA",
+        "ar-SA",
+        "ru",
+        "ru_RU",
+        "ru-RU",
+        "it",
+        "it_IT",
+        "it-IT",
+        "pl",
+        "pl_PL",
+        "pl-PL",
+        "tr",
+        "tr_TR",
+        "tr-TR",
+        "nl",
+        "nl_NL",
+        "nl-NL",
+        "sv",
+        "sv_SE",
+        "sv-SE",
+    ]
+)
+
+
+class TestGetBabelLocaleProperties:
+    """Property-based tests for get_babel_locale function."""
+
+    @given(locale_code=_VALID_LOCALE_CODES)
+    @example(locale_code="en_US")
+    @example(locale_code="en-US")
+    @example(locale_code="de")
+    def test_get_babel_locale_caching_property(self, locale_code: str) -> None:
+        """get_babel_locale returns identical object for repeated calls (caching).
+
+        Property: get_babel_locale(x) is get_babel_locale(x) (identity, not just equality)
+        """
+        locale1 = get_babel_locale(locale_code)
+        locale2 = get_babel_locale(locale_code)
+
+        # Should be exact same object (cached)
+        assert locale1 is locale2
+
+    @given(locale_code=_VALID_LOCALE_CODES)
+    @example(locale_code="en_US")
+    @example(locale_code="fr_FR")
+    def test_get_babel_locale_returns_locale_type(self, locale_code: str) -> None:
+        """get_babel_locale always returns a Babel Locale object.
+
+        Property: Type(get_babel_locale(x)) = Locale for all valid x
+        """
+        locale = get_babel_locale(locale_code)
+        locale_class = get_locale_class()
+
+        assert isinstance(locale, locale_class)
+
+    @given(locale_code=_VALID_LOCALE_CODES)
+    @example(locale_code="en_US")
+    @example(locale_code="en-US")
+    def test_get_babel_locale_normalization_equivalence(self, locale_code: str) -> None:
+        """get_babel_locale normalizes BCP-47 and POSIX formats equivalently.
+
+        Property: Underscore and hyphen formats for the same locale produce equal results.
+        """
+        # Only test if locale has territory (contains separator)
+        if "_" in locale_code or "-" in locale_code:
+            underscore_version = locale_code.replace("-", "_")
+            hyphen_version = locale_code.replace("_", "-")
+
+            locale1 = get_babel_locale(underscore_version)
+            locale2 = get_babel_locale(hyphen_version)
+
+            # Should have same language and territory
+            assert locale1.language == locale2.language
+            if locale1.territory:
+                assert locale1.territory == locale2.territory
+
+
+class TestGetLocaleClassProperties:
+    """Property-based tests for get_locale_class function."""
+
+    def test_get_locale_class_idempotence(self) -> None:
+        """get_locale_class returns the same class object on repeated calls.
+
+        Property: f() is f() (identity)
+        """
+        class1 = get_locale_class()
+        class2 = get_locale_class()
+        class3 = get_locale_class()
+
+        assert class1 is class2 is class3
+
+    def test_get_locale_class_is_type(self) -> None:
+        """get_locale_class returns a type (class) object.
+
+        Property: isinstance(f(), type)
+        """
+        locale_class = get_locale_class()
+        assert isinstance(locale_class, type)
+
+
+class TestGetUnknownLocaleErrorProperties:
+    """Property-based tests for get_unknown_locale_error function."""
+
+    def test_get_unknown_locale_error_idempotence(self) -> None:
+        """get_unknown_locale_error returns same exception class on repeated calls.
+
+        Property: f() is f() (identity)
+        """
+        error1 = get_unknown_locale_error()
+        error2 = get_unknown_locale_error()
+        error3 = get_unknown_locale_error()
+
+        assert error1 is error2 is error3
+
+    def test_get_unknown_locale_error_is_exception_class(self) -> None:
+        """get_unknown_locale_error returns an exception class.
+
+        Property: issubclass(f(), BaseException)
+        """
+        error_class = get_unknown_locale_error()
+        assert isinstance(error_class, type)
+        assert issubclass(error_class, BaseException)
+
+
+class TestGetBabelNumbersProperties:
+    """Property-based tests for get_babel_numbers function."""
+
+    def test_get_babel_numbers_idempotence(self) -> None:
+        """get_babel_numbers returns same module on repeated calls.
+
+        Property: f() is f() (identity)
+        """
+        numbers1 = get_babel_numbers()
+        numbers2 = get_babel_numbers()
+        numbers3 = get_babel_numbers()
+
+        assert numbers1 is numbers2 is numbers3
+
+    def test_get_babel_numbers_has_required_functions(self) -> None:
+        """get_babel_numbers returns module with required formatting functions.
+
+        Property: Required attributes exist and are callable.
+        """
+        numbers = get_babel_numbers()
+
+        required_functions = ["format_decimal", "format_currency", "format_percent"]
+        for func_name in required_functions:
+            assert hasattr(numbers, func_name)
+            assert callable(getattr(numbers, func_name))
+
+
+class TestGetBabelDatesProperties:
+    """Property-based tests for get_babel_dates function."""
+
+    def test_get_babel_dates_idempotence(self) -> None:
+        """get_babel_dates returns same module on repeated calls.
+
+        Property: f() is f() (identity)
+        """
+        dates1 = get_babel_dates()
+        dates2 = get_babel_dates()
+        dates3 = get_babel_dates()
+
+        assert dates1 is dates2 is dates3
+
+    def test_get_babel_dates_has_required_functions(self) -> None:
+        """get_babel_dates returns module with required formatting functions.
+
+        Property: Required attributes exist and are callable.
+        """
+        dates = get_babel_dates()
+
+        required_functions = ["format_date", "format_datetime", "format_time"]
+        for func_name in required_functions:
+            assert hasattr(dates, func_name)
+            assert callable(getattr(dates, func_name))

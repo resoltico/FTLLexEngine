@@ -13,6 +13,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-01-07
+
+### Security
+- **SEC-BABEL-INCONSISTENT-001** (LOW): Babel import consistency enforced across all modules:
+  - Previous: `locale_utils.py` had independent lazy Babel import with custom error handling
+  - Now: All Babel imports route through `babel_compat.py` for consistent error messages
+  - Eliminates duplicate import logic and ensures single source of truth for Babel availability
+
+### Added
+- **Duplicate Attribute Detection** (VAL-DUPLICATE-ATTR-001): Validation now detects duplicate attribute IDs within messages and terms:
+  - New diagnostic code: `VALIDATION_DUPLICATE_ATTRIBUTE` (5107)
+  - Warns when message or term has multiple attributes with same ID
+  - Example: `message = Value\n    .tooltip = First\n    .tooltip = Second` triggers warning
+  - Helps catch copy-paste errors and ambiguous attribute definitions
+
+- **Shadow Conflict Detection** (FTL-VAL-CONFLICT-001): Validation warns when new resource shadows existing entries:
+  - New diagnostic code: `VALIDATION_SHADOW_WARNING` (5108)
+  - Emitted when message/term ID in current resource matches known bundle entry
+  - Clarifies intentional override pattern vs. accidental redefinition
+  - Improves multi-resource validation workflow
+
+- **Cross-Resource Cycle Detection** (FTL-VAL-XRES-001): Circular reference detection now spans resources:
+  - Previous: Cycles only detected within single resource
+  - Now: Graph includes edges to known bundle entries enabling cross-resource cycle detection
+  - Validates that new resource won't create cycles with existing bundle contents
+  - `_detect_circular_references()` accepts `known_messages` and `known_terms` parameters
+
+### Changed
+- **Validation Pass 2 Extended**: `_collect_entries()` now performs additional checks:
+  - Duplicate attribute detection within each entry
+  - Shadow warnings for entries conflicting with known bundle entries
+  - Accepts `known_messages` and `known_terms` optional parameters
+
+- **Validation Pass 4 Extended**: `_detect_circular_references()` cross-resource cycle detection:
+  - Builds dependency graph including edges to known entries
+  - Detects cycles that span multiple resources
+  - Accepts `known_messages` and `known_terms` optional parameters
+
 ## [0.56.0] - 2026-01-06
 
 ### Security
@@ -1220,6 +1258,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.57.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.57.0
 [0.56.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.56.0
 [0.55.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.55.0
 [0.54.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.54.0
