@@ -40,15 +40,32 @@ class TestParserEdgeCases:
         assert len(resource.entries) == 0
 
     def test_very_long_identifier(self) -> None:
-        """Very long identifiers are handled."""
-        parser = FluentParserV1()
-        long_id = "a" * 1000
-        resource = parser.parse(f"{long_id} = Value")
+        """Identifiers exceeding max length produce Junk (DoS prevention).
 
+        Per SEC-PARSER-UNBOUNDED-001, identifiers are limited to prevent
+        denial-of-service attacks via extremely long tokens.
+        """
+        from ftllexengine.syntax.ast import Junk  # noqa: PLC0415
+        from ftllexengine.syntax.parser.primitives import (  # noqa: PLC0415
+            _MAX_IDENTIFIER_LENGTH,
+        )
+
+        parser = FluentParserV1()
+
+        # Identifier within the limit should work (test with a reasonable length)
+        valid_id = "a" * 200
+        resource = parser.parse(f"{valid_id} = Value")
         assert len(resource.entries) == 1
         entry = resource.entries[0]
         assert isinstance(entry, Message)
-        assert entry.id.name == long_id
+        assert entry.id.name == valid_id
+
+        # Identifier over the limit should produce Junk
+        over_limit_id = "a" * (_MAX_IDENTIFIER_LENGTH + 100)
+        resource = parser.parse(f"{over_limit_id} = Value")
+        assert len(resource.entries) == 1
+        entry = resource.entries[0]
+        assert isinstance(entry, Junk)
 
     def test_very_long_value(self) -> None:
         """Very long values are handled."""

@@ -8,6 +8,7 @@ Constants are grouped by domain:
 - Depth limits: Recursion protection for parsing/resolution/serialization
 - Cache limits: Memory bounds for caching subsystems
 - Input limits: DoS prevention via size constraints
+- Parser limits: Token length bounds and lookahead distance
 
 Python 3.13+. Zero external dependencies.
 """
@@ -121,6 +122,28 @@ MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
 # Bounded lookahead prevents O(N^2) parsing on pathological inputs.
 # 128 characters is ample for any legitimate variant key (identifier + number).
 MAX_LOOKAHEAD_CHARS: int = 128
+
+# ----------------------------------------------------------------------------
+# Token Length Limits (DoS Prevention)
+# ----------------------------------------------------------------------------
+# Maximum lengths prevent denial-of-service attacks via extremely long tokens.
+# These limits are intentionally generous for legitimate use while blocking abuse.
+# Private (not exported) - used only by parser primitives.
+
+# Maximum identifier length (256 chars).
+# Real-world identifiers rarely exceed 50 characters. 256 provides ample margin
+# while preventing memory exhaustion from million-character "identifiers".
+_MAX_IDENTIFIER_LENGTH: int = 256
+
+# Maximum number literal length (1000 chars including sign and decimal point).
+# Covers any practical numeric value (Python's arbitrary precision int/float).
+# A 1000-digit number is ~3KB and already beyond practical use.
+_MAX_NUMBER_LENGTH: int = 1000
+
+# Maximum string literal length (1 million chars).
+# FTL strings may contain long text blocks (e.g., legal disclaimers, terms).
+# 1M characters (~2-4MB with Unicode) is generous while preventing abuse.
+_MAX_STRING_LITERAL_LENGTH: int = 1_000_000
 
 # ============================================================================
 # FALLBACK STRINGS

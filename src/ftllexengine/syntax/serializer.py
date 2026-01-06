@@ -478,7 +478,10 @@ class FluentSerializer(ASTVisitor):
         depth_guard: DepthGuard,
     ) -> None:
         """Serialize SelectExpression."""
-        self._serialize_expression(expr.selector, output, depth_guard)
+        # Wrap selector serialization in depth_guard to track depth for DoS protection.
+        # Without this, a deeply nested selector could bypass depth limits.
+        with depth_guard:
+            self._serialize_expression(expr.selector, output, depth_guard)
         output.append(" ->")
 
         for variant in expr.variants:

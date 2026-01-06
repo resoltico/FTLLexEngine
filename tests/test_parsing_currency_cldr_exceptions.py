@@ -1,12 +1,12 @@
-"""Final 100% coverage tests for parsing/currency.py.
+"""CLDR exception handling tests for parsing/currency.py.
 
-Targets the last remaining uncovered lines:
-- Lines 278-280: Exception handling in locale.currencies access
-- Lines 304-306: Exception handling in get_currency_symbol
-- Line 341: Branch when locale_str does NOT contain "_"
-- Lines 344-346: Exception handling in get_territory_currencies
-- Lines 444-445: Invalid ISO code error path
-- Lines 460-462: Locale-to-currency fallback for ambiguous symbols
+Tests error handling and edge cases in CLDR map building:
+- Exception handling in locale.currencies access
+- Exception handling in get_currency_symbol
+- Branch when locale_str does NOT contain "_"
+- Exception handling in get_territory_currencies
+- Invalid ISO code error path
+- Locale-to-currency fallback for ambiguous symbols
 
 Note: These tests must clear @functools.cache before running to ensure
 mocked imports are used. The function uses lazy imports inside the function
@@ -283,3 +283,46 @@ class TestLines460To462LocaleToCurrencyFallback:
         # The key is that branch 461->464 is taken (inferred is None/False)
         assert result is None
         assert len(errors) > 0
+
+
+class TestLine529EmptySymbolsFallback:
+    """Test line 529: Pattern compilation when escaped_symbols is empty."""
+
+    def test_pattern_compilation_with_empty_fast_tier(self) -> None:
+        """Test pattern compiles with only ISO codes when fast tier is empty.
+
+        When _get_currency_maps_fast() returns empty symbol sets,
+        line 529 is executed to create a pattern with only ISO codes.
+        """
+        from unittest.mock import patch
+
+        from ftllexengine.parsing.currency import _get_currency_pattern_fast
+
+        # Clear cache
+        _get_currency_pattern_fast.cache_clear()
+
+        # Mock _get_currency_maps_fast to return empty symbol maps
+        empty_maps: tuple[
+            dict[str, str], frozenset[str], dict[str, str], frozenset[str]
+        ] = ({}, frozenset(), {}, frozenset())
+
+        with patch(
+            "ftllexengine.parsing.currency._get_currency_maps_fast",
+            return_value=empty_maps,
+        ):
+            # This should trigger line 529 (empty symbols fallback)
+            pattern = _get_currency_pattern_fast()
+
+        # Pattern should still match ISO codes
+        import re
+
+        assert pattern is not None
+        assert re.match(pattern, "USD")
+        assert re.match(pattern, "EUR")
+        assert re.match(pattern, "JPY")
+        # But should NOT match symbols (since they're empty)
+        assert re.match(pattern, "$") is None
+        assert re.match(pattern, "kr") is None
+
+        # Clear cache after test to restore normal behavior
+        _get_currency_pattern_fast.cache_clear()

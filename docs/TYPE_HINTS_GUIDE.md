@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.55.0"
+version: "0.56.0"
 domain: type-hints
-updated: "2026-01-05"
+updated: "2026-01-06"
 route:
   keywords: [type hints, typing, mypy, type safety, pep 695, typeis, type guards, annotations]
   questions: ["how to use type hints?", "how to configure mypy?", "how to write type safe code?"]

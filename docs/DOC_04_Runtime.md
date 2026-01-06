@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.55.0"
+version: "0.56.0"
 domain: RUNTIME
-updated: "2026-01-05"
+updated: "2026-01-06"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?"]
@@ -915,5 +915,34 @@ class DepthGuard:
 - Raises: DepthLimitExceededError when depth limit exceeded.
 - Behavior: `__enter__` validates limit BEFORE incrementing; prevents state corruption on exception.
 - Import: `from ftllexengine.core.depth_guard import DepthGuard`
+
+---
+
+## `GlobalDepthGuard`
+
+Global depth tracking across format_pattern calls using `contextvars`.
+
+### Signature
+```python
+class GlobalDepthGuard:
+    __slots__ = ("_max_depth", "_token")
+
+    def __init__(self, max_depth: int = MAX_DEPTH) -> None: ...
+    def __enter__(self) -> GlobalDepthGuard: ...
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None: ...
+```
+
+### Parameters
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `max_depth` | `int` | Maximum allowed global depth (default: MAX_DEPTH=100). |
+
+### Constraints
+- Thread: Safe (uses `contextvars.ContextVar` for async-safe per-task state).
+- Purpose: Prevents depth limit bypass via custom function callbacks.
+- Security: Custom functions calling `bundle.format_pattern()` cannot bypass limits.
+- Raises: `FluentResolutionError` when global depth limit exceeded.
+- Internal: Used automatically by `FluentResolver.resolve_message()`.
+- Version: Added in v0.56.0.
 
 ---

@@ -13,6 +13,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-01-06
+
+### Security
+- **SEC-RESOLVER-RECURSION-BYPASS-001** (HIGH): SelectExpression selector resolution now wrapped in `expression_guard`:
+  - Previous: Selector expressions bypassed depth tracking, enabling stack overflow via deeply nested selectors
+  - Now: `_resolve_select_expression()` wraps selector resolution in `with context.expression_guard:`
+  - Prevents DoS via malformed ASTs with recursive selector nesting
+
+- **SEC-SERIALIZER-RECURSION-BYPASS-001** (HIGH): Serializer now tracks depth for SelectExpression selectors:
+  - Previous: `_serialize_select_expression()` called `_serialize_expression(expr.selector)` without depth guard
+  - Now: Selector serialization wrapped in `with depth_guard:`
+  - Prevents stack overflow from deeply nested selector expressions in serialization
+
+- **RES-DEPTH-LEAK-001** (MEDIUM): Global depth tracking via `contextvars` prevents callback bypass:
+  - Previous: Custom functions could call `bundle.format_pattern()` creating fresh `ResolutionContext`, bypassing depth limits
+  - Now: `GlobalDepthGuard` tracks depth across all resolution calls per-task/thread using `contextvars`
+  - Custom functions attempting recursive resolution are now properly limited
+
+- **RES-BABEL-CRASH-001** (MEDIUM): BabelImportError gracefully handled in plural matching:
+  - Previous: `select_plural_category()` could raise `BabelImportError` causing format_pattern to crash
+  - Now: `_resolve_select_expression()` catches `BabelImportError` and falls through to default variant
+  - Parser-only installations now handle select expressions with numeric selectors gracefully
+
+- **SEC-PARSER-UNBOUNDED-001** (MEDIUM): Parser primitives now enforce token length limits:
+  - Previous: `parse_identifier()`, `parse_number()`, `parse_string_literal()` had unbounded loops
+  - Now: Maximum lengths enforced (identifiers: 256 chars, numbers: 1000 chars, strings: 1M chars)
+  - Prevents DoS via extremely long tokens that could exhaust memory or CPU
+
+### Added
+- **GlobalDepthGuard Class**: New context manager in `runtime/resolver.py`:
+  - Uses `contextvars.ContextVar` for async-safe per-task depth tracking
+  - Prevents depth limit bypass via custom function callbacks
+  - Documents security threat model in docstring
+
+- **Parser Token Length Constants**: New limits in `constants.py`:
+  - `_MAX_IDENTIFIER_LENGTH`: 256 characters
+  - `_MAX_NUMBER_LENGTH`: 1000 characters
+  - `_MAX_STRING_LITERAL_LENGTH`: 1,000,000 characters
+  - Generous limits for legitimate use while preventing abuse
+  - Centralized in constants.py for auditability (used by `syntax/parser/primitives.py`)
+
+### Changed
+- **ResolutionContext Usage**: `resolve_message()` now wraps resolution in `GlobalDepthGuard`:
+  - Catches `FluentResolutionError` from global depth exceeded
+  - Returns fallback with collected error on depth limit
+  - Maintains backwards compatibility for normal usage
+
 ## [0.55.0] - 2026-01-05
 
 ### Breaking Changes
@@ -1173,6 +1220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.56.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.56.0
 [0.55.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.55.0
 [0.54.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.54.0
 [0.53.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.53.0

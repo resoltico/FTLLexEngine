@@ -139,7 +139,7 @@ record_result() {
 # --- 3. RUNNERS (Wrapped with set +e for robustness) ---
 run_ruff() {
     log_group_start "Lint: Ruff"
-    log_info "Running Ruff on: ${TARGETS[*]} (target: py${PY_VERSION_NODOT})"
+    log_info "Running Ruff with --fix flag on: ${TARGETS[*]} (target: py${PY_VERSION_NODOT})"
 
     local start_time="${EPOCHREALTIME}"
     local file_count=0
@@ -152,7 +152,7 @@ run_ruff() {
     set -e
 
     set +e
-    ruff check --config "$PYPROJECT_CONFIG" --target-version "py${PY_VERSION_NODOT}" "${TARGETS[@]}"
+    ruff check --fix --config "$PYPROJECT_CONFIG" --target-version "py${PY_VERSION_NODOT}" "${TARGETS[@]}"
     local ruff_exit_code=$?
     set -e
 

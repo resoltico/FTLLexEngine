@@ -7,9 +7,16 @@ Thread Safety:
     Resolution state is passed explicitly via ResolutionContext, making the
     resolver fully reentrant and compatible with async frameworks. Each
     resolution operation creates its own isolated context.
+
+    Global depth tracking uses contextvars for async-safe per-task state,
+    preventing custom functions from bypassing depth limits by calling
+    back into bundle.format_pattern().
 """
 
+from __future__ import annotations
+
 from collections.abc import Mapping, Sequence
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -21,6 +28,7 @@ from ftllexengine.constants import (
     FALLBACK_MISSING_VARIABLE,
     MAX_DEPTH,
 )
+from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.core.errors import FormattingError
 from ftllexengine.diagnostics import (
@@ -58,6 +66,63 @@ __all__ = ["FluentResolver", "FluentValue", "ResolutionContext"]
 # Used to prevent RTL/LTR text interference when interpolating values.
 UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
+
+# Global resolution depth tracking via contextvars.
+# Prevents custom functions from bypassing depth limits by calling back into
+# bundle.format_pattern(). Each async task/thread maintains independent state.
+# This tracks the number of nested resolve_message() calls across all contexts.
+_global_resolution_depth: ContextVar[int] = ContextVar(
+    "fluent_resolution_depth", default=0
+)
+
+
+class GlobalDepthGuard:
+    """Context manager for tracking global resolution depth across format_pattern calls.
+
+    Uses contextvars for async-safe per-task state. This prevents custom functions
+    from bypassing depth limits by creating new ResolutionContext instances.
+
+    Usage:
+        with GlobalDepthGuard(max_depth=100):
+            # Nested format_pattern calls are tracked globally
+            result = resolver.resolve_message(message, args)
+
+    Security:
+        Without global depth tracking, a malicious custom function could:
+        1. Receive control during resolution
+        2. Call bundle.format_pattern() which creates a fresh ResolutionContext
+        3. Repeat step 2 recursively, bypassing per-context depth limits
+        4. Eventually cause stack overflow
+
+        GlobalDepthGuard prevents this by tracking depth across all contexts.
+    """
+
+    __slots__ = ("_max_depth", "_token")
+
+    def __init__(self, max_depth: int = MAX_DEPTH) -> None:
+        """Initialize guard with maximum depth limit."""
+        self._max_depth = max_depth
+        self._token: Token[int] | None = None
+
+    def __enter__(self) -> GlobalDepthGuard:
+        """Enter guarded section, increment global depth."""
+        current = _global_resolution_depth.get()
+        if current >= self._max_depth:
+            raise FluentResolutionError(
+                ErrorTemplate.expression_depth_exceeded(self._max_depth)
+            )
+        self._token = _global_resolution_depth.set(current + 1)
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        """Exit guarded section, restore previous depth."""
+        if self._token is not None:
+            _global_resolution_depth.reset(self._token)
 
 
 @dataclass(slots=True)
@@ -274,12 +339,22 @@ class FluentResolver:
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
             return (fallback, tuple(errors))
 
+        # Use GlobalDepthGuard to track depth across separate format_pattern() calls.
+        # This prevents custom functions from bypassing depth limits by calling
+        # back into bundle.format_pattern() which creates a fresh ResolutionContext.
         try:
-            context.push(msg_key)
-            result = self._resolve_pattern(pattern, args, errors, context)
-            return (result, tuple(errors))
-        finally:
-            context.pop()
+            with GlobalDepthGuard(max_depth=context.max_depth):
+                context.push(msg_key)
+                try:
+                    result = self._resolve_pattern(pattern, args, errors, context)
+                    return (result, tuple(errors))
+                finally:
+                    context.pop()
+        except FluentResolutionError as e:
+            # Global depth exceeded - collect error and return fallback
+            errors.append(e)
+            fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
+            return (fallback, tuple(errors))
 
     def _resolve_pattern(
         self,
@@ -608,8 +683,12 @@ class FluentResolver:
         # Evaluate selector with error resilience.
         # If selector evaluation fails (e.g., missing variable), collect the error
         # and fall back to the default variant per Fluent spec.
+        # Wrap in expression_guard to track depth for DoS protection.
         try:
-            selector_value = self._resolve_expression(expr.selector, args, errors, context)
+            with context.expression_guard:
+                selector_value = self._resolve_expression(
+                    expr.selector, args, errors, context
+                )
         except (FluentReferenceError, FluentResolutionError) as e:
             # Collect the error but don't propagate - fall back to default variant
             errors.append(e)
@@ -644,10 +723,19 @@ class FluentResolver:
             numeric_value = selector_value
 
         if numeric_value is not None:
-            plural_category = select_plural_category(numeric_value, self.locale)
-            plural_match = self._find_plural_variant(expr.variants, plural_category)
-            if plural_match is not None:
-                return self._resolve_pattern(plural_match.value, args, errors, context)
+            # Try plural category matching (requires Babel for CLDR data).
+            # If Babel is not installed (parser-only mode), skip plural matching
+            # and fall through to default variant. This is graceful degradation.
+            try:
+                plural_category = select_plural_category(numeric_value, self.locale)
+                plural_match = self._find_plural_variant(expr.variants, plural_category)
+                if plural_match is not None:
+                    return self._resolve_pattern(
+                        plural_match.value, args, errors, context
+                    )
+            except BabelImportError:
+                # Babel not installed - skip plural matching, fall through to default
+                pass
 
         # Fallback: default variant
         default_variant = self._find_default_variant(expr.variants)

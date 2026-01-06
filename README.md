@@ -18,29 +18,22 @@ RETRIEVAL_HINTS:
 
 # FTLLexEngine
 
-**A logic engine for text and a parsing gateway.**
+FTLLexEngine helps you write clean text messages that correctly handle counts like "1 coffee" or "5 coffees". It also lets you accept real user input for numbers, dates, and prices - returning useful errors when the input is not quite right, so you can give clear feedback.
 
-FTLLexEngine solves three problems that appear in every application that handles numbers, dates, currency, or user input:
+It follows the [Fluent specification](https://projectfluent.org/) used by projects like Firefox.
 
-1. **Grammar spaghetti**: `if count == 1... elif count == 0... else...` scattered throughout code
-2. **Fragile parsing**: `strptime()` and `Decimal()` crash on imperfect user input
-3. **Thread-unsafe formatting**: Python's `locale.setlocale()` is process-global
-
-The library can serve you well as **single-language infrastructure** or as a full **internationalization engine** (it is an independent implementation of the [Fluent Specification](https://projectfluent.org/)).
+You can use it for English-only apps or for apps that support many languages.
 
 ---
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [What Problems Does This Solve?](#what-problems-does-this-solve)
-- [The Babel Question](#the-babel-question)
-- [Core Capabilities](#core-capabilities)
-  - [1. Declarative Text Logic](#1-declarative-text-logic)
-  - [2. Robust Input Parsing](#2-robust-input-parsing)
-  - [3. Thread-Safe Formatting](#3-thread-safe-formatting)
-  - [4. Template Introspection](#4-template-introspection)
-- [Quick Start](#quick-start)
+- [For Apps in One Language](#for-apps-in-one-language)
+- [For Cafe Billing and Financial Calculations](#for-cafe-billing-and-financial-calculations)
+- [For Apps in Many Languages](#for-apps-in-many-languages)
+- [For Busy Web Servers](#for-busy-web-servers)
+- [Check What a Message Needs](#check-what-a-message-needs)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -82,248 +75,199 @@ Both versions run the complete test suite (4,600+ tests) and full static analysi
 
 ---
 
-## What Problems Does This Solve?
+## For Apps in One Language
 
-### Problem 1: Grammar Logic in Application Code
+You are building a cafe app in English. Customers order coffees, and you need to show messages like "1 coffee" or "5 coffees".
 
-Every application that displays counts has code like this:
-
-```python
-# Scattered throughout the codebase
-def format_order(espresso_count, latte_count):
-    # Espresso pluralization
-    if espresso_count == 0:
-        espresso_text = "no espressos"
-    elif espresso_count == 1:
-        espresso_text = "1 espresso"
-    else:
-        espresso_text = f"{espresso_count} espressos"
-
-    # Latte pluralization (same pattern, repeated)
-    if latte_count == 0:
-        latte_text = "no lattes"
-    elif latte_count == 1:
-        latte_text = "1 latte"
-    else:
-        latte_text = f"{latte_count} lattes"
-
-    return f"Order: {espresso_text}, {latte_text}"
-```
-
-This pattern repeats for every countable item. In Polish, or Arabic, the rules are more complex (Polish has 4 plural forms). The logic multiplies.
-
-### Problem 2: User Input Crashes Your Application
+Normally you would write if-statements in many places:
 
 ```python
-from decimal import Decimal
-from datetime import datetime
-
-# User enters European-format price: "1.234,50"
-price = Decimal("1.234,50")  # InvalidOperation exception
-
-# User enters US-format date: "12/25/2025"
-date = datetime.strptime("12/25/2025", "%d/%m/%Y")  # ValueError exception
-
-# Your API endpoint returns 500 Internal Server Error
+if count == 0:
+    text = "no coffees"
+elif count == 1:
+    text = "1 coffee"
+else:
+    text = f"{count} coffees"
 ```
 
-Standard library parsing functions raise exceptions on format mismatches. In web forms, CSV imports, or chatbot input, this causes crashes.
+With FTLLexEngine you move the rules to a separate file:
 
-### Problem 3: Concurrent Formatting is Broken
-
-```python
-import locale
-from concurrent.futures import ThreadPoolExecutor
-
-def format_for_user(amount, user_locale):
-    locale.setlocale(locale.LC_ALL, user_locale)  # DANGER: Process-global!
-    return locale.currency(amount)
-
-# In a web server handling concurrent requests:
-with ThreadPoolExecutor() as executor:
-    # User A (Germany) and User B (USA) request simultaneously
-    # Race condition: both might get German OR American formatting
-    future_a = executor.submit(format_for_user, 1234.50, "de_DE")
-    future_b = executor.submit(format_for_user, 1234.50, "en_US")
-```
-
-Python's `locale` module uses process-global state. In Flask, FastAPI, or Django with multiple threads, `setlocale()` affects all threads. This is documented in [Python's locale module documentation](https://docs.python.org/3/library/locale.html#background-details-hints-tips-and-caveats).
-
----
-
-## The Babel Question
-
-**"Why not just use Babel directly?"**
-
-Babel provides CLDR data (locale definitions, number patterns, plural rules). FTLLexEngine uses Babel internally. The distinction:
-
-| Aspect | Babel | FTLLexEngine |
-| :--- | :--- | :--- |
-| **Purpose** | Data layer (formatting functions) | Logic layer (grammar + parsing) |
-| **Plurals** | `Locale('en').plural_form(n)` returns category | `.ftl` file encodes the entire decision tree |
-| **Parsing** | `parse_decimal()` raises `NumberFormatError` | `parse_decimal()` returns `(result, errors)` |
-| **Grammar** | None | Select expressions, terms, attributes |
-| **Thread safety** | Safe | Safe (wraps Babel with immutable contexts) |
-
-**When Babel alone is sufficient:**
-- You only format output (never parse input)
-- You handle one locale at a time
-- You have no complex plural or grammatical logic
-
-**When FTLLexEngine adds value:**
-- You parse user-entered numbers, dates, or currency
-- You need grammar logic separated from code
-- You serve multiple locales concurrently
-- You want templates that tools can introspect
-
----
-
-## Core Capabilities
-
-### 1. Declarative Text Logic
-
-Move grammar logic from Python code to declarative resources.
-
-**Before (Python):**
-```python
-def order_summary(coffees):
-    if coffees == 0:
-        return "Your order is empty"
-    elif coffees == 1:
-        return "Your order: 1 coffee"
-    else:
-        return f"Your order: {coffees} coffees"
-```
-
-**After (FTL resource + Python):**
-
-*Resource file (`cafe.ftl`):*
+**cafe.ftl**
 ```fluent
-order-summary = { $coffees ->
-    [0] Your order is empty
-    [one] Your order: 1 coffee
-   *[other] Your order: { $coffees } coffees
+order-message = { $count ->
+    [0]     no coffees ordered
+    [one]   1 coffee ordered
+   *[other] { $count } coffees ordered
 }
+
+total-message = Total: { CURRENCY($amount, currency: "USD") }
 ```
 
-*Python (data only):*
+In Python:
+
 ```python
 from ftllexengine import FluentBundle
+from decimal import Decimal
 
 bundle = FluentBundle("en_US")
 bundle.add_resource(open("cafe.ftl").read())
 
-result, _ = bundle.format_pattern("order-summary", {"coffees": 0})
-# "Your order is empty"
+result, _ = bundle.format_pattern("order-message", {"count": 5})
+# "5 coffees ordered"
 
-result, _ = bundle.format_pattern("order-summary", {"coffees": 1})
-# "Your order: 1 coffee"
-
-result, _ = bundle.format_pattern("order-summary", {"coffees": 5})
-# "Your order: 5 coffees"
+result, _ = bundle.format_pattern("total-message", {"amount": Decimal("18.75")})
+# "Total: $18.75"
 ```
 
-The `[one]` selector uses CLDR plural rules. For Polish (`pl_PL`), `[few]` and `[many]` categories are also available. The same Python code works; only the `.ftl` file changes.
+Your code only passes data. The text rules stay in one place.
 
-### 2. Robust Input Parsing
+Customers also enter dates (for delivery) or prices (for custom tips). People type these in different ways:
 
-Parsing functions return `(result, errors)` tuples. They never raise exceptions.
-
-**Currency Parsing (Financial Applications):**
 ```python
-from ftllexengine.parsing import parse_currency, parse_decimal
+from ftllexengine.parsing import parse_date, parse_decimal
+
+date_val, errors = parse_date("Jan 15, 2026", "en_US")
+# date(2026, 1, 15), ()
+
+price_val, errors = parse_decimal("5.50", "en_US")
+# Decimal('5.50'), ()
+
+# If input is unclear
+price_val, errors = parse_decimal("five fifty", "en_US")
+# None, (FluentParseError(...),)
+```
+
+You can show a helpful message like "Please enter a number like 5.50".
+
+---
+
+## For Cafe Billing and Financial Calculations
+
+Your cafe app now calculates bills. A customer orders 3 espressos at $4.50 each and adds a tip.
+
+You need exact math (no float rounding errors) and correct display.
+
+Parse the tip amount the customer types:
+
+```python
+from ftllexengine.parsing import parse_currency
 from decimal import Decimal
 
-# Parse European invoice amount: "1.234,50 EUR"
-result, errors = parse_currency("1.234,50 EUR", "de_DE")
-if result:
-    amount, currency_code = result  # (Decimal('1234.50'), 'EUR')
-    vat = amount * Decimal("0.19")  # Decimal('234.555') - no float precision loss
+tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
+if not errors:
+    tip, currency = tip_result  # (Decimal('5.00'), 'USD')
 
-# Parse ambiguous symbol with explicit currency
-result, errors = parse_currency("$99.99", "en_US", default_currency="USD")
-# (Decimal('99.99'), 'USD')
+subtotal = Decimal("13.50")  # 3 x 4.50
+tax = subtotal * Decimal("0.08")  # 8% tax
+total = subtotal + tax + tip
 
-# Malformed input returns errors, not exceptions
-result, errors = parse_currency("not a price", "en_US")
-# result is None, errors contains FluentParseError with details
+# All Decimal - exact result
 ```
 
-**Date Parsing (Forms, CSV Import):**
-```python
-from ftllexengine.parsing import parse_date, parse_datetime
+Display with a message file:
 
-# ISO 8601 (machine format) - always tried first
-result, errors = parse_date("2025-12-25", "en_US")
-# datetime.date(2025, 12, 25)
-
-# US locale short format (M/d/yy per CLDR)
-result, errors = parse_date("12/25/25", "en_US")
-# datetime.date(2025, 12, 25)
-
-# US locale medium format (MMM d, y per CLDR)
-result, errors = parse_date("Dec 25, 2025", "en_US")
-# datetime.date(2025, 12, 25)
-
-# German locale format (dd.MM.y per CLDR medium)
-result, errors = parse_date("25.12.2025", "de_DE")
-# datetime.date(2025, 12, 25)
-
-# Invalid date returns error, not exception
-result, errors = parse_date("not-a-date", "en_US")
-# result is None, errors[0].input_value == "not-a-date"
+**bill.ftl**
+```fluent
+bill-summary =
+    { $count } espressos: { CURRENCY($subtotal, currency: "USD") }
+    Tax: { CURRENCY($tax, currency: "USD") }
+    { $tip ->
+        [0] (no tip)
+       *[other] Tip: { CURRENCY($tip, currency: "USD") }
+    }
+    Total: { CURRENCY($total, currency: "USD") }
 ```
 
-**Number Parsing (User Input):**
-```python
-from ftllexengine.parsing import parse_number, parse_decimal
+The same file works for any currency or locale later.
 
-# German format: period for thousands, comma for decimal
-result, errors = parse_decimal("1.234,56", "de_DE")
-# Decimal('1234.56')
+---
+
+## For Apps in Many Languages
+
+Your cafe app now serves customers worldwide. Plural rules differ - Polish has special forms for 2-4 and 5+.
+
+You keep the same Python code. Only the message files change.
+
+**cafe_de.ftl** (German)
+```fluent
+order-message = { $count ->
+    [0]     keine Kaffees bestellt
+    [one]   1 Kaffee bestellt
+   *[other] { $count } Kaffees bestellt
+}
+```
+
+**cafe_pl.ftl** (Polish)
+```fluent
+order-message = { $count ->
+    [0]     brak kaw
+    [one]   1 kawa
+    [few]   { $count } kawy
+    [many]  { $count } kaw
+   *[other] { $count } kawy
+}
+```
+
+In Python:
+
+```python
+bundle = FluentBundle(user_locale)  # e.g. "pl_PL"
+bundle.add_resource(open(f"cafe_{user_locale[:2]}.ftl").read())
+
+result, _ = bundle.format_pattern("order-message", {"count": 5})
+# Polish: "5 kaw"
+```
+
+Input parsing automatically uses the user's locale:
+
+```python
+from ftllexengine.parsing import parse_decimal
+
+# German format: comma for decimal
+price, errors = parse_decimal("13,50", "de_DE")
+# Decimal('13.50')
 
 # Latvian format: space for thousands, comma for decimal
-result, errors = parse_decimal("1 234,56", "lv_LV")
-# Decimal('1234.56')
-
-# US format
-result, errors = parse_decimal("1,234.56", "en_US")
+price, errors = parse_decimal("1 234,56", "lv_LV")
 # Decimal('1234.56')
 ```
 
-### 3. Thread-Safe Formatting
+---
 
-`LocaleContext` provides immutable, thread-safe locale configuration.
+## For Busy Web Servers
+
+Many customers order at once in different locales. Standard Python locale settings are global and can conflict.
+
+FTLLexEngine uses separate contexts:
 
 ```python
 from ftllexengine.runtime.locale_context import LocaleContext
 from concurrent.futures import ThreadPoolExecutor
 
-# Create immutable contexts (cached internally)
-ctx_us = LocaleContext.create("en_US")
-ctx_de = LocaleContext.create("de_DE")
-ctx_jp = LocaleContext.create("ja_JP")
+us_ctx = LocaleContext.create("en_US")
+de_ctx = LocaleContext.create("de_DE")
 
-def format_price(amount, ctx):
-    return ctx.format_currency(amount, currency="EUR")
+def format_total(amount, ctx):
+    return ctx.format_currency(amount, currency="USD")
 
-# Safe concurrent formatting - no race conditions
+# Safe even with many simultaneous requests
 with ThreadPoolExecutor() as executor:
     futures = [
-        executor.submit(format_price, 1234.50, ctx_us),  # "€1,234.50"
-        executor.submit(format_price, 1234.50, ctx_de),  # "1.234,50 €"
-        executor.submit(format_price, 1234.50, ctx_jp),  # "€1,234.50"
+        executor.submit(format_total, 1234.50, us_ctx),  # "$1,234.50"
+        executor.submit(format_total, 1234.50, de_ctx),  # "1.234,50 $"
     ]
     results = [f.result() for f in futures]
 ```
 
-Each `LocaleContext` is a frozen dataclass. No global state is mutated. The same context can be shared across threads.
+Each `LocaleContext` is a frozen dataclass. No global state is mutated.
 
-**Note**: `FluentBundle` is fully thread-safe. All public methods (`format_pattern()`, `add_resource()`, `add_function()`) are synchronized via internal RLock. You can safely call any method from multiple threads concurrently.
+`FluentBundle` is also thread-safe. All public methods (`format_pattern()`, `add_resource()`, `add_function()`) are synchronized via internal RLock. You can safely call any method from multiple threads concurrently.
 
-### 4. Template Introspection
+---
 
-Extract metadata from templates at runtime. Useful for form builders, linters, and AI agents.
+## Check What a Message Needs
+
+If you use AI or build tools to generate messages, you can check required variables first:
 
 ```python
 from ftllexengine import FluentBundle
@@ -332,15 +276,15 @@ bundle = FluentBundle("en_US")
 bundle.add_resource("""
 order-confirmation = { $customer_name }, your order of { $quantity }
     { $quantity ->
-        [one] { $drink_type }
-       *[other] { $drink_type }s
+        [one] coffee
+       *[other] coffees
     } is ready. Total: { CURRENCY($total, currency: "USD") }
 """)
 
 info = bundle.introspect_message("order-confirmation")
 
 print(info.get_variable_names())
-# frozenset({'customer_name', 'quantity', 'drink_type', 'total'})
+# frozenset({'customer_name', 'quantity', 'total'})
 
 print(info.get_function_names())
 # frozenset({'CURRENCY'})
@@ -348,7 +292,6 @@ print(info.get_function_names())
 print(info.has_selectors)
 # True
 
-# Check if specific variable is required
 print(info.requires_variable("customer_name"))
 # True
 ```
@@ -357,108 +300,6 @@ print(info.requires_variable("customer_name"))
 - AI agents verify they have all required variables before formatting
 - Form builders auto-generate input fields
 - Linters validate template completeness
-
----
-
-## Quick Start
-
-### Single-Language App (English Only)
-
-```python
-from ftllexengine import FluentBundle
-
-bundle = FluentBundle("en_US")
-bundle.add_resource("""
-# Cafe order system
-drink-order = { $count ->
-    [0] No drinks ordered
-    [one] 1 { $drink }
-   *[other] { $count } { $drink }s
-}
-
-price-display = Total: { CURRENCY($amount, currency: "USD") }
-
-order-time = Order placed: { DATETIME($timestamp, dateStyle: "medium", timeStyle: "short") }
-""")
-
-# Format order
-result, _ = bundle.format_pattern("drink-order", {"count": 3, "drink": "espresso"})
-print(result)  # "3 espressos"
-
-# Format price
-from decimal import Decimal
-result, _ = bundle.format_pattern("price-display", {"amount": Decimal("12.50")})
-print(result)  # "Total: $12.50"
-
-# Format timestamp
-from datetime import datetime
-result, _ = bundle.format_pattern("order-time", {"timestamp": datetime.now()})
-print(result)  # "Order placed: Jan 15, 2025, 2:30 PM"
-```
-
-### Parsing User Input
-
-```python
-from ftllexengine.parsing import parse_currency, parse_date
-
-# Web form: user enters price
-user_input = "$15.99"
-result, errors = parse_currency(user_input, "en_US", default_currency="USD")
-
-if errors:
-    print(f"Invalid price: {errors[0]}")
-else:
-    amount, currency = result
-    print(f"Parsed: {amount} {currency}")  # "Parsed: 15.99 USD"
-
-# Web form: user enters date (CLDR short format: M/d/yy)
-user_date = "1/15/25"
-result, errors = parse_date(user_date, "en_US")
-
-if errors:
-    print(f"Invalid date: {errors[0]}")
-else:
-    print(f"Parsed: {result}")  # "Parsed: 2025-01-15"
-```
-
-### Multi-Locale Application
-
-```python
-from ftllexengine import FluentBundle
-
-# Same message, different locales
-resources = {
-    "en_US": "coffee-count = { $n -> [one] 1 coffee *[other] { $n } coffees }",
-    "de_DE": "coffee-count = { $n -> [one] 1 Kaffee *[other] { $n } Kaffees }",
-    "pl_PL": """coffee-count = { $n ->
-        [one] 1 kawa
-        [few] { $n } kawy
-        [many] { $n } kaw
-       *[other] { $n } kawy
-    }""",
-}
-
-for locale, resource in resources.items():
-    bundle = FluentBundle(locale)
-    bundle.add_resource(resource)
-
-    for n in [1, 2, 5, 22]:
-        result, _ = bundle.format_pattern("coffee-count", {"n": n})
-        print(f"{locale}: {n} -> {result}")
-
-# Output:
-# en_US: 1 -> 1 coffee
-# en_US: 2 -> 2 coffees
-# en_US: 5 -> 5 coffees
-# en_US: 22 -> 22 coffees
-# de_DE: 1 -> 1 Kaffee
-# de_DE: 2 -> 2 Kaffees
-# ...
-# pl_PL: 1 -> 1 kawa
-# pl_PL: 2 -> 2 kawy      (few)
-# pl_PL: 5 -> 5 kaw       (many)
-# pl_PL: 22 -> 22 kawy    (few)
-```
 
 ---
 

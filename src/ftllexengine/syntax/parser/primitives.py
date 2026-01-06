@@ -28,6 +28,11 @@ Thread-Local State (Design Decision):
 from dataclasses import dataclass
 from threading import local as thread_local
 
+from ftllexengine.constants import (
+    _MAX_IDENTIFIER_LENGTH,
+    _MAX_NUMBER_LENGTH,
+    _MAX_STRING_LITERAL_LENGTH,
+)
 from ftllexengine.syntax.cursor import Cursor, ParseResult
 
 # Unicode escape sequence constants per Unicode Standard.
@@ -52,6 +57,10 @@ _HEX_DIGITS: str = "0123456789abcdefABCDEF"
 # ASCII digits only - FTL spec requires 0-9, not Unicode digits like ² or ³.
 # str.isdigit() returns True for Unicode digits which causes int() to fail.
 _ASCII_DIGITS: str = "0123456789"
+
+# Token length limits imported from ftllexengine.constants:
+# _MAX_IDENTIFIER_LENGTH, _MAX_NUMBER_LENGTH, _MAX_STRING_LITERAL_LENGTH
+# See constants.py for documentation on these DoS prevention limits.
 
 
 def is_identifier_start(ch: str) -> bool:
@@ -184,10 +193,19 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
     cursor = cursor.advance()  # Skip first character
 
     # Continue with ASCII alphanumeric, -, _
+    # Limit length to prevent DoS via extremely long identifiers
     while not cursor.is_eof:
         ch = cursor.current
         if is_identifier_char(ch):
             cursor = cursor.advance()
+            # Check length limit after consuming character
+            current_length = cursor.pos - start_pos
+            if current_length > _MAX_IDENTIFIER_LENGTH:
+                _set_parse_error(
+                    f"Identifier exceeds maximum length ({_MAX_IDENTIFIER_LENGTH} chars)",
+                    cursor.pos,
+                )
+                return None
         else:
             break
 
@@ -241,9 +259,16 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
         _set_parse_error("Expected number", cursor.pos, ("0-9",))
         return None
 
-    # Integer part
+    # Integer part - with length limit to prevent DoS
     while not cursor.is_eof and cursor.current in _ASCII_DIGITS:
         cursor = cursor.advance()
+        # Check length limit after consuming digit
+        if cursor.pos - start_pos > _MAX_NUMBER_LENGTH:
+            _set_parse_error(
+                f"Number exceeds maximum length ({_MAX_NUMBER_LENGTH} chars)",
+                cursor.pos,
+            )
+            return None
 
     # Optional decimal part
     if not cursor.is_eof and cursor.current == ".":
@@ -254,8 +279,15 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
             _set_parse_error("Expected digit after decimal point", cursor.pos, ("0-9",))
             return None
 
+        # Decimal digits - continue length check
         while not cursor.is_eof and cursor.current in _ASCII_DIGITS:
             cursor = cursor.advance()
+            if cursor.pos - start_pos > _MAX_NUMBER_LENGTH:
+                _set_parse_error(
+                    f"Number exceeds maximum length ({_MAX_NUMBER_LENGTH} chars)",
+                    cursor.pos,
+                )
+                return None
 
     # Extract number string
     number_str = Cursor(cursor.source, start_pos).slice_to(cursor.pos)
@@ -411,6 +443,14 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
     chars: list[str] = []
 
     while not cursor.is_eof:
+        # Check length limit before processing more characters (DoS prevention)
+        if len(chars) > _MAX_STRING_LITERAL_LENGTH:
+            _set_parse_error(
+                f"String literal exceeds maximum length ({_MAX_STRING_LITERAL_LENGTH} chars)",
+                cursor.pos,
+            )
+            return None
+
         ch = cursor.current
 
         if ch == '"':

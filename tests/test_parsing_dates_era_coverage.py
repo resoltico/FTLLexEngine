@@ -114,6 +114,54 @@ class TestStripEraFunction:
         assert "CE" not in result
         assert result == "2025"
 
+    def test_strip_era_embedded_in_word_not_stripped(self) -> None:
+        """Test _strip_era does NOT strip era embedded in words (branch 689->681 False path).
+
+        When an era string is found but fails word boundary check,
+        the era should NOT be stripped. This tests the branch where
+        the condition at line 689 is False and loop continues.
+        """
+        # "AD" is embedded in "ADMIRE" - should not strip
+        value_admire = "ADMIRE 2025"
+        # "BC" is embedded in "ABCD" - should not strip
+        value_abcd = "ABCD 100"
+        # "CE" is embedded in "ONCE" - should not strip
+        value_once = "ONCE upon 2025"
+
+        result_admire = _strip_era(value_admire)
+        result_abcd = _strip_era(value_abcd)
+        result_once = _strip_era(value_once)
+
+        # Words containing era substrings should remain unchanged
+        assert result_admire == "ADMIRE 2025"
+        assert result_abcd == "ABCD 100"
+        assert result_once == "ONCE upon 2025"
+
+    def test_strip_era_at_word_boundary_start_not_end(self) -> None:
+        """Test era at start but not end word boundary is not stripped.
+
+        "ADmiral" starts with "AD" at word boundary but "AD" is not at
+        end word boundary, so should not be stripped.
+        """
+        value = "Admiral 2025"
+
+        result = _strip_era(value)
+
+        # "Admiral" should NOT be modified - "AD" embedded at start
+        assert "Admiral" in result
+
+    def test_strip_era_at_word_boundary_end_not_start(self) -> None:
+        """Test era at end but not start word boundary is not stripped.
+
+        Words ending with era substring should not be modified.
+        """
+        value = "CAD 2025"  # Ends with "AD" but "C" before it
+
+        result = _strip_era(value)
+
+        # "CAD" contains "AD" but not at start word boundary
+        assert "CAD" in result
+
 
 class TestBabelToStrptimeEraToken:
     """Test _babel_to_strptime era token handling (line 672)."""
