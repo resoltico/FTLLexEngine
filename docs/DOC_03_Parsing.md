@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.57.0"
+version: "0.58.0"
 domain: PARSING
-updated: "2026-01-06"
+updated: "2026-01-07"
 route:
   keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax, BabelImportError]
   questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?", "what exceptions do parsing functions raise?"]
@@ -90,6 +90,7 @@ class FluentParserV1:
 - State: Stores max_source_size and max_nesting_depth configuration.
 - Thread: Safe for concurrent parse() calls.
 - Security: Validates source size and nesting depth (DoS prevention).
+- Depth Validation: max_nesting_depth automatically clamped to sys.getrecursionlimit() - 50. Logs warning if clamped.
 
 ---
 

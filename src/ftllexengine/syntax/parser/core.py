@@ -28,6 +28,10 @@ See Also:
     - :mod:`ftllexengine.syntax.parser.rules` - Grammar rules (patterns, expressions, entries)
 """
 
+import logging
+import re
+import sys
+
 from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.enums import CommentType
@@ -138,6 +142,8 @@ def _merge_comments(first: Comment, second: Comment) -> Comment:
 
 __all__ = ["FluentParserV1"]
 
+logger = logging.getLogger(__name__)
+
 
 class FluentParserV1:
     """Fluent FTL parser using immutable cursor pattern.
@@ -177,13 +183,33 @@ class FluentParserV1:
                             Set to None or 0 to disable size limit (not recommended).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } }.
+                              Automatically clamped to sys.getrecursionlimit() - 50
+                              to prevent RecursionError. Warning logged if clamped.
         """
         self._max_source_size = (
             max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
         )
-        self._max_nesting_depth = (
+
+        # Calculate desired depth
+        requested_depth = (
             max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
         )
+
+        # Validate against Python's recursion limit
+        # Reserve 50 frames for parser call stack overhead (locals, exception handlers)
+        max_safe_depth = sys.getrecursionlimit() - 50
+        if requested_depth > max_safe_depth:
+            logger.warning(
+                "max_nesting_depth=%d exceeds Python recursion limit (%d). "
+                "Clamping to %d to prevent RecursionError. "
+                "Consider increasing sys.setrecursionlimit() if needed.",
+                requested_depth,
+                sys.getrecursionlimit(),
+                max_safe_depth,
+            )
+            self._max_nesting_depth = max_safe_depth
+        else:
+            self._max_nesting_depth = requested_depth
 
     @property
     def max_source_size(self) -> int:
@@ -251,8 +277,9 @@ class FluentParserV1:
         # Normalize line endings to LF per Fluent spec.
         # This ensures consistent behavior across platforms and simplifies
         # line/column tracking throughout the parser.
-        # Order matters: CRLF first (otherwise CR becomes LF and remaining LF stays)
-        source = source.replace("\r\n", "\n").replace("\r", "\n")
+        # Single-pass regex normalization: \r\n and \r both become \n
+        # More memory-efficient than chained replace() (no intermediate string)
+        source = re.sub(r"\r\n?", "\n", source)
 
         cursor = Cursor(source, 0)
         entries: list[Message | Term | Junk | Comment] = []

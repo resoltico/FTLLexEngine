@@ -8,6 +8,7 @@ from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource
 from ftllexengine.validation.resource import (
+    _build_dependency_graph,
     _detect_circular_references,
     _extract_syntax_errors,
 )
@@ -171,7 +172,9 @@ class TestDetectCircularReferencesUnitTest:
             if isinstance(entry, Term):
                 terms_dict[entry.id.name] = entry
 
-        warnings = _detect_circular_references({}, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph({}, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect term-only cycle
         assert len(warnings) > 0

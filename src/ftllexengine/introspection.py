@@ -60,9 +60,22 @@ __all__ = [
 # collected. This avoids the id() reuse problem of regular dicts and provides
 # proper cache invalidation without manual management.
 #
-# Thread safety: WeakKeyDictionary is NOT thread-safe for concurrent writes.
-# However, introspection is a pure read operation on immutable AST nodes, and
-# the worst case of a cache miss is redundant computation (no corruption).
+# Thread Safety (Accepted Race Condition):
+# WeakKeyDictionary is NOT thread-safe for concurrent writes. Concurrent
+# introspection of the same Message/Term from multiple threads may cause
+# race conditions during cache write operations.
+#
+# This design accepts potential races for the following reasons:
+# - Introspection is a pure read operation on immutable AST nodes
+# - Worst case: redundant computation (cache miss), never data corruption
+# - Typical usage: read-mostly workload, concurrent introspection is rare
+# - Alternative (RLock): adds synchronization overhead for minimal benefit
+# - Alternative (thread-local cache): reduces hit rate, increases memory usage
+#
+# Trade-off: Lock-free reads provide better performance than synchronized access.
+# Occasional redundant computation under concurrent load is acceptable given the
+# rarity of pathological concurrent introspection scenarios. This is a permanent
+# architectural decision prioritizing common-case performance.
 _introspection_cache: weakref.WeakKeyDictionary[Message | Term, MessageIntrospection] = (
     weakref.WeakKeyDictionary()
 )

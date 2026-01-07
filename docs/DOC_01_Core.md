@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.57.0"
+version: "0.58.0"
 domain: CORE
-updated: "2026-01-06"
+updated: "2026-01-07"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -854,6 +854,8 @@ class LoadSummary:
     @property
     def all_successful(self) -> bool: ...
     @property
+    def all_clean(self) -> bool: ...
+    @property
     def has_junk(self) -> bool: ...
 ```
 
@@ -872,6 +874,24 @@ class LoadSummary:
 - State: Frozen dataclass. Statistics computed in __post_init__.
 - Junk: `get_with_junk()` returns results with Junk; `get_all_junk()` aggregates all Junk.
 - Import: `from ftllexengine.localization import LoadSummary`
+
+---
+
+## `LoadSummary.all_clean`
+
+Property checking if all resources loaded successfully without Junk entries.
+
+### Signature
+```python
+@property
+def all_clean(self) -> bool:
+```
+
+### Constraints
+- Return: True if errors == 0 and not_found == 0 and junk_count == 0.
+- State: Read-only property.
+- Purpose: Stricter validation than all_successful. Use for validation workflows requiring zero unparseable content.
+- Contrast: `all_successful` ignores Junk (only checks I/O success), `all_clean` requires perfect parse.
 
 ---
 

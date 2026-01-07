@@ -34,6 +34,7 @@ from ftllexengine.syntax import (
 )
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.validation.resource import (
+    _build_dependency_graph,
     _check_undefined_references,
     _compute_longest_paths,
     _detect_circular_references,
@@ -134,7 +135,9 @@ class TestDetectCircularReferencesDuplicateCycles:
         messages_dict: dict[str, Message] = {}
         terms_dict = {"self": term}
 
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect exactly one cycle (not duplicates)
         assert len(warnings) == 1
@@ -163,7 +166,9 @@ class TestDetectCircularReferencesDuplicateCycles:
         messages_dict: dict[str, Message] = {}
         terms_dict = {"termA": term_a, "termB": term_b}
 
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect term cycle with proper formatting
         assert len(warnings) == 1
@@ -194,7 +199,9 @@ class TestDetectCircularReferencesDuplicateCycles:
         messages_dict = {"msgA": msg_a, "msgB": msg_b}
         terms_dict: dict[str, Term] = {}
 
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect message cycle with proper formatting
         assert len(warnings) == 1
@@ -300,8 +307,10 @@ class TestDetectLongChainsFormattingLongPaths:
 
         terms_dict: dict[str, Term] = {}
 
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
         # Use max_depth=5 to trigger warning (chain is 15 nodes long)
-        warnings = _detect_long_chains(messages_dict, terms_dict, max_depth=5)
+        warnings = _detect_long_chains(graph, max_depth=5)
 
         # Should detect the long chain
         assert len(warnings) == 1
@@ -338,8 +347,10 @@ class TestDetectLongChainsFormattingLongPaths:
 
         terms_dict: dict[str, Term] = {}
 
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
         # Use max_depth=5 to trigger warning
-        warnings = _detect_long_chains(messages_dict, terms_dict, max_depth=5)
+        warnings = _detect_long_chains(graph, max_depth=5)
 
         # Should detect the chain
         assert len(warnings) == 1
@@ -375,7 +386,9 @@ class TestDetectLongChainsFormattingLongPaths:
 
         terms_dict: dict[str, Term] = {}
 
-        warnings = _detect_long_chains(messages_dict, terms_dict, max_depth=5)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_long_chains(graph, max_depth=5)
 
         # Should show truncation
         assert len(warnings) == 1

@@ -397,28 +397,21 @@ def _check_undefined_references(
 
 
 def _detect_circular_references(
-    messages_dict: dict[str, Message],
-    terms_dict: dict[str, Term],
-    *,
-    known_messages: frozenset[str] | None = None,
-    known_terms: frozenset[str] | None = None,
+    graph: dict[str, set[str]],
 ) -> list[ValidationWarning]:
     """Detect circular dependencies in messages and terms.
 
     Uses iterative DFS via analysis.graph module to avoid stack overflow
     on deep dependency chains.
 
-    Builds a unified dependency graph with type-prefixed nodes to detect:
+    Accepts a unified dependency graph with type-prefixed nodes to detect:
     - Message-only cycles (msg:A -> msg:B -> msg:A)
     - Term-only cycles (term:A -> term:B -> term:A)
     - Cross-type cycles (msg:A -> term:B -> msg:A)
     - Cross-resource cycles (current resource -> known entry -> current resource)
 
     Args:
-        messages_dict: Map of message IDs to Message nodes from current resource
-        terms_dict: Map of term IDs to Term nodes from current resource
-        known_messages: Optional set of message IDs already in bundle
-        known_terms: Optional set of term IDs already in bundle
+        graph: Unified dependency graph with type-prefixed nodes (msg:name, term:name)
 
     Returns:
         List of warnings for circular references
@@ -426,56 +419,8 @@ def _detect_circular_references(
     warnings: list[ValidationWarning] = []
     seen_cycle_keys: set[str] = set()
 
-    # Build unified dependency graph with type-prefixed nodes
-    # This enables detection of cross-type cycles (message -> term -> message)
-    unified_deps: dict[str, set[str]] = {}
-
-    # Add message nodes with all their dependencies (both message and term refs)
-    for msg_name, message in messages_dict.items():
-        msg_refs, term_refs = extract_references(message)
-        node_key = f"msg:{msg_name}"
-        deps: set[str] = set()
-        # Message references: add edge if target exists in current resource or known entries
-        for ref in msg_refs:
-            if ref in messages_dict or (known_messages and ref in known_messages):
-                deps.add(f"msg:{ref}")
-        # Term references: add edge if target exists in current resource or known entries
-        for ref in term_refs:
-            if ref in terms_dict or (known_terms and ref in known_terms):
-                deps.add(f"term:{ref}")
-        unified_deps[node_key] = deps
-
-    # Add term nodes with all their dependencies (both message and term refs)
-    for term_name, term in terms_dict.items():
-        msg_refs, term_refs = extract_references(term)
-        node_key = f"term:{term_name}"
-        deps = set()
-        # Message references: add edge if target exists in current resource or known entries
-        for ref in msg_refs:
-            if ref in messages_dict or (known_messages and ref in known_messages):
-                deps.add(f"msg:{ref}")
-        # Term references: add edge if target exists in current resource or known entries
-        for ref in term_refs:
-            if ref in terms_dict or (known_terms and ref in known_terms):
-                deps.add(f"term:{ref}")
-        unified_deps[node_key] = deps
-
-    # Add known entries as nodes (with no outgoing edges since we don't have their ASTs)
-    # This allows cycle detection to find cycles that go through known entries
-    if known_messages:
-        for known_msg in known_messages:
-            node_key = f"msg:{known_msg}"
-            if node_key not in unified_deps:
-                unified_deps[node_key] = set()
-
-    if known_terms:
-        for known_term in known_terms:
-            node_key = f"term:{known_term}"
-            if node_key not in unified_deps:
-                unified_deps[node_key] = set()
-
     # Detect all cycles in the unified graph
-    for cycle in detect_cycles(unified_deps):
+    for cycle in detect_cycles(graph):
         cycle_key = make_cycle_key(cycle)
         if cycle_key not in seen_cycle_keys:
             seen_cycle_keys.add(cycle_key)
@@ -517,6 +462,9 @@ def _detect_circular_references(
 def _build_dependency_graph(
     messages_dict: dict[str, Message],
     terms_dict: dict[str, Term],
+    *,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
 ) -> dict[str, set[str]]:
     """Build unified dependency graph for messages and terms.
 
@@ -524,35 +472,57 @@ def _build_dependency_graph(
     both cycle detection and chain depth analysis.
 
     Args:
-        messages_dict: Map of message IDs to Message nodes
-        terms_dict: Map of term IDs to Term nodes
+        messages_dict: Map of message IDs to Message nodes from current resource
+        terms_dict: Map of term IDs to Term nodes from current resource
+        known_messages: Optional set of message IDs already in bundle
+        known_terms: Optional set of term IDs already in bundle
 
     Returns:
         Graph as adjacency list (node -> set of dependencies)
     """
     graph: dict[str, set[str]] = {}
 
+    # Add message nodes with all their dependencies (both message and term refs)
     for msg_name, message in messages_dict.items():
         msg_refs, term_refs = extract_references(message)
         deps: set[str] = set()
+        # Message references: add edge if target exists in current resource or known entries
         for ref in msg_refs:
-            if ref in messages_dict:
+            if ref in messages_dict or (known_messages and ref in known_messages):
                 deps.add(f"msg:{ref}")
+        # Term references: add edge if target exists in current resource or known entries
         for ref in term_refs:
-            if ref in terms_dict:
+            if ref in terms_dict or (known_terms and ref in known_terms):
                 deps.add(f"term:{ref}")
         graph[f"msg:{msg_name}"] = deps
 
+    # Add term nodes with all their dependencies (both message and term refs)
     for term_name, term in terms_dict.items():
         msg_refs, term_refs = extract_references(term)
-        deps = set()
+        term_deps: set[str] = set()
+        # Message references: add edge if target exists in current resource or known entries
         for ref in msg_refs:
-            if ref in messages_dict:
-                deps.add(f"msg:{ref}")
+            if ref in messages_dict or (known_messages and ref in known_messages):
+                term_deps.add(f"msg:{ref}")
+        # Term references: add edge if target exists in current resource or known entries
         for ref in term_refs:
-            if ref in terms_dict:
-                deps.add(f"term:{ref}")
-        graph[f"term:{term_name}"] = deps
+            if ref in terms_dict or (known_terms and ref in known_terms):
+                term_deps.add(f"term:{ref}")
+        graph[f"term:{term_name}"] = term_deps
+
+    # Add known entries as nodes (with no outgoing edges since we don't have their ASTs)
+    # This allows cycle detection to find cycles that go through known entries
+    if known_messages:
+        for known_msg in known_messages:
+            node_key = f"msg:{known_msg}"
+            if node_key not in graph:
+                graph[node_key] = set()
+
+    if known_terms:
+        for known_term in known_terms:
+            node_key = f"term:{known_term}"
+            if node_key not in graph:
+                graph[node_key] = set()
 
     return graph
 
@@ -606,8 +576,7 @@ def _compute_longest_paths(
 
 
 def _detect_long_chains(
-    messages_dict: dict[str, Message],
-    terms_dict: dict[str, Term],
+    graph: dict[str, set[str]],
     max_depth: int = MAX_DEPTH,
 ) -> list[ValidationWarning]:
     """Detect reference chains that exceed maximum depth.
@@ -616,14 +585,12 @@ def _detect_long_chains(
     Warns if any chain exceeds max_depth (would fail at runtime).
 
     Args:
-        messages_dict: Map of message IDs to Message nodes
-        terms_dict: Map of term IDs to Term nodes
+        graph: Unified dependency graph with type-prefixed nodes (msg:name, term:name)
         max_depth: Maximum allowed chain depth (default: MAX_DEPTH)
 
     Returns:
         List of warnings for chains exceeding max_depth
     """
-    graph = _build_dependency_graph(messages_dict, terms_dict)
     if not graph:
         return []
 
@@ -738,16 +705,20 @@ def validate_resource(
             known_terms=known_terms,
         )
 
-        # Pass 4: Detect circular dependencies
-        cycle_warnings = _detect_circular_references(
+        # Build unified dependency graph once for both cycle and chain detection
+        # Avoids redundant graph construction (important for large resources)
+        dependency_graph = _build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=known_messages,
             known_terms=known_terms,
         )
 
+        # Pass 4: Detect circular dependencies
+        cycle_warnings = _detect_circular_references(dependency_graph)
+
         # Pass 5: Detect long reference chains (would fail at runtime)
-        chain_warnings = _detect_long_chains(messages_dict, terms_dict)
+        chain_warnings = _detect_long_chains(dependency_graph)
 
         # Pass 6: Fluent spec compliance (E0001-E0013)
         semantic_validator = SemanticValidator()

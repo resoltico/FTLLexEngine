@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import re
-import threading
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
@@ -35,6 +34,7 @@ from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver, FluentValue
+from ftllexengine.runtime.rwlock import RWLock
 from ftllexengine.syntax import Comment, Junk, Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
@@ -64,10 +64,18 @@ class FluentBundle:
     error handling that returns (result, errors) tuples.
 
     Thread Safety:
-        FluentBundle is always thread-safe. All public methods are synchronized
-        via internal RLock. This prevents race conditions when add_resource()
-        is called concurrently with format_pattern(). RLock overhead is negligible
-        (~10ns per acquire) for typical usage patterns.
+        FluentBundle is always thread-safe using a readers-writer lock (RWLock).
+        This enables high-concurrency access patterns:
+
+        - Read operations (format_pattern, format_message, has_message, etc.)
+          can execute concurrently without blocking each other.
+        - Write operations (add_resource, add_function) acquire exclusive access.
+        - Writers have priority to prevent starvation in read-heavy workloads.
+
+        This design provides superior throughput for multi-threaded applications
+        while maintaining full thread safety. Typical web servers with 100+
+        concurrent format requests will see significant performance improvements
+        compared to coarse-grained locking.
 
     Parser Security:
         Configurable limits prevent DoS attacks:
@@ -97,12 +105,12 @@ class FluentBundle:
         "_cache_size",
         "_function_registry",
         "_locale",
-        "_lock",
         "_max_nesting_depth",
         "_max_source_size",
         "_messages",
         "_owns_registry",
         "_parser",
+        "_rwlock",
         "_terms",
         "_use_isolating",
     )
@@ -166,10 +174,9 @@ class FluentBundle:
             ValueError: If locale code is empty or has invalid format
 
         Thread Safety:
-            FluentBundle is always thread-safe. All public methods are synchronized
-            via internal RLock. This prevents race conditions when add_resource()
-            is called concurrently with format_pattern(). RLock overhead is negligible
-            (~10ns per acquire) for typical usage patterns.
+            FluentBundle is always thread-safe using a readers-writer lock (RWLock).
+            Read operations (format calls) execute concurrently without blocking.
+            Write operations (add_resource, add_function) acquire exclusive access.
 
         Example:
             >>> # Using default registry (standard functions)
@@ -200,9 +207,10 @@ class FluentBundle:
             max_nesting_depth=self._max_nesting_depth,
         )
 
-        # Thread safety: always enabled via RLock
-        # RLock overhead is negligible (~10ns per acquire) and prevents subtle race conditions
-        self._lock = threading.RLock()
+        # Thread safety: always enabled via RWLock (readers-writer lock)
+        # Allows concurrent read operations (format calls) while ensuring
+        # exclusive write access (add_resource, add_function)
+        self._rwlock = RWLock()
 
         # Function registry: copy-on-write optimization
         # Using the shared registry avoids re-registering built-in functions for each bundle.
@@ -528,7 +536,7 @@ class FluentBundle:
             Parser continues after errors (robustness principle). Junk entries
             are returned for programmatic error handling.
         """
-        with self._lock:
+        with self._rwlock.write():
             return self._add_resource_impl(source, source_path)
 
     def _add_resource_impl(
@@ -642,12 +650,13 @@ class FluentBundle:
         """
         # Delegate to validation module, reusing bundle's parser for consistency
         # Pass existing bundle entries for cross-resource reference validation
-        return _validate_resource_impl(
-            source,
-            parser=self._parser,
-            known_messages=frozenset(self._messages.keys()),
-            known_terms=frozenset(self._terms.keys()),
-        )
+        with self._rwlock.read():
+            return _validate_resource_impl(
+                source,
+                parser=self._parser,
+                known_messages=frozenset(self._messages.keys()),
+                known_terms=frozenset(self._terms.keys()),
+            )
 
     def format_pattern(
         self,
@@ -696,7 +705,7 @@ class FluentBundle:
             >>> assert result == 'Saglabā pašreizējo ierakstu datubāzē'
             >>> assert errors == ()
         """
-        with self._lock:
+        with self._rwlock.read():
             return self._format_pattern_impl(message_id, args, attribute)
 
     def _format_pattern_impl(
@@ -828,7 +837,7 @@ class FluentBundle:
         Returns:
             True if message exists in bundle
         """
-        with self._lock:
+        with self._rwlock.read():
             return message_id in self._messages
 
     def has_attribute(self, message_id: str, attribute: str) -> bool:
@@ -855,7 +864,7 @@ class FluentBundle:
             >>> bundle.has_attribute("nonexistent", "tooltip")
             False
         """
-        with self._lock:
+        with self._rwlock.read():
             if message_id not in self._messages:
                 return False
             message = self._messages[message_id]
@@ -867,7 +876,7 @@ class FluentBundle:
         Returns:
             List of message identifiers
         """
-        with self._lock:
+        with self._rwlock.read():
             return list(self._messages.keys())
 
     def get_message_variables(self, message_id: str) -> frozenset[str]:
@@ -890,7 +899,7 @@ class FluentBundle:
             >>> vars = bundle.get_message_variables("greeting")
             >>> assert "name" in vars
         """
-        with self._lock:
+        with self._rwlock.read():
             if message_id not in self._messages:
                 msg = f"Message '{message_id}' not found"
                 raise KeyError(msg)
@@ -952,7 +961,7 @@ class FluentBundle:
             >>> assert "amount" in info.get_variable_names()
             >>> assert "NUMBER" in info.get_function_names()
         """
-        with self._lock:
+        with self._rwlock.read():
             if message_id not in self._messages:
                 msg = f"Message '{message_id}' not found"
                 raise KeyError(msg)
@@ -979,7 +988,7 @@ class FluentBundle:
             >>> info = bundle.introspect_term("brand")
             >>> assert "case" in info.get_variable_names()
         """
-        with self._lock:
+        with self._rwlock.read():
             if term_id not in self._terms:
                 msg = f"Term '{term_id}' not found"
                 raise KeyError(msg)
@@ -998,7 +1007,7 @@ class FluentBundle:
             ...     return value.upper()
             >>> bundle.add_function("CUSTOM", CUSTOM)
         """
-        with self._lock:
+        with self._rwlock.write():
             # Copy-on-write: copy the shared registry on first modification
             if not self._owns_registry:
                 self._function_registry = self._function_registry.copy()
@@ -1025,7 +1034,7 @@ class FluentBundle:
             >>> bundle.format_pattern("msg")  # Caches result
             >>> bundle.clear_cache()  # Manual invalidation
         """
-        with self._lock:
+        with self._rwlock.write():
             if self._cache is not None:
                 self._cache.clear()
                 logger.debug("Cache manually cleared")

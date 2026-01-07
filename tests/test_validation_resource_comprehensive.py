@@ -13,7 +13,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.cursor import LineOffsetCache
-from ftllexengine.validation.resource import validate_resource
+from ftllexengine.validation.resource import (
+    _build_dependency_graph,
+    _detect_circular_references,
+    validate_resource,
+)
 
 
 class TestSyntaxErrorExtraction:
@@ -718,7 +722,6 @@ class TestMissingBranchCoverage:
             Placeable,
             Term,
         )
-        from ftllexengine.validation.resource import _detect_circular_references
 
         # Create circular messages: a -> b -> a
         msg_a = Message(
@@ -739,8 +742,10 @@ class TestMissingBranchCoverage:
         messages_dict = {"a": msg_a, "b": msg_b}
         terms_dict: dict[str, Term] = {}
 
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
         # Call the real function without mocking
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should only have 1 warning (cycle a -> b -> a is detected once)
         circular_warnings = [w for w in warnings if "circular" in w.message.lower()]
@@ -765,7 +770,6 @@ class TestMissingBranchCoverage:
             Term,
             TermReference,
         )
-        from ftllexengine.validation.resource import _detect_circular_references
 
         # Create circular terms: -ta -> -tb -> -ta
         term_a = Term(
@@ -786,8 +790,10 @@ class TestMissingBranchCoverage:
         messages_dict: dict[str, Message] = {}
         terms_dict = {"ta": term_a, "tb": term_b}
 
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
         # Call the real function without mocking
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should only have 1 warning (cycle ta -> tb -> ta is detected once)
         circular_warnings = [w for w in warnings if "circular" in w.message.lower()]

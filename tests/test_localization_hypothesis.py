@@ -66,10 +66,12 @@ class TestLocalizationUniversalProperties:
 
     @given(locales=st.lists(locale_codes(), min_size=1, max_size=5))
     def test_initialization_preserves_locale_order(self, locales: list[str]) -> None:
-        """Locale order is preserved after initialization (universal property)."""
+        """Locale deduplication preserves first-occurrence order (universal property)."""
         l10n = FluentLocalization(locales)
 
-        assert l10n.locales == tuple(locales)
+        # Deduplication uses dict.fromkeys() to preserve insertion order
+        expected = tuple(dict.fromkeys(locales))
+        assert l10n.locales == expected
 
     @given(
         locales=st.lists(locale_codes(), min_size=1, max_size=3),

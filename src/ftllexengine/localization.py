@@ -5,18 +5,20 @@ Separates multi-locale orchestration (FluentLocalization) from single-locale
 formatting (FluentBundle).
 
 Key architectural decisions:
-- Lazy bundle creation: FluentBundle objects created on first access
-- Eager resource loading: FTL resources loaded at init (fail-fast behavior)
+- Eager resource and bundle initialization: FTL resources AND bundles loaded at init
 - Protocol-based ResourceLoader (dependency inversion)
 - Immutable locale chain (established at construction)
 - Python 3.13 features: pattern matching, TypeIs, frozen dataclasses
 
 Initialization Behavior:
-    FluentLocalization loads all resources eagerly at construction to
-    provide fail-fast error detection. This means FileNotFoundError and
-    parse errors are raised immediately rather than during format() calls.
-    Bundle objects are still created lazily to reduce memory when fallback
-    locales are rarely accessed.
+    FluentLocalization loads all resources eagerly at construction to provide
+    fail-fast error detection. This means FileNotFoundError and parse errors
+    are raised immediately rather than during format() calls.
+
+    Bundles are created eagerly for locales that have resources loaded during
+    initialization. Fallback locale bundles (for locales not in the resource
+    loading loop) are created lazily on first access. This hybrid approach
+    balances fail-fast behavior with memory efficiency.
 
 Python 3.13+.
 """
@@ -215,8 +217,31 @@ class LoadSummary:
 
     @property
     def all_successful(self) -> bool:
-        """Check if all attempted resources loaded successfully."""
+        """Check if all attempted resources loaded successfully.
+
+        Success means no I/O errors and all files were found. Resources with
+        Junk entries (unparseable content) are still considered "successful"
+        because the parse operation completed.
+
+        For stricter validation that also checks for Junk, use all_clean.
+
+        Returns:
+            True if errors == 0 and not_found == 0, regardless of junk_count
+        """
         return self.errors == 0 and self.not_found == 0
+
+    @property
+    def all_clean(self) -> bool:
+        """Check if all resources loaded successfully without any Junk entries.
+
+        Stricter than all_successful: requires no errors, all files found,
+        AND zero Junk entries. Use this for validation workflows where
+        unparseable content should be treated as a failure.
+
+        Returns:
+            True if errors == 0 and not_found == 0 and junk_count == 0
+        """
+        return self.errors == 0 and self.not_found == 0 and self.junk_count == 0
 
 
 class ResourceLoader(Protocol):
@@ -513,8 +538,9 @@ class FluentLocalization:
             msg = "resource_loader required when resource_ids provided"
             raise ValueError(msg)
 
-        # Store immutable locale chain
-        self._locales: tuple[LocaleCode, ...] = tuple(locale_list)
+        # Store immutable locale chain with deduplication (preserves order)
+        # dict.fromkeys() removes duplicates while maintaining insertion order
+        self._locales: tuple[LocaleCode, ...] = tuple(dict.fromkeys(locale_list))
         self._resource_ids: tuple[ResourceId, ...] = tuple(resource_ids) if resource_ids else ()
         self._resource_loader: ResourceLoader | None = resource_loader
         self._use_isolating = use_isolating
@@ -545,7 +571,8 @@ class FluentLocalization:
         # - Predictable: All resource parse errors discovered immediately
         # - Trade-off: Slower initialization, but no runtime surprises
         # - Tracking: All load attempts recorded in _load_results for diagnostics
-        # Note: Bundle objects themselves are still lazily created via _get_or_create_bundle
+        # Note: Bundles are created eagerly for locales loaded here. Fallback locale
+        #       bundles (not in this loop) are created lazily via _get_or_create_bundle.
         if resource_loader and resource_ids:
             for locale in self._locales:
                 for resource_id in self._resource_ids:
@@ -652,16 +679,23 @@ class FluentLocalization:
         return self._locales
 
     def get_load_summary(self) -> LoadSummary:
-        """Get summary of all resource load attempts.
+        """Get summary of resource load attempts during initialization.
 
         Returns a LoadSummary with information about which resources loaded
-        successfully, which were not found, and which failed with errors.
+        successfully, which were not found, and which failed with errors
+        during the __init__() resource loading phase.
+
+        IMPORTANT: This only reflects resources loaded via the ResourceLoader
+        during construction. Resources added dynamically via add_resource()
+        are NOT included in this summary. This maintains a clear semantic
+        distinction between initialization-time (fail-fast) loading and
+        runtime (dynamic) resource additions.
 
         Use this to diagnose loading issues, especially in multi-locale setups
         where some locales may have missing or broken resources.
 
         Returns:
-            LoadSummary with aggregated load results
+            LoadSummary with aggregated load results from initialization
 
         Example:
             >>> loader = PathResourceLoader("locales/{locale}")

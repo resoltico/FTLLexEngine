@@ -36,7 +36,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from threading import RLock
 from typing import TYPE_CHECKING, ClassVar, Literal
 
@@ -363,8 +363,11 @@ class LocaleContext:
 
             # Decimal part
             if maximum_fraction_digits == 0:
-                # No decimals - round to integer
-                value = round(value)
+                # No decimals - round to integer using CLDR half-up rounding
+                # Use Decimal.quantize() with ROUND_HALF_UP instead of Python's
+                # round() which uses banker's rounding (round-half-to-even).
+                # CLDR specifies half-up: 2.5→3, 3.5→4 (not 2.5→2, 3.5→4)
+                value = float(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
                 format_pattern = integer_part
             elif minimum_fraction_digits == maximum_fraction_digits:
                 # Fixed decimals (e.g., '0.00' for exactly 2)

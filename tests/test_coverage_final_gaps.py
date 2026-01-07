@@ -63,6 +63,7 @@ from ftllexengine.syntax.serializer import serialize
 from ftllexengine.syntax.validator import SemanticValidator
 from ftllexengine.syntax.visitor import ASTVisitor
 from ftllexengine.validation.resource import (
+    _build_dependency_graph,
     _detect_circular_references,
     validate_resource,
 )
@@ -685,8 +686,10 @@ class TestValidationResourceBranchCoverage:
         messages_dict = {"a": msg_a, "b": msg_b}
         terms_dict = {"x": term_x, "y": term_y}
 
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
         # Cycle detection should find the term cycle
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect the cycle
         cycle_warnings = [w for w in warnings if "circular" in w.message.lower()]
@@ -718,7 +721,9 @@ class TestValidationResourceBranchCoverage:
         messages_dict = {"a": msg_a}
         terms_dict = {"t": term_t}
 
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect cross-type cycle
         assert any("circular" in w.message.lower() for w in warnings)
@@ -1218,7 +1223,9 @@ class TestResourceValidationBranchCoverageExtended:
         messages_dict = {"a": msg_a, "b": msg_b, "x": msg_x, "y": msg_y}
         terms_dict: dict[str, Term] = {}
 
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect both cycles
         cycle_warnings = [w for w in warnings if "circular" in w.message.lower()]
@@ -1257,7 +1264,9 @@ class TestResourceValidationBranchCoverageExtended:
         messages_dict = {"a": msg_a, "b": msg_b, "c": msg_c, "d": msg_d}
         terms_dict: dict[str, Term] = {}
 
-        warnings = _detect_circular_references(messages_dict, terms_dict)
+        # Build dependency graph
+        graph = _build_dependency_graph(messages_dict, terms_dict)
+        warnings = _detect_circular_references(graph)
 
         # Should detect no cycles
         cycle_warnings = [w for w in warnings if "circular" in w.message.lower()]

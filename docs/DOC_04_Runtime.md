@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.57.0"
+version: "0.58.0"
 domain: RUNTIME
-updated: "2026-01-06"
+updated: "2026-01-07"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?"]
 ---
 
 # Runtime Reference
@@ -71,6 +71,7 @@ def number_format(
 - State: None.
 - Thread: Safe.
 - Plural: Original value preserved for correct plural category matching in select expressions.
+- Rounding: Uses CLDR half-up rounding (2.5->3, 3.5->4). Matches Intl.NumberFormat behavior.
 
 ---
 
@@ -945,5 +946,66 @@ class GlobalDepthGuard:
 - Security: Custom functions calling `bundle.format_pattern()` cannot bypass limits.
 - Raises: `FluentResolutionError` when global depth limit exceeded.
 - Internal: Used automatically by `FluentResolver.resolve_message()`.
+
+---
+
+## `RWLock`
+
+Readers-writer lock with writer preference for high-concurrency FluentBundle access.
+
+### Signature
+```python
+class RWLock:
+    def __init__(self) -> None: ...
+    def read(self) -> Generator[None, None, None]: ...
+    def write(self) -> Generator[None, None, None]: ...
+```
+
+### Constraints
+- Return: RWLock instance.
+- State: Tracks active readers, active writer, waiting writers, reader thread counts.
+- Thread: Safe for all operations. Reentrant for readers (same thread can acquire read lock multiple times).
+- Purpose: Allows multiple concurrent readers OR single exclusive writer.
+- Writer Preference: Writers are prioritized when waiting to prevent reader starvation.
+- Usage: FluentBundle uses RWLock internally for concurrent format operations.
+- Import: `from ftllexengine.runtime.rwlock import RWLock`
+
+---
+
+## `RWLock.read`
+
+Context manager acquiring read lock for shared access.
+
+### Signature
+```python
+@contextmanager
+def read(self) -> Generator[None, None, None]:
+```
+
+### Constraints
+- Return: Context manager yielding None.
+- State: Increments active readers count. Reentrant for same thread.
+- Thread: Safe. Multiple threads can hold read locks concurrently.
+- Blocks: When writer is active or writers are waiting (writer preference).
+- Usage: `with lock.read(): # read data`
+
+---
+
+## `RWLock.write`
+
+Context manager acquiring write lock for exclusive access.
+
+### Signature
+```python
+@contextmanager
+def write(self) -> Generator[None, None, None]:
+```
+
+### Constraints
+- Return: Context manager yielding None.
+- State: Sets active writer. Blocks all other readers and writers.
+- Thread: Safe. Only one thread can hold write lock at a time.
+- Blocks: Until all readers release their locks.
+- Usage: `with lock.write(): # modify data`
 
 ---

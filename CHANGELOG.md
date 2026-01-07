@@ -13,6 +13,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-01-07
+
+### Security
+- **PARSE-DEPTH-VAL-001** (LOW): Parser now validates `max_nesting_depth` against Python's recursion limit:
+  - Previous: User could specify `max_nesting_depth` exceeding `sys.getrecursionlimit()`, causing `RecursionError`
+  - Now: Parser clamps depth to `sys.getrecursionlimit() - 50` (reserves stack frames for parser overhead)
+  - Logs warning when user-specified depth is clamped
+  - Prevents DoS via misconfigured parser depth settings
+
+### Added
+- **RWLock Implementation** (PERF-BUNDLE-LOCK-CONTENTION-001): New readers-writer lock for high-concurrency FluentBundle access:
+  - New module: `runtime/rwlock.py` with `RWLock` class
+  - Multiple concurrent readers (format operations) execute without blocking each other
+  - Writers (add_resource, add_function) acquire exclusive access
+  - Writer preference prevents reader starvation in read-heavy workloads
+  - Reentrant read locks allow nested read operations from same thread
+  - Comprehensive test suite: `test_rwlock_implementation.py` and `test_bundle_rwlock_integration.py`
+
+- **LoadSummary.all_clean Property** (L10N-SUM-JUNK-001): New property for strict resource validation:
+  - `all_successful`: Returns True if no I/O errors (ignores Junk entries) - for load success checks
+  - `all_clean`: Returns True if no errors AND no Junk entries - for validation workflows
+  - Clarifies semantic distinction between "loaded successfully" and "perfectly valid"
+  - Example: Resource with parse errors is "successful" but not "clean"
+
+- **AST Span Fields** (FTL-AST-SPAN-001): All AST nodes now have `span` field for source position tracking:
+  - Added `span: Span | None = None` to: `Identifier`, `Attribute`, `Variant`, `StringLiteral`, `NumberLiteral`, `CallArguments`, `NamedArgument`
+  - Enables LSP/IDE features: go-to-definition, error highlighting, precise diagnostics
+  - Parser does not yet populate spans (future enhancement), but fields are available for tooling
+
+### Changed
+- **FluentBundle Thread Safety** (PERF-BUNDLE-LOCK-CONTENTION-001): Replaced coarse-grained RLock with readers-writer lock:
+  - Previous: All operations (read and write) acquired exclusive RLock, serializing concurrent format calls
+  - Now: Read operations (format_pattern, has_message, introspect_message, etc.) execute concurrently
+  - Write operations (add_resource, add_function, clear_cache) remain exclusive
+  - Significant throughput improvement for multi-threaded applications (100+ concurrent format requests)
+
+- **FluentLocalization Locale Deduplication** (L10N-DUPLICATE-LOCALE-001): Constructor now deduplicates locale codes:
+  - Previous: `FluentLocalization(['en', 'de', 'en'])` stored duplicates
+  - Now: Duplicates removed while preserving order: `('en', 'de')`
+  - Uses `dict.fromkeys()` for efficient O(n) deduplication
+  - First occurrence of each locale code is preserved
+
+- **Number Formatting Rounding** (RES-NUM-ROUNDING-001): Switched from banker's rounding to CLDR half-up rounding:
+  - Previous: Used Python's `round()` function (banker's rounding: 2.5→2, 3.5→4)
+  - Now: Uses `Decimal.quantize(ROUND_HALF_UP)` for CLDR-compliant rounding (2.5→3, 3.5→4, 4.5→5)
+  - Matches JavaScript `Intl.NumberFormat` and CLDR specification
+  - Critical for financial applications expecting deterministic rounding
+  - Affects `LocaleContext.format_number()` when `maximum_fraction_digits=0`
+
+### Performance
+- **CRLF Normalization Optimization** (PERF-PARSER-MEM-RED-001): Parser line ending normalization reduced to single pass:
+  - Previous: `source.replace("\r\n", "\n").replace("\r", "\n")` created intermediate string copy
+  - Now: `re.sub(r"\r\n?", "\n", source)` performs single-pass normalization
+  - Reduces memory allocation for large FTL files with mixed line endings
+  - No functional change, pure optimization
+
+- **Dependency Graph Optimization** (PERF-VAL-GRAPH-REDUNDANT-001): Validation builds dependency graph once:
+  - Previous: `_detect_circular_references()` and `_detect_long_chains()` each built separate graphs
+  - Now: `validate_resource()` builds unified graph once, passes to both functions
+  - `_build_dependency_graph()` signature extended with `known_messages` and `known_terms` parameters
+  - Reduces AST traversal overhead for resources with 100+ messages
+  - `_detect_circular_references()` and `_detect_long_chains()` now accept pre-built graph
+
+### Documentation
+- **FluentLocalization Initialization Behavior** (L10N-LAZY-001): Clarified eager vs. hybrid bundle creation:
+  - Module docstring: Bundles created eagerly for locales loaded during init, lazily for fallback locales
+  - Constructor docstring: Resources loaded eagerly (fail-fast), bundles created on-demand
+  - Inline comments: Explains hybrid approach balances fail-fast with memory efficiency
+
+- **get_load_summary() Scope** (L10N-SUM-001): Documented that summary only reflects initialization-time loading:
+  - Docstring clarifies: Only resources loaded via ResourceLoader during `__init__()` are tracked
+  - Resources added via `add_resource()` are NOT included in summary
+  - Maintains semantic distinction between init-time (fail-fast) and runtime (dynamic) loading
+
+- **Introspection Cache Race Condition** (INTRO-CACHE-001): Documented accepted race condition in module-level cache:
+  - `_introspection_cache` (WeakKeyDictionary) is NOT thread-safe for concurrent writes
+  - Pathological case: Concurrent introspection of same Message/Term from multiple threads
+  - Accepted trade-off: Worst case is redundant computation (cache miss), never corruption
+  - Rationale: Read-mostly workload, RLock overhead outweighs rare redundant computation
+  - Alternative (thread-local cache) would reduce hit rate and increase memory
+  - Permanent architectural decision prioritizing common-case performance over pathological concurrency scenarios
+
+- **Parser Thread-Local Storage** (FTL-PAR-THREADLOCAL-001): Documented architectural decision for primitive error context:
+  - `syntax/parser/primitives.py` uses thread-local storage for parse error context
+  - Design choice: Implicit state via thread-local over explicit parameter threading
+  - Rationale: Primitives called 100+ times per parse; explicit context would require ~10 signature changes and 200+ call site updates
+  - Trade-off: Performance benefit of reduced overhead outweighs cost of implicit state for high-frequency operations
+  - Thread safety: Async frameworks must call `clear_parse_error()` before each parse to prevent context leakage
+  - Permanent architectural pattern balancing performance with explicitness
+
 ## [0.57.0] - 2026-01-07
 
 ### Security
@@ -1258,6 +1348,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.58.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.58.0
 [0.57.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.57.0
 [0.56.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.56.0
 [0.55.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.55.0

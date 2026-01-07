@@ -5,9 +5,11 @@ applications.
 
 Thread Safety:
     FluentBundle is ALWAYS thread-safe. All public methods are synchronized
-    via internal RLock. This prevents race conditions when add_resource()
-    is called concurrently with format_pattern(). RLock overhead is negligible
-    (~10ns per acquire) for typical usage patterns.
+    via internal readers-writer lock (RWLock). This allows multiple concurrent
+    readers (format_pattern, has_message, etc.) to execute in parallel while
+    writers (add_resource, add_function) acquire exclusive access. RWLock
+    significantly improves throughput for read-heavy workloads with 100+
+    concurrent format requests.
 
 Demonstrates:
 1. Single-threaded initialization pattern (recommended for static resources)
@@ -50,6 +52,7 @@ items = { $count ->
     print("[STARTUP] Resources loaded (single-threaded)")
 
     # Step 2: Share bundle across threads for read-only operations (safe)
+    # Concurrent reads execute in parallel via RWLock (no blocking)
     def worker(thread_id: int, bundle_ref: FluentBundle) -> None:
         """Worker function that reads from shared bundle."""
         for _ in range(3):
@@ -160,17 +163,17 @@ task = Processing task { $task_id }
     print("\n[SUCCESS] Thread-local bundles pattern complete")
 
 
-# Example 4: Dynamic resource loading (always safe in v0.42.0+)
+# Example 4: Dynamic resource loading (always safe)
 def example_4_dynamic_loading() -> None:
     """Example 4: Dynamic resource loading - always thread-safe.
 
-    As of v0.42.0, FluentBundle is ALWAYS thread-safe.
+    FluentBundle is ALWAYS thread-safe.
     No special configuration or manual locks needed.
     """
     print("\n" + "=" * 60)
     print("Example 4: Dynamic Resource Loading (Always Safe)")
     print("=" * 60)
-    print("[INFO] FluentBundle is always thread-safe as of v0.42.0")
+    print("[INFO] FluentBundle is always thread-safe")
     print("[INFO] No manual locks or special parameters needed\n")
 
     # Create bundle - thread safety is automatic
@@ -220,4 +223,4 @@ if __name__ == "__main__":
     print("  - Static resources: Use Example 1 (single-threaded init)")
     print("  - Dynamic resources: Use Example 4 (always safe)")
     print("  - Per-thread customization: Use Example 3 (thread-local)")
-    print("\n[NOTE] As of v0.42.0, all FluentBundle instances are thread-safe.")
+    print("\n[NOTE] All FluentBundle instances are thread-safe.")

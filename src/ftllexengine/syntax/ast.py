@@ -125,6 +125,7 @@ class Identifier:
     """Identifier: [a-zA-Z][a-zA-Z0-9_-]*"""
 
     name: str
+    span: Span | None = None
 
     @staticmethod
     def guard(key: object) -> TypeIs[Identifier]:
@@ -199,6 +200,7 @@ class Attribute:
 
     id: Identifier
     value: Pattern
+    span: Span | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +339,7 @@ class Variant:
     key: VariantKey
     value: Pattern
     default: bool = False
+    span: Span | None = None
 
 
 # ============================================================================
@@ -355,6 +358,7 @@ class StringLiteral:
     """
 
     value: str
+    span: Span | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,6 +379,8 @@ class NumberLiteral:
 
     raw: str
     """Original source representation (for serialization)."""
+
+    span: Span | None = None
 
     @staticmethod
     def guard(key: object) -> TypeIs[NumberLiteral]:
@@ -449,6 +455,7 @@ class CallArguments:
 
     positional: tuple[InlineExpression, ...]
     named: tuple[NamedArgument, ...]
+    span: Span | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,6 +464,7 @@ class NamedArgument:
 
     name: Identifier
     value: InlineExpression
+    span: Span | None = None
 
 
 # ============================================================================

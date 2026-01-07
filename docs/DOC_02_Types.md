@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.57.0"
+version: "0.58.0"
 domain: TYPES
-updated: "2026-01-06"
+updated: "2026-01-07"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
@@ -102,6 +102,7 @@ class Term:
 class Attribute:
     id: Identifier
     value: Pattern
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -109,6 +110,7 @@ class Attribute:
 |:----------|:-----|:----|:------------|
 | `id` | `Identifier` | Y | Attribute name. |
 | `value` | `Pattern` | Y | Attribute value pattern. |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable attribute node.
@@ -272,6 +274,7 @@ class Variant:
     key: VariantKey
     value: Pattern
     default: bool = False
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -280,6 +283,7 @@ class Variant:
 | `key` | `VariantKey` | Y | Variant key (Identifier or NumberLiteral). |
 | `value` | `Pattern` | Y | Variant pattern. |
 | `default` | `bool` | N | True for default variant (*). |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable variant node.
@@ -294,12 +298,14 @@ class Variant:
 @dataclass(frozen=True, slots=True)
 class StringLiteral:
     value: str
+    span: Span | None = None
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | String content (without quotes). |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable string literal.
@@ -315,6 +321,7 @@ class StringLiteral:
 class NumberLiteral:
     value: int | float
     raw: str
+    span: Span | None = None
 
     @staticmethod
     def guard(key: object) -> TypeIs[NumberLiteral]: ...
@@ -325,6 +332,7 @@ class NumberLiteral:
 |:----------|:-----|:----|:------------|
 | `value` | `int \| float` | Y | Parsed numeric value. |
 | `raw` | `str` | Y | Original source representation for serialization. |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable number literal.
@@ -453,6 +461,7 @@ class FunctionReference:
 class CallArguments:
     positional: tuple[InlineExpression, ...]
     named: tuple[NamedArgument, ...]
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -460,6 +469,7 @@ class CallArguments:
 |:----------|:-----|:----|:------------|
 | `positional` | `tuple[InlineExpression, ...]` | Y | Positional arguments. |
 | `named` | `tuple[NamedArgument, ...]` | Y | Named arguments. |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable call arguments.
@@ -475,6 +485,7 @@ class CallArguments:
 class NamedArgument:
     name: Identifier
     value: InlineExpression
+    span: Span | None = None
 ```
 
 ### Parameters
@@ -482,6 +493,7 @@ class NamedArgument:
 |:----------|:-----|:----|:------------|
 | `name` | `Identifier` | Y | Argument name. |
 | `value` | `InlineExpression` | Y | Argument value. |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable named argument.
@@ -496,6 +508,7 @@ class NamedArgument:
 @dataclass(frozen=True, slots=True)
 class Identifier:
     name: str
+    span: Span | None = None
 
     @staticmethod
     def guard(key: object) -> TypeIs[Identifier]: ...
@@ -505,6 +518,7 @@ class Identifier:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Identifier string. |
+| `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable identifier.
