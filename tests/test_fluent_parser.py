@@ -312,6 +312,29 @@ class TestFluentParserSelectExpressions:
         assert len(default_variants) == 1
         assert assert_is_identifier(default_variants[0].key).name == "other"
 
+    def test_parse_variant_key_with_newlines_inside_brackets(self, parser: FluentParserV1) -> None:
+        """Parser accepts newlines before/after variant keys inside brackets per Fluent spec."""
+        source = """items = { $count ->
+    [
+        one
+    ] One item
+   *[
+        other
+    ] Many items
+}"""
+        resource = parser.parse(source)
+
+        assert len(resource.entries) == 1
+        entry = resource.entries[0]
+        value = assert_has_pattern(entry)
+        placeable = assert_is_placeable(value.elements[0])
+        select_expr = assert_is_select_expression(placeable.expression)
+
+        assert len(select_expr.variants) == 2
+        variant_keys = [assert_is_identifier(v.key).name for v in select_expr.variants]
+        assert "one" in variant_keys
+        assert "other" in variant_keys
+
 
 class TestFluentParserUnicode:
     """Test parser for Unicode and special characters."""

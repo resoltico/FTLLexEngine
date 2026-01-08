@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.59.0"
+version: "0.60.0"
 domain: CORE
 updated: "2026-01-08"
 route:
@@ -186,6 +186,7 @@ def format_pattern(
 - Raises: Never. All errors collected in tuple.
 - State: Read-only (may update cache).
 - Thread: Safe for concurrent reads.
+- Duplicate Attributes: When message has duplicate attributes with same name, last attribute wins (per Fluent spec).
 
 ---
 

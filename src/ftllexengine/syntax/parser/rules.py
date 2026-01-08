@@ -739,14 +739,14 @@ def parse_variant(
 
     # Parse variant key (identifier or number) using extracted helper
     # Per spec: VariantKey ::= "[" blank? (NumberLiteral | Identifier) blank? "]"
-    cursor = skip_blank_inline(cursor)
+    cursor = skip_blank(cursor)
     key_result = parse_variant_key(cursor)
     if key_result is None:
         return key_result
 
     key_parse = key_result
     variant_key = key_parse.value
-    cursor = skip_blank_inline(key_parse.cursor)
+    cursor = skip_blank(key_parse.cursor)
 
     # Expect ]
     if cursor.is_eof or cursor.current != "]":

@@ -238,9 +238,12 @@ def test_roundtrip_multiple_messages():
 
 
 def test_roundtrip_mixed_entries():
-    """Round-trip resource with messages and comments.
+    """Round-trip resource with messages and standalone comments.
 
-    Per Fluent spec: Single-hash comments directly preceding messages attach to them.
+    When Comments appear as separate entries in the AST (not as message.comment),
+    they are standalone comments and should remain standalone after roundtrip.
+    The serializer preserves this by adding 2 blank lines between a standalone
+    comment and the following message/term.
     """
     entries = (
         Comment(content=" Header comment", type=CommentType.COMMENT),
@@ -261,17 +264,57 @@ def test_roundtrip_mixed_entries():
     serialized = serialize(resource)
     reparsed = parse(serialized)
 
-    # Per Fluent spec: Single-hash comments attach to following messages
+    # Standalone comments remain standalone after roundtrip
     standalone_comments = [e for e in reparsed.entries if isinstance(e, Comment)]
     messages = [e for e in reparsed.entries if isinstance(e, Message)]
-    assert len(standalone_comments) == 0  # Comments attached to messages
+    assert len(standalone_comments) == 2  # Comments remain standalone
     assert len(messages) == 2  # Messages survive roundtrip
 
-    # Comments are preserved as attachments to messages
+    # Messages should NOT have attached comments (comments are standalone)
+    assert messages[0].comment is None
+    assert messages[1].comment is None
+
+    # Comment content is preserved
+    assert "Header comment" in standalone_comments[0].content
+    assert "Another comment" in standalone_comments[1].content
+
+
+def test_roundtrip_attached_comments():
+    """Round-trip resource with attached comments.
+
+    When Comments are set as message.comment (not as separate entries),
+    they are attached comments and should remain attached after roundtrip.
+    """
+    entries = (
+        Message(
+            id=Identifier(name="app-name"),
+            value=Pattern(elements=(TextElement(value="MyApp"),)),
+            attributes=(),
+            comment=Comment(content=" Attached to app-name", type=CommentType.COMMENT),
+        ),
+        Message(
+            id=Identifier(name="version"),
+            value=Pattern(elements=(TextElement(value="1.0.0"),)),
+            attributes=(),
+            comment=Comment(content=" Attached to version", type=CommentType.COMMENT),
+        ),
+    )
+    resource = Resource(entries=entries)
+
+    serialized = serialize(resource)
+    reparsed = parse(serialized)
+
+    # No standalone comments - all attached
+    standalone_comments = [e for e in reparsed.entries if isinstance(e, Comment)]
+    messages = [e for e in reparsed.entries if isinstance(e, Message)]
+    assert len(standalone_comments) == 0  # No standalone comments
+    assert len(messages) == 2  # Messages survive roundtrip
+
+    # Comments remain attached to their messages
     assert messages[0].comment is not None
-    assert "Header comment" in messages[0].comment.content
+    assert "Attached to app-name" in messages[0].comment.content
     assert messages[1].comment is not None
-    assert "Another comment" in messages[1].comment.content
+    assert "Attached to version" in messages[1].comment.content
 
 
 def test_roundtrip_empty_resource():

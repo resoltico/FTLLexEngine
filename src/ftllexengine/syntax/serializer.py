@@ -250,14 +250,23 @@ class FluentSerializer(ASTVisitor):
 
         for entry in node.entries:
             if prev_entry is not None:
-                # Determine if we need extra blank line between comments.
-                # Per Fluent spec, adjacent comments of the same type without
-                # a blank line between them are merged. To preserve separate
-                # comment entries during roundtrip, insert an extra newline.
+                # Determine if we need extra blank line to preserve roundtrip.
+                # Per Fluent spec:
+                # 1. Adjacent comments of the same type without a blank line
+                #    between them are merged. Insert extra newline to preserve.
+                # 2. A comment followed by 0-1 blank lines then a message/term
+                #    becomes an attached comment. If the Comment is a standalone
+                #    entry (in entries[], not as entry.comment), we need 2 blank
+                #    lines to prevent attachment during re-parse.
                 needs_extra_blank = (
                     isinstance(prev_entry, Comment)
                     and isinstance(entry, Comment)
                     and prev_entry.type == entry.type
+                ) or (
+                    isinstance(prev_entry, Comment)
+                    and isinstance(entry, (Message, Term))
+                    # Standalone Comment followed by Message/Term needs extra blank
+                    # to prevent the comment from becoming attached on re-parse
                 )
                 if needs_extra_blank:
                     output.append("\n\n")

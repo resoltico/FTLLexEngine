@@ -13,8 +13,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-01-08
+
+### Breaking Changes
+- **Duplicate Attribute Resolution** (SEM-ATTR-DUPLICATE-RESOLVER-001): Duplicate attributes now use last-wins semantics per Fluent specification:
+  - Previous: First attribute with matching name was resolved
+  - Now: Last attribute with matching name is resolved (matches JavaScript object semantics and Mozilla reference implementation)
+  - Impact: FTL files with duplicate attributes (which trigger validation warnings) will resolve to different values
+  - Example: Message with `.label = First` and `.label = Second` now resolves to "Second" (was "First")
+  - Specification: https://projectfluent.org/fluent/guide/selectors.html
+
+### Fixed
+- **Variant Key Whitespace** (SPEC-VARIANT-WHITESPACE-001): Parser now accepts newlines inside variant key brackets per Fluent specification:
+  - Previous: Variant keys with newlines before/after the identifier were rejected (e.g., `[ \n one \n ]`)
+  - Root cause: Used `skip_blank_inline` (spaces only) instead of `skip_blank` (spaces and newlines)
+  - Now: Accepts multiline variant keys as per Fluent EBNF: `VariantKey ::= "[" blank? (NumberLiteral | Identifier) blank? "]"`
+  - Example: Valid FTL now parses correctly:
+    ```ftl
+    items = { $count ->
+        [
+          one
+        ] One item
+       *[other] Many items
+    }
+    ```
+
+- **Standalone Comment Roundtrip**: Serializer now preserves standalone comment semantics during roundtrip:
+  - Previous: Standalone Comments (separate entries, not attached to messages) were serialized with only 1 blank line before the following entry
+  - Previous: On re-parse, these comments became attached to the following message/term (lost standalone status)
+  - Root cause: Serializer only added extra blank lines between same-type Comments, not between Comment and Message/Term
+  - Now: Standalone Comments are followed by 2 blank lines to prevent attachment during re-parse
+  - Attached comments (set via `message.comment`) remain attached with single blank line
+  - Per Fluent spec: 0-1 blank lines = attached comment, 2+ blank lines = standalone comment
+
 ## [0.59.0] - 2026-01-08
-  
+
 ### Security
 - **RWLock Deadlock Prevention** (CONC-RWLOCK-DEADLOCK-001, CRITICAL): Fixed deadlock vulnerability in RWLock implementation:
   - Previous: Write lock reentrancy caused guaranteed deadlock (thread waiting for itself)
@@ -1412,6 +1445,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.60.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.60.0
 [0.59.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.59.0
 [0.58.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.58.0
 [0.57.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.57.0

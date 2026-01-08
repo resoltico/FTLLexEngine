@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.59.0"
+version: "0.60.0"
 domain: contributing
-updated: "2026-01-03"
+updated: "2026-01-08"
 route:
   keywords: [contributing, development, setup, pull request, code style, workflow]
   questions: ["how to contribute?", "how to set up development?", "how to submit PR?"]

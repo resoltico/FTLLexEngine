@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.59.0"
+version: "0.60.0"
 domain: custom-functions
-updated: "2026-01-06"
+updated: "2026-01-08"
 route:
   keywords: [custom functions, add_function, fluent functions, factory pattern, locale-aware, formatting functions]
   questions: ["how to create custom function?", "how to add custom function?", "how to make locale-aware function?"]

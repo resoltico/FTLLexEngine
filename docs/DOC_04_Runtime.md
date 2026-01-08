@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.59.0"
+version: "0.60.0"
 domain: RUNTIME
-updated: "2026-01-07"
+updated: "2026-01-08"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?"]
@@ -829,6 +829,7 @@ def resolve_message(
 - Raises: Never. Collects errors in tuple.
 - State: Read-only.
 - Thread: Safe.
+- Duplicate Attributes: When message has duplicate attributes with same name, last attribute wins (per Fluent spec).
 
 ---
 

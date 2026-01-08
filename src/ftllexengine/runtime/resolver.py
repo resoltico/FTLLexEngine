@@ -311,7 +311,7 @@ class FluentResolver:
 
         # Select pattern (value or attribute)
         if attribute:
-            attr = next((a for a in message.attributes if a.id.name == attribute), None)
+            attr = next((a for a in reversed(message.attributes) if a.id.name == attribute), None)
             if not attr:
                 error = FluentReferenceError(
                     ErrorTemplate.attribute_not_found(attribute, message.id.name)

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.59.0"
+version: "0.60.0"
 domain: TESTING
-updated: "2026-01-07"
+updated: "2026-01-08"
 route:
   keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh]
   questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?"]

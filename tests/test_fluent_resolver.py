@@ -314,6 +314,20 @@ login-button = Login
         assert len(errors) == 1
         assert isinstance(errors[0], FluentReferenceError)
 
+    def test_duplicate_attribute_uses_last_wins(self) -> None:
+        """Duplicate attributes resolve using last-wins semantics per Fluent spec."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+button = Click
+    .label = First
+    .label = Second
+    .label = Third
+""")
+        result, errors = bundle.format_pattern("button", attribute="label")
+
+        assert result == "Third"
+        assert len(errors) == 0
+
 
 class TestFluentResolverValueFormatting:
     """Test FluentResolver value formatting."""
