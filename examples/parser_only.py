@@ -97,7 +97,7 @@ order-summary = { $customer } ordered { NUMBER($total, style: "currency") }
 
 def example_3_validation() -> None:
     """Validate FTL source for errors and warnings."""
-    from ftllexengine.validation import validate_resource
+    from ftllexengine import validate_resource  # type: ignore[attr-defined]
 
     print("=" * 60)
     print("Example 3: Validation")

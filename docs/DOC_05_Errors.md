@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.60.0"
+version: "0.61.0"
 domain: ERRORS
 updated: "2026-01-08"
 route:
@@ -470,6 +470,7 @@ class DiagnosticCode(Enum):
     PATTERN_INVALID = 2009
     MAX_DEPTH_EXCEEDED = 2010
     FUNCTION_ARITY_MISMATCH = 2011
+    TERM_POSITIONAL_ARGS_IGNORED = 2012
 
     # Syntax errors (3000-3999)
     UNEXPECTED_EOF = 3001

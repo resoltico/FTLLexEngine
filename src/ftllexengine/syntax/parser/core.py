@@ -181,11 +181,21 @@ class FluentParserV1:
         Args:
             max_source_size: Maximum source length in characters (default: 10M).
                             Set to None or 0 to disable size limit (not recommended).
+                            Must be non-negative if specified.
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } }.
+                              Must be positive (> 0) if specified.
                               Automatically clamped to sys.getrecursionlimit() - 50
                               to prevent RecursionError. Warning logged if clamped.
+
+        Raises:
+            ValueError: If max_nesting_depth is specified and <= 0.
         """
+        # Validate max_nesting_depth
+        if max_nesting_depth is not None and max_nesting_depth <= 0:
+            msg = f"max_nesting_depth must be positive (got {max_nesting_depth})"
+            raise ValueError(msg)
+
         self._max_source_size = (
             max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
         )

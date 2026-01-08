@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.60.0"
+version: "0.61.0"
 domain: reference
 updated: "2026-01-08"
 route:
@@ -33,7 +33,7 @@ pip install ftllexengine[babel]
 ## Parser-Only Usage (No Babel Required)
 
 ```python
-from ftllexengine import parse_ftl, serialize_ftl
+from ftllexengine import parse_ftl, serialize_ftl, validate_resource
 
 # Parse FTL source to AST
 resource = parse_ftl("""
@@ -44,6 +44,14 @@ greeting = Welcome, { $name }!
 # Inspect AST
 for entry in resource.entries:
     print(f"Message: {entry.id.name}")
+
+# Validate FTL source (syntax and semantic checks)
+result = validate_resource("""
+hello = Hello, World!
+greeting = Welcome, { $name }!
+""")
+if result.errors:
+    print(f"Errors: {result.errors}")
 
 # Serialize back to FTL string
 ftl_source = serialize_ftl(resource)

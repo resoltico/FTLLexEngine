@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.60.0"
+version: "0.61.0"
 domain: INDEX
 updated: "2026-01-08"
 route:
@@ -20,6 +20,7 @@ from ftllexengine import (
     FluentLocalization,
     parse_ftl,
     serialize_ftl,
+    validate_resource,  # FTL resource validation (no Babel required)
     FluentValue,       # Type alias for function argument values
     fluent_function,   # Decorator for custom functions
     # Errors

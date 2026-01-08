@@ -566,8 +566,19 @@ class FluentResolver:
             # Positional arguments in term references are technically parsed but have
             # no binding semantics - there's no parameter name to assign the value to.
             # We evaluate them to catch expression errors but discard the result.
-            for pos_arg in expr.arguments.positional:
-                self._resolve_expression(pos_arg, args, errors, context)
+            if expr.arguments.positional:
+                for pos_arg in expr.arguments.positional:
+                    self._resolve_expression(pos_arg, args, errors, context)
+
+                # Emit warning that positional arguments are ignored
+                errors.append(
+                    FluentResolutionError(
+                        ErrorTemplate.term_positional_args_ignored(
+                            term_name=term_id,
+                            count=len(expr.arguments.positional),
+                        )
+                    )
+                )
 
         try:
             context.push(term_key)

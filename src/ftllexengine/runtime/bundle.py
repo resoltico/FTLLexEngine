@@ -333,7 +333,7 @@ class FluentBundle:
             >>> bundle = FluentBundle("en", enable_cache=True, cache_size=500)
             >>> bundle.add_resource("msg = Hello")
             >>> bundle.format_pattern("msg", {})
-            ('Hello', [])
+            ('Hello', ())
             >>> bundle.cache_usage  # One entry cached
             1
             >>> bundle.cache_size   # Configured limit

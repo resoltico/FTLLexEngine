@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-01-08
+
+### Added
+- **Top-level API Export** (API-VALIDATION-EXPORT-001): `validate_resource` now exported at top level for consistency:
+  - Previous: Required `from ftllexengine.validation import validate_resource`
+  - Now: Available as `from ftllexengine import validate_resource`
+  - Consistent with `parse_ftl` and `serialize_ftl` top-level exports
+  - Parser-only workflows can now access all core functions from top-level import
+  - No Babel dependency required (validation uses AST inspection only)
+
+### Changed
+- **Term Positional Arguments Warning** (ARCH-TERM-POSITIONAL-DISCARD-001): Term references with positional arguments now emit explicit warnings:
+  - Previous: Positional arguments in term references (e.g., `-brand($val)`) were silently evaluated and discarded
+  - Now: Emits `FluentResolutionError` with diagnostic code `TERM_POSITIONAL_ARGS_IGNORED`
+  - Warning message: "Term '-{name}' does not accept positional arguments (got {count}). Use named arguments: -term(key: value)"
+  - Per Fluent spec, terms only accept named arguments; positional args have no binding semantics
+  - Helps users understand why positional arguments are ignored and how to fix their FTL
+  - Expression errors in positional arguments are still caught during evaluation
+
+- **Parser Parameter Validation** (TYPE-PARSER-DEPTH-001): FluentParserV1 now validates constructor parameters:
+  - Previous: `max_nesting_depth=0` accepted but caused immediate failures on any nesting
+  - Now: Raises `ValueError` if `max_nesting_depth` is specified and `<= 0`
+  - Error message: "max_nesting_depth must be positive (got {value})"
+  - Docstring updated to clarify valid parameter ranges
+  - `max_nesting_depth=None` still uses default (100 or clamped to recursion limit)
+  - Prevents user errors from invalid parameter values
+
+### Documentation
+- **Docstring Accuracy** (DOCS-CACHE-USAGE-001): Fixed `cache_usage` property docstring example:
+  - Previous: Example showed `format_pattern` returning `('Hello', [])` with list for errors
+  - Now: Example shows `('Hello', ())` with tuple for errors (matches actual return type)
+  - Per CLAUDE.md Section 2.3: docstrings must not contradict type hints
+
+- **Docstring Completeness** (DOCS-DATETIME-SEP-001): Enhanced `_extract_datetime_separator` docstring Returns section:
+  - Previous: "Falls back to space if extraction fails"
+  - Now: "The separator string between date and time components, extracted from the locale's dateTimeFormat for the specified style. Falls back to space (' ') if the style is unavailable or extraction fails."
+  - Clarifies that the `style` parameter affects which format is attempted first
+  - Documents full fallback behavior explicitly
+
 ## [0.60.0] - 2026-01-08
 
 ### Breaking Changes
@@ -1445,6 +1484,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.61.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.61.0
 [0.60.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.60.0
 [0.59.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.59.0
 [0.58.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.58.0

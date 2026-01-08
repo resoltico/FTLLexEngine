@@ -519,9 +519,11 @@ msg = { -my-term($arg1, $arg2) }
         # Provide the variables referenced in positional args
         result, errors = bundle.format_pattern("msg", {"arg1": "val1", "arg2": "val2"})
 
-        # Should resolve successfully
+        # Should resolve successfully but with warning about positional args
         assert result == "Term value"
-        assert errors == ()
+        # Now emits warning that positional arguments are ignored
+        assert len(errors) == 1
+        assert "positional" in str(errors[0]).lower()
 
     def test_term_reference_positional_args_trigger_errors(self) -> None:
         """Test term reference positional args collect errors when variables missing.
@@ -541,6 +543,55 @@ msg = { -my-term($missing_var) }
         # Term reference with missing variable should still resolve the term
         # but collect the error from evaluating the positional arg
         assert len(errors) >= 1
+
+    def test_term_reference_positional_args_emit_warning(self) -> None:
+        """Test term positional args emit warning (ARCH-TERM-POSITIONAL-DISCARD-001).
+
+        Per Fluent spec, terms only accept named arguments. Positional arguments
+        are parsed but have no binding semantics. The resolver should emit a
+        warning when positional arguments are provided to help users understand
+        that they are being ignored.
+        """
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+-my-term = Term value
+msg = { -my-term("val1", "val2") }
+""")
+
+        result, errors = bundle.format_pattern("msg", {})
+
+        # Should resolve successfully but with warning
+        assert result == "Term value"
+        assert len(errors) == 1
+
+        # Check that the warning is about positional arguments being ignored
+        error = errors[0]
+        assert "positional arguments" in str(error).lower()
+        assert "my-term" in str(error)
+
+    def test_term_reference_positional_args_warning_count(self) -> None:
+        """Test warning message includes count of positional arguments ignored."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("""
+-brand = Firefox
+msg = { -brand($a, $b, $c) }
+""")
+
+        _result, errors = bundle.format_pattern("msg", {"a": 1, "b": 2, "c": 3})
+
+        # Should have warning about positional args being ignored
+        assert len(errors) >= 1
+
+        # Find the positional args warning
+        positional_warning = None
+        for error in errors:
+            if "positional" in str(error).lower():
+                positional_warning = error
+                break
+
+        assert positional_warning is not None
+        # Should mention count of 3 arguments
+        assert "3" in str(positional_warning)
 
 
 # ============================================================================

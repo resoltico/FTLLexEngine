@@ -84,6 +84,31 @@ class TestFluentParserV1SourceSizeValidation:
         assert result is not None
 
 
+class TestFluentParserV1ParameterValidation:
+    """Test parameter validation in FluentParserV1.__init__."""
+
+    def test_init_rejects_zero_max_nesting_depth(self) -> None:
+        """Test __init__ raises ValueError when max_nesting_depth is 0."""
+        with pytest.raises(ValueError, match=r"max_nesting_depth must be positive \(got 0\)"):
+            FluentParserV1(max_nesting_depth=0)
+
+    def test_init_rejects_negative_max_nesting_depth(self) -> None:
+        """Test __init__ raises ValueError when max_nesting_depth is negative."""
+        with pytest.raises(ValueError, match=r"max_nesting_depth must be positive \(got -1\)"):
+            FluentParserV1(max_nesting_depth=-1)
+
+    def test_init_accepts_positive_max_nesting_depth(self) -> None:
+        """Test __init__ accepts positive max_nesting_depth values."""
+        parser = FluentParserV1(max_nesting_depth=50)
+        assert parser.max_nesting_depth == 50
+
+    def test_init_accepts_none_max_nesting_depth(self) -> None:
+        """Test __init__ accepts None for max_nesting_depth (uses default)."""
+        parser = FluentParserV1(max_nesting_depth=None)
+        # Should use default MAX_DEPTH
+        assert parser.max_nesting_depth > 0
+
+
 class TestFluentParserV1BranchCoverage:
     """Test branch coverage for parser/core.py."""
 

@@ -102,6 +102,30 @@ class ErrorTemplate:
         )
 
     @staticmethod
+    def term_positional_args_ignored(term_name: str, count: int) -> Diagnostic:
+        """Term positional arguments ignored.
+
+        Args:
+            term_name: The term identifier (without leading -)
+            count: Number of positional arguments that were ignored
+
+        Returns:
+            Diagnostic for TERM_POSITIONAL_ARGS_IGNORED
+        """
+        plural = "argument" if count == 1 else "arguments"
+        msg = (
+            f"Term '-{term_name}' does not accept positional arguments "
+            f"(got {count}). Use named arguments: -term(key: value)"
+        )
+        return Diagnostic(
+            code=DiagnosticCode.TERM_POSITIONAL_ARGS_IGNORED,
+            message=msg,
+            span=None,
+            hint=f"Remove the {count} positional {plural} and use named arguments instead",
+            help_url=f"{ErrorTemplate._DOCS_BASE}/terms.html",
+        )
+
+    @staticmethod
     def variable_not_provided(
         variable_name: str,
         *,

@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.60.0"
+version: "0.61.0"
 domain: PARSING
 updated: "2026-01-08"
 route:
-  keywords: [parse, serialize, FluentParserV1, parse_ftl, serialize_ftl, syntax, BabelImportError]
-  questions: ["how to parse FTL?", "how to serialize AST?", "what parser options exist?", "what exceptions do parsing functions raise?"]
+  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError]
+  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?"]
 ---
 
 # Parsing Reference
@@ -61,6 +61,47 @@ def serialize(
 
 ---
 
+## `validate_resource`
+
+Function validating FTL resource for syntax and semantic errors.
+
+### Signature
+```python
+def validate_resource(
+    source: str,
+    *,
+    parser: FluentParserV1 | None = None,
+    known_messages: frozenset[str] | None = None,
+    known_terms: frozenset[str] | None = None,
+) -> ValidationResult:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `source` | `str` | Y | FTL source code to validate |
+| `parser` | `FluentParserV1 \| None` | N | Custom parser instance |
+| `known_messages` | `frozenset[str] \| None` | N | Known message IDs from other resources |
+| `known_terms` | `frozenset[str] \| None` | N | Known term IDs from other resources |
+
+### Constraints
+- Return: ValidationResult with errors (syntax), warnings (semantic), metadata
+- Raises: Never (errors and warnings collected in ValidationResult)
+- State: Read-only
+- Thread: Safe
+- Complexity: O(n) where n is AST node count
+
+### Usage
+- When: Validate FTL files in CI/CD pipelines without runtime bundle
+- Prefer: This over FluentBundle.validate_resource for parser-only workflows
+- Avoid: Repeatedly parsing same resource (cache parsed AST instead)
+
+### Notes
+- Available at top-level: `from ftllexengine import validate_resource`
+- No Babel dependency (uses AST inspection only)
+
+---
+
 ## `FluentParserV1`
 
 ### Signature
@@ -80,13 +121,14 @@ class FluentParserV1:
 ```
 
 ### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
 | `max_source_size` | `int \| None` | N | Maximum source size in characters (default: 10M). |
-| `max_nesting_depth` | `int \| None` | N | Maximum nesting depth for placeables (default: 100). |
+| `max_nesting_depth` | `int \| None` | N | Maximum nesting depth (default: 100); must be positive if specified. |
 
 ### Constraints
 - Return: Parser instance.
+- Raises: `ValueError` if max_nesting_depth is specified and <= 0.
 - State: Stores max_source_size and max_nesting_depth configuration.
 - Thread: Safe for concurrent parse() calls.
 - Security: Validates source size and nesting depth (DoS prevention).

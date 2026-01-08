@@ -9,6 +9,7 @@ Public API:
     FluentLocalization - Multi-locale orchestration with fallback chains (requires Babel)
     parse_ftl - Parse FTL source to AST (no external dependencies)
     serialize_ftl - Serialize AST to FTL source (no external dependencies)
+    validate_resource - Validate FTL resource for semantic errors (no external dependencies)
     FluentValue - Type alias for values accepted by formatting functions
     fluent_function - Decorator for custom functions (locale injection support)
 
@@ -50,6 +51,7 @@ from .diagnostics import (
 )
 from .syntax import parse as parse_ftl
 from .syntax import serialize as serialize_ftl
+from .validation import validate_resource
 
 if TYPE_CHECKING:
     # Type hints only - not imported at runtime to avoid Babel dependency
@@ -151,4 +153,5 @@ __all__ = [
     "fluent_function",
     "parse_ftl",
     "serialize_ftl",
+    "validate_resource",
 ]

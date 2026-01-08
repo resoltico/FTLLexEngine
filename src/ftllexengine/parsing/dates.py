@@ -344,8 +344,9 @@ def _extract_datetime_separator(locale: Any, style: str = "medium") -> str:
         style: Format style to extract from ("short" or "medium")
 
     Returns:
-        The separator string between date and time components.
-        Falls back to space if extraction fails.
+        The separator string between date and time components, extracted from
+        the locale's dateTimeFormat for the specified style. Falls back to
+        space (' ') if the style is unavailable or extraction fails.
     """
     try:
         datetime_format = locale.datetime_formats.get(style)
