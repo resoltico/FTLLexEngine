@@ -547,7 +547,11 @@ class TestParserProperties:
 
     @given(ftl_resource(), ftl_resource())
     @settings(
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
+        suppress_health_check=[
+            HealthCheck.too_slow,
+            HealthCheck.large_base_example,
+            HealthCheck.data_too_large,
+        ],
         deadline=None,
     )
     def test_composability(self, res1: str, res2: str) -> None:

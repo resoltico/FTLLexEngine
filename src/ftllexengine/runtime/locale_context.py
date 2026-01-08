@@ -40,7 +40,11 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from threading import RLock
 from typing import TYPE_CHECKING, ClassVar, Literal
 
-from ftllexengine.constants import FALLBACK_FUNCTION_ERROR, MAX_LOCALE_CACHE_SIZE
+from ftllexengine.constants import (
+    FALLBACK_FUNCTION_ERROR,
+    MAX_LOCALE_CACHE_SIZE,
+    MAX_LOCALE_CODE_LENGTH,
+)
 from ftllexengine.core.errors import FormattingError
 from ftllexengine.locale_utils import normalize_locale
 
@@ -192,6 +196,17 @@ class LocaleContext:
             'xx_UNKNOWN'
             >>> # But formatting uses en_US rules (with warning logged)
         """
+        # Validate locale code length (BCP 47 / RFC 5646 limit: 35 characters)
+        if len(locale_code) > MAX_LOCALE_CODE_LENGTH:
+            logger.warning(
+                "Locale code exceeds maximum length of %d characters (BCP 47): "
+                "'%s...' (%d characters). Falling back to en_US.",
+                MAX_LOCALE_CODE_LENGTH,
+                locale_code[:50],
+                len(locale_code),
+            )
+            locale_code = "en_US"
+
         # Normalize locale code for consistent cache keys
         # This ensures "en-US", "en_US", "EN-US" all map to the same cache entry
         cache_key = normalize_locale(locale_code)

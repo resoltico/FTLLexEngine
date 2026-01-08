@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.57.0"
+version: "0.59.0"
 domain: fuzzing
 updated: "2026-01-06"
 route:
@@ -45,7 +45,7 @@ Fuzzing generates thousands of test inputs automatically, feeding them to your c
 
 ---
 
-## Understanding the Unified Interface
+## Understanding the Interface
 
 All fuzzing operations use `./scripts/fuzz.sh`:
 

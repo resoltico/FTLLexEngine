@@ -206,7 +206,7 @@ def example_4_dynamic_loading() -> None:
         t.join()
 
     print("\n[SUCCESS] Dynamic loading pattern complete")
-    print("[NOTE] No manual locking required - RLock handles synchronization")
+    print("[NOTE] No manual locking required - RWLock handles synchronization")
 
 
 # Main execution

@@ -259,7 +259,7 @@ with ThreadPoolExecutor() as executor:
 
 Each `LocaleContext` is a frozen dataclass. No global state is mutated.
 
-`FluentBundle` is also thread-safe. All public methods (`format_pattern()`, `add_resource()`, `add_function()`) are synchronized via internal RLock. You can safely call any method from multiple threads concurrently.
+`FluentBundle` is also thread-safe. All public methods (`format_pattern()`, `add_resource()`, `add_function()`) are synchronized via internal RWLock (readers-writer lock). You can safely call any method from multiple threads concurrently.
 
 ---
 

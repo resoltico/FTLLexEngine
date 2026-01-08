@@ -36,6 +36,20 @@ from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 # Re-export for backwards compatibility
 __all__ = ["DEFAULT_MAX_ENTRY_SIZE", "FormatCache", "HashableValue"]
 
+# Conservative estimate of memory weight per FluentError object.
+# Each error carries Diagnostic objects with traceback information, message context,
+# and error templates. 1000 bytes is a conservative estimate that accounts for:
+# - Error message strings (~100-200 bytes)
+# - Diagnostic traceback data (~300-500 bytes)
+# - Object overhead and references (~200-300 bytes)
+_ERROR_WEIGHT_BYTES: int = 1000
+
+# Maximum number of errors allowed per cache entry.
+# Prevents memory exhaustion from pathological cases where resolution produces
+# many errors (e.g., cyclic references, deeply nested validation failures).
+# 50 errors at 1KB each = 50KB, which is reasonable for error-heavy results.
+_DEFAULT_MAX_ERRORS_PER_ENTRY: int = 50
+
 # Type alias for hashable values produced by _make_hashable().
 # Recursive definition: primitives plus tuple/frozenset of self.
 # Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged.
@@ -82,9 +96,11 @@ class FormatCache:
 
     __slots__ = (
         "_cache",
+        "_error_bloat_skips",
         "_hits",
         "_lock",
         "_max_entry_size",
+        "_max_errors_per_entry",
         "_maxsize",
         "_misses",
         "_oversize_skips",
@@ -95,6 +111,7 @@ class FormatCache:
         self,
         maxsize: int = 1000,
         max_entry_size: int = DEFAULT_MAX_ENTRY_SIZE,
+        max_errors_per_entry: int = _DEFAULT_MAX_ERRORS_PER_ENTRY,
     ) -> None:
         """Initialize format cache.
 
@@ -103,6 +120,9 @@ class FormatCache:
             max_entry_size: Maximum result string size to cache in characters
                 (default: 10_000). Results exceeding this size are not cached
                 to prevent memory exhaustion from large formatted strings.
+            max_errors_per_entry: Maximum number of errors per cache entry
+                (default: 50). Results with more errors are not cached to
+                prevent memory exhaustion from error collections.
         """
         if maxsize <= 0:
             msg = "maxsize must be positive"
@@ -110,15 +130,20 @@ class FormatCache:
         if max_entry_size <= 0:
             msg = "max_entry_size must be positive"
             raise ValueError(msg)
+        if max_errors_per_entry <= 0:
+            msg = "max_errors_per_entry must be positive"
+            raise ValueError(msg)
 
         self._cache: OrderedDict[_CacheKey, _CacheValue] = OrderedDict()
         self._maxsize = maxsize
         self._max_entry_size = max_entry_size
+        self._max_errors_per_entry = max_errors_per_entry
         self._lock = RLock()  # Reentrant lock for safety
         self._hits = 0
         self._misses = 0
         self._unhashable_skips = 0
         self._oversize_skips = 0
+        self._error_bloat_skips = 0
 
     def get(
         self,
@@ -169,7 +194,7 @@ class FormatCache:
         """Store result in cache.
 
         Thread-safe. Evicts LRU entry if cache is full.
-        Skips caching for results exceeding max_entry_size.
+        Skips caching for results exceeding max_entry_size or max_errors_per_entry.
 
         Args:
             message_id: Message identifier
@@ -180,9 +205,27 @@ class FormatCache:
         """
         # Check entry size before caching (result is (formatted_str, errors))
         formatted_str = result[0]
+        errors = result[1]
+
+        # Check formatted string size
         if len(formatted_str) > self._max_entry_size:
             with self._lock:
                 self._oversize_skips += 1
+            return
+
+        # Check error collection size (memory weight = count * estimated bytes per error)
+        if len(errors) > self._max_errors_per_entry:
+            with self._lock:
+                self._error_bloat_skips += 1
+            return
+
+        # Calculate total memory weight (string + error collection)
+        # String: measured in characters (Python len())
+        # Errors: estimated weight in bytes (conservative: 1KB per error)
+        total_weight = len(formatted_str) + (len(errors) * _ERROR_WEIGHT_BYTES)
+        if total_weight > self._max_entry_size:
+            with self._lock:
+                self._error_bloat_skips += 1
             return
 
         key = self._make_key(message_id, args, attribute, locale_code)
@@ -215,6 +258,7 @@ class FormatCache:
             self._misses = 0
             self._unhashable_skips = 0
             self._oversize_skips = 0
+            self._error_bloat_skips = 0
 
     def get_stats(self) -> dict[str, int | float]:
         """Get cache statistics.
@@ -226,11 +270,13 @@ class FormatCache:
             - size (int): Current number of cached entries
             - maxsize (int): Maximum cache capacity
             - max_entry_size (int): Maximum result size to cache
+            - max_errors_per_entry (int): Maximum errors per cache entry
             - hits (int): Number of cache hits
             - misses (int): Number of cache misses
             - hit_rate (float): Hit rate as percentage (0.0-100.0)
             - unhashable_skips (int): Operations skipped due to unhashable args
             - oversize_skips (int): Operations skipped due to result size
+            - error_bloat_skips (int): Operations skipped due to error collection size
         """
         with self._lock:
             total = self._hits + self._misses
@@ -240,11 +286,13 @@ class FormatCache:
                 "size": len(self._cache),
                 "maxsize": self._maxsize,
                 "max_entry_size": self._max_entry_size,
+                "max_errors_per_entry": self._max_errors_per_entry,
                 "hits": self._hits,
                 "misses": self._misses,
                 "hit_rate": round(hit_rate, 2),
                 "unhashable_skips": self._unhashable_skips,
                 "oversize_skips": self._oversize_skips,
+                "error_bloat_skips": self._error_bloat_skips,
             }
 
     @staticmethod

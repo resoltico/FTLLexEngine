@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.57.0"
+version: "0.59.0"
 domain: reference
-updated: "2026-01-06"
+updated: "2026-01-08"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?"]
@@ -633,7 +633,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 ## Thread Safety
 
-**FluentBundle is always thread-safe**. All public methods are synchronized via internal RLock. RLock overhead is negligible (~10ns per acquire).
+**FluentBundle is always thread-safe**. All public methods are synchronized via internal RWLock (readers-writer lock). Multiple concurrent read operations execute in parallel; write operations acquire exclusive access.
 
 ### Pattern 1: Shared Bundle (Recommended)
 

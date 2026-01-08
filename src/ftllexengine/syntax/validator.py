@@ -345,11 +345,18 @@ class SemanticValidator:
             seen_names.add(name)
 
         # Validate each argument expression
+        # Track depth for each argument to prevent stack overflow on deeply nested arguments
         for pos_arg in args.positional:
-            self._validate_inline_expression(pos_arg, errors, "call_argument", depth_guard)
+            with depth_guard:
+                self._validate_inline_expression(
+                    pos_arg, errors, "call_argument", depth_guard
+                )
 
         for named_arg in args.named:
-            self._validate_inline_expression(named_arg.value, errors, "call_argument", depth_guard)
+            with depth_guard:
+                self._validate_inline_expression(
+                    named_arg.value, errors, "call_argument", depth_guard
+                )
 
     # ========================================================================
     # SELECT EXPRESSION VALIDATION

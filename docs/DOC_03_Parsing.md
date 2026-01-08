@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.58.0"
+version: "0.59.0"
 domain: PARSING
 updated: "2026-01-07"
 route:
@@ -54,7 +54,7 @@ def serialize(
 ### Constraints
 - Return: FTL source string.
 - Raises: `SerializationValidationError` when `validate=True` and AST invalid.
-- Raises: `SerializationDepthError` when AST exceeds `max_depth`.
+- Raises: `SerializationDepthError` when AST exceeds `max_depth` during validation or serialization.
 - State: None.
 - Thread: Safe.
 - Security: DepthGuard prevents stack overflow from adversarial ASTs.

@@ -244,7 +244,9 @@ class TestSerializerDepthGuard:
         with pytest.raises(SerializationDepthError) as exc_info:
             serialize(resource)
 
-        assert "maximum depth" in str(exc_info.value).lower()
+        # Check for depth limit error message
+        error_msg = str(exc_info.value).lower()
+        assert "depth limit exceeded" in error_msg or "maximum" in error_msg
         assert "100" in str(exc_info.value)
 
     def test_custom_max_depth(self) -> None:

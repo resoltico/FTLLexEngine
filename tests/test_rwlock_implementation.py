@@ -5,6 +5,8 @@ Tests verify:
 - Exclusive writer access
 - Writer preference (prevents starvation)
 - Reentrant read locks
+- Reentrant write locks
+- Read-to-write upgrade rejection
 - Deadlock prevention
 - Thread safety
 - Error handling
@@ -189,6 +191,91 @@ class TestRWLockReentrancy:
         assert "outer" in results
         assert "inner" in results
         assert results.count("simple") == 2
+
+    def test_same_thread_multiple_write_locks(self) -> None:
+        """Same thread can acquire write lock multiple times (reentrant)."""
+        lock = RWLock()
+        depth = 0
+
+        with lock.write():
+            depth += 1
+            with lock.write():
+                depth += 1
+                with lock.write():
+                    depth += 1
+
+        assert depth == 3
+
+    def test_reentrant_write_release_order(self) -> None:
+        """Reentrant write locks release in correct order."""
+        lock = RWLock()
+        release_order = []
+
+        with lock.write():
+            release_order.append("outer-enter")
+            with lock.write():
+                release_order.append("inner-enter")
+            release_order.append("inner-exit")
+        release_order.append("outer-exit")
+
+        assert release_order == ["outer-enter", "inner-enter", "inner-exit", "outer-exit"]
+
+    def test_reentrant_write_blocks_other_writers(self) -> None:
+        """Reentrant write locks still block other writers."""
+        lock = RWLock()
+        writer1_acquired = threading.Event()
+        writer2_blocked = threading.Event()
+        writer2_completed = threading.Event()
+
+        def writer1() -> None:
+            with lock.write():
+                writer1_acquired.set()
+                # Reentrant write
+                with lock.write():
+                    time.sleep(0.05)  # Hold both locks
+
+        def writer2() -> None:
+            writer1_acquired.wait()
+            writer2_blocked.set()
+            with lock.write():
+                writer2_completed.set()
+
+        thread1 = threading.Thread(target=writer1)
+        thread2 = threading.Thread(target=writer2)
+
+        thread1.start()
+        thread2.start()
+
+        # Verify writer2 is blocked
+        time.sleep(0.02)
+        assert writer2_blocked.is_set()
+        assert not writer2_completed.is_set()
+
+        thread1.join()
+        thread2.join()
+
+        # Writer2 completed after writer1 released
+        assert writer2_completed.is_set()
+
+    def test_read_to_write_upgrade_rejected(self) -> None:
+        """Read-to-write lock upgrade raises RuntimeError."""
+        lock = RWLock()
+
+        with lock.read(), pytest.raises(
+            RuntimeError,
+            match="Cannot upgrade read lock to write lock",
+        ), lock.write():
+            pass  # Should never reach here
+
+    def test_read_to_write_upgrade_rejected_with_message(self) -> None:
+        """Read-to-write upgrade error message includes guidance."""
+        lock = RWLock()
+
+        with lock.read(), pytest.raises(
+            RuntimeError,
+            match="Release read lock before acquiring write lock",
+        ), lock.write():
+            pass
 
 
 class TestRWLockWriterPreference:
@@ -421,3 +508,236 @@ class TestRWLockFairness:
 
         for thread in reader_threads:
             thread.join()
+
+
+class TestRWLockDecorators:
+    """Test decorator functions for automatic lock acquisition."""
+
+    def test_with_read_lock_decorator_basic(self) -> None:
+        """with_read_lock decorator acquires read lock correctly."""
+        from ftllexengine.runtime.rwlock import RWLock, with_read_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+                self.value = 0
+
+            @with_read_lock()
+            def read_value(self) -> int:
+                return self.value
+
+        store = DataStore()
+        store.value = 42
+
+        # Read should succeed
+        assert store.read_value() == 42
+
+    def test_with_read_lock_decorator_custom_attr(self) -> None:
+        """with_read_lock decorator works with custom lock attribute name."""
+        from ftllexengine.runtime.rwlock import RWLock, with_read_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self.my_lock = RWLock()
+                self.value = 0
+
+            @with_read_lock(lock_attr="my_lock")
+            def read_value(self) -> int:
+                return self.value
+
+        store = DataStore()
+        store.value = 42
+
+        # Read with custom lock attribute should succeed
+        assert store.read_value() == 42
+
+    def test_with_read_lock_decorator_preserves_metadata(self) -> None:
+        """with_read_lock decorator preserves function name and docstring."""
+        from ftllexengine.runtime.rwlock import RWLock, with_read_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+
+            @with_read_lock()
+            def read_data(self) -> str:
+                """Read data from store."""
+                return "data"
+
+        store = DataStore()
+
+        # Metadata should be preserved
+        assert store.read_data.__name__ == "read_data"
+        assert store.read_data.__doc__ == "Read data from store."
+
+    def test_with_read_lock_decorator_concurrent_access(self) -> None:
+        """with_read_lock decorator allows concurrent reads."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from ftllexengine.runtime.rwlock import RWLock, with_read_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+                self.read_count = 0
+
+            @with_read_lock()
+            def read_operation(self) -> int:
+                import time
+
+                self.read_count += 1
+                time.sleep(0.01)
+                return self.read_count
+
+        store = DataStore()
+
+        # Multiple concurrent reads should proceed
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(store.read_operation) for _ in range(10)]
+            results = [future.result() for future in futures]
+
+        # All reads should complete
+        assert len(results) == 10
+
+    def test_with_write_lock_decorator_basic(self) -> None:
+        """with_write_lock decorator acquires write lock correctly."""
+        from ftllexengine.runtime.rwlock import RWLock, with_write_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+                self.value = 0
+
+            @with_write_lock()
+            def write_value(self, new_value: int) -> None:
+                self.value = new_value
+
+        store = DataStore()
+
+        # Write should succeed
+        store.write_value(42)
+        assert store.value == 42
+
+    def test_with_write_lock_decorator_custom_attr(self) -> None:
+        """with_write_lock decorator works with custom lock attribute name."""
+        from ftllexengine.runtime.rwlock import RWLock, with_write_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self.my_lock = RWLock()
+                self.value = 0
+
+            @with_write_lock(lock_attr="my_lock")
+            def write_value(self, new_value: int) -> None:
+                self.value = new_value
+
+        store = DataStore()
+
+        # Write with custom lock attribute should succeed
+        store.write_value(42)
+        assert store.value == 42
+
+    def test_with_write_lock_decorator_preserves_metadata(self) -> None:
+        """with_write_lock decorator preserves function name and docstring."""
+        from ftllexengine.runtime.rwlock import RWLock, with_write_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+
+            @with_write_lock()
+            def write_data(self, value: str) -> None:
+                """Write data to store."""
+
+        store = DataStore()
+
+        # Metadata should be preserved
+        assert store.write_data.__name__ == "write_data"
+        assert store.write_data.__doc__ == "Write data to store."
+
+    def test_with_write_lock_decorator_exclusive_access(self) -> None:
+        """with_write_lock decorator provides exclusive write access."""
+        import threading
+        import time
+
+        from ftllexengine.runtime.rwlock import RWLock, with_write_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+                self.value = 0
+                self.write_order: list[int] = []
+
+            @with_write_lock()
+            def write_value(self, writer_id: int) -> None:
+                self.write_order.append(writer_id)
+                time.sleep(0.01)
+                self.value += 1
+
+        store = DataStore()
+
+        # Multiple concurrent writes should be serialized
+        threads = [
+            threading.Thread(target=store.write_value, args=(i,)) for i in range(5)
+        ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # All writes should complete sequentially
+        assert store.value == 5
+        assert len(store.write_order) == 5
+
+    def test_decorators_mixed_read_write(self) -> None:
+        """Decorators correctly handle mixed read/write operations."""
+        import threading
+        import time
+
+        from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
+
+        class DataStore:
+            def __init__(self) -> None:
+                self._rwlock = RWLock()
+                self.value = 0
+
+            @with_read_lock()
+            def read_value(self) -> int:
+                time.sleep(0.01)
+                return self.value
+
+            @with_write_lock()
+            def increment_value(self) -> None:
+                time.sleep(0.01)
+                self.value += 1
+
+        store = DataStore()
+        results: list[int] = []
+
+        def reader() -> None:
+            for _ in range(5):
+                results.append(store.read_value())
+
+        def writer() -> None:
+            for _ in range(3):
+                store.increment_value()
+
+        # Mix of readers and writers
+        threads = [
+            threading.Thread(target=reader),
+            threading.Thread(target=writer),
+            threading.Thread(target=reader),
+        ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # Final value should be 3 (3 increments)
+        assert store.value == 3
+        # Should have 10 read results
+        assert len(results) == 10

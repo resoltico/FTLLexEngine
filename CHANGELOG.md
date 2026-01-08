@@ -13,6 +13,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-01-08
+  
+### Security
+- **RWLock Deadlock Prevention** (CONC-RWLOCK-DEADLOCK-001, CRITICAL): Fixed deadlock vulnerability in RWLock implementation:
+  - Previous: Write lock reentrancy caused guaranteed deadlock (thread waiting for itself)
+  - Previous: Read-to-write lock upgrade caused guaranteed deadlock (thread waiting to release own read lock)
+  - Now: Write locks are reentrant - same thread can acquire write lock multiple times
+  - Now: Read-to-write upgrades raise `RuntimeError` with clear guidance to prevent deadlock
+  - Updated module docstring and class docstring to document upgrade limitation
+  - Added `_writer_reentry_count` field to track reentrant write acquisitions
+  - Test coverage: `test_rwlock_implementation.py` with write reentrancy and upgrade rejection tests
+
+- **Depth Limit Propagation** (ARCH-DEPTH-BYPASS-001): FluentResolver now receives bundle's configured `max_nesting_depth`:
+  - Previous: Custom depth limits on FluentBundle were ignored; resolver always used default MAX_DEPTH (100)
+  - Now: Bundle's `max_nesting_depth` propagates to FluentResolver → ResolutionContext → GlobalDepthGuard
+  - Prevents DoS via deep nesting even when bundle configured for lower limits
+  - Example: `FluentBundle("en", max_nesting_depth=20)` now enforces 20-level limit in resolver
+
+- **Serializer Validation Depth Guards** (ARCH-VALIDATION-RECURSION-001): Added recursion protection to serializer validation:
+  - Previous: Validation phase (`_validate_pattern`, `_validate_expression`) lacked depth tracking
+  - Previous: Deeply nested ASTs (1000+ levels) caused `RecursionError` during serialize with `validate=True`
+  - Now: Validation functions accept and use `depth_guard` parameter
+  - Now: Raises `SerializationDepthError` when depth limit exceeded (consistent with serialization phase)
+  - `_validate_resource` creates `DepthGuard` and passes to all validation functions
+  - `serialize()` function's `max_depth` parameter now controls both validation and serialization
+
+- **Validator Call Argument Depth Tracking** (ARCH-VALIDATOR-DEPTH-001): Fixed missing depth tracking in call argument validation:
+  - Previous: `_validate_call_arguments` passed `depth_guard` but didn't increment depth for each argument
+  - Previous: Functions with 100 arguments, each containing nested placeables, didn't track cumulative depth
+  - Now: Positional and named argument loops wrapped in `with depth_guard:` blocks
+  - Consistent with `_validate_pattern_element` depth tracking pattern
+
+- **Locale Code Length Validation** (SEC-LOCALE-UNBOUNDED-001): Enforced DoS protection for locale code length:
+  - Previous: No length limit on locale codes; attacker could provide 10MB locale string
+  - Previous: Long locale codes passed character validation but consumed unbounded memory in caches
+  - Now: FluentBundle rejects locale codes exceeding 1000 characters (DoS prevention)
+  - Now: `MAX_LOCALE_CODE_LENGTH = 35` constant defines standard BCP 47 length
+  - LocaleContext.create: Logs warning and falls back to `en_US` for codes exceeding 35 characters
+  - Allows extended BCP 47 private-use subtags (up to 1000 chars) while preventing memory exhaustion
+  - Real-world locale codes: 2-16 characters (e.g., "en", "en-US", "zh-Hans-CN")
+
+- **Cache Error Collection Bounding** (SEC-CACHE-ERROR-BLOAT-001): FormatCache now bounds memory from error collections:
+  - Previous: Only checked formatted string size; error tuple could contain 100+ FluentError objects
+  - Previous: Large error collections (each with Diagnostic traceback) consumed unbounded memory
+  - Now: Added `max_errors_per_entry` parameter (default: 50)
+  - Now: Calculates `total_weight = len(string) + (len(errors) * 1000 bytes/error)`
+  - Now: Skips caching when error count OR total weight exceeds limits
+  - Added `error_bloat_skips` counter in cache stats
+  - Example: 10 errors (~10KB) + 100-char string = rejected if `max_entry_size=5000`
+
+### Fixed
+- **Serializer Comment Roundtrip** (SER-COMMENT-MERGE-001): Fixed consecutive comments merging during parse-serialize-parse roundtrip:
+  - Previous: Two separate comments of the same type (e.g., `### 0` and `### 0`) serialized with single newline separator, causing parser to merge them on re-parse
+  - Root cause: `_has_blank_line_between()` requires two consecutive newlines to detect blank line, but comment's own trailing newline was already consumed during parsing
+  - Now: Serializer inserts extra blank line (`\n\n`) between consecutive comments of the same type
+  - Applies to all comment types: resource (`###`), group (`##`), and single (`#`)
+  - Preserves AST structure through unlimited roundtrips
+
+### Changed
+- **Fuzzing Test Entropy Budget** (TEST-FUZZ-ENTROPY-001): Increased entropy allowance for `test_composability`:
+  - Test requires two full `ftl_resource()` strategies for thorough composability verification
+  - Removed default entropy cap via `HealthCheck.data_too_large` suppression
+  - Maintains full-complexity resource generation for comprehensive property testing
+
 ## [0.58.0] - 2026-01-07
 
 ### Security
@@ -1348,6 +1412,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.59.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.59.0
 [0.58.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.58.0
 [0.57.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.57.0
 [0.56.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.56.0

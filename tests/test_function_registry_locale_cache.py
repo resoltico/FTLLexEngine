@@ -198,6 +198,8 @@ class TestFormatCacheHitRate:
             "unhashable_skips",
             "max_entry_size",
             "oversize_skips",
+            "error_bloat_skips",
+            "max_errors_per_entry",
         }
         assert set(stats.keys()) == expected_keys
 
@@ -210,6 +212,8 @@ class TestFormatCacheHitRate:
         assert isinstance(stats["unhashable_skips"], int)
         assert isinstance(stats["max_entry_size"], int)
         assert isinstance(stats["oversize_skips"], int)
+        assert isinstance(stats["error_bloat_skips"], int)
+        assert isinstance(stats["max_errors_per_entry"], int)
 
 
 class TestASTVisitorSlots:

@@ -99,53 +99,77 @@ def _validate_select_expression(expr: SelectExpression, context: str) -> None:
         raise SerializationValidationError(msg)
 
 
-def _validate_pattern(pattern: Pattern, context: str) -> None:
-    """Validate all expressions within a Pattern."""
+def _validate_pattern(pattern: Pattern, context: str, depth_guard: DepthGuard) -> None:
+    """Validate all expressions within a Pattern.
+
+    Args:
+        pattern: Pattern AST to validate
+        context: Context string for error messages
+        depth_guard: Depth guard for recursion protection
+    """
     for element in pattern.elements:
         if isinstance(element, Placeable):
-            _validate_expression(element.expression, context)
+            with depth_guard:
+                _validate_expression(element.expression, context, depth_guard)
 
 
-def _validate_expression(expr: Expression, context: str) -> None:
-    """Validate an Expression recursively."""
+def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:
+    """Validate an Expression recursively.
+
+    Args:
+        expr: Expression AST to validate
+        context: Context string for error messages
+        depth_guard: Depth guard for recursion protection
+    """
     match expr:
         case SelectExpression():
             _validate_select_expression(expr, context)
             # Also validate patterns within variants
             for variant in expr.variants:
-                _validate_pattern(variant.value, context)
+                with depth_guard:
+                    _validate_pattern(variant.value, context, depth_guard)
         case Placeable():
-            _validate_expression(expr.expression, context)
+            with depth_guard:
+                _validate_expression(expr.expression, context, depth_guard)
         case _:
             pass  # Other expressions don't need validation
 
 
-def _validate_resource(resource: Resource) -> None:
+def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
     """Validate a Resource AST for serialization.
 
     Checks all SelectExpressions have exactly one default variant.
+    Enforces depth limits to prevent stack overflow.
 
     Args:
         resource: Resource AST to validate
+        max_depth: Maximum AST nesting depth (default: MAX_DEPTH)
 
     Raises:
         SerializationValidationError: If validation fails
+        SerializationDepthError: If AST nesting exceeds max_depth
     """
-    for entry in resource.entries:
-        match entry:
-            case Message():
-                context = f"message '{entry.id.name}'"
-                if entry.value:
-                    _validate_pattern(entry.value, context)
-                for attr in entry.attributes:
-                    _validate_pattern(attr.value, f"{context}.{attr.id.name}")
-            case Term():
-                context = f"term '-{entry.id.name}'"
-                _validate_pattern(entry.value, context)
-                for attr in entry.attributes:
-                    _validate_pattern(attr.value, f"{context}.{attr.id.name}")
-            case _:
-                pass  # Comments and Junk don't need validation
+    depth_guard = DepthGuard(max_depth=max_depth)
+
+    try:
+        for entry in resource.entries:
+            match entry:
+                case Message():
+                    context = f"message '{entry.id.name}'"
+                    if entry.value:
+                        _validate_pattern(entry.value, context, depth_guard)
+                    for attr in entry.attributes:
+                        _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
+                case Term():
+                    context = f"term '-{entry.id.name}'"
+                    _validate_pattern(entry.value, context, depth_guard)
+                    for attr in entry.attributes:
+                        _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
+                case _:
+                    pass  # Comments and Junk don't need validation
+    except DepthLimitExceededError as e:
+        msg = f"Validation depth limit exceeded (max: {max_depth}): {e}"
+        raise SerializationDepthError(msg) from e
 
 # FTL indentation constants per Fluent spec.
 # Attributes use 4 spaces for standard indentation.
@@ -199,7 +223,7 @@ class FluentSerializer(ASTVisitor):
             SerializationDepthError: If AST nesting exceeds max_depth
         """
         if validate:
-            _validate_resource(resource)
+            _validate_resource(resource, max_depth=max_depth)
 
         output: list[str] = []
         depth_guard = DepthGuard(max_depth=max_depth)
@@ -215,11 +239,33 @@ class FluentSerializer(ASTVisitor):
     def _serialize_resource(
         self, node: Resource, output: list[str], depth_guard: DepthGuard
     ) -> None:
-        """Serialize Resource to output list."""
-        for i, entry in enumerate(node.entries):
-            if i > 0:
-                output.append("\n")
+        """Serialize Resource to output list.
+
+        Handles blank line insertion between entries per Fluent spec:
+        - Consecutive standalone comments of the same type require a blank
+          line between them to prevent merging during re-parse.
+        - Messages and terms get standard single newline separation.
+        """
+        prev_entry: Message | Term | Comment | Junk | None = None
+
+        for entry in node.entries:
+            if prev_entry is not None:
+                # Determine if we need extra blank line between comments.
+                # Per Fluent spec, adjacent comments of the same type without
+                # a blank line between them are merged. To preserve separate
+                # comment entries during roundtrip, insert an extra newline.
+                needs_extra_blank = (
+                    isinstance(prev_entry, Comment)
+                    and isinstance(entry, Comment)
+                    and prev_entry.type == entry.type
+                )
+                if needs_extra_blank:
+                    output.append("\n\n")
+                else:
+                    output.append("\n")
+
             self._serialize_entry(entry, output, depth_guard)
+            prev_entry = entry
 
     def _serialize_entry(
         self,

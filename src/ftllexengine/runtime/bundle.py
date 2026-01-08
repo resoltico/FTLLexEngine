@@ -123,15 +123,30 @@ class FluentBundle:
         characters with optional underscore or hyphen separators. Enforces
         BCP 47 compliance by rejecting non-ASCII characters.
 
+        Rejects obviously malicious inputs (>1000 characters) to prevent DoS.
+        Locale codes exceeding standard BCP 47 length (35 chars) trigger warnings
+        in LocaleContext but are accepted here.
+
         Args:
             locale: Locale code to validate
 
         Raises:
-            ValueError: If locale code is empty, contains non-ASCII characters,
-                or has invalid format
+            ValueError: If locale code is empty, excessively long (>1000),
+                contains non-ASCII characters, or has invalid format
         """
         if not locale:
             msg = "Locale code cannot be empty"
+            raise ValueError(msg)
+
+        # Reject obviously malicious inputs (DoS prevention)
+        # Well-formed BCP 47 codes are typically <35 chars, but extended private
+        # use subtags can create longer valid codes. 1000 char limit prevents DoS
+        # while allowing all reasonable BCP 47 variations.
+        if len(locale) > 1000:
+            msg = (
+                f"Locale code exceeds maximum length of 1000 characters: "
+                f"'{locale[:50]}...' ({len(locale)} characters)"
+            )
             raise ValueError(msg)
 
         if not _LOCALE_PATTERN.match(locale):
@@ -511,7 +526,7 @@ class FluentBundle:
         """Add FTL resource to bundle.
 
         Parses FTL source and adds messages/terms to registry.
-        Thread-safe (uses internal RLock).
+        Thread-safe (uses internal RWLock).
 
         Args:
             source: FTL file content [positional-only]
@@ -773,6 +788,7 @@ class FluentBundle:
             terms=self._terms,
             function_registry=self._function_registry,
             use_isolating=self._use_isolating,
+            max_nesting_depth=self._max_nesting_depth,
         )
 
         # Resolve message (resolver handles all errors internally including cycles)

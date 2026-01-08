@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.58.0"
+version: "0.59.0"
 domain: CORE
-updated: "2026-01-07"
+updated: "2026-01-08"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -44,9 +44,9 @@ class FluentBundle:
 
 ### Constraints
 - Return: FluentBundle instance.
-- Raises: `ValueError` on invalid locale format (must be ASCII alphanumeric with underscore/hyphen separators).
+- Raises: `ValueError` on invalid locale format (must be ASCII alphanumeric with underscore/hyphen separators) or locale code exceeding 1000 characters (DoS prevention).
 - State: Creates internal message/term registries.
-- Thread: Always thread-safe via internal RLock.
+- Thread: Always thread-safe via internal RWLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
 
@@ -156,7 +156,7 @@ def add_resource(
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
 - Raises: `FluentSyntaxError` on critical parse error.
 - State: Mutates internal message/term registries. Clears cache.
-- Thread: Safe (RLock).
+- Thread: Safe (RWLock).
 
 ---
 
@@ -391,7 +391,7 @@ def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
 - Return: None.
 - Raises: None.
 - State: Mutates function registry. Clears cache.
-- Thread: Safe (RLock).
+- Thread: Safe (RWLock).
 
 ---
 
@@ -561,7 +561,7 @@ class FluentLocalization:
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty or resource_ids without loader.
 - State: Lazy bundle initialization. Bundles created on first access.
-- Thread: Safe (RLock).
+- Thread: Safe (RWLock).
 - Fallback: `on_fallback` invoked when message resolved from non-primary locale.
 
 ---
@@ -584,7 +584,7 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk,
 - Raises: `ValueError` if locale not in fallback chain.
 - Raises: `FluentSyntaxError` if FTL source contains critical syntax errors.
 - State: Mutates target bundle.
-- Thread: Safe (RLock).
+- Thread: Safe (RWLock).
 
 ---
 
@@ -678,7 +678,7 @@ def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
 - Return: None.
 - Raises: None.
 - State: Stores function for existing and future bundles.
-- Thread: Safe (RLock).
+- Thread: Safe (RWLock).
 - Behavior: Preserves lazy bundle initialization. Functions are stored and applied when bundles are first accessed.
 
 ---

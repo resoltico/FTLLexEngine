@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.58.0"
+version: "0.59.0"
 domain: RUNTIME
 updated: "2026-01-07"
 route:
@@ -761,7 +761,7 @@ def get_cycle_path(self, key: str) -> list[str]:
 ### Signature
 ```python
 class FluentResolver:
-    __slots__ = ("function_registry", "locale", "messages", "terms", "use_isolating")
+    __slots__ = ("function_registry", "locale", "messages", "terms", "use_isolating", "_max_nesting_depth")
 
     def __init__(
         self,
@@ -771,6 +771,7 @@ class FluentResolver:
         *,
         function_registry: FunctionRegistry,
         use_isolating: bool = True,
+        max_nesting_depth: int = 100,
     ) -> None: ...
 
     def resolve_message(
@@ -791,6 +792,7 @@ class FluentResolver:
 | `terms` | `dict[str, Term]` | Y | Term registry. |
 | `function_registry` | `FunctionRegistry` | Y | Function registry. |
 | `use_isolating` | `bool` | N | Wrap values in Unicode bidi marks. |
+| `max_nesting_depth` | `int` | N | Maximum resolution depth limit (default: 100). |
 
 ### Constraints
 - Return: Resolver instance.
@@ -963,10 +965,11 @@ class RWLock:
 
 ### Constraints
 - Return: RWLock instance.
-- State: Tracks active readers, active writer, waiting writers, reader thread counts.
-- Thread: Safe for all operations. Reentrant for readers (same thread can acquire read lock multiple times).
+- State: Tracks active readers, active writer, waiting writers, reader thread counts, writer reentry count.
+- Thread: Safe for all operations. Reentrant for both readers and writers (same thread can reacquire locks multiple times).
 - Purpose: Allows multiple concurrent readers OR single exclusive writer.
 - Writer Preference: Writers are prioritized when waiting to prevent reader starvation.
+- Upgrade Limitation: Read-to-write lock upgrades are prohibited. Thread holding read lock cannot acquire write lock (raises RuntimeError).
 - Usage: FluentBundle uses RWLock internally for concurrent format operations.
 - Import: `from ftllexengine.runtime.rwlock import RWLock`
 
@@ -1003,9 +1006,10 @@ def write(self) -> Generator[None, None, None]:
 
 ### Constraints
 - Return: Context manager yielding None.
-- State: Sets active writer. Blocks all other readers and writers.
+- State: Sets active writer. Blocks all other readers and writers. Reentrant (same thread can acquire multiple times).
 - Thread: Safe. Only one thread can hold write lock at a time.
 - Blocks: Until all readers release their locks.
+- Raises: `RuntimeError` if thread attempts read-to-write lock upgrade.
 - Usage: `with lock.write(): # modify data`
 
 ---

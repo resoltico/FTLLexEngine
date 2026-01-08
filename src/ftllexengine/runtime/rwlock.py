@@ -5,12 +5,20 @@ This module provides a readers-writer lock that allows:
 - Exclusive writer access (add_resource, add_function)
 - Writer preference to prevent starvation
 - Reentrant reader locks (same thread can acquire read lock multiple times)
+- Reentrant writer locks (same thread can acquire write lock multiple times)
 - Proper deadlock avoidance
 
 Architecture:
     RWLock uses a condition variable to coordinate reader and writer threads.
     Writers are prioritized when waiting to prevent indefinite write starvation
     in read-heavy workloads.
+
+Upgrade Limitation:
+    Read-to-write lock upgrades are not supported. A thread holding a read lock
+    cannot acquire the write lock (raises RuntimeError). This prevents deadlock
+    scenarios where the thread would wait for itself to release the read lock.
+    Release the read lock before acquiring the write lock, or restructure code
+    to acquire write lock first.
 
 Python 3.13+.
 """
@@ -38,7 +46,11 @@ class RWLock:
 
     Thread Safety:
         All methods are thread-safe. The lock is reentrant for readers
-        (same thread can acquire read lock multiple times).
+        and writers (same thread can acquire read or write lock multiple times).
+
+    Upgrade Limitation:
+        Read-to-write lock upgrades are not supported. A thread holding a read
+        lock cannot acquire the write lock (raises RuntimeError).
 
     Example:
         >>> lock = RWLock()
@@ -52,6 +64,12 @@ class RWLock:
         >>> with lock.write():
         ...     # Modify data
         ...     pass
+        >>>
+        >>> # Reentrant write locks work
+        >>> with lock.write():
+        ...     with lock.write():  # Same thread can reacquire
+        ...         # Still exclusive
+        ...         pass
     """
 
     __slots__ = (
@@ -60,6 +78,7 @@ class RWLock:
         "_condition",
         "_reader_threads",
         "_waiting_writers",
+        "_writer_reentry_count",
     )
 
     def __init__(self) -> None:
@@ -79,6 +98,9 @@ class RWLock:
         # Track reader thread IDs and their recursive acquisition count
         # This enables reentrant read locks (same thread acquiring multiple times)
         self._reader_threads: dict[int, int] = {}
+
+        # Track write lock reentry count for write reentrancy
+        self._writer_reentry_count: int = 0
 
     @contextmanager
     def read(self) -> Generator[None]:
@@ -107,6 +129,10 @@ class RWLock:
 
         Only one thread can hold write lock at a time.
         Blocks until all readers release their locks.
+        Reentrant: same thread can acquire write lock multiple times.
+
+        Raises:
+            RuntimeError: If thread attempts read-to-write lock upgrade.
 
         Yields:
             None
@@ -177,10 +203,28 @@ class RWLock:
 
         Blocks until all readers release their locks.
         Only one writer can be active at a time.
+        Reentrant: same thread can acquire write lock multiple times.
+
+        Raises:
+            RuntimeError: If thread attempts read-to-write lock upgrade.
         """
         current_thread = threading.current_thread()
+        current_thread_id = threading.get_ident()
 
         with self._condition:
+            # Check for read-to-write upgrade attempt (prohibited to prevent deadlock)
+            if current_thread_id in self._reader_threads:
+                msg = (
+                    "Cannot upgrade read lock to write lock. "
+                    "Release read lock before acquiring write lock."
+                )
+                raise RuntimeError(msg)
+
+            # Check if this thread already holds the write lock (reentrant case)
+            if self._active_writer == current_thread:
+                self._writer_reentry_count += 1
+                return
+
             # Increment waiting writers count (for reader blocking)
             self._waiting_writers += 1
 
@@ -199,12 +243,18 @@ class RWLock:
     def _release_write(self) -> None:
         """Release write lock (internal implementation).
 
-        Notifies all waiting readers and writers.
+        Handles reentrant lock releases correctly.
+        Notifies all waiting readers and writers when fully released.
         """
         with self._condition:
             if self._active_writer != threading.current_thread():
                 msg = "Thread does not hold write lock"
                 raise RuntimeError(msg)
+
+            # Handle reentrant release
+            if self._writer_reentry_count > 0:
+                self._writer_reentry_count -= 1
+                return
 
             # Release write lock
             self._active_writer = None

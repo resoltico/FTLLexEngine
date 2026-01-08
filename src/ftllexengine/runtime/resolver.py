@@ -223,6 +223,7 @@ class FluentResolver:
     """
 
     __slots__ = (
+        "_max_nesting_depth",
         "function_registry",
         "locale",
         "messages",
@@ -238,6 +239,7 @@ class FluentResolver:
         *,
         function_registry: FunctionRegistry,
         use_isolating: bool = True,
+        max_nesting_depth: int = MAX_DEPTH,
     ) -> None:
         """Initialize resolver.
 
@@ -247,12 +249,14 @@ class FluentResolver:
             terms: Term registry
             function_registry: Function registry with camelCase conversion (keyword-only)
             use_isolating: Wrap interpolated values in Unicode bidi marks (keyword-only)
+            max_nesting_depth: Maximum resolution depth limit (keyword-only)
         """
         self.locale = locale
         self.use_isolating = use_isolating
         self.messages = messages
         self.terms = terms
         self.function_registry = function_registry
+        self._max_nesting_depth = max_nesting_depth
 
     def resolve_message(
         self,
@@ -300,7 +304,10 @@ class FluentResolver:
 
         # Create fresh context if not provided (top-level call)
         if context is None:
-            context = ResolutionContext()
+            context = ResolutionContext(
+                max_depth=self._max_nesting_depth,
+                max_expression_depth=self._max_nesting_depth,
+            )
 
         # Select pattern (value or attribute)
         if attribute:

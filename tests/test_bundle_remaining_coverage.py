@@ -233,9 +233,8 @@ class TestValidationUndefinedReferences:
 class TestAlwaysOnThreadSafety:
     """Test that FluentBundle is always thread-safe.
 
-    Thread safety is now always enabled (breaking change in v0.42.0).
-    The thread_safe parameter and is_thread_safe property were removed.
-    All public methods are synchronized via internal RLock.
+    Thread safety is always enabled via readers-writer lock (RWLock).
+    Read operations can execute concurrently; write operations are exclusive.
     """
 
     def test_add_resource_is_thread_safe(self) -> None:

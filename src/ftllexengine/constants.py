@@ -23,6 +23,7 @@ __all__ = [
     "DEFAULT_MAX_ENTRY_SIZE",
     # Input limits
     "MAX_SOURCE_SIZE",
+    "MAX_LOCALE_CODE_LENGTH",
     # Parser limits
     "MAX_LOOKAHEAD_CHARS",
     # Fallback strings
@@ -112,6 +113,15 @@ DEFAULT_MAX_ENTRY_SIZE: int = 10_000
 # UTF-8 encoding means 1 character = 1-4 bytes, but len(source) counts characters.
 # Prevents DoS attacks via unbounded memory allocation from large FTL files.
 MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
+
+# Maximum locale code length per BCP 47 / RFC 5646 (35 characters recommended).
+# BCP 47 well-formed locale tags are typically <35 characters, including language,
+# script, region, and variant subtags (e.g., "zh-Hans-CN-x-private").
+# This constant is used by LocaleContext.create() to trigger warnings for unusually
+# long locale codes, which may indicate misconfiguration or attack attempts.
+# Real-world locale codes: typically 2-16 characters (e.g., "en", "en-US", "zh-Hans-CN").
+# FluentBundle accepts locales up to 1000 characters for BCP 47 private-use extensions.
+MAX_LOCALE_CODE_LENGTH: int = 35
 
 # ============================================================================
 # PARSER LIMITS

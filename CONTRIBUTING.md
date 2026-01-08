@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.52.0"
+version: "0.59.0"
 domain: contributing
 updated: "2026-01-03"
 route:
