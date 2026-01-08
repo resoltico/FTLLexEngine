@@ -533,11 +533,14 @@ class FluentParserV1:
             if cursor.is_eof:
                 break
 
-            # Check for valid entry start characters
+            # Check for valid entry start characters AT COLUMN 1
             # Per spec: Junk stops at #, -, or ASCII letter [a-zA-Z]
+            # Note: Valid entries must start at column 1 (no indentation)
             # Note: Uses is_identifier_start for ASCII-only check per Fluent spec
-            if cursor.current in ("#", "-") or is_identifier_start(cursor.current):
-                # Found valid entry start - restore to line start and stop
+            if cursor.pos == saved_cursor.pos and (
+                cursor.current in ("#", "-") or is_identifier_start(cursor.current)
+            ):
+                # Found valid entry start at column 1 - restore to line start and stop
                 cursor = saved_cursor
                 break
 

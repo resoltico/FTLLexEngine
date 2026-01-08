@@ -116,3 +116,41 @@ hello = Valid message
         msg = resource.entries[1]
         assert isinstance(msg, Message)
         assert msg.id.name == "hello"
+
+    def test_junk_consumes_indented_lines_with_entry_chars(
+        self, parser: FluentParserV1
+    ) -> None:
+        """Junk should consume indented lines even if they contain entry-start chars.
+
+        Per spec: Valid entries MUST start at column 1 (no indentation).
+        Lines starting with whitespace followed by #, -, or letter are NOT valid
+        entries and should be consumed as part of junk.
+
+        This tests the fix for IMP-PARSER-JUNK-FRAGMENT-001.
+        """
+        source = """invalid junk line
+    # This looks like a comment but is indented
+    - This looks like a term but is indented
+    message_like_but_indented
+# Real comment
+msg = Valid message
+"""
+        resource = parser.parse(source)
+
+        # Should have: 1 Junk (4 lines), 1 Message (with attached comment)
+        assert len(resource.entries) == 2
+
+        # First entry should be Junk containing all indented/invalid lines
+        junk = resource.entries[0]
+        assert isinstance(junk, Junk)
+        assert "invalid junk line" in junk.content
+        assert "# This looks like a comment but is indented" in junk.content
+        assert "- This looks like a term but is indented" in junk.content
+        assert "message_like_but_indented" in junk.content
+
+        # Second entry should be Message with attached comment
+        msg = resource.entries[1]
+        assert isinstance(msg, Message)
+        assert msg.id.name == "msg"
+        assert msg.comment is not None
+        assert msg.comment.content == "Real comment"

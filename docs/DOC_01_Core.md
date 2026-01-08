@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.61.0"
+version: "0.62.0"
 domain: CORE
 updated: "2026-01-08"
 route:
@@ -274,6 +274,7 @@ def has_attribute(self, message_id: str, attribute: str) -> bool:
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
+- Duplicate Attributes: Checks existence only; does not indicate which definition will be used if duplicates exist (see format_pattern for last-wins resolution).
 
 ---
 

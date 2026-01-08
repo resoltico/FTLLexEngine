@@ -83,12 +83,15 @@ class FluentParseError(FluentError):
     Raised when parsing locale-formatted strings (numbers, dates, currency)
     fails. Part of the unified error handling model aligned with format_*() API.
 
-    instead of raising exceptions, consistent with formatting API.
-
     Attributes:
-        input_value: The string that failed to parse
-        locale_code: The locale used for parsing
-        parse_type: Type of parsing attempted ('number', 'decimal', 'date', 'datetime', 'currency')
+        input_value: The string that failed to parse. Empty string indicates the
+                    value was not provided or could not be captured (e.g., internal
+                    error before input processing).
+        locale_code: The locale used for parsing. Empty string indicates locale-
+                    agnostic parsing or unavailable locale context.
+        parse_type: Type of parsing attempted ('number', 'decimal', 'date',
+                   'datetime', 'currency'). Empty string indicates the type could
+                   not be determined (e.g., internal errors before type identification)
 
     Example:
         >>> result, errors = parse_number("invalid", "en_US")
@@ -109,9 +112,13 @@ class FluentParseError(FluentError):
 
         Args:
             message: Error message string OR Diagnostic object
-            input_value: The string that failed to parse
-            locale_code: The locale used for parsing
-            parse_type: Type of parsing ('number', 'decimal', 'date', 'datetime', 'currency')
+            input_value: The string that failed to parse. Empty string if not provided
+                        or if the input was genuinely an empty string.
+            locale_code: The locale used for parsing. Empty string if locale-agnostic
+                        or if locale context is unavailable.
+            parse_type: Type of parsing ('number', 'decimal', 'date', 'datetime', 'currency').
+                       Empty string if parse type cannot be determined (e.g., internal
+                       errors before type is known).
         """
         super().__init__(message)
         self.input_value = input_value

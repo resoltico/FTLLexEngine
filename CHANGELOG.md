@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-01-08
+
+### Fixed
+- **Parser Junk Consolidation** (IMP-PARSER-JUNK-FRAGMENT-001): Parser now correctly consolidates indented junk content:
+  - Previous: Junk recovery stopped prematurely at indented lines starting with `#`, `-`, or letters, creating fragmented Junk entries
+  - Root cause: `_consume_junk_lines` checked for entry-start characters after skipping spaces, without verifying the character was at column 1
+  - Now: Only stops junk consumption when entry-start characters appear at column 1 (no indentation)
+  - Impact: Reduces memory overhead (fewer Junk objects) and cleaner error reporting (one consolidated error instead of multiple fragments)
+  - Example: Invalid block with indented comments now creates single Junk entry instead of multiple fragments
+  - Per Fluent EBNF: Valid entries must start at column 1; indented lines are not valid entry starts
+
+### Documentation
+- **Attribute Resolution Semantics** (SEM-RESOLVER-ATTR-ORDER-001): Enhanced documentation of last-wins attribute resolution:
+  - Added to `FluentResolver.resolve_message` docstring: Documents that duplicate attributes use last-wins semantics
+  - Added to `FluentBundle.format_pattern` docstring: Clarifies last definition is used for duplicate attribute names
+  - Added to `FluentBundle.has_attribute` docstring: Notes that existence check doesn't indicate which duplicate will resolve
+  - Matches Fluent specification and Mozilla reference implementation behavior
+  - Duplicate attributes already trigger validation warnings; this change only clarifies resolution behavior
+
+- **FluentParseError Parameter Semantics** (API-PARSEERROR-ATTRS-001): Clarified empty string meaning for keyword-only parameters:
+  - Enhanced class-level docstring to explain attribute semantics with empty string defaults
+  - Enhanced `__init__` docstring to document when empty strings are used:
+    - `input_value=""`: Empty string if not provided or input was genuinely empty
+    - `locale_code=""`: Empty string if locale-agnostic or locale context unavailable
+    - `parse_type=""`: Empty string if type cannot be determined (e.g., internal errors before type identification)
+  - Non-breaking change: maintains existing API contract while improving clarity
+  - Enables users to distinguish "not provided" from intentional empty values in diagnostic code
+
 ## [0.61.0] - 2026-01-08
 
 ### Added
@@ -1484,6 +1512,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.62.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.62.0
 [0.61.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.61.0
 [0.60.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.60.0
 [0.59.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.59.0

@@ -702,6 +702,10 @@ class FluentBundle:
             collected and returned in the errors list. The formatted string
             always contains a readable fallback value per Fluent specification.
 
+            If an attribute name is duplicated within a message (validation warning),
+            the last definition is used during resolution (last-wins semantics).
+            This matches the Fluent specification and Mozilla reference implementation.
+
         Examples:
             >>> # Successful formatting
             >>> result, errors = bundle.format_pattern("hello")
@@ -865,6 +869,12 @@ class FluentBundle:
 
         Returns:
             True if message exists AND has the specified attribute
+
+        Note:
+            This method checks if any attribute with the given name exists.
+            If duplicate attribute names exist (validation warning), this returns
+            True without indicating which definition will be used. See format_pattern
+            for resolution semantics (last-wins for duplicates).
 
         Example:
             >>> bundle.add_resource('''

@@ -298,6 +298,12 @@ class FluentResolver:
         Note:
             Per Fluent spec, resolution never fails catastrophically.
             Errors are collected and fallback values are used.
+
+            Attribute resolution uses last-wins semantics for duplicate attribute
+            names. If a message contains multiple attributes with the same name
+            (which triggers a validation warning), the last definition is used
+            during resolution. This matches the Fluent specification and Mozilla
+            reference implementation behavior.
         """
         errors: list[FluentError] = []
         args = args or {}

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.61.0"
+version: "0.62.0"
 domain: ERRORS
 updated: "2026-01-08"
 route:
@@ -160,13 +160,14 @@ class FluentParseError(FluentError):
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `message` | `str \| Diagnostic` | Y | Error message or diagnostic. |
-| `input_value` | `str` | N | String that failed to parse. |
-| `locale_code` | `str` | N | Locale used for parsing. |
-| `parse_type` | `str` | N | Type: number, decimal, date, datetime, currency. |
+| `input_value` | `str` | N | String that failed; empty if not provided or genuinely empty. |
+| `locale_code` | `str` | N | Locale used; empty if locale-agnostic or unavailable. |
+| `parse_type` | `str` | N | Type (number/decimal/date/datetime/currency); empty if undetermined. |
 
 ### Constraints
 - Purpose: Bi-directional parsing errors.
 - Behavior: Returned in error list, never raised.
+- Empty Strings: Default parameter values indicate "not provided" or "unknown" state; empty string is the sentinel value for unavailable context.
 
 ---
 
