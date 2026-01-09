@@ -462,7 +462,9 @@ class TestCurrencyMetamorphicProperties:
         # Add whitespace around currency and amount
         currency_str = f"{whitespace}€{whitespace}100.50{whitespace}"
 
-        result, _errors = parse_currency(currency_str, "en_US", default_currency="USD")
+        result, errors = parse_currency(currency_str, "en_US", default_currency="USD")
+
+        assert not errors
         if result is not None:
             parsed_amount, currency_code = result
             assert parsed_amount == Decimal("100.50")

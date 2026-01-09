@@ -51,7 +51,9 @@ class TestPlaceableResolution:
             use_isolating=True,
         )
 
-        result, _errors = resolver.resolve_message(message, {"name": "World"})
+        result, errors = resolver.resolve_message(message, {"name": "World"})
+
+        assert not errors
         # Should include isolating marks around the variable
         assert "\u2068" in result  # FSI
         assert "\u2069" in result  # PDI
@@ -79,7 +81,9 @@ class TestPlaceableResolution:
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(message, {"name": "World"})
+        result, errors = resolver.resolve_message(message, {"name": "World"})
+
+        assert not errors
         # Should NOT include isolating marks
         assert "\u2068" not in result
         assert "\u2069" not in result
@@ -114,7 +118,9 @@ class TestPlaceableResolution:
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(message, {var_name: value})
+        result, errors = resolver.resolve_message(message, {var_name: value})
+
+        assert not errors
         assert value in result
 
 
@@ -158,11 +164,15 @@ class TestVariantNumericMatching:
         )
 
         # Test exact match with int
-        result, _errors = resolver.resolve_message(message, {"count": 0})
+        result, errors = resolver.resolve_message(message, {"count": 0})
+
+        assert not errors
         assert "zero items" in result
 
         # Test exact match with different value
-        result, _errors = resolver.resolve_message(message, {"count": 1})
+        result, errors = resolver.resolve_message(message, {"count": 1})
+
+        assert not errors
         assert "one item" in result
 
     def test_decimal_exact_match_in_variant(self) -> None:
@@ -198,7 +208,9 @@ class TestVariantNumericMatching:
         )
 
         # Test Decimal value matches float variant
-        result, _errors = resolver.resolve_message(message, {"amount": Decimal("1.5")})
+        result, errors = resolver.resolve_message(message, {"amount": Decimal("1.5")})
+
+        assert not errors
         assert "exact match" in result
 
     def test_float_exact_match_in_variant(self) -> None:
@@ -231,7 +243,9 @@ class TestVariantNumericMatching:
             function_registry=FunctionRegistry(),
         )
 
-        result, _errors = resolver.resolve_message(message, {"price": 9.99})
+        result, errors = resolver.resolve_message(message, {"price": 9.99})
+
+        assert not errors
         assert "special price" in result
 
     @given(number=st.integers(min_value=-100, max_value=100))
@@ -265,7 +279,9 @@ class TestVariantNumericMatching:
             function_registry=FunctionRegistry(),
         )
 
-        result, _errors = resolver.resolve_message(message, {"n": number})
+        result, errors = resolver.resolve_message(message, {"n": number})
+
+        assert not errors
         assert "matched" in result
 
 
@@ -432,7 +448,9 @@ class TestNumericVariantEdgeCases:
         )
 
         # True should NOT match numeric 1
-        result, _errors = resolver.resolve_message(message, {"flag": True})
+        result, errors = resolver.resolve_message(message, {"flag": True})
+
+        assert not errors
         # Should use default, not numeric match
         assert "default" in result
 
@@ -467,7 +485,9 @@ class TestNumericVariantEdgeCases:
         )
 
         # None should not match identifier "none", should use default
-        result, _errors = resolver.resolve_message(message, {"value": None})
+        result, errors = resolver.resolve_message(message, {"value": None})
+
+        assert not errors
         assert "default variant" in result
 
     @given(
@@ -512,7 +532,9 @@ class TestNumericVariantEdgeCases:
             function_registry=FunctionRegistry(),
         )
 
-        result, _errors = resolver.resolve_message(message, {"amount": decimal_str})
+        result, errors = resolver.resolve_message(message, {"amount": decimal_str})
+
+        assert not errors
         assert "exact" in result
 
 

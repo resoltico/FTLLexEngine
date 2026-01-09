@@ -99,8 +99,12 @@ msg = { $count ->
 }
 """)
 
-        result_one, _errors = bundle.format_pattern("msg", {"count": 1})
-        result_other, _errors = bundle.format_pattern("msg", {"count": 5})
+        result_one, errors = bundle.format_pattern("msg", {"count": 1})
+
+        assert not errors
+        result_other, errors = bundle.format_pattern("msg", {"count": 5})
+
+        assert not errors
 
         # Should select appropriate variant
         assert isinstance(result_one, str)

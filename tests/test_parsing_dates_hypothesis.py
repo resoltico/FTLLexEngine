@@ -562,7 +562,9 @@ class TestDateParsingEdgeCases:
         # ISO date should still work with fromisoformat
         date_str = "2025-01-28"
 
-        result, _errors = parse_date(date_str, invalid_locale)
+        result, errors = parse_date(date_str, invalid_locale)
+
+        assert not errors
         # Should either work with ISO (fromisoformat) or return error
         if result is not None:
             assert result.year == 2025
@@ -576,7 +578,9 @@ class TestDateParsingEdgeCases:
 
         for locale in minimal_locales:
             # ISO date should always work (uses fromisoformat, not CLDR)
-            result, _errors = parse_date("2025-01-28", locale)
+            result, errors = parse_date("2025-01-28", locale)
+
+            assert not errors
             if result is not None:
                 assert result.year == 2025
                 assert result.month == 1
@@ -593,7 +597,9 @@ class TestDateParsingEdgeCases:
         """Invalid locales should return error for non-ISO patterns."""
         datetime_str = "2025-01-28T14:30:00"
 
-        result, _errors = parse_datetime(datetime_str, invalid_locale)
+        result, errors = parse_datetime(datetime_str, invalid_locale)
+
+        assert not errors
         # Should either work with ISO (fromisoformat) or return error
         if result is not None:
             assert result.year == 2025
@@ -607,7 +613,9 @@ class TestDateParsingEdgeCases:
 
         for locale in minimal_locales:
             # ISO datetime should always work (uses fromisoformat, not CLDR)
-            result, _errors = parse_datetime("2025-01-28T14:30:00", locale)
+            result, errors = parse_datetime("2025-01-28T14:30:00", locale)
+
+            assert not errors
             if result is not None:
                 assert result.year == 2025
                 assert result.month == 1

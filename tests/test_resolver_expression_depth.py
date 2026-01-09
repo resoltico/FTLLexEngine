@@ -108,11 +108,12 @@ class TestSelectExpressionDepthLimit:
 
         bundle._messages["nested"] = message
 
-        _result, _errors = bundle.format_pattern("nested", {"var": "one"})
+        result, _errors = bundle.format_pattern("nested", {"var": "one"})
 
         # At exactly MAX_DEPTH, behavior may vary - the important thing is no crash
         # Depth errors may or may not occur at exact boundary
-        assert _result is not None
+        # Not asserting errors because behavior is undefined at boundary
+        assert result is not None
 
     def test_just_under_max_depth(self) -> None:
         """Test behavior just under MAX_DEPTH."""
@@ -272,11 +273,12 @@ class TestDepthLimitWithCustomLimit:
 
         bundle._messages["test"] = message
 
-        _result, _errors = bundle.format_pattern("test", {})
+        result, _errors = bundle.format_pattern("test", {})
 
         # With custom limit, deeper nesting may produce errors or fallback
         # The important thing is no crash occurred
-        assert _result is not None
+        # Not asserting errors because behavior depends on custom limit
+        assert result is not None
 
 
 class TestDepthLimitPropertyBased:

@@ -155,10 +155,15 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
     @rule(msg_id=messages)
     def format_known_message(self, msg_id: str) -> None:
-        """Format a message that we know exists."""
-        result, _errors = self._fluent_bundle.format_value(msg_id)
+        """Format a message that we know exists (without variables)."""
+        # Skip messages that need variables - those are handled by format_with_args
+        assume(msg_id not in self.known_variables)
 
-        # Should not have resolution errors for known messages
+        result, errors = self._fluent_bundle.format_value(msg_id)
+
+        assert not errors
+
+        # Should not have resolution errors for simple messages
         # (syntax errors would have been caught at add_resource)
         assert isinstance(result, str)
 
@@ -171,7 +176,9 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
             var_name = self.known_variables[msg_id]
             args[var_name] = arg_value
 
-        result, _errors = self._fluent_bundle.format_value(msg_id, args)
+        result, errors = self._fluent_bundle.format_value(msg_id, args)
+
+        assert not errors
         assert isinstance(result, str)
 
     @rule(msg_id=ftl_identifiers())
@@ -182,7 +189,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
         result, _errors = self._fluent_bundle.format_value(msg_id)
 
-        # Unknown message should return the message ID as fallback
+        # Unknown message returns message ID as fallback (with error)
         assert msg_id in result
 
     # =========================================================================

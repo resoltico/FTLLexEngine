@@ -28,9 +28,10 @@ class TestVariableReferenceErrorPaths:
         bundle.add_resource("msg = Value { var }")
 
         # Should treat as message reference, not variable
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
         # Will error because 'var' message doesn't exist
-        assert len(_errors) > 0 or "{var}" in result
+        assert len(errors) > 0 or "{var}" in result
 
 
 # ============================================================================
@@ -51,7 +52,9 @@ class TestTextElementEdgeCases:
         # Pattern ending at newline (stop char)
         bundle.add_resource("msg = Value\n")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_empty_pattern_followed_by_attribute(self) -> None:
@@ -66,7 +69,9 @@ msg =
     .attr = Attribute
 """)
 
-        result, _errors = bundle.format_pattern("msg", attribute="attr")
+        result, errors = bundle.format_pattern("msg", attribute="attr")
+
+        assert not errors
         assert "Attribute" in result
 
 
@@ -87,7 +92,9 @@ class TestPatternParsingEdgeCases:
         # Pattern at EOF without trailing newline
         bundle.add_resource("msg = Value at EOF")  # No \n
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value at EOF" in result
 
     def test_multiline_pattern_with_continuation(self) -> None:
@@ -100,7 +107,9 @@ msg =
     Second line
 """)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         # Should contain both lines
         assert "First line" in result or "Second line" in result
 
@@ -118,7 +127,9 @@ class TestPatternParsingIntegration:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello { $name }, you have { $count } messages.")
 
-        result, _errors = bundle.format_pattern("msg", {"name": "Alice", "count": 5})
+        result, errors = bundle.format_pattern("msg", {"name": "Alice", "count": 5})
+
+        assert not errors
         # Account for Unicode bidi marks
         assert "Alice" in result
         assert "5" in result
@@ -129,7 +140,9 @@ class TestPatternParsingIntegration:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Value with \t tabs and  spaces")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_pattern_with_unicode(self) -> None:
@@ -137,7 +150,9 @@ class TestPatternParsingIntegration:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Unicode: \u4e2d\u6587 \u1f600")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Unicode:" in result
         assert "\u4e2d\u6587" in result
 
@@ -179,7 +194,7 @@ count = { $n ->
         assert "1 * item" in result
         assert not errors
 
-        result, errors = bundle.format_pattern("count", {"n": 5})
+        result, _errors = bundle.format_pattern("count", {"n": 5})
         assert "* items" in result
 
     def test_bracket_not_starting_variant_key(self) -> None:
@@ -207,10 +222,14 @@ calc = { $op ->
 }
 """)
 
-        result, _errors = bundle.format_pattern("calc", {"op": "mul"})
+        result, errors = bundle.format_pattern("calc", {"op": "mul"})
+
+        assert not errors
         assert "3 * 5 = 15" in result
 
-        result, _errors = bundle.format_pattern("calc", {"op": "arr"})
+        result, errors = bundle.format_pattern("calc", {"op": "arr"})
+
+        assert not errors
         assert "[1, 2, 3]" in result
 
     def test_asterisk_before_bracket_is_variant(self) -> None:
@@ -224,7 +243,9 @@ example = { $x ->
 """)
 
         # Unmatched value should use default
-        result, _errors = bundle.format_pattern("example", {"x": "unknown"})
+        result, errors = bundle.format_pattern("example", {"x": "unknown"})
+
+        assert not errors
         assert "Default B" in result
 
     def test_numeric_variant_key(self) -> None:
@@ -238,10 +259,14 @@ indexed = { $i ->
 }
 """)
 
-        result, _errors = bundle.format_pattern("indexed", {"i": 0})
+        result, errors = bundle.format_pattern("indexed", {"i": 0})
+
+        assert not errors
         assert "Zero" in result
 
-        result, _errors = bundle.format_pattern("indexed", {"i": 1})
+        result, errors = bundle.format_pattern("indexed", {"i": 1})
+
+        assert not errors
         assert "One" in result
 
     def test_complex_variant_with_asterisk_and_brackets(self) -> None:
@@ -255,8 +280,12 @@ complex = { $mode ->
 }
 """)
 
-        result, _errors = bundle.format_pattern("complex", {"mode": "matrix"})
+        result, errors = bundle.format_pattern("complex", {"mode": "matrix"})
+
+        assert not errors
         assert "[matrix * vector]" in result
 
-        result, _errors = bundle.format_pattern("complex", {"mode": "calc"})
+        result, errors = bundle.format_pattern("complex", {"mode": "calc"})
+
+        assert not errors
         assert "a * b + c" in result

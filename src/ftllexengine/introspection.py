@@ -388,7 +388,7 @@ class IntrospectionVisitor(ASTVisitor[None]):
         """Visit a select variant and extract variables from its pattern."""
         old_context = self._context
         self._context = VariableContext.VARIANT
-        self.visit_Pattern(variant.value)
+        self.visit(variant.value)
         self._context = old_context
 
 

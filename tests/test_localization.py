@@ -60,7 +60,9 @@ class TestAddResource:
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "hello = Hello, World!")
 
-        result, _errors = l10n.format_value("hello")
+        result, errors = l10n.format_value("hello")
+
+        assert not errors
         assert result == "Hello, World!"
 
     def test_add_resource_multiple_locales(self) -> None:
@@ -69,7 +71,9 @@ class TestAddResource:
         l10n.add_resource("lv", "hello = Sveiki, pasaule!")
         l10n.add_resource("en", "hello = Hello, World!")
 
-        result, _errors = l10n.format_value("hello")
+        result, errors = l10n.format_value("hello")
+
+        assert not errors
         # Should use first locale (lv)
         assert result == "Sveiki, pasaule!"
 
@@ -90,7 +94,9 @@ class TestFallbackChain:
         # Add message only to English (not Latvian)
         l10n.add_resource("en", "greeting = Hello!")
 
-        result, _errors = l10n.format_value("greeting")
+        result, errors = l10n.format_value("greeting")
+
+        assert not errors
         assert result == "Hello!"
 
     def test_fallback_to_third_locale(self) -> None:
@@ -99,7 +105,9 @@ class TestFallbackChain:
         # Add message only to Lithuanian
         l10n.add_resource("lt", "welcome = Labas!")
 
-        result, _errors = l10n.format_value("welcome")
+        result, errors = l10n.format_value("welcome")
+
+        assert not errors
         assert result == "Labas!"
 
     def test_first_locale_takes_precedence(self) -> None:
@@ -108,7 +116,9 @@ class TestFallbackChain:
         l10n.add_resource("lv", "msg = Latvian version")
         l10n.add_resource("en", "msg = English version")
 
-        result, _errors = l10n.format_value("msg")
+        result, errors = l10n.format_value("msg")
+
+        assert not errors
         # Should use first locale (lv), not fallback to en
         assert result == "Latvian version"
 
@@ -156,7 +166,9 @@ class TestFormatValue:
         l10n = FluentLocalization(["en"], use_isolating=False)
         l10n.add_resource("en", "greeting = Hello, { $name }!")
 
-        result, _errors = l10n.format_value("greeting", {"name": "Anna"})
+        result, errors = l10n.format_value("greeting", {"name": "Anna"})
+
+        assert not errors
 
         assert result == "Hello, Anna!"
 
@@ -165,9 +177,11 @@ class TestFormatValue:
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "user-info = { $firstName } { $lastName } (Age: { $age })")
 
-        result, _errors = l10n.format_value(
+        result, errors = l10n.format_value(
             "user-info", {"firstName": "John", "lastName": "Doe", "age": 30}
         )
+
+        assert not errors
 
         assert "John" in result
         assert "Doe" in result
@@ -253,7 +267,9 @@ class TestUseIsolating:
         l10n = FluentLocalization(["en"], use_isolating=True)
         l10n.add_resource("en", "msg = Hello, { $name }!")
 
-        result, _errors = l10n.format_value("msg", {"name": "Anna"})
+        result, errors = l10n.format_value("msg", {"name": "Anna"})
+
+        assert not errors
 
         # Should contain Unicode bidi isolation marks
         assert "\u2068" in result  # FSI (First Strong Isolate)
@@ -264,7 +280,9 @@ class TestUseIsolating:
         l10n = FluentLocalization(["en"], use_isolating=False)
         l10n.add_resource("en", "msg = Hello, { $name }!")
 
-        result, _errors = l10n.format_value("msg", {"name": "Anna"})
+        result, errors = l10n.format_value("msg", {"name": "Anna"})
+
+        assert not errors
 
         # Should NOT contain isolation marks
         assert "\u2068" not in result
@@ -314,7 +332,9 @@ class TestPathResourceLoader:
         loader = PathResourceLoader(str(locales_dir / "{locale}"))
         l10n = FluentLocalization(["lv", "en"], ["main.ftl"], loader)
 
-        result, _errors = l10n.format_value("hello")
+        result, errors = l10n.format_value("hello")
+
+        assert not errors
         assert result == "Sveiki!"  # From lv
 
     def test_path_resource_loader_missing_locale_file_uses_fallback(
@@ -331,7 +351,9 @@ class TestPathResourceLoader:
         loader = PathResourceLoader(str(locales_dir / "{locale}"))
         l10n = FluentLocalization(["lv", "en"], ["main.ftl"], loader)
 
-        result, _errors = l10n.format_value("hello")
+        result, errors = l10n.format_value("hello")
+
+        assert not errors
         assert result == "Hello!"  # Fell back to English
 
 

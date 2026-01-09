@@ -87,7 +87,9 @@ class TestDatetimeDateSupport:
 
         # datetime.date value should be accepted
         test_date = date(2025, 12, 15)
-        result, _errors = bundle.format_pattern("today", {"date": test_date})
+        result, errors = bundle.format_pattern("today", {"date": test_date})
+
+        assert not errors
 
         # The date should be converted to string representation
         assert isinstance(result, str)
@@ -99,7 +101,9 @@ class TestDatetimeDateSupport:
         bundle.add_resource("now = Now is { $dt }")
 
         test_dt = datetime(2025, 12, 15, 10, 30, 0, tzinfo=UTC)
-        result, _errors = bundle.format_pattern("now", {"dt": test_dt})
+        result, errors = bundle.format_pattern("now", {"dt": test_dt})
+
+        assert not errors
 
         assert isinstance(result, str)
         assert "2025" in result or "12" in result or "15" in result
@@ -110,7 +114,9 @@ class TestDatetimeDateSupport:
         bundle.add_resource("formatted = { DATETIME($date) }")
 
         test_date = date(2025, 12, 15)
-        result, _errors = bundle.format_pattern("formatted", {"date": test_date})
+        result, errors = bundle.format_pattern("formatted", {"date": test_date})
+
+        assert not errors
 
         # Should format without crashing (may use fallback for date-only)
         assert isinstance(result, str)

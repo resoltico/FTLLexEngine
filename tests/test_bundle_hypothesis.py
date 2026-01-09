@@ -253,15 +253,19 @@ valid-message = Hello
 
         # Should successfully format (with value or attribute access)
         if has_value:
-            result, _errors = bundle.format_value(msg_id)
+            result, errors = bundle.format_value(msg_id)
+
+            assert not errors
             assert isinstance(result, str)
         else:
             # Attributes-only message - use format_pattern with attribute selector
-            result, _errors = bundle.format_pattern(
+            result, errors = bundle.format_pattern(
                 msg_id,
                 args=None,
                 attribute="attr",
             )
+
+            assert not errors
             assert isinstance(result, str)
 
 
@@ -847,7 +851,9 @@ class TestFunctionCalls:
             f'{msg_id} = {{ CURRENCY($amt, currency: "{currency}") }}'
         )
 
-        result, _errors = bundle.format_value(msg_id, {"amt": amount})
+        result, errors = bundle.format_value(msg_id, {"amt": amount})
+
+        assert not errors
 
         # May have errors depending on currency support
         assert isinstance(result, str)
@@ -2300,7 +2306,9 @@ class TestFunctionArgumentEdgeCases:
             f'{msg_id} = {{ CURRENCY($amt, currency: "USD") }}'
         )
 
-        result, _errors = bundle.format_value(msg_id, {"amt": amount})
+        result, errors = bundle.format_value(msg_id, {"amt": amount})
+
+        assert not errors
 
         # May have errors depending on currency support
         assert isinstance(result, str)

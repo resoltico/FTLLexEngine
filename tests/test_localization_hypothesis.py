@@ -109,7 +109,9 @@ class TestLocalizationUniversalProperties:
             ftl_source = f"{message_id} = Value from locale {idx}"
             l10n.add_resource(locale, ftl_source)
 
-        result, _errors = l10n.format_value(message_id)
+        result, errors = l10n.format_value(message_id)
+
+        assert not errors
 
         # Should always use first locale (index 0)
         assert result == "Value from locale 0"

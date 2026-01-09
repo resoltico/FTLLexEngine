@@ -17,6 +17,7 @@ from ftllexengine.constants import (
     MAX_DEPTH,
     MAX_SOURCE_SIZE,
 )
+from ftllexengine.core.depth_guard import depth_clamp
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -216,7 +217,8 @@ class FluentBundle:
 
         # Parser security configuration
         self._max_source_size = max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
-        self._max_nesting_depth = max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
+        requested_depth = max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
+        self._max_nesting_depth = depth_clamp(requested_depth)
         self._parser = FluentParserV1(
             max_source_size=self._max_source_size,
             max_nesting_depth=self._max_nesting_depth,

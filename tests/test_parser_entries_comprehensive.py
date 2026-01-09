@@ -33,7 +33,9 @@ class TestMessageAttributeNoNewline:
         bundle.add_resource("msg = Value\n    .attr = Attribute")  # No \n at end
 
         # Access attribute using Bundle API
-        result, _errors = bundle.format_pattern("msg", attribute="attr")
+        result, errors = bundle.format_pattern("msg", attribute="attr")
+
+        assert not errors
         assert "Attribute" in result
 
 
@@ -58,7 +60,9 @@ msg = Value
 """)
 
         # Should handle gracefully with junk entry
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         # Message parsed, but attribute may be junk
         assert result is not None
 
@@ -83,9 +87,10 @@ msg = Value
     attr = Not an attribute
 """)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
         # Should parse message, but indented line becomes junk
-        assert "Value" in result or len(_errors) > 0
+        assert "Value" in result or len(errors) > 0
 
 
 # ============================================================================
@@ -132,7 +137,9 @@ class TestTermPatternCRLFHandling:
 
         # Use term in message
         bundle.add_resource("msg = { -term }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_term_multiline_pattern_with_crlf(self) -> None:
@@ -143,7 +150,9 @@ class TestTermPatternCRLFHandling:
         bundle.add_resource(ftl)
 
         bundle.add_resource("msg = { -term }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Multiline" in result or "Value" in result
 
 
@@ -168,7 +177,9 @@ class TestTermAttributeNoNewline:
 
         # Use term attribute in message
         bundle.add_resource("msg = { -term.attr }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Attribute" in result
 
 
@@ -191,7 +202,9 @@ class TestCommentCRLFHandling:
         ftl_with_crlf = "# Comment\r\nmsg = Value"
         bundle.add_resource(ftl_with_crlf)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_standalone_comment_with_crlf(self) -> None:
@@ -201,7 +214,9 @@ class TestCommentCRLFHandling:
         ftl = "### Resource Comment\r\n\r\nmsg = Value"
         bundle.add_resource(ftl)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_multiple_comments_with_mixed_line_endings(self) -> None:
@@ -211,7 +226,9 @@ class TestCommentCRLFHandling:
         ftl = "# Comment 1\n# Comment 2\r\n# Comment 3\nmsg = Value"
         bundle.add_resource(ftl)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_comment_at_eof_with_cr_only(self) -> None:
@@ -221,7 +238,9 @@ class TestCommentCRLFHandling:
         ftl = "msg = Value\r# Comment with CR"
         bundle.add_resource(ftl)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
 
@@ -256,7 +275,9 @@ class TestEntriesParsingIntegration:
         bundle.add_resource(ftl)
 
         bundle.add_resource("msg = { -term.attr }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Value" in result
 
     def test_message_and_term_mixed_line_endings(self) -> None:
@@ -270,7 +291,9 @@ msg = Welcome to { -brand }!
 """
         bundle.add_resource(ftl)
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "Welcome" in result
         assert "Firefox" in result
 

@@ -11,14 +11,22 @@ Key architectural decisions:
 - Python 3.13 features: pattern matching, TypeIs, frozen dataclasses
 
 Initialization Behavior:
-    FluentLocalization loads all resources eagerly at construction to provide
-    fail-fast error detection. This means FileNotFoundError and parse errors
-    are raised immediately rather than during format() calls.
+    FluentLocalization loads all resources eagerly at construction and collects
+    load results in a LoadSummary. FileNotFoundError and other load errors are
+    captured in ResourceLoadResult objects with appropriate status codes
+    (NOT_FOUND, ERROR) rather than being raised as exceptions.
+
+    To detect load failures, call get_load_summary() after construction:
+
+        l10n = FluentLocalization(['en', 'de'], ...)
+        summary = l10n.get_load_summary()
+        if summary.error_count > 0:
+            raise RuntimeError(f"Failed to load {summary.error_count} resources")
 
     Bundles are created eagerly for locales that have resources loaded during
     initialization. Fallback locale bundles (for locales not in the resource
     loading loop) are created lazily on first access. This hybrid approach
-    balances fail-fast behavior with memory efficiency.
+    balances comprehensive error collection with memory efficiency.
 
 Python 3.13+.
 """

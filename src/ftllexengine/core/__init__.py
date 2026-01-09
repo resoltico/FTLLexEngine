@@ -9,6 +9,7 @@ By isolating these utilities here, we maintain a clean dependency graph:
 Exports:
     DepthGuard: Context manager for recursion depth limiting
     DepthLimitExceededError: Exception raised when depth limit exceeded
+    depth_clamp: Utility function for clamping depth values against recursion limit
     FormattingError: Exception raised when locale formatting fails
     BabelImportError: Exception raised when Babel is required but not installed
     require_babel: Assert Babel availability with clear error messaging
@@ -18,7 +19,7 @@ Python 3.13+.
 """
 
 from .babel_compat import BabelImportError, get_babel_locale, require_babel
-from .depth_guard import DepthGuard, DepthLimitExceededError
+from .depth_guard import DepthGuard, DepthLimitExceededError, depth_clamp
 from .errors import FormattingError
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "DepthGuard",
     "DepthLimitExceededError",
     "FormattingError",
+    "depth_clamp",
     "get_babel_locale",
     "require_babel",
 ]

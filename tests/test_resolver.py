@@ -340,7 +340,9 @@ class TestFluentResolverBabelFallback:
         with patch(
             "ftllexengine.runtime.resolver.select_plural_category", mock_select_raises
         ):
-            result, _errors = resolver.resolve_message(message, {"num": 42})
+            result, errors = resolver.resolve_message(message, {"num": 42})
+
+            assert not errors
 
             # Should use default variant
             assert "default-fallback" in result
@@ -385,7 +387,9 @@ class TestFluentResolverBabelFallback:
         with patch(
             "ftllexengine.runtime.resolver.select_plural_category", mock_select_raises
         ):
-            result, _errors = resolver.resolve_message(message, {})
+            result, errors = resolver.resolve_message(message, {})
+
+            assert not errors
 
             # Should fall back to default
             assert "fallback" in result

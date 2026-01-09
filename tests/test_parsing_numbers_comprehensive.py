@@ -93,7 +93,9 @@ class TestParseNumberProperties:
         """Property: Roundtrip parse_number for simple US locale numbers."""
         # Format as simple string without locale-specific separators
         str_value = str(value)
-        result, _errors = parse_number(str_value, "en_US")
+        result, errors = parse_number(str_value, "en_US")
+
+        assert not errors
 
         # If parsing succeeded, result should be close to original
         if result is not None:
@@ -216,7 +218,9 @@ class TestParseDecimalProperties:
         """Property: Roundtrip parse_decimal for simple US locale decimals."""
         # Format as simple string without locale-specific separators
         str_value = str(value)
-        result, _errors = parse_decimal(str_value, "en_US")
+        result, errors = parse_decimal(str_value, "en_US")
+
+        assert not errors
 
         # If parsing succeeded, result should equal original
         if result is not None:

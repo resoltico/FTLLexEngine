@@ -189,7 +189,9 @@ class TestUnicodeBOM:
         bundle = FluentBundle("en")
         bundle.add_resource("msg = Hello\ufeffWorld")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         # BOM in middle might be preserved or filtered
         assert "Hello" in result

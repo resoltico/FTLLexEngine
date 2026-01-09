@@ -11,13 +11,17 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import logging
+import sys
 from dataclasses import dataclass, field
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import FluentResolutionError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
-__all__ = ["DepthGuard", "DepthLimitExceededError"]
+__all__ = ["DepthGuard", "DepthLimitExceededError", "depth_clamp"]
+
+logger = logging.getLogger(__name__)
 
 
 class DepthLimitExceededError(FluentResolutionError):
@@ -61,6 +65,10 @@ class DepthGuard:
 
     max_depth: int = MAX_DEPTH
     current_depth: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        """Clamp max_depth against Python recursion limit."""
+        object.__setattr__(self, "max_depth", depth_clamp(self.max_depth))
 
     def __enter__(self) -> DepthGuard:
         """Enter guarded section, increment depth.
@@ -120,3 +128,39 @@ class DepthGuard:
     def reset(self) -> None:
         """Reset depth to zero (useful for reuse across multiple operations)."""
         self.current_depth = 0
+
+
+def depth_clamp(requested_depth: int, reserve_frames: int = 50) -> int:
+    """Clamp requested depth against Python recursion limit.
+
+    Validates requested depth against sys.getrecursionlimit() to prevent
+    RecursionError on systems with constrained stack limits. Logs warning
+    if clamping occurs.
+
+    Args:
+        requested_depth: Desired maximum depth
+        reserve_frames: Stack frames to reserve for call overhead (default: 50)
+
+    Returns:
+        Safe depth value, clamped if necessary
+
+    Example:
+        >>> import sys
+        >>> sys.setrecursionlimit(200)
+        >>> depth_clamp(100)  # OK, within limit
+        100
+        >>> depth_clamp(500)  # Exceeds limit, clamped to 150
+        150
+    """
+    max_safe_depth = sys.getrecursionlimit() - reserve_frames
+    if requested_depth > max_safe_depth:
+        logger.warning(
+            "Requested depth %d exceeds Python recursion limit (%d). "
+            "Clamping to %d to prevent RecursionError. "
+            "Consider increasing sys.setrecursionlimit() if needed.",
+            requested_depth,
+            sys.getrecursionlimit(),
+            max_safe_depth,
+        )
+        return max_safe_depth
+    return requested_depth

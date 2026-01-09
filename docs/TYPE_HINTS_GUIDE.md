@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.62.0"
+version: "0.63.0"
 domain: type-hints
 updated: "2026-01-08"
 route:

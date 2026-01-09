@@ -237,6 +237,8 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
 
         try:
             result, _errors = self.resolver.resolve_message(message, args=args)
+
+            # May have errors if message references unknown variables/messages/terms
             assert isinstance(result, str)
         except (FluentReferenceError, FluentResolutionError):
             # Expected if message references unknown variables/messages/terms
@@ -410,6 +412,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         # The circular reference is detected in _resolve_message_reference
         # but caught by the try/except in _resolve_pattern (lines 118-120)
         result, _errors = self.resolver.resolve_message(message1, args={})
+
         assert isinstance(result, str)
         # May or may not contain ERROR depending on execution order
 

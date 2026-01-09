@@ -133,7 +133,9 @@ class TestLowercaseFunctionNames:
 
         bundle.add_function("number", number_func)
         bundle.add_resource("msg = { number(42) }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "42" in result
 
 
@@ -212,7 +214,9 @@ class TestTabInVariantMarker:
    *[other] multiple
 }"""
         bundle.add_resource(ftl)
-        result, _errors = bundle.format_pattern("msg", {"n": 1})
+        result, errors = bundle.format_pattern("msg", {"n": 1})
+
+        assert not errors
         assert "single" in result or "multiple" in result
 
 
@@ -321,7 +325,9 @@ class TestFastTierCurrencyPattern:
     def test_usd_dollar_sign_parses(self) -> None:
         """USD with dollar sign parses."""
         # Note: $100 may require locale-specific symbol recognition
-        result, _errors = parse_currency("100 USD", "en_US")
+        result, errors = parse_currency("100 USD", "en_US")
+
+        assert not errors
         assert result is not None
         amount, code = result
         assert code == "USD"
@@ -329,21 +335,27 @@ class TestFastTierCurrencyPattern:
 
     def test_eur_parses(self) -> None:
         """EUR parses with fast-tier pattern."""
-        result, _errors = parse_currency("EUR 100", "en_US")
+        result, errors = parse_currency("EUR 100", "en_US")
+
+        assert not errors
         assert result is not None
         _amount, code = result
         assert code == "EUR"
 
     def test_gbp_parses(self) -> None:
         """GBP parses with fast-tier pattern."""
-        result, _errors = parse_currency("50 GBP", "en_GB")
+        result, errors = parse_currency("50 GBP", "en_GB")
+
+        assert not errors
         assert result is not None
         _amount, code = result
         assert code == "GBP"
 
     def test_jpy_parses(self) -> None:
         """JPY parses correctly."""
-        result, _errors = parse_currency("1000 JPY", "en_US")
+        result, errors = parse_currency("1000 JPY", "en_US")
+
+        assert not errors
         assert result is not None
         _amount, code = result
         assert code == "JPY"
@@ -358,7 +370,9 @@ class TestFastTierCurrencyPattern:
     )
     def test_common_currency_formats(self, value: str, expected_code: str) -> None:
         """Common currency formats parse correctly."""
-        result, _errors = parse_currency(value, "en_US")
+        result, errors = parse_currency(value, "en_US")
+
+        assert not errors
         assert result is not None
         _amount, code = result
         assert code == expected_code
@@ -395,7 +409,9 @@ class TestCRLFNormalization:
         # FTL with Windows line endings
         ftl = "msg = line1\r\n    line2\r\n"
         bundle.add_resource(ftl)
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "line1" in result
         assert "line2" in result
 
@@ -404,7 +420,9 @@ class TestCRLFNormalization:
         bundle = FluentBundle("en_US")
         ftl = "# Comment\r\nmsg = value\r\n"
         bundle.add_resource(ftl)
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert result == "value"
 
 

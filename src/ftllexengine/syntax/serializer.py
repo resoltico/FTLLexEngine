@@ -41,6 +41,7 @@ from .ast import (
     TextElement,
     VariableReference,
 )
+from .validation_helpers import count_default_variants
 from .visitor import ASTVisitor
 
 __all__ = [
@@ -85,7 +86,7 @@ def _validate_select_expression(expr: SelectExpression, context: str) -> None:
     Raises:
         SerializationValidationError: If validation fails
     """
-    default_count = sum(1 for v in expr.variants if v.default)
+    default_count = count_default_variants(expr)
 
     if default_count == 0:
         msg = f"SelectExpression in {context} has no default variant (requires exactly one *[key])"

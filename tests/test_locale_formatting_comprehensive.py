@@ -197,8 +197,12 @@ items = { $count ->
 }
 """)
         # Test with 1 and 5
-        result_one, _errors = bundle.format_pattern("items", {"count": 1})
-        result_five, _errors = bundle.format_pattern("items", {"count": 5})
+        result_one, errors = bundle.format_pattern("items", {"count": 1})
+
+        assert not errors
+        result_five, errors = bundle.format_pattern("items", {"count": 5})
+
+        assert not errors
         assert isinstance(result_one, str)
         assert isinstance(result_five, str)
         assert "{ERROR" not in result_one

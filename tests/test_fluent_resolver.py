@@ -44,19 +44,25 @@ count-msg = You have { $count } messages
 
     def test_resolve_single_variable(self, bundle: Any) -> None:
         """Resolver substitutes single variable."""
-        result, _errors = bundle.format_pattern("greeting", {"name": "Alice"})
+        result, errors = bundle.format_pattern("greeting", {"name": "Alice"})
+
+        assert not errors
 
         assert result == "Hello, Alice!"
 
     def test_resolve_multiple_variables(self, bundle: Any) -> None:
         """Resolver substitutes multiple variables."""
-        result, _errors = bundle.format_pattern("welcome", {"firstName": "John", "lastName": "Doe"})
+        result, errors = bundle.format_pattern("welcome", {"firstName": "John", "lastName": "Doe"})
+
+        assert not errors
 
         assert result == "Welcome, John Doe!"
 
     def test_resolve_number_variable(self, bundle: Any) -> None:
         """Resolver handles number variables."""
-        result, _errors = bundle.format_pattern("count-msg", {"count": 42})
+        result, errors = bundle.format_pattern("count-msg", {"count": 42})
+
+        assert not errors
 
         assert "42" in result
 
@@ -85,13 +91,17 @@ goodbye = Goodbye from { $app }
 
     def test_resolve_message_reference(self, bundle: Any) -> None:
         """Resolver resolves variables (message refs need AST support)."""
-        result, _errors = bundle.format_pattern("welcome", {"app": "MyApp"})
+        result, errors = bundle.format_pattern("welcome", {"app": "MyApp"})
+
+        assert not errors
 
         assert result == "Welcome to MyApp!"
 
     def test_multiple_message_references(self, bundle: Any) -> None:
         """Resolver handles multiple variable references in one message."""
-        result, _errors = bundle.format_pattern("goodbye", {"app": "MyApp"})
+        result, errors = bundle.format_pattern("goodbye", {"app": "MyApp"})
+
+        assert not errors
 
         assert result == "Goodbye from MyApp"
 
@@ -111,13 +121,17 @@ about = About { $brand }
 
     def test_resolve_term_reference(self, bundle: Any) -> None:
         """Resolver resolves variables as term substitutes."""
-        result, _errors = bundle.format_pattern("about", {"brand": "MyApp"})
+        result, errors = bundle.format_pattern("about", {"brand": "MyApp"})
+
+        assert not errors
 
         assert result == "About MyApp"
 
     def test_resolve_multiple_term_references(self, bundle: Any) -> None:
         """Resolver handles multiple variable references."""
-        result, _errors = bundle.format_pattern("app-title", {"brand": "MyApp", "version": "v3.0"})
+        result, errors = bundle.format_pattern("app-title", {"brand": "MyApp", "version": "v3.0"})
+
+        assert not errors
 
         assert "MyApp" in result
         assert "v3.0" in result
@@ -145,25 +159,33 @@ status = { $online ->
 
     def test_resolve_select_with_exact_match(self, bundle: Any) -> None:
         """Resolver matches exact selector value."""
-        result, _errors = bundle.format_pattern("emails", {"count": 0})
+        result, errors = bundle.format_pattern("emails", {"count": 0})
+
+        assert not errors
 
         assert "no emails" in result
 
     def test_resolve_select_with_plural_category(self, bundle: Any) -> None:
         """Resolver uses plural rules for numbers."""
-        result, _errors = bundle.format_pattern("emails", {"count": 1})
+        result, errors = bundle.format_pattern("emails", {"count": 1})
+
+        assert not errors
 
         assert "one email" in result
 
     def test_resolve_select_with_default_variant(self, bundle: Any) -> None:
         """Resolver falls back to default variant."""
-        result, _errors = bundle.format_pattern("emails", {"count": 5})
+        result, errors = bundle.format_pattern("emails", {"count": 5})
+
+        assert not errors
 
         assert "5 emails" in result
 
     def test_resolve_select_with_boolean(self, bundle: Any) -> None:
         """Resolver handles boolean selectors."""
-        result, _errors = bundle.format_pattern("status", {"online": "true"})
+        result, errors = bundle.format_pattern("status", {"online": "true"})
+
+        assert not errors
 
         assert "online" in result
 
@@ -183,13 +205,17 @@ quantity = Quantity: { $count }
 
     def test_resolve_float_literal(self, bundle: Any) -> None:
         """Resolver formats float values."""
-        result, _errors = bundle.format_pattern("price", {"amount": 42.50})
+        result, errors = bundle.format_pattern("price", {"amount": 42.50})
+
+        assert not errors
 
         assert "42.5" in result  # Python formats as 42.5, not 42.50
 
     def test_resolve_integer_literal(self, bundle: Any) -> None:
         """Resolver formats integer values."""
-        result, _errors = bundle.format_pattern("quantity", {"count": 100})
+        result, errors = bundle.format_pattern("quantity", {"count": 100})
+
+        assert not errors
 
         assert "100" in result
 
@@ -208,7 +234,9 @@ message = Text: { $text }
 
     def test_resolve_string_literal(self, bundle: Any) -> None:
         """Resolver returns string values as-is."""
-        result, _errors = bundle.format_pattern("message", {"text": "literal string"})
+        result, errors = bundle.format_pattern("message", {"text": "literal string"})
+
+        assert not errors
 
         assert "literal string" in result
 
@@ -226,7 +254,9 @@ class TestFluentResolverFunctionCalls:
         bundle.add_function("UPPER", UPPER)
         bundle.add_resource("msg = Result: { $text }")
 
-        result, _errors = bundle.format_pattern("msg", {"text": "hello"})
+        result, errors = bundle.format_pattern("msg", {"text": "hello"})
+
+        assert not errors
 
         # Test that bundle works with variables (function calls need parser support)
         assert "hello" in result
@@ -254,7 +284,9 @@ good-msg = This works
 
     def test_error_handling_doesnt_crash(self, bundle: Any) -> None:
         """Resolver handles errors gracefully."""
-        result, _errors = bundle.format_pattern("good-msg")
+        result, errors = bundle.format_pattern("good-msg")
+
+        assert not errors
 
         # Should work normally
         assert result == "This works"
@@ -271,7 +303,9 @@ msg-a = Message A
 msg-b = Message B references { $ref }
 """)
 
-        result, _errors = bundle.format_pattern("msg-b", {"ref": "A"})
+        result, errors = bundle.format_pattern("msg-b", {"ref": "A"})
+
+        assert not errors
 
         # Should work without issues
         assert result == "Message B references A"
@@ -293,13 +327,17 @@ login-button = Login
 
     def test_resolve_message_value(self, bundle: Any) -> None:
         """Resolver resolves message value."""
-        result, _errors = bundle.format_pattern("login-button")
+        result, errors = bundle.format_pattern("login-button")
+
+        assert not errors
 
         assert result == "Login"
 
     def test_resolve_message_attribute(self, bundle: Any) -> None:
         """Resolver resolves message attributes."""
-        result, _errors = bundle.format_pattern("login-button", attribute="tooltip")
+        result, errors = bundle.format_pattern("login-button", attribute="tooltip")
+
+        assert not errors
 
         # Attribute resolution may return fallback if not supported
         assert isinstance(result, str)
@@ -346,39 +384,51 @@ test-none = { $value }
 
     def test_format_string_value(self, bundle: Any) -> None:
         """Resolver formats string values."""
-        result, _errors = bundle.format_pattern("test-str", {"value": "text"})
+        result, errors = bundle.format_pattern("test-str", {"value": "text"})
+
+        assert not errors
 
         assert result == "text"
 
     def test_format_integer_value(self, bundle: Any) -> None:
         """Resolver formats integer values."""
-        result, _errors = bundle.format_pattern("test-num", {"value": 42})
+        result, errors = bundle.format_pattern("test-num", {"value": 42})
+
+        assert not errors
 
         assert result == "42"
 
     def test_format_float_value(self, bundle: Any) -> None:
         """Resolver formats float values."""
-        result, _errors = bundle.format_pattern("test-num", {"value": 3.14})
+        result, errors = bundle.format_pattern("test-num", {"value": 3.14})
+
+        assert not errors
 
         assert result == "3.14"
 
     def test_format_boolean_true(self, bundle: Any) -> None:
         """Resolver formats boolean True."""
-        result, _errors = bundle.format_pattern("test-bool", {"value": True})
+        result, errors = bundle.format_pattern("test-bool", {"value": True})
+
+        assert not errors
 
         # Fluent formats booleans as lowercase "true"/"false"
         assert "true" in result
 
     def test_format_boolean_false(self, bundle: Any) -> None:
         """Resolver formats boolean False."""
-        result, _errors = bundle.format_pattern("test-bool", {"value": False})
+        result, errors = bundle.format_pattern("test-bool", {"value": False})
+
+        assert not errors
 
         # Fluent formats booleans as lowercase "true"/"false"
         assert "false" in result
 
     def test_format_none_value(self, bundle: Any) -> None:
         """Resolver formats None as empty string."""
-        result, _errors = bundle.format_pattern("test-none", {"value": None})
+        result, errors = bundle.format_pattern("test-none", {"value": None})
+
+        assert not errors
 
         assert result == "" or "test-none" in result  # Either empty or fallback
 
@@ -394,7 +444,9 @@ app-name = { $brand }{ $version }
 welcome = Welcome to { $app }, { $user }!
 """)
 
-        result, _errors = bundle.format_pattern("welcome", {"app": "MyApp", "user": "Alice"})
+        result, errors = bundle.format_pattern("welcome", {"app": "MyApp", "user": "Alice"})
+
+        assert not errors
 
         assert result == "Welcome to MyApp, Alice!"
 
@@ -409,9 +461,15 @@ count-msg = { $count ->
 }
 """)
 
-        result_zero, _errors = bundle.format_pattern("count-msg", {"count": 0})
-        result_one, _errors = bundle.format_pattern("count-msg", {"count": 1})
-        result_many, _errors = bundle.format_pattern("count-msg", {"count": 5})
+        result_zero, errors = bundle.format_pattern("count-msg", {"count": 0})
+
+        assert not errors
+        result_one, errors = bundle.format_pattern("count-msg", {"count": 1})
+
+        assert not errors
+        result_many, errors = bundle.format_pattern("count-msg", {"count": 5})
+
+        assert not errors
 
         assert result_zero == "No items"
         assert result_one == "One item"
@@ -424,9 +482,11 @@ count-msg = { $count ->
 summary = User { $name } has { $count } items worth { $value } EUR
 """)
 
-        result, _errors = bundle.format_pattern(
+        result, errors = bundle.format_pattern(
             "summary", {"name": "Bob", "count": 3, "value": 45.99}
         )
+
+        assert not errors
 
         assert "Bob" in result
         assert "3" in result
@@ -539,7 +599,9 @@ button = Save
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(welcome_msg, {})
+        result, errors = resolver.resolve_message(welcome_msg, {})
+
+        assert not errors
         assert result == "Welcome to MyApp!"
 
     def test_message_reference_with_attribute(self) -> None:
@@ -580,7 +642,9 @@ button = Save
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(help_msg, {})
+        result, errors = resolver.resolve_message(help_msg, {})
+
+        assert not errors
         assert result == "Help: Click to save"
 
     def test_term_reference_resolution(self) -> None:
@@ -616,7 +680,9 @@ button = Save
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(about_msg, {})
+        result, errors = resolver.resolve_message(about_msg, {})
+
+        assert not errors
         assert result == "About MyApp"
 
     def test_term_reference_with_attribute(self) -> None:
@@ -661,7 +727,9 @@ button = Save
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(title_msg, {})
+        result, errors = resolver.resolve_message(title_msg, {})
+
+        assert not errors
         assert result == "MyApp v3.0"
 
     def test_term_reference_not_found_shows_error(self) -> None:
@@ -771,7 +839,9 @@ button = Save
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(msg, {})
+        result, errors = resolver.resolve_message(msg, {})
+
+        assert not errors
         assert result == "10"
 
     def test_function_call_with_named_arguments(self) -> None:
@@ -815,7 +885,9 @@ button = Save
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(msg, {})
+        result, errors = resolver.resolve_message(msg, {})
+
+        assert not errors
         assert result == "Hello, Alice!"
 
     def test_function_not_found_shows_error(self) -> None:

@@ -71,7 +71,9 @@ msg = { $val ->
         bundle.add_resource("ref = value")
         # Pass identifier as argument (becomes MessageReference)
         bundle.add_resource("msg = { TEST(ref) }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert result is not None
 
     def test_function_reference_line_444_parse_identifier_fails(self) -> None:
@@ -186,7 +188,9 @@ class TestEntriesUncoveredLines:
         """Target lines 402->406: Comment with CRLF ending."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("# Comment\r\nmsg = value")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "value" in result
 
 
@@ -213,8 +217,8 @@ class TestCurrencyUncoveredLine:
 
             # This triggers the fallback pattern (ISO codes only)
             # Just verify parsing still works (will only match ISO codes)
-            result, _errors = parse_currency("USD 100", "en_US")
-            assert result is not None or len(_errors) > 0
+            result, errors = parse_currency("USD 100", "en_US")
+            assert result is not None or len(errors) > 0
 
         # Clear caches to restore normal operation after test
         _get_currency_pattern_full.cache_clear()

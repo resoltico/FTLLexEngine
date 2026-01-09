@@ -1802,38 +1802,12 @@ def parse_term(
     if not pattern_parse.value.elements:
         return None  # f'Expected term "-{id_parse.value}" to have a value'
 
-    # Parse attributes (reuse attribute parsing logic)
-    attributes: list[Attribute] = []
-    while not cursor.is_eof:
-        # Skip to next line.
-        # Note: Line endings are normalized to LF at parser entry.
-        if cursor.current == "\n":
-            cursor = cursor.advance()
-        else:
-            # No newline, done with attributes
-            break
-
-        # Check if next line starts with whitespace followed by '.'
-        # Per spec: Attribute ::= line_end blank? "." ...
-        # blank can contain spaces, but NOT tabs
-        saved_cursor = cursor
-        cursor = cursor.skip_spaces()
-
-        if cursor.is_eof or cursor.current != ".":
-            # Not an attribute, restore cursor and break
-            cursor = saved_cursor
-            break
-
-        # Parse attribute
-        attr_result = parse_attribute(saved_cursor, context)
-        if attr_result is None:
-            # Not a valid attribute, restore and break
-            cursor = saved_cursor
-            break
-
-        attr_parse = attr_result
-        attributes.append(attr_parse.value)
-        cursor = attr_parse.cursor
+    # Parse attributes using shared helper
+    attributes_result = parse_message_attributes(cursor, context)
+    if attributes_result is None:
+        return None  # Should not happen, but handle defensively
+    attributes = attributes_result.value
+    cursor = attributes_result.cursor
 
     # Create span from start to current position
     span = Span(start=start_pos, end=cursor.pos)

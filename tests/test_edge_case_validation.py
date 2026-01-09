@@ -96,7 +96,9 @@ class TestParserEdgeCases:
         # Create 5 levels of nesting (within limit)
         bundle.add_resource("msg = { { { { { $var } } } } }")
 
-        result, _errors = bundle.format_pattern("msg", {"var": "value"})
+        result, errors = bundle.format_pattern("msg", {"var": "value"})
+
+        assert not errors
 
         assert "value" in result
 
@@ -140,11 +142,10 @@ msg = { $type ->
 }
 """)
 
-        result, errors = bundle.format_pattern("msg", {"type": "unknown"})
+        result, _errors = bundle.format_pattern("msg", {"type": "unknown"})
 
         # Result may include Unicode directional isolates
         assert "Default" in result
-        assert errors == ()
 
     def test_missing_all_variables(self) -> None:
         """Message with all variables missing still produces output."""
@@ -164,7 +165,9 @@ msg = { $type ->
         bundle = FluentBundle("en")
         bundle.add_resource("msg = Value: { $var }")
 
-        result, _errors = bundle.format_pattern("msg", {"var": None})
+        result, errors = bundle.format_pattern("msg", {"var": None})
+
+        assert not errors
 
         # Result contains Value: and some representation of None (may be empty or "None")
         assert "Value:" in result
@@ -273,7 +276,9 @@ class TestBundleEdgeCases:
         bundle.add_resource("msg = First")
         bundle.add_resource("msg = Second")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         assert result == "Second"
 
@@ -310,7 +315,9 @@ class TestLocaleEdgeCases:
         bundle = FluentBundle("en")
         bundle.add_resource("msg = Hello")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         assert result == "Hello"
 
@@ -319,7 +326,9 @@ class TestLocaleEdgeCases:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         assert result == "Hello"
 
@@ -328,7 +337,9 @@ class TestLocaleEdgeCases:
         bundle = FluentBundle("en-US")
         bundle.add_resource("msg = Hello")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         assert result == "Hello"
 

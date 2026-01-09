@@ -450,7 +450,9 @@ msg =
         bundle.add_resource(ftl_source)
 
         # Main value is empty
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert isinstance(result, str)
 
         # Attribute should work

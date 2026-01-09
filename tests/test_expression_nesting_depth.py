@@ -70,7 +70,9 @@ msg = { $val ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": -1})
+        result, errors = bundle.format_pattern("msg", {"val": -1})
+
+        assert not errors
         assert "Negative" in result or "Other" in result
 
     def test_variant_key_zero(self) -> None:
@@ -82,7 +84,9 @@ msg = { $val ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": 0})
+        result, errors = bundle.format_pattern("msg", {"val": 0})
+
+        assert not errors
         assert "Zero" in result or "Other" in result
 
     def test_variant_key_identifier_with_hyphens(self) -> None:
@@ -94,7 +98,9 @@ msg = { $val ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": "brand-name"})
+        result, errors = bundle.format_pattern("msg", {"val": "brand-name"})
+
+        assert not errors
         assert result is not None
 
     @given(
@@ -109,7 +115,9 @@ msg = {{ $val ->
    *[other] Other
 }}
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": key})
+        result, errors = bundle.format_pattern("msg", {"val": key})
+
+        assert not errors
         assert result is not None
 
 
@@ -126,9 +134,9 @@ msg = { $val ->
     [two] Two
 }
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": "one"})
+        result, errors = bundle.format_pattern("msg", {"val": "one"})
         # Should have error or fallback
-        assert "{" in result or len(_errors) > 0
+        assert "{" in result or len(errors) > 0
 
     def test_select_multiple_defaults(self) -> None:
         """Test select expression with multiple defaults fails."""
@@ -140,15 +148,15 @@ msg = { $val ->
    *[two] Two
 }
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": "one"})
-        assert "{" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg", {"val": "one"})
+        assert "{" in result or len(errors) > 0
 
     def test_select_empty_variants(self) -> None:
         """Test select expression with no variants fails."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = { $val -> }")
-        result, _errors = bundle.format_pattern("msg", {"val": "test"})
-        assert "{" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg", {"val": "test"})
+        assert "{" in result or len(errors) > 0
 
 
 class TestTermReferenceEdgeCases:
@@ -159,8 +167,10 @@ class TestTermReferenceEdgeCases:
         bundle = FluentBundle("en_US")
         bundle.add_resource("-brand = Firefox")
         bundle.add_resource('msg = { -brand(case: "nominative") }')
-        result, _errors = bundle.format_pattern("msg")
-        assert "Firefox" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        assert "Firefox" in result or len(errors) > 0
 
     def test_term_reference_with_attribute_and_arguments(self) -> None:
         """Test term reference with both attribute and arguments."""
@@ -170,7 +180,9 @@ class TestTermReferenceEdgeCases:
     .gender = masculine
 """)
         bundle.add_resource('msg = { -brand.gender(case: "genitive") }')
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert result is not None
 
     def test_term_reference_missing_closing_paren(self) -> None:
@@ -178,9 +190,9 @@ class TestTermReferenceEdgeCases:
         bundle = FluentBundle("en_US")
         bundle.add_resource("-brand = Firefox")
         bundle.add_resource('msg = { -brand(case: "nominative" }')
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
         # Should have error
-        assert "{" in result or len(_errors) > 0
+        assert "{" in result or len(errors) > 0
 
 
 class TestCallArgumentsEdgeCases:
@@ -191,25 +203,25 @@ class TestCallArgumentsEdgeCases:
         bundle = FluentBundle("en_US")
         # Named arg with variable reference (invalid per FTL spec)
         bundle.add_resource("msg = { NUMBER($val, precision: $digits) }")
-        result, _errors = bundle.format_pattern("msg", {"val": 42, "digits": 2})
+        result, errors = bundle.format_pattern("msg", {"val": 42, "digits": 2})
         # Should have error because named arg values must be literals
-        assert "{" in result or len(_errors) > 0
+        assert "{" in result or len(errors) > 0
 
     def test_positional_after_named_fails(self) -> None:
         """Test that positional args after named args fails."""
         bundle = FluentBundle("en_US")
         # Positional after named (invalid)
         bundle.add_resource("msg = { FUNC(name: 1, $val) }")
-        result, _errors = bundle.format_pattern("msg", {"val": 42})
-        assert "{" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg", {"val": 42})
+        assert "{" in result or len(errors) > 0
 
     def test_duplicate_named_arg_fails(self) -> None:
         """Test duplicate named argument names fail."""
         bundle = FluentBundle("en_US")
         # Duplicate named arg
         bundle.add_resource('msg = { FUNC($val, style: "a", style: "b") }')
-        result, _errors = bundle.format_pattern("msg", {"val": 42})
-        assert "{" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg", {"val": 42})
+        assert "{" in result or len(errors) > 0
 
     @given(
         st.lists(st.integers(), min_size=0, max_size=5),
@@ -241,7 +253,9 @@ class TestInlineExpressionEdgeCases:
         bundle = FluentBundle("en_US")
         # -123 should parse as negative number, not term
         bundle.add_resource("msg = { -123 }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert "-123" in result or "{" in result
 
     def test_term_reference_starts_with_alpha(self) -> None:
@@ -249,8 +263,10 @@ class TestInlineExpressionEdgeCases:
         bundle = FluentBundle("en_US")
         bundle.add_resource("-brand = Firefox")
         bundle.add_resource("msg = { -brand }")
-        result, _errors = bundle.format_pattern("msg")
-        assert "Firefox" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        assert "Firefox" in result or len(errors) > 0
 
     def test_message_reference_with_attribute(self) -> None:
         """Test message reference with attribute access."""
@@ -260,17 +276,21 @@ greeting = Hello
     .formal = Good day
 """)
         bundle.add_resource("msg = { greeting.formal }")
-        result, _errors = bundle.format_pattern("msg")
-        assert "Good day" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        assert "Good day" in result or len(errors) > 0
 
     def test_uppercase_identifier_without_paren_is_message_ref(self) -> None:
         """Test UPPERCASE identifier without ( is message reference, not function."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("NUMBER = The number")
         bundle.add_resource("msg = { NUMBER }")
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         # Should resolve as message reference
-        assert "number" in result.lower() or len(_errors) > 0
+        assert "number" in result.lower() or len(errors) > 0
 
 
 class TestMetamorphicProperties:
@@ -283,8 +303,10 @@ class TestMetamorphicProperties:
         """METAMORPHIC: Number literals round-trip through parsing."""
         bundle = FluentBundle("en_US")
         bundle.add_resource(f"msg = {{ {value} }}")
-        result, _errors = bundle.format_pattern("msg")
-        if len(_errors) == 0:
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        if len(errors) == 0:
             assert str(value) in result
 
     @given(
@@ -302,8 +324,10 @@ class TestMetamorphicProperties:
         """METAMORPHIC: String literals round-trip through parsing."""
         bundle = FluentBundle("en_US")
         bundle.add_resource(f'msg = {{ "{text}" }}')
-        result, _errors = bundle.format_pattern("msg")
-        if len(_errors) == 0:
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        if len(errors) == 0:
             # String should appear in output
             assert text in result or "{" in result
 
@@ -320,8 +344,10 @@ msg = { "test" ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg")
-        assert "Matched" in result or "Other" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        assert "Matched" in result or "Other" in result or len(errors) > 0
 
     def test_select_with_number_literal_selector(self) -> None:
         """Test select expression with NumberLiteral selector."""
@@ -332,8 +358,10 @@ msg = { 42 ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg")
-        assert "Matched" in result or "Other" in result or len(_errors) > 0
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
+        assert "Matched" in result or "Other" in result or len(errors) > 0
 
     def test_select_with_function_selector(self) -> None:
         """Test select expression with FunctionReference selector."""
@@ -349,7 +377,9 @@ msg = { GET($val) ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg", {"val": 1})
+        result, errors = bundle.format_pattern("msg", {"val": 1})
+
+        assert not errors
         assert result is not None
 
     def test_select_with_message_reference_selector(self) -> None:
@@ -362,7 +392,9 @@ msg = { value ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         # May work or fail depending on resolution
         assert result is not None
 
@@ -376,7 +408,9 @@ msg = { -value ->
    *[other] Other
 }
 """)
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
         assert result is not None
 
 
@@ -399,5 +433,7 @@ msg = {{ $val ->
 }}
 """
     bundle.add_resource(ftl)
-    result, _errors = bundle.format_pattern("msg", {"val": 0})
+    result, errors = bundle.format_pattern("msg", {"val": 0})
+
+    assert not errors
     assert result is not None

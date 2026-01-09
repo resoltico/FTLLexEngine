@@ -346,7 +346,9 @@ msg = { -brand.recursive }
 """
         )
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         # Should return the term value since attribute references term (cycle)
         # Or return fallback if detected as cycle

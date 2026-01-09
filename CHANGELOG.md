@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-01-09
+
+### Fixed
+- **Depth Safety Consistency** (SEC-RECURSION-001, ARCH-VISITOR-BYPASS-001): Unified depth clamping across all subsystems:
+  - FluentResolver now clamps max_nesting_depth against Python recursion limit to prevent RecursionError on constrained systems
+  - GlobalDepthGuard now clamps max_depth to safe values based on sys.getrecursionlimit()
+  - FluentBundle now clamps max_nesting_depth before passing to parser and resolver
+  - DepthGuard dataclass automatically clamps max_depth in __post_init__
+  - IntrospectionVisitor now uses proper visitor dispatch for variant patterns, ensuring consistent depth tracking
+  - Created depth_clamp() utility function in core.depth_guard for reusable depth validation
+  - Prevents RecursionError crashes on embedded or highly threaded systems with low stack limits
+
+### Documentation
+- **FluentLocalization Initialization Semantics** (DOCS-LOAD-SILENT-001): Corrected module docstring to accurately describe fail-silent-with-diagnostics behavior:
+  - Previous: Docstring claimed "FileNotFoundError and parse errors are raised immediately"
+  - Now: Documented that errors are captured in ResourceLoadResult objects with LoadStatus codes (NOT_FOUND, ERROR)
+  - Added example showing how to check get_load_summary() for load failures after construction
+  - Non-breaking: clarifies existing behavior without changing API
+
+### Internal
+- **Code Consolidation** (DEBT-ATTR-PARSE-001, DEBT-VAL-DUP-001): Eliminated duplicate logic across modules:
+  - parse_term now uses parse_message_attributes helper instead of inline attribute parsing loop
+  - Extracted select expression validation to shared count_default_variants() helper in syntax.validation_helpers
+  - Both serializer and validator now use shared helper for default variant counting
+  - Reduces maintenance burden and prevents behavioral drift between modules
+
 ## [0.62.0] - 2026-01-08
 
 ### Fixed
@@ -1512,6 +1538,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.63.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.63.0
 [0.62.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.62.0
 [0.61.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.61.0
 [0.60.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.60.0

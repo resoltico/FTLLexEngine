@@ -466,7 +466,9 @@ class TestResolverFullIntegration:
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource(f"msg = {text} {{ $var }}")
 
-        result, _errors = bundle.format_pattern("msg", {"var": var_value})
+        result, errors = bundle.format_pattern("msg", {"var": var_value})
+
+        assert not errors
         assert var_value in result
         if text:
             assert text in result

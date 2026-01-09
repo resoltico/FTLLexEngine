@@ -357,7 +357,9 @@ class TestParseCurrencyWithBuiltMaps:
 
     def test_parse_currency_infers_from_locale(self) -> None:
         """Test parse_currency can infer currency from locale."""
-        result, _errors = parse_currency("$100", "en_US", infer_from_locale=True)
+        result, errors = parse_currency("$100", "en_US", infer_from_locale=True)
+
+        assert not errors
 
         # Should infer USD for en_US
         if result is not None:

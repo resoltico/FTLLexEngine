@@ -74,7 +74,9 @@ class TestBabelDatetimeFormatConversion:
         ]
 
         for date_str, locale in test_cases:
-            result, _errors = parse_datetime(date_str, locale)
+            result, errors = parse_datetime(date_str, locale)
+
+            assert not errors
             assert result is not None, f"Failed to parse '{date_str}' for locale {locale}"
             assert result.year == 2025
             assert result.month == 1
@@ -91,7 +93,9 @@ class TestBabelDatetimeFormatConversion:
         """
         # Use 24-hour format with CLDR separator
         date_str = f"28.01.25, {hour:02d}:{minute:02d}"
-        result, _errors = parse_datetime(date_str, "de_DE")
+        result, errors = parse_datetime(date_str, "de_DE")
+
+        assert not errors
 
         if result is not None:
             assert result.hour == hour
@@ -119,7 +123,9 @@ class TestQuotedLiteralsInCLDRPatterns:
         Pattern includes quoted literal extracted by lines 377-379.
         """
         # Russian short format (no quoted literals)
-        result, _errors = parse_date("28.01.2025", "ru_RU")
+        result, errors = parse_date("28.01.2025", "ru_RU")
+
+        assert not errors
         assert result is not None
         assert result.year == 2025
         assert result.month == 1
@@ -132,7 +138,9 @@ class TestQuotedLiteralsInCLDRPatterns:
         Contains quoted literal 'de' which triggers lines 377-379.
         """
         # Spanish short format: %d/%m/%y (2-digit year)
-        result, _errors = parse_date("28/01/25", "es_ES")
+        result, errors = parse_date("28/01/25", "es_ES")
+
+        assert not errors
         assert result is not None
         assert result.year == 2025
         assert result.month == 1
@@ -145,7 +153,9 @@ class TestQuotedLiteralsInCLDRPatterns:
         Similar to Spanish, contains quoted 'de'.
         """
         # Portuguese short format
-        result, _errors = parse_date("28/01/2025", "pt_PT")
+        result, errors = parse_date("28/01/2025", "pt_PT")
+
+        assert not errors
         assert result is not None
         assert result.year == 2025
         assert result.month == 1
@@ -195,7 +205,9 @@ class TestDatetimeParsingIntegration:
         v0.27.0: Uses CLDR dateTimeFormat separator (de_DE uses ", ").
         """
         # 24-hour format with seconds and CLDR separator
-        result, _errors = parse_datetime("28.01.25, 14:30:45", "de_DE")
+        result, errors = parse_datetime("28.01.25, 14:30:45", "de_DE")
+
+        assert not errors
         assert result is not None
         assert result.hour == 14
         assert result.minute == 30
@@ -206,7 +218,9 @@ class TestDatetimeParsingIntegration:
         iso_str = "2025-01-28 14:30:00"
 
         for locale in ["en_US", "de_DE", "fr_FR", "es_ES", "ja_JP", "zh_CN"]:
-            result, _errors = parse_datetime(iso_str, locale)
+            result, errors = parse_datetime(iso_str, locale)
+
+            assert not errors
             assert result is not None, f"ISO format failed for {locale}"
             assert result.year == 2025
             assert result.month == 1
@@ -235,7 +249,9 @@ class TestDatetimeParsingIntegration:
         # Format as ISO (most reliable)
         iso_str = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        result, _errors = parse_datetime(iso_str, "en_US")
+        result, errors = parse_datetime(iso_str, "en_US")
+
+        assert not errors
         if result is not None:
             assert result.year == year
             assert result.month == month

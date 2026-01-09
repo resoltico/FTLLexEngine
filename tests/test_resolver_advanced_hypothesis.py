@@ -40,7 +40,9 @@ class TestPatternResolution:
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(message, {})
+        result, errors = resolver.resolve_message(message, {})
+
+        assert not errors
 
         assert result == text_content, f"Expected {text_content}, got {result}"
 
@@ -65,7 +67,9 @@ class TestPatternResolution:
             use_isolating=False,
         )
 
-        result, _errors = resolver.resolve_message(message, {})
+        result, errors = resolver.resolve_message(message, {})
+
+        assert not errors
         expected = "".join(parts)
 
         assert result == expected, f"Concatenation mismatch: {result} != {expected}"
@@ -92,7 +96,9 @@ class TestVariableResolution:
         ftl_source = f"msg = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern("msg", {var_name: var_value})
+        result, errors = bundle.format_pattern("msg", {var_name: var_value})
+
+        assert not errors
 
         assert str(var_value) in result, f"Variable value not in result: {result}"
 
@@ -125,7 +131,9 @@ class TestVariableResolution:
         bundle.add_resource(ftl_source)
 
         args = {vn: f"val{i}" for i, vn in enumerate(var_names)}
-        result, _errors = bundle.format_pattern("msg", args)
+        result, errors = bundle.format_pattern("msg", args)
+
+        assert not errors
 
         for value in args.values():
             assert value in result, f"Variable value {value} missing"
@@ -154,7 +162,9 @@ class TestMessageReferenceResolution:
 """
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern(main_msg_id)
+        result, errors = bundle.format_pattern(main_msg_id)
+
+        assert not errors
 
         assert ref_value.strip() in result, f"Referenced message value not in result: {result}"
 
@@ -200,7 +210,9 @@ class TestTermReferenceResolution:
 """
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern(msg_id)
+        result, errors = bundle.format_pattern(msg_id)
+
+        assert not errors
 
         assert term_value.strip() in result, f"Term value not in result: {result}"
 
@@ -259,7 +271,9 @@ msg = {{ ${var_name} ->
         if not bundle.has_message("msg"):
             return
 
-        result, _errors = bundle.format_pattern("msg", {var_name: selector_value})
+        result, errors = bundle.format_pattern("msg", {var_name: selector_value})
+
+        assert not errors
 
         if str(selector_value) == variant1_key:
             assert variant1_val.strip() in result, f"Expected {variant1_val} for matching key"
@@ -286,7 +300,9 @@ msg = {{ ${var_name} ->
 """
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern("msg", {var_name: numeric_value})
+        result, errors = bundle.format_pattern("msg", {var_name: numeric_value})
+
+        assert not errors
 
         if numeric_value == 0:
             assert "zero" in result, "Should match [0] variant"
@@ -364,7 +380,9 @@ class TestFunctionCallResolution:
         bundle.add_function(func_name, custom_func)
         bundle.add_resource(f"msg = {{ {func_name}() }}")
 
-        result, _errors = bundle.format_pattern("msg")
+        result, errors = bundle.format_pattern("msg")
+
+        assert not errors
 
         assert return_value.strip() in result, f"Function return value not in result: {result}"
 
@@ -411,7 +429,9 @@ class TestResolverIsolatingMarks:
         ftl_source = f"msg = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern("msg", {var_name: var_value})
+        result, errors = bundle.format_pattern("msg", {var_name: var_value})
+
+        assert not errors
 
         assert "\u2068" in result, "FSI mark missing"
         assert "\u2069" in result, "PDI mark missing"
@@ -431,7 +451,9 @@ class TestResolverIsolatingMarks:
         ftl_source = f"msg = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern("msg", {var_name: var_value})
+        result, errors = bundle.format_pattern("msg", {var_name: var_value})
+
+        assert not errors
 
         assert "\u2068" not in result, "FSI mark should not be present"
         assert "\u2069" not in result, "PDI mark should not be present"
@@ -452,7 +474,9 @@ class TestResolverValueFormatting:
         ftl_source = f"msg = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern("msg", {var_name: int_value})
+        result, errors = bundle.format_pattern("msg", {var_name: int_value})
+
+        assert not errors
 
         assert str(int_value) in result, f"Integer {int_value} not formatted correctly"
 
@@ -468,7 +492,9 @@ class TestResolverValueFormatting:
         ftl_source = f"msg = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern("msg", {var_name: bool_value})
+        result, errors = bundle.format_pattern("msg", {var_name: bool_value})
+
+        assert not errors
 
         # Fluent formats booleans as lowercase "true"/"false"
         expected = "true" if bool_value else "false"
@@ -495,7 +521,9 @@ class TestResolverMetamorphicProperties:
         ftl_source = f"{msg_id} = {text1} {text2}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern(msg_id)
+        result, errors = bundle.format_pattern(msg_id)
+
+        assert not errors
 
         assert text1.strip() in result, "First text element should be present"
         assert text2.strip() in result, "Second text element should be present"
@@ -524,8 +552,12 @@ class TestResolverMetamorphicProperties:
         ftl_source = f"{msg_id} = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result1, _errors = bundle.format_pattern(msg_id, {var_name: value1})
-        result2, _errors = bundle.format_pattern(msg_id, {var_name: value2})
+        result1, errors = bundle.format_pattern(msg_id, {var_name: value1})
+
+        assert not errors
+        result2, errors = bundle.format_pattern(msg_id, {var_name: value2})
+
+        assert not errors
 
         assert result1 != result2, "Different variable values should produce different results"
 
@@ -603,7 +635,9 @@ class TestResolverCoverageEdgeCases:
         ftl_source = f"{msg_id} = Value: {{ ${ var_name} }}"
         bundle.add_resource(ftl_source)
 
-        result, _errors = bundle.format_pattern(msg_id, {var_name: value})
+        result, errors = bundle.format_pattern(msg_id, {var_name: value})
+
+        assert not errors
 
         # Should resolve the nested placeable expression
         assert str(value) in result

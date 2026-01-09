@@ -29,7 +29,7 @@ from ftllexengine.constants import (
     MAX_DEPTH,
 )
 from ftllexengine.core.babel_compat import BabelImportError
-from ftllexengine.core.depth_guard import DepthGuard
+from ftllexengine.core.depth_guard import DepthGuard, depth_clamp
 from ftllexengine.core.errors import FormattingError
 from ftllexengine.diagnostics import (
     ErrorTemplate,
@@ -101,7 +101,7 @@ class GlobalDepthGuard:
 
     def __init__(self, max_depth: int = MAX_DEPTH) -> None:
         """Initialize guard with maximum depth limit."""
-        self._max_depth = max_depth
+        self._max_depth = depth_clamp(max_depth)
         self._token: Token[int] | None = None
 
     def __enter__(self) -> GlobalDepthGuard:
@@ -256,7 +256,7 @@ class FluentResolver:
         self.messages = messages
         self.terms = terms
         self.function_registry = function_registry
-        self._max_nesting_depth = max_nesting_depth
+        self._max_nesting_depth = depth_clamp(max_nesting_depth)
 
     def resolve_message(
         self,

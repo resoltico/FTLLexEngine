@@ -46,6 +46,7 @@ from ftllexengine.syntax.ast import (
     TextElement,
     VariableReference,
 )
+from ftllexengine.syntax.validation_helpers import count_default_variants
 
 __all__ = ["SemanticValidator", "validate"]
 
@@ -384,7 +385,7 @@ class SemanticValidator:
             return
 
         # Check: exactly one default variant
-        default_count = sum(1 for v in select.variants if v.default)
+        default_count = count_default_variants(select)
         if default_count != 1:
             self._add_error(
                 errors,
