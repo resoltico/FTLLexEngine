@@ -47,7 +47,7 @@ items = { $count ->
         assert not errors
 
     def test_decimal_fractional_matches_fractional_variant(self) -> None:
-        """Decimal('1.1') should match [1.1] variant (fixed in v0.35.0)."""
+        """Decimal('1.1') should match [1.1] variant."""
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("""
 price = { $amount ->
@@ -56,7 +56,7 @@ price = { $amount ->
    *[other] regular price { $amount }
 }
 """)
-        # This was broken before v0.35.0 due to float/Decimal comparison
+        # Decimal comparison implementation handles float/Decimal correctly
         result, errors = bundle.format_pattern("price", {"amount": Decimal("1.1")})
         assert result == "special price"
         assert not errors

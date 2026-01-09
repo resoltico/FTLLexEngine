@@ -351,7 +351,7 @@ class TestResolverErrorPaths:
 class TestFunctionArityValidation:
     """Test function argument count validation.
 
-    v0.26.0: Added arity validation to prevent locale injection issues.
+    Arity validation prevents locale injection issues.
     Built-in functions (NUMBER, DATETIME, CURRENCY) expect exactly 1 positional arg.
     """
 

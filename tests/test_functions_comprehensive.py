@@ -1,7 +1,7 @@
 """Comprehensive property-based tests for runtime.functions module.
 
 Tests formatting behavior for NUMBER, DATETIME, and CURRENCY functions.
-Since v0.14.0, LocaleContext.create() always succeeds with en_US fallback.
+LocaleContext.create() always succeeds with en_US fallback.
 """
 
 from datetime import UTC, datetime
@@ -65,7 +65,7 @@ class TestDatetimeFormatBehavior:
     """Tests for datetime_format formatting behavior."""
 
     def test_datetime_format_with_invalid_locale_datetime_input(self) -> None:
-        """Verify datetime_format with invalid locale formats datetime (v0.14.0+)."""
+        """Verify datetime_format with invalid locale formats datetime."""
         dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
         # Invalid locale should still format successfully using en_US fallback
         result = datetime_format(dt, "invalid-locale")
@@ -114,7 +114,7 @@ class TestCurrencyFormatBehavior:
     """Tests for currency_format formatting behavior."""
 
     def test_currency_format_with_invalid_locale(self) -> None:
-        """Verify currency_format with invalid locale uses fallback (v0.14.0+)."""
+        """Verify currency_format with invalid locale uses fallback."""
         # Invalid locale should still format successfully using en_US fallback
         result = currency_format(123.45, "invalid-locale", currency="EUR")
         # Should contain currency info (formatted with en_US rules)

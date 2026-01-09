@@ -188,7 +188,7 @@ class TestPathResourceLoaderValidation:
 class TestPathResourceLoaderLocaleValidation:
     """Test locale parameter validation (AUDIT-PATH-TRAVERSAL-007).
 
-    v0.26.0: Added validation for locale parameter to prevent directory traversal
+    Validation for locale parameter prevents directory traversal
     attacks via malicious locale codes like "../../../etc".
     """
 

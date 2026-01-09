@@ -361,7 +361,7 @@ class TestFunctionCallResolution:
     """Properties about function call resolution."""
 
     @given(
-        # Per Fluent spec, function names must be ASCII uppercase only (v0.39.0)
+        # Per Fluent spec, function names must be ASCII uppercase only
         func_name=st.text(
             alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ", min_size=3, max_size=10
         ),

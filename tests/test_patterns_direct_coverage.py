@@ -122,7 +122,7 @@ class TestParseSimplePattern:
     def test_parse_simple_pattern_includes_dot(self) -> None:
         """Test that parse_simple_pattern includes dot as literal text.
 
-        v0.26.0: Dots in variant values are literal text, not attribute markers.
+        Dots in variant values are literal text, not attribute markers.
         Attribute markers only appear at line starts in top-level patterns.
         """
         cursor = Cursor("text.attr", 0)
@@ -147,7 +147,7 @@ class TestParseSimplePattern:
     def test_parse_simple_pattern_stops_at_variant_markers(self) -> None:
         """Test lookahead for variant markers [ and *.
 
-        v0.26.0: Added lookahead to distinguish variant syntax from literal text.
+        Lookahead distinguishes variant syntax from literal text.
         - [identifier] is a variant marker only if followed by newline/}/[/*
         - * is a variant marker only if followed by [
         Otherwise, these characters are literal text.
@@ -217,7 +217,7 @@ class TestParseSimplePattern:
     def test_parse_simple_pattern_stops_at_bracket(self) -> None:
         """Test [ lookahead for variant key detection.
 
-        v0.26.0: [ alone without valid variant key pattern is literal text.
+        [ alone without valid variant key pattern is literal text.
         """
         # [ alone at EOF is literal text (no matching ])
         cursor = Cursor("[", 0)
@@ -238,7 +238,7 @@ class TestParseSimplePattern:
     def test_parse_simple_pattern_stops_at_asterisk(self) -> None:
         """Test * lookahead for default variant marker detection.
 
-        v0.26.0: * alone without [ is literal text.
+        * alone without [ is literal text.
         """
         # * alone at EOF is literal text (not followed by [)
         cursor = Cursor("*", 0)

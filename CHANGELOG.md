@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-01-09
+
+### Breaking Changes
+- **Dependency Graph API Namespace Separation** (DEBT-GRAPH-COLLISION-001): `build_dependency_graph()` signature changed to correctly handle FTL's separate message and term namespaces:
+  - Previous: `build_dependency_graph(entries: Mapping[str, tuple[set[str], set[str]]]) -> tuple[dict[str, set[str]], dict[str, set[str]]]`
+  - Now: `build_dependency_graph(message_entries: Mapping[str, tuple[set[str], set[str]]], term_entries: Mapping[str, tuple[set[str], set[str]]] | None = None) -> tuple[dict[str, set[str]], dict[str, set[str]]]`
+  - Rationale: Previous API used single dict with string keys, causing key collisions when a resource has both a message and term with the same identifier (e.g., "brand" message and "-brand" term)
+  - Migration: Split your entries dict into separate `message_entries` and `term_entries` dicts based on entry type
+  - Example before: `build_dependency_graph({"foo": (msg_refs, term_refs), "bar": ...})`
+  - Example after: `build_dependency_graph(message_entries={"foo": (msg_refs, term_refs)}, term_entries={"bar": (msg_refs, term_refs)})`
+
+### Fixed
+- **Serializer Roundtrip Fidelity** (SEM-JUNK-WHITESPACE-001): Fixed redundant newline insertion before Junk entries:
+  - Previous: Serializer added separator newline before all entries, including Junk, causing file growth on parse/serialize cycles
+  - Now: Serializer skips separator when Junk content already contains leading whitespace
+  - Impact: Prevents whitespace inflation on roundtrip when invalid FTL content has leading blank lines
+  - Example: Input "msg = hello\n\n  bad" now maintains 2 newlines instead of growing to 3+ on each roundtrip
+
+### Changed
+- **Plural Matching Error Visibility** (SEM-BABEL-SILENT-001): Plural variant matching now collects diagnostic error when Babel is unavailable:
+  - Previous: Silent degradation to default variant when Babel not installed, making debugging difficult
+  - Now: Appends `FluentResolutionError` with code `PLURAL_SUPPORT_UNAVAILABLE` to errors tuple
+  - Error message: "Plural variant matching unavailable (Babel not installed). Install with: pip install ftllexengine[babel]"
+  - Behavior: Still falls back to default variant (graceful degradation preserved), but now visible in errors collection
+  - Impact: Developers can now see when pluralization is being silently ignored due to missing dependency
+
 ## [0.63.0] - 2026-01-09
 
 ### Fixed
@@ -1538,6 +1564,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.64.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.64.0
 [0.63.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.63.0
 [0.62.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.62.0
 [0.61.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.61.0

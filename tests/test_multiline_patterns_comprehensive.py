@@ -489,7 +489,7 @@ class TestMultilineSelectExpressions:
         assert isinstance(msg.value.elements[0], Placeable)
 
     def test_multiline_variant_value_with_continuation(self):
-        """v0.38.0: Variant values can span multiple lines with indentation.
+        """Variant values can span multiple lines with indentation.
 
         SPEC COMPLIANCE: PARSING-VARIANT-MULTILINE-001
         Variant value patterns should support indented continuation lines,
@@ -531,7 +531,7 @@ class TestMultilineSelectExpressions:
         assert "spans multiple lines" in one_text
 
     def test_multiline_variant_value_with_placeable(self):
-        """v0.38.0: Multiline variant with placeable on continuation line."""
+        """Multiline variant with placeable on continuation line."""
         source = """key = { $count ->
     [one] You have { $count } item
         in your cart
@@ -556,7 +556,7 @@ class TestMultilineSelectExpressions:
         assert any(isinstance(e, Placeable) for e in one_variant.value.elements)
 
     def test_variant_continuation_stops_at_next_variant(self):
-        """v0.38.0: Continuation stops when next variant marker is encountered."""
+        """Continuation stops when next variant marker is encountered."""
         source = """key = { $type ->
     [a] First variant
         with continuation

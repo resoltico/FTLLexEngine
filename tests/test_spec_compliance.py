@@ -38,7 +38,7 @@ class TestNamedArgumentValueRestriction:
 
         # Verify error annotation exists
         assert len(entry.annotations) > 0
-        # v0.9.0: Generic error message (detailed info removed)
+        # Generic error message (detailed info removed)
 
     def test_rejects_message_reference_as_named_arg_value(self):
         """Reject message reference as named argument value."""
@@ -141,7 +141,7 @@ msg = { greeting.formal(case: "nominative") }
     def test_parses_lowercase_function_reference(self):
         """Lowercase function names are valid per Fluent 1.0 spec.
 
-        After removing the isupper() restriction (v0.48.0), 'greeting(...)'
+        After removing the isupper() restriction, 'greeting(...)'
         parses as a FunctionReference, not a message reference with args.
         """
         parser = FluentParserV1()
@@ -273,7 +273,7 @@ msg = { $count ->
         assert len(resource.entries) == 1
         entry = resource.entries[0]
         assert type(entry).__name__ == "Junk"
-        # v0.9.0: Generic error message (detailed info removed)
+        # Generic error message (detailed info removed)
 
     def test_rejects_select_with_multiple_default_variants(self):
         """Reject select expression with multiple default variants."""

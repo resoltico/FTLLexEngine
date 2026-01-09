@@ -1,4 +1,4 @@
-"""Security tests for depth guard fixes in v0.52.0.
+"""Security tests for depth guard fixes.
 
 Tests DoS prevention for deeply nested function calls and term references.
 Covers fixes for:

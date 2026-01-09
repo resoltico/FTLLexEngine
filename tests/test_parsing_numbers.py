@@ -1,9 +1,9 @@
 """Tests for number parsing functions.
 
-v0.8.0: Updated for new tuple return type API.
-- parse_number() returns tuple[float, list[FluentParseError]]
-- parse_decimal() returns tuple[Decimal, list[FluentParseError]]
-- Removed strict parameter - functions never raise, errors in list
+Functions return tuple[value, errors]:
+- parse_number() returns tuple[float | None, tuple[FluentParseError, ...]]
+- parse_decimal() returns tuple[Decimal | None, tuple[FluentParseError, ...]]
+- Functions never raise exceptions; errors returned in tuple
 
 Validates parse_number() and parse_decimal() across multiple locales.
 """
@@ -59,10 +59,10 @@ class TestParseNumber:
         assert result == 0.5
 
     def test_parse_number_invalid_returns_error(self) -> None:
-        """Invalid input returns error in list (v0.8.0 - no exceptions)."""
+        """Invalid input returns error in tuple; function never raises."""
         result, errors = parse_number("invalid", "en_US")
         assert len(errors) > 0
-        assert result is None  # v0.9.0: Returns None on failure
+        assert result is None
         assert errors[0].parse_type == "number"
         assert errors[0].input_value == "invalid"
 
@@ -70,7 +70,7 @@ class TestParseNumber:
         """Empty input returns error in list."""
         result, errors = parse_number("", "en_US")
         assert len(errors) > 0
-        assert result is None  # v0.9.0: Returns None on failure
+        assert result is None
 
 
 class TestParseDecimal:
@@ -115,10 +115,10 @@ class TestParseDecimal:
         assert vat == Decimal("21.105")  # Exact, no float precision loss
 
     def test_parse_decimal_invalid_returns_error(self) -> None:
-        """Invalid input returns error in list (v0.8.0 - no exceptions)."""
+        """Invalid input returns error in tuple; function never raises."""
         result, errors = parse_decimal("invalid", "en_US")
         assert len(errors) > 0
-        assert result is None  # v0.9.0: Returns None on failure
+        assert result is None
         assert errors[0].parse_type == "decimal"
 
 

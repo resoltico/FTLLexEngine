@@ -712,7 +712,7 @@ class TestMissingBranchCoverage:
         warning per unique cycle, not multiple warnings for the same cycle
         detected from different starting points.
 
-        v0.30.0: Updated to work with unified cross-type cycle detection.
+        Uses unified cross-type cycle detection.
         """
         from ftllexengine.syntax.ast import (
             Identifier,
@@ -760,7 +760,7 @@ class TestMissingBranchCoverage:
         Verifies that term-only cycles are detected and deduplicated properly
         in the unified graph.
 
-        v0.30.0: Updated to work with unified cross-type cycle detection.
+        Uses unified cross-type cycle detection.
         """
         from ftllexengine.syntax.ast import (
             Identifier,

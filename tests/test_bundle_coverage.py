@@ -296,7 +296,7 @@ class TestCriticalSyntaxErrorInValidateResource:
         assert len(result.errors) > 0
 
     def test_critical_error_returns_junk_entry(self) -> None:
-        """COVERAGE: Lines 554-556 - ValidationError for critical error (v0.9.0)."""
+        """COVERAGE: Lines 554-556 - ValidationError for critical error."""
         bundle = FluentBundle("en_US", use_isolating=False)
 
         invalid_ftl = "msg = {{ broken"
@@ -305,7 +305,7 @@ class TestCriticalSyntaxErrorInValidateResource:
 
         # Should have ValidationError representing the parse error
         assert len(result.errors) > 0
-        # v0.9.0: Errors are ValidationError instances, not Junk AST nodes
+        # Errors are ValidationError instances, not Junk AST nodes
         assert all(isinstance(e, ValidationError) for e in result.errors)
 
 

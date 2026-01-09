@@ -297,8 +297,11 @@ class TestFluentResolverBabelFallback:
 
             # Should fall back to default variant
             assert "many items" in result
-            # Should not have errors (Babel fallback is graceful)
-            assert len(errors) == 0
+            # Should collect error about Babel unavailability
+            assert len(errors) == 1
+            assert hasattr(errors[0], "diagnostic")
+            assert errors[0].diagnostic is not None
+            assert errors[0].diagnostic.code.name == "PLURAL_SUPPORT_UNAVAILABLE"
 
     def test_select_expression_babel_error_uses_default_variant(self) -> None:
         """Select expression uses default variant when Babel unavailable (line 738)."""
@@ -342,7 +345,11 @@ class TestFluentResolverBabelFallback:
         ):
             result, errors = resolver.resolve_message(message, {"num": 42})
 
-            assert not errors
+            # Should collect error about Babel unavailability
+            assert len(errors) == 1
+            assert hasattr(errors[0], "diagnostic")
+            assert errors[0].diagnostic is not None
+            assert errors[0].diagnostic.code.name == "PLURAL_SUPPORT_UNAVAILABLE"
 
             # Should use default variant
             assert "default-fallback" in result
@@ -389,7 +396,11 @@ class TestFluentResolverBabelFallback:
         ):
             result, errors = resolver.resolve_message(message, {})
 
-            assert not errors
+            # Should collect error about Babel unavailability
+            assert len(errors) == 1
+            assert hasattr(errors[0], "diagnostic")
+            assert errors[0].diagnostic is not None
+            assert errors[0].diagnostic.code.name == "PLURAL_SUPPORT_UNAVAILABLE"
 
             # Should fall back to default
             assert "fallback" in result

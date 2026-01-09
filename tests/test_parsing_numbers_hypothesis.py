@@ -1,9 +1,9 @@
 """Hypothesis-based property tests for number parsing.
 
-v0.8.0: Updated for new tuple return type API.
-- parse_number() returns tuple[float, list[FluentParseError]]
-- parse_decimal() returns tuple[Decimal, list[FluentParseError]]
-- Removed strict parameter - functions never raise, errors in list
+Functions return tuple[value, errors]:
+- parse_number() returns tuple[float | None, tuple[FluentParseError, ...]]
+- parse_decimal() returns tuple[Decimal | None, tuple[FluentParseError, ...]]
+- Functions never raise exceptions; errors returned in tuple
 
 Focus on precision, locale independence, and roundtrip properties.
 """
@@ -79,10 +79,10 @@ class TestParseNumberHypothesis:
     )
     @settings(max_examples=100)
     def test_parse_number_invalid_returns_error(self, invalid_input: str) -> None:
-        """Invalid numbers return error in list (v0.8.0 - no exceptions)."""
+        """Invalid numbers return error in tuple; function never raises."""
         result, errors = parse_number(invalid_input, "en_US")
         assert len(errors) > 0
-        assert result is None  # v0.9.0: Returns None on failure
+        assert result is None
 
     @given(
         value=st.one_of(
@@ -93,10 +93,10 @@ class TestParseNumberHypothesis:
     )
     @settings(max_examples=50)
     def test_parse_number_type_error_returns_error(self, value: object) -> None:
-        """Non-string types return error in list (v0.8.0 - no exceptions)."""
+        """Non-string types return error in tuple; function never raises."""
         result, errors = parse_number(value, "en_US")
         assert len(errors) > 0
-        assert result is None  # v0.9.0: Returns None on failure
+        assert result is None
 
 
 class TestParseDecimalHypothesis:
@@ -194,10 +194,10 @@ class TestParseDecimalHypothesis:
     )
     @settings(max_examples=100)
     def test_parse_decimal_invalid_returns_error(self, invalid_input: str) -> None:
-        """Invalid decimals return error in list (v0.8.0 - no exceptions)."""
+        """Invalid decimals return error in tuple; function never raises."""
         result, errors = parse_decimal(invalid_input, "en_US")
         assert len(errors) > 0
-        assert result is None  # v0.9.0: Returns None on failure
+        assert result is None
 
     @given(
         locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "lv_LV", "pl_PL", "ja_JP"]),

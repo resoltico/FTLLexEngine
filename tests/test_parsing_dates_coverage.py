@@ -656,7 +656,7 @@ class TestBabelToStrptimeTimezoneToken:
         """ZZZZ (localized GMT format) is skipped since strptime cannot parse it.
 
         CLDR ZZZZ produces "GMT-08:00" format which Python's strptime cannot
-        handle. Changed in v0.47.0: ZZZZ now maps to None (skipped).
+        handle. ZZZZ now maps to None (skipped).
         """
         pattern = "d MMM y HH:mm ZZZZ"
 
@@ -673,7 +673,7 @@ class TestBabelToStrptimeTimezoneToken:
 
         Pattern "HH:mm zzzz" has tokens ["HH", ":", "mm", " ", "zzzz"].
         When zzzz is skipped (None), the trailing space remains.
-        Changed in v0.47.0: trailing whitespace is normalized.
+        Trailing whitespace is normalized.
         """
         pattern = "HH:mm zzzz"
 

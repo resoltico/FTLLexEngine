@@ -215,6 +215,34 @@ def test_roundtrip_junk():
     assert any(isinstance(e, Junk) for e in reparsed.entries)
 
 
+def test_roundtrip_junk_with_leading_whitespace():
+    """Round-trip junk with leading whitespace without redundant newlines.
+
+    Tests that the serializer does not add redundant separators before Junk
+    entries when the Junk content already includes leading whitespace.
+    The parser includes preceding whitespace in Junk.content for containment.
+    """
+    # Parse FTL with message followed by blank lines and indented junk
+    source = "msg = hello\n\n  bad"
+    resource = parse(source)
+
+    # Serialize and re-parse
+    serialized = serialize(resource)
+    reparsed = parse(serialized)
+
+    # Verify file doesn't grow on multiple roundtrips (key invariant)
+    serialized2 = serialize(reparsed)
+    assert len(serialized2) == len(serialized), (
+        "File size should remain stable across roundtrips (no whitespace inflation)"
+    )
+
+    # Verify multiple roundtrips converge to stable output
+    serialized3 = serialize(parse(serialized2))
+    assert serialized3 == serialized2, (
+        "Serialization should be idempotent after first roundtrip"
+    )
+
+
 def test_roundtrip_multiple_messages():
     """Round-trip resource with multiple messages."""
     msg1 = Message(

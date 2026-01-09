@@ -228,7 +228,7 @@ class TestAdditionalUncoveredLines:
         """Test function reference with lowercase name is now valid.
 
         Per Fluent 1.0 spec, function names are identifiers without case restrictions.
-        The isupper() check was removed in v0.48.0 for spec compliance.
+        The isupper() check was removed for spec compliance.
         """
         source = "lowercase()"
         cursor = Cursor(source, 0)
@@ -364,7 +364,7 @@ class TestAdditionalUncoveredLines:
     def test_uppercase_message_reference_with_trailing_dot(self) -> None:
         """Test message reference with trailing dot (no attribute name).
 
-        v0.27.0: Parser handles MSG. by parsing the message reference
+        Parser handles MSG. by parsing the message reference
         and consuming the dot (looking for attribute), but returns
         message reference without attribute when none found.
         """
@@ -384,7 +384,7 @@ class TestAdditionalUncoveredLines:
     def test_lowercase_message_reference_with_trailing_dot(self) -> None:
         """Test lowercase message reference with trailing dot.
 
-        v0.27.0: Parser handles msg. by parsing the message reference
+        Parser handles msg. by parsing the message reference
         and consuming the dot (looking for attribute), but returns
         message reference without attribute when none found.
         """

@@ -1,4 +1,4 @@
-"""Tests for v0.48.0 specification compliance and feature changes.
+"""Tests for specification compliance and feature behavior.
 
 Covers:
 - Nested placeables (issue 001): { { expr } } now supported

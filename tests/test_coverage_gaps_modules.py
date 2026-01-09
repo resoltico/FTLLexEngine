@@ -153,14 +153,14 @@ class TestLocaleContextCacheLimitCoverage:
 class TestLocaleContextUnexpectedErrorPropagation:
     """Verify unexpected errors propagate instead of being silently caught.
 
-    v0.28.0: Removed broad RuntimeError catches. Unexpected errors now propagate
+    Broad RuntimeError catches were removed. Unexpected errors now propagate
     for debugging instead of being swallowed with a warning log.
     """
 
     def test_format_number_unexpected_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verify RuntimeError in format_number propagates (v0.28.0 behavior)."""
+        """Verify RuntimeError in format_number propagates for debugging."""
         ctx = LocaleContext.create_or_raise("en_US")
 
         def mock_format_decimal(*_args: object, **_kwargs: object) -> str:
@@ -169,14 +169,14 @@ class TestLocaleContextUnexpectedErrorPropagation:
 
         monkeypatch.setattr(babel_numbers, "format_decimal", mock_format_decimal)
 
-        # v0.28.0: RuntimeError now propagates instead of being caught
+        # RuntimeError now propagates instead of being caught
         with pytest.raises(RuntimeError, match="Mocked RuntimeError"):
             ctx.format_number(123.45)
 
     def test_format_currency_unexpected_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verify RuntimeError in format_currency propagates (v0.28.0 behavior)."""
+        """Verify RuntimeError in format_currency propagates for debugging."""
         ctx = LocaleContext.create_or_raise("en_US")
 
         def mock_format_currency(*_args: object, **_kwargs: object) -> str:
@@ -185,7 +185,7 @@ class TestLocaleContextUnexpectedErrorPropagation:
 
         monkeypatch.setattr(babel_numbers, "format_currency", mock_format_currency)
 
-        # v0.28.0: RuntimeError now propagates instead of being caught
+        # RuntimeError now propagates instead of being caught
         with pytest.raises(RuntimeError, match="Mocked RuntimeError"):
             ctx.format_currency(100.0, currency="USD")
 

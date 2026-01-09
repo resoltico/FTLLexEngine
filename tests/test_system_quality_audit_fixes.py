@@ -1,4 +1,4 @@
-"""Tests for v0.55.0 system quality audit fixes.
+"""Tests for system quality audit fixes.
 
 Tests for:
 - AUDIT-009: ASCII-only locale validation

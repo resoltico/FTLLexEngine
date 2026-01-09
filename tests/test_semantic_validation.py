@@ -181,7 +181,7 @@ msg = { $count ->
         # Verify error annotation exists
         junk = resource.entries[0]
         assert len(junk.annotations) > 0
-        # v0.9.0: Generic error message (detailed info removed)
+        # Generic error message (detailed info removed)
 
     def test_invalid_duplicate_variant_keys(self):
         """Select with duplicate variant keys should be invalid."""

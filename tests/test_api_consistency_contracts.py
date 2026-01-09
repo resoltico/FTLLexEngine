@@ -1,6 +1,6 @@
 """Systems-based tests for API consistency contracts.
 
-v0.28.0: Tests patterns that prevent recurring issues:
+Tests patterns that prevent recurring issues:
 1. Type guard None-acceptance - all guards must handle None uniformly
 2. Thread-local cleanup - parse functions must clear stale error context
 3. Exception specificity - broad catches must not mask unexpected errors

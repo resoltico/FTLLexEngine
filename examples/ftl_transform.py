@@ -135,7 +135,7 @@ goodbye = Goodbye!
     resource = parse_ftl(ftl_with_comments)
     transformer = RemoveCommentsTransformer()
     cleaned = transformer.transform(resource)
-    # v0.9.0: transform() returns ASTNode, assert it's a Resource
+    # transform() returns ASTNode, assert it's a Resource
     assert isinstance(cleaned, Resource), f"Expected Resource, got {type(cleaned)}"
 
     print("\nAFTER:")

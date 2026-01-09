@@ -88,7 +88,7 @@ msg = { $val ->
     def test_function_reference_lowercase_valid(self) -> None:
         """Test lowercase function names are now valid per Fluent 1.0 spec.
 
-        The isupper() check was removed in v0.48.0 for spec compliance.
+        The isupper() check was removed for spec compliance.
         """
         cursor = Cursor(source="lowercase()", pos=0)
         result = parse_function_reference(cursor)

@@ -1,9 +1,9 @@
 """Hypothesis-based property tests for date/datetime parsing.
 
-v0.8.0: Updated for new tuple return type API.
-- parse_date() returns tuple[date | None, list[FluentParseError]]
-- parse_datetime() returns tuple[datetime | None, list[FluentParseError]]
-- Removed strict parameter - functions never raise, errors in list
+Functions return tuple[value, errors]:
+- parse_date() returns tuple[date | None, tuple[FluentParseError, ...]]
+- parse_datetime() returns tuple[datetime | None, tuple[FluentParseError, ...]]
+- Functions never raise exceptions; errors returned in tuple
 
 Focus on financial date handling and edge cases.
 """
@@ -24,7 +24,7 @@ class TestParseDateHypothesis:
     """Property-based tests for parse_date()."""
 
     @given(
-        year=st.integers(min_value=2000, max_value=2068),  # v0.7.0: 2-digit year limit
+        year=st.integers(min_value=2000, max_value=2068),  # 2-digit year limit for CLDR
         month=st.integers(min_value=1, max_value=12),
         day=st.integers(min_value=1, max_value=28),  # Safe for all months
     )
@@ -47,7 +47,7 @@ class TestParseDateHypothesis:
         assert result.day == day
 
     @given(
-        year=st.integers(min_value=2000, max_value=2068),  # v0.7.0: 2-digit year limit
+        year=st.integers(min_value=2000, max_value=2068),  # 2-digit year limit for CLDR
         month=st.integers(min_value=1, max_value=12),
         day=st.integers(min_value=1, max_value=28),
         locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "lv_LV", "pl_PL", "ja_JP"]),
@@ -82,7 +82,7 @@ class TestParseDateHypothesis:
     )
     @settings(max_examples=100)
     def test_parse_date_invalid_returns_error(self, invalid_date: str) -> None:
-        """Invalid dates should return error in list (v0.8.0 - no exceptions)."""
+        """Invalid dates should return error in tuple; function never raises."""
         result, errors = parse_date(invalid_date, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -97,7 +97,7 @@ class TestParseDateHypothesis:
     )
     @settings(max_examples=50)
     def test_parse_date_type_error_returns_error(self, value: object) -> None:
-        """Non-string types should return error in list (v0.8.0 - no exceptions)."""
+        """Non-string types should return error in tuple; function never raises."""
         result, errors = parse_date(value, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -110,7 +110,7 @@ class TestParseDateHypothesis:
     def test_parse_date_us_format_month_first(self, month: int, day: int) -> None:
         """US format (M/D/YYYY) should parse with month first."""
         # US uses month-first format
-        date_str = f"{month}/{day}/25"  # v0.7.0: Use 2-digit year for CLDR
+        date_str = f"{month}/{day}/25"  # Use 2-digit year for CLDR
 
         result, errors = parse_date(date_str, "en_US")
         assert not errors
@@ -141,7 +141,7 @@ class TestParseDateHypothesis:
         assert result.year == 2025  # 2-digit year 25 -> 2025
 
     @given(
-        year=st.integers(min_value=2000, max_value=2068),  # v0.7.0: 2-digit year limit
+        year=st.integers(min_value=2000, max_value=2068),  # 2-digit year limit for CLDR
         month=st.integers(min_value=1, max_value=12),
         day=st.integers(min_value=1, max_value=28),
     )
@@ -150,7 +150,7 @@ class TestParseDateHypothesis:
         self, year: int, month: int, day: int
     ) -> None:
         """Common financial reporting date formats should parse correctly."""
-        # v0.7.0: Only ISO format is universal (no 4-digit year fallback)
+        # Only ISO format is universal (no 4-digit year fallback)
         # Use 2-digit year for locale formats
         year_2d = year % 100  # Convert 2025 -> 25
         formats = [
@@ -221,7 +221,7 @@ class TestParseDatetimeHypothesis:
     """Property-based tests for parse_datetime()."""
 
     @given(
-        year=st.integers(min_value=2000, max_value=2068),  # v0.7.0: 2-digit year limit
+        year=st.integers(min_value=2000, max_value=2068),  # 2-digit year limit for CLDR
         month=st.integers(min_value=1, max_value=12),
         day=st.integers(min_value=1, max_value=28),
         hour=st.integers(min_value=0, max_value=23),
@@ -252,7 +252,7 @@ class TestParseDatetimeHypothesis:
         assert result.second == second
 
     @given(
-        year=st.integers(min_value=2000, max_value=2068),  # v0.7.0: 2-digit year limit
+        year=st.integers(min_value=2000, max_value=2068),  # 2-digit year limit for CLDR
         month=st.integers(min_value=1, max_value=12),
         day=st.integers(min_value=1, max_value=28),
         hour=st.integers(min_value=0, max_value=23),
@@ -281,7 +281,7 @@ class TestParseDatetimeHypothesis:
         assert result.minute == minute
 
     @given(
-        year=st.integers(min_value=2000, max_value=2068),  # v0.7.0: 2-digit year limit
+        year=st.integers(min_value=2000, max_value=2068),  # 2-digit year limit for CLDR
         month=st.integers(min_value=1, max_value=12),
         day=st.integers(min_value=1, max_value=28),
         hour=st.integers(min_value=0, max_value=23),
@@ -293,10 +293,10 @@ class TestParseDatetimeHypothesis:
     ) -> None:
         """Non-ISO datetime patterns should accept tzinfo parameter.
 
-        v0.27.0: Uses CLDR dateTimeFormat separator (en_US uses ", ").
+        Uses CLDR dateTimeFormat separator (en_US uses ", ").
         """
         # Use US format (not ISO) with CLDR separator
-        # v0.7.0: 2-digit year, v0.27.0: CLDR separator
+        # 2-digit year, CLDR separator
         datetime_str = f"{month}/{day}/{year % 100:02d}, {hour:02d}:{minute:02d}"
 
         result, errors = parse_datetime(datetime_str, "en_US", tzinfo=UTC)
@@ -324,7 +324,7 @@ class TestParseDatetimeHypothesis:
     )
     @settings(max_examples=100)
     def test_parse_datetime_invalid_returns_error(self, invalid_datetime: str) -> None:
-        """Invalid datetimes should return error in list (v0.8.0 - no exceptions)."""
+        """Invalid datetimes should return error in tuple; function never raises."""
         result, errors = parse_datetime(invalid_datetime, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -339,7 +339,7 @@ class TestParseDatetimeHypothesis:
     )
     @settings(max_examples=50)
     def test_parse_datetime_type_error_returns_error(self, value: object) -> None:
-        """Non-string types should return error in list (v0.8.0 - no exceptions)."""
+        """Non-string types should return error in tuple; function never raises."""
         result, errors = parse_datetime(value, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -409,10 +409,10 @@ class TestDateParsingEdgeCases:
         # Patch at the original Babel module (lazy import in dates.py)
         monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
-        # v0.8.0: No fallback patterns - should return None with error
+        # No fallback patterns - should return None with error
         # Non-ISO format without CLDR patterns = failure
         result, _errors = parse_date("01/28/2025", "en_US")
-        assert result is None  # v0.8.0: No fallback patterns
+        assert result is None
 
     def test_parse_date_locale_date_formats_missing_style(
         self, monkeypatch: pytest.MonkeyPatch
@@ -471,10 +471,10 @@ class TestDateParsingEdgeCases:
         # Patch at the original Babel module (lazy import in dates.py)
         monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
-        # v0.8.0: No fallback patterns - should return None with error
+        # No fallback patterns - should return None with error
         # Non-ISO format without CLDR patterns = failure
         result, _errors = parse_datetime("01/28/2025 14:30:00", "en_US")
-        assert result is None  # v0.8.0: No fallback patterns
+        assert result is None
 
     def test_parse_datetime_locale_datetime_formats_missing_style(
         self, monkeypatch: pytest.MonkeyPatch
@@ -521,9 +521,9 @@ class TestDateParsingEdgeCases:
         # Patch at the original Babel module (lazy import in dates.py)
         monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
-        # v0.8.0: No fallback patterns - should return None with error
+        # No fallback patterns - should return None with error
         result, _errors = parse_date("01/28/2025", "en_US")
-        assert result is None  # v0.8.0: No fallback patterns
+        assert result is None
 
     def test_parse_datetime_locale_parse_exception(
         self, monkeypatch: pytest.MonkeyPatch
@@ -537,9 +537,9 @@ class TestDateParsingEdgeCases:
         # Patch at the original Babel module (lazy import in dates.py)
         monkeypatch.setattr("babel.Locale.parse", mock_parse)
 
-        # v0.8.0: No fallback patterns - should return None with error
+        # No fallback patterns - should return None with error
         result, _errors = parse_datetime("01/28/2025 14:30:00", "en_US")
-        assert result is None  # v0.8.0: No fallback patterns
+        assert result is None
 
     def test_parse_datetime_with_cldr_patterns(self) -> None:
         """Test successful CLDR pattern retrieval and usage."""
@@ -647,7 +647,7 @@ class TestDatetimeFormatsExceptionHandling:
     def test_datetime_cldr_pattern_german_format(self) -> None:
         """COVERAGE: CLDR pattern generation for German datetime.
 
-        v0.27.0: Uses CLDR dateTimeFormat separator (de_DE uses ", ").
+        Uses CLDR dateTimeFormat separator (de_DE uses ", ").
         """
         # German format: DD.MM.YYYY, HH:MM:SS (CLDR separator)
         datetime_str = "28.01.2025, 14:30:00"

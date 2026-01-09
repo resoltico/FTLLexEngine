@@ -126,6 +126,25 @@ class ErrorTemplate:
         )
 
     @staticmethod
+    def plural_support_unavailable() -> Diagnostic:
+        """Plural variant matching unavailable due to missing Babel dependency.
+
+        Returns:
+            Diagnostic for PLURAL_SUPPORT_UNAVAILABLE
+        """
+        msg = (
+            "Plural variant matching unavailable (Babel not installed). "
+            "Install with: pip install ftllexengine[babel]"
+        )
+        return Diagnostic(
+            code=DiagnosticCode.PLURAL_SUPPORT_UNAVAILABLE,
+            message=msg,
+            span=None,
+            hint="Install Babel for CLDR-based plural category matching",
+            help_url=f"{ErrorTemplate._DOCS_BASE}/selectors.html",
+        )
+
+    @staticmethod
     def variable_not_provided(
         variable_name: str,
         *,

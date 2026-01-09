@@ -505,16 +505,16 @@ class TestDatetimeFunctionMockedErrors:
             assert exc_info.value.fallback_value == "9999-12-31T23:59:59+00:00"
 
     def test_datetime_unexpected_error_propagates(self) -> None:
-        """datetime_format() lets unexpected exceptions propagate (v0.28.0 behavior).
+        """datetime_format() lets unexpected exceptions propagate for debugging.
 
-        v0.28.0: Removed broad RuntimeError catches. Unexpected errors now propagate
+        Broad RuntimeError catches were removed. Unexpected errors now propagate
         for debugging instead of being swallowed.
         """
         # Create a real datetime object
         test_dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
 
         # Patch Babel's format_date to raise RuntimeError
-        # v0.28.0: RuntimeError now propagates instead of being caught
+        # RuntimeError now propagates instead of being caught
         with (
             patch.object(
                 babel_dates, "format_date", side_effect=RuntimeError("Unexpected error")

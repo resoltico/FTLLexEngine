@@ -1,6 +1,6 @@
 """Comprehensive tests for FluentBundle.get_all_message_variables().
 
-Tests the batch introspection API added in v0.1.1 for CI/CD validation use cases.
+Tests the batch introspection API for CI/CD validation use cases.
 Includes unit tests, integration tests, edge cases, and property-based tests.
 
 Python 3.13+.

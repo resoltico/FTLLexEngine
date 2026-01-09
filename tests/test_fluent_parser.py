@@ -465,7 +465,7 @@ goodbye = Goodbye"""
         assert len(resource.entries) >= 1
         # First entry should be Junk with error annotation
         assert isinstance(resource.entries[0], Junk)
-        # v0.9.0: Generic error message (detailed info removed)
+        # Generic error message (detailed info removed)
 
 
 class TestFluentParserMultilineSelect:

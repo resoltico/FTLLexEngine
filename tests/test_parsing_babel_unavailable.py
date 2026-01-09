@@ -208,3 +208,53 @@ class TestParseDecimalBabelUnavailable:
             parse_decimal("1,234.56", "en_US")
 
         assert "parse_decimal" in str(exc_info.value)
+
+
+class TestResolverPluralBabelUnavailable:
+    """Test FluentResolver plural matching when Babel is not installed."""
+
+    def test_plural_matching_collects_error_when_babel_unavailable(self) -> None:
+        """Plural matching should collect error when Babel is unavailable.
+
+        Tests that FluentResolver collects a FluentResolutionError with
+        PLURAL_SUPPORT_UNAVAILABLE diagnostic code when attempting to resolve
+        select expressions with numeric selectors while Babel is not installed.
+        """
+        from ftllexengine import FluentBundle
+        from ftllexengine.diagnostics import DiagnosticCode
+
+        # Clear any caches
+        from ftllexengine.runtime import plural_rules
+
+        if hasattr(plural_rules.select_plural_category, "cache_clear"):
+            plural_rules.select_plural_category.cache_clear()
+
+        # Create bundle with FTL containing plural select expression
+        ftl = """
+items = { $count ->
+    [one] one item
+   *[other] { $count } items
+}
+"""
+        mock_import = _make_import_blocker("babel")
+
+        with patch.object(builtins, "__import__", side_effect=mock_import):
+            bundle = FluentBundle("en_US")
+            bundle.add_resource(ftl)
+
+            # Format with numeric argument (should trigger plural matching)
+            result, errors = bundle.format_pattern("items", {"count": 1})
+
+            # Should fall back to default variant due to Babel unavailability
+            # Result may contain bidi marks, so just check for key components
+            assert "1" in result  # Default variant used
+            assert "items" in result
+
+            # Should have collected error about Babel unavailability
+            assert len(errors) == 1
+            error = errors[0]
+            assert hasattr(error, "diagnostic")
+            assert error.diagnostic is not None
+            assert error.diagnostic.code == DiagnosticCode.PLURAL_SUPPORT_UNAVAILABLE
+            assert "Babel not installed" in error.diagnostic.message
+            assert "ftllexengine[babel]" in error.diagnostic.message

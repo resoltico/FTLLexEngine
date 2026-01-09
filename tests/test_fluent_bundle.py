@@ -534,7 +534,7 @@ class TestFluentBundleMockedErrors:
     def test_format_pattern_with_keyerror_exception(self) -> None:
         """Bundle propagates KeyError from resolver (fail-fast behavior).
 
-        v0.29.0: Internal errors (KeyError, AttributeError, etc.) are no longer
+        Internal errors (KeyError, AttributeError, etc.) are no longer
         caught. This ensures bugs are detected immediately rather than hidden
         behind fallback values.
         """
@@ -547,14 +547,14 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = KeyError("name")
             MockResolver.return_value = mock_resolver
 
-            # v0.29.0: KeyError propagates (fail-fast)
+            # KeyError propagates (fail-fast)
             with pytest.raises(KeyError, match="name"):
                 bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_attribute_error_exception(self) -> None:
         """Bundle propagates AttributeError from resolver (fail-fast behavior).
 
-        v0.29.0: Internal errors are no longer caught.
+        Internal errors are no longer caught.
         """
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
@@ -565,14 +565,14 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = AttributeError("Invalid attribute")
             MockResolver.return_value = mock_resolver
 
-            # v0.29.0: AttributeError propagates (fail-fast)
+            # AttributeError propagates (fail-fast)
             with pytest.raises(AttributeError, match="Invalid attribute"):
                 bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_recursion_error_exception(self) -> None:
         """Bundle propagates RecursionError from resolver (fail-fast behavior).
 
-        v0.29.0: Internal errors are no longer caught.
+        Internal errors are no longer caught.
         """
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
@@ -583,14 +583,14 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = RecursionError("Maximum recursion")
             MockResolver.return_value = mock_resolver
 
-            # v0.29.0: RecursionError propagates (fail-fast)
+            # RecursionError propagates (fail-fast)
             with pytest.raises(RecursionError, match="Maximum recursion"):
                 bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_unexpected_exception(self) -> None:
         """Bundle propagates unexpected exceptions from resolver (fail-fast behavior).
 
-        v0.29.0: Internal errors are no longer caught. Only FluentError subclasses
+        Internal errors are no longer caught. Only FluentError subclasses
         are part of the normal error handling flow.
         """
         bundle = FluentBundle("en_US")
@@ -602,7 +602,7 @@ class TestFluentBundleMockedErrors:
             mock_resolver.resolve_message.side_effect = RuntimeError("Unexpected error")
             MockResolver.return_value = mock_resolver
 
-            # v0.29.0: RuntimeError propagates (fail-fast)
+            # RuntimeError propagates (fail-fast)
             with pytest.raises(RuntimeError, match="Unexpected error"):
                 bundle.format_pattern("msg", {})
 

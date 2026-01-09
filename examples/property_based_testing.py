@@ -76,7 +76,7 @@ def example_1_format_never_raises() -> None:
 
         # Always returns a string
         assert isinstance(result, str)
-        # Always returns a tuple of errors (v0.11.0+)
+        # Always returns a tuple of errors
         assert isinstance(errors, tuple)
 
     # Run the property test

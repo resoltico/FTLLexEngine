@@ -6,7 +6,7 @@ Targets uncovered error conditions and edge cases in primitive parsing:
 - parse_escape_sequence surrogate validation
 - parse_string_literal unterminated strings
 
-v0.28.0: Added tests for stale error context cleanup.
+Tests for stale error context cleanup:
 - Parse functions now clear error context at start to prevent stale data
 """
 
@@ -83,7 +83,7 @@ class TestParseErrorContext:
         assert error is None
 
     def test_stale_error_cleared_by_identifier_parse(self) -> None:
-        """Test parse_identifier clears stale error context (v0.28.0 fix).
+        """Test parse_identifier clears stale error context.
 
         Scenario: A previous parse failure left error context, but a new
         successful parse should not return that stale error.
@@ -104,7 +104,7 @@ class TestParseErrorContext:
         assert error_after is None
 
     def test_stale_error_cleared_by_number_parse(self) -> None:
-        """Test parse_number clears stale error context (v0.28.0 fix)."""
+        """Test parse_number clears stale error context."""
         # Create stale error by failing parse_identifier
         cursor1 = Cursor(source="123", pos=0)
         parse_identifier(cursor1)
@@ -121,7 +121,7 @@ class TestParseErrorContext:
         assert error_after is None
 
     def test_stale_error_cleared_by_string_parse(self) -> None:
-        """Test parse_string_literal clears stale error context (v0.28.0 fix)."""
+        """Test parse_string_literal clears stale error context."""
         # Create stale error by failing parse_number
         cursor1 = Cursor(source="-", pos=0)
         parse_number(cursor1)

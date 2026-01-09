@@ -106,7 +106,7 @@ class TestParseSimplePattern:
     def test_simple_pattern_stops_at_bracket(self) -> None:
         """Test parse_simple_pattern lookahead for '[' variant key detection.
 
-        v0.26.0: '[' is a variant marker only if:
+        '[' is a variant marker only if:
         - Content is valid identifier/number
         - Followed by newline/}/[/* (not regular text)
         """
@@ -140,7 +140,7 @@ class TestParseSimplePattern:
     def test_simple_pattern_stops_at_asterisk(self) -> None:
         """Test parse_simple_pattern lookahead for '*' variant marker detection.
 
-        v0.26.0: '*' is a variant marker only if followed by '['.
+        '*' is a variant marker only if followed by '['.
         """
         # *[ pattern IS a variant marker - stops at *
         source = "Text*[other]"
@@ -190,7 +190,7 @@ class TestParseSimplePattern:
     def test_simple_pattern_variant_markers_lookahead(self) -> None:
         """Test parse_simple_pattern lookahead for variant markers.
 
-        v0.26.0: Lookahead distinguishes variant syntax from literal text.
+        Lookahead distinguishes variant syntax from literal text.
         - '*[' IS a variant marker (stops parsing)
         - '[key] text' is literal (text follows)
         - '*' alone is literal

@@ -1,10 +1,10 @@
 """Hypothesis property-based tests for parsing type guards.
 
-v0.8.0: Updated for new tuple return type API.
+Type guards work with tuple return types from parsing functions:
 - Type guards now work with the new tuple return types
 - Tests validate type narrowing with (result, errors) tuple unpacking
 
-v0.28.0: Updated for unified None handling.
+Unified None handling:
 - All type guards now accept None and return False
 - Removed "check errors first" pattern - guards are now safe to call directly
 
@@ -54,7 +54,7 @@ currency_tuples = st.tuples(
 class TestValidDecimalGuard:
     """Test is_valid_decimal() type guard properties.
 
-    v0.28.0: Updated to accept None and return False for None values.
+    Accepts None and returns False for None values.
     """
 
     @given(value=st.decimals(allow_nan=False, allow_infinity=False))
@@ -66,7 +66,7 @@ class TestValidDecimalGuard:
     @given(value=st.none())
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
-        """PROPERTY: None returns False (v0.28.0 unified API)."""
+        """PROPERTY: None returns False (unified API)."""
         assert is_valid_decimal(value) is False
 
     @given(value=st.just(Decimal("NaN")))
@@ -99,7 +99,7 @@ class TestValidDecimalGuard:
 class TestValidNumberGuard:
     """Test is_valid_number() type guard properties.
 
-    v0.28.0: Updated to accept None and return False for None values.
+    Accepts None and returns False for None values.
     """
 
     @given(value=st.floats(allow_nan=False, allow_infinity=False))
@@ -111,7 +111,7 @@ class TestValidNumberGuard:
     @given(value=st.none())
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
-        """PROPERTY: None returns False (v0.28.0 unified API)."""
+        """PROPERTY: None returns False (unified API)."""
         assert is_valid_number(value) is False
 
     @given(value=st.just(float("nan")))
@@ -238,7 +238,7 @@ class TestValidDatetimeGuard:
 class TestTypeNarrowingIntegration:
     """Test type guard integration with actual parsing functions.
 
-    v0.8.0: Tests updated for new tuple return type API.
+    Tests updated for tuple return type API.
     """
 
     @given(

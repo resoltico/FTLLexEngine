@@ -111,7 +111,7 @@ class TestCurrencyParsingSuccess:
     def test_parse_currency_yen_no_decimals(self) -> None:
         """Test parsing Japanese Yen (0 decimal places).
 
-        v0.38.0: Yen symbol is now ambiguous (JPY vs CNY).
+        Yen symbol is ambiguous (JPY vs CNY).
         Must use infer_from_locale=True for locale-aware resolution.
         """
         result, _errors = parse_currency("¥1000", "ja_JP", infer_from_locale=True)
@@ -124,7 +124,7 @@ class TestCurrencyParsingSuccess:
     def test_parse_currency_yuan_chinese_locale(self) -> None:
         """Test parsing Chinese Yuan with Yen symbol in Chinese locale.
 
-        v0.38.0: LOGIC-YEN-001 fix - Yen symbol resolves to CNY in Chinese locales.
+        LOGIC-YEN-001: Yen symbol resolves to CNY in Chinese locales.
         The Yen sign (U+00A5) is used for both JPY and CNY. Locale-aware
         resolution correctly maps it to CNY for zh_* locales.
         """
@@ -139,7 +139,7 @@ class TestCurrencyParsingSuccess:
     def test_parse_currency_yuan_taiwan_locale(self) -> None:
         """Test parsing with Yen symbol in Taiwan locale.
 
-        v0.38.0: zh_TW should also resolve Yen sign to CNY (Chinese currency context).
+        zh_TW resolves Yen sign to CNY (Chinese currency context).
         """
         result, errors = parse_currency("¥1000", "zh_TW", infer_from_locale=True)
 

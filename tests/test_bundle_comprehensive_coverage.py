@@ -57,7 +57,7 @@ class TestFluentBundleReprAndContextManager:
     def test_context_manager_exit_preserves_messages_and_terms(self) -> None:
         """Context manager exit preserves messages and terms.
 
-        Changed in v0.47.0: __exit__ no longer clears messages/terms.
+        __exit__ no longer clears messages/terms.
         Bundle remains usable after exiting the with block.
         """
         bundle = FluentBundle("en")

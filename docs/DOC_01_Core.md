@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.63.0"
+version: "0.64.0"
 domain: CORE
-updated: "2026-01-08"
+updated: "2026-01-09"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]

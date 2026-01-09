@@ -270,7 +270,7 @@ def demonstrate_registry_copy() -> None:
     print("Example 7: Registry Creation and Copying for Isolation")
     print("=" * 70)
 
-    # Create registry with built-in functions using factory (v0.18.0+)
+    # Create registry with built-in functions using factory
     from ftllexengine.runtime.functions import create_default_registry
 
     # Each call creates a fresh, isolated registry
@@ -325,7 +325,6 @@ if __name__ == "__main__":
     print("\n")
     print("#" * 70)
     print("# FTLLexEngine Function Introspection API Examples")
-    print("# New in v0.4.0")
     print("#" * 70)
 
     demonstrate_basic_introspection()

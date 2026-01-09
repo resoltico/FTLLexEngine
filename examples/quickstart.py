@@ -223,9 +223,9 @@ if errors:
         print(f"  - {type(error).__name__}: {error}")
 print(f"Result with fallback: {result}")
 
-# Example 9: Factory Methods (v0.13.0+)
+# Example 9: Factory Methods
 print("\n" + "=" * 50)
-print("Example 9: System Locale Detection (v0.13.0+)")
+print("Example 9: System Locale Detection")
 print("=" * 50)
 
 # for_system_locale() auto-detects system locale via locale.getlocale()

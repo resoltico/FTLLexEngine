@@ -270,7 +270,7 @@ class TestShouldInjectLocale:
     def test_custom_function_with_locale_marker(self) -> None:
         """Test custom function marked with _ftl_requires_locale attribute.
 
-        v0.36.0 changed implementation to use attribute-based detection.
+        Implementation uses attribute-based detection.
         Functions marked with _ftl_requires_locale = True get locale injection.
         """
         from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.63.0"
+version: "0.64.0"
 domain: INDEX
-updated: "2026-01-08"
+updated: "2026-01-09"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?"]

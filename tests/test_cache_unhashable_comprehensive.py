@@ -3,8 +3,8 @@
 Tests FormatCache behavior with various argument types including hashable
 conversions (lists, dicts, sets) and truly unhashable objects.
 
-v0.13.0: Updated to test new behavior where lists/dicts/sets are converted
-to hashable equivalents (tuples/frozensets) for caching.
+Lists, dicts, and sets are converted to hashable equivalents
+(tuples/frozensets) for caching.
 """
 
 from typing import NoReturn
@@ -105,12 +105,12 @@ class TestCacheBasicOperations:
 class TestCacheHashableConversion:
     """Tests for FormatCache automatic conversion of unhashable types to hashable.
 
-    v0.13.0: Lists, dicts, and sets are now converted to tuples, sorted tuples,
+    Lists, dicts, and sets are converted to tuples, sorted tuples,
     and frozensets respectively, enabling caching for these types.
     """
 
     def test_get_with_list_value_now_cacheable(self) -> None:
-        """Verify get() converts lists to tuples for caching (v0.13.0)."""
+        """Verify get() converts lists to tuples for caching."""
         cache = FormatCache(maxsize=100)
 
         # Args contain a list (now converted to tuple)
@@ -128,7 +128,7 @@ class TestCacheHashableConversion:
         assert cache.unhashable_skips == 0
 
     def test_get_with_dict_value_now_cacheable(self) -> None:
-        """Verify get() converts dicts to sorted tuples for caching (v0.13.0)."""
+        """Verify get() converts dicts to sorted tuples for caching."""
         cache = FormatCache(maxsize=100)
 
         # Args contain a nested dict (now converted to sorted tuple)
@@ -143,7 +143,7 @@ class TestCacheHashableConversion:
         assert cache.unhashable_skips == 0
 
     def test_get_with_set_value_now_cacheable(self) -> None:
-        """Verify get() converts sets to frozensets for caching (v0.13.0)."""
+        """Verify get() converts sets to frozensets for caching."""
         cache = FormatCache(maxsize=100)
 
         # Args contain a set (now converted to frozenset)
@@ -158,7 +158,7 @@ class TestCacheHashableConversion:
         assert cache.unhashable_skips == 0
 
     def test_put_with_list_value_now_caches(self) -> None:
-        """Verify put() caches list values by converting to tuples (v0.13.0)."""
+        """Verify put() caches list values by converting to tuples."""
         cache = FormatCache(maxsize=100)
 
         # Args contain a list (now converted to tuple)
@@ -171,7 +171,7 @@ class TestCacheHashableConversion:
         assert cache.unhashable_skips == 0
 
     def test_put_with_dict_value_now_caches(self) -> None:
-        """Verify put() caches dict values by converting to tuples (v0.13.0)."""
+        """Verify put() caches dict values by converting to tuples."""
         cache = FormatCache(maxsize=100)
 
         args = {"config": {"option": "value"}}
@@ -183,7 +183,7 @@ class TestCacheHashableConversion:
         assert cache.unhashable_skips == 0
 
     def test_make_key_converts_list_to_tuple(self) -> None:
-        """Verify _make_key converts lists to tuples (v0.13.0)."""
+        """Verify _make_key converts lists to tuples."""
         args = {"list_value": [1, 2, 3]}
 
         key = FormatCache._make_key("msg-id", args, None, "en-US")  # type: ignore[arg-type]
@@ -191,7 +191,7 @@ class TestCacheHashableConversion:
         assert key is not None  # Now returns valid key
 
     def test_make_key_converts_nested_structures(self) -> None:
-        """Verify _make_key converts nested unhashable values (v0.13.0)."""
+        """Verify _make_key converts nested unhashable values."""
         args: dict[str, object] = {
             "list": [1, 2],
             "dict": {"nested": "value"},
@@ -226,7 +226,7 @@ class TestCacheHashableConversion:
         st.lists(st.integers(), min_size=1, max_size=10),
     )
     def test_get_with_various_lists_cacheable(self, list_value: list[int]) -> None:
-        """Property: get() now caches list-valued args (v0.13.0)."""
+        """Property: get() caches list-valued args."""
         cache = FormatCache(maxsize=100)
         args = {"list_arg": list_value}
         result = ("formatted", ())
@@ -241,7 +241,7 @@ class TestCacheHashableConversion:
         st.dictionaries(st.text(min_size=1, max_size=10), st.integers(), min_size=1, max_size=5),
     )
     def test_put_with_various_dicts_cacheable(self, dict_value: dict[str, int]) -> None:
-        """Property: put() now caches dict-valued args (v0.13.0)."""
+        """Property: put() caches dict-valued args."""
         cache = FormatCache(maxsize=100)
         args = {"dict_arg": dict_value}
         result = ("formatted", ())
@@ -270,7 +270,7 @@ class TestCacheHashableConversion:
         assert cache.unhashable_skips == 0
 
     def test_empty_list_cacheable(self) -> None:
-        """Verify empty lists are converted and cached (v0.13.0)."""
+        """Verify empty lists are converted and cached."""
         cache = FormatCache(maxsize=100)
 
         args: dict[str, list[object]] = {"empty_list": []}
@@ -283,7 +283,7 @@ class TestCacheHashableConversion:
         assert len(cache) == 1
 
     def test_empty_dict_cacheable(self) -> None:
-        """Verify empty dicts are converted and cached (v0.13.0)."""
+        """Verify empty dicts are converted and cached."""
         cache = FormatCache(maxsize=100)
 
         args: dict[str, dict[object, object]] = {"empty_dict": {}}

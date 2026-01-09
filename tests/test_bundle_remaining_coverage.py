@@ -44,7 +44,7 @@ class TestClearCacheMethod:
 
 
 class TestGetBabelLocaleBehavior:
-    """Test get_babel_locale() behavior (v0.14.0+)."""
+    """Test get_babel_locale() behavior."""
 
     def test_get_babel_locale_with_valid_locale(self) -> None:
         """Test get_babel_locale() returns locale string for valid locale."""
@@ -56,7 +56,7 @@ class TestGetBabelLocaleBehavior:
         assert "en" in result.lower()
 
     def test_get_babel_locale_with_invalid_locale_uses_fallback(self) -> None:
-        """Test get_babel_locale() uses en_US fallback for invalid locale (v0.14.0+)."""
+        """Test get_babel_locale() uses en_US fallback for invalid locale."""
         bundle = FluentBundle("xx-INVALID")
         result = bundle.get_babel_locale()
 

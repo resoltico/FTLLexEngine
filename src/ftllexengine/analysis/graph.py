@@ -188,35 +188,49 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
 
 
 def build_dependency_graph(
-    entries: Mapping[str, tuple[set[str], set[str]]],
+    message_entries: Mapping[str, tuple[set[str], set[str]]],
+    term_entries: Mapping[str, tuple[set[str], set[str]]] | None = None,
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Build separate message and term dependency graphs.
 
     Args:
-        entries: Mapping from entry ID to (message_refs, term_refs) tuple.
-                 Message IDs are plain strings, term IDs should NOT include
-                 the "-" prefix.
+        message_entries: Mapping from message ID to (message_refs, term_refs) tuple.
+        term_entries: Mapping from term ID to (message_refs, term_refs) tuple.
+                     Term IDs should NOT include the "-" prefix.
 
     Returns:
         Tuple of (message_deps, term_deps) where each is a mapping from
         entry ID to set of referenced entry IDs.
 
     Example:
-        >>> entries = {
+        >>> message_entries = {
         ...     "welcome": ({"greeting"}, {"brand"}),
         ...     "greeting": (set(), set()),
         ... }
-        >>> msg_deps, term_deps = build_dependency_graph(entries)
+        >>> term_entries = {
+        ...     "brand": (set(), set()),
+        ... }
+        >>> msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
         >>> msg_deps["welcome"]
         {'greeting'}
+        >>> "brand" in term_deps
+        True
     """
     message_deps: dict[str, set[str]] = {}
     term_deps: dict[str, set[str]] = {}
 
-    for entry_id, (msg_refs, trm_refs) in entries.items():
-        # Messages reference other messages
+    # Process message entries
+    for entry_id, (msg_refs, trm_refs) in message_entries.items():
+        # Messages can reference other messages
         message_deps[entry_id] = msg_refs.copy()
-        # Terms reference other terms (term-to-term deps only)
+        # Track term references from messages
         term_deps[entry_id] = trm_refs.copy()
+
+    # Process term entries
+    if term_entries:
+        for entry_id, (_msg_refs, trm_refs) in term_entries.items():
+            # Terms can reference other terms (term-to-term dependencies)
+            # Terms should not appear in message_deps
+            term_deps[entry_id] = trm_refs.copy()
 
     return message_deps, term_deps

@@ -1,4 +1,4 @@
-"""Security tests for v0.56.0 fixes.
+"""Security tests for recent fixes.
 
 Tests DoS prevention and error handling for:
 - SEC-RESOLVER-RECURSION-BYPASS-001: Selector expression depth guard

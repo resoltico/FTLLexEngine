@@ -241,7 +241,7 @@ class TestFunctionCalling:
     def test_call_function_with_arithmetic_error(self) -> None:
         """Verify call propagates ArithmeticError (fail-fast behavior).
 
-        v0.29.0: Only TypeError and ValueError are wrapped in FluentResolutionError.
+        Only TypeError and ValueError are wrapped in FluentResolutionError.
         Other exceptions propagate to expose bugs in custom functions.
         """
 
@@ -251,7 +251,7 @@ class TestFunctionCalling:
         registry = FunctionRegistry()
         registry.register(divide_by_zero, ftl_name="DIV")
 
-        # v0.29.0: ZeroDivisionError propagates (fail-fast)
+        # ZeroDivisionError propagates (fail-fast)
         with pytest.raises(ZeroDivisionError):
             registry.call("DIV", ["test"], {})
 

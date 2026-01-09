@@ -34,7 +34,7 @@ class TestBundleInitialization:
     def test_bundle_with_empty_locale_raises(self):
         """Kills: len(locale) > 0 mutations.
 
-        Empty locale string should raise ValueError (v0.16.0+).
+        Empty locale string should raise ValueError.
         """
         with pytest.raises(ValueError, match="Locale code cannot be empty"):
             FluentBundle("")

@@ -50,7 +50,7 @@ class TestParsingProperties:
         1. Preserve the exact message ID from input
         2. Produce serializable output
 
-        Strengthened in v0.36.0 to verify ID preservation, not just entry count.
+        Verifies ID preservation, not just entry count.
         """
         # Extract expected ID from input (format: "id = value")
         expected_id = ftl.split("=")[0].strip()

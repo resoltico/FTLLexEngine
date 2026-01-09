@@ -105,7 +105,7 @@ goodbye = Goodbye"""
 
 
 class TestFormatValueMappingSupport:
-    """Tests for format_value accepting Mapping type (v0.15.0).
+    """Tests for format_value accepting Mapping type.
 
     Validates that format_value now accepts any Mapping type, not just dict.
     """
@@ -160,7 +160,7 @@ class TestFormatValueMappingSupport:
 
 
 class TestIntrospectMessageTermSupport:
-    """Tests for introspect_message accepting Term (v0.15.0).
+    """Tests for introspect_message accepting Term.
 
     Validates that introspect_message now accepts both Message and Term types
     per the corrected type signature.

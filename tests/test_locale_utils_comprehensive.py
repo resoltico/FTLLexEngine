@@ -26,7 +26,7 @@ from ftllexengine.locale_utils import (
 class TestNormalizeLocale:
     """Test normalize_locale function.
 
-    As of v0.42.0, normalize_locale lowercases output for consistent cache keys.
+    normalize_locale lowercases output for consistent cache keys.
     BCP-47 is case-insensitive, so "en-US" and "EN-US" should be equivalent.
     """
 
@@ -139,7 +139,7 @@ class TestGetBabelLocale:
 class TestGetSystemLocale:
     """Test get_system_locale function with environment and OS detection.
 
-    As of v0.42.0, all locale output is lowercased via normalize_locale.
+    All locale output is lowercased via normalize_locale.
     """
 
     def test_getlocale_success(self) -> None:

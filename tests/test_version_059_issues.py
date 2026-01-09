@@ -1,7 +1,6 @@
-"""Tests for issues resolved in v0.59.0.
+"""Tests for recently resolved issues.
 
-This module verifies fixes for security and architectural issues identified
-in the v0.59.0 release cycle.
+This module verifies fixes for security and architectural issues.
 
 Resolution Groups:
     RG-RECURSION-PROTECTION: Unified depth limit enforcement

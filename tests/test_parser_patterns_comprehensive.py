@@ -175,7 +175,7 @@ class TestPatternParsingIntegration:
 class TestVariantDelimiterLookahead:
     """Test variant delimiter lookahead for literal * and [ in variant text.
 
-    v0.26.0: Added lookahead to distinguish variant syntax from literal text.
+    Lookahead distinguishes variant syntax from literal text.
     Per FTL spec, '*' and '[' are allowed as literal text in variant values
     when they don't form valid variant markers.
     """

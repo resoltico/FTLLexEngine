@@ -64,7 +64,7 @@ class TestBabelDatetimeFormatConversion:
     def test_parse_datetime_with_working_formats(self) -> None:
         """Test datetime parsing with formats that actually work.
 
-        v0.27.0: Uses CLDR dateTimeFormat with locale-specific separator.
+        Uses CLDR dateTimeFormat with locale-specific separator.
         Both en_US and de_DE use ", " separator (CLDR pattern: "{1}, {0}").
         """
         test_cases = [
@@ -89,7 +89,7 @@ class TestBabelDatetimeFormatConversion:
     def test_parse_datetime_various_times(self, hour: int, minute: int) -> None:
         """PROPERTY: Datetime patterns handle various times.
 
-        v0.27.0: Uses CLDR dateTimeFormat separator (de_DE uses ", ").
+        Uses CLDR dateTimeFormat separator (de_DE uses ", ").
         """
         # Use 24-hour format with CLDR separator
         date_str = f"28.01.25, {hour:02d}:{minute:02d}"
@@ -202,7 +202,7 @@ class TestDatetimeParsingIntegration:
     def test_parse_datetime_with_seconds(self) -> None:
         """Test datetime parsing with seconds component.
 
-        v0.27.0: Uses CLDR dateTimeFormat separator (de_DE uses ", ").
+        Uses CLDR dateTimeFormat separator (de_DE uses ", ").
         """
         # 24-hour format with seconds and CLDR separator
         result, errors = parse_datetime("28.01.25, 14:30:45", "de_DE")
@@ -268,8 +268,8 @@ class TestDatetimeParsingIntegration:
 class TestBabelImportErrorBehavior:
     """Tests for BabelImportError raised when Babel is not installed.
 
-    These tests verify the v0.54.0 behavior change where dates.py raises
-    BabelImportError instead of silently returning empty patterns.
+    Tests verify that dates.py raises BabelImportError
+    instead of silently returning empty patterns.
     """
 
     def test_babel_import_error_structure(self) -> None:

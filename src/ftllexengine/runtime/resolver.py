@@ -748,8 +748,8 @@ class FluentResolver:
 
         if numeric_value is not None:
             # Try plural category matching (requires Babel for CLDR data).
-            # If Babel is not installed (parser-only mode), skip plural matching
-            # and fall through to default variant. This is graceful degradation.
+            # If Babel is not installed (parser-only mode), collect error and
+            # fall through to default variant.
             try:
                 plural_category = select_plural_category(numeric_value, self.locale)
                 plural_match = self._find_plural_variant(expr.variants, plural_category)
@@ -758,8 +758,10 @@ class FluentResolver:
                         plural_match.value, args, errors, context
                     )
             except BabelImportError:
-                # Babel not installed - skip plural matching, fall through to default
-                pass
+                # Babel not installed - collect error, fall through to default
+                errors.append(
+                    FluentResolutionError(ErrorTemplate.plural_support_unavailable())
+                )
 
         # Fallback: default variant
         default_variant = self._find_default_variant(expr.variants)

@@ -1,6 +1,6 @@
-"""Validation enhancements for v0.57.0.
+"""Validation enhancement tests.
 
-Tests for RG-VALIDATION group issues resolved in v0.57.0:
+Tests for RG-VALIDATION group diagnostics:
 - VAL-DUPLICATE-ATTR-001: Duplicate attribute detection
 - FTL-VAL-CONFLICT-001: Shadow warning when entry conflicts with known entry
 - FTL-VAL-XRES-001: Cross-resource circular reference detection

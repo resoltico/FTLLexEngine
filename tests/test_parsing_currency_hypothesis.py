@@ -1,8 +1,8 @@
 """Hypothesis-based property tests for currency parsing.
 
-v0.8.0: Updated for new tuple return type API.
-- parse_currency() returns tuple[tuple[Decimal, str] | None, list[FluentParseError]]
-- Removed strict parameter - functions never raise, errors in list
+Functions return tuple[value, errors]:
+- parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]
+- Functions never raise exceptions; errors returned in tuple
 
 Focus on financial precision and edge cases.
 """
@@ -37,8 +37,8 @@ class TestParseCurrencyHypothesis:
         # Format: symbol + amount (no locale formatting for simplicity)
         currency_str = f"{currency_symbol}{amount}"
 
-        # v0.38.0: Yen sign ambiguous (JPY vs CNY based on locale)
-        # v0.39.0: Pound sign ambiguous (GBP, EGP, etc. based on locale)
+        # Yen sign ambiguous (JPY vs CNY based on locale)
+        # Pound sign ambiguous (GBP, EGP, etc. based on locale)
         ambiguous_symbols = {
             "$": "USD", "¢": "USD", "₨": "INR", "₱": "PHP", "¥": "JPY", "£": "GBP"
         }
@@ -61,7 +61,7 @@ class TestParseCurrencyHypothesis:
         assert currency_code.isupper()
 
     @given(
-        # Use actual ISO 4217 codes from CLDR (v0.33.0+: validated against CLDR)
+        # Use actual ISO 4217 codes from CLDR (validated against CLDR)
         currency_code=st.sampled_from([
             "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY", "INR",
             "BRL", "MXN", "KRW", "RUB", "ZAR", "SGD", "HKD", "NOK", "SEK", "DKK",
@@ -97,7 +97,7 @@ class TestParseCurrencyHypothesis:
     def test_parse_currency_unknown_symbol_returns_error(
         self, unknown_symbol: str
     ) -> None:
-        """Unknown currency symbols should return error in list (v0.8.0)."""
+        """Unknown currency symbols should return error in tuple; function never raises."""
         currency_str = f"{unknown_symbol}100.50"
 
         result, errors = parse_currency(
@@ -158,9 +158,9 @@ class TestParseCurrencyHypothesis:
     def test_parse_currency_invalid_number_returns_error(
         self, invalid_number: str
     ) -> None:
-        """Invalid numbers should return error in list (v0.8.0 - no exceptions)."""
+        """Invalid numbers should return error in tuple; function never raises."""
         # Note: Babel accepts NaN/Infinity/Inf (any case) as valid Decimal values
-        # v0.7.0: Use $ with default_currency
+        # Use $ with default_currency
         currency_str = f"${invalid_number}"
 
         result, errors = parse_currency(
@@ -179,7 +179,7 @@ class TestParseCurrencyHypothesis:
     )
     @settings(max_examples=50)
     def test_parse_currency_type_error_returns_error(self, value: object) -> None:
-        """Non-string types should return error in list (v0.8.0 - no exceptions)."""
+        """Non-string types should return error in tuple; function never raises."""
         result, errors = parse_currency(value, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -273,7 +273,7 @@ class TestParseCurrencyHypothesis:
     )
     @settings(max_examples=100)
     def test_parse_currency_no_symbol_returns_error(self, value: str) -> None:
-        """Strings without currency symbols/codes should return error (v0.8.0)."""
+        """Strings without currency symbols/codes should return error in tuple."""
         result, errors = parse_currency(value, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -297,7 +297,7 @@ class TestCurrencyMetamorphicProperties:
         formatted1 = currency_format(float(amount1), "en_US", currency=currency)
         formatted2 = currency_format(float(amount2), "en_US", currency=currency)
 
-        # v0.7.0: $ and £ are ambiguous - specify default_currency
+        # $ and £ are ambiguous - specify default_currency
         result1, errors1 = parse_currency(formatted1, "en_US", default_currency=currency)
         result2, errors2 = parse_currency(formatted2, "en_US", default_currency=currency)
 
@@ -359,7 +359,7 @@ class TestCurrencyMetamorphicProperties:
         formatted1 = currency_format(float(amount), "en_US", currency="USD")
         formatted2 = currency_format(float(amount * 2), "en_US", currency="USD")
 
-        # v0.7.0: $ is ambiguous - specify default_currency
+        # $ is ambiguous - specify default_currency
         result1, errors1 = parse_currency(formatted1, "en_US", default_currency="USD")
         result2, errors2 = parse_currency(formatted2, "en_US", default_currency="USD")
 
@@ -390,7 +390,7 @@ class TestCurrencyMetamorphicProperties:
         from ftllexengine.runtime.functions import currency_format
 
         formatted = currency_format(float(amount), "en_US", currency=currency)
-        # v0.7.0: $ and £ are ambiguous - specify default_currency
+        # $ and £ are ambiguous - specify default_currency
         result, errors = parse_currency(formatted, "en_US", default_currency=currency)
 
         assert not errors
@@ -410,7 +410,7 @@ class TestCurrencyMetamorphicProperties:
         # Test both prefix and suffix positions
         amount = Decimal("123.45")
 
-        # v0.7.0: Ambiguous symbols require default_currency
+        # Ambiguous symbols require default_currency
         ambiguous_symbols = {"$": "USD", "¢": "USD", "₨": "INR", "₱": "PHP"}
         default_currency = ambiguous_symbols.get(symbol)
 
@@ -525,13 +525,13 @@ class TestCurrencyInferFromLocale:
     def test_infer_from_locale_uses_default_for_ambiguous(self) -> None:
         """COVERAGE: infer_from_locale with ambiguous symbol uses default.
 
-        v0.38.0: Ambiguous symbols now have defaults in _AMBIGUOUS_SYMBOL_DEFAULTS.
+        Ambiguous symbols now have defaults in _AMBIGUOUS_SYMBOL_DEFAULTS.
         When locale doesn't have a specific mapping, the default is used.
         """
         currency_str = "$100.00"
 
         # Use a locale without territory (just language code) - won't be in mapping
-        # v0.38.0: Now falls back to _AMBIGUOUS_SYMBOL_DEFAULTS["$"] = "USD"
+        # Now falls back to _AMBIGUOUS_SYMBOL_DEFAULTS["$"] = "USD"
         result, errors = parse_currency(
             currency_str, "en", infer_from_locale=True
         )

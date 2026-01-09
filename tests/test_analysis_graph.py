@@ -314,33 +314,39 @@ class TestBuildDependencyGraph:
 
     def test_empty_entries(self) -> None:
         """Empty entries produce empty graphs."""
-        entries: dict[str, tuple[set[str], set[str]]] = {}
-        msg_deps, term_deps = build_dependency_graph(entries)
+        message_entries: dict[str, tuple[set[str], set[str]]] = {}
+        msg_deps, term_deps = build_dependency_graph(message_entries)
         assert msg_deps == {}
         assert term_deps == {}
 
     def test_single_entry_with_message_ref(self) -> None:
-        """Single entry with message reference."""
-        entries: dict[str, tuple[set[str], set[str]]] = {"welcome": ({"greeting"}, set())}
-        msg_deps, term_deps = build_dependency_graph(entries)
+        """Single message entry with message reference."""
+        message_entries: dict[str, tuple[set[str], set[str]]] = {
+            "welcome": ({"greeting"}, set())
+        }
+        msg_deps, term_deps = build_dependency_graph(message_entries)
         assert msg_deps == {"welcome": {"greeting"}}
         assert term_deps == {"welcome": set()}
 
     def test_single_entry_with_term_ref(self) -> None:
-        """Single entry with term reference."""
-        entries: dict[str, tuple[set[str], set[str]]] = {"welcome": (set(), {"brand"})}
-        msg_deps, term_deps = build_dependency_graph(entries)
+        """Single message entry with term reference."""
+        message_entries: dict[str, tuple[set[str], set[str]]] = {
+            "welcome": (set(), {"brand"})
+        }
+        msg_deps, term_deps = build_dependency_graph(message_entries)
         assert msg_deps == {"welcome": set()}
         assert term_deps == {"welcome": {"brand"}}
 
     def test_multiple_entries_mixed_refs(self) -> None:
         """Multiple entries with mixed references."""
-        entries = {
+        message_entries: dict[str, tuple[set[str], set[str]]] = {
             "msg1": ({"msg2"}, {"term1"}),
             "msg2": (set(), set()),
+        }
+        term_entries: dict[str, tuple[set[str], set[str]]] = {
             "term1": (set(), {"term2"}),
         }
-        msg_deps, term_deps = build_dependency_graph(entries)
+        msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
         assert msg_deps["msg1"] == {"msg2"}
         assert msg_deps["msg2"] == set()
         assert term_deps["msg1"] == {"term1"}
@@ -350,9 +356,9 @@ class TestBuildDependencyGraph:
         """Returned refs are copies, not original sets."""
         original_msg_refs: set[str] = {"greeting"}
         original_term_refs: set[str] = {"brand"}
-        entries = {"welcome": (original_msg_refs, original_term_refs)}
+        message_entries = {"welcome": (original_msg_refs, original_term_refs)}
 
-        msg_deps, term_deps = build_dependency_graph(entries)
+        msg_deps, term_deps = build_dependency_graph(message_entries)
 
         # Modify returned sets
         msg_deps["welcome"].add("new_msg")
@@ -361,6 +367,38 @@ class TestBuildDependencyGraph:
         # Original sets should be unchanged
         assert "new_msg" not in original_msg_refs
         assert "new_term" not in original_term_refs
+
+    def test_namespace_separation(self) -> None:
+        """Messages and terms with same ID are handled correctly.
+
+        Tests the fix for namespace collision where a resource has both a
+        message and term with the same identifier (e.g., "brand" message
+        and "-brand" term).
+        """
+        # Message "brand" references message "name"
+        message_entries: dict[str, tuple[set[str], set[str]]] = {
+            "brand": ({"name"}, set()),
+            "name": (set(), set()),
+        }
+        # Term "brand" references term "company"
+        term_entries: dict[str, tuple[set[str], set[str]]] = {
+            "brand": (set(), {"company"}),
+            "company": (set(), set()),
+        }
+
+        msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
+
+        # Message "brand" appears in message_deps only
+        assert "brand" in msg_deps
+        assert msg_deps["brand"] == {"name"}
+
+        # Term "brand" appears in term_deps with correct references
+        assert "brand" in term_deps
+        assert term_deps["brand"] == {"company"}
+
+        # Both namespaces are distinct
+        assert "name" in msg_deps
+        assert "company" in term_deps
 
 
 # ============================================================================
