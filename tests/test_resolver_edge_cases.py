@@ -14,8 +14,10 @@ from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
+    Expression,
     Identifier,
     Message,
+    NumberLiteral,
     Pattern,
     Placeable,
     SelectExpression,
@@ -229,6 +231,98 @@ test = { $count ->
         result, _ = resolver.resolve_message(msg, {"x": "value"})
         # Should handle gracefully - check that it doesn't crash
         assert isinstance(result, str)
+
+    def test_select_with_malformed_number_literal_key(self) -> None:
+        """Select with invalid NumberLiteral.raw falls through gracefully.
+
+        Regression test for SEC-RESOLVER-CRASH-001.
+        Parser-produced ASTs have valid NumberLiteral.raw values, but
+        programmatically constructed ASTs can contain arbitrary strings.
+        Resolver should not crash on invalid Decimal conversion.
+        """
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(
+                    Placeable(
+                        expression=SelectExpression(
+                            selector=VariableReference(id=Identifier(name="x")),
+                            variants=(
+                                Variant(
+                                    key=NumberLiteral(value=0.0, raw="invalid"),
+                                    value=Pattern(elements=(TextElement(value="Invalid"),)),
+                                    default=False,
+                                ),
+                                Variant(
+                                    key=Identifier(name="other"),
+                                    value=Pattern(elements=(TextElement(value="Default"),)),
+                                    default=True,
+                                ),
+                            ),
+                        )
+                    ),
+                )
+            ),
+            attributes=(),
+        )
+
+        resolver = FluentResolver(
+            locale="en",
+            messages={"test": msg},
+            terms={},
+            function_registry=create_default_registry(),
+            use_isolating=False,
+        )
+
+        # Should not crash; should fall through to default variant
+        result, _ = resolver.resolve_message(msg, {"x": 0})
+        assert "Default" in result
+
+    def test_deeply_nested_select_expression_fallback(self) -> None:
+        """Deeply nested SelectExpression in fallback generation doesn't overflow.
+
+        Regression test for SEC-FALLBACK-RECURSION-001.
+        While main resolution path uses DepthGuards, fallback generation
+        (_get_fallback_for_placeable) needs its own depth protection for adversarial ASTs.
+        """
+        # Build deeply nested SelectExpression: 100 levels deep
+        # Each selector is itself a SelectExpression with a missing variable
+        nested_select: Expression = VariableReference(id=Identifier(name="missing"))
+        for _ in range(100):
+            nested_select = SelectExpression(
+                selector=nested_select,  # type: ignore[arg-type]  # Intentional adversarial AST
+                variants=(
+                    Variant(
+                        key=Identifier(name="key"),
+                        value=Pattern(elements=(TextElement(value="Value"),)),
+                        default=True,
+                    ),
+                ),
+            )
+
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(
+                    Placeable(expression=nested_select),
+                )
+            ),
+            attributes=(),
+        )
+
+        resolver = FluentResolver(
+            locale="en",
+            messages={"test": msg},
+            terms={},
+            function_registry=create_default_registry(),
+            use_isolating=False,
+        )
+
+        # Should not cause RecursionError; should hit depth limit and return fallback
+        result, _ = resolver.resolve_message(msg, {})
+        assert isinstance(result, str)
+        # Should contain some fallback indicator
+        assert len(result) > 0
 
 
 # ============================================================================

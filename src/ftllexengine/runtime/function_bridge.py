@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from functools import wraps
-from inspect import signature
+from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Protocol, overload
 
 from ftllexengine.diagnostics import ErrorTemplate, FluentResolutionError
@@ -288,6 +288,9 @@ class FunctionRegistry:
 
         Raises:
             TypeError: If registry is frozen (via freeze() method).
+            TypeError: If func has inject_locale=True but signature is incompatible.
+                      Functions marked with inject_locale=True must have at least
+                      2 positional parameters to receive (value, locale_code).
 
         Example:
             >>> def number_format(value, *, minimum_fraction_digits=0):
@@ -318,6 +321,24 @@ class FunctionRegistry:
                 f"Use param_mapping parameter to provide explicit mappings. Error: {e}"
             )
             raise TypeError(msg) from e
+
+        # Validate signature compatibility with locale injection if required
+        if getattr(func, _FTL_REQUIRES_LOCALE_ATTR, False):
+            # Count positional-or-keyword parameters that can accept positional arguments
+            # POSITIONAL_ONLY and POSITIONAL_OR_KEYWORD both accept positional args
+            positional_capable = [
+                p for p in sig.parameters.values()
+                if p.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD)
+                and p.name != "self"
+            ]
+            if len(positional_capable) < 2:
+                msg = (
+                    f"Function '{ftl_name}' marked with inject_locale=True requires "
+                    f"at least 2 positional parameters (value, locale_code), but has "
+                    f"{len(positional_capable)}. Signature: {sig}"
+                )
+                raise TypeError(msg)
+
         auto_map: dict[str, str] = {}
 
         for param_name in sig.parameters:

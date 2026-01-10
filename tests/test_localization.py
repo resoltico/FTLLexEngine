@@ -44,6 +44,16 @@ class TestFluentLocalizationBasics:
         ):
             FluentLocalization(["en"], resource_ids=["main.ftl"])
 
+    def test_invalid_locale_format_rejected_at_init(self) -> None:
+        """Invalid locale format raises ValueError at initialization.
+
+        Regression test for API-LOCALE-LEAK-001.
+        Validates that locale format errors are caught early (fail-fast)
+        rather than propagating out of format_value during lazy bundle creation.
+        """
+        with pytest.raises(ValueError, match="Invalid locale code format"):
+            FluentLocalization(["en", "invalid locale with spaces"])
+
     def test_locales_property_immutable(self) -> None:
         """Locales property returns immutable tuple."""
         l10n = FluentLocalization(["en", "fr"])

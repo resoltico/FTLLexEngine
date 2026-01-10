@@ -5,6 +5,8 @@ Validates serialization of AST nodes back to FTL syntax.
 
 from __future__ import annotations
 
+import pytest
+
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax import serialize
 from ftllexengine.syntax.ast import (
@@ -29,7 +31,10 @@ from ftllexengine.syntax.ast import (
     VariableReference,
     Variant,
 )
-from ftllexengine.syntax.serializer import FluentSerializer
+from ftllexengine.syntax.serializer import (
+    FluentSerializer,
+    SerializationValidationError,
+)
 
 # ============================================================================
 # BASIC SERIALIZATION TESTS
@@ -1038,3 +1043,75 @@ class TestTextElementBraceSerialization:
         result = serialize(resource)
 
         assert 'braces = { "{" }{ "}" }\n' in result
+
+
+# ============================================================================
+# IDENTIFIER VALIDATION TESTS
+# ============================================================================
+
+
+class TestIdentifierValidation:
+    """Test identifier validation during serialization."""
+
+    def test_invalid_message_id_rejected(self) -> None:
+        """Invalid message identifier rejected when validate=True.
+
+        Regression test for SER-INVALID-OUTPUT-001.
+        Parser-produced ASTs have valid identifiers, but programmatically
+        constructed ASTs can contain arbitrary strings. Serializer should
+        validate identifiers when validate=True.
+        """
+        msg = Message(
+            id=Identifier(name="invalid message with spaces"),
+            value=Pattern(elements=(TextElement(value="Test"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        with pytest.raises(SerializationValidationError, match="Invalid identifier"):
+            serialize(resource, validate=True)
+
+    def test_invalid_variable_reference_rejected(self) -> None:
+        """Invalid variable identifier rejected when validate=True."""
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(
+                    Placeable(
+                        expression=VariableReference(
+                            id=Identifier(name="my var")  # Space invalid
+                        )
+                    ),
+                )
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        with pytest.raises(SerializationValidationError, match="Invalid identifier"):
+            serialize(resource, validate=True)
+
+    def test_invalid_identifier_allowed_when_validation_disabled(self) -> None:
+        """Invalid identifier allowed when validate=False."""
+        msg = Message(
+            id=Identifier(name="invalid id"),
+            value=Pattern(elements=(TextElement(value="Test"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        # Should not raise exception
+        result = serialize(resource, validate=False)
+        assert "invalid id" in result
+
+    def test_valid_identifier_with_hyphens_and_underscores(self) -> None:
+        """Valid identifiers with hyphens and underscores pass validation."""
+        msg = Message(
+            id=Identifier(name="valid-id_123"),
+            value=Pattern(elements=(TextElement(value="Test"),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        assert "valid-id_123" in result

@@ -549,6 +549,12 @@ class FluentLocalization:
         # Store immutable locale chain with deduplication (preserves order)
         # dict.fromkeys() removes duplicates while maintaining insertion order
         self._locales: tuple[LocaleCode, ...] = tuple(dict.fromkeys(locale_list))
+
+        # Validate all locales eagerly (fail-fast pattern)
+        # Prevents ValueError from leaking out of format_value during lazy bundle creation
+        for locale in self._locales:
+            FluentBundle._validate_locale_format(locale)
+
         self._resource_ids: tuple[ResourceId, ...] = tuple(resource_ids) if resource_ids else ()
         self._resource_loader: ResourceLoader | None = resource_loader
         self._use_isolating = use_isolating

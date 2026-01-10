@@ -127,6 +127,40 @@ class TestFunctionRegistryBasic:
         result = registry.call("CUSTOM", [42], {"customArg": "test"})
         assert result == "42:test"
 
+    def test_register_inject_locale_function_with_incompatible_signature(self) -> None:
+        """Register function with inject_locale=True but wrong signature raises TypeError.
+
+        Regression test for API-REGISTRY-SIG-MISMATCH-001.
+        Functions marked with inject_locale=True must have at least 2 positional
+        parameters to receive (value, locale_code). Registration should fail-fast
+        rather than allowing runtime errors.
+        """
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
+        @fluent_function(inject_locale=True)
+        def bad_func(value: int) -> str:
+            """Only 1 positional param - incompatible with locale injection."""
+            return str(value)
+
+        registry = FunctionRegistry()
+
+        with pytest.raises(TypeError, match="inject_locale=True requires at least 2 positional"):
+            registry.register(bad_func, ftl_name="BAD")
+
+    def test_register_inject_locale_function_with_compatible_signature(self) -> None:
+        """Register function with inject_locale=True and correct signature succeeds."""
+        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+
+        @fluent_function(inject_locale=True)
+        def good_func(value: int, locale_code: str) -> str:
+            """2 positional params - compatible with locale injection."""
+            return f"{value}@{locale_code}"
+
+        registry = FunctionRegistry()
+        registry.register(good_func, ftl_name="GOOD")
+
+        assert registry.has_function("GOOD")
+
 
 # ============================================================================
 # PARAMETER NAME CONVERSION TESTS

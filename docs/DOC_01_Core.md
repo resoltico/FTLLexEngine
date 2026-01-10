@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.64.0"
+version: "0.65.0"
 domain: CORE
 updated: "2026-01-09"
 route:
@@ -561,8 +561,8 @@ class FluentLocalization:
 
 ### Constraints
 - Return: FluentLocalization instance.
-- Raises: `ValueError` if locales empty or resource_ids without loader.
-- State: Lazy bundle initialization. Bundles created on first access.
+- Raises: `ValueError` if locales empty, invalid locale format, or resource_ids without loader. Locale codes must match `[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*` (BCP 47 subset).
+- State: Lazy bundle initialization. Bundles created on first access. Locale format validated eagerly at construction.
 - Thread: Safe (RWLock).
 - Fallback: `on_fallback` invoked when message resolved from non-primary locale.
 

@@ -203,6 +203,30 @@ msg = { $count ->
             # Parser might have deduped, which is also acceptable
             pass
 
+    def test_high_precision_numeric_variants_not_false_duplicate(self):
+        """High-precision numeric variant keys are treated as distinct.
+
+        Regression test for SEM-VALIDATOR-PRECISION-001.
+        Validator should use NumberLiteral.raw (original string) for comparison,
+        not NumberLiteral.value (float), to preserve precision.
+        This matches resolver behavior.
+        """
+        parser = FluentParserV1()
+        resource = parser.parse("""
+msg = { $x ->
+    [0.10000000000000001] precise
+    [0.1] rounded
+   *[other] default
+}
+""")
+
+        result = validate(resource)
+
+        # These keys should NOT be treated as duplicates because they have
+        # different source representations, even though they might round to
+        # the same float value. The validator should accept this as valid FTL.
+        assert result.is_valid
+
 
 class TestFunctionValidation:
     """Test function reference validation rules."""

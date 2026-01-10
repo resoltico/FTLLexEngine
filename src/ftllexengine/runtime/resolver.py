@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from ftllexengine.constants import (
     FALLBACK_FUNCTION_ERROR,
@@ -639,7 +639,12 @@ class FluentResolver:
 
                     if numeric_for_match is not None:
                         # Use raw string for key to preserve exact source precision
-                        key_decimal = Decimal(raw_str)
+                        try:
+                            key_decimal = Decimal(raw_str)
+                        except InvalidOperation:
+                            # Malformed NumberLiteral.raw from programmatic AST construction.
+                            # Fall through to next variant instead of crashing.
+                            continue
                         sel_decimal = Decimal(str(numeric_for_match))
                         if key_decimal == sel_decimal:
                             return variant
@@ -898,7 +903,7 @@ class FluentResolver:
         # Handles Decimal, datetime, date, and any other types
         return str(value)
 
-    def _get_fallback_for_placeable(self, expr: Expression) -> str:
+    def _get_fallback_for_placeable(self, expr: Expression, depth: int = MAX_DEPTH) -> str:  # noqa: PLR0911
         """Get readable fallback for failed placeable per Fluent spec.
 
         Per Fluent specification, when a placeable fails to resolve,
@@ -910,6 +915,7 @@ class FluentResolver:
 
         Args:
             expr: The expression that failed to resolve
+            depth: Remaining recursion depth (prevents stack overflow)
 
         Returns:
             Readable fallback string
@@ -921,6 +927,10 @@ class FluentResolver:
             FunctionReference(NUMBER) -> "{NUMBER(...)}"
             SelectExpression($count) -> "{{$count} -> ...}"
         """
+        # Depth protection: prevent recursion overflow on adversarial ASTs
+        if depth <= 0:
+            return FALLBACK_INVALID
+
         match expr:
             case VariableReference():
                 return FALLBACK_MISSING_VARIABLE.format(name=expr.id.name)
@@ -938,7 +948,7 @@ class FluentResolver:
                 return FALLBACK_FUNCTION_ERROR.format(name=expr.id.name)
             case SelectExpression():
                 # Provide context by showing the selector expression
-                selector_fallback = self._get_fallback_for_placeable(expr.selector)
+                selector_fallback = self._get_fallback_for_placeable(expr.selector, depth - 1)
                 return f"{{{selector_fallback} -> ...}}"
             case _:
                 return FALLBACK_INVALID

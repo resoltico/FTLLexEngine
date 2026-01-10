@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.64.0"
+version: "0.65.0"
 domain: RUNTIME
 updated: "2026-01-09"
 route:
@@ -280,9 +280,9 @@ def register(
 
 ### Constraints
 - Return: None.
-- Raises: `TypeError` if registry is frozen (via `freeze()` method).
+- Raises: `TypeError` if registry is frozen (via `freeze()` method) or if function marked with `inject_locale=True` has incompatible signature (requires ≥2 positional parameters for value and locale_code).
 - Raises: `ValueError` if parameter names collide after underscore stripping (e.g., `_value` and `value`).
-- State: Mutates registry.
+- State: Mutates registry. Validates function signature at registration (fail-fast).
 - Thread: Unsafe.
 
 ---

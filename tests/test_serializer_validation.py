@@ -1,13 +1,13 @@
-"""Coverage tests for syntax/serializer.py edge cases.
+"""Validation tests for ftllexengine.syntax.serializer module.
 
-Targets uncovered lines:
-- Lines 61-72: _validate_select_expression (no default, multiple defaults)
-- Lines 77-79: _validate_pattern
-- Lines 84-93: _validate_expression
-- Lines 107-121: _validate_resource
-- Line 165: validate=True branch in serialize()
-- Lines 324-326: Nested Placeable serialization
-- Lines 370-371: NumberLiteral in variant key
+Tests validation logic in serializer:
+- SelectExpression validation (no default, multiple defaults)
+- Pattern validation with placeables
+- Expression validation (nested structures)
+- Resource validation
+- validate=True parameter behavior
+- Nested Placeable serialization
+- NumberLiteral variant key handling
 
 Python 3.13+.
 """

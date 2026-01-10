@@ -13,6 +13,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-01-09
+
+### Breaking Changes
+- **Locale Validation Fail-Fast** (API-LOCALE-LEAK-001): FluentLocalization now validates all locale codes eagerly at construction:
+  - Previous: Invalid locale codes raised ValueError during first format_value() call (lazy bundle creation)
+  - Now: Invalid locale codes raise ValueError during FluentLocalization.__init__
+  - Rationale: Fail-fast pattern prevents ValueError from leaking through format_value API, which documents returning error tuples, not raising exceptions
+  - Impact: Users must ensure all locale codes in fallback chain have valid format before constructing FluentLocalization
+  - Example failure: `FluentLocalization(["en", "invalid locale"])` now raises ValueError immediately
+  - Valid format: `[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*` (BCP 47 subset)
+
+### Fixed
+- **Resolver Graceful Degradation** (SEC-RESOLVER-CRASH-001): Resolver no longer crashes on programmatically constructed ASTs with invalid NumberLiteral.raw values:
+  - Previous: `Decimal(raw_str)` in _find_exact_variant raised InvalidOperation for malformed raw strings, crashing resolution
+  - Now: Wrapped in try/except with fallthrough to next variant on InvalidOperation
+  - Impact: Programmatic AST construction with invalid numeric literals now falls through to default variant instead of crashing
+  - Example: `NumberLiteral(value=0.0, raw="invalid")` in SelectExpression variant key no longer causes crash
+
+- **Fallback Generation Stack Safety** (SEC-FALLBACK-RECURSION-001): Added depth protection to _get_fallback_for_placeable:
+  - Previous: Unbounded recursion in fallback string generation for deeply nested SelectExpressions
+  - Now: Added depth parameter (default: MAX_DEPTH) with decrement on recursive calls
+  - Impact: Adversarial ASTs with 100+ nested SelectExpressions in selector positions no longer cause RecursionError
+  - Returns FALLBACK_INVALID when depth limit exceeded instead of crashing
+
+- **Function Registry Signature Validation** (API-REGISTRY-SIG-MISMATCH-001): FunctionRegistry.register() now validates signature compatibility with inject_locale marker:
+  - Previous: Functions marked with inject_locale=True could be registered even with incompatible signatures (< 2 positional params)
+  - Now: Raises TypeError at registration time if function cannot accept locale as second positional argument
+  - Impact: Fail-fast detection of signature mismatches instead of runtime TypeError during format calls
+  - Example: `@fluent_function(inject_locale=True) def bad(value): ...` now fails registration with clear error
+
+- **Serializer Identifier Validation** (SER-INVALID-OUTPUT-001): Serializer with validate=True now rejects ASTs with invalid identifier names:
+  - Previous: Serializer blindly output identifier strings without grammar validation, producing invalid FTL syntax
+  - Now: Validates all identifiers against FTL grammar `[a-zA-Z][a-zA-Z0-9_-]*` when validate=True
+  - Impact: Programmatically constructed ASTs with spaces in identifiers rejected with SerializationValidationError
+  - Example: `Identifier(name="my var")` now raises SerializationValidationError with clear message
+
+- **Locale Validation Regex Precision** (VAL-LOCALE-REGEX-001): Locale validation regex now correctly rejects trailing newlines:
+  - Previous: `$` anchor matched before trailing `\n`, allowing invalid locales like `'0\n'` to pass validation
+  - Now: Uses `\Z` anchor which matches only at actual end of string
+  - Impact: Property-based tests now correctly catch edge cases with trailing whitespace
+  - Discovered by Hypothesis test: `test_invalid_locale_formats_rejected`
+
+- **Validator Numeric Precision** (SEM-VALIDATOR-PRECISION-001): SemanticValidator now uses NumberLiteral.raw for variant key comparison:
+  - Previous: Used `Decimal(str(key.value))` where key.value is float, causing precision loss and false duplicate detection
+  - Now: Uses `Decimal(key.raw)` to preserve original source precision
+  - Impact: High-precision numeric variant keys (e.g., `[0.10000000000000001]` vs `[0.1]`) no longer falsely rejected as duplicates
+  - Matches resolver behavior which also uses raw strings for numeric comparison
+
 ## [0.64.0] - 2026-01-09
 
 ### Breaking Changes
@@ -124,7 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docstring Accuracy** (DOCS-CACHE-USAGE-001): Fixed `cache_usage` property docstring example:
   - Previous: Example showed `format_pattern` returning `('Hello', [])` with list for errors
   - Now: Example shows `('Hello', ())` with tuple for errors (matches actual return type)
-  - Per CLAUDE.md Section 2.3: docstrings must not contradict type hints
+  - Docstrings must not contradict type hints
 
 - **Docstring Completeness** (DOCS-DATETIME-SEP-001): Enhanced `_extract_datetime_separator` docstring Returns section:
   - Previous: "Falls back to space if extraction fails"
@@ -1564,6 +1612,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.65.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.65.0
 [0.64.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.64.0
 [0.63.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.63.0
 [0.62.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.62.0

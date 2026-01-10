@@ -1,8 +1,6 @@
 """Complete coverage tests for FormatCache.
 
-Covers all remaining uncovered lines in src/ftllexengine/runtime/cache.py.
-Tests are organized by functionality and use Hypothesis for property-based testing
-where appropriate per CLAUDE.md guidelines.
+Covers lines in src/ftllexengine/runtime/cache.py.
 """
 
 from __future__ import annotations

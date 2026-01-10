@@ -15,6 +15,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import re
+
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard, DepthLimitExceededError
 from ftllexengine.enums import CommentType
@@ -73,6 +75,28 @@ class SerializationDepthError(ValueError):
     """
 
 
+# FTL identifier grammar: starts with letter, followed by letters, digits, underscores, hyphens
+_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+
+
+def _validate_identifier(identifier: Identifier, context: str) -> None:
+    """Validate identifier follows FTL grammar rules.
+
+    Args:
+        identifier: Identifier to validate
+        context: Context string for error messages
+
+    Raises:
+        SerializationValidationError: If identifier name is invalid
+    """
+    if not _IDENTIFIER_PATTERN.match(identifier.name):
+        msg = (
+            f"Invalid identifier '{identifier.name}' in {context}. "
+            f"Identifiers must match [a-zA-Z][a-zA-Z0-9_-]*"
+        )
+        raise SerializationValidationError(msg)
+
+
 def _validate_select_expression(expr: SelectExpression, context: str) -> None:
     """Validate SelectExpression has exactly one default variant.
 
@@ -114,7 +138,7 @@ def _validate_pattern(pattern: Pattern, context: str, depth_guard: DepthGuard) -
                 _validate_expression(element.expression, context, depth_guard)
 
 
-def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:
+def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:  # noqa: PLR0912
     """Validate an Expression recursively.
 
     Args:
@@ -125,15 +149,50 @@ def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard
     match expr:
         case SelectExpression():
             _validate_select_expression(expr, context)
-            # Also validate patterns within variants
+            # Validate selector expression and variant keys
+            with depth_guard:
+                _validate_expression(expr.selector, context, depth_guard)
+            # Validate variant keys (if Identifier) and patterns
             for variant in expr.variants:
+                if isinstance(variant.key, Identifier):
+                    _validate_identifier(variant.key, f"{context}, variant key")
                 with depth_guard:
                     _validate_pattern(variant.value, context, depth_guard)
         case Placeable():
             with depth_guard:
                 _validate_expression(expr.expression, context, depth_guard)
+        case VariableReference():
+            _validate_identifier(expr.id, f"{context}, variable reference")
+        case MessageReference():
+            _validate_identifier(expr.id, f"{context}, message reference")
+            if expr.attribute:
+                _validate_identifier(expr.attribute, f"{context}, message attribute")
+        case TermReference():
+            _validate_identifier(expr.id, f"{context}, term reference")
+            if expr.attribute:
+                _validate_identifier(expr.attribute, f"{context}, term attribute")
+            if expr.arguments:
+                # Validate identifiers in call arguments
+                for pos_arg in expr.arguments.positional:
+                    with depth_guard:
+                        _validate_expression(pos_arg, context, depth_guard)
+                for named_arg in expr.arguments.named:
+                    _validate_identifier(named_arg.name, f"{context}, named argument")
+                    with depth_guard:
+                        _validate_expression(named_arg.value, context, depth_guard)
+        case FunctionReference():
+            _validate_identifier(expr.id, f"{context}, function reference")
+            if expr.arguments:
+                # Validate identifiers in call arguments
+                for pos_arg in expr.arguments.positional:
+                    with depth_guard:
+                        _validate_expression(pos_arg, context, depth_guard)
+                for named_arg in expr.arguments.named:
+                    _validate_identifier(named_arg.name, f"{context}, named argument")
+                    with depth_guard:
+                        _validate_expression(named_arg.value, context, depth_guard)
         case _:
-            pass  # Other expressions don't need validation
+            pass  # Other expressions (NumberLiteral, StringLiteral) don't need validation
 
 
 def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
@@ -156,15 +215,19 @@ def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
         for entry in resource.entries:
             match entry:
                 case Message():
+                    _validate_identifier(entry.id, "message ID")
                     context = f"message '{entry.id.name}'"
                     if entry.value:
                         _validate_pattern(entry.value, context, depth_guard)
                     for attr in entry.attributes:
+                        _validate_identifier(attr.id, f"{context}, attribute ID")
                         _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
                 case Term():
+                    _validate_identifier(entry.id, "term ID")
                     context = f"term '-{entry.id.name}'"
                     _validate_pattern(entry.value, context, depth_guard)
                     for attr in entry.attributes:
+                        _validate_identifier(attr.id, f"{context}, attribute ID")
                         _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
                 case _:
                     pass  # Comments and Junk don't need validation
@@ -578,7 +641,9 @@ def serialize(
     Args:
         resource: Resource AST node
         validate: If True, validate AST before serialization (default: True).
-                 Checks that SelectExpressions have exactly one default variant.
+                 Checks that:
+                 - SelectExpressions have exactly one default variant
+                 - Identifiers follow FTL grammar ([a-zA-Z][a-zA-Z0-9_-]*)
                  Set to False only for trusted ASTs from the parser.
         max_depth: Maximum nesting depth (default: 100). Prevents stack
                   overflow from adversarial or malformed ASTs.

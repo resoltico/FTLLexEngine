@@ -55,7 +55,8 @@ _LOG_TRUNCATE_DEBUG: int = 50
 
 # BCP 47 locale code pattern (ASCII-only alphanumerics with underscore/hyphen separators).
 # Rejects non-ASCII characters like accented letters (e.g., "e_FR" with accented e).
-_LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*$")
+# Uses \Z instead of $ to match only at end-of-string, not before trailing newline.
+_LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*\Z")
 
 
 class FluentBundle:

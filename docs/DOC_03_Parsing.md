@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.64.0"
+version: "0.65.0"
 domain: PARSING
 updated: "2026-01-09"
 route:
@@ -53,11 +53,11 @@ def serialize(
 
 ### Constraints
 - Return: FTL source string.
-- Raises: `SerializationValidationError` when `validate=True` and AST invalid.
+- Raises: `SerializationValidationError` when `validate=True` and AST invalid (SelectExpression without default variant, identifier names violating grammar `[a-zA-Z][a-zA-Z0-9_-]*`).
 - Raises: `SerializationDepthError` when AST exceeds `max_depth` during validation or serialization.
 - State: None.
 - Thread: Safe.
-- Security: DepthGuard prevents stack overflow from adversarial ASTs.
+- Security: DepthGuard prevents stack overflow from adversarial ASTs. Identifier validation prevents invalid FTL output from programmatic AST construction.
 
 ---
 

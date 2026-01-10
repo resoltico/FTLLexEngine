@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.64.0"
+version: "0.65.0"
 domain: TYPES
 updated: "2026-01-09"
 route:

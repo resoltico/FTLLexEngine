@@ -423,14 +423,15 @@ class SemanticValidator:
             return key.name
         # key must be NumberLiteral at this point.
         # Normalize numeric value using Decimal for proper equality.
-        # Decimal("1") == Decimal("1.0") and both normalize to "1".
+        # Use raw string (original source) instead of value (float) to preserve precision.
+        # This matches resolver behavior and prevents false positives for high-precision variants.
         try:
-            # Convert to Decimal and normalize to canonical form
-            normalized = Decimal(str(key.value)).normalize()
+            # Convert raw string to Decimal and normalize to canonical form
+            normalized = Decimal(key.raw).normalize()
             return str(normalized)
         except (ValueError, InvalidOperation):
-            # Fallback to string representation if Decimal conversion fails
-            return str(key.value)
+            # Fallback to raw string if Decimal conversion fails
+            return key.raw
 
 
 # ============================================================================
