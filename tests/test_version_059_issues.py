@@ -227,7 +227,7 @@ class TestSecCacheErrorBloat001:
         """FormatCache skips caching when total error weight exceeds limit."""
         cache = FormatCache(
             maxsize=100,
-            max_entry_size=5000,  # 5KB string limit
+            max_entry_weight=5000,  # 5KB string limit
             max_errors_per_entry=100,  # Allow 100 errors
         )
 

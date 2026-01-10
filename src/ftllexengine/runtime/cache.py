@@ -81,15 +81,16 @@ class FormatCache:
     Transparent to caller - returns None on cache miss.
 
     Memory Protection:
-        The max_entry_size parameter prevents unbounded memory usage by
-        skipping cache storage for results exceeding the size limit. This
-        protects against scenarios where large variable values produce
-        very large formatted strings (e.g., 10MB results cached 1000 times
-        would consume 10GB of memory).
+        The max_entry_weight parameter prevents unbounded memory usage by
+        skipping cache storage for results exceeding the weight limit.
+        Weight is calculated as: len(formatted_str) + (len(errors) * 1000).
+        This protects against scenarios where large variable values produce
+        very large formatted strings or large error collections (e.g., 10MB
+        results cached 1000 times would consume 10GB of memory).
 
     Attributes:
         maxsize: Maximum number of cache entries
-        max_entry_size: Maximum result string size to cache (characters)
+        max_entry_weight: Maximum memory weight for cached results
         hits: Number of cache hits (for metrics)
         misses: Number of cache misses (for metrics)
     """
@@ -99,7 +100,7 @@ class FormatCache:
         "_error_bloat_skips",
         "_hits",
         "_lock",
-        "_max_entry_size",
+        "_max_entry_weight",
         "_max_errors_per_entry",
         "_maxsize",
         "_misses",
@@ -110,16 +111,17 @@ class FormatCache:
     def __init__(
         self,
         maxsize: int = 1000,
-        max_entry_size: int = DEFAULT_MAX_ENTRY_SIZE,
+        max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
         max_errors_per_entry: int = _DEFAULT_MAX_ERRORS_PER_ENTRY,
     ) -> None:
         """Initialize format cache.
 
         Args:
             maxsize: Maximum number of entries (default: 1000)
-            max_entry_size: Maximum result string size to cache in characters
-                (default: 10_000). Results exceeding this size are not cached
-                to prevent memory exhaustion from large formatted strings.
+            max_entry_weight: Maximum memory weight for cached results (default: 10_000).
+                Weight is calculated as: len(formatted_str) + (len(errors) * 1000).
+                Results exceeding this weight are not cached to prevent memory
+                exhaustion from large formatted strings or large error collections.
             max_errors_per_entry: Maximum number of errors per cache entry
                 (default: 50). Results with more errors are not cached to
                 prevent memory exhaustion from error collections.
@@ -127,8 +129,8 @@ class FormatCache:
         if maxsize <= 0:
             msg = "maxsize must be positive"
             raise ValueError(msg)
-        if max_entry_size <= 0:
-            msg = "max_entry_size must be positive"
+        if max_entry_weight <= 0:
+            msg = "max_entry_weight must be positive"
             raise ValueError(msg)
         if max_errors_per_entry <= 0:
             msg = "max_errors_per_entry must be positive"
@@ -136,7 +138,7 @@ class FormatCache:
 
         self._cache: OrderedDict[_CacheKey, _CacheValue] = OrderedDict()
         self._maxsize = maxsize
-        self._max_entry_size = max_entry_size
+        self._max_entry_weight = max_entry_weight
         self._max_errors_per_entry = max_errors_per_entry
         self._lock = RLock()  # Reentrant lock for safety
         self._hits = 0
@@ -194,7 +196,7 @@ class FormatCache:
         """Store result in cache.
 
         Thread-safe. Evicts LRU entry if cache is full.
-        Skips caching for results exceeding max_entry_size or max_errors_per_entry.
+        Skips caching for results exceeding max_entry_weight or max_errors_per_entry.
 
         Args:
             message_id: Message identifier
@@ -203,12 +205,12 @@ class FormatCache:
             locale_code: Locale code
             result: Format result to cache
         """
-        # Check entry size before caching (result is (formatted_str, errors))
+        # Check entry weight before caching (result is (formatted_str, errors))
         formatted_str = result[0]
         errors = result[1]
 
         # Check formatted string size
-        if len(formatted_str) > self._max_entry_size:
+        if len(formatted_str) > self._max_entry_weight:
             with self._lock:
                 self._oversize_skips += 1
             return
@@ -223,7 +225,7 @@ class FormatCache:
         # String: measured in characters (Python len())
         # Errors: estimated weight in bytes (conservative: 1KB per error)
         total_weight = len(formatted_str) + (len(errors) * _ERROR_WEIGHT_BYTES)
-        if total_weight > self._max_entry_size:
+        if total_weight > self._max_entry_weight:
             with self._lock:
                 self._error_bloat_skips += 1
             return
@@ -269,13 +271,13 @@ class FormatCache:
             Dict with keys:
             - size (int): Current number of cached entries
             - maxsize (int): Maximum cache capacity
-            - max_entry_size (int): Maximum result size to cache
+            - max_entry_weight (int): Maximum memory weight for cached results
             - max_errors_per_entry (int): Maximum errors per cache entry
             - hits (int): Number of cache hits
             - misses (int): Number of cache misses
             - hit_rate (float): Hit rate as percentage (0.0-100.0)
             - unhashable_skips (int): Operations skipped due to unhashable args
-            - oversize_skips (int): Operations skipped due to result size
+            - oversize_skips (int): Operations skipped due to result weight
             - error_bloat_skips (int): Operations skipped due to error collection size
         """
         with self._lock:
@@ -285,7 +287,7 @@ class FormatCache:
             return {
                 "size": len(self._cache),
                 "maxsize": self._maxsize,
-                "max_entry_size": self._max_entry_size,
+                "max_entry_weight": self._max_entry_weight,
                 "max_errors_per_entry": self._max_errors_per_entry,
                 "hits": self._hits,
                 "misses": self._misses,
@@ -453,7 +455,7 @@ class FormatCache:
 
     @property
     def oversize_skips(self) -> int:
-        """Number of operations skipped due to result size exceeding max_entry_size.
+        """Number of operations skipped due to result weight exceeding max_entry_weight.
 
         Thread-safe.
         """
@@ -461,9 +463,12 @@ class FormatCache:
             return self._oversize_skips
 
     @property
-    def max_entry_size(self) -> int:
-        """Maximum result string size to cache (characters)."""
-        return self._max_entry_size
+    def max_entry_weight(self) -> int:
+        """Maximum memory weight for cached results.
+
+        Weight is calculated as: len(formatted_str) + (len(errors) * 1000).
+        """
+        return self._max_entry_weight
 
     @property
     def size(self) -> int:

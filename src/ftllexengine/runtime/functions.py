@@ -99,9 +99,12 @@ def number_format(
         use_grouping=use_grouping,
         pattern=pattern,
     )
-    # Return FluentNumber preserving both formatted output and numeric value
+    # Return FluentNumber preserving formatted output, numeric value, and precision
     # for proper plural category matching in select expressions.
-    return FluentNumber(value=value, formatted=formatted)
+    # Precision (minimum_fraction_digits) is critical for CLDR plural rules:
+    # - 1 with precision=0 matches "one" category (v=0: no fraction digits)
+    # - 1 with precision=2 matches "other" category (v=2: "1.00" has 2 fraction digits)
+    return FluentNumber(value=value, formatted=formatted, precision=minimum_fraction_digits)
 
 
 def datetime_format(

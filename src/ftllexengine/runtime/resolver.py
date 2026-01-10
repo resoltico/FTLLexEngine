@@ -742,10 +742,12 @@ class FluentResolver:
         # Note: Exclude bool since isinstance(True, int) is True in Python,
         # but booleans should match [true]/[false] variants, not plural categories.
         #
-        # Extract numeric value from FluentNumber for plural matching.
+        # Extract numeric value and precision from FluentNumber for plural matching.
         numeric_value: int | float | Decimal | None = None
+        precision: int | None = None
         if isinstance(selector_value, FluentNumber):
             numeric_value = selector_value.value
+            precision = selector_value.precision
         elif isinstance(selector_value, (int, float, Decimal)) and not isinstance(
             selector_value, bool
         ):
@@ -756,7 +758,11 @@ class FluentResolver:
             # If Babel is not installed (parser-only mode), collect error and
             # fall through to default variant.
             try:
-                plural_category = select_plural_category(numeric_value, self.locale)
+                # Pass precision to ensure CLDR v operand (fraction digit count) is correct.
+                # Example: NUMBER(1, minimumFractionDigits: 2) creates FluentNumber with
+                # precision=2, which makes select_plural_category treat it as "1.00" (v=2),
+                # selecting "other" instead of "one" in English plural rules.
+                plural_category = select_plural_category(numeric_value, self.locale, precision)
                 plural_match = self._find_plural_variant(expr.variants, plural_category)
                 if plural_match is not None:
                     return self._resolve_pattern(

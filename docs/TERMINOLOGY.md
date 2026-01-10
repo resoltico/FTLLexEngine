@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.65.0"
+version: "0.66.0"
 domain: terminology
-updated: "2026-01-09"
+updated: "2026-01-10"
 route:
   keywords: [terminology, definitions, glossary, fluent terms, message, term, pattern, placeable, resource]
   questions: ["what is a message?", "what is a term?", "what is a pattern?", "fluent terminology?"]

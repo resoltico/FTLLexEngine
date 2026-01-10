@@ -51,30 +51,35 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class FluentNumber:
-    """Wrapper for formatted numbers preserving numeric identity.
+    """Wrapper for formatted numbers preserving numeric identity and precision.
 
     When NUMBER() formats a value, the result needs to:
     1. Display the formatted string in output (e.g., "1,234.56")
     2. Still match plural categories in select expressions (e.g., [one], [other])
+    3. Preserve precision metadata for CLDR plural rules (v operand)
 
-    FluentNumber carries both representations, allowing the resolver to:
+    FluentNumber carries all three pieces of information, allowing the resolver to:
     - Use __str__ for final output (formatted string)
-    - Use .value for numeric matching (plural categories)
+    - Use .value and .precision for plural category matching
 
     Attributes:
         value: Original numeric value for matching
         formatted: Locale-formatted string for display
+        precision: Minimum fraction digits (for CLDR v operand), None if not specified
 
     Example:
-        >>> fn = FluentNumber(value=1, formatted="1.00")
+        >>> fn = FluentNumber(value=1, formatted="1.00", precision=2)
         >>> str(fn)  # Used in output
         '1.00'
         >>> fn.value  # Used for plural matching
         1
+        >>> fn.precision  # Used for CLDR v operand (fraction digit count)
+        2
     """
 
     value: int | float | Decimal
     formatted: str
+    precision: int | None = None
 
     def __str__(self) -> str:
         """Return formatted string for output."""

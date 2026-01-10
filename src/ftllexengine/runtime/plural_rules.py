@@ -19,12 +19,20 @@ from decimal import Decimal
 __all__ = ["select_plural_category"]
 
 
-def select_plural_category(n: int | float | Decimal, locale: str) -> str:
+def select_plural_category(
+    n: int | float | Decimal,
+    locale: str,
+    precision: int | None = None,
+) -> str:
     """Select CLDR plural category for number using Babel's CLDR data.
 
     Args:
         n: Number to categorize
         locale: Locale code (e.g., "lv_LV", "en_US", "ar-SA")
+        precision: Minimum fraction digits (for CLDR v operand), None if not specified.
+            When set, number is formatted with this precision before plural matching.
+            Critical for NUMBER() formatting: 1 with precision=2 becomes "1.00" which
+            has v=2 (fraction digit count), affecting plural category selection.
 
     Returns:
         Plural category: "zero", "one", "two", "few", "many", or "other"
@@ -37,6 +45,8 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
         'zero'
         >>> select_plural_category(1, "en_US")
         'one'
+        >>> select_plural_category(1, "en_US", precision=2)  # "1.00" has v=2
+        'other'
         >>> select_plural_category(5, "ru_RU")
         'many'
         >>> select_plural_category(2, "ar_SA")
@@ -60,6 +70,13 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
     Performance:
         Uses cached locale parsing via get_babel_locale() to avoid
         repeated Locale.parse() overhead in hot paths.
+
+    Precision Handling:
+        When precision is provided, the number is converted to Decimal with the
+        specified fraction digits. This ensures CLDR plural rules see the correct
+        v operand (fraction digit count):
+        - select_plural_category(1, "en_US") -> "one" (v=0: integer)
+        - select_plural_category(1, "en_US", precision=2) -> "other" (v=2: "1.00")
     """
     # Lazy import to support parser-only installations
     try:
@@ -90,5 +107,18 @@ def select_plural_category(n: int | float | Decimal, locale: str) -> str:
     # Babel always provides plural_form for valid locales
     plural_rule = locale_obj.plural_form
 
-    # Apply CLDR plural rule
+    # Apply precision if specified (for CLDR v operand)
+    if precision is not None and precision > 0:
+        # Convert to Decimal with specified fraction digits
+        # This ensures Babel's plural rule sees the correct v operand.
+        # Example: 1 with precision=2 becomes Decimal("1.00"), which has v=2.
+        # The quantize() method formats the Decimal with exact precision.
+
+        # Create quantizer with desired precision (e.g., 0.01 for 2 digits)
+        quantizer = Decimal(10) ** -precision
+        # Convert number to Decimal and quantize
+        decimal_value = Decimal(str(n)).quantize(quantizer)
+        return plural_rule(decimal_value)
+
+    # Apply CLDR plural rule with original value
     return plural_rule(n)

@@ -113,32 +113,57 @@ def _is_at_column_one(cursor: Cursor) -> bool:
     return cursor.source[cursor.pos - 1] == "\n"
 
 
-def _merge_comments(first: Comment, second: Comment) -> Comment:
-    """Merge two adjacent comments of the same type into one.
+class _CommentAccumulator:
+    """Accumulator for merging adjacent comments efficiently.
 
-    Per Fluent spec, adjacent comment lines of the same type should be
-    joined into a single Comment node with content separated by newlines.
+    Avoids O(N^2) string concatenation by collecting comment contents
+    in a list and joining only when finalizing the Comment node.
 
-    Args:
-        first: The first comment
-        second: The second comment (must be same type)
-
-    Returns:
-        New Comment with joined content and updated span
+    For N consecutive comment lines, this reduces time complexity from
+    O(N^2) to O(N).
     """
-    # Join content with newline
-    merged_content = first.content + "\n" + second.content
 
-    # Update span to cover both comments
-    new_span: Span | None = None
-    if first.span is not None and second.span is not None:
-        new_span = Span(start=first.span.start, end=second.span.end)
-    elif first.span is not None:
-        new_span = first.span
-    elif second.span is not None:
-        new_span = second.span
+    __slots__ = ("contents", "first_span", "last_span", "type")
 
-    return Comment(content=merged_content, type=first.type, span=new_span)
+    def __init__(self, first_comment: Comment) -> None:
+        """Initialize accumulator with first comment.
+
+        Args:
+            first_comment: First comment in the sequence
+        """
+        self.type = first_comment.type
+        self.contents: list[str] = [first_comment.content]
+        self.first_span = first_comment.span
+        self.last_span = first_comment.span
+
+    def add(self, comment: Comment) -> None:
+        """Add another comment to the sequence.
+
+        Args:
+            comment: Comment to add (must be same type as first)
+        """
+        self.contents.append(comment.content)
+        self.last_span = comment.span
+
+    def finalize(self) -> Comment:
+        """Create final Comment node with joined content.
+
+        Returns:
+            Comment with all accumulated contents joined by newlines
+        """
+        # Join all contents with newlines (single O(N) operation)
+        merged_content = "\n".join(self.contents)
+
+        # Compute span covering all comments
+        new_span: Span | None = None
+        if self.first_span is not None and self.last_span is not None:
+            new_span = Span(start=self.first_span.start, end=self.last_span.end)
+        elif self.first_span is not None:
+            new_span = self.first_span
+        elif self.last_span is not None:
+            new_span = self.last_span
+
+        return Comment(content=merged_content, type=self.type, span=new_span)
 
 __all__ = ["FluentParserV1"]
 
@@ -297,8 +322,8 @@ class FluentParserV1:
         # Create parse context with configured nesting depth limit
         context = ParseContext(max_nesting_depth=self._max_nesting_depth)
 
-        # Track last comment for joining adjacent comments of same type
-        pending_comment: Comment | None = None
+        # Track comment accumulator for joining adjacent comments of same type
+        pending_accumulator: _CommentAccumulator | None = None
         pending_comment_end_pos: int = 0  # Position after the pending comment
 
         # Parse entries until EOF
@@ -315,18 +340,18 @@ class FluentParserV1:
 
             if cursor.is_eof:
                 # Finalize pending comment before breaking
-                if pending_comment is not None:
-                    entries.append(pending_comment)
-                    pending_comment = None
+                if pending_accumulator is not None:
+                    entries.append(pending_accumulator.finalize())
+                    pending_accumulator = None
                 break
 
             # Per Fluent spec, top-level entries must start at column 1.
             # Indented content is treated as Junk.
             if not _is_at_column_one(cursor):
                 # Finalize pending comment if any
-                if pending_comment is not None:
-                    entries.append(pending_comment)
-                    pending_comment = None
+                if pending_accumulator is not None:
+                    entries.append(pending_accumulator.finalize())
+                    pending_accumulator = None
                     pending_comment_end_pos = 0
 
                 # Consume the indented content as Junk.
@@ -358,29 +383,27 @@ class FluentParserV1:
                     cursor = comment_result.cursor
 
                     # Check if we should merge with pending comment
-                    if pending_comment is not None:
+                    if pending_accumulator is not None:
                         # Merge if same type AND no blank lines between.
                         # Use pos_after_blank (where new comment starts) to correctly
                         # detect blank lines between previous comment and this one.
                         if (
-                            pending_comment.type == new_comment.type
+                            pending_accumulator.type == new_comment.type
                             and not _has_blank_line_between(
                                 cursor.source,
                                 pending_comment_end_pos,
                                 pos_after_blank,
                             )
                         ):
-                            # Merge comments
-                            pending_comment = _merge_comments(
-                                pending_comment, new_comment
-                            )
+                            # Accumulate comment (O(1) append)
+                            pending_accumulator.add(new_comment)
                             pending_comment_end_pos = cursor.pos
                             continue
                         # Different type or blank line - finalize pending
-                        entries.append(pending_comment)
+                        entries.append(pending_accumulator.finalize())
 
-                    # Start new pending comment
-                    pending_comment = new_comment
+                    # Start new comment accumulator
+                    pending_accumulator = _CommentAccumulator(new_comment)
                     pending_comment_end_pos = cursor.pos
                     continue
                 # If comment parsing fails, create Junk entry (not silent skip)
@@ -412,22 +435,22 @@ class FluentParserV1:
             # Per Fluent spec: Single-hash comments (#) immediately preceding
             # a message/term (no blank lines) should be attached to that entry
             attach_comment: Comment | None = None
-            if pending_comment is not None:
+            if pending_accumulator is not None:
                 # Check if it's a single-hash comment with no blank line before entry.
                 # Use pos_after_blank (where message/term starts) to correctly detect
                 # blank lines between comment and the entry.
                 if (
-                    pending_comment.type == CommentType.COMMENT
+                    pending_accumulator.type == CommentType.COMMENT
                     and not _has_blank_line_between(
                         cursor.source, pending_comment_end_pos, pos_after_blank
                     )
                 ):
                     # Attach to following message/term
-                    attach_comment = pending_comment
+                    attach_comment = pending_accumulator.finalize()
                 else:
                     # Group/resource comments or comments with blank line: add to entries
-                    entries.append(pending_comment)
-                pending_comment = None
+                    entries.append(pending_accumulator.finalize())
+                pending_accumulator = None
                 pending_comment_end_pos = 0
 
             # Try to parse term (starts with '-')
@@ -494,8 +517,8 @@ class FluentParserV1:
                 )
 
         # Finalize any remaining pending comment at EOF
-        if pending_comment is not None:
-            entries.append(pending_comment)
+        if pending_accumulator is not None:
+            entries.append(pending_accumulator.finalize())
 
         return Resource(entries=tuple(entries))
 

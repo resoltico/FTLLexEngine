@@ -13,7 +13,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.65.0] - 2026-01-09
+## [0.66.0] - 2026-01-10
+
+### Breaking Changes
+- **Cache Weight Semantics** (SEM-CACHE-WEIGHT-001): `FormatCache` parameter renamed to accurately reflect memory weight calculation:
+  - Previous: `max_entry_size` parameter documented as character limit
+  - Now: `max_entry_weight` parameter correctly named for weight formula: `len(formatted_str) + (len(errors) * 1000)`
+  - Rationale: Original name misleadingly suggested pure character count, but implementation used composite weight including error collection size
+  - Migration: Replace `max_entry_size` with `max_entry_weight` in FormatCache constructor calls
+  - Example before: `FormatCache(maxsize=1000, max_entry_size=10000)`
+  - Example after: `FormatCache(maxsize=1000, max_entry_weight=10000)`
+  - Impact: Test files updated to use new parameter name
+  - Clean break: No backwards compatibility or migration path provided per architectural directive
+
+- **Dependency Graph Namespace Prefixes** (SEM-GRAPH-COLLISION-001): `build_dependency_graph()` return type changed to prevent message/term ID collisions:
+  - Previous: `term_deps` used unprefixed IDs, causing collisions when message "brand" and term "-brand" exist
+  - Now: `term_deps` uses prefixed keys: `"msg:{id}"` for message->term refs, `"term:{id}"` for term->term refs
+  - Rationale: FTL has separate namespaces for messages and terms, but both can have identifier "brand"
+  - Example collision: Message "brand" and Term "-brand" both created `term_deps["brand"]`, second overwrites first
+  - Migration: Update callers to use prefixed keys when accessing `term_deps` dictionary
+  - Example before: `if "brand" in term_deps: ...`
+  - Example after: `if "msg:brand" in term_deps: ... if "term:brand" in term_deps: ...`
+  - Impact: Tests updated to check for prefixed keys in dependency graph results
+
+### Fixed
+- **Plural Category Precision Loss** (SEM-PLURAL-PRECISION-LOSS): NUMBER() formatting with precision now correctly affects plural category selection:
+  - Previous: `NUMBER(1, minimumFractionDigits: 2)` formatted as "1.00" but selected "one" category (v=0)
+  - Now: Precision parameter passed to plural rules, "1.00" with v=2 correctly selects "other" category
+  - Root cause: FluentNumber preserved formatted string but discarded precision metadata before plural matching
+  - Implementation: Added `precision` field to FluentNumber dataclass, modified select_plural_category to accept precision parameter
+  - Impact: CLDR plural rules now see correct v operand (fraction digit count) for formatted numbers
+  - Example: English plural rule `i=1 AND v=0` matches 1 but not 1.00 (v=2)
+  - Babel Integration: Converts number to Decimal with specified precision via quantize() before passing to plural_form()
+
+- **Introspection Variable Extraction** (SEM-INTROSPECTION-FUNC-ARGS): Function arguments wrapped in Placeable now correctly extracted:
+  - Previous: `NUMBER({$amount}, minimumFractionDigits: 2)` did not extract "amount" variable
+  - Now: Unwraps Placeable before checking for VariableReference, correctly extracts variable name
+  - Root cause: IntrospectionVisitor checked `if VariableReference.guard(pos_arg)` without unwrapping Placeable
+  - Implementation: Added Placeable unwrapping logic: `unwrapped_arg = pos_arg.expression if Placeable.guard(pos_arg) else pos_arg`
+  - Impact: Variable extraction now complete for all FTL syntax patterns including Placeable-wrapped function arguments
+
+### Performance
+- **Parser String Concatenation** (QUADRATIC_STRING_CONCAT): Fixed O(N^2) string concatenation in comment merging and pattern continuation:
+  - Previous: Repeated string concatenation for N consecutive comments: `"a" + "\n" + "b" + "\n" + "c"` = O(N^2)
+  - Now: Accumulate fragments in list, join once: `["a", "\n", "b", "\n", "c"]` → `"\n".join(...)` = O(N)
+  - Affected code:
+    - Comment merging: `_CommentAccumulator` class replaces inline `_merge_comments()` function
+    - Pattern continuation: `_TextAccumulator` class for parse_simple_pattern() and parse_pattern()
+  - Implementation: List accumulation with single join operation when finalizing AST nodes
+  - Impact: Large FTL files with 100+ consecutive comment lines or deep pattern continuations now parse significantly faster
+  - Memory: Reduced temporary string allocations during parsing
+
+## [0.65.0] - 2026-01-10
 
 ### Breaking Changes
 - **Locale Validation Fail-Fast** (API-LOCALE-LEAK-001): FluentLocalization now validates all locale codes eagerly at construction:
@@ -1612,6 +1663,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.66.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.66.0
 [0.65.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.65.0
 [0.64.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.64.0
 [0.63.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.63.0

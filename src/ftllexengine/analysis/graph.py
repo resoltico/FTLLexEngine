@@ -9,7 +9,7 @@ Python 3.13+.
 from collections.abc import Mapping, Sequence
 from enum import Enum, auto
 
-__all__ = ["canonicalize_cycle", "detect_cycles", "make_cycle_key"]
+__all__ = ["build_dependency_graph", "canonicalize_cycle", "detect_cycles", "make_cycle_key"]
 
 
 def canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:
@@ -191,7 +191,13 @@ def build_dependency_graph(
     message_entries: Mapping[str, tuple[set[str], set[str]]],
     term_entries: Mapping[str, tuple[set[str], set[str]]] | None = None,
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """Build separate message and term dependency graphs.
+    """Build separate message and term dependency graphs with namespace prefixes.
+
+    Uses prefixed keys in term_deps to prevent collisions between messages and
+    terms with the same identifier. For example, message "brand" and term "-brand"
+    both have identifier "brand" but are stored with different prefixes:
+    - "msg:brand" for message->term references
+    - "term:brand" for term->term references
 
     Args:
         message_entries: Mapping from message ID to (message_refs, term_refs) tuple.
@@ -199,8 +205,10 @@ def build_dependency_graph(
                      Term IDs should NOT include the "-" prefix.
 
     Returns:
-        Tuple of (message_deps, term_deps) where each is a mapping from
-        entry ID to set of referenced entry IDs.
+        Tuple of (message_deps, term_deps) where:
+        - message_deps: Maps message IDs to sets of referenced message IDs
+        - term_deps: Maps prefixed keys to sets of referenced term IDs
+          - Keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs
 
     Example:
         >>> message_entries = {
@@ -213,8 +221,10 @@ def build_dependency_graph(
         >>> msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
         >>> msg_deps["welcome"]
         {'greeting'}
-        >>> "brand" in term_deps
-        True
+        >>> term_deps["msg:welcome"]
+        {'brand'}
+        >>> term_deps["term:brand"]
+        set()
     """
     message_deps: dict[str, set[str]] = {}
     term_deps: dict[str, set[str]] = {}
@@ -223,14 +233,14 @@ def build_dependency_graph(
     for entry_id, (msg_refs, trm_refs) in message_entries.items():
         # Messages can reference other messages
         message_deps[entry_id] = msg_refs.copy()
-        # Track term references from messages
-        term_deps[entry_id] = trm_refs.copy()
+        # Track term references from messages with "msg:" prefix
+        term_deps[f"msg:{entry_id}"] = trm_refs.copy()
 
     # Process term entries
     if term_entries:
         for entry_id, (_msg_refs, trm_refs) in term_entries.items():
             # Terms can reference other terms (term-to-term dependencies)
-            # Terms should not appear in message_deps
-            term_deps[entry_id] = trm_refs.copy()
+            # Use "term:" prefix to distinguish from message->term refs
+            term_deps[f"term:{entry_id}"] = trm_refs.copy()
 
     return message_deps, term_deps

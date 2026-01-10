@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.65.0"
+version: "0.66.0"
 domain: RUNTIME
-updated: "2026-01-09"
+updated: "2026-01-10"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?"]
@@ -14,7 +14,7 @@ route:
 
 ## `FluentNumber`
 
-Wrapper preserving numeric identity through NUMBER() formatting.
+Wrapper preserving numeric identity and precision through NUMBER() formatting.
 
 ### Signature
 ```python
@@ -22,6 +22,7 @@ Wrapper preserving numeric identity through NUMBER() formatting.
 class FluentNumber:
     value: int | float | Decimal
     formatted: str
+    precision: int | None = None
 ```
 
 ### Parameters
@@ -29,13 +30,15 @@ class FluentNumber:
 |:------|:-----|:----|:------------|
 | `value` | `int \| float \| Decimal` | Y | Original numeric value for plural matching. |
 | `formatted` | `str` | Y | Locale-formatted string for display. |
+| `precision` | `int \| None` | N | Minimum fraction digits for CLDR v operand in plural rules. None if not specified. |
 
 ### Constraints
 - Return: Frozen dataclass instance.
 - State: Immutable. Safe for caching.
 - Thread: Safe.
-- Usage: Returned by `number_format()`. Preserves numeric identity for select expressions.
+- Usage: Returned by `number_format()`. Preserves numeric identity and precision metadata for select expressions.
 - Str: `str(fluent_number)` returns `formatted` for display.
+- Plural: Precision affects CLDR plural category selection. For example, "1.00" with precision=2 selects "other" category (v=2), not "one" (v=0).
 - Import: `from ftllexengine.runtime.function_bridge import FluentNumber`
 
 ---
@@ -66,11 +69,11 @@ def number_format(
 | `pattern` | `str \| None` | N | Custom Babel number pattern. |
 
 ### Constraints
-- Return: `FluentNumber` with formatted string and original numeric value.
+- Return: `FluentNumber` with formatted string, original numeric value, and precision metadata.
 - Raises: `FormattingError` on formatting failure (invalid pattern, Babel error).
 - State: None.
 - Thread: Safe.
-- Plural: Original value preserved for correct plural category matching in select expressions.
+- Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
 - Rounding: Uses CLDR half-up rounding (2.5->3, 3.5->4). Matches Intl.NumberFormat behavior.
 
 ---
@@ -1012,5 +1015,80 @@ def write(self) -> Generator[None, None, None]:
 - Blocks: Until all readers release their locks.
 - Raises: `RuntimeError` if thread attempts read-to-write lock upgrade.
 - Usage: `with lock.write(): # modify data`
+
+---
+
+## Analysis Functions
+
+---
+
+## `build_dependency_graph`
+
+Function that builds separate message and term dependency graphs with namespace prefixes.
+
+### Signature
+```python
+def build_dependency_graph(
+    message_entries: Mapping[str, tuple[set[str], set[str]]],
+    term_entries: Mapping[str, tuple[set[str], set[str]]] | None = None,
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+```
+
+### Parameters
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
+| `message_entries` | `Mapping[str, tuple[set[str], set[str]]]` | Y | Message ID to (msg_refs, term_refs) tuple |
+| `term_entries` | `Mapping[str, tuple[set[str], set[str]]] \| None` | N | Term ID to (msg_refs, term_refs) tuple (IDs without "-" prefix) |
+
+### Constraints
+- Return: Tuple of (message_deps, term_deps) where message_deps maps message IDs to referenced message IDs, and term_deps maps prefixed keys to referenced term IDs. Prefixed keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs.
+- Raises: Never.
+- State: None (pure function).
+- Thread: Safe.
+- Namespace: Uses prefixed keys to prevent collisions between messages and terms with same identifier (e.g., message "brand" and term "-brand" both have identifier "brand").
+- Complexity: O(N) where N = total entries.
+- Import: `from ftllexengine.analysis import build_dependency_graph`
+
+### Example
+```python
+msg_entries = {"welcome": ({"greeting"}, {"brand"}), "greeting": (set(), set())}
+term_entries = {"brand": (set(), set())}
+msg_deps, term_deps = build_dependency_graph(msg_entries, term_entries)
+# msg_deps: {"welcome": {"greeting"}, "greeting": set()}
+# term_deps: {"msg:welcome": {"brand"}, "term:brand": set()}
+```
+
+---
+
+## `detect_cycles`
+
+Function that detects all cycles in a dependency graph using iterative DFS.
+
+### Signature
+```python
+def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
+```
+
+### Parameters
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
+| `dependencies` | `Mapping[str, set[str]]` | Y | Node ID to set of referenced node IDs |
+
+### Constraints
+- Return: List of cycles where each cycle is a list of node IDs forming the cycle path. Empty list if no cycles detected. Cycles are deduplicated using canonical form.
+- Raises: Never.
+- State: None (pure function).
+- Thread: Safe.
+- Algorithm: Iterative DFS with Tarjan-style cycle detection. Prevents RecursionError on deep graphs (>1000 nodes in linear chain).
+- Complexity: O(V + E) time, O(V) space where V = nodes, E = edges.
+- Security: Uses iterative DFS to prevent stack overflow attacks via deeply nested dependency chains in untrusted FTL resources.
+- Import: `from ftllexengine.analysis import detect_cycles`
+
+### Example
+```python
+deps = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
+cycles = detect_cycles(deps)
+# cycles: [['a', 'b', 'c', 'a']] (or canonical rotation)
+```
 
 ---

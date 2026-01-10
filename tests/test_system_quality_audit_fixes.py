@@ -4,7 +4,7 @@ Tests for:
 - AUDIT-009: ASCII-only locale validation
 - AUDIT-011: Chain depth validation
 - AUDIT-012: Overwrite warning in add_resource
-- AUDIT-013: Cache max_entry_size parameter
+- AUDIT-013: Cache max_entry_weight parameter
 """
 
 from __future__ import annotations
@@ -257,39 +257,39 @@ class TestBundleOverwriteWarning:
 
 
 # ============================================================================
-# AUDIT-013: Cache max_entry_size parameter
+# AUDIT-013: Cache max_entry_weight parameter
 # ============================================================================
 
 
 class TestCacheEntrySizeLimit:
-    """Test cache max_entry_size parameter (AUDIT-013).
+    """Test cache max_entry_weight parameter (AUDIT-013).
 
-    The FormatCache now supports a max_entry_size parameter that prevents
+    The FormatCache now supports a max_entry_weight parameter that prevents
     caching of very large formatted results to avoid memory exhaustion.
     """
 
-    def test_default_max_entry_size(self) -> None:
-        """Default max_entry_size is 10_000 characters."""
+    def test_default_max_entry_weight(self) -> None:
+        """Default max_entry_weight is 10_000 characters."""
         cache = FormatCache()
-        assert cache.max_entry_size == DEFAULT_MAX_ENTRY_SIZE
-        assert cache.max_entry_size == 10_000
+        assert cache.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert cache.max_entry_weight == 10_000
 
-    def test_custom_max_entry_size(self) -> None:
-        """Custom max_entry_size is respected."""
-        cache = FormatCache(max_entry_size=1000)
-        assert cache.max_entry_size == 1000
+    def test_custom_max_entry_weight(self) -> None:
+        """Custom max_entry_weight is respected."""
+        cache = FormatCache(max_entry_weight=1000)
+        assert cache.max_entry_weight == 1000
 
-    def test_invalid_max_entry_size_rejected(self) -> None:
-        """Invalid max_entry_size values are rejected."""
-        with pytest.raises(ValueError, match="max_entry_size must be positive"):
-            FormatCache(max_entry_size=0)
+    def test_invalid_max_entry_weight_rejected(self) -> None:
+        """Invalid max_entry_weight values are rejected."""
+        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
+            FormatCache(max_entry_weight=0)
 
-        with pytest.raises(ValueError, match="max_entry_size must be positive"):
-            FormatCache(max_entry_size=-1)
+        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
+            FormatCache(max_entry_weight=-1)
 
     def test_small_entries_cached(self) -> None:
-        """Entries below max_entry_size are cached."""
-        cache = FormatCache(max_entry_size=1000)
+        """Entries below max_entry_weight are cached."""
+        cache = FormatCache(max_entry_weight=1000)
 
         # Small result (100 chars)
         small_result = ("x" * 100, ())
@@ -303,8 +303,8 @@ class TestCacheEntrySizeLimit:
         assert cached == small_result
 
     def test_large_entries_not_cached(self) -> None:
-        """Entries exceeding max_entry_size are not cached."""
-        cache = FormatCache(max_entry_size=100)
+        """Entries exceeding max_entry_weight are not cached."""
+        cache = FormatCache(max_entry_weight=100)
 
         # Large result (200 chars)
         large_result = ("x" * 200, ())
@@ -318,8 +318,8 @@ class TestCacheEntrySizeLimit:
         assert cached is None
 
     def test_boundary_entry_size(self) -> None:
-        """Entry exactly at max_entry_size is cached."""
-        cache = FormatCache(max_entry_size=100)
+        """Entry exactly at max_entry_weight is cached."""
+        cache = FormatCache(max_entry_weight=100)
 
         # Entry exactly at limit
         exact_result = ("x" * 100, ())
@@ -330,7 +330,7 @@ class TestCacheEntrySizeLimit:
 
     def test_get_stats_includes_oversize_skips(self) -> None:
         """get_stats() includes oversize_skips counter."""
-        cache = FormatCache(max_entry_size=50)
+        cache = FormatCache(max_entry_weight=50)
 
         # Add some large entries
         for i in range(5):
@@ -339,12 +339,12 @@ class TestCacheEntrySizeLimit:
 
         stats = cache.get_stats()
         assert stats["oversize_skips"] == 5
-        assert stats["max_entry_size"] == 50
+        assert stats["max_entry_weight"] == 50
         assert stats["size"] == 0
 
     def test_clear_resets_oversize_skips(self) -> None:
         """clear() resets oversize_skips counter."""
-        cache = FormatCache(max_entry_size=50)
+        cache = FormatCache(max_entry_weight=50)
 
         large_result = ("x" * 100, ())
         cache.put("msg", None, None, "en", large_result)
@@ -353,8 +353,8 @@ class TestCacheEntrySizeLimit:
         cache.clear()
         assert cache.oversize_skips == 0
 
-    def test_bundle_cache_uses_default_max_entry_size(self) -> None:
-        """FluentBundle's internal cache uses default max_entry_size."""
+    def test_bundle_cache_uses_default_max_entry_weight(self) -> None:
+        """FluentBundle's internal cache uses default max_entry_weight."""
         bundle = FluentBundle("en", enable_cache=True)
         bundle.add_resource("msg = { $data }")
 
@@ -368,10 +368,10 @@ class TestCacheEntrySizeLimit:
 
     @given(st.integers(min_value=1, max_value=1000))
     @settings(max_examples=20)
-    def test_max_entry_size_property(self, size: int) -> None:
-        """PROPERTY: max_entry_size is correctly stored and returned."""
-        cache = FormatCache(max_entry_size=size)
-        assert cache.max_entry_size == size
+    def test_max_entry_weight_property(self, size: int) -> None:
+        """PROPERTY: max_entry_weight is correctly stored and returned."""
+        cache = FormatCache(max_entry_weight=size)
+        assert cache.max_entry_weight == size
 
 
 # ============================================================================

@@ -5,55 +5,8 @@ Covers edge cases in comment span handling and blank line detection.
 
 from __future__ import annotations
 
-from ftllexengine.enums import CommentType
-from ftllexengine.syntax.ast import Comment, Span
-from ftllexengine.syntax.parser.core import FluentParserV1, _merge_comments
-
-
-class TestMergeCommentsSpanEdgeCases:
-    """Test comment merging with None span combinations."""
-
-    def test_merge_comments_both_spans_none(self) -> None:
-        """Merge comments when both have None spans."""
-        # Create comments with None spans
-        comment1 = Comment(content="First", type=CommentType.COMMENT, span=None)
-        comment2 = Comment(content="Second", type=CommentType.COMMENT, span=None)
-
-        merged = _merge_comments(comment1, comment2)
-
-        # Should merge content correctly
-        assert "First" in merged.content
-        assert "Second" in merged.content
-        # Span should be None when both inputs have None
-        assert merged.span is None
-
-    def test_merge_comments_first_span_none_second_has_span(self) -> None:
-        """Merge comments when first has None span, second has span."""
-        comment1 = Comment(content="First", type=CommentType.COMMENT, span=None)
-        comment2 = Comment(
-            content="Second",
-            type=CommentType.COMMENT,
-            span=Span(start=10, end=20),
-        )
-
-        merged = _merge_comments(comment1, comment2)
-
-        # Should use second's span
-        assert merged.span == Span(start=10, end=20)
-
-    def test_merge_comments_second_span_none_first_has_span(self) -> None:
-        """Merge comments when second has None span, first has span."""
-        comment1 = Comment(
-            content="First",
-            type=CommentType.COMMENT,
-            span=Span(start=0, end=10),
-        )
-        comment2 = Comment(content="Second", type=CommentType.COMMENT, span=None)
-
-        merged = _merge_comments(comment1, comment2)
-
-        # Should use first's span
-        assert merged.span == Span(start=0, end=10)
+from ftllexengine.syntax.ast import Comment
+from ftllexengine.syntax.parser.core import FluentParserV1
 
 
 class TestBlankLineCounterReset:

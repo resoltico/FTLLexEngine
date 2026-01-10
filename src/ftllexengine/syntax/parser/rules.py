@@ -365,6 +365,48 @@ def _trim_pattern_blank_lines(
     return tuple(result)
 
 
+class _TextAccumulator:
+    """Accumulator for building TextElement with efficient string concatenation.
+
+    Avoids O(N^2) behavior when processing continuation lines by collecting
+    text fragments in a list and joining once.
+    """
+
+    __slots__ = ("fragments",)
+
+    def __init__(self) -> None:
+        """Initialize empty accumulator."""
+        self.fragments: list[str] = []
+
+    def add(self, text: str) -> None:
+        """Add text fragment to accumulator.
+
+        Args:
+            text: Text fragment to add
+        """
+        self.fragments.append(text)
+
+    def has_content(self) -> bool:
+        """Check if accumulator has any content.
+
+        Returns:
+            True if accumulator has fragments, False otherwise
+        """
+        return len(self.fragments) > 0
+
+    def finalize(self) -> TextElement:
+        """Create TextElement from accumulated fragments.
+
+        Returns:
+            TextElement with joined content
+        """
+        return TextElement(value="".join(self.fragments))
+
+    def clear(self) -> None:
+        """Clear accumulated fragments."""
+        self.fragments.clear()
+
+
 def parse_simple_pattern(
     cursor: Cursor,
     context: ParseContext | None = None,
@@ -415,6 +457,8 @@ def parse_simple_pattern(
     elements: list[TextElement | Placeable] = []
     # Track common indentation (set on first continuation line)
     common_indent: int | None = None
+    # Accumulate text fragments to avoid O(N^2) string concatenation
+    text_acc = _TextAccumulator()
 
     while not cursor.is_eof:
         ch = cursor.current
@@ -449,18 +493,22 @@ def parse_simple_pattern(
                 # Per Fluent spec, continuation lines are joined with newlines.
                 # The newline represents the line break in the pattern value.
                 newline_text = "\n" + extra_spaces
-                if elements and not isinstance(elements[-1], Placeable):
-                    # Append newline (and extra spaces) to previous text element
-                    last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + newline_text)
-                else:
-                    # Add new text element with newline (and extra spaces)
-                    elements.append(TextElement(value=newline_text))
+                # Accumulate continuation text (O(1) append)
+                text_acc.add(newline_text)
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
         # Parse placeable expression
         if ch == "{":
+            # Append accumulated continuation text to last element before placeable
+            if text_acc.has_content():
+                if elements and not isinstance(elements[-1], Placeable):
+                    last_elem = elements[-1]
+                    elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
+                else:
+                    elements.append(text_acc.finalize())
+                text_acc.clear()
+
             cursor = cursor.advance()  # Skip {
 
             # Use full placeable parser which handles all expression types
@@ -493,7 +541,26 @@ def parse_simple_pattern(
                 # loop at 358 will always advance at least once before breaking.
                 # The False branch (cursor.pos == text_start) is structurally unreachable.
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
+                # Append accumulated continuation text to last element first
+                if text_acc.has_content():
+                    if elements and not isinstance(elements[-1], Placeable):
+                        last_elem = elements[-1]
+                        combined_value = last_elem.value + text_acc.finalize().value
+                        elements[-1] = TextElement(value=combined_value)
+                    else:
+                        # No previous element, append continuation as new element
+                        elements.append(text_acc.finalize())
+                    text_acc.clear()
+                # Then append new text element
                 elements.append(TextElement(value=text))
+
+    # Finalize any remaining accumulated continuation text
+    if text_acc.has_content():
+        if elements and not isinstance(elements[-1], Placeable):
+            last_elem = elements[-1]
+            elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
+        else:
+            elements.append(text_acc.finalize())
 
     # Per Fluent spec, trim leading and trailing blank lines from patterns
     trimmed_elements = _trim_pattern_blank_lines(elements)
@@ -576,6 +643,8 @@ def parse_pattern(
     elements: list[TextElement | Placeable] = []
     # Track common indentation (set on first continuation line)
     common_indent: int | None = None
+    # Accumulate text fragments to avoid O(N^2) string concatenation
+    text_acc = _TextAccumulator()
 
     while not cursor.is_eof:
         ch = cursor.current
@@ -600,13 +669,8 @@ def parse_pattern(
                 # Per Fluent spec, continuation lines are joined with newlines.
                 # The newline represents the line break in the pattern value.
                 newline_text = "\n" + extra_spaces
-                if elements and not isinstance(elements[-1], Placeable):
-                    # Append newline (and extra spaces) to previous text element
-                    last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + newline_text)
-                else:
-                    # Add new text element with newline (and extra spaces)
-                    elements.append(TextElement(value=newline_text))
+                # Accumulate continuation text (O(1) append)
+                text_acc.add(newline_text)
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -618,6 +682,15 @@ def parse_pattern(
 
         # Placeable: {$var} or {$var -> ...}
         if ch == "{":
+            # Append accumulated continuation text to last element before placeable
+            if text_acc.has_content():
+                if elements and not isinstance(elements[-1], Placeable):
+                    last_elem = elements[-1]
+                    elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
+                else:
+                    elements.append(text_acc.finalize())
+                text_acc.clear()
+
             cursor = cursor.advance()  # Skip {
 
             # Use helper method to parse placeable (reduces nesting!)
@@ -651,7 +724,26 @@ def parse_pattern(
                 # before text parsing, and '{' enters placeable parsing, so this condition
                 # is always True when reached.
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
+                # Append accumulated continuation text to last element first
+                if text_acc.has_content():
+                    if elements and not isinstance(elements[-1], Placeable):
+                        last_elem = elements[-1]
+                        combined_value = last_elem.value + text_acc.finalize().value
+                        elements[-1] = TextElement(value=combined_value)
+                    else:
+                        # No previous element, append continuation as new element
+                        elements.append(text_acc.finalize())
+                    text_acc.clear()
+                # Then append new text element
                 elements.append(TextElement(value=text))
+
+    # Finalize any remaining accumulated continuation text
+    if text_acc.has_content():
+        if elements and not isinstance(elements[-1], Placeable):
+            last_elem = elements[-1]
+            elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
+        else:
+            elements.append(text_acc.finalize())
 
     # Per Fluent spec, trim leading and trailing blank lines from patterns
     trimmed_elements = _trim_pattern_blank_lines(elements)

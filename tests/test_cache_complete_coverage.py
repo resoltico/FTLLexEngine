@@ -30,15 +30,15 @@ class TestFormatCacheInitValidation:
         with pytest.raises(ValueError, match="maxsize must be positive"):
             FormatCache(maxsize=-1)
 
-    def test_max_entry_size_zero_rejected(self) -> None:
-        """FormatCache rejects max_entry_size=0."""
-        with pytest.raises(ValueError, match="max_entry_size must be positive"):
-            FormatCache(max_entry_size=0)
+    def test_max_entry_weight_zero_rejected(self) -> None:
+        """FormatCache rejects max_entry_weight=0."""
+        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
+            FormatCache(max_entry_weight=0)
 
-    def test_max_entry_size_negative_rejected(self) -> None:
-        """FormatCache rejects negative max_entry_size."""
-        with pytest.raises(ValueError, match="max_entry_size must be positive"):
-            FormatCache(max_entry_size=-1)
+    def test_max_entry_weight_negative_rejected(self) -> None:
+        """FormatCache rejects negative max_entry_weight."""
+        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
+            FormatCache(max_entry_weight=-1)
 
     def test_max_errors_per_entry_zero_rejected(self) -> None:
         """FormatCache rejects max_errors_per_entry=0."""
@@ -115,8 +115,8 @@ class TestFormatCacheErrorBloatProtection:
 
     def test_put_rejects_excessive_error_weight(self) -> None:
         """put() skips caching when total weight (string + errors) exceeds limit."""
-        # Set small max_entry_size to test total weight calculation
-        cache = FormatCache(max_entry_size=2000, max_errors_per_entry=50)
+        # Set small max_entry_weight to test total weight calculation
+        cache = FormatCache(max_entry_weight=2000, max_errors_per_entry=50)
 
         # Create result with small string but many errors
         # String: 100 chars
@@ -130,17 +130,17 @@ class TestFormatCacheErrorBloatProtection:
         result = ("x" * 100, tuple(errors))
         cache.put("msg", None, None, "en", result)
 
-        # Should not be cached due to total weight exceeding max_entry_size
+        # Should not be cached due to total weight exceeding max_entry_weight
         assert cache.size == 0
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 1
 
     def test_put_accepts_reasonable_error_collections(self) -> None:
         """put() caches results with reasonable error counts."""
-        # Use larger max_entry_size to accommodate string + errors
+        # Use larger max_entry_weight to accommodate string + errors
         # Total weight = 14 chars + (10 errors x 1000) = 10014 bytes
-        # Need max_entry_size > 10014
-        cache = FormatCache(max_entry_size=15000, max_errors_per_entry=50)
+        # Need max_entry_weight > 10014
+        cache = FormatCache(max_entry_weight=15000, max_errors_per_entry=50)
 
         # Create 10 errors (within limit)
         errors: list[FluentError] = []
@@ -417,7 +417,7 @@ class TestFormatCacheProperties:
 
     def test_oversize_skips_property_thread_safe(self) -> None:
         """oversize_skips property is thread-safe."""
-        cache = FormatCache(max_entry_size=10)
+        cache = FormatCache(max_entry_weight=10)
 
         # First oversize
         cache.put("msg1", None, None, "en", ("x" * 100, ()))
@@ -427,10 +427,10 @@ class TestFormatCacheProperties:
         cache.put("msg2", None, None, "en", ("y" * 50, ()))
         assert cache.oversize_skips == 2
 
-    def test_max_entry_size_property(self) -> None:
-        """max_entry_size property returns configured value."""
-        cache = FormatCache(max_entry_size=5000)
-        assert cache.max_entry_size == 5000
+    def test_max_entry_weight_property(self) -> None:
+        """max_entry_weight property returns configured value."""
+        cache = FormatCache(max_entry_weight=5000)
+        assert cache.max_entry_weight == 5000
 
     def test_size_property_thread_safe(self) -> None:
         """size property is thread-safe."""
@@ -457,18 +457,18 @@ class TestFormatCacheHypothesisProperties:
     def test_property_init_parameters_stored_correctly(
         self,
         maxsize: int,
-        max_entry_size: int,
+        max_entry_weight: int,
         max_errors_per_entry: int,
     ) -> None:
         """PROPERTY: Constructor parameters are stored correctly."""
         cache = FormatCache(
             maxsize=maxsize,
-            max_entry_size=max_entry_size,
+            max_entry_weight=max_entry_weight,
             max_errors_per_entry=max_errors_per_entry,
         )
 
         assert cache.maxsize == maxsize
-        assert cache.max_entry_size == max_entry_size
+        assert cache.max_entry_weight == max_entry_weight
         assert cache.size == 0
         assert cache.hits == 0
         assert cache.misses == 0

@@ -18,22 +18,50 @@ RETRIEVAL_HINTS:
 
 # FTLLexEngine
 
-FTLLexEngine helps you write clean text messages that correctly handle counts like "1 coffee" or "5 coffees". It also lets you accept real user input for numbers, dates, and prices - returning useful errors when the input is not quite right, so you can give clear feedback.
+**Thread-safe localization with bidirectional parsing. Accept user input in any locale, get structured data back.**
 
-It follows the [Fluent specification](https://projectfluent.org/) used by projects like Firefox.
+Your customer types `"1 234,56"` in Latvia or `"1,234.56"` in the US. FTLLexEngine parses both to `Decimal('1234.56')`. When parsing fails, you get errors as data - not exceptions - so you can show helpful feedback.
 
-You can use it for single-language apps or for apps that support many languages.
+Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR.
+
+---
+
+## Why FTLLexEngine?
+
+- **Bidirectional** - Format data for display *and* parse user input back to Python types
+- **Thread-safe** - No global state. Serve 1000 concurrent requests without locale conflicts
+- **Financial-grade** - `Decimal` precision throughout. No float rounding surprises
+- **Introspectable** - Query what variables a message needs before you call it
+- **Declarative grammar** - Plurals, gender, cases in `.ftl` files. Code stays clean
+
+---
+
+## Quickstart
+
+```python
+from ftllexengine import FluentBundle
+
+bundle = FluentBundle("en_US")
+bundle.add_resource("""
+order = { $count ->
+    [one]   1 coffee
+   *[other] { $count } coffees
+}
+""")
+
+result, _ = bundle.format_pattern("order", {"count": 5})
+# "5 coffees"
+```
 
 ---
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [For Apps in One Language](#for-apps-in-one-language)
-- [For Cafe Billing and Financial Calculations](#for-cafe-billing-and-financial-calculations)
-- [For Apps in Many Languages](#for-apps-in-many-languages)
-- [For Busy Web Servers](#for-busy-web-servers)
-- [Check What a Message Needs](#check-what-a-message-needs)
+- [Your Cafe Speaks Every Language](#your-cafe-speaks-every-language)
+- [Customers Type Prices. You Get Decimals.](#customers-type-prices-you-get-decimals)
+- [100 Orders Per Second? No Problem.](#100-orders-per-second-no-problem)
+- [Know What Your Messages Need](#know-what-your-messages-need)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -44,51 +72,45 @@ You can use it for single-language apps or for apps that support many languages.
 ## Installation
 
 ```bash
-# Parser-only (no external dependencies)
-uv add ftllexengine
+pip install ftllexengine[babel]
+```
 
-# Full runtime with locale formatting (requires Babel)
+Or with uv:
+
+```bash
 uv add ftllexengine[babel]
 ```
 
-**Requirements**: Python >= 3.13 | Babel >= 2.17 (optional for locale formatting)
+**Requirements**: Python >= 3.13 | Babel >= 2.17
 
-**What works without Babel:**
-- FTL syntax parsing (`parse_ftl()`)
-- AST serialization (`serialize_ftl()`)
+<details>
+<summary>Parser-only installation (no Babel dependency)</summary>
+
+```bash
+pip install ftllexengine
+```
+
+**Works without Babel:**
+- FTL syntax parsing (`parse_ftl()`, `serialize_ftl()`)
 - AST manipulation and transformation
 - Validation and introspection
 
-**What requires Babel:**
-- `FluentBundle` (locale-aware message formatting)
-- `FluentLocalization` (multi-locale fallback chains)
+**Requires Babel:**
+- `FluentBundle` (locale-aware formatting)
+- `FluentLocalization` (multi-locale fallback)
 - Bidirectional parsing (numbers, dates, currency)
 
-### Python Version Support
-
-| Version | Tests | Linting | Fuzzing |
-|:--------|:------|:--------|:--------|
-| 3.13    | Full  | Full    | Full    |
-| 3.14    | Full  | Full    | Limited (Atheris incompatible) |
+</details>
 
 ---
 
-## For Apps in One Language
+## Your Cafe Speaks Every Language
 
-You are building a cafe app in English. Customers order coffees, and you need to show messages like "1 coffee" or "5 coffees".
+You run a coffee shop. "1 coffee" or "5 coffees" - simple in English. But your app goes global.
 
-Normally you would write if-statements in many places:
+**The problem:** Polish has four plural forms. Arabic has six. Your if-statements turn into spaghetti.
 
-```python
-if count == 0:
-    text = "no coffees"
-elif count == 1:
-    text = "1 coffee"
-else:
-    text = f"{count} coffees"
-```
-
-With FTLLexEngine you move the rules to a separate file:
+**The solution:** Move grammar rules to `.ftl` files. Your code just passes data.
 
 **cafe.ftl**
 ```fluent
@@ -98,10 +120,8 @@ order-message = { $count ->
    *[other] { $count } coffees ordered
 }
 
-total-message = Total: { CURRENCY($amount, currency: "USD") }
+total = Total: { CURRENCY($amount, currency: "USD") }
 ```
-
-In Python:
 
 ```python
 from pathlib import Path
@@ -114,88 +134,13 @@ bundle.add_resource(Path("cafe.ftl").read_text())
 result, _ = bundle.format_pattern("order-message", {"count": 5})
 # "5 coffees ordered"
 
-result, _ = bundle.format_pattern("total-message", {"amount": Decimal("18.75")})
+result, _ = bundle.format_pattern("total", {"amount": Decimal("18.75")})
 # "Total: $18.75"
 ```
 
-Your code only passes data. The text rules stay in one place.
+Now add Polish - four plural forms, zero code changes:
 
-Customers also enter dates (for delivery) or prices (for custom tips). People type these in different ways:
-
-```python
-from ftllexengine.parsing import parse_date, parse_decimal
-
-date_val, errors = parse_date("Jan 15, 2026", "en_US")
-# datetime.date(2026, 1, 15), ()
-
-price_val, errors = parse_decimal("5.50", "en_US")
-# Decimal('5.50'), ()
-
-# If input is unclear
-price_val, errors = parse_decimal("five fifty", "en_US")
-# None, (FluentParseError(...),)
-```
-
-You can show a helpful message like "Please enter a number like 5.50".
-
----
-
-## For Cafe Billing and Financial Calculations
-
-Your cafe app now calculates bills. A customer orders 3 espressos at $4.50 each and adds a tip.
-
-You need exact math (no float rounding errors) and correct display.
-
-Parse the tip amount the customer types:
-
-```python
-from decimal import Decimal
-from ftllexengine.parsing import parse_currency
-
-tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
-if not errors:
-    tip, currency = tip_result  # (Decimal('5.00'), 'USD')
-
-    subtotal = Decimal("13.50")  # 3 x 4.50
-    tax = subtotal * Decimal("0.08")  # 8% tax
-    total = subtotal + tax + tip
-    # All Decimal - exact result: Decimal('19.58')
-```
-
-Display with a message file:
-
-**bill.ftl**
-```fluent
-bill-summary =
-    { $count } espressos: { CURRENCY($subtotal, currency: "USD") }
-    Tax: { CURRENCY($tax, currency: "USD") }
-    { $tip ->
-        [0] (no tip)
-       *[other] Tip: { CURRENCY($tip, currency: "USD") }
-    }
-    Total: { CURRENCY($total, currency: "USD") }
-```
-
-The same file works for any currency or locale later.
-
----
-
-## For Apps in Many Languages
-
-Your cafe app now serves customers worldwide. Plural rules differ - Polish has special forms for 2-4 and 5+.
-
-You keep the same Python code. Only the message files change.
-
-**cafe_de.ftl** (German)
-```fluent
-order-message = { $count ->
-    [0]     keine Kaffees bestellt
-    [one]   1 Kaffee bestellt
-   *[other] { $count } Kaffees bestellt
-}
-```
-
-**cafe_pl.ftl** (Polish)
+**cafe_pl.ftl**
 ```fluent
 order-message = { $count ->
     [0]     brak kaw
@@ -206,69 +151,123 @@ order-message = { $count ->
 }
 ```
 
-In Python:
-
 ```python
-from pathlib import Path
-from ftllexengine import FluentBundle
-
-bundle = FluentBundle(user_locale)  # e.g. "pl_PL"
-bundle.add_resource(Path(f"cafe_{user_locale[:2]}.ftl").read_text())
+bundle = FluentBundle("pl_PL")
+bundle.add_resource(Path("cafe_pl.ftl").read_text())
 
 result, _ = bundle.format_pattern("order-message", {"count": 5})
-# Polish: "5 kaw"
+# "5 kaw"
+
+result, _ = bundle.format_pattern("order-message", {"count": 2})
+# "2 kawy"
 ```
 
-Input parsing automatically uses the user's locale:
+German, Japanese, Arabic - same pattern. Translators edit `.ftl` files. Developers ship features.
+
+---
+
+## Customers Type Prices. You Get Decimals.
+
+A customer in Germany types their tip: `"5,00"`. A customer in the US types `"5.00"`. Both mean five dollars.
+
+Most libraries only format *outbound* - they turn your data into display strings. FTLLexEngine works *both directions*.
 
 ```python
-from ftllexengine.parsing import parse_decimal
+from decimal import Decimal
+from ftllexengine.parsing import parse_currency, parse_decimal, parse_date
 
-# German format: comma for decimal
+# American customer types a tip
+tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
+if not errors:
+    tip, currency = tip_result  # (Decimal('5.00'), 'USD')
+
+# German customer types a price
 price, errors = parse_decimal("13,50", "de_DE")
 # Decimal('13.50')
 
-# Latvian format: space for thousands, comma for decimal
+# Latvian format: space for thousands
 price, errors = parse_decimal("1 234,56", "lv_LV")
 # Decimal('1234.56')
+
+# Dates work too
+date_val, errors = parse_date("Jan 15, 2026", "en_US")
+# datetime.date(2026, 1, 15)
+```
+
+**When parsing fails, you get errors - not exceptions:**
+
+```python
+price, errors = parse_decimal("five fifty", "en_US")
+# price = None
+# errors = (FluentParseError(...),)
+
+# Show helpful feedback
+if errors:
+    print("Please enter a number like 5.50")
+```
+
+### Financial Calculations Stay Exact
+
+Your cafe calculates bills. Float math fails you: `0.1 + 0.2 = 0.30000000000000004`.
+
+FTLLexEngine uses `Decimal` throughout:
+
+```python
+from decimal import Decimal
+from ftllexengine.parsing import parse_currency
+
+tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
+if not errors:
+    tip, currency = tip_result  # (Decimal('5.00'), 'USD')
+
+    subtotal = Decimal("13.50")  # 3 espressos at $4.50
+    tax = subtotal * Decimal("0.08")  # 8% tax
+    total = subtotal + tax + tip
+    # Decimal('19.58') - exact, every time
 ```
 
 ---
 
-## For Busy Web Servers
+## 100 Orders Per Second? No Problem.
 
-Many customers order at once in different locales. Standard Python locale settings are global and can conflict.
+Your cafe gets busy. Flask, FastAPI, Django - 100 concurrent requests, each customer in a different locale.
 
-FTLLexEngine uses separate contexts:
+**The problem:** Python's `locale` module uses global state. Thread A sets German, Thread B reads it, chaos ensues.
+
+**The solution:** FTLLexEngine uses isolated contexts. No global state. No locks you manage. No race conditions.
 
 ```python
-from ftllexengine.runtime.locale_context import LocaleContext
 from concurrent.futures import ThreadPoolExecutor
+from ftllexengine.runtime.locale_context import LocaleContext
 
 us_ctx = LocaleContext.create("en_US")
 de_ctx = LocaleContext.create("de_DE")
+jp_ctx = LocaleContext.create("ja_JP")
 
-def format_total(amount, ctx):
+def format_receipt(amount, ctx):
     return ctx.format_currency(amount, currency="USD")
 
-# Safe even with many simultaneous requests
-with ThreadPoolExecutor() as executor:
+with ThreadPoolExecutor(max_workers=100) as executor:
     futures = [
-        executor.submit(format_total, 1234.50, us_ctx),  # "$1,234.50"
-        executor.submit(format_total, 1234.50, de_ctx),  # "1.234,50 $"
+        executor.submit(format_receipt, 1234.50, us_ctx),  # "$1,234.50"
+        executor.submit(format_receipt, 1234.50, de_ctx),  # "1.234,50 $"
+        executor.submit(format_receipt, 1234.50, jp_ctx),  # "$1,234.50"
     ]
-    results = [f.result() for f in futures]
+    receipts = [f.result() for f in futures]
 ```
 
-Each `LocaleContext` is a frozen dataclass. No global state is mutated.
+Each `LocaleContext` is a frozen dataclass. Immutable. Thread-safe by design.
 
-`FluentBundle` is also thread-safe. All public methods (`format_pattern()`, `add_resource()`, `add_function()`) are synchronized via internal RWLock (readers-writer lock). You can safely call any method from multiple threads concurrently.
+`FluentBundle` is also thread-safe. All public methods use an internal readers-writer lock:
+- Multiple threads can format messages simultaneously (read lock)
+- Adding resources or functions acquires exclusive access (write lock)
+- You don't manage any of this - it just works
 
 ---
 
-## Check What a Message Needs
+## Know What Your Messages Need
 
-If you use AI or build tools to generate messages, you can check required variables first:
+Your AI agent generates order confirmations. Before it calls `format_pattern()`, it needs to know: *what variables does this message require?*
 
 ```python
 from ftllexengine import FluentBundle
@@ -284,48 +283,47 @@ order-confirmation = { $customer_name }, your order of { $quantity }
 
 info = bundle.introspect_message("order-confirmation")
 
-print(info.get_variable_names())
+info.get_variable_names()
 # frozenset({'customer_name', 'quantity', 'total'})
 
-print(info.get_function_names())
+info.get_function_names()
 # frozenset({'CURRENCY'})
 
-print(info.has_selectors)
-# True
+info.has_selectors
+# True (uses plural selection)
 
-print(info.requires_variable("customer_name"))
+info.requires_variable("customer_name")
 # True
 ```
 
 **Use cases:**
-- AI agents verify they have all required variables before formatting
-- Form builders auto-generate input fields
-- Linters validate template completeness
+- AI agents verify they have all required data before formatting
+- Form builders auto-generate input fields from message templates
+- Linters catch missing variables at build time, not runtime
 
 ---
 
 ## When to Use FTLLexEngine
 
-### Use FTLLexEngine When:
+### Use It When:
 
-| Scenario | Reason |
+| Scenario | Why FTLLexEngine |
 | :--- | :--- |
-| **Parsing user input** | Errors returned as data, not exceptions |
-| **Financial calculations** | `Decimal` precision, locale-aware currency parsing |
-| **Web servers (Flask/FastAPI/Django)** | Thread-safe concurrent formatting |
-| **Complex plural/grammar rules** | Declarative logic in `.ftl` files |
-| **Multi-locale applications** | 200+ locales, CLDR-compliant |
-| **AI/LLM integrations** | Introspection API for template validation |
-| **Content/code separation** | Non-developers can edit `.ftl` files |
+| **Parsing user input** | Errors as data, not exceptions. Show helpful feedback. |
+| **Financial calculations** | `Decimal` precision. No float rounding bugs. |
+| **Web servers** | Thread-safe. No global locale state. |
+| **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
+| **Multi-locale apps** | 200+ locales. CLDR-compliant. |
+| **AI integrations** | Introspect messages before formatting. |
+| **Content/code separation** | Translators edit `.ftl` files. Developers ship code. |
 
-### Use Standard Library or Babel Directly When:
+### Use Something Simpler When:
 
-| Scenario | Reason |
+| Scenario | Why Skip It |
 | :--- | :--- |
-| **Simple single-locale formatting** | `f"{value:,.2f}"` is sufficient |
-| **No user input parsing** | You only format known-good data |
-| **No grammar logic needed** | No plurals, no conditionals |
-| **Minimal dependencies** | You want zero external packages |
+| **Single locale, no user input** | `f"{value:,.2f}"` is enough |
+| **No grammar logic** | No plurals, no conditionals |
+| **Zero dependencies required** | You need pure stdlib |
 
 ---
 
@@ -335,15 +333,15 @@ print(info.requires_variable("customer_name"))
 |:---------|:------------|
 | [Quick Reference](docs/QUICK_REFERENCE.md) | Copy-paste patterns for common tasks |
 | [API Reference](docs/DOC_00_Index.md) | Complete class and function documentation |
-| [Parsing Guide](docs/PARSING_GUIDE.md) | Locale-aware input parsing |
-| [Terminology](docs/TERMINOLOGY.md) | Fluent/FTLLexEngine concept definitions |
-| [Examples](examples/) | Working code examples |
+| [Parsing Guide](docs/PARSING_GUIDE.md) | Bidirectional parsing deep-dive |
+| [Terminology](docs/TERMINOLOGY.md) | Fluent and FTLLexEngine concepts |
+| [Examples](examples/) | Working code you can run |
 
 ---
 
 ## Contributing
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and pull request guidelines.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
 
 ---
 
@@ -351,6 +349,6 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development se
 
 MIT License - See [LICENSE](LICENSE).
 
-Implementation of [Fluent Specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf) (Apache 2.0).
+Implements the [Fluent Specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf) (Apache 2.0).
 
 **Legal**: [PATENTS.md](PATENTS.md) | [NOTICE](NOTICE)

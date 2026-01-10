@@ -326,7 +326,7 @@ class TestBuildDependencyGraph:
         }
         msg_deps, term_deps = build_dependency_graph(message_entries)
         assert msg_deps == {"welcome": {"greeting"}}
-        assert term_deps == {"welcome": set()}
+        assert term_deps == {"msg:welcome": set()}
 
     def test_single_entry_with_term_ref(self) -> None:
         """Single message entry with term reference."""
@@ -335,7 +335,7 @@ class TestBuildDependencyGraph:
         }
         msg_deps, term_deps = build_dependency_graph(message_entries)
         assert msg_deps == {"welcome": set()}
-        assert term_deps == {"welcome": {"brand"}}
+        assert term_deps == {"msg:welcome": {"brand"}}
 
     def test_multiple_entries_mixed_refs(self) -> None:
         """Multiple entries with mixed references."""
@@ -349,8 +349,8 @@ class TestBuildDependencyGraph:
         msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
         assert msg_deps["msg1"] == {"msg2"}
         assert msg_deps["msg2"] == set()
-        assert term_deps["msg1"] == {"term1"}
-        assert term_deps["term1"] == {"term2"}
+        assert term_deps["msg:msg1"] == {"term1"}
+        assert term_deps["term:term1"] == {"term2"}
 
     def test_refs_are_copied(self) -> None:
         """Returned refs are copies, not original sets."""
@@ -362,7 +362,7 @@ class TestBuildDependencyGraph:
 
         # Modify returned sets
         msg_deps["welcome"].add("new_msg")
-        term_deps["welcome"].add("new_term")
+        term_deps["msg:welcome"].add("new_term")
 
         # Original sets should be unchanged
         assert "new_msg" not in original_msg_refs
@@ -392,13 +392,18 @@ class TestBuildDependencyGraph:
         assert "brand" in msg_deps
         assert msg_deps["brand"] == {"name"}
 
-        # Term "brand" appears in term_deps with correct references
-        assert "brand" in term_deps
-        assert term_deps["brand"] == {"company"}
+        # Message "brand" term refs appear with "msg:" prefix
+        assert "msg:brand" in term_deps
+        assert term_deps["msg:brand"] == set()
 
-        # Both namespaces are distinct
+        # Term "brand" appears in term_deps with "term:" prefix
+        assert "term:brand" in term_deps
+        assert term_deps["term:brand"] == {"company"}
+
+        # Both namespaces are distinct - no collision
         assert "name" in msg_deps
-        assert "company" in term_deps
+        assert "msg:name" in term_deps
+        assert "term:company" in term_deps
 
 
 # ============================================================================

@@ -196,7 +196,7 @@ class TestFormatCacheHitRate:
             "misses",
             "hit_rate",
             "unhashable_skips",
-            "max_entry_size",
+            "max_entry_weight",
             "oversize_skips",
             "error_bloat_skips",
             "max_errors_per_entry",
@@ -210,7 +210,7 @@ class TestFormatCacheHitRate:
         assert isinstance(stats["misses"], int)
         assert isinstance(stats["hit_rate"], float)
         assert isinstance(stats["unhashable_skips"], int)
-        assert isinstance(stats["max_entry_size"], int)
+        assert isinstance(stats["max_entry_weight"], int)
         assert isinstance(stats["oversize_skips"], int)
         assert isinstance(stats["error_bloat_skips"], int)
         assert isinstance(stats["max_errors_per_entry"], int)

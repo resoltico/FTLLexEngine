@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.65.0"
+version = "0.66.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -87,7 +87,7 @@ dev = [
 ]
 
 release = [
-    "build>=1.3.0",
+    "build>=1.4.0",
     "twine>=6.2.0",
 ]
 
@@ -264,7 +264,7 @@ ignore = [
 
 # Parser: Inherent complexity from EBNF grammar
 "src/ftllexengine/syntax/parser/core.py" = ["PLR0912"]
-"src/ftllexengine/syntax/parser/rules.py" = ["PLR0911", "PLR0912"]
+"src/ftllexengine/syntax/parser/rules.py" = ["PLR0911", "PLR0912", "PLR0915"]
 
 # Visitor: Commented example code + inherent complexity from AST node dispatch
 "src/ftllexengine/syntax/visitor.py" = ["ERA001", "PLR0911", "PLR0912"]

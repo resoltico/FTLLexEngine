@@ -354,9 +354,13 @@ class IntrospectionVisitor(ASTVisitor[None]):
         if func.arguments:
             # Extract positional arguments - recursively visit all expression types
             for pos_arg in func.arguments.positional:
+                # Unwrap Placeable if present (handles {$var} in function args)
+                unwrapped_arg = pos_arg.expression if Placeable.guard(pos_arg) else pos_arg
+
                 # Track variable names for positional args metadata
-                if VariableReference.guard(pos_arg):
-                    positional.append(pos_arg.id.name)
+                if VariableReference.guard(unwrapped_arg):
+                    positional.append(unwrapped_arg.id.name)
+
                 # Recursively visit to extract all nested dependencies
                 # This handles: VariableReference, MessageReference, TermReference,
                 # nested FunctionReference, SelectExpression, etc.
