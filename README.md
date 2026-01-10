@@ -104,11 +104,12 @@ total-message = Total: { CURRENCY($amount, currency: "USD") }
 In Python:
 
 ```python
-from ftllexengine import FluentBundle
+from pathlib import Path
 from decimal import Decimal
+from ftllexengine import FluentBundle
 
 bundle = FluentBundle("en_US")
-bundle.add_resource(open("cafe.ftl").read())
+bundle.add_resource(Path("cafe.ftl").read_text())
 
 result, _ = bundle.format_pattern("order-message", {"count": 5})
 # "5 coffees ordered"
@@ -125,7 +126,7 @@ Customers also enter dates (for delivery) or prices (for custom tips). People ty
 from ftllexengine.parsing import parse_date, parse_decimal
 
 date_val, errors = parse_date("Jan 15, 2026", "en_US")
-# date(2026, 1, 15), ()
+# datetime.date(2026, 1, 15), ()
 
 price_val, errors = parse_decimal("5.50", "en_US")
 # Decimal('5.50'), ()
@@ -148,18 +149,17 @@ You need exact math (no float rounding errors) and correct display.
 Parse the tip amount the customer types:
 
 ```python
-from ftllexengine.parsing import parse_currency
 from decimal import Decimal
+from ftllexengine.parsing import parse_currency
 
 tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
 if not errors:
     tip, currency = tip_result  # (Decimal('5.00'), 'USD')
 
-subtotal = Decimal("13.50")  # 3 x 4.50
-tax = subtotal * Decimal("0.08")  # 8% tax
-total = subtotal + tax + tip
-
-# All Decimal - exact result
+    subtotal = Decimal("13.50")  # 3 x 4.50
+    tax = subtotal * Decimal("0.08")  # 8% tax
+    total = subtotal + tax + tip
+    # All Decimal - exact result: Decimal('19.58')
 ```
 
 Display with a message file:
@@ -209,8 +209,11 @@ order-message = { $count ->
 In Python:
 
 ```python
+from pathlib import Path
+from ftllexengine import FluentBundle
+
 bundle = FluentBundle(user_locale)  # e.g. "pl_PL"
-bundle.add_resource(open(f"cafe_{user_locale[:2]}.ftl").read())
+bundle.add_resource(Path(f"cafe_{user_locale[:2]}.ftl").read_text())
 
 result, _ = bundle.format_pattern("order-message", {"count": 5})
 # Polish: "5 kaw"
