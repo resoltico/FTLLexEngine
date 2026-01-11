@@ -232,11 +232,11 @@ class TestSecCacheErrorBloat001:
         )
 
         # Create result with moderate error count but high total weight
-        # 10 errors * 1000 bytes/error = 10KB
+        # 25 errors * 200 bytes/error = 5000 bytes
         # String: 100 chars
-        # Total: 10100 bytes > 5000 byte limit
-        ten_errors = tuple(FluentReferenceError(f"Error {i}") for i in range(10))
-        result = ("x" * 100, ten_errors)
+        # Total: 5100 bytes > 5000 byte limit
+        errors = tuple(FluentReferenceError(f"Error {i}") for i in range(25))
+        result = ("x" * 100, errors)
 
         # Put should skip due to total weight
         cache.put("msg", None, None, "en", result)

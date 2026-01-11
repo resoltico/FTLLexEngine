@@ -144,8 +144,8 @@ def parse_date(
 
     for pattern, has_era in patterns:
         try:
-            # Preprocess for era tokens before strptime
-            parse_value = _preprocess_datetime_input(value, has_era)
+            # Preprocess for era tokens before strptime (with localized era names)
+            parse_value = _preprocess_datetime_input(value, has_era, locale_code)
             return (datetime.strptime(parse_value, pattern).date(), tuple(errors))
         except ValueError:
             continue
@@ -257,8 +257,8 @@ def parse_datetime(
 
     for pattern, has_era in patterns:
         try:
-            # Preprocess for era tokens before strptime
-            parse_value = _preprocess_datetime_input(value, has_era)
+            # Preprocess for era tokens before strptime (with localized era names)
+            parse_value = _preprocess_datetime_input(value, has_era, locale_code)
             parsed = datetime.strptime(parse_value, pattern)
             if tzinfo is not None and parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=tzinfo)
@@ -610,6 +610,7 @@ _BABEL_TOKEN_MAP: dict[str, str | None] = {
 # Era strings to strip from input when pattern contains era tokens
 # Sorted by length descending to match longer strings first
 # Covers common English and Latin era designations
+# Localized era names are dynamically added from Babel when available
 _ERA_STRINGS: tuple[str, ...] = (
     "Anno Domini",  # GGGG full form
     "Before Christ",  # GGGG full form (BC)
@@ -663,7 +664,7 @@ def _is_word_boundary(text: str, idx: int, is_start: bool) -> bool:
     return idx >= len(text) or not text[idx].isalnum()
 
 
-def _strip_era(value: str) -> str:
+def _strip_era(value: str, locale_code: str | None = None) -> str:
     """Strip era designations from date string.
 
     Used when pattern contains era tokens (G/GG/GGG/GGGG) since Python's
@@ -672,14 +673,49 @@ def _strip_era(value: str) -> str:
     Uses word boundary detection to avoid stripping partial matches
     (e.g., "bad" should not match "AD", "cereal" should not match "CE").
 
+    Supports localized era strings via Babel when available. Falls back to
+    English/Latin era designations if Babel is unavailable or locale has no
+    era data.
+
     Args:
         value: Date string potentially containing era text
+        locale_code: Optional locale code for localized era strings
 
     Returns:
         Date string with era text removed and whitespace normalized
     """
+    # Build era strings list: English defaults + localized from Babel if available
+    era_strings = list(_ERA_STRINGS)
+
+    # Attempt to load localized era strings from Babel
+    # Nested structure required for: ImportError check, UnknownLocaleError check, dict traversal
+    if locale_code is not None:  # pylint: disable=too-many-nested-blocks
+        try:
+            from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+
+            try:
+                babel_locale = Locale.parse(locale_code)
+                # Babel eras: dict with keys 'wide', 'abbreviated', 'narrow'
+                # Each key maps to dict {0: 'BCE string', 1: 'CE string'}
+                if hasattr(babel_locale, "eras") and babel_locale.eras:
+                    for width_key in ("wide", "abbreviated", "narrow"):
+                        if width_key in babel_locale.eras:
+                            era_dict = babel_locale.eras[width_key]
+                            # Add both BCE (0) and CE (1) era strings
+                            for era_idx in (0, 1):
+                                if era_idx in era_dict:
+                                    era_text = era_dict[era_idx]
+                                    if era_text and era_text not in era_strings:
+                                        era_strings.append(era_text)
+            except (UnknownLocaleError, ValueError):
+                # Locale invalid or unknown - use default English eras only
+                pass
+        except ImportError:
+            # Babel not installed - use default English eras only
+            pass
+
     result = value
-    for era in _ERA_STRINGS:
+    for era in era_strings:
         # Case-insensitive search with word boundary validation
         upper_result = result.upper()
         upper_era = era.upper()
@@ -695,7 +731,9 @@ def _strip_era(value: str) -> str:
     return " ".join(result.split())
 
 
-def _preprocess_datetime_input(value: str, has_era: bool) -> str:
+def _preprocess_datetime_input(
+    value: str, has_era: bool, locale_code: str | None = None
+) -> str:
     """Preprocess datetime input by stripping unsupported tokens.
 
     Currently only handles era tokens. Timezone name tokens (z, zz, zzz, zzzz,
@@ -706,12 +744,14 @@ def _preprocess_datetime_input(value: str, has_era: bool) -> str:
     Args:
         value: Date/datetime string to preprocess
         has_era: True if pattern contained era tokens (G/GG/GGG/GGGG)
+        locale_code: Optional locale code for localized era stripping
 
     Returns:
-        Preprocessed string with era text removed
+        Preprocessed string with era text removed (using localized era names
+        from Babel when available)
     """
     if has_era:
-        return _strip_era(value)
+        return _strip_era(value, locale_code)
     return value
 
 
@@ -852,19 +892,28 @@ def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
         if token in _BABEL_TOKEN_MAP:
             mapped = _BABEL_TOKEN_MAP[token]
             if mapped is None:
-                # Token maps to None - check if era (for preprocessing)
+                # Token maps to None (era, timezone) - skip it
                 # Timezone tokens (z/v/V/O/ZZZZ) also map to None but are silently skipped
                 if token.startswith("G"):
                     has_era = True
+                # Don't add to result_parts - this token is skipped
+                # Adjacent separator cleanup: if previous token was whitespace/separator
+                # and current token is skipped, remove that separator
+                if result_parts and result_parts[-1].strip() == "":
+                    result_parts.pop()
             else:
                 result_parts.append(mapped)
         else:
             # Literal: pass through (punctuation, spaces, etc.)
             result_parts.append(token)
 
-    # Join and normalize trailing whitespace from skipped tokens
-    # Example: "HH:mm zzzz" -> tokens ["HH", ":", "mm", " ", "zzzz"]
+    # Join and normalize leading/trailing whitespace from skipped tokens
+    # Example 1: "HH:mm zzzz" -> tokens ["HH", ":", "mm", " ", "zzzz"]
     # Without normalization: "%H:%M " (trailing space causes strptime failure)
     # With normalization: "%H:%M" (trailing space removed)
-    result = "".join(result_parts).rstrip()
+    #
+    # Example 2: "zzzz HH:mm" -> tokens ["zzzz", " ", "HH", ":", "mm"]
+    # Previous: " %H:%M" (leading space from skipped token, adjacent separator removed)
+    # Now: "%H:%M" (leading space also stripped)
+    result = "".join(result_parts).strip()
     return (result, has_era)

@@ -425,3 +425,64 @@ chain2_2 = End
         ]
         # Short chains should not trigger warnings
         assert len(chain_warnings) == 0
+
+    def test_diamond_dag_pattern_memoization(self) -> None:
+        """Diamond DAG pattern exercises memoization in longest path computation.
+
+        Creates a diamond structure where multiple paths converge on shared nodes.
+        This triggers the memoization path in _compute_longest_paths where a node
+        is already computed when encountered via a different path.
+
+        Graph structure:
+            top -> {left, right}
+            left -> bottom
+            right -> bottom
+            bottom -> end
+        """
+        ftl = """
+top = { left } { right }
+left = { bottom }
+right = { bottom }
+bottom = { end }
+end = Final
+"""
+
+        result = validate_resource(ftl)
+
+        # Diamond structure itself shouldn't produce chain warnings (depth is 4)
+        # The test verifies the memoization code path is exercised correctly
+        chain_warnings = [
+            w
+            for w in result.warnings
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+        ]
+        assert len(chain_warnings) == 0
+
+    def test_complex_dag_with_shared_subgraphs(self) -> None:
+        """Complex DAG with multiple shared subgraphs exercises full memoization.
+
+        Creates a more complex DAG where multiple branches share common subgraphs,
+        ensuring the memoization optimization in _compute_longest_paths is fully
+        exercised across different entry points.
+        """
+        ftl = """
+a = { b } { c }
+b = { d }
+c = { d }
+d = { e } { f }
+e = { g }
+f = { g }
+g = Terminal
+"""
+
+        result = validate_resource(ftl)
+
+        # Verify no errors and structure is valid
+        assert result.is_valid
+        # DAG depth is only 6, shouldn't exceed MAX_DEPTH
+        chain_warnings = [
+            w
+            for w in result.warnings
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+        ]
+        assert len(chain_warnings) == 0

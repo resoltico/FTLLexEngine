@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.66.0"
+version: "0.67.0"
 domain: PARSING
 updated: "2026-01-10"
 route:
@@ -359,7 +359,7 @@ def parse_date(
 - State: None.
 - Thread: Safe.
 - Dependency: Requires Babel for CLDR data.
-- Preprocessing: Era strings (AD, BC, etc.) stripped. Timezone pattern tokens stripped from format.
+- Preprocessing: Era strings stripped (English defaults + localized from Babel CLDR). Timezone pattern tokens stripped from format. Leading/trailing whitespace normalized after pattern conversion.
 
 ---
 
@@ -388,7 +388,7 @@ def parse_datetime(
 - State: None.
 - Thread: Safe.
 - Dependency: Requires Babel for CLDR data.
-- Preprocessing: Era strings (AD, BC, etc.) stripped. Timezone pattern tokens stripped from format.
+- Preprocessing: Era strings stripped (English defaults + localized from Babel CLDR). Timezone pattern tokens stripped from format. Leading/trailing whitespace normalized after pattern conversion.
 
 ---
 

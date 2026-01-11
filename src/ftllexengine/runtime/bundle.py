@@ -36,7 +36,7 @@ from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver, FluentValue
 from ftllexengine.runtime.rwlock import RWLock
-from ftllexengine.syntax import Comment, Junk, Message, Term
+from ftllexengine.syntax import Comment, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
@@ -110,6 +110,7 @@ class FluentBundle:
         "_max_nesting_depth",
         "_max_source_size",
         "_messages",
+        "_modified_in_context",
         "_owns_registry",
         "_parser",
         "_rwlock",
@@ -248,6 +249,9 @@ class FluentBundle:
         self._cache_size = cache_size
         if enable_cache:
             self._cache = FormatCache(maxsize=cache_size)
+
+        # Context manager state tracking (cache invalidation optimization)
+        self._modified_in_context = False
 
         logger.info(
             "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s)",
@@ -451,20 +455,28 @@ class FluentBundle:
         """Enter context manager.
 
         Enables use of FluentBundle with 'with' statement. The context manager
-        clears the format cache on exit (if caching is enabled), but preserves
-        messages and terms so the bundle remains usable after the with block.
+        clears the format cache on exit only if the bundle was modified during
+        the context (add_resource, add_function, or clear_cache called). For
+        read-only operations, the cache is preserved for better performance.
+
+        Messages and terms are always preserved so the bundle remains usable
+        after the with block.
 
         Returns:
             Self (the FluentBundle instance)
 
         Example:
             >>> with FluentBundle("en_US", enable_cache=True) as bundle:
-            ...     bundle.add_resource("hello = Hello")
+            ...     bundle.add_resource("hello = Hello")  # Modifying operation
             ...     result = bundle.format_pattern("hello")
-            ... # Cache cleared on exit, but messages preserved
-            >>> bundle.format_pattern("hello")  # Still works
-            ('Hello', ())
+            ... # Cache cleared (bundle was modified)
+            >>>
+            >>> with bundle:  # Read-only context
+            ...     result = bundle.format_pattern("hello")
+            ... # Cache preserved (bundle NOT modified)
         """
+        # Reset modification tracking for new context
+        self._modified_in_context = False
         return self
 
     def __exit__(
@@ -473,23 +485,37 @@ class FluentBundle:
         exc_val: BaseException | None,
         exc_tb: object | None,
     ) -> None:
-        """Exit context manager with cache cleanup.
+        """Exit context manager with conditional cache cleanup.
 
-        Clears the format cache if caching is enabled. Messages and terms
-        are preserved so the bundle remains usable after the with block.
-        Does not suppress exceptions.
+        Clears the format cache only if the bundle was modified during the
+        context (add_resource, add_function, or clear_cache called). For
+        read-only contexts, the cache is preserved to avoid invalidating
+        cached results in shared bundle scenarios.
+
+        Messages and terms are always preserved so the bundle remains usable
+        after the with block. Does not suppress exceptions.
 
         Args:
             exc_type: Exception type (if any)
             exc_val: Exception value (if any)
             exc_tb: Exception traceback (if any)
         """
-        # Clear cache if enabled (transient resource)
-        # Messages and terms are preserved (bundle remains usable after exit)
-        if self._cache is not None:
+        # Clear cache only if bundle was modified during context
+        # Read-only operations (format_pattern) preserve cache for performance
+        if self._modified_in_context and self._cache is not None:
             self._cache.clear()
+            logger.debug(
+                "FluentBundle cache cleared on context exit (modified): %s",
+                self._locale,
+            )
+        else:
+            logger.debug(
+                "FluentBundle cache preserved on context exit (read-only): %s",
+                self._locale,
+            )
 
-        logger.debug("FluentBundle context exited for locale: %s", self._locale)
+        # Reset flag for next context (defensive)
+        self._modified_in_context = False
 
     def get_babel_locale(self) -> str:
         """Get the Babel locale identifier for this bundle (introspection API).
@@ -531,6 +557,9 @@ class FluentBundle:
         Parses FTL source and adds messages/terms to registry.
         Thread-safe (uses internal RWLock).
 
+        Parse operation occurs outside the write lock to minimize reader
+        contention. Only registration (dict updates) requires exclusive access.
+
         Args:
             source: FTL file content [positional-only]
             source_path: Optional path to source file for better error messages
@@ -553,88 +582,107 @@ class FluentBundle:
         Note:
             Parser continues after errors (robustness principle). Junk entries
             are returned for programmatic error handling.
-        """
-        with self._rwlock.write():
-            return self._add_resource_impl(source, source_path)
 
-    def _add_resource_impl(
-        self, source: str, source_path: str | None
-    ) -> tuple[Junk, ...]:
-        """Internal implementation of add_resource (no locking)."""
+        Thread Safety:
+            Parser is stateless and thread-safe. Parse operation can occur
+            outside write lock without risk. Only registration step requires
+            exclusive write access.
+        """
+        # Parse outside lock (expensive, but safe - parser is stateless, source is immutable)
         try:
             resource = self._parser.parse(source)
-
-            # Register messages and terms using structural pattern matching
-            junk_entries: list[Junk] = []
-            for entry in resource.entries:
-                match entry:
-                    case Message():
-                        msg_id = entry.id.name
-                        if msg_id in self._messages:
-                            logger.warning(
-                                "Overwriting existing message '%s' with new definition",
-                                msg_id,
-                            )
-                        self._messages[msg_id] = entry
-                        logger.debug("Registered message: %s", msg_id)
-                    case Term():
-                        term_id = entry.id.name
-                        if term_id in self._terms:
-                            logger.warning(
-                                "Overwriting existing term '-%s' with new definition",
-                                term_id,
-                            )
-                        self._terms[term_id] = entry
-                        logger.debug("Registered term: %s", term_id)
-                    case Junk():
-                        # Collect junk entries, always log at WARNING level
-                        # Syntax errors are functional failures regardless of source origin
-                        junk_entries.append(entry)
-                        # Use repr() to escape control characters while preserving Unicode readability.
-                        # repr() escapes control chars (prevents ANSI injection) but keeps Unicode
-                        # letters readable (e.g., 'Jānis' instead of 'J\xe2nis').
-                        source_desc = source_path or "<string>"
-                        logger.warning(
-                            "Syntax error in %s: %s",
-                            source_desc,
-                            repr(entry.content[:_LOG_TRUNCATE_WARNING]),
-                        )
-                    case Comment():
-                        # Comments don't need registration - they're documentation only
-                        logger.debug("Skipping comment entry")
-                        continue  # Explicit loop continuation for branch coverage
-
-            # Log summary with file context
-            junk_count = len(junk_entries)
-            if source_path:
-                logger.info(
-                    "Added resource %s: %d messages, %d terms, %d junk entries",
-                    source_path,
-                    len(self._messages),
-                    len(self._terms),
-                    junk_count,
-                )
-            else:
-                logger.info(
-                    "Added resource: %d messages, %d terms, %d junk entries",
-                    len(self._messages),
-                    len(self._terms),
-                    junk_count,
-                )
-
-            # Invalidate cache (messages changed)
-            if self._cache is not None:
-                self._cache.clear()
-                logger.debug("Cache cleared after add_resource")
-
-            return tuple(junk_entries)
-
         except FluentSyntaxError as e:
             if source_path:
                 logger.error("Failed to parse resource %s: %s", source_path, e)
             else:
                 logger.error("Failed to parse resource: %s", e)
             raise
+
+        # Only hold lock for registration (fast, O(N) where N is entry count)
+        with self._rwlock.write():
+            return self._register_resource(resource, source_path)
+
+    def _register_resource(
+        self, resource: Resource, source_path: str | None
+    ) -> tuple[Junk, ...]:
+        """Register parsed resource entries (messages, terms, junk).
+
+        Assumes caller holds write lock. Internal method for add_resource.
+
+        Args:
+            resource: Parsed FTL resource
+            source_path: Optional path for logging
+
+        Returns:
+            Tuple of Junk entries from resource
+        """
+        # Register messages and terms using structural pattern matching
+        junk_entries: list[Junk] = []
+        for entry in resource.entries:
+            match entry:
+                case Message():
+                    msg_id = entry.id.name
+                    if msg_id in self._messages:
+                        logger.warning(
+                            "Overwriting existing message '%s' with new definition",
+                            msg_id,
+                        )
+                    self._messages[msg_id] = entry
+                    logger.debug("Registered message: %s", msg_id)
+                case Term():
+                    term_id = entry.id.name
+                    if term_id in self._terms:
+                        logger.warning(
+                            "Overwriting existing term '-%s' with new definition",
+                            term_id,
+                        )
+                    self._terms[term_id] = entry
+                    logger.debug("Registered term: %s", term_id)
+                case Junk():
+                    # Collect junk entries, always log at WARNING level
+                    # Syntax errors are functional failures regardless of source origin
+                    junk_entries.append(entry)
+                    # Use repr() to escape control characters while preserving Unicode readability.
+                    # repr() escapes control chars (prevents ANSI injection) but keeps Unicode
+                    # letters readable (e.g., 'Jānis' instead of 'J\xe2nis').
+                    source_desc = source_path or "<string>"
+                    logger.warning(
+                        "Syntax error in %s: %s",
+                        source_desc,
+                        repr(entry.content[:_LOG_TRUNCATE_WARNING]),
+                    )
+                case Comment():
+                    # Comments don't need registration - they're documentation only
+                    logger.debug("Skipping comment entry")
+                    continue  # Explicit loop continuation for branch coverage
+
+        # Log summary with file context
+        junk_count = len(junk_entries)
+        if source_path:
+            logger.info(
+                "Added resource %s: %d messages, %d terms, %d junk entries",
+                source_path,
+                len(self._messages),
+                len(self._terms),
+                junk_count,
+            )
+        else:
+            logger.info(
+                "Added resource: %d messages, %d terms, %d junk entries",
+                len(self._messages),
+                len(self._terms),
+                junk_count,
+            )
+
+        # Invalidate cache (messages changed)
+        if self._cache is not None:
+            self._cache.clear()
+            logger.debug("Cache cleared after add_resource")
+
+        # Mark bundle as modified for context manager tracking
+        self._modified_in_context = True
+
+        return tuple(junk_entries)
 
     def validate_resource(self, source: str) -> ValidationResult:
         """Validate FTL resource without adding to bundle.
@@ -1051,6 +1099,9 @@ class FluentBundle:
                 self._cache.clear()
                 logger.debug("Cache cleared after add_function")
 
+            # Mark bundle as modified for context manager tracking
+            self._modified_in_context = True
+
     def clear_cache(self) -> None:
         """Clear format cache.
 
@@ -1067,6 +1118,9 @@ class FluentBundle:
             if self._cache is not None:
                 self._cache.clear()
                 logger.debug("Cache manually cleared")
+
+            # Mark bundle as modified for context manager tracking
+            self._modified_in_context = True
 
     def get_cache_stats(self) -> dict[str, int | float] | None:
         """Get cache statistics.

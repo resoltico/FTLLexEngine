@@ -35,7 +35,7 @@ class TestFluentBundleReprAndContextManager:
             assert ctx is bundle
 
     def test_context_manager_exit_clears_cache(self) -> None:
-        """Test __exit__ clears cache when enabled (lines 360-361)."""
+        """Test __exit__ clears cache only when bundle was modified in context."""
         bundle = FluentBundle("en", enable_cache=True)
         bundle.add_resource("msg = Test")
 
@@ -45,14 +45,21 @@ class TestFluentBundleReprAndContextManager:
         assert stats is not None
         assert stats["size"] > 0
 
-        # Exit context manager
+        # Test 1: Read-only context preserves cache
         with bundle:
-            pass
+            bundle.format_pattern("msg")  # Read-only operation
 
-        # Cache should be cleared
-        stats_after = bundle.get_cache_stats()
-        assert stats_after is not None
-        assert stats_after["size"] == 0
+        stats_after_readonly = bundle.get_cache_stats()
+        assert stats_after_readonly is not None
+        assert stats_after_readonly["size"] > 0  # Cache preserved
+
+        # Test 2: Modifying context clears cache
+        with bundle:
+            bundle.add_resource("msg2 = Test2")  # Modifying operation
+
+        stats_after_modified = bundle.get_cache_stats()
+        assert stats_after_modified is not None
+        assert stats_after_modified["size"] == 0  # Cache cleared
 
     def test_context_manager_exit_preserves_messages_and_terms(self) -> None:
         """Context manager exit preserves messages and terms.

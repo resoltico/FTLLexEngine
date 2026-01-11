@@ -196,16 +196,16 @@ class LocaleContext:
             'xx_UNKNOWN'
             >>> # But formatting uses en_US rules (with warning logged)
         """
-        # Validate locale code length (BCP 47 / RFC 5646 limit: 35 characters)
+        # Warn for locale codes exceeding typical BCP 47 limit
+        # Don't reject yet - let Babel validate (may be valid extended locale)
         if len(locale_code) > MAX_LOCALE_CODE_LENGTH:
             logger.warning(
-                "Locale code exceeds maximum length of %d characters (BCP 47): "
-                "'%s...' (%d characters). Falling back to en_US.",
+                "Locale code exceeds typical BCP 47 length of %d characters: "
+                "'%s...' (%d characters). Attempting Babel validation.",
                 MAX_LOCALE_CODE_LENGTH,
                 locale_code[:50],
                 len(locale_code),
             )
-            locale_code = "en_US"
 
         # Normalize locale code for consistent cache keys
         # This ensures "en-US", "en_US", "EN-US" all map to the same cache entry
@@ -231,13 +231,29 @@ class LocaleContext:
         try:
             babel_locale = Locale.parse(cache_key)
         except UnknownLocaleError as e:
-            logger.warning("Unknown locale '%s': %s. Falling back to en_US", locale_code, e)
+            if len(locale_code) > MAX_LOCALE_CODE_LENGTH:
+                logger.warning(
+                    "Unknown locale '%s' (exceeds %d chars): %s. Falling back to en_US",
+                    locale_code,
+                    MAX_LOCALE_CODE_LENGTH,
+                    e,
+                )
+            else:
+                logger.warning("Unknown locale '%s': %s. Falling back to en_US", locale_code, e)
             babel_locale = Locale.parse("en_US")
             used_fallback = True
         except ValueError as e:
-            logger.warning(
-                "Invalid locale format '%s': %s. Falling back to en_US", locale_code, e
-            )
+            if len(locale_code) > MAX_LOCALE_CODE_LENGTH:
+                logger.warning(
+                    "Invalid locale format '%s' (exceeds %d chars): %s. Falling back to en_US",
+                    locale_code,
+                    MAX_LOCALE_CODE_LENGTH,
+                    e,
+                )
+            else:
+                logger.warning(
+                    "Invalid locale format '%s': %s. Falling back to en_US", locale_code, e
+                )
             babel_locale = Locale.parse("en_US")
             used_fallback = True
 

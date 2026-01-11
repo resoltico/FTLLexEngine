@@ -13,6 +13,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-01-11
+
+### Fixed
+- **Thread Safety** (SEC-BUNDLE-WRITE-BLOCKING): `FluentBundle.add_resource()` now parses FTL source outside the write lock to minimize reader contention:
+  - Previous: Parse operation occurred inside write lock, blocking all concurrent read operations (format_pattern, has_message)
+  - Now: Parse executes outside lock (parser is stateless/thread-safe), only registration (dict updates) requires exclusive access
+  - Impact: Large FTL file parsing (up to 10MB) no longer causes reader starvation in multi-threaded environments
+  - Implementation: Split `_add_resource_impl` into parse (unlocked) + `_register_resource` (locked) phases
+
+- **Locale Validation Coherence** (SEM-LOCALE-LENGTH-INCOHERENCE): Aligned locale length validation between `FluentBundle` and `LocaleContext`:
+  - Previous: FluentBundle accepted up to 1000 chars, but LocaleContext silently fell back to en_US at 35 chars
+  - Now: LocaleContext warns at 35 chars but attempts Babel validation - valid extended locales are accepted
+  - Impact: BCP 47 locales with extensions (e.g., "zh-Hans-CN-u-ca-chinese-nu-hansfin-x-myapp", 43 chars) now work correctly
+  - Rationale: Two-tier validation supports valid extended locales while warning about potential misconfiguration
+
+- **Cache Memory Tuning** (SEC-CACHE-WEIGHT-TUNING): Error weight reduced from 1000 to 200 bytes for realistic cache memory estimation:
+  - Previous: `_ERROR_WEIGHT_BYTES = 1000` made `max_errors_per_entry=50` unreachable (weight limit rejected >10 errors)
+  - Now: `_ERROR_WEIGHT_BYTES = 200` allows 50 errors × 200 bytes = 10,000 bytes (matches DEFAULT_MAX_ENTRY_SIZE)
+  - Impact: Templates with many missing variables now cacheable up to configured error limit
+  - Rationale: Parameter interaction aligned - error count limit is now the effective constraint, not weight calculation
+
+- **Context Manager Cache Optimization** (SEM-BUNDLE-CONTEXT-CLEAR): Context manager cache clearing now conditional on modification:
+  - Previous: `FluentBundle.__exit__` cleared cache unconditionally, even for read-only operations
+  - Now: Cache cleared only if bundle was modified during context (add_resource, add_function, clear_cache called)
+  - Impact: Shared bundle scenarios no longer experience cache invalidation from read-only context manager usage
+  - Implementation: Added `_modified_in_context` flag tracking, preserves cache for pure read operations
+
+- **Resource ID Validation** (SEM-L10N-RESOURCE-ID-WHITESPACE): Added whitespace validation for resource IDs and locale codes:
+  - Previous: Resource ID " messages.ftl" (leading space) constructed path "/root/en/ messages.ftl", causing file-not-found errors
+  - Now: `PathResourceLoader._validate_resource_id` rejects leading/trailing whitespace with explicit error message
+  - Also: `FluentLocalization.add_resource` validates locale parameter for whitespace
+  - Impact: Fail-fast detection of copy-paste errors from config files, YAML parsing, user input
+
+- **Date Parsing Internationalization** (SEM-DATES-GHOST-SEPARATOR, SEM-DATES-ERA-ENGLISH-ONLY): Enhanced date parsing for non-English locales:
+  - **Ghost Separator Fix**: Pattern "zzzz HH:mm" now produces "%H:%M" instead of " %H:%M" (leading space removed)
+    - Implementation: Changed `.rstrip()` to `.strip()` + adjacent separator cleanup when tokens map to None
+    - Impact: Timezone-first and era-first patterns now parse correctly
+  - **Localized Era Support**: Era stripping now uses Babel's localized era names when available
+    - Previous: Only English/Latin era strings ("AD", "BC", "CE", "BCE", "Anno Domini") were stripped
+    - Now: Queries Babel `Locale.eras` property for locale-specific era names (e.g., French "ap. J.-C.", Arabic "م")
+    - Impact: Non-English date strings with era designations now parse correctly
+    - Fallback: Uses English/Latin eras if Babel unavailable or locale has no era data
+
 ## [0.66.0] - 2026-01-10
 
 ### Breaking Changes
@@ -24,7 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example before: `FormatCache(maxsize=1000, max_entry_size=10000)`
   - Example after: `FormatCache(maxsize=1000, max_entry_weight=10000)`
   - Impact: Test files updated to use new parameter name
-  - Clean break: No backwards compatibility or migration path provided per architectural directive
 
 - **Dependency Graph Namespace Prefixes** (SEM-GRAPH-COLLISION-001): `build_dependency_graph()` return type changed to prevent message/term ID collisions:
   - Previous: `term_deps` used unprefixed IDs, causing collisions when message "brand" and term "-brand" exist
@@ -1663,6 +1705,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.67.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.67.0
 [0.66.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.66.0
 [0.65.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.65.0
 [0.64.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.64.0

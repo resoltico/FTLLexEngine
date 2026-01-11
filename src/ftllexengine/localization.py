@@ -402,14 +402,25 @@ class PathResourceLoader:
 
     @staticmethod
     def _validate_resource_id(resource_id: ResourceId) -> None:
-        """Validate resource_id for path traversal attacks.
+        """Validate resource_id for path traversal attacks and whitespace.
 
         Args:
             resource_id: Resource identifier to validate
 
         Raises:
-            ValueError: If resource_id contains unsafe path components
+            ValueError: If resource_id contains unsafe path components or
+                       leading/trailing whitespace
         """
+        # Reject leading/trailing whitespace (common source of path bugs)
+        # Explicit rejection ensures fail-fast behavior for copy-paste errors
+        stripped = resource_id.strip()
+        if stripped != resource_id:
+            msg = (
+                f"Resource ID contains leading/trailing whitespace: {resource_id!r}. "
+                f"Stripped would be: {stripped!r}"
+            )
+            raise ValueError(msg)
+
         # Reject absolute paths
         if Path(resource_id).is_absolute():
             msg = f"Absolute paths not allowed in resource_id: '{resource_id}'"
@@ -793,7 +804,7 @@ class FluentLocalization:
         Thread-safe via internal RLock.
 
         Args:
-            locale: Locale code (must be in fallback chain)
+            locale: Locale code (must be in fallback chain, no leading/trailing whitespace)
             ftl_source: FTL source code
 
         Returns:
@@ -801,9 +812,18 @@ class FluentLocalization:
             parsing succeeded without errors.
 
         Raises:
-            ValueError: If locale not in fallback chain.
+            ValueError: If locale not in fallback chain or contains whitespace.
             FluentSyntaxError: If FTL source contains critical syntax errors.
         """
+        # Validate locale for leading/trailing whitespace (fail-fast)
+        stripped = locale.strip()
+        if stripped != locale:
+            msg = (
+                f"Locale code contains leading/trailing whitespace: {locale!r}. "
+                f"Stripped would be: {stripped!r}"
+            )
+            raise ValueError(msg)
+
         with self._lock:
             if locale not in self._locales:
                 msg = f"Locale '{locale}' not in fallback chain {self._locales}"

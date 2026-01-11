@@ -36,18 +36,21 @@ from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 # Re-export for backwards compatibility
 __all__ = ["DEFAULT_MAX_ENTRY_SIZE", "FormatCache", "HashableValue"]
 
-# Conservative estimate of memory weight per FluentError object.
+# Realistic estimate of memory weight per FluentError object.
 # Each error carries Diagnostic objects with traceback information, message context,
-# and error templates. 1000 bytes is a conservative estimate that accounts for:
-# - Error message strings (~100-200 bytes)
-# - Diagnostic traceback data (~300-500 bytes)
-# - Object overhead and references (~200-300 bytes)
-_ERROR_WEIGHT_BYTES: int = 1000
+# and error templates. 200 bytes is a realistic estimate that accounts for:
+# - Error message strings (~50-100 bytes)
+# - Diagnostic traceback data (~50-100 bytes)
+# - Object overhead and references (~50 bytes)
+# Previous value (1000) made max_errors_per_entry=50 unreachable due to weight
+# calculation rejecting entries >10 errors. Reduced to 200 to align parameter
+# interaction: 50 errors x 200 bytes = 10,000 bytes (matches DEFAULT_MAX_ENTRY_SIZE).
+_ERROR_WEIGHT_BYTES: int = 200
 
 # Maximum number of errors allowed per cache entry.
 # Prevents memory exhaustion from pathological cases where resolution produces
 # many errors (e.g., cyclic references, deeply nested validation failures).
-# 50 errors at 1KB each = 50KB, which is reasonable for error-heavy results.
+# 50 errors at 200 bytes each = 10,000 bytes (DEFAULT_MAX_ENTRY_SIZE limit).
 _DEFAULT_MAX_ERRORS_PER_ENTRY: int = 50
 
 # Type alias for hashable values produced by _make_hashable().
@@ -83,7 +86,7 @@ class FormatCache:
     Memory Protection:
         The max_entry_weight parameter prevents unbounded memory usage by
         skipping cache storage for results exceeding the weight limit.
-        Weight is calculated as: len(formatted_str) + (len(errors) * 1000).
+        Weight is calculated as: len(formatted_str) + (len(errors) * 200).
         This protects against scenarios where large variable values produce
         very large formatted strings or large error collections (e.g., 10MB
         results cached 1000 times would consume 10GB of memory).

@@ -120,10 +120,10 @@ class TestFormatCacheErrorBloatProtection:
 
         # Create result with small string but many errors
         # String: 100 chars
-        # Errors: 5 errors x 1000 bytes = 5000 bytes
-        # Total weight: 100 + 5000 = 5100 > 2000
+        # Errors: 10 errors x 200 bytes = 2000 bytes
+        # Total weight: 100 + 2000 = 2100 > 2000
         errors: list[FluentError] = []
-        for i in range(5):
+        for i in range(10):
             error = FluentReferenceError(f"Error {i}")
             errors.append(error)
 

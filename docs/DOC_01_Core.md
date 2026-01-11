@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.66.0"
+version: "0.67.0"
 domain: CORE
 updated: "2026-01-10"
 route:
@@ -101,7 +101,7 @@ def __enter__(self) -> FluentBundle:
 ### Constraints
 - Return: Self (FluentBundle instance).
 - Raises: None.
-- State: None.
+- State: Resets modification tracking for context.
 - Thread: Safe.
 
 ---
@@ -128,7 +128,7 @@ def __exit__(
 ### Constraints
 - Return: None (does not suppress exceptions).
 - Raises: None.
-- State: Clears format cache only. Messages and terms preserved.
+- State: Clears cache only if bundle was modified in context (add_resource, add_function, clear_cache). Read-only operations preserve cache. Messages and terms always preserved.
 - Thread: Safe.
 
 ---
@@ -156,7 +156,7 @@ def add_resource(
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
 - Raises: `FluentSyntaxError` on critical parse error.
 - State: Mutates internal message/term registries. Clears cache.
-- Thread: Safe (RWLock).
+- Thread: Safe (RWLock). Parse occurs outside write lock; only registration requires exclusive access.
 
 ---
 
@@ -578,12 +578,12 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk,
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `locale` | `LocaleCode` | Y | Target locale (must be in chain). |
+| `locale` | `LocaleCode` | Y | Target locale (must be in chain, no leading/trailing whitespace). |
 | `ftl_source` | `FTLSource` | Y | FTL source code. |
 
 ### Constraints
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
-- Raises: `ValueError` if locale not in fallback chain.
+- Raises: `ValueError` if locale not in fallback chain or contains leading/trailing whitespace.
 - Raises: `FluentSyntaxError` if FTL source contains critical syntax errors.
 - State: Mutates target bundle.
 - Thread: Safe (RWLock).

@@ -1,11 +1,12 @@
-"""Absolute final coverage tests for runtime/locale_context.py.
+"""Complete coverage tests for runtime/locale_context.py.
 
-Targets remaining uncovered lines to achieve 100% coverage:
-- Line 156: Double-check pattern cache hit in create()
-- Lines 281-282: Fixed decimals formatting
-- Line 384: String formatting for datetime_pattern
-- Line 490->514: Branch for currency code display with pattern
-- Line 506: Debug logging for currency pattern without placeholder
+Targets all edge cases and branches to achieve 100% coverage:
+- Cache operations and thread safety
+- Long locale code handling (>35 chars)
+- Format number edge cases (fixed decimals, patterns)
+- Format datetime edge cases (string patterns, time styles)
+- Format currency edge cases (code display, pattern fallbacks)
+- Error handling and fallback behavior
 
 Python 3.13+.
 """
@@ -14,6 +15,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 from unittest.mock import patch
+
+import pytest
 
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -407,3 +410,120 @@ class TestLocaleContextIntegration:
 
         # Should be different instance (cache was cleared)
         assert ctx1 is not ctx3
+
+
+class TestLongLocaleCodeCoverage:
+    """Tests for long locale codes to achieve 100% coverage.
+
+    Targets uncovered lines:
+    - Line 202: Warning for long valid locale codes
+    - Line 235: Warning for long unknown locale codes
+    - Line 247: Warning for long invalid format locale codes
+    """
+
+    def test_long_valid_locale_code_warns_line_202(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Long valid locale code triggers warning (line 202).
+
+        Tests the initial warning when locale code exceeds MAX_LOCALE_CODE_LENGTH
+        but might still be valid according to BCP 47 extended syntax.
+        """
+        import logging  # noqa: PLC0415
+
+        from ftllexengine.constants import MAX_LOCALE_CODE_LENGTH  # noqa: PLC0415
+
+        LocaleContext.clear_cache()
+
+        # Create locale code longer than MAX_LOCALE_CODE_LENGTH (35)
+        # Use valid BCP 47 extended syntax with private use tags
+        long_locale = "en-US-x-" + "a" * 30  # Length: 8 + 30 = 38 chars
+        assert len(long_locale) > MAX_LOCALE_CODE_LENGTH
+
+        with caplog.at_level(logging.WARNING):
+            # This should trigger line 202 warning before Babel validation
+            ctx = LocaleContext.create(long_locale)
+
+        # Verify warning was logged
+        assert any(
+            "exceeds typical BCP 47 length" in record.message
+            for record in caplog.records
+        ), f"Expected warning not found in logs: {[r.message for r in caplog.records]}"
+
+        # Context should still be created (graceful fallback)
+        assert isinstance(ctx, LocaleContext)
+
+    def test_long_unknown_locale_code_warns_line_235(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Long unknown locale code triggers specific warning (line 235).
+
+        Tests the UnknownLocaleError path with long locale code.
+        Uses valid BCP 47 syntax but unknown locale identifier.
+        """
+        import logging  # noqa: PLC0415
+
+        from ftllexengine.constants import MAX_LOCALE_CODE_LENGTH  # noqa: PLC0415
+
+        LocaleContext.clear_cache()
+
+        # Create unknown locale with valid format but unknown to Babel
+        # Use unknown language code with variant to exceed length limit
+        # Babel will raise UnknownLocaleError (not ValueError) for unknown language
+        long_unknown = "xyz-verylongvariantthatshouldexceedlimit"
+        assert len(long_unknown) > MAX_LOCALE_CODE_LENGTH
+
+        with caplog.at_level(logging.WARNING):
+            ctx = LocaleContext.create(long_unknown)
+
+        # Should trigger line 235: specific warning for unknown long locale
+        # The warning should mention both "Unknown locale" and "exceeds"
+        relevant_warnings = [
+            record.message
+            for record in caplog.records
+            if "Unknown locale" in record.message
+        ]
+        assert any(
+            "exceeds" in msg for msg in relevant_warnings
+        ), f"Expected warning about exceeding length not found: {relevant_warnings}"
+
+        # Should use fallback
+        assert ctx.is_fallback is True
+        assert ctx.locale_code == long_unknown
+
+    def test_long_invalid_format_locale_code_warns_line_247(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Long invalid format locale code triggers specific warning (line 247).
+
+        Tests the ValueError path with long locale code.
+        """
+        import logging  # noqa: PLC0415
+
+        from ftllexengine.constants import MAX_LOCALE_CODE_LENGTH  # noqa: PLC0415
+
+        LocaleContext.clear_cache()
+
+        # Create invalid format locale code longer than MAX_LOCALE_CODE_LENGTH
+        # Use characters/format that Babel's parser will reject with ValueError
+        long_invalid = "!!!INVALID@@@FORMAT###TOOLONG###LOCALE"
+        assert len(long_invalid) > MAX_LOCALE_CODE_LENGTH
+
+        with caplog.at_level(logging.WARNING):
+            ctx = LocaleContext.create(long_invalid)
+
+        # Should trigger line 247: specific warning for invalid format long locale
+        # The warning should mention both "Invalid locale format" and "exceeds"
+        relevant_warnings = [
+            record.message
+            for record in caplog.records
+            if "locale" in record.message.lower()
+        ]
+        assert any(
+            "exceeds" in msg and ("Invalid" in msg or "invalid" in msg)
+            for msg in relevant_warnings
+        ), f"Expected warning about invalid format exceeding length not found: {relevant_warnings}"
+
+        # Should use fallback
+        assert ctx.is_fallback is True
+        assert ctx.locale_code == long_invalid
