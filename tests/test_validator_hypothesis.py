@@ -38,7 +38,7 @@ from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.validator import SemanticValidator
 from tests.strategies import (
     ftl_deeply_nested_selects,
-    ftl_messages,
+    ftl_message_nodes,
     ftl_resources,
     ftl_select_expressions,
 )
@@ -232,7 +232,7 @@ class TestParserValidatorIntegration:
         result = validator.validate(resource)
         assert isinstance(result, ValidationResult)
 
-    @given(ftl_messages())
+    @given(ftl_message_nodes())
     @settings(max_examples=100)
     def test_valid_messages_validate(self, message):
         """PROPERTY: Well-formed messages should validate successfully.

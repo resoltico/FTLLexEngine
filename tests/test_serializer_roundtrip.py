@@ -31,7 +31,7 @@ from ftllexengine.syntax.ast import (
 
 from .strategies import (
     ftl_comments,
-    ftl_messages,
+    ftl_message_nodes,
     ftl_patterns,
     ftl_resources,
     ftl_select_expressions,
@@ -411,7 +411,7 @@ def test_roundtrip_complex_pattern():
 # ============================================================================
 
 
-@given(ftl_messages())
+@given(ftl_message_nodes())
 @settings(max_examples=30)
 def test_roundtrip_property_messages(message):
     """Property: All generated messages round-trip successfully."""
@@ -550,7 +550,7 @@ def test_serializer_produces_valid_ftl(resource):
     assert isinstance(result, Resource)
 
 
-@given(ftl_messages())
+@given(ftl_message_nodes())
 @settings(max_examples=30)
 def test_serializer_deterministic(message):
     """Property: Same AST always produces same serialized output."""

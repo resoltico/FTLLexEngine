@@ -16,9 +16,9 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
-from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
 from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.runtime.cache import DEFAULT_MAX_ENTRY_SIZE, FormatCache
+from ftllexengine.runtime.cache import FormatCache
 from ftllexengine.validation import validate_resource
 
 # ============================================================================
@@ -293,13 +293,13 @@ class TestCacheEntrySizeLimit:
 
         # Small result (100 chars)
         small_result = ("x" * 100, ())
-        cache.put("msg", None, None, "en", small_result)
+        cache.put("msg", None, None, "en", True, small_result)
 
         assert cache.size == 1
         assert cache.oversize_skips == 0
 
         # Retrieve
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached == small_result
 
     def test_large_entries_not_cached(self) -> None:
@@ -308,13 +308,13 @@ class TestCacheEntrySizeLimit:
 
         # Large result (200 chars)
         large_result = ("x" * 200, ())
-        cache.put("msg", None, None, "en", large_result)
+        cache.put("msg", None, None, "en", True, large_result)
 
         assert cache.size == 0
         assert cache.oversize_skips == 1
 
         # Cannot retrieve (not cached)
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached is None
 
     def test_boundary_entry_size(self) -> None:
@@ -323,7 +323,7 @@ class TestCacheEntrySizeLimit:
 
         # Entry exactly at limit
         exact_result = ("x" * 100, ())
-        cache.put("msg", None, None, "en", exact_result)
+        cache.put("msg", None, None, "en", True, exact_result)
 
         assert cache.size == 1
         assert cache.oversize_skips == 0
@@ -335,7 +335,7 @@ class TestCacheEntrySizeLimit:
         # Add some large entries
         for i in range(5):
             large_result = ("x" * 100, ())
-            cache.put(f"msg-{i}", None, None, "en", large_result)
+            cache.put(f"msg-{i}", None, None, "en", True, large_result)
 
         stats = cache.get_stats()
         assert stats["oversize_skips"] == 5
@@ -347,7 +347,7 @@ class TestCacheEntrySizeLimit:
         cache = FormatCache(max_entry_weight=50)
 
         large_result = ("x" * 100, ())
-        cache.put("msg", None, None, "en", large_result)
+        cache.put("msg", None, None, "en", True, large_result)
         assert cache.oversize_skips == 1
 
         cache.clear()

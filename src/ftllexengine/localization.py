@@ -813,7 +813,6 @@ class FluentLocalization:
 
         Raises:
             ValueError: If locale not in fallback chain or contains whitespace.
-            FluentSyntaxError: If FTL source contains critical syntax errors.
         """
         # Validate locale for leading/trailing whitespace (fail-fast)
         stripped = locale.strip()

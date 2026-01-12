@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.67.0"
+version: "0.68.0"
 domain: parsing
 updated: "2026-01-10"
 route:

@@ -824,12 +824,3 @@ def message_with_many_attributes(_draw: st.DrawFn, attr_count: int = 20) -> Mess
         value=Pattern(elements=(TextElement(value="Main value"),)),
         attributes=tuple(attrs),
     )
-
-
-# =============================================================================
-# Backward Compatibility Aliases
-# =============================================================================
-
-# Keep old names for backward compatibility with existing tests
-ftl_messages = ftl_message_nodes
-ftl_junk = ftl_junk_nodes

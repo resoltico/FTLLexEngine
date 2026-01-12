@@ -97,7 +97,10 @@ order-summary = { $customer } ordered { NUMBER($total, style: "currency") }
 
 def example_3_validation() -> None:
     """Validate FTL source for errors and warnings."""
-    from ftllexengine import validate_resource  # type: ignore[attr-defined]
+    # mypy: Re-export from ftllexengine.validation not recognized via top-level __init__.py.
+    # Runtime import works correctly; explicit `as validate_resource` re-export pattern applied
+    # but mypy still misses it. Use direct submodule import for type safety.
+    from ftllexengine.validation import validate_resource
 
     print("=" * 60)
     print("Example 3: Validation")

@@ -1032,3 +1032,145 @@ class TestValidateMessageContent:
         """Message with empty pattern and no attributes is invalid."""
         pattern = Pattern(elements=())
         assert validate_message_content(pattern, []) is False
+
+
+class TestTextAccumulatorWithPlaceableLast:
+    """Tests for text accumulator when last element is Placeable.
+
+    Covers lines 505-510, 559-563, 687-692, 746.
+    """
+
+    def test_simple_pattern_continuation_placeable_after_placeable(self) -> None:
+        """Text accumulator with placeable after placeable on continuation line.
+
+        Covers lines 505-510, specifically 509.
+        """
+        # Pattern: {$var} followed by continuation with only placeable (no text before it)
+        # When we hit the second placeable, text_acc has "\n" from continuation
+        # Last element is Placeable, so text_acc appends as new TextElement (line 509)
+        cursor = Cursor("{$var}\n    {$other}", 0)
+        result = parse_simple_pattern(cursor)
+        assert result is not None
+        # Should have: Placeable, TextElement('\n'), Placeable
+        assert len(result.value.elements) == 3
+        assert isinstance(result.value.elements[0], Placeable)
+        assert isinstance(result.value.elements[1], TextElement)
+        assert result.value.elements[1].value == "\n"
+        assert isinstance(result.value.elements[2], Placeable)
+
+    def test_simple_pattern_finalize_continuation_after_placeable(self) -> None:
+        """Final text accumulator after placeable with continuation at EOF.
+
+        Covers lines 559-563, specifically 563.
+        """
+        # Pattern: {$var} followed by continuation with non-whitespace content
+        # text_acc has content at finalization, last element is Placeable
+        # So append text_acc as new TextElement (line 563)
+        cursor = Cursor("{$var}\n    text}", 0)
+        result = parse_simple_pattern(cursor)
+        assert result is not None
+        # Should have: Placeable, TextElement with continuation content
+        assert len(result.value.elements) >= 2
+        assert isinstance(result.value.elements[0], Placeable)
+        # Check that continuation text exists
+        has_text = any(
+            isinstance(e, TextElement) and "text" in e.value
+            for e in result.value.elements
+        )
+        assert has_text
+
+    def test_pattern_continuation_placeable_after_placeable(self) -> None:
+        """parse_pattern text accumulator with continuation placeable.
+
+        Covers lines 687-692, specifically 691.
+        """
+        # Same as simple_pattern but using full pattern parser
+        cursor = Cursor("{$var}\n    {$other}\n", 0)
+        result = parse_pattern(cursor)
+        assert result is not None
+        # Should have: Placeable, TextElement('\n'), Placeable
+        assert len(result.value.elements) == 3
+        assert isinstance(result.value.elements[0], Placeable)
+        assert isinstance(result.value.elements[1], TextElement)
+        assert result.value.elements[1].value == "\n"
+        assert isinstance(result.value.elements[2], Placeable)
+
+    def test_pattern_finalize_continuation_after_placeable(self) -> None:
+        """parse_pattern finalize text accumulator after placeable (line 746)."""
+        # Full pattern with continuation content at end
+        cursor = Cursor("{$var}\n    text\n", 0)
+        result = parse_pattern(cursor)
+        assert result is not None
+        # Should have placeable and text
+        assert len(result.value.elements) >= 2
+        assert isinstance(result.value.elements[0], Placeable)
+        has_text = any(
+            isinstance(e, TextElement) and "text" in e.value
+            for e in result.value.elements
+        )
+        assert has_text
+
+
+class TestPlaceableSimpleExpression:
+    """Tests for placeable simple expression without select (lines 1585->1608)."""
+
+    def test_placeable_simple_inline_expression_without_select(self) -> None:
+        """Placeable with simple expression, no select (lines 1608-1612)."""
+        # This tests the branch at line 1608 where we have a valid selector
+        # but it's NOT followed by "->" so it becomes a simple inline expression
+        # The expression could be a variable, which IS a valid selector
+        cursor = Cursor("{$var}", 1)  # Start after '{'
+        context = ParseContext(max_nesting_depth=5)
+        result = parse_placeable(cursor, context)
+        assert result is not None
+        assert isinstance(result.value, Placeable)
+        # Should contain VariableReference, not SelectExpression
+        assert isinstance(result.value.expression, VariableReference)
+        assert result.value.expression.id.name == "var"
+
+    def test_placeable_message_ref_without_select(self) -> None:
+        """Placeable with message reference, no select (lines 1608-1612)."""
+        # Message reference is also a valid selector but here without select
+        cursor = Cursor("{msg}", 1)
+        context = ParseContext(max_nesting_depth=5)
+        result = parse_placeable(cursor, context)
+        assert result is not None
+        assert isinstance(result.value, Placeable)
+        assert isinstance(result.value.expression, MessageReference)
+
+
+class TestMessageAttributesDefensiveNone:
+    """Tests for defensive None checks in message/term attributes (lines 1676-1677, 1744, 1903)."""
+
+    def test_message_attributes_returns_empty_list_not_none(self) -> None:
+        """parse_message_attributes returns empty list, not None."""
+        # Verify that parse_message_attributes never returns None
+        # This tests the assumption that lines 1676-1677, 1744, 1903 are unreachable
+        cursor = Cursor("\n", 0)
+        context = ParseContext(max_nesting_depth=5)
+        result = parse_message_attributes(cursor, context)
+        assert result is not None  # Should always return ParseResult
+        assert isinstance(result.value, list)
+        assert len(result.value) == 0
+
+    def test_parse_message_with_pattern_calls_parse_message_attributes(self) -> None:
+        """parse_message successfully calls parse_message_attributes (line 1744 reachable path)."""
+        # This tests that parse_message calls parse_message_attributes and handles result
+        cursor = Cursor("hello = world\n", 0)
+        context = ParseContext(max_nesting_depth=5)
+        result = parse_message(cursor, context)
+        assert result is not None
+        assert result.value.id.name == "hello"
+        # Attributes should be empty list, not None
+        assert isinstance(result.value.attributes, tuple)
+
+    def test_parse_term_with_value_calls_parse_message_attributes(self) -> None:
+        """parse_term successfully calls parse_message_attributes (line 1903 reachable path)."""
+        # This tests that parse_term calls parse_message_attributes and handles result
+        cursor = Cursor("-brand = Firefox\n", 0)
+        context = ParseContext(max_nesting_depth=5)
+        result = parse_term(cursor, context)
+        assert result is not None
+        assert result.value.id.name == "brand"
+        # Attributes should be empty tuple, not None
+        assert isinstance(result.value.attributes, tuple)

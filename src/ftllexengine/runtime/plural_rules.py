@@ -108,13 +108,15 @@ def select_plural_category(
     plural_rule = locale_obj.plural_form
 
     # Apply precision if specified (for CLDR v operand)
-    if precision is not None and precision > 0:
+    # Use >= 0 to ensure precision=0 also triggers quantization (round to integer)
+    if precision is not None and precision >= 0:
         # Convert to Decimal with specified fraction digits
         # This ensures Babel's plural rule sees the correct v operand.
         # Example: 1 with precision=2 becomes Decimal("1.00"), which has v=2.
+        # Example: 1.5 with precision=0 becomes Decimal("2"), which is integer.
         # The quantize() method formats the Decimal with exact precision.
 
-        # Create quantizer with desired precision (e.g., 0.01 for 2 digits)
+        # Create quantizer with desired precision (e.g., 0.01 for 2 digits, 1 for 0 digits)
         quantizer = Decimal(10) ** -precision
         # Convert number to Decimal and quantize
         decimal_value = Decimal(str(n)).quantize(quantizer)

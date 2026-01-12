@@ -596,39 +596,6 @@ class TestMessageWithoutValueOrAttributes:
 
 
 # ============================================================================
-# LINES 339-346: Test FluentSyntaxError Exception Handling
-# ============================================================================
-
-
-class TestFluentSyntaxErrorHandling:
-    """Test handling of critical FluentSyntaxError during validation (lines 339-346)."""
-
-    def test_validate_resource_handles_fluent_syntax_error(self) -> None:
-        """Test validate_resource handles FluentSyntaxError exception (lines 339-346).
-
-        Lines 339-346 catch FluentSyntaxError and convert it to ValidationError.
-        This is defensive code for catastrophic parse failures.
-        """
-        from unittest.mock import Mock
-
-        from ftllexengine.diagnostics import FluentSyntaxError
-
-        # Create a mock parser that raises FluentSyntaxError
-        mock_parser = Mock()
-        mock_parser.parse.side_effect = FluentSyntaxError("Catastrophic parse error")
-
-        # Call validate_resource - should catch the exception
-        result = validate_resource("test", parser=mock_parser)
-
-        # Should have converted exception to validation error (lines 341-346)
-        assert len(result.errors) == 1
-        assert result.errors[0].code == "VALIDATION_CRITICAL_PARSE_ERROR"
-        assert "Catastrophic parse error" in result.errors[0].message
-        assert not result.is_valid
-        assert len(result.warnings) == 0
-
-
-# ============================================================================
 # BRANCH COVERAGE: Test Missing Branches
 # ============================================================================
 

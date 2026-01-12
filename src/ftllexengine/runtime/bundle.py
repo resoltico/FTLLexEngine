@@ -25,7 +25,6 @@ from ftllexengine.diagnostics import (
     FluentError,
     FluentReferenceError,
     FluentResolutionError,
-    FluentSyntaxError,
     ValidationResult,
 )
 from ftllexengine.introspection import extract_variables, introspect_message
@@ -571,9 +570,6 @@ class FluentBundle:
             parsing succeeded without errors. Each Junk entry contains the
             unparseable content and associated annotations.
 
-        Raises:
-            FluentSyntaxError: On critical parse error
-
         Logging:
             Syntax errors (Junk entries) are logged at WARNING level regardless
             of whether source_path is provided. This ensures syntax errors are
@@ -589,14 +585,7 @@ class FluentBundle:
             exclusive write access.
         """
         # Parse outside lock (expensive, but safe - parser is stateless, source is immutable)
-        try:
-            resource = self._parser.parse(source)
-        except FluentSyntaxError as e:
-            if source_path:
-                logger.error("Failed to parse resource %s: %s", source_path, e)
-            else:
-                logger.error("Failed to parse resource: %s", e)
-            raise
+        resource = self._parser.parse(source)
 
         # Only hold lock for registration (fast, O(N) where N is entry count)
         with self._rwlock.write():
@@ -654,7 +643,6 @@ class FluentBundle:
                 case Comment():
                     # Comments don't need registration - they're documentation only
                     logger.debug("Skipping comment entry")
-                    continue  # Explicit loop continuation for branch coverage
 
         # Log summary with file context
         junk_count = len(junk_entries)
@@ -787,7 +775,9 @@ class FluentBundle:
         """Internal implementation of format_pattern (no locking)."""
         # Check cache first (if enabled)
         if self._cache is not None:
-            cached = self._cache.get(message_id, args, attribute, self._locale)
+            cached = self._cache.get(
+                message_id, args, attribute, self._locale, self._use_isolating
+            )
             if cached is not None:
                 return cached
 
@@ -865,7 +855,9 @@ class FluentBundle:
 
         # Cache successful resolution (even if there are non-critical errors)
         if self._cache is not None:
-            self._cache.put(message_id, args, attribute, self._locale, (result, errors_tuple))
+            self._cache.put(
+                message_id, args, attribute, self._locale, self._use_isolating, (result, errors_tuple)
+            )
 
         return (result, errors_tuple)
 

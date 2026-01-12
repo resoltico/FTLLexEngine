@@ -428,7 +428,9 @@ class SemanticValidator:
         try:
             # Convert raw string to Decimal and normalize to canonical form
             normalized = Decimal(key.raw).normalize()
-            return str(normalized)
+            # Use fixed-point format ('f') instead of str() to avoid scientific notation
+            # str(Decimal("100").normalize()) returns "1E2", but format(..., 'f') returns "100"
+            return format(normalized, "f")
         except (ValueError, InvalidOperation):
             # Fallback to raw string if Decimal conversion fails
             return key.raw

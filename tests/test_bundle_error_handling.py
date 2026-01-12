@@ -14,12 +14,10 @@ Targets uncovered lines in bundle.py:
 """
 
 import logging
-from unittest.mock import patch
 
 import pytest
 
 from ftllexengine import FluentBundle
-from ftllexengine.diagnostics import FluentSyntaxError
 
 
 class TestBundleTermAttributeValidation:
@@ -96,38 +94,6 @@ another = Another value
         # Verify comment handling doesn't break parsing
         result, _ = bundle.format_value("message")
         assert result == "Value"
-
-
-class TestBundleParseErrorWithSourcePath:
-    """Test parse error WITH source_path (lines 464-465)."""
-
-    def test_parse_error_with_source_path_logs_error(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Parse error with source_path logs error message (lines 464-465)."""
-        bundle = FluentBundle("en")
-
-        # Mock the parser to raise FluentSyntaxError
-        # This is the only way to trigger line 465 from the public API
-        with patch.object(bundle, "_parser") as mock_parser:
-            mock_parser.parse.side_effect = FluentSyntaxError(
-                "Critical parse failure"
-            )
-
-            with (
-                caplog.at_level(logging.ERROR),
-                pytest.raises(FluentSyntaxError, match="Critical parse failure"),
-            ):
-                # Call add_resource WITH source_path to hit line 465
-                bundle.add_resource("msg = test", source_path="locales/test.ftl")
-
-            # Verify error was logged with source_path (line 465)
-            error_logs = [
-                record for record in caplog.records if record.levelname == "ERROR"
-            ]
-            assert len(error_logs) > 0
-            # Should contain source_path in the log message
-            assert any("locales/test.ftl" in record.message for record in error_logs)
 
 
 class TestBundleMessageWithoutValueOrAttributes:

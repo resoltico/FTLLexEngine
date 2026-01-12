@@ -194,6 +194,7 @@ class TestMakeKeyIntegration:
             args={"name": "Alice", "count": 42},
             attribute=None,
             locale_code="en",
+            use_isolating=True,
         )
         assert key is not None
 
@@ -206,6 +207,7 @@ class TestMakeKeyIntegration:
             args={"items": [1, 2, 3]},  # type: ignore[dict-item]
             attribute=None,
             locale_code="en",
+            use_isolating=True,
         )
         assert key is not None
 
@@ -221,6 +223,7 @@ class TestMakeKeyIntegration:
             args={"deep": deep},  # type: ignore[dict-item]
             attribute=None,
             locale_code="en",
+            use_isolating=True,
         )
         # Should return None (cache bypass) instead of crashing
         assert key is None
@@ -236,6 +239,7 @@ class TestMakeKeyIntegration:
             args={"custom": CustomObject()},  # type: ignore[dict-item]
             attribute=None,
             locale_code="en",
+            use_isolating=True,
         )
         # Should return None (cache bypass) instead of crashing
         assert key is None
@@ -255,5 +259,6 @@ class TestMakeKeyIntegration:
             },
             attribute=None,
             locale_code="en",
+            use_isolating=True,
         )
         assert key is not None

@@ -471,8 +471,11 @@ class FluentSerializer(ASTVisitor):
                 text = element.value
 
                 # Handle newlines: add indentation after each newline for continuation
+                # Only add indentation if not already present (prevents double-indentation
+                # in roundtrip scenarios where the parsed AST already contains indented text)
                 if "\n" in text:
-                    text = text.replace("\n", "\n    ")
+                    # Use regex to replace "\n" not followed by 4+ spaces
+                    text = re.sub(r"\n(?!    )", "\n    ", text)
 
                 if "{" in text or "}" in text:
                     # Split and emit braces as StringLiteral Placeables

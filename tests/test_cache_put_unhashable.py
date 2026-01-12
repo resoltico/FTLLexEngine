@@ -23,6 +23,7 @@ class TestCachePutUnhashable:
             args=circular,  # type: ignore[arg-type]
             attribute=None,
             locale_code="en",
+            use_isolating=True,
             result=("output", ()),
         )
 
@@ -47,6 +48,7 @@ class TestCachePutUnhashable:
             args=nested,  # type: ignore[arg-type]
             attribute=None,
             locale_code="lv",
+            use_isolating=True,
             result=("result", ()),
         )
 
@@ -75,6 +77,7 @@ class TestCachePutUnhashable:
             args=unhashable_args,  # type: ignore[arg-type]
             attribute="attr",
             locale_code="en_US",
+            use_isolating=True,
             result=("value", ()),
         )
 

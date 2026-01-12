@@ -33,6 +33,7 @@ Python 3.13+. Uses Babel for i18n.
 from __future__ import annotations
 
 import logging
+import math
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
@@ -393,22 +394,31 @@ class LocaleContext:
             integer_part = "#,##0" if use_grouping else "0"
 
             # Decimal part
+            # Apply ROUND_HALF_UP quantization for all precision levels
+            # CLDR specifies half-up: 2.5→3, 3.5→4 (not 2.5→2, 3.5→4)
+            # This ensures consistent rounding across all precision levels
             if maximum_fraction_digits == 0:
-                # No decimals - round to integer using CLDR half-up rounding
-                # Use Decimal.quantize() with ROUND_HALF_UP instead of Python's
-                # round() which uses banker's rounding (round-half-to-even).
-                # CLDR specifies half-up: 2.5→3, 3.5→4 (not 2.5→2, 3.5→4)
-                value = float(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                # No decimals - round to integer
+                quantizer = Decimal("1")
                 format_pattern = integer_part
             elif minimum_fraction_digits == maximum_fraction_digits:
                 # Fixed decimals (e.g., '0.00' for exactly 2)
+                quantizer = Decimal(10) ** -maximum_fraction_digits
                 decimal_part = "0" * minimum_fraction_digits
                 format_pattern = f"{integer_part}.{decimal_part}"
             else:
                 # Variable decimals (e.g., '0.0##' for 1-3)
+                quantizer = Decimal(10) ** -maximum_fraction_digits
                 required = "0" * minimum_fraction_digits
                 optional = "#" * (maximum_fraction_digits - minimum_fraction_digits)
                 format_pattern = f"{integer_part}.{required}{optional}"
+
+            # Quantize value with ROUND_HALF_UP for consistent rounding
+            # Skip quantization for special values (inf, -inf, NaN) that cannot be quantized
+            if not (math.isinf(value) or math.isnan(value)):
+                value = float(
+                    Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
+                )
 
             # Format using Babel
             return str(

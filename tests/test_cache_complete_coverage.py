@@ -63,7 +63,7 @@ class TestFormatCacheUnhashableHandling:
             pass
 
         args: dict[str, object] = {"data": UnknownType()}
-        result = cache.get("msg", args, None, "en")  # type: ignore[arg-type]
+        result = cache.get("msg", args, None, "en", True)  # type: ignore[arg-type]
 
         assert result is None
         assert cache.unhashable_skips == 1
@@ -82,7 +82,7 @@ class TestFormatCacheUnhashableHandling:
 
         unhashable_value = CustomObject()
         args: dict[str, object] = {"obj": unhashable_value}
-        cache.put("msg", args, None, "en", ("result", ()))  # type: ignore[arg-type]
+        cache.put("msg", args, None, "en", True, ("result", ()))  # type: ignore[arg-type]
 
         assert cache.size == 0
         assert cache.unhashable_skips == 1
@@ -102,7 +102,7 @@ class TestFormatCacheErrorBloatProtection:
             errors.append(error)
 
         result = ("formatted text", tuple(errors))
-        cache.put("msg", None, None, "en", result)
+        cache.put("msg", None, None, "en", True, result)
 
         # Should not be cached due to error count
         assert cache.size == 0
@@ -110,7 +110,7 @@ class TestFormatCacheErrorBloatProtection:
         assert stats["error_bloat_skips"] == 1
 
         # Verify retrieval returns None
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached is None
 
     def test_put_rejects_excessive_error_weight(self) -> None:
@@ -128,7 +128,7 @@ class TestFormatCacheErrorBloatProtection:
             errors.append(error)
 
         result = ("x" * 100, tuple(errors))
-        cache.put("msg", None, None, "en", result)
+        cache.put("msg", None, None, "en", True, result)
 
         # Should not be cached due to total weight exceeding max_entry_weight
         assert cache.size == 0
@@ -149,7 +149,7 @@ class TestFormatCacheErrorBloatProtection:
             errors.append(error)
 
         result = ("formatted text", tuple(errors))
-        cache.put("msg", None, None, "en", result)
+        cache.put("msg", None, None, "en", True, result)
 
         # Should be cached
         assert cache.size == 1
@@ -157,7 +157,7 @@ class TestFormatCacheErrorBloatProtection:
         assert stats["error_bloat_skips"] == 0
 
         # Verify retrieval
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached == result
 
 
@@ -169,43 +169,43 @@ class TestFormatCacheLRUBehavior:
         cache = FormatCache(maxsize=3)
 
         # Add three entries
-        cache.put("msg1", None, None, "en", ("result1", ()))
-        cache.put("msg2", None, None, "en", ("result2", ()))
-        cache.put("msg3", None, None, "en", ("result3", ()))
+        cache.put("msg1", None, None, "en", True, ("result1", ()))
+        cache.put("msg2", None, None, "en", True, ("result2", ()))
+        cache.put("msg3", None, None, "en", True, ("result3", ()))
 
         assert cache.size == 3
 
         # Update msg1 (should move to end)
-        cache.put("msg1", None, None, "en", ("updated1", ()))
+        cache.put("msg1", None, None, "en", True, ("updated1", ()))
 
         # Cache is full, adding new entry should evict msg2 (now oldest)
-        cache.put("msg4", None, None, "en", ("result4", ()))
+        cache.put("msg4", None, None, "en", True, ("result4", ()))
 
         assert cache.size == 3
 
         # msg2 should be evicted, others should remain
-        assert cache.get("msg2", None, None, "en") is None
-        assert cache.get("msg1", None, None, "en") == ("updated1", ())
-        assert cache.get("msg3", None, None, "en") == ("result3", ())
-        assert cache.get("msg4", None, None, "en") == ("result4", ())
+        assert cache.get("msg2", None, None, "en", True) is None
+        assert cache.get("msg1", None, None, "en", True) == ("updated1", ())
+        assert cache.get("msg3", None, None, "en", True) == ("result3", ())
+        assert cache.get("msg4", None, None, "en", True) == ("result4", ())
 
     def test_put_evicts_lru_when_full(self) -> None:
         """put() evicts LRU entry when cache is full."""
         cache = FormatCache(maxsize=2)
 
         # Fill cache
-        cache.put("msg1", None, None, "en", ("result1", ()))
-        cache.put("msg2", None, None, "en", ("result2", ()))
+        cache.put("msg1", None, None, "en", True, ("result1", ()))
+        cache.put("msg2", None, None, "en", True, ("result2", ()))
 
         assert cache.size == 2
 
         # Add third entry - should evict msg1 (oldest)
-        cache.put("msg3", None, None, "en", ("result3", ()))
+        cache.put("msg3", None, None, "en", True, ("result3", ()))
 
         assert cache.size == 2
-        assert cache.get("msg1", None, None, "en") is None
-        assert cache.get("msg2", None, None, "en") == ("result2", ())
-        assert cache.get("msg3", None, None, "en") == ("result3", ())
+        assert cache.get("msg1", None, None, "en", True) is None
+        assert cache.get("msg2", None, None, "en", True) == ("result2", ())
+        assert cache.get("msg3", None, None, "en", True) == ("result3", ())
 
 
 class TestFormatCacheMakeHashableDepth:
@@ -331,7 +331,7 @@ class TestFormatCacheMakeKeyRobustness:
 
         # _make_key should catch RecursionError and return None
         args: dict[str, object] = {"data": circular_list}
-        result = FormatCache._make_key("msg", args, None, "en")  # type: ignore[arg-type]
+        result = FormatCache._make_key("msg", args, None, "en", True)  # type: ignore[arg-type]
         assert result is None
 
     def test_make_key_catches_type_error(self) -> None:
@@ -348,7 +348,7 @@ class TestFormatCacheMakeKeyRobustness:
 
         # _make_key should catch TypeError and return None
         args: dict[str, object] = {"data": unhashable}
-        result = FormatCache._make_key("msg", args, None, "en")  # type: ignore[arg-type]
+        result = FormatCache._make_key("msg", args, None, "en", True)  # type: ignore[arg-type]
         assert result is None
 
 
@@ -361,10 +361,10 @@ class TestFormatCacheProperties:
 
         assert len(cache) == 0
 
-        cache.put("msg1", None, None, "en", ("result1", ()))
+        cache.put("msg1", None, None, "en", True, ("result1", ()))
         assert len(cache) == 1
 
-        cache.put("msg2", None, None, "en", ("result2", ()))
+        cache.put("msg2", None, None, "en", True, ("result2", ()))
         assert len(cache) == 2
 
     def test_maxsize_property(self) -> None:
@@ -375,14 +375,14 @@ class TestFormatCacheProperties:
     def test_hits_property_thread_safe(self) -> None:
         """hits property is thread-safe."""
         cache = FormatCache()
-        cache.put("msg", None, None, "en", ("result", ()))
+        cache.put("msg", None, None, "en", True, ("result", ()))
 
         # First access is a hit
-        _result = cache.get("msg", None, None, "en")
+        _result = cache.get("msg", None, None, "en", True)
         assert cache.hits == 1
 
         # Second access is another hit
-        _result = cache.get("msg", None, None, "en")
+        _result = cache.get("msg", None, None, "en", True)
         assert cache.hits == 2
 
     def test_misses_property_thread_safe(self) -> None:
@@ -390,11 +390,11 @@ class TestFormatCacheProperties:
         cache = FormatCache()
 
         # First miss
-        _result = cache.get("msg1", None, None, "en")
+        _result = cache.get("msg1", None, None, "en", True)
         assert cache.misses == 1
 
         # Second miss
-        _result = cache.get("msg2", None, None, "en")
+        _result = cache.get("msg2", None, None, "en", True)
         assert cache.misses == 2
 
     def test_unhashable_skips_property_thread_safe(self) -> None:
@@ -407,12 +407,12 @@ class TestFormatCacheProperties:
 
         # First unhashable
         args1: dict[str, object] = {"data": UnknownType()}
-        _result = cache.get("msg", args1, None, "en")  # type: ignore[arg-type]
+        _result = cache.get("msg", args1, None, "en", True)  # type: ignore[arg-type]
         assert cache.unhashable_skips == 1
 
         # Second unhashable
         args2: dict[str, object] = {"data": UnknownType()}
-        cache.put("msg", args2, None, "en", ("result", ()))  # type: ignore[arg-type]
+        cache.put("msg", args2, None, "en", True, ("result", ()))  # type: ignore[arg-type]
         assert cache.unhashable_skips == 2
 
     def test_oversize_skips_property_thread_safe(self) -> None:
@@ -420,11 +420,11 @@ class TestFormatCacheProperties:
         cache = FormatCache(max_entry_weight=10)
 
         # First oversize
-        cache.put("msg1", None, None, "en", ("x" * 100, ()))
+        cache.put("msg1", None, None, "en", True, ("x" * 100, ()))
         assert cache.oversize_skips == 1
 
         # Second oversize
-        cache.put("msg2", None, None, "en", ("y" * 50, ()))
+        cache.put("msg2", None, None, "en", True, ("y" * 50, ()))
         assert cache.oversize_skips == 2
 
     def test_max_entry_weight_property(self) -> None:
@@ -438,10 +438,10 @@ class TestFormatCacheProperties:
 
         assert cache.size == 0
 
-        cache.put("msg1", None, None, "en", ("result1", ()))
+        cache.put("msg1", None, None, "en", True, ("result1", ()))
         assert cache.size == 1
 
-        cache.put("msg2", None, None, "en", ("result2", ()))
+        cache.put("msg2", None, None, "en", True, ("result2", ()))
         assert cache.size == 2
 
 
@@ -480,21 +480,21 @@ class TestFormatCacheHypothesisProperties:
         cache = FormatCache()
 
         # String
-        cache.put("msg", {"text": text}, None, "en", ("result", ()))
-        assert cache.get("msg", {"text": text}, None, "en") == ("result", ())
+        cache.put("msg", {"text": text}, None, "en", True, ("result", ()))
+        assert cache.get("msg", {"text": text}, None, "en", True) == ("result", ())
 
         # Integer
-        cache.put("msg", {"num": 42}, None, "en", ("result", ()))
-        assert cache.get("msg", {"num": 42}, None, "en") == ("result", ())
+        cache.put("msg", {"num": 42}, None, "en", True, ("result", ()))
+        assert cache.get("msg", {"num": 42}, None, "en", True) == ("result", ())
 
         # Float
-        cache.put("msg", {"float": 3.14}, None, "en", ("result", ()))
-        assert cache.get("msg", {"float": 3.14}, None, "en") == ("result", ())
+        cache.put("msg", {"float": 3.14}, None, "en", True, ("result", ()))
+        assert cache.get("msg", {"float": 3.14}, None, "en", True) == ("result", ())
 
         # Bool
-        cache.put("msg", {"bool": True}, None, "en", ("result", ()))
-        assert cache.get("msg", {"bool": True}, None, "en") == ("result", ())
+        cache.put("msg", {"bool": True}, None, "en", True, ("result", ()))
+        assert cache.get("msg", {"bool": True}, None, "en", True) == ("result", ())
 
         # None
-        cache.put("msg", {"val": None}, None, "en", ("result", ()))
-        assert cache.get("msg", {"val": None}, None, "en") == ("result", ())
+        cache.put("msg", {"val": None}, None, "en", True, ("result", ()))
+        assert cache.get("msg", {"val": None}, None, "en", True) == ("result", ())

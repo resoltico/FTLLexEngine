@@ -213,10 +213,10 @@ class TestSecCacheErrorBloat001:
         result = ("formatted text", many_errors)
 
         # Put should skip due to error count
-        cache.put("msg", None, None, "en", result)
+        cache.put("msg", None, None, "en", True, result)
 
         # Verify it wasn't cached
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached is None
 
         # Verify skip was counted
@@ -239,10 +239,10 @@ class TestSecCacheErrorBloat001:
         result = ("x" * 100, errors)
 
         # Put should skip due to total weight
-        cache.put("msg", None, None, "en", result)
+        cache.put("msg", None, None, "en", True, result)
 
         # Verify it wasn't cached
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached is None
 
         # Verify skip was counted
@@ -258,10 +258,10 @@ class TestSecCacheErrorBloat001:
         result = ("formatted text", few_errors)
 
         # Put should succeed
-        cache.put("msg", None, None, "en", result)
+        cache.put("msg", None, None, "en", True, result)
 
         # Verify it was cached
-        cached = cache.get("msg", None, None, "en")
+        cached = cache.get("msg", None, None, "en", True)
         assert cached == result
 
         # No error bloat skips
@@ -282,8 +282,8 @@ class TestSecCacheErrorBloat001:
 
         # Trigger some error bloat skips
         many_errors = tuple(FluentReferenceError(f"Error {i}") for i in range(10))
-        cache.put("msg1", None, None, "en", ("text", many_errors))
-        cache.put("msg2", None, None, "en", ("text", many_errors))
+        cache.put("msg1", None, None, "en", True, ("text", many_errors))
+        cache.put("msg2", None, None, "en", True, ("text", many_errors))
 
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 2

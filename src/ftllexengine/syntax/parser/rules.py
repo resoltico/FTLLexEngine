@@ -1485,8 +1485,8 @@ def parse_inline_expression(
         case _ if ch in _ASCII_DIGITS:
             return _parse_inline_number_literal(cursor)
 
-        case _ if is_identifier_start(ch) or ch == "_":
-            # ASCII letter check per Fluent spec for identifier start
+        case _ if is_identifier_start(ch):
+            # ASCII letter [a-zA-Z] check per Fluent spec for identifier start
             return _parse_inline_identifier(cursor, context)
 
         case _:
@@ -1540,7 +1540,8 @@ def parse_placeable(
     nested_context = context.enter_nesting()
 
     # Per spec: inline_placeable ::= "{" blank? (SelectExpression | InlineExpression) blank? "}"
-    cursor = skip_blank_inline(cursor)
+    # blank ::= (blank_inline | line_end)+ ; allows newlines inside placeables
+    cursor = skip_blank(cursor)
 
     # Capture start position before parsing expression (for select expression span)
     expr_start_pos = cursor.pos
@@ -1554,7 +1555,8 @@ def parse_placeable(
     expression = expr_parse.value
     parse_result_cursor = expr_parse.cursor
 
-    cursor = skip_blank_inline(parse_result_cursor)
+    # Per spec: blank allows newlines after expression
+    cursor = skip_blank(parse_result_cursor)
 
     # Check for select expression (->)
     # Per FTL 1.0 spec: SelectExpression ::= InlineExpression blank? "->" ...
@@ -1591,7 +1593,8 @@ def parse_placeable(
                 return select_result
 
             select_parse = select_result
-            cursor = skip_blank_inline(select_parse.cursor)
+            # Per spec: blank allows newlines after select expression
+            cursor = skip_blank(select_parse.cursor)
 
             # Expect }
             if cursor.is_eof or cursor.current != "}":

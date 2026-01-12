@@ -58,8 +58,7 @@ from ftllexengine.syntax import (
     Variant,
 )
 
-# Re-export FluentValue for public API compatibility
-# Canonical definition is in function_bridge.py to avoid circular imports
+# FluentValue re-exported for module convenience (canonical definition: function_bridge.py)
 __all__ = ["FluentResolver", "FluentValue", "ResolutionContext"]
 
 # Unicode bidirectional isolation characters per Unicode TR9.
@@ -522,8 +521,12 @@ class FluentResolver:
         term = self.terms[term_id]
 
         # Select pattern (value or attribute)
+        # Use reversed() for last-wins semantics, consistent with message attribute resolution
         if expr.attribute:
-            attr = next((a for a in term.attributes if a.id.name == expr.attribute.name), None)
+            attr = next(
+                (a for a in reversed(term.attributes) if a.id.name == expr.attribute.name),
+                None,
+            )
             if not attr:
                 raise FluentReferenceError(
                     ErrorTemplate.term_attribute_not_found(expr.attribute.name, term_id)

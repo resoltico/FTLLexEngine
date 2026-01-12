@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING
 from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import (
-    FluentSyntaxError,
     ValidationError,
     ValidationResult,
     ValidationWarning,
@@ -679,73 +678,63 @@ def validate_resource(
 
         parser = ParserClass()
 
-    try:
-        resource = parser.parse(source)
+    resource = parser.parse(source)
 
-        # Build line offset cache once for all validation passes (O(n))
-        line_cache = LineOffsetCache(source)
+    # Build line offset cache once for all validation passes (O(n))
+    line_cache = LineOffsetCache(source)
 
-        # Pass 1: Extract syntax errors from Junk entries
-        errors = _extract_syntax_errors(resource, line_cache)
+    # Pass 1: Extract syntax errors from Junk entries
+    errors = _extract_syntax_errors(resource, line_cache)
 
-        # Pass 2: Collect entries and check structural issues
-        messages_dict, terms_dict, structure_warnings = _collect_entries(
-            resource,
-            line_cache,
-            known_messages=known_messages,
-            known_terms=known_terms,
-        )
+    # Pass 2: Collect entries and check structural issues
+    messages_dict, terms_dict, structure_warnings = _collect_entries(
+        resource,
+        line_cache,
+        known_messages=known_messages,
+        known_terms=known_terms,
+    )
 
-        # Pass 3: Check undefined references (with bundle context if provided)
-        ref_warnings = _check_undefined_references(
-            messages_dict,
-            terms_dict,
-            line_cache,
-            known_messages=known_messages,
-            known_terms=known_terms,
-        )
+    # Pass 3: Check undefined references (with bundle context if provided)
+    ref_warnings = _check_undefined_references(
+        messages_dict,
+        terms_dict,
+        line_cache,
+        known_messages=known_messages,
+        known_terms=known_terms,
+    )
 
-        # Build unified dependency graph once for both cycle and chain detection
-        # Avoids redundant graph construction (important for large resources)
-        dependency_graph = _build_dependency_graph(
-            messages_dict,
-            terms_dict,
-            known_messages=known_messages,
-            known_terms=known_terms,
-        )
+    # Build unified dependency graph once for both cycle and chain detection
+    # Avoids redundant graph construction (important for large resources)
+    dependency_graph = _build_dependency_graph(
+        messages_dict,
+        terms_dict,
+        known_messages=known_messages,
+        known_terms=known_terms,
+    )
 
-        # Pass 4: Detect circular dependencies
-        cycle_warnings = _detect_circular_references(dependency_graph)
+    # Pass 4: Detect circular dependencies
+    cycle_warnings = _detect_circular_references(dependency_graph)
 
-        # Pass 5: Detect long reference chains (would fail at runtime)
-        chain_warnings = _detect_long_chains(dependency_graph)
+    # Pass 5: Detect long reference chains (would fail at runtime)
+    chain_warnings = _detect_long_chains(dependency_graph)
 
-        # Pass 6: Fluent spec compliance (E0001-E0013)
-        semantic_validator = SemanticValidator()
-        semantic_result = semantic_validator.validate(resource)
-        semantic_annotations = semantic_result.annotations
+    # Pass 6: Fluent spec compliance (E0001-E0013)
+    semantic_validator = SemanticValidator()
+    semantic_result = semantic_validator.validate(resource)
+    semantic_annotations = semantic_result.annotations
 
-        # Combine all warnings
-        all_warnings = structure_warnings + ref_warnings + cycle_warnings + chain_warnings
+    # Combine all warnings
+    all_warnings = structure_warnings + ref_warnings + cycle_warnings + chain_warnings
 
-        logger.debug(
-            "Validated resource: %d errors, %d warnings, %d annotations",
-            len(errors),
-            len(all_warnings),
-            len(semantic_annotations),
-        )
+    logger.debug(
+        "Validated resource: %d errors, %d warnings, %d annotations",
+        len(errors),
+        len(all_warnings),
+        len(semantic_annotations),
+    )
 
-        return ValidationResult(
-            errors=tuple(errors),
-            warnings=tuple(all_warnings),
-            annotations=semantic_annotations,
-        )
-
-    except FluentSyntaxError as e:
-        logger.error("Critical validation error: %s", e)
-        error = ValidationError(
-            code=DiagnosticCode.VALIDATION_CRITICAL_PARSE_ERROR.name,
-            message=str(e),
-            content=str(e),
-        )
-        return ValidationResult(errors=(error,), warnings=(), annotations=())
+    return ValidationResult(
+        errors=tuple(errors),
+        warnings=tuple(all_warnings),
+        annotations=semantic_annotations,
+    )

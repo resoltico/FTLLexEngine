@@ -3,10 +3,7 @@
 Targets the last remaining uncovered lines and branches.
 """
 
-from unittest.mock import MagicMock
-
 from ftllexengine.constants import MAX_SOURCE_SIZE
-from ftllexengine.diagnostics import FluentSyntaxError
 from ftllexengine.runtime.bundle import FluentBundle
 
 
@@ -96,25 +93,6 @@ class TestIntrospectMessageCoverage:
 
         # Verify it returns MessageInfo with correct data
         assert "name" in info.get_variable_names()
-
-
-class TestValidateResourceSyntaxError:
-    """Test validate_resource() FluentSyntaxError handling."""
-
-    def test_validate_resource_catches_fluent_syntax_error(self) -> None:
-        """Test validate_resource() catches FluentSyntaxError (lines 741-750)."""
-        bundle = FluentBundle("en")
-
-        # Mock the parser to raise FluentSyntaxError
-        mock_parser = MagicMock()
-        mock_parser.parse.side_effect = FluentSyntaxError("Critical parse error")
-        bundle._parser = mock_parser
-
-        result = bundle.validate_resource("invalid")
-
-        # Should return ValidationResult with error, not raise
-        assert len(result.errors) > 0
-        assert any("critical" in e.message.lower() for e in result.errors)
 
 
 class TestValidationCircularReferenceBranches:

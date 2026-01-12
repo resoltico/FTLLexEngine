@@ -67,6 +67,7 @@ class TestCacheInvariants:
                 None,
                 None,
                 "en_US",
+                True,
                 (f"result_{i}", ()),
             )
 
@@ -92,8 +93,8 @@ class TestCacheInvariants:
         """PROPERTY: get(k) after put(k, v) returns v."""
         cache = FormatCache(maxsize=100)
 
-        cache.put(msg_id, args, attr, locale, value)
-        result = cache.get(msg_id, args, attr, locale)
+        cache.put(msg_id, args, attr, locale, True, value)
+        result = cache.get(msg_id, args, attr, locale, True)
 
         assert result == value
 
@@ -110,7 +111,7 @@ class TestCacheInvariants:
         """PROPERTY: get(k) without put(k) returns None."""
         cache = FormatCache(maxsize=100)
 
-        result = cache.get(msg_id, None, None, locale)
+        result = cache.get(msg_id, None, None, locale, True)
 
         assert result is None
 
@@ -122,7 +123,7 @@ class TestCacheInvariants:
 
         # Add some entries
         for i in range(min(10, maxsize)):
-            cache.put(f"msg_{i}", None, None, "en_US", (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
 
         # Clear
         cache.clear()
@@ -148,11 +149,11 @@ class TestCacheInvariants:
         """PROPERTY: Cache hits increment hit counter."""
         cache = FormatCache(maxsize=100)
 
-        cache.put(msg_id, None, None, locale, value)
+        cache.put(msg_id, None, None, locale, True, value)
 
         # First get - cache hit
         initial_stats = cache.get_stats()
-        cache.get(msg_id, None, None, locale)
+        cache.get(msg_id, None, None, locale, True)
 
         stats_after_hit = cache.get_stats()
         assert stats_after_hit["hits"] == initial_stats["hits"] + 1
@@ -171,7 +172,7 @@ class TestCacheInvariants:
         cache = FormatCache(maxsize=100)
 
         initial_stats = cache.get_stats()
-        cache.get(msg_id, None, None, locale)  # Cache miss
+        cache.get(msg_id, None, None, locale, True)  # Cache miss
 
         stats_after_miss = cache.get_stats()
         assert stats_after_miss["misses"] == initial_stats["misses"] + 1
@@ -193,19 +194,19 @@ class TestLRUEviction:
 
         # Fill cache to capacity
         for i in range(maxsize):
-            cache.put(f"msg_{i}", None, None, "en_US", (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
 
         # Access first entry to make it recently used
-        cache.get("msg_0", None, None, "en_US")
+        cache.get("msg_0", None, None, "en_US", True)
 
         # Add one more entry (should evict msg_1, not msg_0)
-        cache.put("msg_new", None, None, "en_US", ("result_new", ()))
+        cache.put("msg_new", None, None, "en_US", True, ("result_new", ()))
 
         # msg_0 should still be in cache (recently accessed)
-        assert cache.get("msg_0", None, None, "en_US") is not None
+        assert cache.get("msg_0", None, None, "en_US", True) is not None
 
         # msg_1 should be evicted (oldest unreferenced)
-        assert cache.get("msg_1", None, None, "en_US") is None
+        assert cache.get("msg_1", None, None, "en_US", True) is None
 
     @given(
         maxsize=st.integers(min_value=3, max_value=10),
@@ -226,16 +227,16 @@ class TestLRUEviction:
 
         # Fill cache
         for i in range(maxsize):
-            cache.put(f"msg_{i}", None, None, "en_US", (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
 
         # Access entries according to pattern
         for idx in access_pattern:
             if idx < maxsize:
-                cache.get(f"msg_{idx}", None, None, "en_US")
+                cache.get(f"msg_{idx}", None, None, "en_US", True)
 
         # Add new entries (will trigger evictions)
         for i in range(maxsize, maxsize + 3):
-            cache.put(f"msg_{i}", None, None, "en_US", (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
 
         # Recently accessed entries should still be in cache
         # (This tests the LRU property implicitly)
@@ -266,10 +267,10 @@ class TestCacheKeyHandling:
         cache = FormatCache(maxsize=100)
 
         # Put with specific key
-        cache.put(msg_id, None, None, locale, value)
+        cache.put(msg_id, None, None, locale, True, value)
 
         # Get with same key components
-        result = cache.get(msg_id, None, None, locale)
+        result = cache.get(msg_id, None, None, locale, True)
 
         assert result == value
 
@@ -293,10 +294,10 @@ class TestCacheKeyHandling:
         cache = FormatCache(maxsize=100)
 
         # Put with locale1
-        cache.put(msg_id, None, None, locale1, value)
+        cache.put(msg_id, None, None, locale1, True, value)
 
         # Get with locale2 should miss
-        result = cache.get(msg_id, None, None, locale2)
+        result = cache.get(msg_id, None, None, locale2, True)
 
         assert result is None
 
@@ -322,10 +323,10 @@ class TestCacheKeyHandling:
         cache = FormatCache(maxsize=100)
 
         # Put with attr1
-        cache.put(msg_id, None, attr1, locale, value)
+        cache.put(msg_id, None, attr1, locale, True, value)
 
         # Get with attr2 should miss
-        result = cache.get(msg_id, None, attr2, locale)
+        result = cache.get(msg_id, None, attr2, locale, True)
 
         assert result is None
 
@@ -346,11 +347,11 @@ class TestCacheKeyHandling:
 
         # Put with args dict
         args = {"x": 1, "y": 2}
-        cache.put(msg_id, args, None, locale, value)
+        cache.put(msg_id, args, None, locale, True, value)
 
         # Get with equivalent dict (different order)
         args_reordered = {"y": 2, "x": 1}
-        result = cache.get(msg_id, args_reordered, None, locale)
+        result = cache.get(msg_id, args_reordered, None, locale, True)
 
         # Should hit cache (dict key normalized)
         assert result == value
@@ -384,8 +385,8 @@ class TestCacheRobustness:
 
         # Should not crash with various arg types
         try:
-            cache.put("msg", args, None, "en_US", ("result", ()))
-            result = cache.get("msg", args, None, "en_US")
+            cache.put("msg", args, None, "en_US", True, ("result", ()))
+            result = cache.get("msg", args, None, "en_US", True)
             # If put succeeded, get should return the value
             if result is not None:
                 assert result == ("result", ())
@@ -408,7 +409,7 @@ class TestCacheRobustness:
 
         # Put same message multiple times
         for msg_id in msg_ids:
-            cache.put(msg_id, None, None, "en_US", (f"result_{msg_id}", ()))
+            cache.put(msg_id, None, None, "en_US", True, (f"result_{msg_id}", ()))
 
         # Cache should still respect maxsize
         assert cache.get_stats()["size"] <= maxsize
@@ -420,9 +421,9 @@ class TestCacheRobustness:
         cache = FormatCache(maxsize=maxsize)
 
         # Perform various operations
-        cache.put("msg", None, None, "en_US", ("result", ()))
-        cache.get("msg", None, None, "en_US")
-        cache.get("missing", None, None, "en_US")
+        cache.put("msg", None, None, "en_US", True, ("result", ()))
+        cache.get("msg", None, None, "en_US", True)
+        cache.get("missing", None, None, "en_US", True)
         cache.clear()
 
         stats = cache.get_stats()
@@ -460,9 +461,9 @@ class TestCacheStatistics:
 
         for op, msg_id in operations:
             if op == "put":
-                cache.put(msg_id, None, None, "en_US", (f"result_{msg_id}", ()))
+                cache.put(msg_id, None, None, "en_US", True, (f"result_{msg_id}", ()))
             elif op == "get":
-                cache.get(msg_id, None, None, "en_US")
+                cache.get(msg_id, None, None, "en_US", True)
 
         stats = cache.get_stats()
         total = stats["hits"] + stats["misses"]
@@ -490,7 +491,7 @@ class TestCacheStatistics:
 
         # Add entries
         for i in range(num_entries):
-            cache.put(f"msg_{i}", None, None, "en_US", (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
 
         stats = cache.get_stats()
         expected_size = min(num_entries, maxsize)

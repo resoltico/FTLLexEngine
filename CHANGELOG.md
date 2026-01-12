@@ -13,6 +13,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-01-12
+
+### Removed
+- **Backwards Compatibility Re-export** (DEBT-CACHE-REEXPORT): Removed `DEFAULT_MAX_ENTRY_SIZE` from `ftllexengine.runtime.cache` module exports:
+  - Previous: `DEFAULT_MAX_ENTRY_SIZE` re-exported from `cache.py` for backwards compatibility
+  - Now: Import from canonical location `ftllexengine.constants` only
+  - Migration: Replace `from ftllexengine.runtime.cache import DEFAULT_MAX_ENTRY_SIZE` with `from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE`
+
+- **Test Strategy Aliases** (DEBT-STRATEGY-ALIASES): Removed backwards compatibility aliases from `tests/strategies.py`:
+  - Removed: `ftl_messages` alias for `ftl_message_nodes`
+  - Removed: `ftl_junk` alias for `ftl_junk_nodes` (dead code, never used)
+  - Updated: `test_validator_hypothesis.py` and `test_serializer_roundtrip.py` to use canonical names
+
+- **Dead Exception Handling** (FTL-DEAD-EXCEPTION-001): Removed unreachable FluentSyntaxError catch blocks:
+  - Previous: `FluentBundle.add_resource()` and `validate_resource()` caught FluentSyntaxError that is never raised
+  - Now: Dead catch blocks removed from `bundle.py` and `validation/resource.py`
+  - Rationale: Parser returns errors in Resource.junk, never raises FluentSyntaxError during normal parsing
+  - Documentation: Removed FluentSyntaxError from docstring Raises section in `parser/core.py`
+
+### Fixed
+- **Misleading Comment** (DEBT-RESOLVER-COMMENT): Clarified `FluentValue` re-export comment in `resolver.py`:
+  - Previous: Comment stated "for public API compatibility" (implied backwards compatibility)
+  - Now: Comment states "for module convenience" (accurate architectural description)
+
+- **Placeable Whitespace Handling** (FTL-STRICT-WHITESPACE-001): Parser now allows any whitespace (not just inline) around placeable expressions:
+  - Previous: `skip_blank_inline()` only skipped spaces/tabs before opening and after closing placeable braces
+  - Now: `skip_blank()` allows spaces, tabs, and newlines around `{` and `}` in placeable expressions
+  - Locations: `parse_placeable()` opening brace (line 1543), after expression (line 1557), `parse_block_text_continuation()` (line 1594)
+  - Rationale: Fluent spec does not restrict whitespace in placeables to inline-only
+
+- **Parser Dispatch Redundancy** (FTL-REDUNDANT-DISPATCH-001): Removed redundant underscore check in argument expression parsing:
+  - Previous: Dispatch checked `is_identifier_start(ch) or ch == "_"` but `_` makes `is_identifier_start()` return True
+  - Now: Simplified to `is_identifier_start(ch)` only
+  - Location: `parse_argument_expression()` line 1488
+  - Impact: No behavioral change; code cleanup only
+
+- **Coverage-Motivated Code Removal** (FTL-COVERAGE-COMMENT-001): Removed pointless `continue` statement in resolver:
+  - Previous: `case Entry(): continue` existed only for branch coverage, not semantic value
+  - Now: Removed from `_validate_references()` match block
+  - Rationale: Test coverage should not drive production code structure
+
+- **Term Attribute Resolution Order** (FTL-TERM-ATTR-ORDER-001): Term attributes now use last-wins semantics matching Fluent specification:
+  - Previous: `next()` iterator found first matching attribute, ignoring later definitions
+  - Now: `next(reversed(...))` finds last matching attribute
+  - Impact: FTL with duplicate term attributes now resolves consistently with reference implementation
+  - Example: `-brand = X` with `.legal = Old` then `.legal = New` now resolves to "New"
+
+- **Cache Key Isolation** (FTL-CACHE-KEY-ISOLATION-001): Format cache now includes `use_isolating` parameter in cache key:
+  - Previous: Same message formatted with different isolation settings shared cache entry
+  - Now: `use_isolating` boolean is 5th element in cache key tuple
+  - Impact: Prevents incorrect cache hits when isolation setting differs between calls
+  - API: `FormatCache.get()` and `.put()` now require `use_isolating` parameter
+
+- **Plural Category Precision** (FTL-PLURAL-PRECISION-001): Precision=0 now triggers quantization for plural selection:
+  - Previous: `precision > 0` check excluded precision=0, so integer formatting didn't quantize
+  - Now: `precision >= 0` ensures precision=0 correctly quantizes to integer form
+  - Impact: `NUMBER($n, maximumFractionDigits: 0)` now correctly rounds before plural selection
+  - Location: `plural_rules.py` condition in `select_plural_category()`
+
+- **Number Rounding Consistency** (FTL-NUMBER-ROUNDING-001): All number formatting now uses ROUND_HALF_UP:
+  - Previous: Only precision=0 applied ROUND_HALF_UP quantization, other precision levels used default rounding
+  - Now: ROUND_HALF_UP applied for all precision levels (0, fixed, variable)
+  - Impact: Consistent half-up rounding (2.5→3, 3.5→4) matches CLDR specification
+  - Location: `locale_context.py` format_number() method
+  - Note: Special values (inf, -inf, NaN) bypass quantization to avoid InvalidOperation errors
+
+- **Serializer Indentation** (FTL-SERIALIZER-DOUBLE-INDENT-001): Pattern text containing newlines no longer double-indents:
+  - Previous: Pattern with `\n` got additional 4-space indent, producing 8-space indent on continuation
+  - Now: Regex `r"\n(?!    )"` only adds indent after newlines not already followed by 4+ spaces
+  - Impact: Roundtrip serialization preserves original indentation
+  - Example: `msg = Line1\n    Line2` no longer becomes `msg = Line1\n        Line2`
+
+- **Validator Numeric Normalization** (FTL-VALIDATOR-NUMERIC-NORMALIZATION-001): Variant key comparison no longer uses scientific notation:
+  - Previous: `str(Decimal("100").normalize())` returned "1E2", causing false duplicate detection
+  - Now: `format(normalized, "f")` returns "100" for consistent comparison
+  - Impact: Select expression variant keys like `[100]` and `[1E2]` correctly compared
+  - Location: `validator.py` `_variant_key_to_string()` method
+
 ## [0.67.0] - 2026-01-11
 
 ### Fixed
@@ -1705,6 +1783,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.68.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.68.0
 [0.67.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.67.0
 [0.66.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.66.0
 [0.65.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.65.0

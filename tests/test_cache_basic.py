@@ -328,14 +328,14 @@ class TestCacheIntrospection:
         cache = FormatCache(maxsize=2)
 
         # Put initial value
-        cache.put("msg1", {"name": "Alice"}, None, "en", ("Hello Alice", ()))
+        cache.put("msg1", {"name": "Alice"}, None, "en", True, ("Hello Alice", ()))
         assert len(cache) == 1
 
         # Put same key again (should call move_to_end)
-        cache.put("msg1", {"name": "Alice"}, None, "en", ("Hello Alice!", ()))
+        cache.put("msg1", {"name": "Alice"}, None, "en", True, ("Hello Alice!", ()))
         assert len(cache) == 1  # Size unchanged
 
         # Verify value was updated
-        result = cache.get("msg1", {"name": "Alice"}, None, "en")
+        result = cache.get("msg1", {"name": "Alice"}, None, "en", True)
         assert result is not None
         assert result[0] == "Hello Alice!"  # Updated value

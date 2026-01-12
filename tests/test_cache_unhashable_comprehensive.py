@@ -36,10 +36,10 @@ class TestCacheBasicOperations:
         # Put a value in cache
         args = {"key": "value"}
         result = ("formatted_text", ())
-        cache.put("msg-id", args, None, "en-US", result)
+        cache.put("msg-id", args, None, "en-US", True, result)
 
         # Get should hit cache
-        cached = cache.get("msg-id", args, None, "en-US")
+        cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached == result
         assert cache.hits == 1
@@ -54,15 +54,15 @@ class TestCacheBasicOperations:
         result2 = ("text2", ())
 
         # Put initial value
-        cache.put("msg-id", args, None, "en-US", result1)
+        cache.put("msg-id", args, None, "en-US", True, result1)
         assert len(cache) == 1
 
         # Put updated value for same key
-        cache.put("msg-id", args, None, "en-US", result2)
+        cache.put("msg-id", args, None, "en-US", True, result2)
         assert len(cache) == 1  # Still one entry
 
         # Get should return updated value
-        cached = cache.get("msg-id", args, None, "en-US")
+        cached = cache.get("msg-id", args, None, "en-US", True)
         assert cached == result2
 
     def test_put_evicts_lru_when_full(self) -> None:
@@ -70,30 +70,30 @@ class TestCacheBasicOperations:
         cache = FormatCache(maxsize=2)
 
         # Fill cache to capacity
-        cache.put("msg1", {"k": "v1"}, None, "en-US", ("text1", ()))
-        cache.put("msg2", {"k": "v2"}, None, "en-US", ("text2", ()))
+        cache.put("msg1", {"k": "v1"}, None, "en-US", True, ("text1", ()))
+        cache.put("msg2", {"k": "v2"}, None, "en-US", True, ("text2", ()))
         assert len(cache) == 2
 
         # Add third entry - should evict first (LRU)
-        cache.put("msg3", {"k": "v3"}, None, "en-US", ("text3", ()))
+        cache.put("msg3", {"k": "v3"}, None, "en-US", True, ("text3", ()))
         assert len(cache) == 2
 
         # First entry should be gone
-        result1 = cache.get("msg1", {"k": "v1"}, None, "en-US")
+        result1 = cache.get("msg1", {"k": "v1"}, None, "en-US", True)
         assert result1 is None
 
         # Second and third should be present
-        result2 = cache.get("msg2", {"k": "v2"}, None, "en-US")
-        result3 = cache.get("msg3", {"k": "v3"}, None, "en-US")
+        result2 = cache.get("msg2", {"k": "v2"}, None, "en-US", True)
+        result3 = cache.get("msg3", {"k": "v3"}, None, "en-US", True)
         assert result2 is not None
         assert result3 is not None
 
     def test_make_key_with_none_args(self) -> None:
         """Verify _make_key handles None args correctly (line 205)."""
-        key = FormatCache._make_key("msg-id", None, None, "en-US")
+        key = FormatCache._make_key("msg-id", None, None, "en-US", True)
 
         assert key is not None
-        assert key == ("msg-id", (), None, "en-US")
+        assert key == ("msg-id", (), None, "en-US", True)
 
     def test_maxsize_property(self) -> None:
         """Verify maxsize property returns correct value (line 231)."""
@@ -118,10 +118,10 @@ class TestCacheHashableConversion:
         result = ("formatted", ())
 
         # Put with list value
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
 
         # Get should find cached value (list converted to same tuple)
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert len(cache) == 1
@@ -135,8 +135,8 @@ class TestCacheHashableConversion:
         args = {"key": {"nested": "value"}}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert len(cache) == 1
@@ -150,8 +150,8 @@ class TestCacheHashableConversion:
         args = {"key": {1, 2, 3}}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert len(cache) == 1
@@ -165,7 +165,7 @@ class TestCacheHashableConversion:
         args = {"items": [1, 2, 3]}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
@@ -177,7 +177,7 @@ class TestCacheHashableConversion:
         args = {"config": {"option": "value"}}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
 
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
@@ -186,7 +186,7 @@ class TestCacheHashableConversion:
         """Verify _make_key converts lists to tuples."""
         args = {"list_value": [1, 2, 3]}
 
-        key = FormatCache._make_key("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        key = FormatCache._make_key("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert key is not None  # Now returns valid key
 
@@ -197,7 +197,7 @@ class TestCacheHashableConversion:
             "dict": {"nested": "value"},
         }
 
-        key = FormatCache._make_key("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        key = FormatCache._make_key("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert key is not None  # Now returns valid key
 
@@ -231,8 +231,8 @@ class TestCacheHashableConversion:
         args = {"list_arg": list_value}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert cache.unhashable_skips == 0
@@ -246,7 +246,7 @@ class TestCacheHashableConversion:
         args = {"dict_arg": dict_value}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
@@ -263,8 +263,8 @@ class TestCacheHashableConversion:
         }
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert cache.unhashable_skips == 0
@@ -276,8 +276,8 @@ class TestCacheHashableConversion:
         args: dict[str, list[object]] = {"empty_list": []}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert len(cache) == 1
@@ -289,8 +289,8 @@ class TestCacheHashableConversion:
         args: dict[str, dict[object, object]] = {"empty_dict": {}}
         result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", result)  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached == result
         assert len(cache) == 1
@@ -315,7 +315,7 @@ class TestCacheTrulyUnhashableObjects:
 
         args = {"custom": UnhashableClass()}
 
-        result = cache.get("msg-id", args, None, "en-US")  # type: ignore[arg-type]
+        result = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert result is None
         assert cache.unhashable_skips == 1
@@ -328,10 +328,17 @@ class TestCacheTrulyUnhashableObjects:
         assert cache.unhashable_skips == 0
 
         # Lists/dicts/sets are now convertible, should NOT increment
-        cache.get("msg1", {"list": [1]}, None, "en-US")  # type: ignore[dict-item]
+        cache.get("msg1", {"list": [1]}, None, "en-US", True)  # type: ignore[dict-item]
         assert cache.unhashable_skips == 0  # Not skipped anymore
 
-        cache.put("msg2", {"dict": {}}, None, "en-US", ("result", ()))  # type: ignore[dict-item]
+        cache.put(
+            "msg2",
+            {"dict": {}},  # type: ignore[dict-item]
+            None,
+            "en-US",
+            True,
+            ("result", ()),
+        )
         assert cache.unhashable_skips == 0  # Not skipped anymore
 
     def test_unhashable_skips_resets_on_clear(self) -> None:
@@ -346,7 +353,7 @@ class TestCacheTrulyUnhashableObjects:
                 raise TypeError(msg)
 
         # Generate unhashable skips with truly unhashable objects
-        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US")  # type: ignore[dict-item]
+        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", True)  # type: ignore[dict-item]
         assert cache.unhashable_skips == 1
 
         # Clear should reset
@@ -365,7 +372,7 @@ class TestCacheTrulyUnhashableObjects:
                 raise TypeError(msg)
 
         # Generate unhashable operations with truly unhashable objects
-        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US")  # type: ignore[dict-item]
+        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", True)  # type: ignore[dict-item]
 
         stats = cache.get_stats()
 
@@ -380,8 +387,8 @@ class TestCacheTrulyUnhashableObjects:
         # Fully hashable args
         args: dict[str, object] = {"str": "value", "int": 42, "float": 3.14}
 
-        cache.get("msg1", args, None, "en-US")  # type: ignore[arg-type]
-        cache.put("msg2", args, None, "en-US", ("result", ()))  # type: ignore[arg-type]
+        cache.get("msg1", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg2", args, None, "en-US", True, ("result", ()))  # type: ignore[arg-type]
 
         # Should not increment unhashable_skips
         assert cache.unhashable_skips == 0

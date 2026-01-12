@@ -276,7 +276,6 @@ class FluentParserV1:
 
         Raises:
             ValueError: If source exceeds max_source_size (DoS prevention)
-            FluentSyntaxError: Only on critical parse failures
 
         Security:
             Validates source size before parsing to prevent DoS via

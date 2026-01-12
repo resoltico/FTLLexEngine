@@ -33,8 +33,7 @@ from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
 from ftllexengine.diagnostics import FluentError
 from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 
-# Re-export for backwards compatibility
-__all__ = ["DEFAULT_MAX_ENTRY_SIZE", "FormatCache", "HashableValue"]
+__all__ = ["FormatCache", "HashableValue"]
 
 # Realistic estimate of memory weight per FluentError object.
 # Each error carries Diagnostic objects with traceback information, message context,
@@ -71,7 +70,8 @@ type HashableValue = (
 )
 
 # Internal type alias for cache keys (prefixed with _ per naming convention)
-type _CacheKey = tuple[str, tuple[tuple[str, HashableValue], ...], str | None, str]
+# 5-tuple: (message_id, args_tuple, attribute, locale_code, use_isolating)
+type _CacheKey = tuple[str, tuple[tuple[str, HashableValue], ...], str | None, str, bool]
 
 # Internal type alias for cache values (prefixed with _ per naming convention)
 type _CacheValue = tuple[str, tuple[FluentError, ...]]
@@ -122,7 +122,7 @@ class FormatCache:
         Args:
             maxsize: Maximum number of entries (default: 1000)
             max_entry_weight: Maximum memory weight for cached results (default: 10_000).
-                Weight is calculated as: len(formatted_str) + (len(errors) * 1000).
+                Weight is calculated as: len(formatted_str) + (len(errors) * 200).
                 Results exceeding this weight are not cached to prevent memory
                 exhaustion from large formatted strings or large error collections.
             max_errors_per_entry: Maximum number of errors per cache entry
@@ -156,6 +156,7 @@ class FormatCache:
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
+        use_isolating: bool,
     ) -> _CacheValue | None:
         """Get cached result if exists.
 
@@ -166,11 +167,12 @@ class FormatCache:
             args: Message arguments (may contain unhashable values like lists)
             attribute: Attribute name
             locale_code: Locale code
+            use_isolating: Whether Unicode isolation marks are used
 
         Returns:
             Cached (result, errors) tuple or None
         """
-        key = self._make_key(message_id, args, attribute, locale_code)
+        key = self._make_key(message_id, args, attribute, locale_code, use_isolating)
 
         if key is None:
             with self._lock:
@@ -194,6 +196,7 @@ class FormatCache:
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
+        use_isolating: bool,
         result: _CacheValue,
     ) -> None:
         """Store result in cache.
@@ -206,6 +209,7 @@ class FormatCache:
             args: Message arguments (may contain unhashable values like lists)
             attribute: Attribute name
             locale_code: Locale code
+            use_isolating: Whether Unicode isolation marks are used
             result: Format result to cache
         """
         # Check entry weight before caching (result is (formatted_str, errors))
@@ -233,7 +237,7 @@ class FormatCache:
                 self._error_bloat_skips += 1
             return
 
-        key = self._make_key(message_id, args, attribute, locale_code)
+        key = self._make_key(message_id, args, attribute, locale_code, use_isolating)
 
         if key is None:
             with self._lock:
@@ -363,6 +367,7 @@ class FormatCache:
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
+        use_isolating: bool,
     ) -> _CacheKey | None:
         """Create immutable cache key from arguments.
 
@@ -389,6 +394,7 @@ class FormatCache:
             args: Message arguments (may contain unhashable values)
             attribute: Attribute name
             locale_code: Locale code
+            use_isolating: Whether Unicode isolation marks are used
 
         Returns:
             Immutable cache key tuple, or None if conversion fails
@@ -411,7 +417,7 @@ class FormatCache:
                 # Args contain deeply nested or truly unhashable values
                 return None
 
-        return (message_id, args_tuple, attribute, locale_code)
+        return (message_id, args_tuple, attribute, locale_code, use_isolating)
 
     def __len__(self) -> int:
         """Get current cache size.
@@ -469,7 +475,7 @@ class FormatCache:
     def max_entry_weight(self) -> int:
         """Maximum memory weight for cached results.
 
-        Weight is calculated as: len(formatted_str) + (len(errors) * 1000).
+        Weight is calculated as: len(formatted_str) + (len(errors) * 200).
         """
         return self._max_entry_weight
 
