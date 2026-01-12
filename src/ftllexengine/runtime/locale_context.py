@@ -415,10 +415,9 @@ class LocaleContext:
 
             # Quantize value with ROUND_HALF_UP for consistent rounding
             # Skip quantization for special values (inf, -inf, NaN) that cannot be quantized
+            # Keep as Decimal to preserve precision (Babel format_decimal accepts Decimal)
             if not (math.isinf(value) or math.isnan(value)):
-                value = float(
-                    Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
-                )
+                value = Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
 
             # Format using Babel
             return str(

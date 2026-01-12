@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.68.0"
+version: "0.69.0"
 domain: parsing
-updated: "2026-01-10"
+updated: "2026-01-12"
 route:
   keywords: [parsing, parse_number, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
   questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
@@ -728,8 +728,114 @@ result, errors = parse_datetime("2025-01-28T14:30:00-08:00", "en_US")
 
 ---
 
+## Known Limitations (strptime)
+
+Date/datetime parsing uses Python's `strptime()` with CLDR pattern conversion. Some Babel CLDR patterns cannot be represented in strptime format.
+
+### Pattern Conversion Reference
+
+**Fully Supported Patterns**:
+
+| CLDR | strptime | Example |
+|:-----|:---------|:--------|
+| `yyyy` | `%Y` | 2026 |
+| `yy` | `%y` | 26 |
+| `MM`, `M` | `%m` | 01, 1 |
+| `dd`, `d` | `%d` | 28, 8 |
+| `HH`, `H` | `%H` | 14, 4 |
+| `mm`, `m` | `%M` | 30, 5 |
+| `ss`, `s` | `%S` | 45, 5 |
+| `a` | `%p` | AM, PM |
+
+**Partially Supported Patterns**:
+
+| CLDR | Issue | Workaround |
+|:-----|:------|:-----------|
+| `MMM`, `MMMM` | Language-dependent | Works for English locales only |
+| `EEE`, `EEEE` | Language-dependent | Works for English locales only |
+| `SSS` (milliseconds) | strptime expects 6 digits | Pad to microseconds or pre-process |
+
+**Unsupported Patterns (Silently Skipped)**:
+
+| Pattern | Description | Reason |
+|:--------|:------------|:-------|
+| `z`, `zz`, `zzz`, `zzzz` | Timezone names (PST) | Locale-specific, no strptime equivalent |
+| `v`, `vvvv` | Generic timezone (PT) | No strptime equivalent |
+| `V`, `VV`, `VVV`, `VVVV` | Location timezone | No strptime equivalent |
+| `O`, `OOOO`, `ZZZZ` | Localized GMT | No strptime equivalent |
+| `G`, `GG`, `GGG`, `GGGG`, `GGGGG` | Era (AD, BC) | No strptime equivalent |
+| `Q`, `QQ`, `QQQ`, `QQQQ` | Quarter | No strptime equivalent |
+| `w`, `ww` | Week of year | Limited strptime support |
+| `W` | Week of month | No strptime equivalent |
+
+### Fractional Seconds
+
+**Limitation**: strptime `%f` expects exactly 6 digits (microseconds).
+
+**CLDR Pattern**: `SSS` (3 digits for milliseconds)
+
+**Behavior**: Patterns with `SSS` are converted to `%f`, which may fail if input has exactly 3 digits.
+
+```python
+# Problem: strptime expects 6 digits
+"14:30:45.123"  # 3-digit milliseconds → parse error
+
+# Solutions:
+# 1. Pad to 6 digits before parsing
+input_padded = "14:30:45.123000"
+
+# 2. Use ISO 8601 format
+"14:30:45.123000"  # 6 digits → works
+```
+
+### Two-Digit Year Century Cutoff
+
+**Limitation**: strptime interprets `%y` (2-digit year) with a 2000 cutoff.
+
+| Input | Interpretation |
+|:------|:---------------|
+| `00-68` | 2000-2068 |
+| `69-99` | 1969-1999 |
+
+```python
+# "25" → 2025 (correct for current decade)
+# "85" → 1985 (may be unexpected)
+```
+
+**Recommendation**: Use 4-digit years (`yyyy`) when possible.
+
+### Non-English Month/Day Names
+
+**Limitation**: strptime only parses English month/day names by default.
+
+```python
+# Works: English locale
+parse_date("January 15, 2026", "en_US")  # OK
+
+# May fail: Non-English locale
+parse_date("Januar 15, 2026", "de_DE")  # German month name
+# Depends on system locale configuration
+```
+
+**Recommendation**: Use numeric formats for non-English locales.
+
+### Workarounds Summary
+
+| Limitation | Workaround |
+|:-----------|:-----------|
+| Timezone names | Strip timezone before parsing; add after |
+| Era patterns | Assume AD; handle BC separately |
+| Milliseconds | Pad to 6 digits or remove fractional part |
+| Non-English names | Use numeric date formats |
+| Two-digit years | Use 4-digit years (yyyy) |
+
+**Design Note**: These limitations are inherent to Python's `strptime()` function. FTLLexEngine uses strptime intentionally to avoid external dependencies beyond Babel. For applications requiring broader pattern support, pre-process input strings before calling parse functions.
+
+---
+
 ## See Also
 
+- [LOCALE_GUIDE.md](LOCALE_GUIDE.md) - Locale formatting behavior
 - [docs/DOC_00_Index.md](docs/DOC_00_Index.md) - Complete API reference
 - [README.md](README.md) - Getting started
 - [CHANGELOG.md](CHANGELOG.md) - Version history

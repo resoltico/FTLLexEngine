@@ -16,6 +16,7 @@ import logging
 import sys
 import threading
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -463,6 +464,28 @@ class TestFormatNumber:
 
         assert "1,234.56" in result or "1234.56" in result
 
+    def test_format_number_preserves_decimal_precision(self) -> None:
+        """format_number() preserves large decimal precision without float conversion."""
+        ctx = LocaleContext.create("en-US")
+
+        # Large decimal that would lose precision if converted to float
+        large_decimal = Decimal("123456789.123456789")
+        result = ctx.format_number(
+            large_decimal,
+            minimum_fraction_digits=2,
+            maximum_fraction_digits=2,
+        )
+
+        # Should be rounded to 2 decimals: 123456789.12
+        # With grouping: 123,456,789.12
+        assert result == "123,456,789.12"
+
+        # Verify no float precision artifacts (like .12000000476837158203125)
+        assert result.count(".") == 1
+        decimal_part = result.split(".")[-1]
+        assert len(decimal_part) == 2
+        assert decimal_part == "12"
+
     def test_format_number_error_raises_formatting_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -477,7 +500,9 @@ class TestFormatNumber:
         with pytest.raises(FormattingError) as exc_info:
             ctx.format_number(123.45)
 
-        assert exc_info.value.fallback_value == "123.45"
+        # After Decimal quantization with maximumFractionDigits=3 (default),
+        # fallback preserves trailing zeros: "123.450" not "123.45"
+        assert exc_info.value.fallback_value == "123.450"
 
 
 # ============================================================================

@@ -428,3 +428,52 @@ class TestBundleStressTest:
         # Verify all added messages exist
         for i in range(10):
             assert bundle.has_message(f"msg{i}")
+
+    def test_get_all_message_variables_atomic_snapshot(self) -> None:
+        """get_all_message_variables returns atomic snapshot during concurrent adds.
+
+        Tests the fix for FTL-RUNTIME-002 where get_all_message_variables acquires
+        a single read lock for atomic snapshot of all message variables.
+        """
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("msg1 = Hello { $name }\nmsg2 = Value { $x }")
+
+        snapshots = []
+
+        def get_all_vars() -> None:
+            for _ in range(20):
+                all_vars = bundle.get_all_message_variables()
+                snapshots.append(all_vars)
+                time.sleep(0.001)
+
+        def add_resources() -> None:
+            time.sleep(0.005)
+            bundle.add_resource("msg3 = New { $var }")
+            time.sleep(0.005)
+            bundle.add_resource("msg4 = Another { $val }")
+
+        get_vars_thread = threading.Thread(target=get_all_vars)
+        add_thread = threading.Thread(target=add_resources)
+
+        get_vars_thread.start()
+        add_thread.start()
+
+        get_vars_thread.join()
+        add_thread.join()
+
+        # Each snapshot should be internally consistent
+        # Early snapshots: 2 messages
+        # Later snapshots: 3 or 4 messages
+        for snapshot in snapshots:
+            msg_count = len(snapshot)
+            assert msg_count in (2, 3, 4)
+
+            # Verify known messages have correct variables
+            if "msg1" in snapshot:
+                assert snapshot["msg1"] == frozenset({"name"})
+            if "msg2" in snapshot:
+                assert snapshot["msg2"] == frozenset({"x"})
+            if "msg3" in snapshot:
+                assert snapshot["msg3"] == frozenset({"var"})
+            if "msg4" in snapshot:
+                assert snapshot["msg4"] == frozenset({"val"})

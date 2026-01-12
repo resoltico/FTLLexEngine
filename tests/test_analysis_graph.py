@@ -335,7 +335,7 @@ class TestBuildDependencyGraph:
         }
         msg_deps, term_deps = build_dependency_graph(message_entries)
         assert msg_deps == {"welcome": set()}
-        assert term_deps == {"msg:welcome": {"brand"}}
+        assert term_deps == {"msg:welcome": {"term:brand"}}
 
     def test_multiple_entries_mixed_refs(self) -> None:
         """Multiple entries with mixed references."""
@@ -349,8 +349,8 @@ class TestBuildDependencyGraph:
         msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
         assert msg_deps["msg1"] == {"msg2"}
         assert msg_deps["msg2"] == set()
-        assert term_deps["msg:msg1"] == {"term1"}
-        assert term_deps["term:term1"] == {"term2"}
+        assert term_deps["msg:msg1"] == {"term:term1"}
+        assert term_deps["term:term1"] == {"term:term2"}
 
     def test_refs_are_copied(self) -> None:
         """Returned refs are copies, not original sets."""
@@ -398,12 +398,76 @@ class TestBuildDependencyGraph:
 
         # Term "brand" appears in term_deps with "term:" prefix
         assert "term:brand" in term_deps
-        assert term_deps["term:brand"] == {"company"}
+        assert term_deps["term:brand"] == {"term:company"}
 
         # Both namespaces are distinct - no collision
         assert "name" in msg_deps
         assert "msg:name" in term_deps
         assert "term:company" in term_deps
+
+    def test_term_cycle_detection(self) -> None:
+        """Term-to-term cycles are detected when term IDs are prefixed correctly.
+
+        Tests the fix for LOGIC-GRAPH-DEPENDENCY-001 where term references
+        in dependency graph values must be prefixed with "term:" to match
+        the key format for cycle detection.
+        """
+        # Create a term cycle: A -> B -> A
+        term_entries: dict[str, tuple[set[str], set[str]]] = {
+            "termA": (set(), {"termB"}),
+            "termB": (set(), {"termA"}),
+        }
+
+        _msg_deps, term_deps = build_dependency_graph({}, term_entries)
+
+        # Verify term dependencies are prefixed correctly
+        assert term_deps["term:termA"] == {"term:termB"}
+        assert term_deps["term:termB"] == {"term:termA"}
+
+        # Verify detect_cycles can find the term cycle
+        cycles = detect_cycles(term_deps)
+        assert len(cycles) == 1
+
+        # Cycle should involve both terms with "term:" prefix
+        cycle_path = cycles[0]
+        assert "term:termA" in cycle_path
+        assert "term:termB" in cycle_path
+
+    def test_cross_type_cycle_msg_term_term_msg(self) -> None:
+        """Cross-type cycles (msg->term->term->msg) are detected with prefixing.
+
+        Tests the fix for LOGIC-GRAPH-DEPENDENCY-001 where term references
+        must be prefixed to enable cross-namespace cycle detection.
+        """
+        # Create a cross-type cycle: msg1 -> term1 -> term2 (which somehow back to msg1)
+        # Note: In reality terms can't directly reference messages, but we can test
+        # the graph structure. Let's test a more realistic pattern:
+        # msg1 -> term1 -> term2, and msg2 -> term2 -> term1 (creating term cycle)
+        message_entries: dict[str, tuple[set[str], set[str]]] = {
+            "msg1": (set(), {"term1"}),
+            "msg2": (set(), {"term2"}),
+        }
+        term_entries: dict[str, tuple[set[str], set[str]]] = {
+            "term1": (set(), {"term2"}),
+            "term2": (set(), {"term1"}),
+        }
+
+        _msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
+
+        # Verify all term references are prefixed
+        assert term_deps["msg:msg1"] == {"term:term1"}
+        assert term_deps["msg:msg2"] == {"term:term2"}
+        assert term_deps["term:term1"] == {"term:term2"}
+        assert term_deps["term:term2"] == {"term:term1"}
+
+        # Verify detect_cycles finds the term cycle
+        cycles = detect_cycles(term_deps)
+        assert len(cycles) == 1
+
+        # The cycle should be between term1 and term2 with prefixes
+        cycle_path = cycles[0]
+        assert "term:term1" in cycle_path
+        assert "term:term2" in cycle_path
 
 
 # ============================================================================

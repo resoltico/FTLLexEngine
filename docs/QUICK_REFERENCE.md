@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.68.0"
+version: "0.69.0"
 domain: reference
-updated: "2026-01-10"
+updated: "2026-01-12"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?"]
@@ -330,6 +330,7 @@ bundle.has_message(message_id: str) -> bool
 bundle.has_attribute(message_id: str, attribute: str) -> bool
 bundle.get_message_ids() -> list[str]
 bundle.get_message_variables(message_id: str) -> frozenset[str]
+bundle.get_all_message_variables() -> dict[str, frozenset[str]]
 bundle.introspect_message(message_id: str) -> MessageIntrospection
 bundle.introspect_term(term_id: str) -> MessageIntrospection
 bundle.add_function(name: str, func: Callable) -> None
@@ -566,6 +567,21 @@ bundle.add_resource("welcome = Hello, { $firstName } { $lastName }!")
 
 variables = bundle.get_message_variables("welcome")
 print(variables)  # frozenset({'firstName', 'lastName'})
+```
+
+### Batch Variable Extraction
+
+```python
+bundle.add_resource("""
+greeting = Hello, { $name }!
+farewell = Goodbye, { $firstName } { $lastName }!
+simple = No variables
+""")
+
+all_vars = bundle.get_all_message_variables()
+print(all_vars["greeting"])   # frozenset({'name'})
+print(all_vars["farewell"])   # frozenset({'firstName', 'lastName'})
+print(all_vars["simple"])     # frozenset()
 ```
 
 ### Full Introspection

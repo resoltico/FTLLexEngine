@@ -340,6 +340,11 @@ class FluentSerializer(ASTVisitor):
                     )
                     if needs_extra_blank:
                         output.append("\n\n")
+                    elif isinstance(prev_entry, (Message, Term)) and isinstance(
+                        entry, (Message, Term)
+                    ):
+                        # Message/Term already end with \n; no extra separator for compact output
+                        pass
                     else:
                         output.append("\n")
 

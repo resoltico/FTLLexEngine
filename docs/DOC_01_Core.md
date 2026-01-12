@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.68.0"
+version: "0.69.0"
 domain: CORE
-updated: "2026-01-10"
+updated: "2026-01-12"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -331,8 +331,8 @@ def get_all_message_variables(self) -> dict[str, frozenset[str]]:
 ### Constraints
 - Return: Dict mapping message IDs to variable sets.
 - Raises: None.
-- State: Read-only.
-- Thread: Safe.
+- State: Read-only. Acquires single read lock for atomic snapshot.
+- Thread: Safe. Provides consistent snapshot during concurrent mutations.
 
 ---
 

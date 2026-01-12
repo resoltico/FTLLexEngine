@@ -1003,11 +1003,15 @@ class FluentBundle:
         See Also:
             - get_message_variables(): Get variables for single message
             - introspect_message(): Get complete metadata (variables + functions + references)
+
+        Note:
+            Acquires a single read lock for atomic snapshot of all message variables.
         """
-        return {
-            message_id: self.get_message_variables(message_id)
-            for message_id in self.get_message_ids()
-        }
+        with self._rwlock.read():
+            return {
+                message_id: extract_variables(message)
+                for message_id, message in self._messages.items()
+            }
 
     def introspect_message(self, message_id: str) -> MessageIntrospection:
         """Get complete introspection data for a message.

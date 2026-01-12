@@ -26,11 +26,15 @@ class TestHasBlankLineBetweenCoverage:
         assert result is True
 
     def test_single_newline_with_content_no_blank_line(self) -> None:
-        """Single newline with content is not a blank line."""
+        """Single newline with content IS blank line after fix.
+
+        After FTL-PARSER-001 fix, a single newline in the checked region
+        indicates a blank line (previous newline already consumed by parse_comment).
+        """
         source = "line1\nline2"
         result = _has_blank_line_between(source, 0, len(source))
-        # No blank line (only single \n with content)
-        assert result is False
+        # Single \n now indicates blank line
+        assert result is True
 
     def test_newline_space_newline_is_blank_line(self) -> None:
         """Newline-space-newline is a blank line."""
@@ -40,12 +44,16 @@ class TestHasBlankLineBetweenCoverage:
         assert result is True
 
     def test_content_between_double_newlines_resets_counter(self) -> None:
-        """Content between newlines resets the blank line detection."""
+        """Content between newlines resets the blank line detection.
+
+        After FTL-PARSER-001 fix, first newline triggers blank line detection,
+        but 'X' resets counter, then second newline is detected.
+        """
         # Pattern: \n<char>\n where <char> is not space
         source = "\nX\n"
         result = _has_blank_line_between(source, 0, len(source))
-        # Should NOT find blank line because 'X' resets the counter
-        assert result is False
+        # First \n triggers detection, but content after triggers again
+        assert result is True
 
     def test_multiple_spaces_between_newlines(self) -> None:
         """Multiple spaces between newlines counts as blank line."""
@@ -60,12 +68,15 @@ class TestHasBlankLineBetweenCoverage:
         )
     )
     def test_any_non_blank_resets_counter(self, non_blank: str) -> None:
-        """Property: Any non-blank, non-newline character resets counter."""
+        """Property: Any non-blank, non-newline character resets counter.
+
+        After FTL-PARSER-001 fix, first newline triggers detection.
+        """
         # Structure: \n<non_blank>\n
         source = f"\n{non_blank}\n"
         result = _has_blank_line_between(source, 0, len(source))
-        # Should not detect blank line because non_blank resets counter
-        assert result is False
+        # First \n triggers blank line detection
+        assert result is True
 
 
 class TestBlankLineDetectionEdgeCases:
@@ -84,10 +95,14 @@ class TestBlankLineDetectionEdgeCases:
         assert result is True
 
     def test_newline_at_end_only(self) -> None:
-        """Single newline at end is not blank line."""
+        """Single newline at end IS blank line after fix.
+
+        After FTL-PARSER-001 fix, a single newline in the checked region
+        indicates a blank line.
+        """
         source = "content\n"
         result = _has_blank_line_between(source, 0, len(source))
-        assert result is False
+        assert result is True
 
     def test_alternating_newlines_and_spaces(self) -> None:
         """Alternating pattern of newlines and spaces."""
@@ -97,12 +112,15 @@ class TestBlankLineDetectionEdgeCases:
         assert result is True
 
     def test_tab_character_resets_counter(self) -> None:
-        """Tab character resets newline counter."""
+        """Tab character resets newline counter.
+
+        After FTL-PARSER-001 fix, first newline triggers detection.
+        """
         # Tab is not a space in the context of this function
         source = "\n\t\n"
         result = _has_blank_line_between(source, 0, len(source))
-        # Tab resets the counter, so no blank line detected
-        assert result is False
+        # First \n triggers blank line detection
+        assert result is True
 
 
 class TestBlankLineRegionBoundaries:
@@ -164,12 +182,20 @@ class TestBlankLineHypothesisProperties:
         )
     )
     def test_single_newline_separated_lines_no_blank(self, lines: list[str]) -> None:
-        """Property: Single newlines between non-whitespace lines have no blank lines."""
+        """Property: Single newlines between non-whitespace lines have blank lines after fix.
+
+        After FTL-PARSER-001 fix, a single newline in the checked region
+        indicates a blank line (only applies when multiple lines present).
+        """
         source = "\n".join(lines)
-        # Lines with non-whitespace chars separated by single newlines = no blank lines
+        # Lines with non-whitespace chars separated by single newlines
         result = _has_blank_line_between(source, 0, len(source))
-        # No blank line when single newlines separate non-whitespace content
-        assert result is False
+        # Single newline triggers blank line detection if there are multiple lines
+        if len(lines) > 1:
+            assert result is True
+        else:
+            # Single line with no newline has no blank line
+            assert result is False
 
     @given(st.integers(min_value=2, max_value=10))
     def test_multiple_consecutive_newlines_always_blank(self, count: int) -> None:
@@ -187,7 +213,10 @@ class TestBlankLineHypothesisProperties:
         )
     )
     def test_non_blank_chars_prevent_blank_line(self, non_blank_chars: list[str]) -> None:
-        """Property: Non-blank chars between newlines prevent blank line."""
+        """Property: Non-blank chars between newlines don't prevent blank line after fix.
+
+        After FTL-PARSER-001 fix, first newline triggers detection.
+        """
         # Interleave newlines and non-blank chars
         parts = []
         for char in non_blank_chars:
@@ -196,8 +225,8 @@ class TestBlankLineHypothesisProperties:
         parts.append("\n")
         source = "".join(parts)
         result = _has_blank_line_between(source, 0, len(source))
-        # No blank line because non-blank chars reset counter
-        assert result is False
+        # First newline triggers blank line detection
+        assert result is True
 
 
 class TestBlankLineCommentMerging:

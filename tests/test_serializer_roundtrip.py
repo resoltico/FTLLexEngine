@@ -406,6 +406,82 @@ def test_roundtrip_complex_pattern():
     assert len(msg_parsed.value.elements) == 5
 
 
+def test_roundtrip_compact_messages_no_blank_lines():
+    """Roundtrip of compact messages preserves no-blank-line format.
+
+    Tests the fix for NAME-SERIALIZER-SPACING-001 where serializer was adding
+    redundant newlines between Message/Term entries.
+    """
+    # Compact FTL with no blank lines between messages
+    source = "msg1 = First\nmsg2 = Second\nmsg3 = Third"
+
+    parsed = parse(source)
+    serialized = serialize(parsed)
+
+    # Serialized output should maintain compact format (no blank lines)
+    assert serialized == "msg1 = First\nmsg2 = Second\nmsg3 = Third\n"
+
+    # Verify roundtrip preserves structure
+    reparsed = parse(serialized)
+    assert len(reparsed.entries) == 3
+    messages = [e for e in reparsed.entries if isinstance(e, Message)]
+    assert len(messages) == 3
+    assert messages[0].id.name == "msg1"
+    assert messages[1].id.name == "msg2"
+    assert messages[2].id.name == "msg3"
+
+
+def test_comment_message_separation_preserved():
+    """Comment->Message still gets blank line to prevent attachment.
+
+    Tests the fix for NAME-SERIALIZER-SPACING-001 ensures Comment separation
+    logic is preserved (blank lines prevent comment attachment on re-parse).
+    """
+    # Standalone comment followed by message (with blank line)
+    source = "# Standalone comment\n\nmsg = Value"
+
+    parsed = parse(source)
+    serialized = serialize(parsed)
+
+    # Should preserve blank line between comment and message
+    # The blank line prevents the comment from being attached to the message
+    assert "\n\n" in serialized
+
+    # Verify roundtrip: comment should remain standalone
+    reparsed = parse(serialized)
+    comments = [e for e in reparsed.entries if isinstance(e, Comment)]
+    messages = [e for e in reparsed.entries if isinstance(e, Message)]
+
+    assert len(comments) == 1
+    assert len(messages) == 1
+    # Message should NOT have an attached comment
+    assert messages[0].comment is None
+
+
+def test_roundtrip_mixed_spacing_preserved():
+    """Mixed spacing patterns are preserved during roundtrip."""
+    # Mix of compact messages and separated entries
+    source = "msg1 = First\nmsg2 = Second\n\n# Comment\n\nmsg3 = Third"
+
+    parsed = parse(source)
+    serialized = serialize(parsed)
+    reparsed = parse(serialized)
+
+    # Should have 3 messages and 1 comment
+    messages = [e for e in reparsed.entries if isinstance(e, Message)]
+    comments = [e for e in reparsed.entries if isinstance(e, Comment)]
+
+    assert len(messages) == 3
+    assert len(comments) == 1
+
+    # First two messages should be compact (consecutive)
+    # Comment should be standalone (not attached)
+    # Third message should be after comment
+    assert messages[0].id.name == "msg1"
+    assert messages[1].id.name == "msg2"
+    assert messages[2].id.name == "msg3"
+
+
 # ============================================================================
 # PROPERTY-BASED ROUNDTRIP TESTS (Hypothesis)
 # ============================================================================

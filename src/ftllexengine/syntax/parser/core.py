@@ -65,6 +65,10 @@ def _has_blank_line_between(source: str, start: int, end: int) -> bool:
     Note: Line endings are normalized to LF before parsing, so only checking
     for '\n' is sufficient.
 
+    Context: This function is called after parse_comment consumes the first comment's
+    trailing newline via skip_line_end(). Therefore, a single newline in the gap
+    region indicates a blank line was present between the comments.
+
     Args:
         source: The full source string (with normalized line endings)
         start: Start position (inclusive)
@@ -74,13 +78,14 @@ def _has_blank_line_between(source: str, start: int, end: int) -> bool:
         True if there's a blank line in the region, False otherwise
     """
     region = source[start:end]
-    # A blank line is when we see two consecutive newlines (possibly with spaces between)
-    # Examples of blank lines: "\n\n", "\n  \n"
+    # After parse_comment consumes the first comment's line ending, a single
+    # newline in the remaining region indicates a blank line.
+    # Examples: "\n" (one blank line), "\n  \n" (one blank line with spaces)
     newline_count = 0
     for ch in region:
         if ch == "\n":
             newline_count += 1
-            if newline_count >= 2:
+            if newline_count >= 1:
                 return True
         elif ch == " ":
             # Spaces don't reset the newline counter (they can be part of blank line)

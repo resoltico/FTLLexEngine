@@ -207,8 +207,9 @@ def build_dependency_graph(
     Returns:
         Tuple of (message_deps, term_deps) where:
         - message_deps: Maps message IDs to sets of referenced message IDs
-        - term_deps: Maps prefixed keys to sets of referenced term IDs
+        - term_deps: Maps prefixed keys to sets of prefixed term IDs
           - Keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs
+          - Values format: Prefixed term IDs like "term:{id}" for cycle detection
 
     Example:
         >>> message_entries = {
@@ -222,7 +223,7 @@ def build_dependency_graph(
         >>> msg_deps["welcome"]
         {'greeting'}
         >>> term_deps["msg:welcome"]
-        {'brand'}
+        {'term:brand'}
         >>> term_deps["term:brand"]
         set()
     """
@@ -234,13 +235,15 @@ def build_dependency_graph(
         # Messages can reference other messages
         message_deps[entry_id] = msg_refs.copy()
         # Track term references from messages with "msg:" prefix
-        term_deps[f"msg:{entry_id}"] = trm_refs.copy()
+        # Prefix term IDs in values to match key format for cycle detection
+        term_deps[f"msg:{entry_id}"] = {f"term:{t}" for t in trm_refs}
 
     # Process term entries
     if term_entries:
         for entry_id, (_msg_refs, trm_refs) in term_entries.items():
             # Terms can reference other terms (term-to-term dependencies)
             # Use "term:" prefix to distinguish from message->term refs
-            term_deps[f"term:{entry_id}"] = trm_refs.copy()
+            # Prefix term IDs in values to match key format for cycle detection
+            term_deps[f"term:{entry_id}"] = {f"term:{t}" for t in trm_refs}
 
     return message_deps, term_deps

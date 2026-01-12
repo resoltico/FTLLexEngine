@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-01-12
+
+### Fixed
+- **Parser Comment Blank Line Detection** (FTL-PARSER-001): Fixed `_has_blank_line_between` to correctly detect single blank lines between comments:
+  - Previous: Required two newlines in checked region, causing adjacent comments with single blank line to incorrectly merge
+  - Now: Condition changed from `newline_count >= 2` to `newline_count >= 1`
+  - Rationale: `parse_comment` already consumes first comment's trailing newline, so single newline in gap region indicates blank line
+  - Impact: Comments separated by one blank line now correctly produce separate AST Comment nodes per Fluent specification
+  - Location: `parser/core.py` `_has_blank_line_between()` line 88
+
+- **Number Formatting Precision Loss** (FTL-RUNTIME-001): Removed unnecessary float() conversion in `format_number` that degraded Decimal precision:
+  - Previous: `value = float(Decimal(...).quantize(...))` converted back to float after quantization
+  - Now: `value = Decimal(...).quantize(...)` preserves Decimal precision
+  - Rationale: Babel's `format_decimal()` explicitly supports Decimal type; float conversion defeats precision-preserving quantization
+  - Impact: Large decimal values (e.g., 123456789.12) now format without floating-point artifacts
+  - Location: `runtime/locale_context.py` `format_number()` line 420
+
+- **Dependency Graph Term Prefix Inconsistency** (LOGIC-GRAPH-DEPENDENCY-001): Fixed `build_dependency_graph` to prefix term references in dependency values:
+  - Previous: Keys used prefixed format (`"msg:id"`, `"term:id"`) but values contained unprefixed term IDs (`{"brand"}`)
+  - Now: Values also use prefixed format (`{"term:brand"}`) matching key namespace
+  - Rationale: `detect_cycles()` looks up neighbor IDs as keys; unprefixed values failed to find prefixed keys
+  - Impact: Term-to-term cycles (A->B->A) and cross-type cycles now correctly detected
+  - Location: `analysis/graph.py` `build_dependency_graph()` lines 238, 246
+
+- **Batch Operation Lock Granularity** (FTL-RUNTIME-002): Optimized `get_all_message_variables` to use single read lock for atomic snapshot:
+  - Previous: N+1 lock acquisitions (one for `get_message_ids()`, N for `get_message_variables()`)
+  - Now: Single read lock acquires atomic snapshot directly from `self._messages.items()`
+  - Rationale: Reduces lock overhead for large bundles; prevents inconsistent snapshots during concurrent mutations
+  - Impact: Improved performance and correctness for thread-safe batch introspection
+  - Location: `runtime/bundle.py` `get_all_message_variables()` lines 1010-1014
+
+- **Serializer Redundant Newlines** (NAME-SERIALIZER-SPACING-001): Fixed serializer to preserve compact message formatting without extra blank lines:
+  - Previous: Message/Term entries ended with `"\n"` but separator logic added another `"\n"`, creating blank line
+  - Now: Message->Message and Term->Term transitions skip extra separator (entries already end with newline)
+  - Rationale: Roundtrip of compact FTL (no blank lines between messages) should preserve formatting
+  - Impact: `"msg1 = A\nmsg2 = B"` now roundtrips without introducing blank line
+  - Location: `syntax/serializer.py` `_serialize_resource()` lines 343-347
+  - Note: Comment separation logic preserved (blank lines prevent attachment/merging per specification)
+
 ## [0.68.0] - 2026-01-12
 
 ### Removed
@@ -1783,6 +1822,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.69.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.69.0
 [0.68.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.68.0
 [0.67.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.67.0
 [0.66.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.66.0
