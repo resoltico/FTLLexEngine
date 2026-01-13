@@ -13,12 +13,11 @@ Exports:
     FormattingError: Exception raised when locale formatting fails
     BabelImportError: Exception raised when Babel is required but not installed
     require_babel: Assert Babel availability with clear error messaging
-    get_babel_locale: Cached Babel Locale retrieval with lazy import
 
 Python 3.13+.
 """
 
-from .babel_compat import BabelImportError, get_babel_locale, require_babel
+from .babel_compat import BabelImportError, require_babel
 from .depth_guard import DepthGuard, DepthLimitExceededError, depth_clamp
 from .errors import FormattingError
 
@@ -28,6 +27,5 @@ __all__ = [
     "DepthLimitExceededError",
     "FormattingError",
     "depth_clamp",
-    "get_babel_locale",
     "require_babel",
 ]

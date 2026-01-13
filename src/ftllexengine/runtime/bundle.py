@@ -30,10 +30,10 @@ from ftllexengine.diagnostics import (
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.locale_utils import get_system_locale
 from ftllexengine.runtime.cache import FormatCache
-from ftllexengine.runtime.function_bridge import FunctionRegistry
+from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
-from ftllexengine.runtime.resolver import FluentResolver, FluentValue
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.runtime.rwlock import RWLock
 from ftllexengine.syntax import Comment, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1

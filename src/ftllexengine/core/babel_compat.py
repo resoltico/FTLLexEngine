@@ -20,11 +20,11 @@ Usage Pattern:
         from babel import Locale
 
     # At function call site (for runtime use):
-    from ftllexengine.core.babel_compat import get_babel_locale, require_babel
+    from ftllexengine.core.babel_compat import require_babel
 
     def my_function(locale_code: str) -> None:
         require_babel("my_function")  # Raises ImportError if Babel missing
-        locale = get_babel_locale(locale_code)  # Safe to use Babel now
+        from babel import Locale  # Safe to import Babel now
         ...
 
 Python 3.13+.
@@ -42,7 +42,6 @@ if TYPE_CHECKING:
 __all__ = [
     "BabelImportError",
     "get_babel_dates",
-    "get_babel_locale",
     "get_babel_numbers",
     "get_locale_class",
     "get_unknown_locale_error",
@@ -122,45 +121,6 @@ def require_babel(feature: str) -> None:
     """
     if not _check_babel_available():
         raise BabelImportError(feature)
-
-
-def get_babel_locale(locale_code: str) -> Locale:
-    """Get a Babel Locale object with caching.
-
-    This is a convenience re-export from ftllexengine.locale_utils.
-    Parses the locale code once and caches the result. This avoids repeated
-    parsing overhead in hot paths like plural rule selection.
-
-    Thread-safe via lru_cache internal locking.
-
-    Note:
-        This function requires Babel. If Babel is not installed, raises
-        ImportError with installation instructions.
-
-    Args:
-        locale_code: Locale code (BCP-47 or POSIX format accepted)
-
-    Returns:
-        Babel Locale object
-
-    Raises:
-        ImportError: If Babel is not installed
-        babel.core.UnknownLocaleError: If locale is not recognized
-        ValueError: If locale format is invalid
-
-    Example:
-        >>> locale = get_babel_locale("en-US")
-        >>> locale.language
-        'en'
-        >>> locale.territory
-        'US'
-    """
-    # Import here to avoid circular dependency at module load time
-    from ftllexengine.locale_utils import (  # noqa: PLC0415
-        get_babel_locale as _get_babel_locale,
-    )
-
-    return _get_babel_locale(locale_code)
 
 
 def get_locale_class() -> type[Locale]:

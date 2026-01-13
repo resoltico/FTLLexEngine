@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING
 
 from ftllexengine.constants import (
     FALLBACK_FUNCTION_ERROR,
@@ -38,7 +39,7 @@ from ftllexengine.diagnostics import (
     FluentReferenceError,
     FluentResolutionError,
 )
-from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue, FunctionRegistry
+from ftllexengine.runtime.function_bridge import FluentNumber, FunctionRegistry
 from ftllexengine.runtime.plural_rules import select_plural_category
 from ftllexengine.syntax import (
     Expression,
@@ -58,8 +59,10 @@ from ftllexengine.syntax import (
     Variant,
 )
 
-# FluentValue re-exported for module convenience (canonical definition: function_bridge.py)
-__all__ = ["FluentResolver", "FluentValue", "ResolutionContext"]
+if TYPE_CHECKING:
+    from ftllexengine.runtime.function_bridge import FluentValue
+
+__all__ = ["FluentResolver", "ResolutionContext"]
 
 # Unicode bidirectional isolation characters per Unicode TR9.
 # Used to prevent RTL/LTR text interference when interpolating values.

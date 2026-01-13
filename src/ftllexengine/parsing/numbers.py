@@ -86,7 +86,8 @@ def parse_number(
     except ImportError as e:
         from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
 
-        raise BabelImportError("parse_number") from e  # noqa: EM101
+        feature = "parse_number"
+        raise BabelImportError(feature) from e
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -185,7 +186,8 @@ def parse_decimal(
     except ImportError as e:
         from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
 
-        raise BabelImportError("parse_decimal") from e  # noqa: EM101
+        feature = "parse_decimal"
+        raise BabelImportError(feature) from e
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))

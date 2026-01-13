@@ -44,7 +44,7 @@ from .constants import DEFAULT_CACHE_SIZE, FALLBACK_INVALID, FALLBACK_MISSING_ME
 from .diagnostics.codes import Diagnostic, DiagnosticCode
 from .diagnostics.errors import FluentError
 from .runtime.bundle import FluentBundle
-from .runtime.resolver import FluentValue
+from .runtime.function_bridge import FluentValue
 from .syntax import Junk
 
 if TYPE_CHECKING:

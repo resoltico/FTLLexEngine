@@ -84,7 +84,8 @@ def select_plural_category(
     except ImportError as e:
         from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
 
-        raise BabelImportError("select_plural_category") from e  # noqa: EM101
+        feature = "select_plural_category"
+        raise BabelImportError(feature) from e
 
     from ftllexengine.locale_utils import get_babel_locale  # noqa: PLC0415
 

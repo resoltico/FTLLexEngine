@@ -510,11 +510,20 @@ class FluentParserV1:
                 junk_content = cursor.source[junk_start : cursor.pos]
                 junk_span = Span(start=junk_start, end=cursor.pos)
 
-                annotation = Annotation(
-                    code=DiagnosticCode.PARSE_JUNK.name,
-                    message="Parse error",
-                    span=Span(start=junk_start, end=junk_start),
-                )
+                # Check if parse failure was due to nesting depth exceeded
+                # If so, use specific diagnostic; otherwise generic parse error
+                if context.was_depth_exceeded():
+                    annotation = Annotation(
+                        code=DiagnosticCode.PARSE_NESTING_DEPTH_EXCEEDED.name,
+                        message=f"Nesting depth limit exceeded (max: {context.max_nesting_depth})",
+                        span=Span(start=junk_start, end=junk_start),
+                    )
+                else:
+                    annotation = Annotation(
+                        code=DiagnosticCode.PARSE_JUNK.name,
+                        message="Parse error",
+                        span=Span(start=junk_start, end=junk_start),
+                    )
 
                 entries.append(
                     Junk(content=junk_content, annotations=(annotation,), span=junk_span)

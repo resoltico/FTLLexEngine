@@ -97,24 +97,57 @@ class ParseContext:
     Attributes:
         max_nesting_depth: Maximum allowed nesting depth for placeables and calls
         current_depth: Current nesting depth (0 = top level)
+        _depth_exceeded_flag: Mutable flag (list container) shared across all nested
+            contexts to track if depth limit was exceeded during parse. Uses list[bool]
+            as a mutable reference that persists when context objects are copied during
+            enter_nesting(). Set to [True] when depth exceeded; checked at Junk creation
+            to emit specific PARSE_NESTING_DEPTH_EXCEEDED diagnostic.
     """
 
     max_nesting_depth: int = MAX_DEPTH
     current_depth: int = 0
+    _depth_exceeded_flag: list[bool] | None = None
+
+    def __post_init__(self) -> None:
+        """Initialize mutable depth exceeded flag if not provided."""
+        if self._depth_exceeded_flag is None:
+            # Create mutable flag container shared across all nested contexts
+            object.__setattr__(self, "_depth_exceeded_flag", [False])
 
     def is_depth_exceeded(self) -> bool:
         """Check if maximum nesting depth has been exceeded."""
         return self.current_depth >= self.max_nesting_depth
+
+    def mark_depth_exceeded(self) -> None:
+        """Mark that depth limit was exceeded during parse.
+
+        Sets persistent flag that survives context unwinding, allowing Junk creation
+        sites to detect depth-exceeded failures and emit specific diagnostics.
+        """
+        if self._depth_exceeded_flag is not None:
+            self._depth_exceeded_flag[0] = True
+
+    def was_depth_exceeded(self) -> bool:
+        """Check if depth limit was exceeded at any point during parse.
+
+        Returns:
+            True if depth exceeded, False otherwise
+        """
+        return bool(
+            self._depth_exceeded_flag is not None and self._depth_exceeded_flag[0]
+        )
 
     def enter_nesting(self) -> ParseContext:
         """Create new context with incremented depth for entering nested construct.
 
         Used for both placeables and function/term calls with arguments.
         Each recursive descent into nested syntax increments depth.
+        Shares depth_exceeded flag across all nested contexts.
         """
         return ParseContext(
             max_nesting_depth=self.max_nesting_depth,
             current_depth=self.current_depth + 1,
+            _depth_exceeded_flag=self._depth_exceeded_flag,
         )
 
 
@@ -247,6 +280,13 @@ def _is_variant_marker(cursor: Cursor) -> bool:
         is_first = True
         has_content = False
         lookahead_count = 0
+
+        # Skip blank? after opening bracket per Fluent spec
+        # Per Fluent EBNF: VariantKey ::= "[" blank? (NumberLiteral | Identifier) blank? "]"
+        # blank_inline ::= "\u0020"+ (spaces only, not tabs)
+        while not scan.is_eof and scan.current == " " and lookahead_count < max_lookahead:
+            scan = scan.advance()
+            lookahead_count += 1
 
         # Find the closing ] with bounded lookahead
         while not scan.is_eof and lookahead_count < max_lookahead:
@@ -1541,8 +1581,11 @@ def parse_placeable(
 
     # Check nesting depth limit (DoS prevention)
     if context.is_depth_exceeded():
-        # Nesting depth exceeded - return None to signal parse failure
+        # Nesting depth exceeded - mark flag and return None to signal parse failure
         # This prevents stack overflow from deeply nested constructs
+        # Flag persists through context unwinding so Junk creation sites can
+        # emit specific PARSE_NESTING_DEPTH_EXCEEDED diagnostic
+        context.mark_depth_exceeded()
         return None
 
     # Create child context with incremented depth for nested parsing

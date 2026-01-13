@@ -11,13 +11,13 @@ from hypothesis import strategies as st
 from ftllexengine.core.babel_compat import (
     BabelImportError,
     get_babel_dates,
-    get_babel_locale,
     get_babel_numbers,
     get_locale_class,
     get_unknown_locale_error,
     is_babel_available,
     require_babel,
 )
+from ftllexengine.locale_utils import get_babel_locale
 
 
 class TestBabelAvailability:
@@ -494,3 +494,36 @@ class TestGetBabelDatesProperties:
         for func_name in required_functions:
             assert hasattr(dates, func_name)
             assert callable(getattr(dates, func_name))
+
+
+class TestBreakingChangesV071:
+    """Test that v0.71.0 breaking changes are correctly enforced."""
+
+    def test_get_babel_locale_not_exported_from_babel_compat(self) -> None:
+        """get_babel_locale is no longer exported from babel_compat module."""
+        from ftllexengine.core import babel_compat  # noqa: PLC0415
+
+        # get_babel_locale should NOT be in babel_compat's exports
+        assert not hasattr(babel_compat, "get_babel_locale")
+
+        # Should not be in __all__
+        assert "get_babel_locale" not in babel_compat.__all__
+
+    def test_get_babel_locale_available_from_locale_utils(self) -> None:
+        """get_babel_locale is still available from canonical location."""
+        from ftllexengine.locale_utils import (  # noqa: PLC0415
+            get_babel_locale as canonical_get_babel_locale,
+        )
+
+        # Should work correctly from canonical location
+        locale = canonical_get_babel_locale("en_US")
+        assert locale.language == "en"
+        assert locale.territory == "US"
+
+    def test_importing_get_babel_locale_from_babel_compat_fails(self) -> None:
+        """Attempting to import get_babel_locale from babel_compat fails."""
+        with pytest.raises(ImportError, match="cannot import name 'get_babel_locale'"):
+            # pylint: disable=unused-import
+            from ftllexengine.core.babel_compat import (  # noqa: PLC0415
+                get_babel_locale,  # noqa: F401
+            )

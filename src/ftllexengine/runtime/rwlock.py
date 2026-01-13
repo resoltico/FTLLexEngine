@@ -28,6 +28,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
+from functools import wraps
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
@@ -285,13 +286,12 @@ def with_read_lock(lock_attr: str = "_rwlock") -> Callable[[Callable[..., T]], C
     """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
         def wrapper(self: object, *args: object, **kwargs: object) -> T:
             lock: RWLock = getattr(self, lock_attr)
             with lock.read():
                 return func(self, *args, **kwargs)
 
-        wrapper.__name__ = func.__name__
-        wrapper.__doc__ = func.__doc__
         return wrapper
 
     return decorator
@@ -318,13 +318,12 @@ def with_write_lock(lock_attr: str = "_rwlock") -> Callable[[Callable[..., T]], 
     """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
         def wrapper(self: object, *args: object, **kwargs: object) -> T:
             lock: RWLock = getattr(self, lock_attr)
             with lock.write():
                 return func(self, *args, **kwargs)
 
-        wrapper.__name__ = func.__name__
-        wrapper.__doc__ = func.__doc__
         return wrapper
 
     return decorator

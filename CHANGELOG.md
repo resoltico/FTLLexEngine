@@ -13,6 +13,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-01-13
+
+### Removed
+- **Convenience Re-exports** (FTL-MODERN-001): Removed convenience re-exports that violated canonical import locations:
+  - Removed: `FluentValue` from `ftllexengine.runtime.resolver` exports
+  - Removed: `get_babel_locale()` function from `ftllexengine.core.babel_compat` module
+  - Migration (FluentValue): Replace `from ftllexengine.runtime.resolver import FluentValue` with `from ftllexengine.runtime.function_bridge import FluentValue`
+  - Migration (get_babel_locale): Replace `from ftllexengine.core.babel_compat import get_babel_locale` with `from ftllexengine.locale_utils import get_babel_locale`
+  - Rationale: Convenience re-exports create multiple import paths for the same functionality, obscuring the canonical location and making the codebase harder to navigate
+  - Impact: Code importing from non-canonical locations will raise ImportError
+  - Locations: `runtime/resolver.py` `__all__`, `core/babel_compat.py` removed `get_babel_locale()` function, updated `babel_compat.py` module docstring
+
+### Changed
+- **Decorator Metadata Preservation** (FTL-MODERN-004): Standardized decorators to use `functools.wraps` for proper metadata preservation:
+  - Changed: `with_read_lock` and `with_write_lock` decorators in `runtime/rwlock.py`
+  - Previous: Manual `__name__` and `__doc__` assignment
+  - Now: Uses `@wraps(func)` decorator for comprehensive metadata preservation
+  - Rationale: `functools.wraps` is the standard library mechanism for preserving function metadata, handling `__name__`, `__doc__`, `__module__`, `__qualname__`, `__annotations__`, and `__dict__`
+  - Impact: Decorated methods now correctly preserve all function metadata, improving introspection and debugging
+  - Location: `runtime/rwlock.py` lines 289, 321
+
+### Fixed
+- **Variant Marker Blank Handling** (FTL-GRAMMAR-003): Fixed `_is_variant_marker()` to correctly handle whitespace after opening bracket per Fluent EBNF specification:
+  - Previous: Parser failed to recognize variant keys with spaces after opening bracket (e.g., `[ one]`)
+  - Now: Skips `blank_inline` (spaces only) after `[` before reading variant key, per Fluent EBNF: `VariantKey ::= "[" blank? (NumberLiteral | Identifier) blank? "]"`
+  - Rationale: Fluent specification explicitly allows optional whitespace after opening bracket in variant keys
+  - Impact: Variant keys like `[ one]`, `[  two]` now parse correctly instead of being treated as literal text
+  - Location: `syntax/parser/rules.py` `_is_variant_marker()` lines 251-256
+
+- **Nesting Depth Diagnostic** (FTL-DIAG-001): Parser now emits specific diagnostic when nesting depth limit exceeded:
+  - Previous: Generic "Parse error" with `DiagnosticCode.PARSE_JUNK` when exceeding max nesting depth
+  - Now: Specific `DiagnosticCode.PARSE_NESTING_DEPTH_EXCEEDED` with descriptive message including the limit value
+  - Added: New diagnostic code `PARSE_NESTING_DEPTH_EXCEEDED = 3005` in `diagnostics/codes.py`
+  - Implementation: `ParseContext` now tracks depth-exceeded state via mutable flag shared across all nested contexts. When `parse_placeable()` detects depth exceeded, it marks the flag. Junk creation sites in `FluentParserV1.parse()` check this flag and emit the specific diagnostic.
+  - Rationale: Specific diagnostics help users identify the exact cause of parse failures, especially for DoS prevention mechanisms
+  - Impact: Deeply nested FTL like `{ { { ... } } }` exceeding limit now shows "Nesting depth limit exceeded (max: 100)" instead of generic "Parse error"
+  - Locations: `diagnostics/codes.py` new code `PARSE_NESTING_DEPTH_EXCEEDED = 3005`, `syntax/parser/rules.py` `ParseContext` lines 100-151, `parse_placeable()` lines 1583-1589, `syntax/parser/core.py` Junk creation lines 513-526
+
 ## [0.70.0] - 2026-01-13
 
 ### Fixed
@@ -1833,6 +1871,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.71.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.71.0
 [0.70.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.70.0
 [0.69.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.69.0
 [0.68.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.68.0

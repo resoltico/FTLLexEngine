@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.70.0"
+version: "0.71.0"
 domain: ERRORS
-updated: "2026-01-12"
+updated: "2026-01-13"
 route:
   keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]
@@ -472,12 +472,14 @@ class DiagnosticCode(Enum):
     MAX_DEPTH_EXCEEDED = 2010
     FUNCTION_ARITY_MISMATCH = 2011
     TERM_POSITIONAL_ARGS_IGNORED = 2012
+    PLURAL_SUPPORT_UNAVAILABLE = 2013
 
     # Syntax errors (3000-3999)
     UNEXPECTED_EOF = 3001
     INVALID_CHARACTER = 3002
     EXPECTED_TOKEN = 3003
     PARSE_JUNK = 3004
+    PARSE_NESTING_DEPTH_EXCEEDED = 3005
 
     # Parsing errors (4000-4999)
     PARSE_NUMBER_FAILED = 4001

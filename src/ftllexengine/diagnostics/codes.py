@@ -51,6 +51,7 @@ class DiagnosticCode(Enum):
     INVALID_CHARACTER = 3002
     EXPECTED_TOKEN = 3003
     PARSE_JUNK = 3004  # Generic parse error for Junk AST entries
+    PARSE_NESTING_DEPTH_EXCEEDED = 3005  # Nesting depth limit exceeded
 
     # Parsing errors (4000-4999) - Bi-directional localization
     PARSE_NUMBER_FAILED = 4001

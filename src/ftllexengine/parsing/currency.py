@@ -659,7 +659,8 @@ def parse_currency(
     except ImportError as e:
         from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
 
-        raise BabelImportError("parse_currency") from e  # noqa: EM101
+        feature = "parse_currency"
+        raise BabelImportError(feature) from e
 
     # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):
