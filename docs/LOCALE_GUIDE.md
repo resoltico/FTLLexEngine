@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.69.0"
+version: "0.70.0"
 domain: locale
 updated: "2026-01-12"
 route:

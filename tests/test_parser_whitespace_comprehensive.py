@@ -201,36 +201,41 @@ class TestSkipMultilinePatternStart:
     def test_skip_multiline_pattern_start_inline(self) -> None:
         """Verify skip_multiline_pattern_start handles inline pattern."""
         cursor = Cursor(source="  value", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.pos == 2
         assert new_cursor.current == "v"
+        assert indent == 0  # Inline pattern has no multiline indent
 
     def test_skip_multiline_pattern_start_multiline(self) -> None:
         """Verify skip_multiline_pattern_start handles multiline pattern."""
         cursor = Cursor(source="\n  value", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.pos == 3
         assert new_cursor.current == "v"
+        assert indent == 2  # Multiline pattern returns the common indent
 
     def test_skip_multiline_pattern_start_no_continuation(self) -> None:
         """Verify skip_multiline_pattern_start stops at non-continuation newline."""
         cursor = Cursor(source="\nvalue", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.pos == 0
         assert new_cursor.current == "\n"
+        assert indent == 0
 
     def test_skip_multiline_pattern_start_empty(self) -> None:
         """Verify skip_multiline_pattern_start handles empty input."""
         cursor = Cursor(source="", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.is_eof
+        assert indent == 0
 
     def test_skip_multiline_pattern_start_no_spaces(self) -> None:
         """Verify skip_multiline_pattern_start handles no leading spaces."""
         cursor = Cursor(source="value", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.pos == 0
         assert new_cursor.current == "v"
+        assert indent == 0
 
     def test_skip_multiline_pattern_start_normalized_line_ending(self) -> None:
         """Verify skip_multiline_pattern_start handles normalized line endings.
@@ -239,23 +244,26 @@ class TestSkipMultilinePatternStart:
         function is called. This test verifies correct behavior with normalized input.
         """
         cursor = Cursor(source="\n  value", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.current == "v"
+        assert indent == 2
 
     def test_skip_multiline_pattern_start_stops_at_bracket(self) -> None:
         """Verify skip_multiline_pattern_start stops at bracket (variant)."""
         cursor = Cursor(source="\n  [variant]", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.pos == 0
         assert new_cursor.current == "\n"
+        assert indent == 0
 
     def test_skip_multiline_pattern_start_inline_then_newline(self) -> None:
         """Verify skip_multiline_pattern_start handles inline spaces then newline."""
         cursor = Cursor(source="  \nvalue", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         # Should skip inline spaces, but stop at newline without continuation
         assert new_cursor.pos == 2
         assert new_cursor.current == "\n"
+        assert indent == 0
 
 
 class TestWhitespaceIntegration:
@@ -272,9 +280,10 @@ class TestWhitespaceIntegration:
         # Skip =
         cursor = cursor.advance()
 
-        # Skip whitespace before pattern
-        cursor = skip_multiline_pattern_start(cursor)
+        # Skip whitespace before pattern (returns cursor and indent count)
+        cursor, indent = skip_multiline_pattern_start(cursor)
         assert cursor.current == "W"
+        assert indent == 0  # Inline pattern
 
     def test_parse_message_multiline_pattern(self) -> None:
         """Integration: Simulate parsing message with multiline pattern."""
@@ -287,9 +296,10 @@ class TestWhitespaceIntegration:
         # Skip =
         cursor = cursor.advance()
 
-        # Skip whitespace before pattern (handles multiline)
-        cursor = skip_multiline_pattern_start(cursor)
+        # Skip whitespace before pattern (handles multiline, returns indent)
+        cursor, indent = skip_multiline_pattern_start(cursor)
         assert cursor.current == "W"
+        assert indent == 2  # Multiline with 2-space indent
 
     def test_parse_select_expression_with_blank(self) -> None:
         """Integration: Simulate parsing select expression with blank lines."""
@@ -335,8 +345,9 @@ class TestWhitespaceEdgeCases:
     def test_skip_multiline_pattern_start_only_newline(self) -> None:
         """Verify skip_multiline_pattern_start handles only newline."""
         cursor = Cursor(source="\n", pos=0)
-        new_cursor = skip_multiline_pattern_start(cursor)
+        new_cursor, indent = skip_multiline_pattern_start(cursor)
         assert new_cursor.pos == 0
+        assert indent == 0
 
     def test_whitespace_with_carriage_return_only(self) -> None:
         """Verify carriage return alone is not skipped as whitespace.

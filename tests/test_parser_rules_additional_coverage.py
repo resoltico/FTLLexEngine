@@ -39,8 +39,8 @@ from ftllexengine.syntax.parser.rules import (
     parse_term_reference,
     parse_variant,
     parse_variant_key,
-    skip_multiline_pattern_start,
 )
+from ftllexengine.syntax.parser.whitespace import skip_multiline_pattern_start
 
 
 class TestIsVariantMarkerAdditional:
@@ -381,9 +381,9 @@ class TestParseMessageHeaderAndAttributesAdditional:
         assert header_result is not None
         cursor = header_result.cursor
 
-        # Parse pattern
-        cursor = skip_multiline_pattern_start(cursor)
-        pattern_result = parse_pattern(cursor)
+        # Parse pattern (skip_multiline_pattern_start returns tuple)
+        cursor, initial_indent = skip_multiline_pattern_start(cursor)
+        pattern_result = parse_pattern(cursor, initial_common_indent=initial_indent)
         assert pattern_result is not None
         cursor = pattern_result.cursor
 

@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-01-13
+
+### Fixed
+- **Multiline Pattern Blank Line Indentation** (FTL-GRAMMAR-001): Fixed `parse_pattern` and `parse_simple_pattern` to correctly handle blank lines before the first content line in multiline patterns:
+  - Previous: `is_indented_continuation()` skipped all blank lines to find indented content, but `parse_pattern()` advanced past only one newline before measuring `common_indent`. When cursor landed on a blank line, `_count_leading_spaces()` returned 0, causing all indentation to be preserved literally.
+  - Now: Both `skip_multiline_pattern_start()` and continuation handling in `parse_pattern()`/`parse_simple_pattern()` skip all blank lines before measuring common indent.
+  - API Change: `skip_multiline_pattern_start()` now returns `tuple[Cursor, int]` (cursor and initial indent count) instead of just `Cursor`. This allows `parse_pattern()` to receive the pre-computed `initial_common_indent`.
+  - Pattern Fix: When handling continuation lines, newlines are now merged with the previous element immediately, while extra spaces (beyond common indent) are prepended to the next text element. This ensures correct element boundaries.
+  - Impact: FTL patterns like `msg =\n\n    value` now correctly strip the 4-space indentation, producing `"value"` instead of `"    value"`.
+  - Location: `syntax/parser/whitespace.py` `skip_multiline_pattern_start()`, `syntax/parser/rules.py` `parse_pattern()`, `parse_simple_pattern()`, `parse_message()`, `parse_attribute()`, `parse_term()`
+
 ## [0.69.0] - 2026-01-12
 
 ### Fixed
@@ -1822,6 +1833,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.70.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.70.0
 [0.69.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.69.0
 [0.68.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.68.0
 [0.67.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.67.0

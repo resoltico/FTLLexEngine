@@ -480,6 +480,13 @@ def parse_simple_pattern(
                 # Skip newline
                 cursor = cursor.advance()
 
+                # Skip any blank lines (consecutive newlines) before measuring indent.
+                # This matches is_indented_continuation() which looks past blank lines
+                # to find indented content. Without this, blank lines before first
+                # content would set common_indent to 0 (measuring at newline position).
+                while not cursor.is_eof and cursor.current == "\n":
+                    cursor = cursor.advance()
+
                 # Track common indentation from first continuation line
                 if common_indent is None:
                     common_indent = _count_leading_spaces(cursor)
@@ -491,22 +498,27 @@ def parse_simple_pattern(
                     cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
 
                 # Per Fluent spec, continuation lines are joined with newlines.
-                # The newline represents the line break in the pattern value.
-                newline_text = "\n" + extra_spaces
-                # Accumulate continuation text (O(1) append)
-                text_acc.add(newline_text)
+                # IMPORTANT: The newline belongs to the END of the previous element,
+                # but extra_spaces belong to the START of the next element.
+                # Merge newline with previous element immediately.
+                if elements and not isinstance(elements[-1], Placeable):
+                    last_elem = elements[-1]
+                    elements[-1] = TextElement(value=last_elem.value + "\n")
+                else:
+                    # No previous text element to merge with
+                    elements.append(TextElement(value="\n"))
+
+                # Store extra_spaces to prepend to next text element
+                if extra_spaces:
+                    text_acc.add(extra_spaces)
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
         # Parse placeable expression
         if ch == "{":
-            # Append accumulated continuation text to last element before placeable
+            # Add accumulated extra_spaces as text element before placeable
             if text_acc.has_content():
-                if elements and not isinstance(elements[-1], Placeable):
-                    last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
-                else:
-                    elements.append(text_acc.finalize())
+                elements.append(text_acc.finalize())
                 text_acc.clear()
 
             cursor = cursor.advance()  # Skip {
@@ -541,26 +553,16 @@ def parse_simple_pattern(
                 # loop at 358 will always advance at least once before breaking.
                 # The False branch (cursor.pos == text_start) is structurally unreachable.
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
-                # Append accumulated continuation text to last element first
+                # Prepend extra_spaces from continuation to new text element
                 if text_acc.has_content():
-                    if elements and not isinstance(elements[-1], Placeable):
-                        last_elem = elements[-1]
-                        combined_value = last_elem.value + text_acc.finalize().value
-                        elements[-1] = TextElement(value=combined_value)
-                    else:
-                        # No previous element, append continuation as new element
-                        elements.append(text_acc.finalize())
+                    text = text_acc.finalize().value + text
                     text_acc.clear()
-                # Then append new text element
                 elements.append(TextElement(value=text))
 
-    # Finalize any remaining accumulated continuation text
+    # Finalize any remaining accumulated extra_spaces (trailing spaces at end of pattern)
     if text_acc.has_content():
-        if elements and not isinstance(elements[-1], Placeable):
-            last_elem = elements[-1]
-            elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
-        else:
-            elements.append(text_acc.finalize())
+        # These are just trailing extra_spaces; add as text element (may be trimmed)
+        elements.append(text_acc.finalize())
 
     # Per Fluent spec, trim leading and trailing blank lines from patterns
     trimmed_elements = _trim_pattern_blank_lines(elements)
@@ -616,6 +618,8 @@ def _skip_common_indent(cursor: Cursor, common_indent: int) -> tuple[Cursor, str
 def parse_pattern(
     cursor: Cursor,
     context: ParseContext | None = None,
+    *,
+    initial_common_indent: int | None = None,
 ) -> ParseResult[Pattern] | None:
     """Parse full pattern with multi-line continuation support.
 
@@ -636,13 +640,16 @@ def parse_pattern(
     Args:
         cursor: Current position in source
         context: Parse context for depth tracking
+        initial_common_indent: Pre-computed common indent from skip_multiline_pattern_start.
+            When provided, this is the indentation of the first line of a multiline
+            pattern (already skipped by skip_multiline_pattern_start).
 
     Returns:
         ParseResult with Pattern on success, None on parse error
     """
     elements: list[TextElement | Placeable] = []
-    # Track common indentation (set on first continuation line)
-    common_indent: int | None = None
+    # Track common indentation (set on first continuation line, or from initial_common_indent)
+    common_indent: int | None = initial_common_indent if initial_common_indent else None
     # Accumulate text fragments to avoid O(N^2) string concatenation
     text_acc = _TextAccumulator()
 
@@ -656,6 +663,13 @@ def parse_pattern(
                 # Skip newline
                 cursor = cursor.advance()
 
+                # Skip any blank lines (consecutive newlines) before measuring indent.
+                # This matches is_indented_continuation() which looks past blank lines
+                # to find indented content. Without this, blank lines before first
+                # content would set common_indent to 0 (measuring at newline position).
+                while not cursor.is_eof and cursor.current == "\n":
+                    cursor = cursor.advance()
+
                 # Track common indentation from first continuation line
                 if common_indent is None:
                     common_indent = _count_leading_spaces(cursor)
@@ -667,10 +681,19 @@ def parse_pattern(
                     cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
 
                 # Per Fluent spec, continuation lines are joined with newlines.
-                # The newline represents the line break in the pattern value.
-                newline_text = "\n" + extra_spaces
-                # Accumulate continuation text (O(1) append)
-                text_acc.add(newline_text)
+                # IMPORTANT: The newline belongs to the END of the previous element,
+                # but extra_spaces belong to the START of the next element.
+                # Merge newline with previous element immediately.
+                if elements and not isinstance(elements[-1], Placeable):
+                    last_elem = elements[-1]
+                    elements[-1] = TextElement(value=last_elem.value + "\n")
+                else:
+                    # No previous text element to merge with
+                    elements.append(TextElement(value="\n"))
+
+                # Store extra_spaces to prepend to next text element
+                if extra_spaces:
+                    text_acc.add(extra_spaces)
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -682,13 +705,9 @@ def parse_pattern(
 
         # Placeable: {$var} or {$var -> ...}
         if ch == "{":
-            # Append accumulated continuation text to last element before placeable
+            # Add accumulated extra_spaces as text element before placeable
             if text_acc.has_content():
-                if elements and not isinstance(elements[-1], Placeable):
-                    last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
-                else:
-                    elements.append(text_acc.finalize())
+                elements.append(text_acc.finalize())
                 text_acc.clear()
 
             cursor = cursor.advance()  # Skip {
@@ -724,26 +743,16 @@ def parse_pattern(
                 # before text parsing, and '{' enters placeable parsing, so this condition
                 # is always True when reached.
                 text = Cursor(cursor.source, text_start).slice_to(cursor.pos)
-                # Append accumulated continuation text to last element first
+                # Prepend extra_spaces from continuation to new text element
                 if text_acc.has_content():
-                    if elements and not isinstance(elements[-1], Placeable):
-                        last_elem = elements[-1]
-                        combined_value = last_elem.value + text_acc.finalize().value
-                        elements[-1] = TextElement(value=combined_value)
-                    else:
-                        # No previous element, append continuation as new element
-                        elements.append(text_acc.finalize())
+                    text = text_acc.finalize().value + text
                     text_acc.clear()
-                # Then append new text element
                 elements.append(TextElement(value=text))
 
-    # Finalize any remaining accumulated continuation text
+    # Finalize any remaining accumulated extra_spaces (trailing spaces at end of pattern)
     if text_acc.has_content():
-        if elements and not isinstance(elements[-1], Placeable):
-            last_elem = elements[-1]
-            elements[-1] = TextElement(value=last_elem.value + text_acc.finalize().value)
-        else:
-            elements.append(text_acc.finalize())
+        # These are just trailing extra_spaces; add as text element (may be trimmed)
+        elements.append(text_acc.finalize())
 
     # Per Fluent spec, trim leading and trailing blank lines from patterns
     trimmed_elements = _trim_pattern_blank_lines(elements)
@@ -1731,8 +1740,8 @@ def parse_message(
     cursor = id_parse.cursor
 
     # Parse pattern (message value)
-    cursor = skip_multiline_pattern_start(cursor)
-    pattern_result = parse_pattern(cursor, context)
+    cursor, initial_indent = skip_multiline_pattern_start(cursor)
+    pattern_result = parse_pattern(cursor, context, initial_common_indent=initial_indent)
     if pattern_result is None:
         return pattern_result
     pattern_parse = pattern_result
@@ -1810,10 +1819,10 @@ def parse_attribute(
     # After '=', handle multiline pattern start (same as messages)
     # Per spec: Attribute ::= ... blank_inline? "=" blank_inline? Pattern
     # Pattern can start on same line or next line with indentation
-    cursor = skip_multiline_pattern_start(cursor)
+    cursor, initial_indent = skip_multiline_pattern_start(cursor)
 
     # Parse pattern
-    pattern_result = parse_pattern(cursor, context)
+    pattern_result = parse_pattern(cursor, context, initial_common_indent=initial_indent)
     if pattern_result is None:
         return pattern_result
 
@@ -1869,24 +1878,12 @@ def parse_term(
 
     cursor = cursor.advance()  # Skip '='
 
-    # After '=', skip inline whitespace (per spec: blank_inline, space only)
-    cursor = skip_blank_inline(cursor)
+    # After '=', handle multiline pattern start (same as messages)
+    # Use skip_multiline_pattern_start to properly track initial indent for common_indent
+    cursor, initial_indent = skip_multiline_pattern_start(cursor)
 
-    # Check for pattern starting on next line (multiline value pattern)
-    # Example: -term =\n    value
-    # Note: Line endings are normalized to LF at parser entry.
-    if not cursor.is_eof and cursor.current == "\n":  # noqa: SIM102
-        # Check if next line is indented (valid multiline pattern)
-        if is_indented_continuation(cursor):
-            # Multiline pattern - skip newline and leading indentation
-            cursor = cursor.advance()
-            # Skip leading indentation before parsing
-            # parse_pattern will handle continuation lines itself
-            cursor = cursor.skip_spaces()
-        # Else: Empty pattern - leave cursor at newline, parse_pattern will handle it
-
-    # Parse pattern
-    pattern_result = parse_pattern(cursor, context)
+    # Parse pattern with initial common indent for proper multiline handling
+    pattern_result = parse_pattern(cursor, context, initial_common_indent=initial_indent)
     if pattern_result is None:
         return pattern_result
 

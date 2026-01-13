@@ -101,7 +101,7 @@ def is_indented_continuation(cursor: Cursor) -> bool:
     return not (not next_cursor.is_eof and next_cursor.current in ("[", "*", "."))
 
 
-def skip_multiline_pattern_start(cursor: Cursor) -> Cursor:
+def skip_multiline_pattern_start(cursor: Cursor) -> tuple[Cursor, int]:
     """Skip whitespace and handle multiline pattern start.
 
     Per spec: Pattern can start on same line or next line (if indented).
@@ -112,6 +112,11 @@ def skip_multiline_pattern_start(cursor: Cursor) -> Cursor:
     This method handles:
     1. Inline patterns: "key = value" (skip spaces on same line)
     2. Multiline patterns: "key =\n    value" (skip newline + leading spaces)
+
+    Returns:
+        Tuple of (cursor at content start, common_indent for multiline patterns).
+        For inline patterns, common_indent is 0.
+        For multiline patterns, common_indent is the leading indentation count.
     """
     # Skip inline whitespace (ONLY spaces per spec, NOT tabs)
     cursor = skip_blank_inline(cursor)
@@ -120,11 +125,16 @@ def skip_multiline_pattern_start(cursor: Cursor) -> Cursor:
     # Note: Line endings normalized to LF at parser entry point
     if not cursor.is_eof and cursor.current == "\n":  # noqa: SIM102
         if is_indented_continuation(cursor):
-            # Multiline pattern - skip newlines (including blank lines) and leading indentation
+            # Multiline pattern - skip newlines (including blank lines)
             cursor = cursor.advance()
             while not cursor.is_eof and cursor.current == "\n":
                 cursor = cursor.advance()
-            # Skip leading indentation (ONLY spaces per spec)
-            cursor = skip_blank_inline(cursor)
+            # Count and skip leading indentation (ONLY spaces per spec)
+            # Return the indent count so parse_pattern can use it as common_indent
+            indent_count = 0
+            while not cursor.is_eof and cursor.current == " ":
+                indent_count += 1
+                cursor = cursor.advance()
+            return cursor, indent_count
 
-    return cursor
+    return cursor, 0

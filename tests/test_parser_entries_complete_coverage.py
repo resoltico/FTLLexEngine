@@ -369,7 +369,12 @@ class TestLine328TermAttributeBreak:
         cursor = Cursor(source, 0)
 
         # Mock parse_pattern to stop after "Value" and leave cursor on first space
-        def mock_parse_pattern(cursor_arg, context=None):  # noqa: ARG001
+        def mock_parse_pattern(
+            cursor_arg,  # noqa: ARG001
+            context=None,  # noqa: ARG001
+            *,
+            initial_common_indent=None,  # noqa: ARG001
+        ):
             # Return pattern and position cursor at the first space after "Value"
             pattern = Pattern(elements=(TextElement("Value"),))
             # Position cursor at the space (position 14: after "Value")
@@ -473,7 +478,12 @@ class TestBranch296Line307TermNewlineNotIndented:
         # Mock parse_pattern to return empty pattern
         empty_pattern = Pattern(elements=())
 
-        def mock_parse_pattern(cursor, context=None):  # noqa: ARG001
+        def mock_parse_pattern(
+            cursor,
+            context=None,  # noqa: ARG001
+            *,
+            initial_common_indent=None,  # noqa: ARG001
+        ):
             # Return empty pattern to trigger line 316 check
             return ParseResult(empty_pattern, cursor)
 
