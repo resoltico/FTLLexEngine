@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.71.0"
+version: "0.72.0"
 domain: ERRORS
-updated: "2026-01-13"
+updated: "2026-01-14"
 route:
   keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]

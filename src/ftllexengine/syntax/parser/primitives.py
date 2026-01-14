@@ -46,7 +46,23 @@ from ftllexengine.constants import (
     _MAX_NUMBER_LENGTH,
     _MAX_STRING_LITERAL_LENGTH,
 )
+from ftllexengine.core.identifier_validation import (
+    is_identifier_char,
+    is_identifier_start,
+)
 from ftllexengine.syntax.cursor import Cursor, ParseResult
+
+__all__ = [
+    "_ASCII_DIGITS",
+    "clear_parse_error",
+    "get_last_parse_error",
+    "is_identifier_char",
+    "is_identifier_start",
+    "parse_identifier",
+    "parse_number",
+    "parse_number_value",
+    "parse_string_literal",
+]
 
 # Unicode escape sequence constants per Unicode Standard.
 # \uXXXX = 4 hex digits (BMP characters U+0000 to U+FFFF)
@@ -75,44 +91,9 @@ _ASCII_DIGITS: str = "0123456789"
 # _MAX_IDENTIFIER_LENGTH, _MAX_NUMBER_LENGTH, _MAX_STRING_LITERAL_LENGTH
 # See constants.py for documentation on these DoS prevention limits.
 
-
-def is_identifier_start(ch: str) -> bool:
-    """Check if character can start an identifier per Fluent spec.
-
-    Fluent identifiers follow the pattern: [a-zA-Z][a-zA-Z0-9_-]*
-    Only ASCII letters are allowed as the first character.
-
-    This enforces Fluent specification compliance. Python's str.isalpha()
-    accepts Unicode letters (e.g., 'é', 'ñ', 'µ') which would create
-    interoperability issues with other Fluent implementations (JavaScript,
-    Rust) that enforce ASCII-only identifiers.
-
-    Args:
-        ch: Single character to check
-
-    Returns:
-        True if character is ASCII letter (a-z, A-Z), False otherwise
-    """
-    return len(ch) == 1 and ch.isascii() and ch.isalpha()
-
-
-def is_identifier_char(ch: str) -> bool:
-    """Check if character can continue an identifier per Fluent spec.
-
-    Fluent identifiers follow the pattern: [a-zA-Z][a-zA-Z0-9_-]*
-    Continuation characters must be ASCII alphanumeric, hyphen, or underscore.
-
-    This enforces Fluent specification compliance. Python's str.isalnum()
-    accepts Unicode alphanumerics which would create interoperability issues.
-
-    Args:
-        ch: Single character to check
-
-    Returns:
-        True if character is ASCII letter, ASCII digit, hyphen, or underscore
-    """
-    return len(ch) == 1 and ch.isascii() and (ch.isalnum() or ch in "-_")
-
+# Identifier validation functions imported from ftllexengine.core.identifier_validation:
+# is_identifier_start, is_identifier_char
+# See identifier_validation.py for the unified source of truth for FTL identifier grammar.
 
 # Thread-local storage for parse error context
 _error_thread_local = thread_local()

@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.71.0"
+version = "0.72.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -75,7 +75,7 @@ dev = [
     "Babel>=2.17.0,<3.0.0",  # Required for tests (locale formatting, parsing)
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
-    "hypothesis>=6.150.1",
+    "hypothesis>=6.150.2",
     "hypofuzz>=25.11.1",
     "mypy>=1.19.1",
     "pylint>=4.0.4",
@@ -312,6 +312,7 @@ ignore = [
 
 # Fuzzing: pytestmark must precede imports for file-level marker application
 "tests/test_grammar_based_fuzzing.py" = ["E402"]
+"tests/test_whitespace_fuzzing.py" = ["E402"]
 "tests/test_serializer_completeness.py" = ["RUF002"]
 "tests/test_semantic_validation.py" = ["PLC0415"]
 "tests/test_span_attachment.py" = ["PLC0415"]

@@ -40,6 +40,8 @@ Installation:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _get_version
 from typing import TYPE_CHECKING
 
 # Core API - Always available (no Babel dependency)
@@ -114,13 +116,6 @@ def __getattr__(name: str) -> object:
 
 # Version information - Auto-populated from package metadata
 # SINGLE SOURCE OF TRUTH: pyproject.toml [project] version
-try:
-    from importlib.metadata import PackageNotFoundError
-    from importlib.metadata import version as _get_version
-except ImportError as e:
-    # This should never happen on Python 3.13+ (importlib.metadata is stdlib since 3.8)
-    raise RuntimeError("importlib.metadata unavailable - Python version too old? " + str(e)) from e
-
 try:
     __version__ = _get_version("ftllexengine")
 except PackageNotFoundError:

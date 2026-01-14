@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.71.0"
+version: "0.72.0"
 domain: locale
-updated: "2026-01-13"
+updated: "2026-01-14"
 route:
   keywords: [locale, NUMBER, DATETIME, formatting, BCP-47, locale normalization, str vs NUMBER]
   questions: ["why isn't my number formatted?", "how does locale formatting work?", "NUMBER vs raw variable?", "how to format numbers with locale?"]

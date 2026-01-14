@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Unified Fuzzing Interface
 # Single entry point for all fuzzing operations.
 #
@@ -399,22 +399,43 @@ run_deep() {
     # Force TMPDIR to avoid macOS socket path issues
     export TMPDIR="/tmp"
 
+    # Use temp file to capture output while displaying in real-time
+    DEEP_OUTPUT_FILE=$(mktemp)
+    trap "rm -f '$DEEP_OUTPUT_FILE'" EXIT
+
+    # Track if user interrupted
+    USER_STOPPED="false"
+    trap 'USER_STOPPED="true"' INT
+
     set +e
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        OUTPUT=$(uv run hypothesis fuzz --no-dashboard -n "$WORKERS" $EXTRA_ARGS -- tests/ 2>&1)
-        EXIT_CODE=$?
-    else
-        uv run hypothesis fuzz --no-dashboard -n "$WORKERS" $EXTRA_ARGS -- tests/ 2>&1
-        EXIT_CODE=$?
-    fi
+    uv run hypothesis fuzz --no-dashboard -n "$WORKERS" $EXTRA_ARGS -- tests/ 2>&1 | tee "$DEEP_OUTPUT_FILE"
+    EXIT_CODE=${PIPESTATUS[0]}
     set -e
 
-    # Detect findings
+    # Restore default INT handler
+    trap - INT
+
+    # Analyze output for findings
+    # Note: grep -c outputs "0" and exits 1 when no matches, so use || true
+    FAILURE_COUNT=$(grep -c "Falsifying example:" "$DEEP_OUTPUT_FILE" 2>/dev/null) || true
+    FAILURE_COUNT=${FAILURE_COUNT:-0}
+    INTERRUPTED=$(grep -c "KeyboardInterrupt" "$DEEP_OUTPUT_FILE" 2>/dev/null) || true
+    INTERRUPTED=${INTERRUPTED:-0}
+
+    # User stopped if we caught SIGINT or output shows KeyboardInterrupt
+    if [[ "$INTERRUPTED" -gt 0 ]] || [[ $EXIT_CODE -eq 130 ]]; then
+        USER_STOPPED="true"
+    fi
+
+    # Display summary
     if [[ "$JSON_OUTPUT" == "true" ]]; then
-        FAILURE_COUNT=$(echo "$OUTPUT" | grep -c "Falsifying example:" 2>/dev/null || echo "0")
-        if [[ $EXIT_CODE -eq 0 ]] || [[ $EXIT_CODE -eq 130 ]]; then
-            STATUS="pass"
-        elif [[ $FAILURE_COUNT -gt 0 ]]; then
+        if [[ $EXIT_CODE -eq 0 ]] || [[ "$USER_STOPPED" == "true" ]]; then
+            if [[ "$FAILURE_COUNT" -gt 0 ]]; then
+                STATUS="finding"
+            else
+                STATUS="pass"
+            fi
+        elif [[ "$FAILURE_COUNT" -gt 0 ]]; then
             STATUS="finding"
         else
             STATUS="error"
@@ -423,16 +444,34 @@ run_deep() {
     else
         echo ""
         echo -e "${BOLD}============================================================${NC}"
-        if [[ $EXIT_CODE -eq 0 ]] || [[ $EXIT_CODE -eq 130 ]]; then
+        if [[ "$FAILURE_COUNT" -gt 0 ]]; then
+            print_finding "$FAILURE_COUNT property violation(s) found!"
+            echo ""
+            echo "Findings saved to: .hypothesis/failures/"
+            echo "View with: ./scripts/fuzz.sh --list"
+            echo ""
+            echo "Next steps:"
+            echo "  1. Look for 'Falsifying example:' in output above"
+            echo "  2. Add @example(failing_input) to the test"
+            echo "  3. Fix the bug and re-run ./scripts/fuzz.sh"
+        elif [[ "$USER_STOPPED" == "true" ]]; then
+            print_pass "Stopped by user. No violations detected."
+            echo ""
+            echo "Tip: Run longer with --time 300 (5 min) for deeper coverage."
+        elif [[ $EXIT_CODE -eq 0 ]]; then
             print_pass "Fuzzing completed. No violations detected."
         else
-            print_finding "Property violations detected! Review output above."
+            echo -e "${RED}[ERROR]${NC} Fuzzing failed unexpectedly (exit code: $EXIT_CODE)"
         fi
         echo -e "${BOLD}============================================================${NC}"
     fi
 
-    # Normalize exit code (130 = Ctrl+C = success)
-    if [[ $EXIT_CODE -eq 130 ]]; then
+    # Clean up temp file
+    rm -f "$DEEP_OUTPUT_FILE"
+    trap - EXIT
+
+    # Exit success if user stopped cleanly with no findings
+    if [[ "$USER_STOPPED" == "true" ]] && [[ "$FAILURE_COUNT" -eq 0 ]]; then
         exit 0
     fi
     exit $EXIT_CODE

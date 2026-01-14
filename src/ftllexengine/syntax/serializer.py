@@ -19,6 +19,7 @@ import re
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard, DepthLimitExceededError
+from ftllexengine.core.identifier_validation import is_valid_identifier
 from ftllexengine.enums import CommentType
 
 from .ast import (
@@ -75,12 +76,11 @@ class SerializationDepthError(ValueError):
     """
 
 
-# FTL identifier grammar: starts with letter, followed by letters, digits, underscores, hyphens
-_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
-
-
 def _validate_identifier(identifier: Identifier, context: str) -> None:
     """Validate identifier follows FTL grammar rules.
+
+    Uses unified validation module to ensure consistency between parser
+    and serializer. Validates both syntax and length constraints.
 
     Args:
         identifier: Identifier to validate
@@ -89,10 +89,10 @@ def _validate_identifier(identifier: Identifier, context: str) -> None:
     Raises:
         SerializationValidationError: If identifier name is invalid
     """
-    if not _IDENTIFIER_PATTERN.match(identifier.name):
+    if not is_valid_identifier(identifier.name):
         msg = (
             f"Invalid identifier '{identifier.name}' in {context}. "
-            f"Identifiers must match [a-zA-Z][a-zA-Z0-9_-]*"
+            f"Identifiers must match [a-zA-Z][a-zA-Z0-9_-]* and be ≤256 characters"
         )
         raise SerializationValidationError(msg)
 
@@ -251,12 +251,18 @@ class FluentSerializer(ASTVisitor):
     All serialization state is local to the serialize() call.
 
     Usage:
-        >>> from ftllexengine.syntax import parse, FluentSerializer
+        >>> from ftllexengine.syntax import parse, serialize
+        >>> ast = parse("hello = Hello, world!")
+        >>> ftl = serialize(ast)
+        >>> print(ftl)
+        hello = Hello, world!
+
+    Advanced usage (direct class instantiation):
+        >>> from ftllexengine.syntax import parse
+        >>> from ftllexengine.syntax.serializer import FluentSerializer
         >>> ast = parse("hello = Hello, world!")
         >>> serializer = FluentSerializer()
         >>> ftl = serializer.serialize(ast)
-        >>> print(ftl)
-        hello = Hello, world!
     """
 
     def serialize(

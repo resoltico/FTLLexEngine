@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Fuzzing Orchestrator (Atheris)
 # Manages multi-worker fuzzing campaigns. Outputs JSON summary.
 # See docs/FUZZING_GUIDE.md for usage.

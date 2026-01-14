@@ -13,6 +13,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-01-14
+
+### Removed
+- **Dead Compatibility Code** (DEBT-DEAD-COMPAT-001): Removed unreachable try/except block for importlib.metadata import:
+  - Previous: `try/except ImportError` wrapped `importlib.metadata` imports with fallback error
+  - Now: Direct import without exception handling
+  - Rationale: `importlib.metadata` is standard library since Python 3.8; project targets Python 3.13+
+  - Impact: No behavioral change; dead code removal only
+  - Location: `__init__.py` lines 117-122
+
+### Changed
+- **Babel Type Safety** (TYPE-ANY-BABEL-001): Added Protocol types for Babel modules to improve type safety:
+  - Added: `BabelNumbersProtocol` defining `format_decimal()`, `format_currency()`, `format_percent()` signatures
+  - Added: `BabelDatesProtocol` defining `format_datetime()`, `format_date()`, `format_time()` signatures
+  - Changed: `get_babel_numbers()` return type from `Any` to `BabelNumbersProtocol`
+  - Changed: `get_babel_dates()` return type from `Any` to `BabelDatesProtocol`
+  - Rationale: Protocols provide type safety for Babel consumers without requiring full type stubs; mypy can now catch type errors in code calling Babel functions
+  - Impact: Improved static type checking for number, date, and currency formatting functions
+  - Location: `core/babel_compat.py` lines 45-117, 241-272
+
+### Fixed
+- **Identifier Validation Unification** (SEC-SERIALIZER-UNBOUNDED-001, DRY-ID-VALIDATION-001): Unified identifier validation across parser and serializer to ensure consistency:
+  - Added: New module `core/identifier_validation.py` as single source of truth for FTL identifier grammar
+  - Added: `is_valid_identifier(name: str) -> bool` function validating both syntax and length constraints
+  - Added: `is_identifier_start(ch: str) -> bool` and `is_identifier_char(ch: str) -> bool` for streaming validation
+  - Changed: Serializer now uses unified validation module instead of regex pattern
+  - Changed: Parser imports identifier character functions from unified module
+  - Fixed: Serializer now enforces 256-character identifier length limit (previously only checked syntax)
+  - Fixed: Parser and serializer now accept/reject identical identifier sets (prevents divergence)
+  - Added: Property-based test `test_identifier_validation_unification.py` verifying parser/serializer consistency
+  - Rationale: Duplication created maintenance burden and consistency risk; parser enforced length limits but serializer did not; programmatic AST construction could bypass parser limits
+  - Impact: Serializer now rejects identifiers exceeding 256 characters; prevents DoS via overlength identifiers in programmatic ASTs
+  - Locations: New file `core/identifier_validation.py`, `syntax/serializer.py` lines 18-20, 77-95 (removed `_IDENTIFIER_PATTERN` regex), `syntax/parser/primitives.py` lines 49-51, 82-84 (removed local function definitions), new test file `tests/test_identifier_validation_unification.py`
+
+- **Documentation Accuracy** (DOC-STALE-SERIALIZER-001): Fixed FluentSerializer docstring to show correct import path:
+  - Previous: Docstring demonstrated `from ftllexengine.syntax import parse, FluentSerializer`
+  - Now: Demonstrates public API `from ftllexengine.syntax import parse, serialize`
+  - Added: Advanced usage example showing direct class import for users needing class instantiation
+  - Rationale: `FluentSerializer` is intentionally not exported from `ftllexengine.syntax`; users should use `serialize()` function
+  - Impact: Users following docstring now get working imports instead of ImportError
+  - Location: `syntax/serializer.py` FluentSerializer class docstring lines 251-263
+
 ## [0.71.0] - 2026-01-13
 
 ### Removed
@@ -1871,6 +1913,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.72.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.72.0
 [0.71.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.71.0
 [0.70.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.70.0
 [0.69.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.69.0

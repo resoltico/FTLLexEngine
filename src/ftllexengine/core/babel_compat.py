@@ -32,15 +32,99 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
     from babel import Locale
     from babel.core import UnknownLocaleError as UnknownLocaleErrorType
 
+
+# pylint: disable=redefined-builtin,unnecessary-ellipsis
+# Reason: Protocol definitions mirror Babel's API which uses 'format' parameter name
+# Ellipsis (...) is the standard Protocol method body per PEP 544
+class BabelNumbersProtocol(Protocol):
+    """Protocol for Babel numbers module interface.
+
+    Defines the subset of babel.numbers API actually used by FTLLexEngine.
+    Provides type safety without requiring full Babel type stubs.
+    """
+
+    def format_decimal(
+        self,
+        number: int | float | Decimal,
+        format: str | None = None,
+        locale: Locale | str | None = None,
+    ) -> str:
+        """Format decimal number with locale-specific formatting."""
+        ...
+
+    def format_currency(
+        self,
+        number: int | float | Decimal,
+        currency: str,
+        format: str | None = None,
+        locale: Locale | str | None = None,
+        currency_digits: bool = True,
+        format_type: Literal["standard", "accounting", "name"] = "standard",
+    ) -> str:
+        """Format currency with locale-specific formatting."""
+        ...
+
+    def format_percent(
+        self,
+        number: int | float | Decimal,
+        format: str | None = None,
+        locale: Locale | str | None = None,
+    ) -> str:
+        """Format percentage with locale-specific formatting."""
+        ...
+
+
+class BabelDatesProtocol(Protocol):
+    """Protocol for Babel dates module interface.
+
+    Defines the subset of babel.dates API actually used by FTLLexEngine.
+    Provides type safety without requiring full Babel type stubs.
+    """
+
+    def format_datetime(
+        self,
+        datetime_obj: datetime,
+        format: str = "medium",
+        tzinfo: Any | None = None,
+        locale: Locale | str | None = None,
+    ) -> str:
+        """Format datetime with locale-specific formatting."""
+        ...
+
+    def format_date(
+        self,
+        date_or_datetime: date | datetime,
+        format: str = "medium",
+        locale: Locale | str | None = None,
+    ) -> str:
+        """Format date with locale-specific formatting."""
+        ...
+
+    def format_time(
+        self,
+        time: datetime,
+        format: str = "medium",
+        tzinfo: Any | None = None,
+        locale: Locale | str | None = None,
+    ) -> str:
+        """Format time with locale-specific formatting."""
+        ...
+# pylint: enable=redefined-builtin,unnecessary-ellipsis
+
+
 __all__ = [
+    "BabelDatesProtocol",
     "BabelImportError",
+    "BabelNumbersProtocol",
     "get_babel_dates",
     "get_babel_numbers",
     "get_locale_class",
@@ -158,13 +242,13 @@ def get_unknown_locale_error() -> type[UnknownLocaleErrorType]:
     return UnknownLocaleError
 
 
-def get_babel_numbers() -> Any:
+def get_babel_numbers() -> BabelNumbersProtocol:
     """Get the Babel numbers module.
 
     Returns the babel.numbers module for number formatting functions.
 
     Returns:
-        The babel.numbers module
+        The babel.numbers module (typed via BabelNumbersProtocol)
 
     Raises:
         BabelImportError: If Babel is not installed
@@ -175,13 +259,13 @@ def get_babel_numbers() -> Any:
     return numbers
 
 
-def get_babel_dates() -> Any:
+def get_babel_dates() -> BabelDatesProtocol:
     """Get the Babel dates module.
 
     Returns the babel.dates module for date/time formatting functions.
 
     Returns:
-        The babel.dates module
+        The babel.dates module (typed via BabelDatesProtocol)
 
     Raises:
         BabelImportError: If Babel is not installed

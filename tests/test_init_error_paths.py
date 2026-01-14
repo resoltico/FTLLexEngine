@@ -228,78 +228,10 @@ class TestBabelImportErrorPath:
             sys.modules.update(saved_modules)
 
 
-def test_importlib_metadata_import_error():
-    """Test ImportError handling when importlib.metadata is unavailable.
-
-    This tests lines 140-142 in __init__.py.
-
-    Scenario: importlib.metadata fails to import (extremely rare on Python 3.8+)
-    Expected: RuntimeError with clear diagnostic message
-    """
-    import importlib
-    import importlib.util
-
-    # Save ALL ftllexengine.* modules before manipulation
-    saved_modules = {
-        name: module
-        for name, module in sys.modules.items()
-        if name == "ftllexengine" or name.startswith("ftllexengine.")
-    }
-    saved_metadata = sys.modules.get("importlib.metadata")
-
-    try:
-        # Remove all ftllexengine and metadata modules
-        modules_to_remove = [*saved_modules.keys(), "importlib.metadata"]
-        for module_name in modules_to_remove:
-            if module_name in sys.modules:
-                del sys.modules[module_name]
-
-        # Create a mock that blocks importlib.metadata specifically
-        def import_mock(name, *args, **kwargs):
-            # Only block importlib.metadata, not other modules with "metadata" in name
-            if name in {"importlib.metadata", "importlib_metadata"}:
-                raise ImportError("Simulated importlib.metadata unavailable")
-            # Also check fromlist for "from importlib import metadata"
-            if name == "importlib" and len(args) > 2:
-                fromlist = args[2]
-                if isinstance(fromlist, tuple) and "metadata" in fromlist:
-                    raise ImportError("Simulated importlib.metadata unavailable")
-            # For other imports, use the original loader
-            return original_import(name, *args, **kwargs)
-
-        import builtins
-
-        original_import = builtins.__import__
-
-        builtins.__import__ = import_mock
-
-        try:
-            # This should trigger the ImportError handler and raise RuntimeError
-            with pytest.raises(
-                RuntimeError,
-                match=r"importlib\.metadata unavailable.*Python version too old",
-            ):
-                importlib.import_module("ftllexengine")
-        finally:
-            # Restore original __import__
-            builtins.__import__ = original_import
-
-    finally:
-        # Complete cleanup: remove ALL ftllexengine modules (including any newly created)
-        all_ftllexengine_modules = [
-            name
-            for name in sys.modules
-            if name == "ftllexengine" or name.startswith("ftllexengine.")
-        ]
-        for module_name in all_ftllexengine_modules:
-            del sys.modules[module_name]
-
-        # Restore ALL original modules
-        sys.modules.update(saved_modules)
-
-        # Restore metadata module
-        if saved_metadata is not None:
-            sys.modules["importlib.metadata"] = saved_metadata
+# test_importlib_metadata_import_error removed in v0.72.0
+# Reason: Tested dead code path (importlib.metadata unavailable try/except)
+# Python 3.13+ baseline guarantees importlib.metadata availability
+# See DEBT-DEAD-COMPAT-001 in ISSUES-RESOLVED.txt
 
 
 def test_package_not_found_error():
