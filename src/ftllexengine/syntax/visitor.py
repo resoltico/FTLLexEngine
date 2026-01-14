@@ -27,6 +27,7 @@ from .ast import (
     Attribute,
     CallArguments,
     FunctionReference,
+    Identifier,
     Message,
     MessageReference,
     NamedArgument,
@@ -286,6 +287,87 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
         """
         return self.visit(node)
 
+    def _validate_scalar_result(
+        self, result: TransformerResult, field_name: str
+    ) -> ASTNode:
+        """Validate that required scalar field assignment returns a single node.
+
+        AST nodes have two types of fields:
+        - Scalar fields (e.g., Message.id, Pattern.value): Expect single node
+        - Collection fields (e.g., Resource.entries, Pattern.elements): Expect tuple of nodes
+
+        This method enforces that visit() for REQUIRED scalar fields returns a
+        single ASTNode, not None or list[ASTNode]. Returning None/list for required
+        scalar fields creates invalid AST structures that violate dataclass constraints.
+
+        For OPTIONAL fields (e.g., Message.comment), use _validate_optional_scalar_result
+        instead, which permits None returns.
+
+        Args:
+            result: Result from visit() call
+            field_name: Name of the field being assigned (for error messages)
+
+        Returns:
+            The validated single ASTNode
+
+        Raises:
+            TypeError: If result is None or list[ASTNode] (invalid for required scalar fields)
+        """
+        match result:
+            case None:
+                msg = (
+                    f"Cannot assign None to required scalar field '{field_name}'. "
+                    f"Required scalar fields must have a single ASTNode. "
+                    f"To remove a node, delete its parent or transform its parent to None."
+                )
+                raise TypeError(msg)
+            case list():
+                msg = (
+                    f"Cannot assign list to scalar field '{field_name}'. "
+                    f"Scalar fields require a single ASTNode. "
+                    f"Got {len(result)} nodes: {[type(n).__name__ for n in result]}. "
+                    f"To expand nodes, return a list from the parent's visit method."
+                )
+                raise TypeError(msg)
+            case _:
+                # Single ASTNode - valid
+                return result
+
+    def _validate_optional_scalar_result(
+        self, result: TransformerResult, field_name: str
+    ) -> ASTNode | None:
+        """Validate optional scalar field assignment, allowing None.
+
+        For optional fields like Message.comment and Message.value, transformers
+        may return None to remove the field value. This method permits None while
+        still rejecting list returns (scalar fields cannot expand to lists).
+
+        Args:
+            result: Result from visit() call
+            field_name: Name of the field being assigned (for error messages)
+
+        Returns:
+            The validated ASTNode or None
+
+        Raises:
+            TypeError: If result is list[ASTNode] (invalid for scalar fields)
+        """
+        match result:
+            case None:
+                # None is valid for optional fields (removal)
+                return None
+            case list():
+                msg = (
+                    f"Cannot assign list to optional scalar field '{field_name}'. "
+                    f"Scalar fields require a single ASTNode or None. "
+                    f"Got {len(result)} nodes: {[type(n).__name__ for n in result]}. "
+                    f"To expand nodes, return a list from the parent's visit method."
+                )
+                raise TypeError(msg)
+            case _:
+                # Single ASTNode - valid
+                return result
+
     def generic_visit(self, node: ASTNode) -> TransformerResult:
         """Transform node children using pattern matching.
 
@@ -308,55 +390,119 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
             case Resource(entries=entries):
                 return replace(node, entries=self._transform_list(entries))
             case Message(id=id_node, value=value, attributes=attrs, comment=comment):
+                # Message.value and Message.comment are optional - allow None returns
+                validated_value = (
+                    self._validate_optional_scalar_result(
+                        self.visit(value), "Message.value"
+                    )
+                    if value
+                    else None
+                )
+                validated_comment = (
+                    self._validate_optional_scalar_result(
+                        self.visit(comment), "Message.comment"
+                    )
+                    if comment
+                    else None
+                )
                 return replace(
                     node,
-                    id=self.visit(id_node),
-                    value=self.visit(value) if value else None,
+                    id=self._validate_scalar_result(self.visit(id_node), "Message.id"),
+                    value=validated_value,
                     attributes=self._transform_list(attrs),
-                    comment=self.visit(comment) if comment else None,
+                    comment=validated_comment,
                 )
             case Term(id=id_node, value=value, attributes=attrs, comment=comment):
+                # Term.comment is optional - allow None returns
+                validated_comment = (
+                    self._validate_optional_scalar_result(
+                        self.visit(comment), "Term.comment"
+                    )
+                    if comment
+                    else None
+                )
                 return replace(
                     node,
-                    id=self.visit(id_node),
-                    value=self.visit(value),
+                    id=self._validate_scalar_result(self.visit(id_node), "Term.id"),
+                    value=self._validate_scalar_result(self.visit(value), "Term.value"),
                     attributes=self._transform_list(attrs),
-                    comment=self.visit(comment) if comment else None,
+                    comment=validated_comment,
                 )
             case Pattern(elements=elements):
                 return replace(node, elements=self._transform_list(elements))
             case Placeable(expression=expr):
-                return replace(node, expression=self.visit(expr))
+                validated_expr = self._validate_scalar_result(
+                    self.visit(expr), "Placeable.expression"
+                )
+                return replace(node, expression=validated_expr)
             case SelectExpression(selector=selector, variants=variants):
+                validated_selector = self._validate_scalar_result(
+                    self.visit(selector), "SelectExpression.selector"
+                )
                 return replace(
                     node,
-                    selector=self.visit(selector),
+                    selector=validated_selector,
                     variants=self._transform_list(variants),
                 )
             case Variant(key=key, value=value):
-                return replace(node, key=self.visit(key), value=self.visit(value))
+                return replace(
+                    node,
+                    key=self._validate_scalar_result(self.visit(key), "Variant.key"),
+                    value=self._validate_scalar_result(self.visit(value), "Variant.value"),
+                )
             case FunctionReference(id=id_node, arguments=args):
                 # FunctionReference.arguments is not optional - always present
+                func_validated_args = self._validate_scalar_result(
+                    self.visit(args), "FunctionReference.arguments"
+                )
                 return replace(
                     node,
-                    id=self.visit(id_node),
-                    arguments=self.visit(args),
+                    id=self._validate_scalar_result(self.visit(id_node), "FunctionReference.id"),
+                    arguments=func_validated_args,
                 )
             case MessageReference(id=id_node, attribute=attr):
+                # MessageReference.attribute is optional - allow None returns
+                msg_validated_attr = (
+                    self._validate_optional_scalar_result(
+                        self.visit(attr), "MessageReference.attribute"
+                    )
+                    if attr
+                    else None
+                )
                 return replace(
                     node,
-                    id=self.visit(id_node),
-                    attribute=self.visit(attr) if attr else None,
+                    id=self._validate_scalar_result(self.visit(id_node), "MessageReference.id"),
+                    attribute=msg_validated_attr,
                 )
             case TermReference(id=id_node, attribute=attr, arguments=args):
+                # TermReference.attribute and TermReference.arguments are optional
+                # Type narrowing needed because validator returns ASTNode | None
+                # but fields expect Identifier | None and CallArguments | None
+                term_validated_attr: Identifier | None = (
+                    self._validate_optional_scalar_result(
+                        self.visit(attr), "TermReference.attribute"
+                    )  # type: ignore[assignment]
+                    if attr
+                    else None
+                )
+                term_validated_args: CallArguments | None = (
+                    self._validate_optional_scalar_result(
+                        self.visit(args), "TermReference.arguments"
+                    )  # type: ignore[assignment]
+                    if args
+                    else None
+                )
                 return replace(
                     node,
-                    id=self.visit(id_node),
-                    attribute=self.visit(attr) if attr else None,
-                    arguments=self.visit(args) if args else None,
+                    id=self._validate_scalar_result(self.visit(id_node), "TermReference.id"),
+                    attribute=term_validated_attr,
+                    arguments=term_validated_args,
                 )
             case VariableReference(id=id_node):
-                return replace(node, id=self.visit(id_node))
+                validated_id = self._validate_scalar_result(
+                    self.visit(id_node), "VariableReference.id"
+                )
+                return replace(node, id=validated_id)
             case CallArguments(positional=pos, named=named):
                 return replace(
                     node,
@@ -364,9 +510,17 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                     named=self._transform_list(named),
                 )
             case NamedArgument(name=name, value=value):
-                return replace(node, name=self.visit(name), value=self.visit(value))
+                return replace(
+                    node,
+                    name=self._validate_scalar_result(self.visit(name), "NamedArgument.name"),
+                    value=self._validate_scalar_result(self.visit(value), "NamedArgument.value"),
+                )
             case Attribute(id=id_node, value=value):
-                return replace(node, id=self.visit(id_node), value=self.visit(value))
+                return replace(
+                    node,
+                    id=self._validate_scalar_result(self.visit(id_node), "Attribute.id"),
+                    value=self._validate_scalar_result(self.visit(value), "Attribute.value"),
+                )
             case _:
                 # Leaf nodes: Identifier, TextElement, StringLiteral,
                 # NumberLiteral, Comment, Junk. Return as-is (immutable).

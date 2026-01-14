@@ -539,9 +539,11 @@ class TestFluentParserFunctionEdgeCases:
         func = elem_0.expression
         assert isinstance(func, FunctionReference)
 
+        from decimal import Decimal  # noqa: PLC0415
+
         arg = func.arguments.positional[0]
         assert isinstance(arg, NumberLiteral)
-        assert arg.value == 3.14
+        assert arg.value == Decimal("3.14")
 
     def test_parse_multiple_functions_in_pattern(self, parser: FluentParserV1) -> None:
         """Parse message with multiple function calls."""

@@ -96,13 +96,14 @@ class TestNestedPlaceableExpression:
         )
 
         # Placeable wrapping NumberLiteral
-        number_lit = NumberLiteral(value=42.5, raw="42.5")
+        from decimal import Decimal  # noqa: PLC0415 - test-local import for readability
+        number_lit = NumberLiteral(value=Decimal("42.5"), raw="42.5")
         placeable = Placeable(expression=number_lit)
 
         errors: list = []
         context = ResolutionContext()
         result = resolver._resolve_expression(placeable, {}, errors, context)
-        assert result == 42.5
+        assert result == Decimal("42.5")
 
     def test_programmatic_deeply_nested_placeables(self) -> None:
         """Verify _resolve_expression handles multiple nesting levels."""

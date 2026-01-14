@@ -106,17 +106,21 @@ class TestParseNumberValue:
         assert result == -123
         assert isinstance(result, int)
 
-    def test_parse_number_value_float(self) -> None:
-        """Verify parse_number_value returns float for decimal string."""
-        result = parse_number_value("3.14")
-        assert result == 3.14
-        assert isinstance(result, float)
+    def test_parse_number_value_decimal(self) -> None:
+        """Verify parse_number_value returns Decimal for decimal string."""
+        from decimal import Decimal  # noqa: PLC0415
 
-    def test_parse_number_value_negative_float(self) -> None:
-        """Verify parse_number_value handles negative floats."""
+        result = parse_number_value("3.14")
+        assert result == Decimal("3.14")
+        assert isinstance(result, Decimal)
+
+    def test_parse_number_value_negative_decimal(self) -> None:
+        """Verify parse_number_value handles negative decimals."""
+        from decimal import Decimal  # noqa: PLC0415
+
         result = parse_number_value("-2.5")
-        assert result == -2.5
-        assert isinstance(result, float)
+        assert result == Decimal("-2.5")
+        assert isinstance(result, Decimal)
 
     def test_parse_number_value_zero(self) -> None:
         """Verify parse_number_value handles zero."""
@@ -133,12 +137,15 @@ class TestParseNumberValue:
         assert isinstance(result, int)
 
     @given(st.floats(allow_nan=False, allow_infinity=False))
-    def test_parse_number_value_floats(self, value: float) -> None:
-        """Property: parse_number_value correctly converts float strings."""
+    def test_parse_number_value_decimals(self, value: float) -> None:
+        """Property: parse_number_value correctly converts decimal strings to Decimal."""
+        from decimal import Decimal  # noqa: PLC0415
+
         num_str = str(value)
-        assume("." in num_str)  # Ensure it's a float representation
+        assume("." in num_str)  # Ensure it's a decimal representation
         result = parse_number_value(num_str)
-        assert isinstance(result, float)
+        assert isinstance(result, Decimal)
+        assert result == Decimal(num_str)
 
 
 class TestParseNumber:

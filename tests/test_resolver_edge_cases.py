@@ -6,6 +6,7 @@ Tests error paths and edge cases not covered by main resolver tests.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -249,7 +250,7 @@ test = { $count ->
                             selector=VariableReference(id=Identifier(name="x")),
                             variants=(
                                 Variant(
-                                    key=NumberLiteral(value=0.0, raw="invalid"),
+                                    key=NumberLiteral(value=Decimal("0.0"), raw="invalid"),
                                     value=Pattern(elements=(TextElement(value="Invalid"),)),
                                     default=False,
                                 ),

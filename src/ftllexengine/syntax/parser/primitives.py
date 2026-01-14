@@ -39,6 +39,7 @@ Thread-Local State (Architectural Decision):
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 from threading import local as thread_local
 
 from ftllexengine.constants import (
@@ -208,17 +209,19 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
     return ParseResult(identifier, cursor)
 
 
-def parse_number_value(num_str: str) -> int | float:
-    """Parse number string to int or float.
+def parse_number_value(num_str: str) -> int | Decimal:
+    """Parse number string to int or Decimal.
 
+    Uses Decimal for decimal literals to preserve financial-grade precision.
+    Uses int for integer literals for memory efficiency.
 
     Args:
         num_str: Number string from parse_number
 
     Returns:
-        int if no decimal point, float otherwise
+        int if no decimal point, Decimal otherwise
     """
-    return int(num_str) if "." not in num_str else float(num_str)
+    return int(num_str) if "." not in num_str else Decimal(num_str)
 
 
 def parse_number(cursor: Cursor) -> ParseResult[str] | None:

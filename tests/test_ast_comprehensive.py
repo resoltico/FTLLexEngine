@@ -499,10 +499,12 @@ class TestNumberLiteralDataclass:
 
     @given(st.floats(allow_nan=False, allow_infinity=False))
     def test_number_literal_float_construction(self, value: float) -> None:
-        """Property: NumberLiteral accepts float values."""
+        """Property: NumberLiteral accepts Decimal values for floats."""
+        from decimal import Decimal  # noqa: PLC0415 - test-local import for readability
         raw = str(value)
-        lit = NumberLiteral(value=value, raw=raw)
-        assert lit.value == value
+        decimal_value = Decimal(str(value))
+        lit = NumberLiteral(value=decimal_value, raw=raw)
+        assert lit.value == decimal_value
         assert lit.raw == raw
 
     def test_number_literal_guard_true(self) -> None:

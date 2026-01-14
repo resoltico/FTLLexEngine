@@ -13,7 +13,6 @@ Coverage Focus:
 
 from __future__ import annotations
 
-import pytest
 from hypothesis import assume, example, given
 from hypothesis import strategies as st
 
@@ -339,13 +338,16 @@ class TestParseNumberValue:
     @given(n=st.floats(allow_nan=False, allow_infinity=False))
     @example(n=3.14)
     @example(n=-2.5)
-    def test_float_strings_convert_to_float(self, n: float) -> None:
-        """Float strings convert to float type."""
+    def test_decimal_strings_convert_to_decimal(self, n: float) -> None:
+        """Decimal strings convert to Decimal type for financial precision."""
+        from decimal import Decimal  # noqa: PLC0415
+
         num_str = str(n)
-        assume("." in num_str)  # Ensure float representation
+        assume("." in num_str)  # Ensure decimal representation
         result = parse_number_value(num_str)
-        assert isinstance(result, float)
-        assert result == pytest.approx(n)
+        assert isinstance(result, Decimal)
+        # Compare using Decimal for precision
+        assert result == Decimal(num_str)
 
 
 # ============================================================================

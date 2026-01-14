@@ -185,7 +185,8 @@ class TestValidatorDecimalNormalization:
         # Create a NumberLiteral with NaN which breaks Decimal conversion
         # In practice, the parser creates valid NumberLiterals, but the
         # validator has defensive exception handling
-        malformed_key = NumberLiteral(value=float("nan"), raw="nan")
+        from decimal import Decimal  # noqa: PLC0415
+        malformed_key = NumberLiteral(value=Decimal("NaN"), raw="nan")
 
         # Create select expression with this malformed key
         variant = Variant(

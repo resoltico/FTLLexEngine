@@ -423,7 +423,8 @@ class TestExpressionSerialization:
 
     def test_number_literal_decimal(self):
         """Line 149: NumberLiteral with decimal."""
-        expr = NumberLiteral(value=3.14159, raw="3.14159")
+        from decimal import Decimal  # noqa: PLC0415
+        expr = NumberLiteral(value=Decimal("3.14159"), raw="3.14159")
         placeable = Placeable(expression=expr)
         pattern = Pattern(elements=(placeable,))
         message = Message(

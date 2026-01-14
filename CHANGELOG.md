@@ -13,6 +13,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-01-14
+
+### Breaking
+
+- **BREAKING**: Changed `NumberLiteral.value` type from `int | float` to `int | Decimal` for financial-grade precision ([C-SEMANTIC-001]):
+  - Decimal literals now use Python's `Decimal` type to eliminate IEEE 754 rounding surprises
+  - Example: `0.1 + 0.2 == 0.3` now works correctly (previously failed due to float precision)
+  - Integer literals continue using `int` for memory efficiency
+  - Impact: Code accessing `NumberLiteral.value` directly will receive `Decimal` instead of `float` for decimal numbers
+  - Migration: Update code expecting `float` to handle `Decimal` (most arithmetic operations work transparently)
+
+### Changed
+
+- Moved hardcoded locale length limit (1000) from `FluentBundle` to `constants.MAX_LOCALE_LENGTH_HARD_LIMIT` for configurability and consistency with other DoS prevention constants ([G-DEBT-001])
+- Added `max_parse_errors` parameter to `FluentParserV1.__init__()` with default `MAX_PARSE_ERRORS = 100`. Parser now aborts after exceeding the limit, preventing memory exhaustion from malformed input that generates excessive Junk entries. Setting `max_parse_errors=0` disables the limit (consistent with `max_source_size=0` semantics) ([F-SEC-DoS-001])
+- Enhanced `ASTTransformer.generic_visit()` with scalar field validation that distinguishes between required and optional fields. Required fields (e.g., `Message.id`, `Placeable.expression`) raise `TypeError` when visit methods return `None` or `list[ASTNode]`. Optional fields (e.g., `Message.comment`, `Message.value`, `Term.comment`, `MessageReference.attribute`, `TermReference.attribute`, `TermReference.arguments`) now correctly accept `None` returns to enable node removal via transformers ([B-ARCH-TYPE-001])
+
+### Added
+
+- Added `constants.MAX_LOCALE_LENGTH_HARD_LIMIT` constant (value: 1000) for DoS prevention via locale code validation
+- Added `constants.MAX_PARSE_ERRORS` constant (value: 100) for DoS prevention via parse error accumulation limit
+- Added `ASTTransformer._validate_scalar_result()` internal method for runtime validation of required scalar field assignments during AST transformation
+- Added `ASTTransformer._validate_optional_scalar_result()` internal method for validation of optional scalar fields, permitting `None` returns for node removal
+- Added test suite `tests/test_decimal_precision.py` verifying Decimal precision guarantee for financial calculations
+- Added test suite `tests/test_parse_error_limit.py` verifying parse error limit DoS protection and Fluent spec-compliant Junk merging behavior
+- Added test suite `tests/test_transformer_validation.py` verifying ASTTransformer scalar field validation for both required and optional fields
+
+### Fixed
+
+- Fixed precision loss in decimal number literals. Previously, `1.0000000000000001` would be stored as float losing precision; now stored as `Decimal("1.0000000000000001")` preserving all digits
+- Fixed potential memory exhaustion from adversarial FTL input with thousands of syntax errors. Parser now aborts after 100 errors (configurable via `max_parse_errors`)
+- Fixed `ASTTransformer` incorrectly rejecting `None` returns for optional scalar fields. Previously, transformers returning `None` for fields like `Message.comment` raised `TypeError`, making comment removal impossible. Now correctly distinguishes required fields (reject `None`) from optional fields (accept `None` for removal)
+
 ## [0.72.0] - 2026-01-14
 
 ### Removed
@@ -1913,6 +1946,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.73.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.73.0
 [0.72.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.72.0
 [0.71.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.71.0
 [0.70.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.70.0

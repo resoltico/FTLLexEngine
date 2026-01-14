@@ -32,7 +32,7 @@ import logging
 import re
 import sys
 
-from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
+from ftllexengine.constants import MAX_DEPTH, MAX_PARSE_ERRORS, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
@@ -198,15 +198,16 @@ class FluentParserV1:
         max_nesting_depth: Maximum allowed placeable nesting depth (default: 100)
     """
 
-    __slots__ = ("_max_nesting_depth", "_max_source_size")
+    __slots__ = ("_max_nesting_depth", "_max_parse_errors", "_max_source_size")
 
     def __init__(
         self,
         *,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        max_parse_errors: int | None = None,
     ) -> None:
-        """Initialize parser with optional size and nesting depth limits.
+        """Initialize parser with optional size, nesting depth, and error limits.
 
         Args:
             max_source_size: Maximum source length in characters (default: 10M).
@@ -217,6 +218,9 @@ class FluentParserV1:
                               Must be positive (> 0) if specified.
                               Automatically clamped to sys.getrecursionlimit() - 50
                               to prevent RecursionError. Warning logged if clamped.
+            max_parse_errors: Maximum number of Junk (error) entries before aborting (default: 100).
+                             Prevents memory exhaustion from malformed input generating excessive
+                             errors. Real FTL files rarely exceed 10 errors.
 
         Raises:
             ValueError: If max_nesting_depth is specified and <= 0.
@@ -228,6 +232,10 @@ class FluentParserV1:
 
         self._max_source_size = (
             max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
+        )
+
+        self._max_parse_errors = (
+            max_parse_errors if max_parse_errors is not None else MAX_PARSE_ERRORS
         )
 
         # Calculate desired depth
@@ -330,6 +338,9 @@ class FluentParserV1:
         pending_accumulator: _CommentAccumulator | None = None
         pending_comment_end_pos: int = 0  # Position after the pending comment
 
+        # Track Junk (error) count for DoS prevention
+        junk_count = 0
+
         # Parse entries until EOF
         while not cursor.is_eof:
             # Per spec: blank_block ::= (blank_inline? line_end)+
@@ -377,6 +388,18 @@ class FluentParserV1:
                 entries.append(
                     Junk(content=junk_content, annotations=(annotation,), span=junk_span)
                 )
+                junk_count += 1
+
+                # DoS protection: Abort if too many parse errors
+                if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
+                    logger.warning(
+                        "Parse aborted: exceeded maximum of %d Junk entries. "
+                        "This usually indicates severely malformed FTL input. "
+                        "Consider fixing the FTL source or increasing max_parse_errors.",
+                        self._max_parse_errors,
+                    )
+                    break
+
                 continue
 
             # Parse comments (per Fluent spec: #, ##, ###)
@@ -431,6 +454,18 @@ class FluentParserV1:
                         span=Span(start=junk_start, end=junk_end),
                     )
                 )
+                junk_count += 1
+
+                # DoS protection: Abort if too many parse errors
+                if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
+                    logger.warning(
+                        "Parse aborted: exceeded maximum of %d Junk entries. "
+                        "This usually indicates severely malformed FTL input. "
+                        "Consider fixing the FTL source or increasing max_parse_errors.",
+                        self._max_parse_errors,
+                    )
+                    break
+
                 if not cursor.is_eof:
                     cursor = cursor.advance()
                 continue
@@ -528,6 +563,17 @@ class FluentParserV1:
                 entries.append(
                     Junk(content=junk_content, annotations=(annotation,), span=junk_span)
                 )
+                junk_count += 1
+
+                # DoS protection: Abort if too many parse errors
+                if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
+                    logger.warning(
+                        "Parse aborted: exceeded maximum of %d Junk entries. "
+                        "This usually indicates severely malformed FTL input. "
+                        "Consider fixing the FTL source or increasing max_parse_errors.",
+                        self._max_parse_errors,
+                    )
+                    break
 
         # Finalize any remaining pending comment at EOF
         if pending_accumulator is not None:

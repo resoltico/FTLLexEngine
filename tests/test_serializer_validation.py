@@ -14,6 +14,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from ftllexengine.syntax.ast import (
@@ -429,7 +431,7 @@ class TestNumberLiteralVariantKey:
             selector=VariableReference(id=Identifier(name="price")),
             variants=(
                 Variant(
-                    key=NumberLiteral(value=9.99, raw="9.99"),
+                    key=NumberLiteral(value=Decimal("9.99"), raw="9.99"),
                     value=Pattern(elements=(TextElement(value="Cheap"),)),
                     default=False,
                 ),

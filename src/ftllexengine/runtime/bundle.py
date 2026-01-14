@@ -15,6 +15,7 @@ from ftllexengine.constants import (
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
     MAX_DEPTH,
+    MAX_LOCALE_LENGTH_HARD_LIMIT,
     MAX_SOURCE_SIZE,
 )
 from ftllexengine.core.depth_guard import depth_clamp
@@ -141,12 +142,9 @@ class FluentBundle:
             raise ValueError(msg)
 
         # Reject obviously malicious inputs (DoS prevention)
-        # Well-formed BCP 47 codes are typically <35 chars, but extended private
-        # use subtags can create longer valid codes. 1000 char limit prevents DoS
-        # while allowing all reasonable BCP 47 variations.
-        if len(locale) > 1000:
+        if len(locale) > MAX_LOCALE_LENGTH_HARD_LIMIT:
             msg = (
-                f"Locale code exceeds maximum length of 1000 characters: "
+                f"Locale code exceeds maximum length of {MAX_LOCALE_LENGTH_HARD_LIMIT} characters: "
                 f"'{locale[:50]}...' ({len(locale)} characters)"
             )
             raise ValueError(msg)

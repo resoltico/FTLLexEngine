@@ -9,6 +9,7 @@ Python 3.13+. Zero external dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import TypeIs
 
 from ftllexengine.enums import CommentType
@@ -365,6 +366,9 @@ class StringLiteral:
 class NumberLiteral:
     """Number literal: 42 or 3.14
 
+    Decimal numbers use Python's Decimal type for financial-grade precision.
+    Integers use Python's int type for memory efficiency.
+
     The raw field preserves original source for serialization.
 
     Invariant:
@@ -374,8 +378,8 @@ class NumberLiteral:
         a transformer bug, not a library issue.
     """
 
-    value: int | float
-    """Parsed numeric value."""
+    value: int | Decimal
+    """Parsed numeric value (int for integers, Decimal for decimals)."""
 
     raw: str
     """Original source representation (for serialization)."""

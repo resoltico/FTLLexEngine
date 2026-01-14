@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.72.0"
+version: "0.73.0"
 domain: TYPES
 updated: "2026-01-14"
 route:
@@ -317,9 +317,11 @@ class StringLiteral:
 
 ### Signature
 ```python
+from decimal import Decimal
+
 @dataclass(frozen=True, slots=True)
 class NumberLiteral:
-    value: int | float
+    value: int | Decimal
     raw: str
     span: Span | None = None
 
@@ -330,13 +332,14 @@ class NumberLiteral:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float` | Y | Parsed numeric value. |
+| `value` | `int \| Decimal` | Y | Parsed numeric value (int for integers, Decimal for decimals). |
 | `raw` | `str` | Y | Original source representation for serialization. |
 | `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable number literal.
 - State: Frozen dataclass.
+- Precision: Integer literals use `int` for memory efficiency. Decimal literals use `Decimal` for financial-grade precision, eliminating float rounding errors (0.1 + 0.2 = 0.3, not 0.30000000000000004).
 - Invariant: AST transformers creating new nodes must ensure raw represents value. Parser guarantees consistency at construction.
 
 ---
@@ -621,9 +624,10 @@ class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
 - State: Maintains dispatch cache and depth guard.
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `DepthLimitExceededError` when traversal exceeds max_depth.
+- Raises: `DepthLimitExceededError` when traversal exceeds max_depth. `TypeError` if visit method returns None or list for scalar field.
 - Depth: Guard inherited from ASTVisitor.visit() (bypass-proof).
 - Immutable: Uses `dataclasses.replace()` for node modifications.
+- Validation: Scalar fields (Message.id, Pattern.elements items) require single ASTNode return. Returning None or list raises TypeError with field name and node type information.
 
 ---
 

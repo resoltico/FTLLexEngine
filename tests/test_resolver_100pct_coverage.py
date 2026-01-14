@@ -178,11 +178,11 @@ class TestVariantNumericMatching:
     def test_decimal_exact_match_in_variant(self) -> None:
         """Decimal value matches NumberLiteral variant key."""
         selector = VariableReference(id=Identifier("amount"))
-        # NumberLiteral uses float, not Decimal (AST constraint)
-        # But runtime accepts Decimal via FluentValue
+        # NumberLiteral uses Decimal for decimal numbers
+        # Runtime accepts Decimal via FluentValue
         variants = (
             Variant(
-                key=NumberLiteral(value=1.5, raw="1.5"),
+                key=NumberLiteral(value=Decimal("1.5"), raw="1.5"),
                 value=Pattern(elements=(TextElement(value="exact match"),)),
                 default=False,
             ),
@@ -218,7 +218,7 @@ class TestVariantNumericMatching:
         selector = VariableReference(id=Identifier("price"))
         variants = (
             Variant(
-                key=NumberLiteral(value=9.99, raw="9.99"),
+                key=NumberLiteral(value=Decimal("9.99"), raw="9.99"),
                 value=Pattern(elements=(TextElement(value="special price"),)),
                 default=False,
             ),
@@ -503,11 +503,10 @@ class TestNumericVariantEdgeCases:
         """Property: Decimal values match exactly when variant key matches."""
         selector = VariableReference(id=Identifier("amount"))
         str_repr = str(decimal_str)
-        # Convert Decimal to float for NumberLiteral (AST constraint)
-        float_value = float(decimal_str)
+        # NumberLiteral uses Decimal for decimal numbers
         variants = (
             Variant(
-                key=NumberLiteral(value=float_value, raw=str_repr),
+                key=NumberLiteral(value=decimal_str, raw=str_repr),
                 value=Pattern(elements=(TextElement(value="exact"),)),
                 default=False,
             ),

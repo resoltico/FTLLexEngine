@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.72.0"
+version: "0.73.0"
 domain: PARSING
 updated: "2026-01-14"
 route:
@@ -112,12 +112,15 @@ class FluentParserV1:
         *,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        max_parse_errors: int | None = None,
     ) -> None: ...
     def parse(self, source: str) -> Resource: ...
     @property
     def max_source_size(self) -> int: ...
     @property
     def max_nesting_depth(self) -> int: ...
+    @property
+    def max_parse_errors(self) -> int: ...
 ```
 
 ### Parameters
@@ -125,13 +128,14 @@ class FluentParserV1:
 |:----------|:-----|:----|:----------|
 | `max_source_size` | `int \| None` | N | Maximum source size in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum nesting depth (default: 100); must be positive if specified. |
+| `max_parse_errors` | `int \| None` | N | Maximum Junk entries before parser aborts (default: 100). |
 
 ### Constraints
 - Return: Parser instance.
 - Raises: `ValueError` if max_nesting_depth is specified and <= 0.
-- State: Stores max_source_size and max_nesting_depth configuration.
+- State: Stores max_source_size, max_nesting_depth, and max_parse_errors configuration.
 - Thread: Safe for concurrent parse() calls.
-- Security: Validates source size and nesting depth (DoS prevention).
+- Security: Validates source size, nesting depth, and error accumulation (DoS prevention). After max_parse_errors Junk entries, parse() aborts to prevent memory exhaustion from malformed input.
 - Depth Validation: max_nesting_depth automatically clamped to sys.getrecursionlimit() - 50. Logs warning if clamped.
 
 ---

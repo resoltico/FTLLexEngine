@@ -215,12 +215,12 @@ class TestNumberLiteralNonMatchingValue:
             selector=VariableReference(id=Identifier("val")),
             variants=(
                 Variant(
-                    key=NumberLiteral(value=1.0, raw="1.0"),
+                    key=NumberLiteral(value=Decimal("1.0"), raw="1.0"),
                     value=Pattern(elements=(TextElement(value="one_point_oh"),)),
                     default=False,
                 ),
                 Variant(
-                    key=NumberLiteral(value=2.5, raw="2.5"),
+                    key=NumberLiteral(value=Decimal("2.5"), raw="2.5"),
                     value=Pattern(elements=(TextElement(value="two_point_five"),)),
                     default=False,
                 ),

@@ -298,7 +298,8 @@ class TestParsingMetamorphicProperties:
         assert not errors1
 
         # Second cycle
-        formatted2 = number_format(float(parsed1), "en_US", minimum_fraction_digits=2)
+        value2 = float(parsed1) if parsed1 is not None else 0.0
+        formatted2 = number_format(value2, "en_US", minimum_fraction_digits=2)
         parsed2, errors2 = parse_decimal(str(formatted2), "en_US")
 
         assert not errors2

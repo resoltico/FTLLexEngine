@@ -12,6 +12,7 @@ Strategy Categories:
 from __future__ import annotations
 
 import string
+from decimal import Decimal
 
 from hypothesis import strategies as st
 from hypothesis.strategies import composite
@@ -216,7 +217,9 @@ def ftl_variable_references(draw: st.DrawFn) -> VariableReference:
 def ftl_number_literals(draw: st.DrawFn) -> NumberLiteral:
     """Generate NumberLiteral AST nodes."""
     value = draw(ftl_numbers())
-    return NumberLiteral(value=value, raw=str(value))
+    # Convert float to Decimal for decimal numbers (financial-grade precision)
+    typed_value = Decimal(str(value)) if isinstance(value, float) else value
+    return NumberLiteral(value=typed_value, raw=str(typed_value))
 
 
 @composite

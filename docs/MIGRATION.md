@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.72.0"
+version: "0.73.0"
 domain: migration
 updated: "2026-01-14"
 route:

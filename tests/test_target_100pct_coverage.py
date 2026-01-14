@@ -626,7 +626,8 @@ class TestVariantKeyToStringEdgeCases:
         """Float NumberLiteral normalizes via Decimal."""
         validator = SemanticValidator()
 
-        num_key = NumberLiteral(value=1.0, raw="1.0")
+        from decimal import Decimal  # noqa: PLC0415
+        num_key = NumberLiteral(value=Decimal("1.0"), raw="1.0")
         result = validator._variant_key_to_string(num_key)
         # Decimal conversion and normalization handles float
         assert result == "1"

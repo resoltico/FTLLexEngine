@@ -24,8 +24,10 @@ __all__ = [
     # Input limits
     "MAX_SOURCE_SIZE",
     "MAX_LOCALE_CODE_LENGTH",
+    "MAX_LOCALE_LENGTH_HARD_LIMIT",
     # Parser limits
     "MAX_LOOKAHEAD_CHARS",
+    "MAX_PARSE_ERRORS",
     # Fallback strings
     "FALLBACK_INVALID",
     "FALLBACK_MISSING_MESSAGE",
@@ -123,8 +125,14 @@ MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
 # This two-tier validation supports valid extended locales while warning about potential
 # misconfiguration or attack attempts.
 # Real-world locale codes: typically 2-16 characters (e.g., "en", "en-US", "zh-Hans-CN").
-# FluentBundle accepts locales up to 1000 characters for BCP 47 private-use extensions.
 MAX_LOCALE_CODE_LENGTH: int = 35
+
+# Maximum locale code length for DoS prevention (1000 characters).
+# This hard limit accepts all BCP 47 private-use extensions while preventing
+# memory exhaustion from extremely long locale strings. Used by FluentBundle
+# for input validation. MAX_LOCALE_CODE_LENGTH (35) triggers warnings;
+# MAX_LOCALE_LENGTH_HARD_LIMIT (1000) triggers rejection.
+MAX_LOCALE_LENGTH_HARD_LIMIT: int = 1000
 
 # ============================================================================
 # PARSER LIMITS
@@ -135,6 +143,12 @@ MAX_LOCALE_CODE_LENGTH: int = 35
 # Bounded lookahead prevents O(N^2) parsing on pathological inputs.
 # 128 characters is ample for any legitimate variant key (identifier + number).
 MAX_LOOKAHEAD_CHARS: int = 128
+
+# Maximum number of Junk (error) entries before parser aborts.
+# Prevents memory exhaustion from malformed input that generates excessive errors.
+# 100 errors is generous for legitimate debugging while blocking amplification attacks.
+# Real-world FTL files rarely exceed 10 errors; 100 provides 10x margin.
+MAX_PARSE_ERRORS: int = 100
 
 # ----------------------------------------------------------------------------
 # Token Length Limits (DoS Prevention)
