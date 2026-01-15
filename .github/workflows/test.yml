@@ -58,6 +58,12 @@ jobs:
           uv run scripts/test.sh --ci
           echo "::endgroup::"
 
+      - name: Run Property Tests
+        run: |
+          echo "::group::Property Tests (Hypothesis)"
+          uv run pytest -m fuzz --hypothesis-profile=ci -v --tb=short
+          echo "::endgroup::"
+
       - name: Verify package import
         run: |
           PACKAGE="${{ steps.detect.outputs.name }}"

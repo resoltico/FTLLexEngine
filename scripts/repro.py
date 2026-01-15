@@ -110,15 +110,19 @@ Examples:
             print(f"[ERROR] File too large: {size_mb:.1f} MB (max: 10 MB)", file=sys.stderr)
         return 2
 
-    # Decode to string
+    # Decode to string using surrogateescape (PEP 383) for invalid UTF-8
+    # This preserves original bytes as surrogates (U+DC80-U+DCFF), allowing:
+    # 1. Round-trip back to bytes via encode("utf-8", errors="surrogateescape")
+    # 2. Debugging original malformed input for crash reproducibility
+    # 3. Lossless handling unlike errors="replace" which loses data
     has_invalid_utf8 = False
     try:
         source = data.decode("utf-8")
     except UnicodeDecodeError:
-        source = data.decode("utf-8", errors="replace")
+        source = data.decode("utf-8", errors="surrogateescape")
         has_invalid_utf8 = True
         if not args.json:
-            print("[WARN] File contains invalid UTF-8, using replacement chars")
+            print("[WARN] File contains invalid UTF-8, using surrogateescape")
 
     # Output @example decorator if requested
     if args.example:

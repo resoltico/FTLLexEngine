@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.74.0"
 domain: TYPES
-updated: "2026-01-14"
+updated: "2026-01-15"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
@@ -477,6 +477,7 @@ class CallArguments:
 ### Constraints
 - Return: Immutable call arguments.
 - State: Frozen dataclass.
+- Validation: `serialize(validate=True)` rejects duplicate named argument names.
 
 ---
 
@@ -501,6 +502,9 @@ class NamedArgument:
 ### Constraints
 - Return: Immutable named argument.
 - State: Frozen dataclass.
+- FTL EBNF: `NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)`.
+- Validation: `serialize(validate=True)` rejects values that are not StringLiteral or NumberLiteral.
+- Version: Value type validation added in v0.74.0.
 
 ---
 
@@ -620,14 +624,15 @@ class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
 | `max_depth` | `int \| None` | N | Maximum traversal depth (default: 100). |
 
 ### Constraints
-- Return: Modified node, None (removes), or list (expands).
+- Return: Modified node, None (removes from optional fields or collections), or list (expands in collections).
 - State: Maintains dispatch cache and depth guard.
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `DepthLimitExceededError` when traversal exceeds max_depth. `TypeError` if visit method returns None or list for scalar field.
+- Raises: `DepthLimitExceededError` when traversal exceeds max_depth. `TypeError` if visit method returns None for required scalar field or list for any scalar field.
 - Depth: Guard inherited from ASTVisitor.visit() (bypass-proof).
 - Immutable: Uses `dataclasses.replace()` for node modifications.
-- Validation: Scalar fields (Message.id, Pattern.elements items) require single ASTNode return. Returning None or list raises TypeError with field name and node type information.
+- Required Fields: `Message.id`, `Term.id`, `Term.value`, `Placeable.expression`, `Variant.key`, `Variant.value`, etc. require single ASTNode return. Returning None or list raises TypeError.
+- Optional Fields: `Message.comment`, `Message.value`, `Term.comment`, `MessageReference.attribute`, `TermReference.attribute`, `TermReference.arguments` accept None returns for node removal. Returning list still raises TypeError.
 
 ---
 

@@ -12,9 +12,6 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 
 from __future__ import annotations
 
-from dataclasses import is_dataclass
-from typing import Any
-
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -28,12 +25,12 @@ from ftllexengine.syntax.ast import (
     Placeable,
     Resource,
     SelectExpression,
-    StringLiteral,
     Term,
     TextElement,
 )
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.serializer import FluentSerializer
+from tests.helpers.ast_checks import normalize_ast
 from tests.strategies import (
     ftl_comment_nodes,
     ftl_message_nodes,
@@ -45,54 +42,6 @@ from tests.strategies import (
 
 # Mark all tests in this file as fuzzing tests
 pytestmark = pytest.mark.fuzz
-
-
-# -----------------------------------------------------------------------------
-# AST Normalization (for semantic comparison)
-# -----------------------------------------------------------------------------
-
-
-def normalize_ast(obj: Any) -> Any:  # noqa: PLR0912 - complex dispatch is inherent to AST handling
-    """Normalize AST for semantic comparison.
-
-    Strips spans, raw values, and annotations that may differ between
-    parse cycles but don't affect semantics.
-    """
-    if isinstance(obj, (list, tuple)):
-        return [normalize_ast(x) for x in obj]
-
-    if isinstance(obj, Pattern):
-        # Flatten adjacent text elements
-        elements: list[Any] = []
-        for elem in obj.elements:
-            if isinstance(elem, TextElement):
-                if elements and isinstance(elements[-1], str):
-                    elements[-1] += elem.value
-                else:
-                    elements.append(elem.value)
-            elif isinstance(elem, Placeable):
-                if isinstance(elem.expression, StringLiteral):
-                    # String literals in placeables become text
-                    val = elem.expression.value
-                    if elements and isinstance(elements[-1], str):
-                        elements[-1] += val
-                    else:
-                        elements.append(val)
-                else:
-                    elements.append(normalize_ast(elem.expression))
-            # Pattern.elements contains TextElement | Placeable only
-        return elements
-
-    if is_dataclass(obj):
-        processed: dict[str, Any] = {}
-        for field_name in obj.__dataclass_fields__:
-            if field_name in ("span", "raw", "annotations"):
-                continue
-            val = getattr(obj, field_name)
-            processed[field_name] = normalize_ast(val)
-        return processed
-
-    return obj
 
 
 # -----------------------------------------------------------------------------

@@ -237,6 +237,12 @@ disable =
     # Reason: Test function parameters match real function signatures for clarity
     unused-argument,
 
+    # W0718: broad-exception-caught
+    # Reason: Thread safety tests intentionally catch broad exceptions to detect
+    # ANY unexpected error during concurrent operations, including race conditions
+    # and thread safety violations that may manifest as various exception types.
+    broad-exception-caught,
+
 # ============================================================================
 # REPORTS
 # ============================================================================

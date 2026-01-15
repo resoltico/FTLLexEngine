@@ -15,11 +15,9 @@ test runs. Run via: ./scripts/run-property-tests.sh or pytest -m fuzz
 from __future__ import annotations
 
 import time
-from dataclasses import is_dataclass
-from typing import Any
 
 import pytest
-from hypothesis import HealthCheck, assume, given, settings, target
+from hypothesis import HealthCheck, assume, example, given, settings, target
 from hypothesis import strategies as st
 from hypothesis.strategies import composite
 
@@ -29,73 +27,21 @@ pytestmark = pytest.mark.fuzz
 from ftllexengine.syntax.ast import (
     Junk,
     Message,
-    Pattern,
-    Placeable,
     Resource,
-    Span,
-    StringLiteral,
     Term,
-    TextElement,
 )
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.serializer import FluentSerializer
+from tests.strategies import (
+    ftl_identifier_boundary,
+)
+from tests.strategies import (
+    ftl_identifiers_with_keywords as ftl_identifier,
+)
 
 # -----------------------------------------------------------------------------
 # Strategy Builders: Core FTL Constructs
 # -----------------------------------------------------------------------------
-
-
-@composite
-def ftl_identifier(draw: st.DrawFn) -> str:
-    """Generate valid FTL identifier: [a-zA-Z][a-zA-Z0-9_-]*
-
-    Includes reserved keywords to test keyword handling.
-    """
-    keywords = [
-        "NUMBER",
-        "DATETIME",
-        "one",
-        "other",
-        "zero",
-        "two",
-        "few",
-        "many",
-    ]
-    if draw(st.booleans()):
-        return draw(st.sampled_from(keywords))
-
-    first_char = draw(
-        st.sampled_from("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    )
-    rest = draw(
-        st.text(
-            alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-",
-            min_size=0,
-            max_size=64,
-        )
-    )
-    return first_char + rest
-
-
-@composite
-def ftl_identifier_boundary(draw: st.DrawFn) -> str:
-    """Generate boundary-case identifiers for edge testing."""
-    choice = draw(st.sampled_from(["single", "long", "hyphen", "underscore"]))
-    if choice == "single":
-        return draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz"))
-    if choice == "long":
-        # Maximum practical length
-        return "a" + draw(
-            st.text(
-                alphabet="abcdefghijklmnopqrstuvwxyz0123456789",
-                min_size=200,
-                max_size=200,
-            )
-        )
-    if choice == "hyphen":
-        return "a" + "-" * draw(st.integers(1, 10)) + "b"
-    # underscore
-    return "a" + "_" * draw(st.integers(1, 10)) + "b"
 
 
 def ftl_number_literal() -> st.SearchStrategy[str]:
@@ -377,80 +323,10 @@ def ftl_unicode_stress(draw: st.DrawFn) -> str:
 
 
 # -----------------------------------------------------------------------------
-# AST Normalization (for semantic comparison)
+# AST Normalization (from shared helpers)
 # -----------------------------------------------------------------------------
 
-
-def flatten_pattern(pattern: Pattern) -> list[Any]:
-    """Flatten pattern elements into comparable form."""
-    flat: list[Any] = []
-    for elem in pattern.elements:
-        if isinstance(elem, TextElement):
-            val = elem.value
-            if flat and isinstance(flat[-1], str):
-                flat[-1] += val
-            else:
-                flat.append(val)
-        elif isinstance(elem, Placeable):
-            if isinstance(elem.expression, StringLiteral):
-                val = elem.expression.value
-                if flat and isinstance(flat[-1], str):
-                    flat[-1] += val
-                else:
-                    flat.append(val)
-            else:
-                flat.append(normalize_ast(elem.expression))
-    return flat
-
-
-def normalize_ast(obj: Any) -> Any:
-    """Normalize AST for semantic comparison (strips spans and raw values)."""
-    if isinstance(obj, (list, tuple)):
-        return [normalize_ast(x) for x in obj]
-
-    if isinstance(obj, Pattern):
-        return flatten_pattern(obj)
-
-    if is_dataclass(obj):
-        processed: dict[str, Any] = {}
-        for field in obj.__dataclass_fields__:
-            if field in ("span", "raw", "annotations"):
-                continue
-            val = getattr(obj, field)
-            processed[field] = normalize_ast(val)
-        return processed
-
-    return obj
-
-
-def verify_spans(node: Any, source: str) -> None:
-    """Verify span bounds and non-overlapping for pattern elements."""
-    if is_dataclass(node):
-        node_span = getattr(node, "span", None)
-        if node_span is not None:
-            span: Span = node_span
-            assert (
-                0 <= span.start <= span.end <= len(source)
-            ), f"Span out of bounds: {span} in {len(source)}"
-
-        if isinstance(node, Pattern) and node.elements:
-            last_end = -1
-            for elem in node.elements:
-                elem_span = getattr(elem, "span", None)
-                if elem_span:
-                    if last_end != -1:
-                        assert (
-                            elem_span.start >= last_end
-                        ), f"Overlapping spans: {last_end} -> {elem_span.start}"
-                    last_end = elem_span.end
-
-        for field in node.__dataclass_fields__:
-            val = getattr(node, field)
-            if isinstance(val, (list, tuple)):
-                for item in val:
-                    verify_spans(item, source)
-            elif is_dataclass(val):
-                verify_spans(val, source)
+from tests.helpers.ast_checks import normalize_ast, verify_spans
 
 
 def has_junk(resource: Resource) -> bool:
@@ -485,7 +361,12 @@ class TestParserProperties:
         ast_1 = parser.parse(source)
         verify_spans(ast_1, source)
 
-        # Skip inputs that produce parse errors (Junk)
+        # Junk entries cannot be meaningfully round-tripped since their content
+        # represents unparseable source. This assume() is necessary because:
+        # 1. Junk serialization differs from original input (normalized)
+        # 2. Semantic comparison is impossible for invalid syntax
+        # 3. Junk recovery is tested separately in TestJunkRecovery
+        # (MAINT-FUZZ-SHRINKING-EFFICIENCY-001 acknowledged)
         assume(not has_junk(ast_1))
 
         ser_1 = serializer.serialize(ast_1)
@@ -509,6 +390,8 @@ class TestParserProperties:
         serializer = FluentSerializer()
 
         ast_1 = parser.parse(source)
+        # Same rationale as test_roundtrip_consistency - junk entries cannot
+        # participate in idempotence testing. See TestJunkRecovery for junk tests.
         assume(not has_junk(ast_1))
 
         # First roundtrip
@@ -714,6 +597,106 @@ class TestErrorHandling:
 
         # Should not crash, should return Resource
         assert isinstance(result, Resource)
+
+
+class TestJunkRecovery:
+    """Tests for parser junk recovery behavior.
+
+    Verifies that valid entries following junk are correctly parsed.
+    (MAINT-FUZZ-JUNK-RECOVERY-UNVERIFIED-001)
+    """
+
+    @example(junk_content="!", valid_id="msg", valid_value="v")
+    @given(
+        junk_content=st.text(
+            alphabet=st.characters(blacklist_categories=["Cc"], blacklist_characters="#\n\r"),
+            min_size=1,
+            max_size=50,
+        ),
+        valid_id=ftl_identifier(),
+        valid_value=st.text(
+            alphabet=st.characters(blacklist_categories=["Cc"], blacklist_characters="{}\n\r"),
+            min_size=1,
+            max_size=30,
+        ),
+    )
+    @settings(max_examples=200, deadline=None)
+    def test_valid_entry_after_junk(
+        self, junk_content: str, valid_id: str, valid_value: str
+    ) -> None:
+        """Property: Valid entries after junk are correctly parsed."""
+        # Ensure junk_content doesn't accidentally become valid FTL
+        # Note: '#' is blacklisted since it starts valid FTL comments
+        if "=" in junk_content:
+            junk_content = junk_content.replace("=", "!")
+
+        # Create source with junk line followed by valid message
+        source = f"{junk_content}\n{valid_id} = {valid_value.strip() or 'value'}\n"
+
+        parser = FluentParserV1()
+        result = parser.parse(source)
+
+        assert isinstance(result, Resource)
+        assert len(result.entries) >= 1
+
+        # Find entries by type
+        junk_entries = [e for e in result.entries if isinstance(e, Junk)]
+        message_entries = [e for e in result.entries if isinstance(e, Message)]
+
+        # Should have at least one junk entry (the invalid first line)
+        assert len(junk_entries) >= 1, "Expected junk entry for invalid line"
+
+        # Should have exactly one valid message
+        assert len(message_entries) == 1, f"Expected 1 message, got {len(message_entries)}"
+
+        # Message should have correct ID
+        assert message_entries[0].id.name == valid_id
+
+    @given(
+        num_junk_lines=st.integers(min_value=1, max_value=5),
+        valid_id=ftl_identifier(),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_recovery_after_multiple_junk_lines(
+        self, num_junk_lines: int, valid_id: str
+    ) -> None:
+        """Property: Parser recovers after multiple junk lines."""
+        junk_lines = "\n".join([f"!invalid{i}" for i in range(num_junk_lines)])
+        source = f"{junk_lines}\n{valid_id} = recovered\n"
+
+        parser = FluentParserV1()
+        result = parser.parse(source)
+
+        assert isinstance(result, Resource)
+
+        # Should find the valid message after junk
+        message_entries = [e for e in result.entries if isinstance(e, Message)]
+        assert len(message_entries) == 1
+        assert message_entries[0].id.name == valid_id
+
+    @given(
+        before_id=ftl_identifier(),
+        after_id=ftl_identifier(),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_valid_entries_around_junk(self, before_id: str, after_id: str) -> None:
+        """Property: Valid entries before and after junk are preserved."""
+        # Ensure distinct IDs
+        if before_id == after_id:
+            after_id = after_id + "2"
+
+        source = f"{before_id} = before\n!junk line\n{after_id} = after\n"
+
+        parser = FluentParserV1()
+        result = parser.parse(source)
+
+        assert isinstance(result, Resource)
+
+        message_entries = [e for e in result.entries if isinstance(e, Message)]
+        message_ids = [m.id.name for m in message_entries]
+
+        assert before_id in message_ids, f"Missing before message {before_id}"
+        assert after_id in message_ids, f"Missing after message {after_id}"
 
 
 if __name__ == "__main__":

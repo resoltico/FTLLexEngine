@@ -93,13 +93,27 @@ def generate_identifier(fdp: atheris.FuzzedDataProvider, max_len: int = 20) -> s
 
 
 def generate_text(fdp: atheris.FuzzedDataProvider, max_len: int = 50) -> str:
-    """Generate FTL-safe text content using fuzzer decisions."""
+    """Generate FTL-safe text content with Unicode support.
+
+    Mixes ASCII-only generation with full Unicode for comprehensive coverage.
+    (MAINT-FUZZ-STRUCTURED-UNICODE-GAP-001)
+    """
     if not fdp.remaining_bytes():
         return "value"
 
     length = fdp.ConsumeIntInRange(1, max_len)
-    chars = []
 
+    # 30% chance of using full Unicode instead of ASCII-only
+    use_unicode = fdp.ConsumeBool() and fdp.ConsumeBool()  # ~25% chance
+
+    if use_unicode and fdp.remaining_bytes() >= length:
+        # Use ConsumeUnicodeNoSurrogates for full Unicode coverage
+        text = fdp.ConsumeUnicodeNoSurrogates(length)
+        # Filter out FTL structural characters
+        filtered = "".join(c for c in text if c not in "{}[]*$-.#\n\r")
+        return filtered if filtered else "unicode"
+
+    chars = []
     for _ in range(length):
         if not fdp.remaining_bytes():
             break
@@ -274,9 +288,50 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     parser = FluentParserV1(max_source_size=1024 * 1024, max_nesting_depth=100)
 
     try:
-        parser.parse(source)
+        result = parser.parse(source)
+
+        # Semantic invariant checks (TRUST-FUZZ-NATIVE-LIMITATION-001)
+        # These catch logic bugs that don't cause crashes
+
+        # Check 1: Non-corrupted input should produce entries
+        # (corrupted input may legitimately produce all-junk)
+        if "corruption" not in source[:50]:  # Heuristic: corruption adds random chars
+            from ftllexengine.syntax.ast import Junk
+
+            valid_entries = [e for e in result.entries if not isinstance(e, Junk)]
+            # Plausible FTL should have at least one valid entry or some junk
+            if len(result.entries) == 0 and len(source.strip()) > 10:
+                # Suspicious: non-trivial input produced empty AST
+                _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+                msg = f"Empty AST for non-trivial input: {source[:100]!r}"
+                raise AssertionError(msg)
+
+        # Check 2: Round-trip consistency for valid parses (no junk)
+        from ftllexengine.syntax.ast import Junk
+
+        if not any(isinstance(e, Junk) for e in result.entries):
+            from ftllexengine.syntax.serializer import FluentSerializer
+
+            serializer = FluentSerializer()
+            try:
+                serialized = serializer.serialize(result)
+                reparsed = parser.parse(serialized)
+
+                # Entry count should match
+                if len(result.entries) != len(reparsed.entries):
+                    _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+                    msg = (
+                        f"Round-trip entry count mismatch: "
+                        f"{len(result.entries)} -> {len(reparsed.entries)}"
+                    )
+                    raise AssertionError(msg)
+            except ALLOWED_EXCEPTIONS:
+                pass  # Serialization may fail for edge cases
+
     except ALLOWED_EXCEPTIONS:
         pass  # Expected for invalid/corrupted input
+    except AssertionError:
+        raise  # Propagate semantic invariant failures
     except Exception as e:
         # Unexpected exception - this is a finding
         _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1

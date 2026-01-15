@@ -21,6 +21,7 @@ from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     Attribute,
     Comment,
+    Expression,
     Identifier,
     Junk,
     Message,
@@ -84,6 +85,63 @@ def ftl_identifiers(draw: st.DrawFn) -> str:
     return first + rest
 
 
+# Reserved keywords in FTL (for intensive fuzzing of keyword handling)
+FTL_RESERVED_KEYWORDS = (
+    "NUMBER",
+    "DATETIME",
+    "one",
+    "other",
+    "zero",
+    "two",
+    "few",
+    "many",
+)
+
+
+@composite
+def ftl_identifiers_with_keywords(draw: st.DrawFn) -> str:
+    """Generate FTL identifiers, sometimes using reserved keywords.
+
+    Used for intensive fuzzing to test keyword handling paths.
+    50% chance of returning a reserved keyword, otherwise a random identifier.
+    """
+    if draw(st.booleans()):
+        return draw(st.sampled_from(FTL_RESERVED_KEYWORDS))
+
+    first = draw(st.sampled_from(FTL_IDENTIFIER_FIRST_CHARS))
+    rest = draw(
+        st.text(
+            alphabet=FTL_IDENTIFIER_REST_CHARS,
+            max_size=64,
+        )
+    )
+    return first + rest
+
+
+@composite
+def ftl_identifier_boundary(draw: st.DrawFn) -> str:
+    """Generate boundary-case identifiers for edge testing.
+
+    Tests single-char, long identifiers, and repeated separators.
+    """
+    choice = draw(st.sampled_from(["single", "long", "hyphen", "underscore"]))
+    if choice == "single":
+        return draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz"))
+    if choice == "long":
+        # Maximum practical length
+        return "a" + draw(
+            st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyz0123456789",
+                min_size=200,
+                max_size=200,
+            )
+        )
+    if choice == "hyphen":
+        return "a" + "-" * draw(st.integers(1, 10)) + "b"
+    # underscore
+    return "a" + "_" * draw(st.integers(1, 10)) + "b"
+
+
 @composite
 def ftl_simple_text(draw: st.DrawFn) -> str:
     """Generate simple text without special FTL characters.
@@ -99,15 +157,60 @@ def ftl_simple_text(draw: st.DrawFn) -> str:
 
 @composite
 def ftl_unicode_text(draw: st.DrawFn) -> str:
-    """Generate text with Unicode characters."""
-    # Mix ASCII and Unicode
-    ascii_part = draw(st.text(alphabet=FTL_SAFE_CHARS, min_size=1, max_size=20))
-    unicode_part = draw(st.text(alphabet=UNICODE_CHARS, min_size=1, max_size=10))
+    """Generate text with comprehensive Unicode coverage.
 
-    # Randomly interleave
-    if draw(st.booleans()):
-        return ascii_part + " " + unicode_part
-    return unicode_part + " " + ascii_part
+    Uses Hypothesis's full Unicode text strategy, filtering only:
+    - FTL structural characters: { } [ ] * $ - . #
+    - Control characters (Cc category)
+    - Newlines (message separators)
+    - Surrogates (Cs category)
+
+    This provides much broader Unicode coverage than the limited UNICODE_CHARS
+    constant, including non-BMP characters, ZWJ sequences, RTL text, etc.
+    (MAINT-FUZZ-UNICODE-UNDEREXPOSURE-001)
+    """
+    # Full Unicode text with FTL structural chars filtered
+    text = draw(
+        st.text(
+            alphabet=st.characters(
+                blacklist_categories=("Cc", "Cs"),  # No control chars or surrogates
+                blacklist_characters="{}[]*$-.#\n\r",  # No FTL structural chars
+            ),
+            min_size=1,
+            max_size=30,
+        )
+    )
+    # Ensure non-whitespace content
+    if text.strip() == "":
+        text = draw(st.sampled_from(list(UNICODE_CHARS)))
+    return text
+
+
+@composite
+def ftl_unicode_stress_text(draw: st.DrawFn) -> str:
+    """Generate Unicode stress test cases.
+
+    Specifically targets edge cases that may cause encoding or display issues:
+    - Non-BMP characters (emoji, math symbols)
+    - ZWJ sequences
+    - RTL markers and bidirectional text
+    - Combining characters
+    - Rare scripts
+    """
+    stress_cases = [
+        "\U0001F600",  # Emoji (non-BMP)
+        "\U0001F469\u200D\U0001F4BB",  # ZWJ sequence (woman technologist)
+        "\u202Eevil\u202C",  # RTL override
+        "cafe\u0301",  # Combining accent (é as e + combining acute)
+        "\u0627\u0644\u0639\u0631\u0628\u064A\u0629",  # Arabic
+        "\u4E2D\u6587",  # Chinese
+        "\u0928\u092E\u0938\u094D\u0924\u0947",  # Hindi (Devanagari)
+        "\uFEFF",  # BOM
+        "\u200B",  # Zero-width space
+        "\u00A0",  # Non-breaking space
+        "\U0001F1FA\U0001F1F8",  # Flag emoji (regional indicators)
+    ]
+    return draw(st.sampled_from(stress_cases))
 
 
 @composite
@@ -230,10 +333,54 @@ def ftl_string_literals(draw: st.DrawFn) -> StringLiteral:
 
 
 @composite
-def ftl_placeables(draw: st.DrawFn) -> Placeable:
-    """Generate Placeable AST nodes with simple expressions."""
-    expression = draw(ftl_variable_references())
+def ftl_placeables(draw: st.DrawFn, max_depth: int = 2) -> Placeable:
+    """Generate Placeable AST nodes with recursive nesting support.
+
+    Uses recursive strategy to generate nested expressions up to max_depth.
+    Fixes MAINT-FUZZ-AST-SHALLOW-NESTING-001 - previously only generated
+    single-level VariableReference expressions.
+
+    Args:
+        draw: Hypothesis draw function
+        max_depth: Maximum nesting depth (default 2 to avoid explosion)
+    """
+    expression: Expression
+    if max_depth <= 0:
+        # Base case: simple variable reference
+        expression = draw(ftl_variable_references())
+    else:
+        # Choose expression type with weighted probability
+        # More weight on simple types to avoid explosion
+        choice = draw(
+            st.sampled_from(
+                ["variable", "variable", "variable", "string", "nested"]
+            )
+        )
+
+        if choice == "variable":
+            expression = draw(ftl_variable_references())
+        elif choice == "string":
+            expression = draw(ftl_string_literals())
+        else:
+            # Nested placeable - use the inner expression (unwrapped)
+            inner = draw(ftl_placeables(max_depth=max_depth - 1))
+            expression = inner.expression
+
     return Placeable(expression=expression)
+
+
+@composite
+def ftl_deep_placeables(draw: st.DrawFn, depth: int = 5) -> Placeable:
+    """Generate deeply nested Placeable structures for depth limit testing.
+
+    Creates chains of nested placeables up to the specified depth.
+    Used for testing parser/serializer depth guards.
+    """
+    if depth <= 1:
+        return Placeable(expression=draw(ftl_variable_references()))
+
+    inner = draw(ftl_deep_placeables(depth=depth - 1))
+    return Placeable(expression=inner.expression)
 
 
 @composite
@@ -730,8 +877,7 @@ def deeply_nested_placeables(draw: st.DrawFn, depth: int = 10) -> Placeable:
     return inner  # type: ignore[return-value]
 
 
-@composite
-def deeply_nested_message_chain(_draw: st.DrawFn, depth: int = 10) -> Resource:
+def deeply_nested_message_chain(depth: int = 10) -> st.SearchStrategy[Resource]:
     """Generate a chain of messages referencing each other."""
     messages: list[Message] = []
 
@@ -748,7 +894,7 @@ def deeply_nested_message_chain(_draw: st.DrawFn, depth: int = 10) -> Resource:
 
         messages.append(Message(id=msg_id, value=pattern, attributes=()))
 
-    return Resource(entries=tuple(messages))
+    return st.just(Resource(entries=tuple(messages)))
 
 
 @composite
@@ -794,8 +940,7 @@ def deeply_nested_select(draw: st.DrawFn, depth: int = 5) -> SelectExpression:
     return current
 
 
-@composite
-def wide_resource(_draw: st.DrawFn, width: int = 50) -> Resource:
+def wide_resource(width: int = 50) -> st.SearchStrategy[Resource]:
     """Generate a resource with many messages (width test)."""
     messages: list[Message] = []
 
@@ -807,11 +952,10 @@ def wide_resource(_draw: st.DrawFn, width: int = 50) -> Resource:
         )
         messages.append(msg)
 
-    return Resource(entries=tuple(messages))
+    return st.just(Resource(entries=tuple(messages)))
 
 
-@composite
-def message_with_many_attributes(_draw: st.DrawFn, attr_count: int = 20) -> Message:
+def message_with_many_attributes(attr_count: int = 20) -> st.SearchStrategy[Message]:
     """Generate a message with many attributes."""
     attrs: list[Attribute] = []
 
@@ -822,10 +966,12 @@ def message_with_many_attributes(_draw: st.DrawFn, attr_count: int = 20) -> Mess
         )
         attrs.append(attr)
 
-    return Message(
-        id=Identifier(name="many_attrs"),
-        value=Pattern(elements=(TextElement(value="Main value"),)),
-        attributes=tuple(attrs),
+    return st.just(
+        Message(
+            id=Identifier(name="many_attrs"),
+            value=Pattern(elements=(TextElement(value="Main value"),)),
+            attributes=tuple(attrs),
+        )
     )
 
 
@@ -1208,3 +1354,115 @@ def ftl_resource_with_whitespace_chaos(draw: st.DrawFn) -> str:
                 entries.append(blanks)
 
     return "\n\n".join(entries)
+
+
+# =============================================================================
+# Negative Oracle Strategies (intentionally invalid FTL)
+# =============================================================================
+# (MAINT-FUZZ-NEGATIVE-ORACLE-MISSING-001)
+
+
+@composite
+def ftl_invalid_select_no_default(draw: st.DrawFn) -> str:
+    """Generate SelectExpression without default variant (invalid per spec).
+
+    FTL requires exactly one variant to be marked as default with *.
+    """
+    msg_id = draw(ftl_identifiers())
+    selector = f"${ draw(ftl_identifiers()) }"
+    variant1 = draw(ftl_identifiers())
+    variant2 = draw(ftl_identifiers())
+
+    # No asterisk on any variant - invalid
+    return f"{msg_id} = {{ {selector} ->\n    [{variant1}] value1\n    [{variant2}] value2\n}}"
+
+
+@composite
+def ftl_invalid_unclosed_placeable(draw: st.DrawFn) -> str:
+    """Generate message with unclosed placeable (invalid syntax)."""
+    msg_id = draw(ftl_identifiers())
+    var_name = draw(ftl_identifiers())
+    return f"{msg_id} = Hello {{ ${var_name}"  # Missing closing }
+
+
+@composite
+def ftl_invalid_unterminated_string(draw: st.DrawFn) -> str:
+    """Generate message with unterminated string literal (invalid syntax)."""
+    msg_id = draw(ftl_identifiers())
+    return f'{msg_id} = {{ "unterminated string }}'  # Missing closing quote
+
+
+@composite
+def ftl_invalid_bad_identifier_start(draw: st.DrawFn) -> str:
+    """Generate message with invalid identifier (starts with digit/symbol)."""
+    bad_start = draw(st.sampled_from(["0", "1", "_", "-", ".", "@"]))
+    rest = draw(ftl_identifiers())
+    return f"{bad_start}{rest} = value"
+
+
+@composite
+def ftl_invalid_double_equals(draw: st.DrawFn) -> str:
+    """Generate message with double equals sign (invalid syntax)."""
+    msg_id = draw(ftl_identifiers())
+    return f"{msg_id} == value"
+
+
+@composite
+def ftl_invalid_missing_value(draw: st.DrawFn) -> str:
+    """Generate message with missing value (invalid for messages)."""
+    msg_id = draw(ftl_identifiers())
+    return f"{msg_id} ="  # No value, no attributes
+
+
+@composite
+def ftl_invalid_ftl(draw: st.DrawFn) -> str:
+    """Generate any type of invalid FTL for error path testing.
+
+    Used for testing parser error recovery and diagnostic generation.
+    """
+    return draw(
+        st.one_of(
+            ftl_invalid_select_no_default(),
+            ftl_invalid_unclosed_placeable(),
+            ftl_invalid_unterminated_string(),
+            ftl_invalid_bad_identifier_start(),
+            ftl_invalid_double_equals(),
+            ftl_invalid_missing_value(),
+        )
+    )
+
+
+@composite
+def ftl_valid_with_injected_error(draw: st.DrawFn) -> tuple[str, str]:
+    """Generate valid FTL then inject an error.
+
+    Returns tuple of (original_valid_ftl, corrupted_ftl).
+    Useful for differential testing of error recovery.
+    """
+    # Generate valid FTL
+    msg_id = draw(ftl_identifiers())
+    value = draw(ftl_simple_text())
+    valid_ftl = f"{msg_id} = {value}"
+
+    # Choose corruption type
+    corruption = draw(
+        st.sampled_from([
+            "remove_equals",
+            "add_unclosed_brace",
+            "corrupt_identifier",
+            "insert_null",
+        ])
+    )
+
+    match corruption:
+        case "remove_equals":
+            corrupted = valid_ftl.replace(" = ", " ", 1)
+        case "add_unclosed_brace":
+            corrupted = valid_ftl.replace(value, f"{{ {value}", 1)
+        case "corrupt_identifier":
+            corrupted = "0" + valid_ftl
+        case _:  # insert_null
+            mid = len(valid_ftl) // 2
+            corrupted = valid_ftl[:mid] + "\x00" + valid_ftl[mid:]
+
+    return (valid_ftl, corrupted)

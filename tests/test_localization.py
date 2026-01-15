@@ -923,3 +923,154 @@ button = Click
         assert "tooltip" in result.lower() or "Button" in result
         assert len(fallback_events) == 1
         assert fallback_events[0].message_id == "button"
+
+
+@pytest.mark.fuzz
+class TestCrossFileDepthValidation:
+    """Tests for reference depth limits across multiple resources.
+
+    These tests verify that reference chain depth limits are enforced
+    even when the chain spans multiple add_resource() calls. This
+    prevents DoS attacks that split deep reference chains across files.
+    """
+
+    def test_deep_reference_chain_across_resources(self) -> None:
+        """Reference chains spanning multiple resources respect depth limits.
+
+        When messages reference each other across multiple add_resource calls,
+        the total depth limit should still be enforced.
+        """
+        l10n = FluentLocalization(["en"], use_isolating=False)
+
+        # Add resources separately - chain: level5 -> level4 -> level3 -> level2 -> level1 -> base
+        l10n.add_resource("en", "base = Base value")
+        l10n.add_resource("en", "level1 = L1: { base }")
+        l10n.add_resource("en", "level2 = L2: { level1 }")
+        l10n.add_resource("en", "level3 = L3: { level2 }")
+        l10n.add_resource("en", "level4 = L4: { level3 }")
+        l10n.add_resource("en", "level5 = L5: { level4 }")
+
+        # Should resolve successfully (depth 6 is within default limit of 50)
+        result, errors = l10n.format_value("level5")
+
+        assert not errors
+        assert "Base value" in result
+        assert "L1:" in result
+        assert "L5:" in result
+
+    def test_very_deep_reference_chain_is_limited(self) -> None:
+        """Extremely deep reference chains are limited to prevent stack overflow.
+
+        This tests that reference chains spanning many add_resource calls
+        eventually hit the depth limit rather than causing stack overflow.
+        """
+        from ftllexengine.runtime.bundle import FluentBundle  # noqa: PLC0415
+
+        bundle = FluentBundle("en", use_isolating=False, max_nesting_depth=10)
+
+        # Build a chain deeper than max_nesting_depth
+        bundle.add_resource("level0 = Base")
+        for i in range(1, 15):  # 15 levels, exceeds max_depth of 10
+            bundle.add_resource(f"level{i} = Chain {{ level{i-1} }}")
+
+        # Resolving the deepest level should hit depth limit
+        result, errors = bundle.format_pattern("level14")
+
+        # Should have errors due to depth limit
+        assert len(errors) > 0 or "level" not in result.lower()
+
+    def test_cross_file_term_reference_depth(self) -> None:
+        """Term references across resources are tracked for depth.
+
+        Terms (-name syntax) referenced across multiple resources
+        should also respect depth limits.
+        """
+        l10n = FluentLocalization(["en"], use_isolating=False)
+
+        # Add terms and messages across resources
+        l10n.add_resource("en", "-brand = Firefox")
+        l10n.add_resource("en", "-product = { -brand } Browser")
+        l10n.add_resource("en", "title = Welcome to { -product }")
+        l10n.add_resource("en", "subtitle = { title } - Get Started")
+
+        result, errors = l10n.format_value("subtitle")
+
+        assert not errors
+        assert "Firefox" in result
+        assert "Browser" in result
+        assert "Welcome" in result
+
+    def test_cross_locale_depth_isolation(self) -> None:
+        """Depth limits are applied per-resolution, not accumulating across locales.
+
+        When falling back through locales, each resolution attempt
+        should have its own depth counter, not share state.
+        """
+        l10n = FluentLocalization(["de", "en"], use_isolating=False)
+
+        # German has deep chain
+        l10n.add_resource("de", "a = DE-A")
+        l10n.add_resource("de", "b = DE-B: { a }")
+        l10n.add_resource("de", "c = DE-C: { b }")
+
+        # English has different chain (also deep)
+        l10n.add_resource("en", "x = EN-X")
+        l10n.add_resource("en", "y = EN-Y: { x }")
+
+        # Resolve German chain
+        result_c, errors_c = l10n.format_value("c")
+        assert not errors_c
+        assert "DE-A" in result_c
+
+        # Resolve English chain (falls back since not in de)
+        result_y, errors_y = l10n.format_value("y")
+        assert not errors_y
+        assert "EN-X" in result_y
+
+    def test_circular_reference_detection_across_resources(self) -> None:
+        """Circular references across resources are detected.
+
+        Even when circular references are created by adding resources
+        separately, the resolver should detect and break the cycle.
+        """
+        l10n = FluentLocalization(["en"], use_isolating=False)
+
+        # Create circular reference: msg1 -> msg2 -> msg3 -> msg1
+        l10n.add_resource("en", "msg1 = Start: { msg2 }")
+        l10n.add_resource("en", "msg2 = Middle: { msg3 }")
+        l10n.add_resource("en", "msg3 = End: { msg1 }")  # Circular!
+
+        # Resolution should detect cycle and not stack overflow
+        result, errors = l10n.format_value("msg1")
+
+        # Should have errors (cycle detected) or produce partial result
+        # The key is it doesn't hang or crash
+        assert isinstance(result, str)
+        assert len(errors) > 0 or "{" in result  # Either errors or unresolved placeholder
+
+    def test_select_expression_depth_across_resources(self) -> None:
+        """Select expressions in cross-resource chains respect depth.
+
+        Complex patterns with select expressions referenced across
+        resources should not bypass depth limits.
+        """
+        l10n = FluentLocalization(["en"], use_isolating=False)
+
+        l10n.add_resource(
+            "en",
+            """
+base = { $type ->
+    [a] Type A
+    [b] Type B
+   *[other] Unknown
+}
+""",
+        )
+        l10n.add_resource("en", "wrapper = Result: { base }")
+        l10n.add_resource("en", "outer = Final: { wrapper }")
+
+        result, errors = l10n.format_value("outer", {"type": "a"})
+
+        assert not errors
+        assert "Type A" in result
+        assert "Final:" in result

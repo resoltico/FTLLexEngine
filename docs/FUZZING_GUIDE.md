@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.74.0"
 domain: fuzzing
-updated: "2026-01-14"
+updated: "2026-01-15"
 route:
   keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security]
   questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?"]
@@ -57,6 +57,7 @@ All fuzzing operations use `./scripts/fuzz.sh`:
 | `./scripts/fuzz.sh --structured` | Structure-aware fuzzing (better coverage) | Until Ctrl+C |
 | `./scripts/fuzz.sh --perf` | Performance/ReDoS detection | Until Ctrl+C |
 | `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | Instant |
+| `./scripts/fuzz.sh --minimize FILE` | Minimize crash to smallest reproducer | ~60 seconds |
 | `./scripts/fuzz.sh --list` | List captured failures (with ages) | Instant |
 | `./scripts/fuzz.sh --clean` | Remove all failure artifacts | Instant |
 | `./scripts/fuzz.sh --corpus` | Check seed corpus health | Instant |
@@ -70,7 +71,7 @@ Common options:
 | `--workers N` | Use N parallel workers |
 | `--json` | Output JSON (for CI) |
 
-The `--structured` mode uses grammar-aware fuzzing for better coverage. The `--repro` mode reproduces crash files and generates `@example` decorators.
+The `--structured` mode uses grammar-aware fuzzing for better coverage. The `--repro` mode reproduces crash files and generates `@example` decorators. The `--minimize` mode uses libFuzzer to reduce a crash file to the smallest input that still triggers the crash.
 
 ---
 
@@ -255,16 +256,36 @@ Input size: 42 chars
 
 Crash inputs are saved to `.fuzz_corpus/crash_*`.
 
-**View crash content:**
+**Minimize the crash first** (reduces noise, faster debugging):
 ```bash
-xxd .fuzz_corpus/crash_* | head -20
+./scripts/fuzz.sh --minimize .fuzz_corpus/crash_abc123
 ```
 
-**Reproduce the crash:**
-```python
-from ftllexengine.syntax.parser import FluentParserV1
-data = open('.fuzz_corpus/crash_abc123', 'rb').read()
-FluentParserV1().parse(data.decode('utf-8', errors='replace'))
+Output:
+```
+[PASS] Crash minimized successfully.
+
+Original size:  1247 bytes
+Minimized size: 42 bytes
+Reduction:      97%
+
+Minimized crash saved to: .fuzz_corpus/crash_abc123.minimized
+
+Next steps:
+  1. Reproduce: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_abc123.minimized
+  2. Add @example() to test and fix the bug
+```
+
+**Reproduce the minimized crash:**
+```bash
+./scripts/fuzz.sh --repro .fuzz_corpus/crash_abc123.minimized
+```
+
+This generates an `@example()` decorator you can paste into a test.
+
+**View crash content (if needed):**
+```bash
+xxd .fuzz_corpus/crash_abc123.minimized | head -20
 ```
 
 **Create a regression test:**
@@ -476,6 +497,20 @@ macOS limits Unix socket paths. The scripts set `TMPDIR=/tmp` automatically. If 
 TMPDIR=/tmp uv run hypothesis fuzz ...
 ```
 
+### Minimization failed or didn't reduce size?
+
+The `--minimize` mode may fail if:
+- The crash isn't deterministic (race condition, random state)
+- The input is already minimal
+- The wrong fuzzer script is being used
+
+Try specifying more time:
+```bash
+./scripts/fuzz.sh --minimize .fuzz_corpus/crash_* --time 120
+```
+
+If minimization fails consistently, use `--repro` directly on the original crash file.
+
 ---
 
 ## Python Version Requirements
@@ -489,6 +524,7 @@ Different fuzzing tools have different Python version requirements:
 | `./scripts/fuzz.sh --native` | 3.11-3.13 | Atheris | libFuzzer-based |
 | `./scripts/fuzz.sh --structured` | 3.11-3.13 | Atheris | Grammar-aware |
 | `./scripts/fuzz.sh --perf` | 3.11-3.13 | Atheris | ReDoS detection |
+| `./scripts/fuzz.sh --minimize` | 3.11-3.13 | Atheris | Crash minimization |
 
 ### Why Atheris Requires Python 3.13 or Earlier
 
@@ -499,8 +535,9 @@ Atheris uses libFuzzer which is compiled against specific Python ABIs. The Ather
 If your default Python is 3.14, switch to 3.13 for native fuzzing:
 
 ```bash
-# Run native fuzzing with Python 3.13
+# Run native/minimize fuzzing with Python 3.13
 uv run --python 3.13 ./scripts/fuzz.sh --native
+uv run --python 3.13 ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*
 
 # Property-based fuzzing works on Python 3.14
 ./scripts/fuzz.sh          # Works on 3.14
@@ -519,9 +556,10 @@ uv run --python 3.13 ./scripts/fuzz.sh --native
 | Deep fuzzing (endless) | `./scripts/fuzz.sh --deep` |
 | Native fuzzing (1 min) | `./scripts/fuzz.sh --native --time 60` |
 | Performance fuzzing | `./scripts/fuzz.sh --perf --time 60` |
+| Minimize crash | `./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*` |
+| Reproduce crash | `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
 | List failures | `./scripts/fuzz.sh --list` |
 | Clean all artifacts | `./scripts/fuzz.sh --clean` |
-| Reproduce crash | `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
 | Check corpus | `./scripts/fuzz.sh --corpus` |
 | Replay failures | `uv run pytest tests/ -x -v` |
 
@@ -560,6 +598,28 @@ The `first_failure` object is included when failures are detected, containing:
 - `test`: Full test path (file::function)
 - `input`: Falsifying example (truncated to 200 chars)
 - `error`: Exception type
+
+### Crash Minimization JSON
+
+```bash
+./scripts/fuzz.sh --minimize .fuzz_corpus/crash_abc123 --json
+```
+
+Output (success):
+```json
+{
+  "mode": "minimize",
+  "status": "ok",
+  "original_size": "1247",
+  "minimized_size": "42",
+  "output_file": ".fuzz_corpus/crash_abc123.minimized"
+}
+```
+
+Output (failure):
+```json
+{"mode":"minimize","status":"error","error":"minimization_failed"}
+```
 
 ### Crash Reproduction JSON
 

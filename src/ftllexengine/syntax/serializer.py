@@ -138,6 +138,65 @@ def _validate_pattern(pattern: Pattern, context: str, depth_guard: DepthGuard) -
                 _validate_expression(element.expression, context, depth_guard)
 
 
+def _validate_call_arguments(
+    args: CallArguments, context: str, depth_guard: DepthGuard
+) -> None:
+    """Validate CallArguments per FTL specification.
+
+    Per FTL EBNF:
+        NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)
+
+    Enforces:
+    1. Named argument names must be unique (no duplicates)
+    2. Named argument values must be StringLiteral or NumberLiteral
+
+    The parser enforces these constraints during parsing, but programmatically
+    constructed ASTs may violate them. This validation catches such errors
+    before serialization produces invalid FTL.
+
+    Args:
+        args: CallArguments to validate
+        context: Context string for error messages
+        depth_guard: Depth guard for recursion protection
+
+    Raises:
+        SerializationValidationError: If constraints are violated
+    """
+    # Validate positional arguments
+    for pos_arg in args.positional:
+        with depth_guard:
+            _validate_expression(pos_arg, context, depth_guard)
+
+    # Validate named arguments with duplicate detection and type enforcement
+    seen_names: set[str] = set()
+    for named_arg in args.named:
+        arg_name = named_arg.name.name
+
+        # Check for duplicate named argument names
+        if arg_name in seen_names:
+            msg = (
+                f"Duplicate named argument '{arg_name}' in {context}. "
+                "Named argument names must be unique per FTL specification."
+            )
+            raise SerializationValidationError(msg)
+        seen_names.add(arg_name)
+
+        # Validate the identifier
+        _validate_identifier(named_arg.name, f"{context}, named argument")
+
+        # Per FTL spec, named argument values must be StringLiteral or NumberLiteral
+        if not isinstance(named_arg.value, (StringLiteral, NumberLiteral)):
+            value_type = type(named_arg.value).__name__
+            msg = (
+                f"Named argument '{arg_name}' in {context} has invalid value type "
+                f"'{value_type}'. Per FTL specification, named argument values must be "
+                "StringLiteral or NumberLiteral, not arbitrary expressions."
+            )
+            raise SerializationValidationError(msg)
+
+        # No need to recursively validate StringLiteral/NumberLiteral (they have no sub-expressions)
+
+
 def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:  # noqa: PLR0912
     """Validate an Expression recursively.
 
@@ -172,25 +231,11 @@ def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard
             if expr.attribute:
                 _validate_identifier(expr.attribute, f"{context}, term attribute")
             if expr.arguments:
-                # Validate identifiers in call arguments
-                for pos_arg in expr.arguments.positional:
-                    with depth_guard:
-                        _validate_expression(pos_arg, context, depth_guard)
-                for named_arg in expr.arguments.named:
-                    _validate_identifier(named_arg.name, f"{context}, named argument")
-                    with depth_guard:
-                        _validate_expression(named_arg.value, context, depth_guard)
+                _validate_call_arguments(expr.arguments, context, depth_guard)
         case FunctionReference():
             _validate_identifier(expr.id, f"{context}, function reference")
             if expr.arguments:
-                # Validate identifiers in call arguments
-                for pos_arg in expr.arguments.positional:
-                    with depth_guard:
-                        _validate_expression(pos_arg, context, depth_guard)
-                for named_arg in expr.arguments.named:
-                    _validate_identifier(named_arg.name, f"{context}, named argument")
-                    with depth_guard:
-                        _validate_expression(named_arg.value, context, depth_guard)
+                _validate_call_arguments(expr.arguments, context, depth_guard)
         case _:
             pass  # Other expressions (NumberLiteral, StringLiteral) don't need validation
 

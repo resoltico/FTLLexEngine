@@ -25,6 +25,7 @@ from ftllexengine.syntax.ast import (
     FunctionReference,
     Identifier,
     Message,
+    NamedArgument,
     NumberLiteral,
     Pattern,
     Placeable,
@@ -32,6 +33,7 @@ from ftllexengine.syntax.ast import (
     SelectExpression,
     StringLiteral,
     Term,
+    TermReference,
     TextElement,
     VariableReference,
     Variant,
@@ -497,3 +499,302 @@ class TestSerializerEdgeCases:
 
         result = serialize(resource)
         assert '"hello"' in result
+
+
+# ============================================================================
+# CallArguments Validation - Duplicate Names and Literal-Only Values
+# ============================================================================
+
+
+class TestCallArgumentsValidation:
+    """Test _validate_call_arguments function.
+
+    Per FTL EBNF:
+        NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)
+
+    The parser enforces these constraints during parsing, but programmatically
+    constructed ASTs may violate them. The serializer validation catches these
+    errors before producing invalid FTL.
+    """
+
+    def test_duplicate_named_arguments_in_function_raises_error(self) -> None:
+        """Duplicate named argument names in FunctionReference must raise error."""
+        # Create FunctionReference with duplicate named argument "style"
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(VariableReference(id=Identifier(name="count")),),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="style"),
+                        value=StringLiteral(value="decimal"),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="style"),  # DUPLICATE!
+                        value=StringLiteral(value="percent"),
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        assert "Duplicate named argument 'style'" in str(exc_info.value)
+        assert "must be unique" in str(exc_info.value).lower()
+
+    def test_duplicate_named_arguments_in_term_raises_error(self) -> None:
+        """Duplicate named argument names in TermReference must raise error."""
+        # Create TermReference with duplicate named argument "case"
+        term_ref = TermReference(
+            id=Identifier(name="brand"),
+            attribute=None,
+            arguments=CallArguments(
+                positional=(),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="case"),
+                        value=StringLiteral(value="upper"),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="case"),  # DUPLICATE!
+                        value=StringLiteral(value="lower"),
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=term_ref),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        assert "Duplicate named argument 'case'" in str(exc_info.value)
+
+    def test_non_literal_named_argument_value_raises_error(self) -> None:
+        """Named argument with VariableReference value must raise error."""
+        # Per FTL spec, named argument values must be StringLiteral or NumberLiteral
+        # NOT arbitrary expressions like VariableReference
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(VariableReference(id=Identifier(name="count")),),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="style"),
+                        value=VariableReference(id=Identifier(name="styleVar")),  # INVALID!
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        assert "style" in str(exc_info.value)
+        assert "VariableReference" in str(exc_info.value)
+        assert "StringLiteral or NumberLiteral" in str(exc_info.value)
+
+    def test_function_reference_named_argument_with_function_raises_error(self) -> None:
+        """Named argument with FunctionReference value must raise error."""
+        # Nested function call as named argument value is invalid per FTL spec
+        inner_func = FunctionReference(
+            id=Identifier(name="UPPER"),
+            arguments=CallArguments(
+                positional=(StringLiteral(value="text"),),
+                named=(),
+            ),
+        )
+
+        func = FunctionReference(
+            id=Identifier(name="FORMAT"),
+            arguments=CallArguments(
+                positional=(),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="value"),
+                        value=inner_func,  # INVALID! Must be literal
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        assert "value" in str(exc_info.value)
+        assert "FunctionReference" in str(exc_info.value)
+
+    def test_valid_named_arguments_with_string_literal(self) -> None:
+        """Valid named arguments with StringLiteral values should pass."""
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(VariableReference(id=Identifier(name="count")),),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="style"),
+                        value=StringLiteral(value="currency"),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="currency"),
+                        value=StringLiteral(value="USD"),
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="price"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        # Should succeed - unique names, literal values
+        result = serialize(resource, validate=True)
+        assert "NUMBER($count, style: " in result
+        assert '"currency"' in result
+        assert '"USD"' in result
+
+    def test_valid_named_arguments_with_number_literal(self) -> None:
+        """Valid named arguments with NumberLiteral values should pass."""
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(VariableReference(id=Identifier(name="value")),),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="minimumFractionDigits"),
+                        value=NumberLiteral(value=2, raw="2"),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="maximumFractionDigits"),
+                        value=NumberLiteral(value=4, raw="4"),
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="decimal"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        # Should succeed - unique names, literal values
+        result = serialize(resource, validate=True)
+        assert "minimumFractionDigits: 2" in result
+        assert "maximumFractionDigits: 4" in result
+
+    def test_term_reference_valid_arguments_pass(self) -> None:
+        """Valid TermReference with proper named arguments should pass."""
+        term_ref = TermReference(
+            id=Identifier(name="brand"),
+            attribute=Identifier(name="short"),
+            arguments=CallArguments(
+                positional=(),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="case"),
+                        value=StringLiteral(value="upper"),
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="title"),
+            value=Pattern(elements=(Placeable(expression=term_ref),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        result = serialize(resource, validate=True)
+        assert "-brand.short(case: " in result
+
+    def test_validation_skipped_when_disabled(self) -> None:
+        """Invalid AST should serialize without validation when validate=False."""
+        # This AST has duplicate named arguments - normally invalid
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="style"),
+                        value=StringLiteral(value="a"),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="style"),  # DUPLICATE!
+                        value=StringLiteral(value="b"),
+                    ),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        # With validate=False, should serialize (producing invalid FTL)
+        result = serialize(resource, validate=False)
+        # Serialization produces the invalid output
+        assert "NUMBER(style: " in result
+
+    def test_triple_duplicate_named_arguments(self) -> None:
+        """Three or more duplicate named arguments should raise on first duplicate."""
+        func = FunctionReference(
+            id=Identifier(name="FUNC"),
+            arguments=CallArguments(
+                positional=(),
+                named=(
+                    NamedArgument(name=Identifier(name="x"), value=StringLiteral(value="1")),
+                    NamedArgument(name=Identifier(name="x"), value=StringLiteral(value="2")),
+                    NamedArgument(name=Identifier(name="x"), value=StringLiteral(value="3")),
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=func),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        # Should catch the first duplicate
+        assert "Duplicate named argument 'x'" in str(exc_info.value)

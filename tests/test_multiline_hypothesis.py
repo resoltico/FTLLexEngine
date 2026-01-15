@@ -9,23 +9,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.syntax import Message, Placeable, Term, TextElement
 from ftllexengine.syntax.parser import FluentParserV1
-
-
-# Strategy for generating valid FTL identifiers
-@st.composite
-def ftl_identifier(draw):
-    """Generate valid FTL message identifiers.
-
-    Per FTL spec, message identifiers must:
-    - Start with a letter (a-z, A-Z)
-    - Can contain letters, digits, underscores, hyphens
-    """
-    # Must start with letter (NOT underscore or digit)
-    first_char = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    # Can contain letters, digits, underscores, hyphens
-    rest = draw(
-        st.text(alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-", min_size=0, max_size=20))  # pylint: disable=line-too-long
-    return first_char + rest
+from tests.strategies import ftl_identifiers
 
 
 # Strategy for generating valid text content (no special FTL chars)
@@ -53,7 +37,7 @@ class TestMultilinePatternProperties:
     """Property-based tests for multiline patterns."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         lines=st.lists(safe_text_content(), min_size=2, max_size=5),
         indent=indentation
     )
@@ -77,7 +61,7 @@ class TestMultilinePatternProperties:
         assert entry.id.name == msg_id
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         line1=safe_text_content(),
         line2=safe_text_content(),
         indent1=indentation,
@@ -101,7 +85,7 @@ class TestMultilinePatternProperties:
         assert len(msg.value.elements) >= 1
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text=safe_text_content(),
         indent=indentation
     )
@@ -127,7 +111,7 @@ class TestMultilinePatternProperties:
         assert text in combined_text
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         num_lines=st.integers(min_value=1, max_value=10),
         indent=indentation
     )
@@ -150,7 +134,7 @@ class TestMultilinePatternProperties:
         assert len(msg.value.elements) >= 1
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text=safe_text_content(),
         indent=indentation,
         line_ending=st.sampled_from(["\n", "\r\n"])
@@ -172,7 +156,7 @@ class TestContinuationDetectionProperties:
     """Property-based tests for continuation detection."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text1=safe_text_content(),
         text2=safe_text_content(),
         indent=indentation
@@ -193,7 +177,7 @@ class TestContinuationDetectionProperties:
         assert len(msg.value.elements) >= 2
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text=safe_text_content(),
         indent=indentation,
         special_char=st.sampled_from(["[", "*", "."])
@@ -223,7 +207,7 @@ class TestMultilineInvariants:
     """Property-based tests for invariants in multiline parsing."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         lines=st.lists(safe_text_content(), min_size=1, max_size=5),
         indent=indentation
     )
@@ -252,7 +236,7 @@ class TestMultilineInvariants:
         assert entry1.id.name == entry2.id.name
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         lines=st.lists(safe_text_content(), min_size=2, max_size=5),
         indent=indentation
     )
@@ -276,7 +260,7 @@ class TestMultilineInvariants:
             assert len(msg.value.elements) > 0
 
     @given(
-        term_id=ftl_identifier(),
+        term_id=ftl_identifiers(),
         lines=st.lists(safe_text_content(), min_size=2, max_size=5),
         indent=indentation
     )
@@ -300,9 +284,9 @@ class TestMultilineWithPlaceablesProperties:
     """Property-based tests for multiline patterns with placeables."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text_before=safe_text_content(),
-        var_name=ftl_identifier(),
+        var_name=ftl_identifiers(),
         text_after=safe_text_content(),
         indent=indentation
     )
@@ -323,8 +307,8 @@ class TestMultilineWithPlaceablesProperties:
             assert msg.value is not None
 
     @given(
-        msg_id=ftl_identifier(),
-        var_names=st.lists(ftl_identifier(), min_size=2, max_size=4),
+        msg_id=ftl_identifiers(),
+        var_names=st.lists(ftl_identifiers(), min_size=2, max_size=4),
         indent=indentation
     )
     @settings(max_examples=30)
@@ -351,7 +335,7 @@ class TestMultilineWhitespaceProperties:
     """Property-based tests for whitespace handling."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text=safe_text_content(),
         num_spaces=st.integers(min_value=1, max_value=10)
     )
@@ -370,7 +354,7 @@ class TestMultilineWhitespaceProperties:
         assert msg.value is not None
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         lines=st.lists(safe_text_content(), min_size=2, max_size=4),
         base_indent=st.integers(min_value=1, max_value=4)
     )
@@ -396,7 +380,7 @@ class TestMultilineErrorRecovery:
     """Property-based tests for error recovery."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         text=safe_text_content(),
         indent=indentation
     )
@@ -413,8 +397,8 @@ class TestMultilineErrorRecovery:
         assert len(resource.entries) >= 1
 
     @given(
-        msg_id1=ftl_identifier(),
-        msg_id2=ftl_identifier(),
+        msg_id1=ftl_identifiers(),
+        msg_id2=ftl_identifiers(),
         text1=safe_text_content(),
         text2=safe_text_content(),
         indent=indentation

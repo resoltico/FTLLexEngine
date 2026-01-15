@@ -7,6 +7,18 @@ Measures parse time and flags inputs that exceed size-scaled thresholds.
 Usage:
     ./scripts/fuzz-atheris.sh 4 fuzz/perf.py
     ./scripts/fuzz-atheris.sh 4 fuzz/perf.py -max_total_time=60
+
+Environment Variables (for threshold tuning):
+    FUZZ_PERF_BASE_MS       Base threshold in ms (default: 100)
+    FUZZ_PERF_SCALE_MS_KB   Additional ms per KB of input (default: 20)
+    FUZZ_PERF_MAX_SIZE      Max input size in chars (default: 50000)
+
+Example:
+    # Stricter thresholds for fast machines
+    FUZZ_PERF_BASE_MS=50 FUZZ_PERF_SCALE_MS_KB=10 ./scripts/fuzz.sh --perf
+
+    # Relaxed thresholds for slow machines or heavy instrumentation
+    FUZZ_PERF_BASE_MS=200 FUZZ_PERF_SCALE_MS_KB=40 ./scripts/fuzz.sh --perf
 """
 
 from __future__ import annotations
@@ -14,6 +26,7 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import os
 import sys
 import time
 
@@ -53,9 +66,10 @@ class SlowParsing(Exception):  # noqa: N818 - Domain-specific name
 
 
 # Threshold model accounting for Atheris ~30-50x instrumentation overhead
-THRESHOLD_BASE_MS = 100  # Floor: instrumentation startup
-THRESHOLD_SCALE_MS_PER_KB = 20  # Catches O(N^2), ignores linear O(N)
-MAX_INPUT_SIZE = 50000  # Limit input size for performance testing
+# Configurable via environment variables for different hardware profiles
+THRESHOLD_BASE_MS = int(os.environ.get("FUZZ_PERF_BASE_MS", "100"))
+THRESHOLD_SCALE_MS_PER_KB = int(os.environ.get("FUZZ_PERF_SCALE_MS_KB", "20"))
+MAX_INPUT_SIZE = int(os.environ.get("FUZZ_PERF_MAX_SIZE", "50000"))
 
 
 def compute_threshold(input_size: int) -> float:

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.74.0"
 domain: ERRORS
-updated: "2026-01-14"
+updated: "2026-01-15"
 route:
   keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]
@@ -231,8 +231,9 @@ class SerializationValidationError(ValueError): ...
 ### Constraints
 - Purpose: AST validation errors during serialization.
 - Raised: When `serialize(validate=True)` detects invalid AST.
-- Common: SelectExpression without exactly one default variant.
+- Common: SelectExpression without exactly one default variant, duplicate named argument names, named argument values not StringLiteral or NumberLiteral.
 - Import: `from ftllexengine.syntax import SerializationValidationError`
+- Version: Named argument validation added in v0.74.0.
 
 ---
 

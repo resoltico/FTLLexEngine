@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-01-15
+
+### Fixed
+
+- **Serializer Named Argument Validation** (LOGIC-SERIALIZER-VALIDATION-001): Fixed `serialize(validate=True)` to catch invalid named arguments in programmatically-constructed ASTs:
+  - Added: Duplicate named argument name detection per CallArguments
+  - Added: Named argument value type validation (must be StringLiteral or NumberLiteral per FTL EBNF)
+  - Previous: Serializer accepted and produced invalid FTL like `NUMBER($x, style: "a", style: "a")` or `NUMBER($x, style: $var)`
+  - Now: `SerializationValidationError` raised with descriptive message identifying the violation
+  - Rationale: Parser enforces these constraints via `parse_call_arguments()`, but serializer validation did not, allowing programmatic AST construction to bypass spec compliance
+  - Impact: Programmatic AST construction errors caught before producing unparseable FTL
+  - Location: `syntax/serializer.py` new `_validate_call_arguments()` function (lines 141-197)
+
+### Added
+
+- Added `_validate_call_arguments()` internal function in serializer to centralize CallArguments validation for both FunctionReference and TermReference
+- Added test suite in `tests/test_serializer_validation.py` covering:
+  - Duplicate named argument detection for FunctionReference and TermReference
+  - Non-literal value rejection (VariableReference, FunctionReference as values)
+  - Valid arguments with StringLiteral and NumberLiteral
+  - Validation bypass when `validate=False`
+
 ## [0.73.0] - 2026-01-14
 
 ### Breaking
@@ -1946,6 +1968,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.74.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.74.0
 [0.73.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.73.0
 [0.72.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.72.0
 [0.71.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.71.0

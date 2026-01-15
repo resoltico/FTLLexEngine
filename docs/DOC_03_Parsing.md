@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.74.0"
 domain: PARSING
-updated: "2026-01-14"
+updated: "2026-01-15"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?"]
@@ -53,11 +53,16 @@ def serialize(
 
 ### Constraints
 - Return: FTL source string.
-- Raises: `SerializationValidationError` when `validate=True` and AST invalid (SelectExpression without default variant, identifier names violating grammar `[a-zA-Z][a-zA-Z0-9_-]*`).
+- Raises: `SerializationValidationError` when `validate=True` and AST invalid:
+  - SelectExpression without default variant
+  - Identifier names violating grammar `[a-zA-Z][a-zA-Z0-9_-]*`
+  - Duplicate named argument names within CallArguments
+  - Named argument values not StringLiteral or NumberLiteral per FTL EBNF
 - Raises: `SerializationDepthError` when AST exceeds `max_depth` during validation or serialization.
 - State: None.
 - Thread: Safe.
 - Security: DepthGuard prevents stack overflow from adversarial ASTs. Identifier validation prevents invalid FTL output from programmatic AST construction.
+- Version: Named argument validation added in v0.74.0.
 
 ---
 
@@ -128,14 +133,14 @@ class FluentParserV1:
 |:----------|:-----|:----|:----------|
 | `max_source_size` | `int \| None` | N | Maximum source size in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum nesting depth (default: 100); must be positive if specified. |
-| `max_parse_errors` | `int \| None` | N | Maximum Junk entries before parser aborts (default: 100). |
+| `max_parse_errors` | `int \| None` | N | Maximum Junk entries before parser aborts (default: 100). Set to 0 to disable limit. |
 
 ### Constraints
 - Return: Parser instance.
 - Raises: `ValueError` if max_nesting_depth is specified and <= 0.
 - State: Stores max_source_size, max_nesting_depth, and max_parse_errors configuration.
 - Thread: Safe for concurrent parse() calls.
-- Security: Validates source size, nesting depth, and error accumulation (DoS prevention). After max_parse_errors Junk entries, parse() aborts to prevent memory exhaustion from malformed input.
+- Security: Validates source size, nesting depth, and error accumulation (DoS prevention). After max_parse_errors Junk entries, parse() aborts to prevent memory exhaustion from malformed input. Setting max_parse_errors=0 disables the limit (not recommended for production).
 - Depth Validation: max_nesting_depth automatically clamped to sys.getrecursionlimit() - 50. Logs warning if clamped.
 
 ---
@@ -563,6 +568,43 @@ MAX_DEPTH: int = 100
 - Purpose: Unified depth limit for parser, resolver, serializer, and validators.
 - Usage: Default for ParseContext.max_nesting_depth, FluentParserV1, serialize(max_depth=...).
 - Security: Prevents DoS via deeply nested placeables and stack overflow from adversarial ASTs.
+
+---
+
+### `MAX_PARSE_ERRORS`
+
+```python
+MAX_PARSE_ERRORS: int = 100
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 100 |
+| Location | `ftllexengine.constants` |
+
+- Purpose: Maximum Junk entries before parser aborts to prevent memory exhaustion.
+- Usage: Default for FluentParserV1.max_parse_errors. Set to 0 to disable limit.
+- Security: Prevents DoS via malformed input generating excessive errors.
+
+---
+
+### `MAX_LOCALE_LENGTH_HARD_LIMIT`
+
+```python
+MAX_LOCALE_LENGTH_HARD_LIMIT: int = 1000
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 1000 |
+| Location | `ftllexengine.constants` |
+
+- Purpose: Hard limit on locale code length for DoS prevention.
+- Usage: FluentBundle input validation. Codes exceeding limit are rejected.
+- Security: Prevents memory exhaustion from extremely long locale strings.
+- Note: MAX_LOCALE_CODE_LENGTH (35) triggers warnings; this limit triggers rejection.
 
 ---
 

@@ -97,6 +97,7 @@ MODES:
     --native        Native fuzzing with Atheris (requires setup)
     --structured    Structure-aware fuzzing with Atheris (requires setup)
     --perf          Performance fuzzing to detect ReDoS (Atheris)
+    --minimize FILE Minimize a crash file to smallest reproducer (libFuzzer)
     --list          List all captured failures
     --clean         Remove all captured failures and crash artifacts
     --corpus        Check seed corpus health
@@ -128,6 +129,9 @@ EXAMPLES:
 
     # Reproduce a crash and get @example decorator
     ./scripts/fuzz.sh --repro .fuzz_corpus/crash_xxx
+
+    # Minimize a crash to smallest reproducer
+    ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_xxx
 
     # Check for any captured failures
     ./scripts/fuzz.sh --list
@@ -164,6 +168,11 @@ while [[ $# -gt 0 ]]; do
         --repro)
             MODE="repro"
             REPRO_FILE="$2"
+            shift 2
+            ;;
+        --minimize)
+            MODE="minimize"
+            MINIMIZE_FILE="$2"
             shift 2
             ;;
         --list)
@@ -301,10 +310,12 @@ run_check() {
         echo ""  # Newline after dots
     fi
 
-    # Parse results
-    TESTS_PASSED=$(echo "$OUTPUT" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' || echo "0")
-    TESTS_FAILED=$(echo "$OUTPUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' || echo "0")
-    HYPOTHESIS_FAILURES=$(echo "$OUTPUT" | grep -c "Falsifying example:" 2>/dev/null || echo "0")
+    # Parse results (use head -1 to ensure single value, || true to avoid exit on no match)
+    TESTS_PASSED=$(echo "$OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
+    TESTS_FAILED=$(echo "$OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
+    # grep -c outputs "0" with exit code 1 when no match; || true prevents double output
+    HYPOTHESIS_FAILURES=$(echo "$OUTPUT" | grep -c "Falsifying example:" 2>/dev/null || true)
+    HYPOTHESIS_FAILURES=${HYPOTHESIS_FAILURES:-0}
 
     TESTS_PASSED=${TESTS_PASSED:-0}
     TESTS_FAILED=${TESTS_FAILED:-0}
@@ -757,6 +768,116 @@ run_repro() {
     exec uv run python "$SCRIPT_DIR/repro.py" "$REPRO_FILE"
 }
 
+# Mode: minimize - Minimize a crash file using libFuzzer
+run_minimize() {
+    if [[ -z "$MINIMIZE_FILE" ]]; then
+        echo -e "${RED}[ERROR]${NC} --minimize requires a crash file path."
+        echo "Usage: ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_xxx"
+        exit 2
+    fi
+
+    if [[ ! -f "$MINIMIZE_FILE" ]]; then
+        echo -e "${RED}[ERROR]${NC} Crash file not found: $MINIMIZE_FILE"
+        exit 2
+    fi
+
+    # Check Python version compatibility (Atheris requires 3.11-3.13)
+    check_atheris_python_version
+
+    # Check if Atheris is available
+    if ! uv run python -c "import atheris" 2>/dev/null; then
+        if [[ "$JSON_OUTPUT" == "true" ]]; then
+            echo '{"mode":"minimize","status":"error","error":"atheris_not_installed"}'
+            exit 2
+        else
+            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
+            echo ""
+            echo "Atheris requires special setup on macOS:"
+            echo "  1. Install LLVM: brew install llvm"
+            echo "  2. Run: ./scripts/check-atheris.sh"
+            echo ""
+            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
+            exit 2
+        fi
+    fi
+
+    # Determine which fuzzer script to use based on crash file location/name
+    # Default to structured.py since it covers more code paths
+    FUZZER_SCRIPT="fuzz/structured.py"
+    if [[ "$MINIMIZE_FILE" == *"perf"* ]]; then
+        FUZZER_SCRIPT="fuzz/perf.py"
+    elif [[ "$MINIMIZE_FILE" == *"stability"* ]]; then
+        FUZZER_SCRIPT="fuzz/stability.py"
+    fi
+
+    # Create output file for minimized crash
+    MINIMIZE_OUTPUT="${MINIMIZE_FILE}.minimized"
+
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        print_header
+        echo -e "Mode:    ${BOLD}Crash Minimization${NC}"
+        echo "Engine:  libFuzzer (-minimize_crash=1)"
+        echo "Input:   $MINIMIZE_FILE"
+        echo "Output:  $MINIMIZE_OUTPUT"
+        echo "Fuzzer:  $FUZZER_SCRIPT"
+        echo ""
+        echo "Minimizing crash input... (this may take a while)"
+        echo ""
+    fi
+
+    # Run libFuzzer minimization
+    # -minimize_crash=1: Enable crash minimization mode
+    # -exact_artifact_path: Write minimized crash to specific file
+    # -runs=0: Don't do additional fuzzing, just minimize
+    # -max_total_time: Limit minimization time (default 60s)
+    TIME_LIMIT=${TIME_LIMIT:-60}
+
+    set +e
+    uv run python "$FUZZER_SCRIPT" \
+        -minimize_crash=1 \
+        -exact_artifact_path="$MINIMIZE_OUTPUT" \
+        -max_total_time="$TIME_LIMIT" \
+        "$MINIMIZE_FILE" 2>&1
+    EXIT_CODE=$?
+    set -e
+
+    if [[ "$JSON_OUTPUT" == "true" ]]; then
+        if [[ -f "$MINIMIZE_OUTPUT" ]]; then
+            ORIGINAL_SIZE=$(wc -c < "$MINIMIZE_FILE" | tr -d ' ')
+            MINIMIZED_SIZE=$(wc -c < "$MINIMIZE_OUTPUT" | tr -d ' ')
+            echo '{"mode":"minimize","status":"ok","original_size":"'"$ORIGINAL_SIZE"'","minimized_size":"'"$MINIMIZED_SIZE"'","output_file":"'"$MINIMIZE_OUTPUT"'"}'
+        else
+            echo '{"mode":"minimize","status":"error","error":"minimization_failed"}'
+        fi
+    else
+        echo ""
+        echo -e "${BOLD}============================================================${NC}"
+        if [[ -f "$MINIMIZE_OUTPUT" ]]; then
+            ORIGINAL_SIZE=$(wc -c < "$MINIMIZE_FILE" | tr -d ' ')
+            MINIMIZED_SIZE=$(wc -c < "$MINIMIZE_OUTPUT" | tr -d ' ')
+            print_pass "Crash minimized successfully."
+            echo ""
+            echo "Original size:  $ORIGINAL_SIZE bytes"
+            echo "Minimized size: $MINIMIZED_SIZE bytes"
+            echo "Reduction:      $((100 - (MINIMIZED_SIZE * 100 / ORIGINAL_SIZE)))%"
+            echo ""
+            echo "Minimized crash saved to: $MINIMIZE_OUTPUT"
+            echo ""
+            echo "Next steps:"
+            echo "  1. Reproduce: ./scripts/fuzz.sh --repro $MINIMIZE_OUTPUT"
+            echo "  2. Add @example() to test and fix the bug"
+        else
+            echo -e "${RED}[ERROR]${NC} Minimization failed."
+            echo ""
+            echo "The crash may already be minimal, or the fuzzer script"
+            echo "may not reproduce the crash consistently."
+        fi
+        echo -e "${BOLD}============================================================${NC}"
+    fi
+
+    exit $EXIT_CODE
+}
+
 # Dispatch to mode
 case $MODE in
     check)
@@ -776,6 +897,9 @@ case $MODE in
         ;;
     repro)
         run_repro
+        ;;
+    minimize)
+        run_minimize
         ;;
     list)
         run_list

@@ -10,6 +10,7 @@ from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.parser import FluentParserV1
+from tests.strategies import ftl_identifiers
 
 # ============================================================================
 # STRATEGY 1: Malformed Placeables
@@ -46,23 +47,11 @@ def malformed_placeable(draw):
     return draw(st.sampled_from(corruptions))
 
 
-@st.composite
-def ftl_identifier(draw):
-    """Generate valid FTL identifiers."""
-    first = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    rest = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-",
-        min_size=0,
-        max_size=15
-    ))
-    return first + rest
-
-
 class TestMalformedPlaceables:
     """Hypothesis tests for malformed placeables."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         placeable=malformed_placeable()
     )
     @settings(max_examples=100, deadline=None)
@@ -124,7 +113,7 @@ class TestMalformedFunctionCalls:
     """Hypothesis tests for malformed function calls."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         func_call=malformed_function_call()
     )
     @settings(max_examples=80, deadline=None)
@@ -187,7 +176,7 @@ class TestMalformedSelectExpressions:
     """Hypothesis tests for malformed select expressions."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         select=malformed_select_expression()
     )
     @settings(max_examples=50, deadline=None)
@@ -268,7 +257,7 @@ class TestMalformedTerms:
         assert resource is not None
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         term_ref=malformed_term_reference()
     )
     @settings(max_examples=40, deadline=None)
@@ -311,7 +300,7 @@ class TestMalformedAttributes:
     """Hypothesis tests for malformed attributes."""
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         attr_line=malformed_attribute()
     )
     @settings(max_examples=30, deadline=None)
@@ -362,7 +351,7 @@ class TestEdgeCaseCombinations:
             assume(False)
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         value=st.text(
             alphabet="abcdefghijklmnopqrstuvwxyz {}$-.",
             min_size=1,
@@ -491,7 +480,7 @@ class TestMetamorphicProperties:
             raise AssertionError(msg) from e
 
     @given(
-        msg_id=ftl_identifier(),
+        msg_id=ftl_identifiers(),
         placeable_content=st.text(
             alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$-. ",
             min_size=0,
