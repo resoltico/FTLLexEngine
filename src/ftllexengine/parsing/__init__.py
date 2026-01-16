@@ -32,6 +32,10 @@ Public API:
         is_valid_date - TypeIs guard for date (not None)
         is_valid_datetime - TypeIs guard for datetime (not None)
 
+    Cache Lifecycle:
+        clear_date_caches - Clear cached CLDR date/datetime patterns
+        clear_currency_caches - Clear cached CLDR currency data
+
 Example:
     >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal
     >>> result, errors = parse_decimal("1 234,56", "lv_LV")
@@ -44,8 +48,8 @@ Python 3.13+. Uses Babel CLDR patterns + stdlib for all parsing.
 
 from ftllexengine.diagnostics import FluentParseError
 
-from .currency import parse_currency
-from .dates import parse_date, parse_datetime
+from .currency import clear_currency_caches, parse_currency
+from .dates import clear_date_caches, parse_date, parse_datetime
 from .guards import (
     is_valid_currency,
     is_valid_date,
@@ -72,6 +76,9 @@ Example:
 __all__ = [
     # Type alias
     "ParseResult",
+    # Cache lifecycle
+    "clear_currency_caches",
+    "clear_date_caches",
     # Type guards
     "is_valid_currency",
     "is_valid_date",

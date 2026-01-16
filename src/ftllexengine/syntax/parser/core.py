@@ -77,23 +77,10 @@ def _has_blank_line_between(source: str, start: int, end: int) -> bool:
     Returns:
         True if there's a blank line in the region, False otherwise
     """
-    region = source[start:end]
-    # After parse_comment consumes the first comment's line ending, a single
-    # newline in the remaining region indicates a blank line.
-    # Examples: "\n" (one blank line), "\n  \n" (one blank line with spaces)
-    newline_count = 0
-    for ch in region:
-        if ch == "\n":
-            newline_count += 1
-            if newline_count >= 1:
-                return True
-        elif ch == " ":
-            # Spaces don't reset the newline counter (they can be part of blank line)
-            pass
-        else:
-            # Non-blank character resets the counter
-            newline_count = 0
-    return False
+    # After parse_comment consumes the first comment's line ending, any newline
+    # in the remaining region indicates a blank line was present.
+    # Examples: "\n" (blank line), "\n  \n" (blank line with spaces)
+    return "\n" in source[start:end]
 
 
 def _is_at_column_one(cursor: Cursor) -> bool:

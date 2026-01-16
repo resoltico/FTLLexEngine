@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.74.0"
+version: "0.75.0"
 domain: reference
-updated: "2026-01-15"
+updated: "2026-01-16"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError]
-  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?"]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache]
+  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?"]
 ---
 
 # FTLLexEngine Quick Reference
@@ -684,6 +684,34 @@ def get_bundle():
         _thread_local.bundle = FluentBundle("en_US")
         _thread_local.bundle.add_resource(ftl_source)
     return _thread_local.bundle
+```
+
+---
+
+## Cache Management
+
+Clear module-level caches for testing, hot-reload, or memory management.
+
+```python
+from ftllexengine import clear_all_caches
+
+# Clear all library caches in one call
+clear_all_caches()
+```
+
+**Individual Cache Clear Functions**:
+```python
+from ftllexengine.locale_utils import clear_locale_cache
+from ftllexengine.parsing import clear_date_caches, clear_currency_caches
+from ftllexengine.introspection import clear_introspection_cache
+from ftllexengine.runtime.locale_context import LocaleContext
+
+# Clear specific caches
+clear_locale_cache()           # Babel locale objects
+clear_date_caches()            # Date/datetime patterns
+clear_currency_caches()        # Currency maps and patterns
+clear_introspection_cache()    # Message introspection results
+LocaleContext.clear_cache()    # Locale context instances
 ```
 
 ---

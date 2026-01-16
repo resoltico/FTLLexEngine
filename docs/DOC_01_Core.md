@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.75.0"
 domain: CORE
-updated: "2026-01-14"
+updated: "2026-01-16"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -987,6 +987,27 @@ def clear_cache(self) -> None:
 
 ---
 
+## `FluentLocalization.get_cache_stats`
+
+### Signature
+```python
+def get_cache_stats(self) -> dict[str, int | float] | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Dict with aggregated cache metrics, or None if caching disabled.
+- Keys: size (int), maxsize (int), hits (int), misses (int), hit_rate (float 0.0-100.0), unhashable_skips (int), bundle_count (int).
+- Raises: None.
+- State: Reads cache statistics from all initialized bundles.
+- Thread: Safe.
+- Note: bundle_count reflects only initialized bundles, not total locales.
+
+---
+
 ## `FluentLocalization.introspect_message`
 
 ### Signature
@@ -1124,5 +1145,43 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 - Thread: Safe.
 - Babel: NOT required. Uses only stdlib.
 - Import: `from ftllexengine.locale_utils import get_system_locale`
+
+---
+
+## `clear_all_caches`
+
+Function that clears all module-level caches in the library.
+
+### Signature
+```python
+def clear_all_caches() -> None:
+```
+
+### Constraints
+- Return: None.
+- Raises: Never.
+- State: Clears currency caches, date caches, locale cache, LocaleContext cache, and introspection cache.
+- Thread: Safe (each cache has internal thread safety).
+- Babel: Clears Babel-related caches only if Babel was used.
+- Import: `from ftllexengine import clear_all_caches`
+
+---
+
+## `clear_locale_cache`
+
+Function that clears the Babel locale object cache.
+
+### Signature
+```python
+def clear_locale_cache() -> None:
+```
+
+### Constraints
+- Return: None.
+- Raises: Never.
+- State: Clears `get_babel_locale` functools.cache.
+- Thread: Safe (functools.cache internal locking).
+- Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
+- Import: `from ftllexengine.locale_utils import clear_locale_cache`
 
 ---

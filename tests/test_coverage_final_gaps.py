@@ -79,10 +79,16 @@ class TestCurrencyCachingBehavior:
     """Test thread-safe caching via functools.cache."""
 
     def test_concurrent_currency_maps_access(self) -> None:
-        """Concurrent calls to _get_currency_maps_full() return same cached object.
+        """Concurrent calls to _get_currency_maps_full() return cached object.
 
-        functools.cache handles thread-safety internally.
+        functools.cache provides thread-safe cache access, but does NOT prevent
+        thundering herd on cold cache (multiple threads may compute simultaneously).
+        This test verifies that AFTER cache is populated, concurrent access
+        returns the same cached object.
         """
+        # Pre-warm cache to ensure it's populated
+        _ = currency_module._get_currency_maps_full()
+
         barrier = threading.Barrier(4)
         results: list[object] = []
 
@@ -97,7 +103,7 @@ class TestCurrencyCachingBehavior:
         for t in threads:
             t.join()
 
-        # All threads should get the exact same cached object
+        # All threads should get the exact same cached object (cache was pre-warmed)
         assert len(results) == 4
         assert all(r is results[0] for r in results)
 

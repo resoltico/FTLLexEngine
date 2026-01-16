@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.74.0"
+version: "0.75.0"
 domain: PARSING
-updated: "2026-01-15"
+updated: "2026-01-16"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?"]
@@ -531,6 +531,44 @@ def is_valid_currency(
 - Return: True if not None and amount is finite.
 - Raises: None.
 - State: None.
+
+---
+
+## `clear_date_caches`
+
+Function that clears date and datetime pattern caches.
+
+### Signature
+```python
+def clear_date_caches() -> None:
+```
+
+### Constraints
+- Return: None.
+- Raises: Never.
+- State: Clears `_get_date_patterns` and `_get_datetime_patterns` functools.cache.
+- Thread: Safe (functools.cache internal locking).
+- Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
+- Import: `from ftllexengine.parsing import clear_date_caches`
+
+---
+
+## `clear_currency_caches`
+
+Function that clears currency-related caches.
+
+### Signature
+```python
+def clear_currency_caches() -> None:
+```
+
+### Constraints
+- Return: None.
+- Raises: Never.
+- State: Clears CLDR currency maps, pattern, and locale caches.
+- Thread: Safe (functools.cache internal locking).
+- Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
+- Import: `from ftllexengine.parsing import clear_currency_caches`
 
 ---
 

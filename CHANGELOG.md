@@ -13,6 +13,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-01-16
+
+### Added
+
+- **Cache Lifecycle Management API** (CACHE-LIFECYCLE-MANAGEMENT): Added comprehensive cache clearing API for all module-level caches:
+  - Added: `clear_all_caches()` top-level function to clear all library caches in one call
+  - Added: `clear_locale_cache()` in `ftllexengine.locale_utils` for Babel locale cache
+  - Added: `clear_date_caches()` in `ftllexengine.parsing.dates` for date/datetime pattern caches
+  - Added: `clear_currency_caches()` in `ftllexengine.parsing.currency` for currency-related caches
+  - Added: `clear_introspection_cache()` in `ftllexengine.introspection` (already existed, now exported)
+  - Added: `LocaleContext.clear_cache()` class method (already existed, now documented)
+  - Export: All clear functions exported through their respective module `__all__` lists
+  - Location: `__init__.py` lines 75-108, `locale_utils.py`, `parsing/__init__.py`, `parsing/dates.py`, `parsing/currency.py`
+  - Test: `tests/test_cache_lifecycle.py` comprehensive test coverage for all cache clear operations
+  - Rationale: Applications need to clear caches for testing, hot-reloading configurations, or memory management
+
+- **Aggregate Cache Statistics API** (API-BUNDLE-STATS-AGGREGATION-001): Added `FluentLocalization.get_cache_stats()` method to aggregate cache statistics across all bundles:
+  - Returns: `dict[str, int | float] | None` with keys: `size`, `maxsize`, `hits`, `misses`, `hit_rate` (0.0-100.0), `unhashable_skips`, `bundle_count`
+  - Returns `None` when caching is disabled (`enable_cache=False`)
+  - Thread-safe: Uses existing `RLock` for concurrent access
+  - Aggregation: Sums values from all initialized `FluentBundle` instances
+  - Location: `src/ftllexengine/localization.py` lines 1155-1193
+  - Test: `tests/test_localization_aggregate_cache_stats.py` comprehensive test coverage (19 tests)
+  - Rationale: Production monitoring requires aggregate cache metrics for multi-locale deployments without accessing private `_bundles` attribute
+
+### Fixed
+
+- **Test Documentation Accuracy**: Fixed incorrect test docstring that claimed `functools.cache` prevents thundering herd on cold cache. The test now correctly documents that `functools.cache` is thread-safe for cache access but does NOT prevent multiple threads from simultaneously computing on a cold cache. Test pre-warms cache to verify intended behavior.
+  - Location: `tests/test_coverage_final_gaps.py::TestCurrencyCachingBehavior::test_concurrent_currency_maps_access`
+- **Parser Dead Code Elimination**: Eliminated unreachable branch in `_has_blank_line_between` comment merging logic. Simplified implementation from 12 lines with newline counter to idiomatic single expression: `"\n" in source[start:end]`. The branch condition `newline_count >= 1` was always True after `newline_count += 1`, making the subsequent check dead code. Uses CPython's optimized `memchr()` for character containment. This improves code maintainability and achieves 100% branch coverage.
+  - Location: `src/ftllexengine/syntax/parser/core.py` lines 80-83
+  - Impact: No behavioral change; dead code removal and performance improvement
+  - Test: `tests/test_parser_core_final_100pct.py` comprehensive coverage achieving 100% for core.py
+
 ## [0.74.0] - 2026-01-15
 
 ### Fixed
@@ -1968,6 +2002,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.75.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.75.0
 [0.74.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.74.0
 [0.73.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.73.0
 [0.72.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.72.0

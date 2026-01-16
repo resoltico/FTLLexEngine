@@ -12,6 +12,7 @@ Public API:
     validate_resource - Validate FTL resource for semantic errors (no external dependencies)
     FluentValue - Type alias for values accepted by formatting functions
     fluent_function - Decorator for custom functions (locale injection support)
+    clear_all_caches - Clear all module-level caches (memory management)
 
 Exceptions:
     FluentError - Base exception class
@@ -114,6 +115,60 @@ def __getattr__(name: str) -> object:
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
+
+def clear_all_caches() -> None:
+    """Clear all module-level caches in the library.
+
+    Provides unified cache management for long-running applications. Clears:
+    - Babel locale object cache (locale_utils)
+    - CLDR date/datetime pattern caches (parsing.dates)
+    - CLDR currency data caches (parsing.currency)
+    - LocaleContext instance cache (runtime.locale_context)
+    - Introspection result cache (introspection)
+
+    Useful for:
+    - Memory reclamation in long-running server applications
+    - Testing scenarios requiring fresh cache state
+    - After Babel/CLDR data updates
+
+    Thread-safe. Each underlying cache uses its own locking mechanism.
+
+    Note:
+        This function does NOT require Babel. It clears caches regardless
+        of whether Babel-dependent modules have been imported. Caches that
+        haven't been populated yet are simply no-ops.
+
+        FluentBundle instances maintain their own FormatCache which is NOT
+        cleared by this function. To clear bundle-specific caches, use
+        bundle._cache.clear() on each bundle instance.
+
+    Example:
+        >>> import ftllexengine
+        >>> ftllexengine.clear_all_caches()  # Reclaim memory from all caches
+    """
+    # Import and clear each cache module
+    # Order: parsing caches first (depend on locale cache), then locale, then introspection
+
+    # 1. Parsing caches (use locale_utils internally)
+    from .parsing.currency import clear_currency_caches
+    from .parsing.dates import clear_date_caches
+
+    clear_currency_caches()
+    clear_date_caches()
+
+    # 2. Locale caches
+    from .locale_utils import clear_locale_cache
+    from .runtime.locale_context import LocaleContext
+
+    clear_locale_cache()
+    LocaleContext.clear_cache()
+
+    # 3. Introspection cache
+    from .introspection import clear_introspection_cache
+
+    clear_introspection_cache()
+
+
 # Version information - Auto-populated from package metadata
 # SINGLE SOURCE OF TRUTH: pyproject.toml [project] version
 try:
@@ -145,6 +200,7 @@ __all__ = [
     "__recommended_encoding__",
     "__spec_url__",
     "__version__",
+    "clear_all_caches",
     "fluent_function",
     "parse_ftl",
     "serialize_ftl",

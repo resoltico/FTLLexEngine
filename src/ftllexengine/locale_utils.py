@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from babel import Locale
 
 __all__ = [
+    "clear_locale_cache",
     "get_babel_locale",
     "get_system_locale",
     "normalize_locale",
@@ -177,3 +178,25 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 
     # Default fallback
     return "en_US"
+
+
+def clear_locale_cache() -> None:
+    """Clear the Babel locale cache.
+
+    Clears all cached Babel Locale objects from get_babel_locale().
+    Useful for:
+    - Memory reclamation in long-running applications
+    - Testing scenarios requiring fresh cache state
+    - After Babel locale data updates
+
+    Thread-safe via lru_cache internal locking.
+
+    Note:
+        This function does NOT require Babel. It clears the cache
+        regardless of whether Babel is installed.
+
+    Example:
+        >>> from ftllexengine.locale_utils import clear_locale_cache
+        >>> clear_locale_cache()  # Clears all cached Locale objects
+    """
+    get_babel_locale.cache_clear()

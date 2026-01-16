@@ -45,7 +45,7 @@ from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
-__all__ = ["parse_date", "parse_datetime"]
+__all__ = ["clear_date_caches", "parse_date", "parse_datetime"]
 
 # CLDR date format styles used for parsing.
 # Both date and datetime use the same styles for consistency.
@@ -917,3 +917,29 @@ def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
     # Now: "%H:%M" (leading space also stripped)
     result = "".join(result_parts).strip()
     return (result, has_era)
+
+
+def clear_date_caches() -> None:
+    """Clear all date pattern caches.
+
+    Clears cached CLDR date and datetime patterns from:
+    - _get_date_patterns() - locale-specific date format patterns
+    - _get_datetime_patterns() - locale-specific datetime format patterns
+
+    Useful for:
+    - Memory reclamation in long-running applications
+    - Testing scenarios requiring fresh cache state
+    - After Babel/CLDR data updates
+
+    Thread-safe via functools.cache internal locking.
+
+    Note:
+        This function does NOT require Babel. It clears the caches
+        regardless of whether Babel is installed.
+
+    Example:
+        >>> from ftllexengine.parsing.dates import clear_date_caches
+        >>> clear_date_caches()  # Clears all cached date patterns
+    """
+    _get_date_patterns.cache_clear()
+    _get_datetime_patterns.cache_clear()

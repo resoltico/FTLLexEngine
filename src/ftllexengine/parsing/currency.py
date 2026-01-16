@@ -41,7 +41,7 @@ from ftllexengine.diagnostics import FluentParseError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
-__all__ = ["parse_currency"]
+__all__ = ["clear_currency_caches", "parse_currency"]
 
 # ISO 4217 currency codes are exactly 3 uppercase ASCII letters.
 # This is per the ISO 4217 standard and is guaranteed not to change.
@@ -756,3 +756,35 @@ def parse_currency(
         return (None, tuple(errors))
 
     return ((amount, currency_code), tuple(errors))
+
+
+def clear_currency_caches() -> None:
+    """Clear all currency-related caches.
+
+    Clears cached CLDR currency data from:
+    - _build_currency_maps_from_cldr() - symbol-to-currency maps from CLDR scan
+    - _get_currency_maps() - merged fast tier + full CLDR maps
+    - _get_currency_pattern_fast() - fast tier regex pattern
+    - _get_currency_pattern_full() - full CLDR regex pattern
+
+    Useful for:
+    - Memory reclamation in long-running applications
+    - Testing scenarios requiring fresh cache state
+    - After Babel/CLDR data updates
+
+    Thread-safe via functools.cache internal locking.
+
+    Note:
+        This function does NOT require Babel. It clears the caches
+        regardless of whether Babel is installed. The fast tier data
+        (hardcoded common currencies) remains available immediately after
+        clearing; only the full CLDR scan results are invalidated.
+
+    Example:
+        >>> from ftllexengine.parsing.currency import clear_currency_caches
+        >>> clear_currency_caches()  # Clears all cached currency data
+    """
+    _build_currency_maps_from_cldr.cache_clear()
+    _get_currency_maps.cache_clear()
+    _get_currency_pattern_fast.cache_clear()
+    _get_currency_pattern_full.cache_clear()

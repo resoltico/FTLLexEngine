@@ -1127,6 +1127,69 @@ class FluentLocalization:
             for bundle in self._bundles.values():
                 bundle.clear_cache()
 
+    def get_cache_stats(self) -> dict[str, int | float] | None:
+        """Get aggregate cache statistics across all initialized bundles.
+
+        Aggregates cache metrics from all bundles that have been created.
+        Useful for production monitoring of multi-locale deployments.
+
+        Returns:
+            Dict with aggregated cache metrics, or None if caching disabled.
+            Keys:
+            - size (int): Total cached entries across all bundles
+            - maxsize (int): Sum of maximum cache sizes
+            - hits (int): Total cache hits
+            - misses (int): Total cache misses
+            - hit_rate (float): Weighted hit rate (0.0-100.0)
+            - unhashable_skips (int): Total uncacheable argument skips
+            - bundle_count (int): Number of initialized bundles
+
+        Thread-safe via internal RLock.
+
+        Example:
+            >>> l10n = FluentLocalization(['en', 'de'], enable_cache=True)
+            >>> l10n.add_resource('en', 'msg = Hello')
+            >>> l10n.add_resource('de', 'msg = Hallo')
+            >>> l10n.format_value('msg')  # Uses 'en' bundle
+            >>> stats = l10n.get_cache_stats()
+            >>> stats["bundle_count"]
+            2
+            >>> stats["size"]  # Total entries across all bundles
+            1
+        """
+        if not self._enable_cache:
+            return None
+
+        with self._lock:
+            total_size = 0
+            total_maxsize = 0
+            total_hits = 0
+            total_misses = 0
+            total_unhashable = 0
+
+            for bundle in self._bundles.values():
+                stats = bundle.get_cache_stats()
+                if stats is not None:
+                    # Cast to int: these values are always int from FormatCache.get_stats()
+                    total_size += int(stats["size"])
+                    total_maxsize += int(stats["maxsize"])
+                    total_hits += int(stats["hits"])
+                    total_misses += int(stats["misses"])
+                    total_unhashable += int(stats["unhashable_skips"])
+
+            total_requests = total_hits + total_misses
+            hit_rate = (total_hits / total_requests * 100) if total_requests > 0 else 0.0
+
+            return {
+                "size": total_size,
+                "maxsize": total_maxsize,
+                "hits": total_hits,
+                "misses": total_misses,
+                "hit_rate": round(hit_rate, 2),
+                "unhashable_skips": total_unhashable,
+                "bundle_count": len(self._bundles),
+            }
+
     def get_bundles(self) -> Generator[FluentBundle]:
         """Lazy generator yielding bundles in fallback order.
 
