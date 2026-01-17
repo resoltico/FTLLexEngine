@@ -27,6 +27,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import re
+
 from ftllexengine.constants import _MAX_IDENTIFIER_LENGTH
 
 __all__ = [
@@ -34,6 +36,11 @@ __all__ = [
     "is_identifier_start",
     "is_valid_identifier",
 ]
+
+# Compiled regex for complete identifier validation.
+# Pattern: [a-zA-Z][a-zA-Z0-9_-]* matches FTL identifier grammar.
+# Compiled once at module load; C-level matching outperforms Python iteration.
+_IDENTIFIER_CONTINUATION_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9_-]*$")
 
 
 def is_identifier_start(ch: str) -> bool:
@@ -138,4 +145,5 @@ def is_valid_identifier(name: str) -> bool:
         return False
 
     # Remaining characters must be valid continuation characters
-    return all(is_identifier_char(ch) for ch in name[1:])
+    # Compiled regex outperforms Python-level all() iteration
+    return _IDENTIFIER_CONTINUATION_PATTERN.match(name[1:]) is not None

@@ -619,12 +619,14 @@ def _count_leading_spaces(cursor: Cursor) -> int:
     Returns:
         Number of leading space characters (U+0020 only, not tabs)
     """
-    count = 0
-    scan = cursor
-    while not scan.is_eof and scan.current == " ":
-        count += 1
-        scan = scan.advance()
-    return count
+    # Integer arithmetic avoids O(N) cursor allocations on hot path
+    pos = cursor.pos
+    source = cursor.source
+    length = len(source)
+    start = pos
+    while pos < length and source[pos] == " ":
+        pos += 1
+    return pos - start
 
 
 def _skip_common_indent(cursor: Cursor, common_indent: int) -> tuple[Cursor, str]:

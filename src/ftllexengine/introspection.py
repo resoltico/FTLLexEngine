@@ -180,6 +180,14 @@ class MessageIntrospection:
     has_selectors: bool
     """Whether message uses select expressions."""
 
+    # Pre-computed name caches for O(1) accessor performance.
+    # Computed once at creation; avoids repeated frozenset construction.
+    _variable_names: frozenset[str]
+    """Cached variable names for O(1) lookup."""
+
+    _function_names: frozenset[str]
+    """Cached function names for O(1) lookup."""
+
     def get_variable_names(self) -> frozenset[str]:
         """Get set of variable names.
 
@@ -188,7 +196,7 @@ class MessageIntrospection:
         Returns:
             Frozen set of variable names without $ prefix.
         """
-        return frozenset(var.name for var in self.variables)
+        return self._variable_names
 
     def requires_variable(self, name: str) -> bool:
         """Check if message requires a specific variable.
@@ -199,7 +207,8 @@ class MessageIntrospection:
         Returns:
             True if variable is used in the message
         """
-        return any(var.name == name for var in self.variables)
+        # O(1) frozenset membership test vs O(N) any() iteration
+        return name in self._variable_names
 
     def get_function_names(self) -> frozenset[str]:
         """Get set of function names used in the message.
@@ -207,7 +216,7 @@ class MessageIntrospection:
         Returns:
             Frozen set of function names (e.g., {'NUMBER', 'DATETIME'})
         """
-        return frozenset(func.name for func in self.functions)
+        return self._function_names
 
 
 # ==============================================================================
@@ -548,12 +557,19 @@ def introspect_message(
     for attr in message.attributes:
         visitor.visit(attr.value)
 
+    # Pre-compute frozen sets for immutable storage
+    variables_fs = frozenset(visitor.variables)
+    functions_fs = frozenset(visitor.functions)
+
     result = MessageIntrospection(
         message_id=message.id.name,
-        variables=frozenset(visitor.variables),
-        functions=frozenset(visitor.functions),
+        variables=variables_fs,
+        functions=functions_fs,
         references=frozenset(visitor.references),
         has_selectors=visitor.has_selectors,
+        # Pre-computed name caches for O(1) accessor performance
+        _variable_names=frozenset(v.name for v in variables_fs),
+        _function_names=frozenset(f.name for f in functions_fs),
     )
 
     # Store in cache for future lookups

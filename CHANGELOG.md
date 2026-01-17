@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-01-17
+
+### Performance
+
+- **Cursor Hot Path Optimization** (PERF-CURSOR-*): Reduced cursor object allocation in parsing hot paths:
+  - `Cursor.skip_spaces()`: Integer arithmetic loop replaces O(N) cursor allocations
+  - `Cursor.skip_whitespace()`: Same optimization pattern for whitespace skipping
+  - `Cursor.skip_to_line_end()`: C-level `str.find()` replaces character-by-character loop
+  - `LineOffsetCache.__init__()`: `str.find()` loop replaces `enumerate()` iteration
+  - Location: `syntax/cursor.py` lines 233-239, 265-271, 373-378, 468-477
+
+- **Parser Indentation Counting** (PERF-RULES-INDENT-001): Replaced cursor-based loop with integer arithmetic in `_count_leading_spaces()`:
+  - Eliminates O(N) cursor object allocations on multiline pattern parsing hot path
+  - Location: `syntax/parser/rules.py` lines 622-629
+
+- **Blank Line Detection** (PERF-CORE-BLANK-CHECK-001): Replaced substring containment check with bounded `str.find()`:
+  - `source.find("\n", start, end) != -1` avoids temporary substring allocation
+  - Location: `syntax/parser/core.py` line 84
+
+- **Unicode Escape Validation** (PERF-ESCAPE-HEX-001): Replaced `all(c in _HEX_DIGITS for c in hex_digits)` with `frozenset.issuperset()`:
+  - O(1) membership test per character via hash lookup
+  - `_HEX_DIGITS` changed from `str` to `frozenset[str]`
+  - Location: `syntax/parser/primitives.py` lines 85-86, 338-341, 367-370
+
+- **Identifier Validation** (PERF-ID-VALIDATION-REGEX-001): Replaced `all(is_identifier_char(ch) for ch in name[1:])` with compiled regex:
+  - C-level regex matching outperforms Python-level iteration
+  - Added `_IDENTIFIER_CONTINUATION_PATTERN` compiled regex
+  - Location: `core/identifier_validation.py` lines 40-43, 148-149
+
+- **Serializer Brace Handling** (PERF-SERIALIZER-BRACES-001): Replaced character-by-character loop with `str.find()` scanning in `_serialize_text_with_braces()`:
+  - Locates next brace via C-level search, emits text runs in bulk
+  - Location: `syntax/serializer.py` lines 554-588
+
+- **Introspection Name Caching** (PERF-INTROS-VAR-SET-001): Added pre-computed name caches to `MessageIntrospection`:
+  - `_variable_names: frozenset[str]` and `_function_names: frozenset[str]` computed once at creation
+  - `get_variable_names()`, `get_function_names()` now return cached values (O(1))
+  - `requires_variable()` uses O(1) frozenset membership vs O(N) `any()` iteration
+  - Location: `introspection.py` lines 183-219, 560-572
+
 ## [0.75.0] - 2026-01-16
 
 ### Added
@@ -26,7 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added: `LocaleContext.clear_cache()` class method (already existed, now documented)
   - Export: All clear functions exported through their respective module `__all__` lists
   - Location: `__init__.py` lines 75-108, `locale_utils.py`, `parsing/__init__.py`, `parsing/dates.py`, `parsing/currency.py`
-  - Test: `tests/test_cache_lifecycle.py` comprehensive test coverage for all cache clear operations
   - Rationale: Applications need to clear caches for testing, hot-reloading configurations, or memory management
 
 - **Aggregate Cache Statistics API** (API-BUNDLE-STATS-AGGREGATION-001): Added `FluentLocalization.get_cache_stats()` method to aggregate cache statistics across all bundles:
@@ -35,7 +73,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Thread-safe: Uses existing `RLock` for concurrent access
   - Aggregation: Sums values from all initialized `FluentBundle` instances
   - Location: `src/ftllexengine/localization.py` lines 1155-1193
-  - Test: `tests/test_localization_aggregate_cache_stats.py` comprehensive test coverage (19 tests)
   - Rationale: Production monitoring requires aggregate cache metrics for multi-locale deployments without accessing private `_bundles` attribute
 
 ### Fixed
@@ -45,7 +82,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Parser Dead Code Elimination**: Eliminated unreachable branch in `_has_blank_line_between` comment merging logic. Simplified implementation from 12 lines with newline counter to idiomatic single expression: `"\n" in source[start:end]`. The branch condition `newline_count >= 1` was always True after `newline_count += 1`, making the subsequent check dead code. Uses CPython's optimized `memchr()` for character containment. This improves code maintainability and achieves 100% branch coverage.
   - Location: `src/ftllexengine/syntax/parser/core.py` lines 80-83
   - Impact: No behavioral change; dead code removal and performance improvement
-  - Test: `tests/test_parser_core_final_100pct.py` comprehensive coverage achieving 100% for core.py
 
 ## [0.74.0] - 2026-01-15
 
@@ -2002,6 +2038,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.76.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.76.0
 [0.75.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.75.0
 [0.74.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.74.0
 [0.73.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.73.0

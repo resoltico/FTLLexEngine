@@ -82,7 +82,8 @@ _SURROGATE_RANGE_START: int = 0xD800
 _SURROGATE_RANGE_END: int = 0xDFFF
 
 # Valid hexadecimal digit characters for Unicode escape parsing.
-_HEX_DIGITS: str = "0123456789abcdefABCDEF"
+# frozenset enables O(1) issuperset() check vs O(N) iteration.
+_HEX_DIGITS: frozenset[str] = frozenset("0123456789abcdefABCDEF")
 
 # ASCII digits only - FTL spec requires 0-9, not Unicode digits like ² or ³.
 # str.isdigit() returns True for Unicode digits which causes int() to fail.
@@ -334,8 +335,9 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
         cursor = cursor.advance()
         # Use slice_ahead for O(1) extraction instead of character-by-character loop
         hex_digits = cursor.slice_ahead(_UNICODE_ESCAPE_LEN_SHORT)
-        if len(hex_digits) < _UNICODE_ESCAPE_LEN_SHORT or not all(
-            c in _HEX_DIGITS for c in hex_digits
+        # frozenset.issuperset() performs O(1) membership test per character
+        if len(hex_digits) < _UNICODE_ESCAPE_LEN_SHORT or not _HEX_DIGITS.issuperset(
+            hex_digits
         ):
             _set_parse_error(
                 f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_SHORT} hex digits)",
@@ -362,8 +364,9 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
         cursor = cursor.advance()
         # Use slice_ahead for O(1) extraction instead of character-by-character loop
         hex_digits = cursor.slice_ahead(_UNICODE_ESCAPE_LEN_LONG)
-        if len(hex_digits) < _UNICODE_ESCAPE_LEN_LONG or not all(
-            c in _HEX_DIGITS for c in hex_digits
+        # frozenset.issuperset() performs O(1) membership test per character
+        if len(hex_digits) < _UNICODE_ESCAPE_LEN_LONG or not _HEX_DIGITS.issuperset(
+            hex_digits
         ):
             _set_parse_error(
                 f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_LONG} hex digits)",

@@ -18,11 +18,13 @@ RETRIEVAL_HINTS:
 
 # FTLLexEngine
 
-**Thread-safe localization with bidirectional parsing. Accept user input in any locale, get structured data back.**
+**Declarative localization for Python. Plurals, grammar, and formatting in `.ftl` files - not your code.**
 
-Your customer types `"1 234,56"` in Latvia or `"1,234.56"` in the US. FTLLexEngine parses both to `Decimal('1234.56')`. When parsing fails, you get errors as data - not exceptions - so you can show helpful feedback.
+"1 coffee" or "5 coffees" - simple in English. Polish has 4 plural forms. Arabic has 6. FTLLexEngine handles them declaratively so your code stays clean.
 
-Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR.
+But it goes further: **bidirectional parsing**. Your customer types `"1 234,56"` in France or `"1,234.56"` in the US - FTLLexEngine parses both to `Decimal('1234.56')`. Errors come back as data, not exceptions.
+
+Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe.
 
 ---
 
@@ -53,6 +55,19 @@ result, _ = bundle.format_pattern("order", {"count": 5})
 # "5 coffees"
 ```
 
+**Parse user input back to Python types:**
+
+```python
+from ftllexengine.parsing import parse_decimal
+
+# French customer enters a price
+amount, errors = parse_decimal("1 234,56", "fr_FR")
+# amount = Decimal('1234.56') - not a float, not an exception
+
+if errors:
+    print(errors[0])  # Structured error with input, locale, parse type
+```
+
 ---
 
 ## Table of Contents
@@ -60,7 +75,7 @@ result, _ = bundle.format_pattern("order", {"count": 5})
 - [Installation](#installation)
 - [Your Cafe Speaks Every Language](#your-cafe-speaks-every-language)
 - [Customers Type Prices. You Get Decimals.](#customers-type-prices-you-get-decimals)
-- [100 Orders Per Second? No Problem.](#100-orders-per-second-no-problem)
+- [Concurrent Requests? No Problem.](#concurrent-requests-no-problem)
 - [Know What Your Messages Need](#know-what-your-messages-need)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
@@ -162,7 +177,26 @@ result, _ = bundle.format_pattern("order-message", {"count": 2})
 # "2 kawy"
 ```
 
-German, Japanese, Arabic - same pattern. Translators edit `.ftl` files. Developers ship features.
+Japanese? Same pattern, different script:
+
+**cafe_ja.ftl**
+```fluent
+order-message = { $count ->
+    [0]     コーヒーの注文なし
+    [one]   コーヒー1杯
+   *[other] コーヒー{ $count }杯
+}
+```
+
+```python
+bundle = FluentBundle("ja_JP")
+bundle.add_resource(Path("cafe_ja.ftl").read_text())
+
+result, _ = bundle.format_pattern("order-message", {"count": 3})
+# "コーヒー3杯"
+```
+
+German, Spanish, Arabic - same pattern. Translators edit `.ftl` files. Developers ship features.
 
 ---
 
@@ -182,11 +216,11 @@ if not errors:
     tip, currency = tip_result  # (Decimal('5.00'), 'USD')
 
 # German customer types a price
-price, errors = parse_decimal("13,50", "de_DE")
-# Decimal('13.50')
+price, errors = parse_decimal("1.234,56", "de_DE")
+# Decimal('1234.56')
 
-# Latvian format: space for thousands
-price, errors = parse_decimal("1 234,56", "lv_LV")
+# French format: space for thousands, comma for decimal
+price, errors = parse_decimal("1 234,56", "fr_FR")
 # Decimal('1234.56')
 
 # Dates work too
@@ -201,9 +235,14 @@ price, errors = parse_decimal("five fifty", "en_US")
 # price = None
 # errors = (FluentParseError(...),)
 
-# Show helpful feedback
 if errors:
-    print("Please enter a number like 5.50")
+    err = errors[0]
+    print(err)  # "Failed to parse decimal 'five fifty' for locale 'en_US': ..."
+
+    # Structured data for programmatic handling
+    err.input_value   # "five fifty"
+    err.locale_code   # "en_US"
+    err.parse_type    # "decimal"
 ```
 
 ### Financial Calculations Stay Exact
@@ -228,37 +267,43 @@ if not errors:
 
 ---
 
-## 100 Orders Per Second? No Problem.
+## Concurrent Requests? No Problem.
 
-Your cafe gets busy. Flask, FastAPI, Django - 100 concurrent requests, each customer in a different locale.
+Your cafe gets busy. Flask, FastAPI, Django - concurrent requests, each customer in a different locale.
 
 **The problem:** Python's `locale` module uses global state. Thread A sets German, Thread B reads it, chaos ensues.
 
-**The solution:** FTLLexEngine uses isolated contexts. No global state. No locks you manage. No race conditions.
+**The solution:** FTLLexEngine bundles are isolated. No global state. No locks you manage. No race conditions.
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
-from ftllexengine.runtime.locale_context import LocaleContext
+from decimal import Decimal
+from ftllexengine import FluentBundle
 
-us_ctx = LocaleContext.create("en_US")
-de_ctx = LocaleContext.create("de_DE")
-jp_ctx = LocaleContext.create("ja_JP")
+# Create locale-specific bundles (typically done once at startup)
+us_bundle = FluentBundle("en_US")
+de_bundle = FluentBundle("de_DE")
+jp_bundle = FluentBundle("ja_JP")
 
-def format_receipt(amount, ctx):
-    return ctx.format_currency(amount, currency="USD")
+ftl_source = "receipt = Total: { CURRENCY($amount, currency: \"USD\") }"
+us_bundle.add_resource(ftl_source)
+de_bundle.add_resource(ftl_source)
+jp_bundle.add_resource(ftl_source)
+
+def format_receipt(bundle, amount):
+    result, _ = bundle.format_pattern("receipt", {"amount": amount})
+    return result
 
 with ThreadPoolExecutor(max_workers=100) as executor:
     futures = [
-        executor.submit(format_receipt, 1234.50, us_ctx),  # "$1,234.50"
-        executor.submit(format_receipt, 1234.50, de_ctx),  # "1.234,50 $"
-        executor.submit(format_receipt, 1234.50, jp_ctx),  # "$1,234.50"
+        executor.submit(format_receipt, us_bundle, Decimal("1234.50")),  # "Total: $1,234.50"
+        executor.submit(format_receipt, de_bundle, Decimal("1234.50")),  # "Total: 1.234,50 $"
+        executor.submit(format_receipt, jp_bundle, Decimal("1234.50")),  # "Total: $1,234.50"
     ]
     receipts = [f.result() for f in futures]
 ```
 
-Each `LocaleContext` is a frozen dataclass. Immutable. Thread-safe by design.
-
-`FluentBundle` is also thread-safe. All public methods use an internal readers-writer lock:
+`FluentBundle` is thread-safe by design:
 - Multiple threads can format messages simultaneously (read lock)
 - Adding resources or functions acquires exclusive access (write lock)
 - You don't manage any of this - it just works

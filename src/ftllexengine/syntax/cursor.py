@@ -230,10 +230,13 @@ class Cursor:
             >>> new_cursor.pos  # No spaces to skip
             0
         """
-        c = self
-        while not c.is_eof and c.current == " ":
-            c = c.advance()
-        return c
+        # O(1) cursor allocation: compute final position via integer arithmetic
+        pos = self.pos
+        source = self.source
+        length = len(source)
+        while pos < length and source[pos] == " ":
+            pos += 1
+        return self if pos == self.pos else Cursor(source, pos)
 
     def skip_whitespace(self) -> Cursor:
         """Skip whitespace characters (space and newline).
@@ -259,10 +262,13 @@ class Cursor:
             >>> new_cursor.pos  # No whitespace to skip
             0
         """
-        c = self
-        while not c.is_eof and c.current in (" ", "\n"):
-            c = c.advance()
-        return c
+        # O(1) cursor allocation: compute final position via integer arithmetic
+        pos = self.pos
+        source = self.source
+        length = len(source)
+        while pos < length and source[pos] in (" ", "\n"):
+            pos += 1
+        return self if pos == self.pos else Cursor(source, pos)
 
     def expect(self, char: str) -> Cursor | None:
         """Consume character if it matches expected, return None otherwise.
@@ -364,10 +370,12 @@ class Cursor:
             >>> new_cursor.current
             '\\n'
         """
-        cursor = self
-        while not cursor.is_eof and cursor.current != "\n":
-            cursor = cursor.advance()
-        return cursor
+        # C-level str.find() avoids O(N) cursor allocations
+        newline_pos = self.source.find("\n", self.pos)
+        if newline_pos == -1:
+            # No newline found - position at EOF
+            return Cursor(self.source, len(self.source))
+        return self if newline_pos == self.pos else Cursor(self.source, newline_pos)
 
     def count_newlines_before(self) -> int:
         """Count newlines before current position without substring copy.
@@ -457,11 +465,15 @@ class LineOffsetCache:
         """
         # Line offsets: position where each line starts
         # Line 1 starts at offset 0
+        # C-level str.find() loop outperforms Python-level enumerate iteration
         offsets = [0]
-        for i, char in enumerate(source):
-            if char == "\n":
-                # Next line starts after this newline
-                offsets.append(i + 1)
+        pos = 0
+        while True:
+            newline_pos = source.find("\n", pos)
+            if newline_pos == -1:
+                break
+            offsets.append(newline_pos + 1)
+            pos = newline_pos + 1
         self._offsets: tuple[int, ...] = tuple(offsets)
         self._source_len = len(source)
 

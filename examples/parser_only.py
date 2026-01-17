@@ -78,7 +78,7 @@ def example_2_variable_extraction() -> None:
     print("=" * 60)
 
     ftl_source = """
-order-summary = { $customer } ordered { NUMBER($total, style: "currency") }
+order-summary = { $customer } ordered { CURRENCY($total, currency: "USD") }
     on { DATETIME($date, dateStyle: "long") }
 """
 
@@ -244,7 +244,7 @@ def example_6_visitor_pattern() -> None:
 
     ftl_source = """
 welcome = Welcome, { $user }!
-order = { NUMBER($total, style: "currency") } for { -brand }
+order = { CURRENCY($total, currency: "EUR") } for { -brand }
 date = { DATETIME($when, dateStyle: "short") }
 """
 

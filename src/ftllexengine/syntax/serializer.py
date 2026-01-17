@@ -551,28 +551,38 @@ class FluentSerializer(ASTVisitor):
         Converts literal { and } characters to Placeable(StringLiteral) form.
         Example: "a{b}c" becomes: a{"{"}b{"}"}c
         """
-        # Collect runs of non-brace characters for efficiency
-        buffer: list[str] = []
+        # C-level str.find() outperforms Python-level character iteration.
+        # Scans for next brace, emits text run, then emits brace placeholder.
+        pos = 0
+        length = len(text)
 
-        for char in text:
-            if char == "{":
-                # Flush buffer, emit brace as StringLiteral Placeable
-                if buffer:
-                    output.append("".join(buffer))
-                    buffer.clear()
-                output.append('{ "{" }')
-            elif char == "}":
-                # Flush buffer, emit brace as StringLiteral Placeable
-                if buffer:
-                    output.append("".join(buffer))
-                    buffer.clear()
-                output.append('{ "}" }')
+        while pos < length:
+            # Find next brace (whichever comes first)
+            open_pos = text.find("{", pos)
+            close_pos = text.find("}", pos)
+
+            # Determine which brace is next (or neither)
+            if open_pos == -1 and close_pos == -1:
+                # No more braces - emit remaining text
+                output.append(text[pos:])
+                break
+            if open_pos == -1:
+                next_brace_pos = close_pos
+                brace_placeholder = '{ "}" }'
+            elif close_pos == -1 or open_pos < close_pos:
+                next_brace_pos = open_pos
+                brace_placeholder = '{ "{" }'
             else:
-                buffer.append(char)
+                next_brace_pos = close_pos
+                brace_placeholder = '{ "}" }'
 
-        # Flush remaining buffer
-        if buffer:
-            output.append("".join(buffer))
+            # Emit text before brace (if any)
+            if next_brace_pos > pos:
+                output.append(text[pos:next_brace_pos])
+
+            # Emit brace as StringLiteral Placeable
+            output.append(brace_placeholder)
+            pos = next_brace_pos + 1
 
     def _serialize_expression(  # noqa: PLR0912  # Branches required by Expression union type
         self, expr: Expression, output: list[str], depth_guard: DepthGuard

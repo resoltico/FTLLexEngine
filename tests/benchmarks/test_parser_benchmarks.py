@@ -61,7 +61,7 @@ entries-count = {$count ->
 complex = { $name } has { $count ->
     [one] { $count } item
    *[other] { $count } items
-} in { NUMBER($price, style: "currency", currency: "EUR") }
+} in { CURRENCY($price, currency: "EUR") }
 """
 
         result = benchmark(parse_ftl, ftl_source)

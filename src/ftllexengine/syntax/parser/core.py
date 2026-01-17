@@ -80,7 +80,8 @@ def _has_blank_line_between(source: str, start: int, end: int) -> bool:
     # After parse_comment consumes the first comment's line ending, any newline
     # in the remaining region indicates a blank line was present.
     # Examples: "\n" (blank line), "\n  \n" (blank line with spaces)
-    return "\n" in source[start:end]
+    # str.find() with bounds avoids temporary substring allocation
+    return source.find("\n", start, end) != -1
 
 
 def _is_at_column_one(cursor: Cursor) -> bool:

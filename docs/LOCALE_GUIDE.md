@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.75.0"
 domain: locale
-updated: "2026-01-14"
+updated: "2026-01-17"
 route:
-  keywords: [locale, NUMBER, DATETIME, formatting, BCP-47, locale normalization, str vs NUMBER]
-  questions: ["why isn't my number formatted?", "how does locale formatting work?", "NUMBER vs raw variable?", "how to format numbers with locale?"]
+  keywords: [locale, NUMBER, DATETIME, CURRENCY, formatting, BCP-47, locale normalization, str vs NUMBER]
+  questions: ["why isn't my number formatted?", "how does locale formatting work?", "NUMBER vs raw variable?", "how to format numbers with locale?", "how to format currency?"]
 ---
 
 # Locale Formatting Guide
@@ -75,19 +75,46 @@ result, _ = bundle.format_pattern("formatted-count", {"count": 1234567})
 
 ```python
 bundle.add_resource("""
-currency = { NUMBER($amount, style: "currency", currency: "EUR") }
-percent = { NUMBER($rate, style: "percent") }
 decimal = { NUMBER($value, minimumFractionDigits: 2) }
+no-grouping = { NUMBER($value, useGrouping: false) }
+custom = { NUMBER($value, minimumFractionDigits: 2, maximumFractionDigits: 4) }
 """)
 ```
 
 | Option | Values | Effect |
 |:-------|:-------|:-------|
-| `style` | `"decimal"`, `"currency"`, `"percent"` | Output format |
-| `currency` | ISO 4217 code | Required for currency style |
 | `minimumFractionDigits` | integer | Minimum decimal places |
 | `maximumFractionDigits` | integer | Maximum decimal places |
-| `useGrouping` | boolean | Thousands separators |
+| `useGrouping` | boolean | Thousands separators (default: true) |
+| `pattern` | string | Custom Babel number pattern |
+
+---
+
+## CURRENCY() Function
+
+Formats monetary values with currency symbol and locale-appropriate formatting.
+
+```python
+bundle = FluentBundle("de_DE")
+bundle.add_resource("""
+price = { CURRENCY($amount, currency: "EUR") }
+price-code = { CURRENCY($amount, currency: "EUR", currencyDisplay: "code") }
+""")
+
+result, _ = bundle.format_pattern("price", {"amount": 1234.56})
+# → "1.234,56 €"
+
+result, _ = bundle.format_pattern("price-code", {"amount": 1234.56})
+# → "1.234,56 EUR"
+```
+
+**CURRENCY() Options**:
+
+| Option | Values | Effect |
+|:-------|:-------|:-------|
+| `currency` | ISO 4217 code | Required. Currency code (e.g., "EUR", "USD") |
+| `currencyDisplay` | `"symbol"`, `"code"`, `"name"` | Display style (default: "symbol") |
+| `pattern` | string | Custom CLDR currency pattern |
 
 ---
 
@@ -122,19 +149,15 @@ result, _ = bundle.format_pattern("formatted-date", {"date": now})
 bundle.add_resource("""
 short = { DATETIME($date, dateStyle: "short") }
 long = { DATETIME($date, dateStyle: "long", timeStyle: "short") }
-custom = { DATETIME($date, year: "numeric", month: "long", day: "numeric") }
+date-only = { DATETIME($date, dateStyle: "medium") }
 """)
 ```
 
 | Option | Values | Effect |
 |:-------|:-------|:-------|
-| `dateStyle` | `"full"`, `"long"`, `"medium"`, `"short"` | Preset date format |
-| `timeStyle` | `"full"`, `"long"`, `"medium"`, `"short"` | Preset time format |
-| `year` | `"numeric"`, `"2-digit"` | Year display |
-| `month` | `"numeric"`, `"2-digit"`, `"long"`, `"short"`, `"narrow"` | Month display |
-| `day` | `"numeric"`, `"2-digit"` | Day display |
-| `hour` | `"numeric"`, `"2-digit"` | Hour display |
-| `minute` | `"numeric"`, `"2-digit"` | Minute display |
+| `dateStyle` | `"full"`, `"long"`, `"medium"`, `"short"` | Preset date format (default: "medium") |
+| `timeStyle` | `"full"`, `"long"`, `"medium"`, `"short"` | Preset time format (omit for date-only) |
+| `pattern` | string | Custom Babel datetime pattern |
 
 ---
 
@@ -283,6 +306,7 @@ result, errors = parse_decimal("1.234,56", "de_DE")
 | `{ $var }` | Raw `str()` interpolation |
 | `{ NUMBER($var) }` | Locale-aware number formatting |
 | `{ DATETIME($var) }` | Locale-aware date/time formatting |
+| `{ CURRENCY($var, currency: "XXX") }` | Locale-aware currency formatting |
 | `bundle.locale` | Original input, preserved for display |
 | `bundle.get_babel_locale()` | Normalized Babel identifier |
 
