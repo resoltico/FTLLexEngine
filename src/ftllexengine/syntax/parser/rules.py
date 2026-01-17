@@ -1698,6 +1698,9 @@ def parse_message_attributes(
     """Parse zero or more message attributes.
 
     Attributes must appear on new lines starting with '.'.
+    Per Fluent spec, blank lines (empty lines) are allowed between attributes:
+        Attribute ::= line_end blank? "." Identifier blank_inline? "=" ...
+        blank ::= (blank_inline | line_end)+
 
     Args:
         cursor: Current position in source
@@ -1706,17 +1709,24 @@ def parse_message_attributes(
     attributes: list[Attribute] = []
 
     while not cursor.is_eof:
-        # Advance to next line.
+        # Per spec: Attribute ::= line_end blank? "." ...
+        # We need at least one line_end to continue looking for attributes
         # Note: Line endings are normalized to LF at parser entry.
-        if cursor.current == "\n":
-            cursor = cursor.advance()
-        else:
+        if cursor.current != "\n":
             break  # No newline, done with attributes
 
-        # Check if line starts with '.' (attribute marker)
-        # Per spec: Attribute ::= line_end blank? "." ...
-        # blank allows spaces and newlines, but NOT tabs
+        # Skip the required line_end
+        cursor = cursor.advance()
+
+        # Skip optional blank lines (consecutive newlines)
+        # Per spec: blank ::= (blank_inline | line_end)+
+        while not cursor.is_eof and cursor.current == "\n":
+            cursor = cursor.advance()
+
+        # Now cursor is at the start of a non-blank line (or EOF)
+        # Save position for restore if not an attribute, and for parse_attribute
         saved_cursor = cursor
+
         # Skip leading spaces on this line (NOT tabs per spec)
         cursor = cursor.skip_spaces()
 

@@ -281,6 +281,9 @@ def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
         raise SerializationDepthError(msg) from e
 
 # FTL indentation constants per Fluent spec.
+# Standard continuation indent: 4 spaces.
+_CONT_INDENT: str = "    "
+
 # Attributes use 4 spaces for standard indentation.
 _ATTR_INDENT: str = "\n    "
 
@@ -505,6 +508,34 @@ class FluentSerializer(ASTVisitor):
         if not node.content.endswith("\n"):
             output.append("\n")
 
+    def _pattern_needs_separate_line(self, pattern: Pattern) -> bool:
+        """Check if pattern needs separate-line serialization for roundtrip correctness.
+
+        Returns True if any TextElement starting with whitespace is preceded by
+        an element ending with newline. This structure would lose the leading
+        whitespace during roundtrip if serialized on the same line, because:
+
+        1. Parser sets common_indent from first continuation line's FULL indentation
+        2. Serializer adds 4-space continuation indent after newlines
+        3. Content's leading whitespace becomes part of combined indentation
+        4. On re-parse, common_indent strips ALL indentation including content whitespace
+
+        By outputting on a separate line, we establish initial_common_indent before
+        any content with embedded leading whitespace, so extra whitespace is preserved
+        as extra_spaces on subsequent continuation lines.
+        """
+        prev_ends_newline = False
+        for elem in pattern.elements:
+            if isinstance(elem, TextElement):
+                # Check if this element starts with whitespace and follows a newline
+                if prev_ends_newline and elem.value and elem.value[0] == " ":
+                    return True
+                prev_ends_newline = elem.value.endswith("\n")
+            else:
+                # Placeable doesn't end with newline
+                prev_ends_newline = False
+        return False
+
     def _serialize_pattern(
         self, pattern: Pattern, output: list[str], depth_guard: DepthGuard
     ) -> None:
@@ -518,8 +549,20 @@ class FluentSerializer(ASTVisitor):
         Multi-line patterns: Newlines in text elements are followed by
         4-space indentation to create valid continuation lines for roundtrip.
 
+        Roundtrip Whitespace Preservation:
+        If the pattern has TextElements where leading whitespace follows a newline
+        in a preceding element, the pattern is output on a separate line. This
+        ensures the parser establishes initial_common_indent from a line without
+        semantic whitespace, preserving extra whitespace on continuation lines.
+
         This ensures output is valid FTL that compliant parsers accept.
         """
+        # Check if pattern needs separate-line serialization for roundtrip correctness.
+        # This handles patterns where leading whitespace follows a newline in separate
+        # TextElements (e.g., "Line 1\n" followed by "  Line 2").
+        if self._pattern_needs_separate_line(pattern):
+            output.append("\n" + _CONT_INDENT)
+
         for element in pattern.elements:
             if isinstance(element, TextElement):
                 # Per Fluent spec: no escape sequences in TextElements

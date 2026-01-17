@@ -255,6 +255,101 @@ class TestFluentLocalizationFormatValueMapping:
         assert not errors
 
 
+class TestValidationCRLFNormalization:
+    """Tests for CRLF line ending normalization in validation.
+
+    Validates that error line/column positions are correct regardless of
+    line ending style (LF, CRLF, CR). The parser normalizes line endings
+    internally, so the validation LineOffsetCache must use the same
+    normalized source to produce correct positions.
+    """
+
+    def test_crlf_error_position_matches_lf(self) -> None:
+        """Validation error position is correct with CRLF line endings."""
+        bundle = FluentBundle("en_US")
+
+        # Same content with different line endings
+        lf_source = "msg1 = First\nmsg2 = Second\ninvalid syntax\nmsg3 = Third"
+        crlf_source = "msg1 = First\r\nmsg2 = Second\r\ninvalid syntax\r\nmsg3 = Third"
+
+        lf_result = bundle.validate_resource(lf_source)
+        crlf_result = bundle.validate_resource(crlf_source)
+
+        # Both should have errors
+        assert not lf_result.is_valid
+        assert not crlf_result.is_valid
+
+        # Find error with line info from each
+        lf_errors_with_line = [e for e in lf_result.errors if e.line is not None]
+        crlf_errors_with_line = [e for e in crlf_result.errors if e.line is not None]
+
+        assert len(lf_errors_with_line) >= 1, "LF source should have error with line info"
+        assert len(crlf_errors_with_line) >= 1, "CRLF source should have error with line info"
+
+        # Line number should be the same for both (line 3)
+        assert lf_errors_with_line[0].line == 3
+        assert crlf_errors_with_line[0].line == 3, (
+            f"CRLF error line {crlf_errors_with_line[0].line} should be 3"
+        )
+
+    def test_crlf_no_offset_drift(self) -> None:
+        """CRLF normalization prevents cumulative offset drift."""
+        bundle = FluentBundle("en_US")
+
+        # Multiple CRLF line endings before error
+        # Each CRLF has 2 chars but should be treated as 1 line break
+        crlf_source = (
+            "msg1 = Line 1\r\n"  # Line 1
+            "msg2 = Line 2\r\n"  # Line 2
+            "msg3 = Line 3\r\n"  # Line 3
+            "msg4 = Line 4\r\n"  # Line 4
+            "invalid on line 5\r\n"  # Line 5 (error)
+            "msg5 = Line 6"  # Line 6
+        )
+
+        result = bundle.validate_resource(crlf_source)
+
+        assert not result.is_valid
+        errors_with_line = [e for e in result.errors if e.line is not None]
+        assert len(errors_with_line) >= 1
+
+        # Error should be on line 5, not offset by CRLF count
+        error = errors_with_line[0]
+        assert error.line == 5, f"Expected line 5, got {error.line}"
+
+    def test_cr_only_line_endings(self) -> None:
+        """Validation handles CR-only line endings (old Mac style)."""
+        bundle = FluentBundle("en_US")
+
+        # CR-only line endings
+        cr_source = "msg1 = First\rmsg2 = Second\rinvalid syntax\rmsg3 = Third"
+
+        result = bundle.validate_resource(cr_source)
+
+        assert not result.is_valid
+        errors_with_line = [e for e in result.errors if e.line is not None]
+        assert len(errors_with_line) >= 1
+
+        # Error should be on line 3
+        assert errors_with_line[0].line == 3
+
+    def test_mixed_line_endings(self) -> None:
+        """Validation handles mixed line endings correctly."""
+        bundle = FluentBundle("en_US")
+
+        # Mixed line endings (sometimes happens with sloppy text editors)
+        mixed_source = "msg1 = First\nmsg2 = Second\r\ninvalid syntax\rmsg3 = Third"
+
+        result = bundle.validate_resource(mixed_source)
+
+        assert not result.is_valid
+        errors_with_line = [e for e in result.errors if e.line is not None]
+        assert len(errors_with_line) >= 1
+
+        # Error should be on line 3 (after two line breaks)
+        assert errors_with_line[0].line == 3
+
+
 class TestBundleContextManagerCacheClearing:
     """Tests for context manager cache clearing behavior."""
 

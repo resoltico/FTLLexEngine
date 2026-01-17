@@ -13,6 +13,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-01-17
+
+### Fixed
+
+- **Serializer Roundtrip Whitespace Corruption** (IMPL-SERIALIZER-ROUNDTRIP-CORRUPTION-001): Fixed data corruption during roundtrip serialization of patterns with embedded leading whitespace:
+  - Previous: Patterns with TextElements where leading whitespace follows a newline (e.g., "Line 1\n  Line 2") would lose the semantic whitespace on roundtrip
+  - Root cause: Serializer's per-element indentation logic didn't account for inter-element whitespace semantics; parser's common_indent calculation would strip all indentation
+  - Now: Added `_pattern_needs_separate_line()` helper to detect problematic patterns; serializer emits such patterns on separate lines with continuation indent to preserve whitespace through roundtrip
+  - Impact: Multi-line messages with indented continuation lines (code examples, formatted text) now preserve all whitespace correctly
+  - Location: `syntax/serializer.py` lines 541-552, 557-559
+
+- **Cache Tuple Argument Handling** (IMPL-CACHE-TUPLE-REJECTION-001): Fixed FormatCache silently bypassing cache for arguments containing tuples:
+  - Previous: `_make_hashable()` lacked `case tuple():` handler, causing tuples to fall through to default case and raise TypeError, which was caught and treated as unhashable
+  - Now: Added tuple handler that recursively processes elements, consistent with list handling
+  - Impact: Format calls with tuple arguments now correctly cache results instead of recomputing every time
+  - Location: `runtime/cache.py` lines 343-346
+
+- **Validation CRLF Line Position Accuracy** (IMPL-VALIDATION-OFFSET-MISMATCH-001): Fixed validation error line/column positions for files with CRLF line endings:
+  - Previous: LineOffsetCache used raw source positions while AST spans used normalized (LF-only) positions, causing cumulative drift in error locations for CRLF files
+  - Root cause: Parser normalizes CRLF/CR to LF internally, but validation was building offset cache from raw source
+  - Now: Validation normalizes source using same regex pattern as parser before building LineOffsetCache
+  - Impact: Windows-originated FTL files now report correct error locations without position drift
+  - Location: `validation/resource.py` lines 678-682
+
+- **Parser Attribute Blank Line Handling** (IMPL-PARSER-ATTRIBUTE-BLANK-LINE-001): Fixed attribute parsing to support blank lines between attributes per Fluent specification:
+  - Previous: Parser terminated attribute parsing on blank lines, silently dropping subsequent attributes
+  - Root cause: Loop consumed single newline then checked for `.`, breaking on blank lines (second newline)
+  - Now: Added inner loop to skip consecutive newlines (blank lines) before checking for attribute marker
+  - Spec compliance: Fluent EBNF `Attribute ::= line_end blank? "." ...` where `blank ::= (blank_inline | line_end)+`
+  - Impact: FTL files with blank lines between attributes for readability now parse correctly
+  - Location: `syntax/parser/rules.py` lines 1719-1722
+
+### Added
+
+- Added `_pattern_needs_separate_line()` helper method to serializer for detecting patterns requiring separate-line serialization
+- Added `_CONT_INDENT` constant in serializer for continuation line indentation
+
 ## [0.76.0] - 2026-01-17
 
 ### Performance
@@ -2038,6 +2075,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.77.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.77.0
 [0.76.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.76.0
 [0.75.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.75.0
 [0.74.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.74.0

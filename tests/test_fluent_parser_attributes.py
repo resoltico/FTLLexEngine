@@ -389,3 +389,155 @@ class TestFluentParserAttributesRealWorld:
         assert len(status_attr.value.elements) == 2
         assert isinstance(status_attr.value.elements[0], Placeable)
         assert isinstance(status_attr.value.elements[0].expression, SelectExpression)
+
+
+# ============================================================================
+# BLANK LINES BETWEEN ATTRIBUTES
+# ============================================================================
+
+
+class TestFluentParserAttributesBlankLines:
+    """Test blank lines between attributes per Fluent spec.
+
+    Per Fluent EBNF:
+        Attribute ::= line_end blank? "." Identifier blank_inline? "=" ...
+        blank ::= (blank_inline | line_end)+
+
+    The `blank?` between line_end and "." allows blank lines between attributes.
+    """
+
+    def test_parse_attributes_with_single_blank_line(self, parser: FluentParserV1) -> None:
+        """Parse message with one blank line between attributes."""
+        source = """button = Save
+    .tooltip = Click to save
+
+    .aria-label = Save button"""
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert msg.id.name == "button"
+        assert len(msg.attributes) == 2
+        assert msg.attributes[0].id.name == "tooltip"
+        assert msg.attributes[1].id.name == "aria-label"
+
+    def test_parse_attributes_with_multiple_blank_lines(self, parser: FluentParserV1) -> None:
+        """Parse message with multiple blank lines between attributes."""
+        source = """button = Save
+    .attr1 = Value 1
+
+
+
+    .attr2 = Value 2"""
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert len(msg.attributes) == 2
+        assert msg.attributes[0].id.name == "attr1"
+        assert msg.attributes[1].id.name == "attr2"
+
+    def test_parse_attributes_blank_line_before_first(self, parser: FluentParserV1) -> None:
+        """Parse message with blank line before first attribute."""
+        source = """button = Save
+
+    .tooltip = Click to save"""
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert len(msg.attributes) == 1
+        assert msg.attributes[0].id.name == "tooltip"
+
+    def test_parse_attributes_multiple_blank_lines_between_each(
+        self, parser: FluentParserV1
+    ) -> None:
+        """Parse message with blank lines between each attribute pair."""
+        source = """element = Main Value
+    .first = First
+
+    .second = Second
+
+    .third = Third"""
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert len(msg.attributes) == 3
+        assert msg.attributes[0].id.name == "first"
+        assert msg.attributes[1].id.name == "second"
+        assert msg.attributes[2].id.name == "third"
+
+    def test_parse_attributes_blank_lines_preserve_values(
+        self, parser: FluentParserV1
+    ) -> None:
+        """Blank lines between attributes don't affect attribute values."""
+        source = """msg = Hello
+    .greeting = Welcome, friend!
+
+    .farewell = Goodbye, friend!"""
+        resource = parser.parse(source)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+        assert len(msg.attributes) == 2
+
+        greeting_elem = msg.attributes[0].value.elements[0]
+        assert TextElement.guard(greeting_elem)
+        assert greeting_elem.value == "Welcome, friend!"
+
+        farewell_elem = msg.attributes[1].value.elements[0]
+        assert TextElement.guard(farewell_elem)
+        assert farewell_elem.value == "Goodbye, friend!"
+
+    def test_parse_multiple_messages_attributes_blank_lines(
+        self, parser: FluentParserV1
+    ) -> None:
+        """Parse multiple messages, each with blank lines between attributes."""
+        source = """msg1 = First
+    .a = A
+
+    .b = B
+
+msg2 = Second
+    .c = C
+
+    .d = D"""
+        resource = parser.parse(source)
+
+        assert len(resource.entries) == 2
+
+        msg1 = resource.entries[0]
+        assert isinstance(msg1, Message)
+        assert msg1.id.name == "msg1"
+        assert len(msg1.attributes) == 2
+        assert msg1.attributes[0].id.name == "a"
+        assert msg1.attributes[1].id.name == "b"
+
+        msg2 = resource.entries[1]
+        assert isinstance(msg2, Message)
+        assert msg2.id.name == "msg2"
+        assert len(msg2.attributes) == 2
+        assert msg2.attributes[0].id.name == "c"
+        assert msg2.attributes[1].id.name == "d"
+
+    def test_parse_attributes_blank_line_after_last_before_next_message(
+        self, parser: FluentParserV1
+    ) -> None:
+        """Blank lines correctly separate attribute block from next message."""
+        source = """msg1 = Hello
+    .attr = Attribute
+
+next-msg = Next"""
+        resource = parser.parse(source)
+
+        assert len(resource.entries) == 2
+
+        msg1 = resource.entries[0]
+        assert isinstance(msg1, Message)
+        assert len(msg1.attributes) == 1
+
+        msg2 = resource.entries[1]
+        assert isinstance(msg2, Message)
+        assert msg2.id.name == "next-msg"
+        assert len(msg2.attributes) == 0

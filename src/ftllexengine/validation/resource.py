@@ -19,6 +19,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
@@ -678,10 +679,17 @@ def validate_resource(
 
         parser = ParserClass()
 
+    # Normalize line endings to match parser behavior (CRLF/CR -> LF).
+    # The parser normalizes internally before creating AST spans, so we must
+    # use the same normalized source for LineOffsetCache to ensure position
+    # lookups match AST span positions correctly.
+    normalized_source = re.sub(r"\r\n?", "\n", source)
+
     resource = parser.parse(source)
 
     # Build line offset cache once for all validation passes (O(n))
-    line_cache = LineOffsetCache(source)
+    # Uses normalized_source to match AST span positions
+    line_cache = LineOffsetCache(normalized_source)
 
     # Pass 1: Extract syntax errors from Junk entries
     errors = _extract_syntax_errors(resource, line_cache)

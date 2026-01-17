@@ -305,11 +305,14 @@ class FormatCache:
             }
 
     @staticmethod
-    def _make_hashable(value: object, depth: int = MAX_DEPTH) -> HashableValue:
+    def _make_hashable(  # noqa: PLR0911 - type dispatch requires multiple returns
+        value: object, depth: int = MAX_DEPTH
+    ) -> HashableValue:
         """Convert potentially unhashable value to hashable equivalent.
 
         Converts:
             - list -> tuple (recursively)
+            - tuple -> tuple with converted elements (recursively)
             - dict -> tuple of sorted key-value tuples (recursively)
             - set -> frozenset (recursively)
             - Known FluentValue types -> unchanged (already hashable)
@@ -336,6 +339,10 @@ class FormatCache:
 
         match value:
             case list():
+                return tuple(FormatCache._make_hashable(v, depth - 1) for v in value)
+            case tuple():
+                # Tuples may contain unhashable elements (e.g., nested lists)
+                # Recursively process to ensure all elements are hashable
                 return tuple(FormatCache._make_hashable(v, depth - 1) for v in value)
             case dict():
                 return tuple(

@@ -102,11 +102,11 @@ class TestCacheBasicOperations:
         assert cache.maxsize == 500
 
 
-class TestCacheHashableConversion:
+class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     """Tests for FormatCache automatic conversion of unhashable types to hashable.
 
-    Lists, dicts, and sets are converted to tuples, sorted tuples,
-    and frozensets respectively, enabling caching for these types.
+    Lists, dicts, sets, and tuples are converted to hashable equivalents
+    (tuples, sorted tuples, frozensets) enabling caching for these types.
     """
 
     def test_get_with_list_value_now_cacheable(self) -> None:
@@ -221,6 +221,88 @@ class TestCacheHashableConversion:
         result = FormatCache._make_hashable([{"a": [1, 2]}, {3, 4}])
         # List -> tuple, dict -> sorted tuple, nested list -> tuple, set -> frozenset
         assert isinstance(result, tuple)
+
+    def test_make_hashable_tuple_simple(self) -> None:
+        """Verify _make_hashable handles simple tuples (already hashable)."""
+        result = FormatCache._make_hashable((1, 2, 3))
+        assert result == (1, 2, 3)
+        assert isinstance(result, tuple)
+
+    def test_make_hashable_tuple_with_nested_list(self) -> None:
+        """Verify _make_hashable converts nested lists within tuples."""
+        # Tuple containing a list - list should be converted to tuple
+        result = FormatCache._make_hashable((1, [2, 3], 4))
+        assert result == (1, (2, 3), 4)
+        assert isinstance(result, tuple)
+        # Verify all elements are hashable
+        hash(result)
+
+    def test_make_hashable_tuple_with_nested_dict(self) -> None:
+        """Verify _make_hashable converts nested dicts within tuples."""
+        result = FormatCache._make_hashable((1, {"b": 2, "a": 1}, 3))
+        # Dict becomes sorted tuple of key-value pairs
+        assert result == (1, (("a", 1), ("b", 2)), 3)
+        hash(result)
+
+    def test_make_hashable_tuple_with_nested_set(self) -> None:
+        """Verify _make_hashable converts nested sets within tuples."""
+        result = FormatCache._make_hashable((1, {2, 3}, 4))
+        assert result == (1, frozenset({2, 3}), 4)
+        hash(result)
+
+    def test_make_hashable_deeply_nested_tuple(self) -> None:
+        """Verify _make_hashable handles deeply nested structures in tuples."""
+        result = FormatCache._make_hashable((1, (2, [3, {"a": 4}]), 5))
+        # Inner list becomes tuple, inner dict becomes sorted tuple
+        assert result == (1, (2, (3, (("a", 4),))), 5)
+        hash(result)
+
+    def test_get_with_tuple_value_cacheable(self) -> None:
+        """Verify get() caches tuple-valued args correctly."""
+        cache = FormatCache(maxsize=100)
+
+        # Args contain a tuple (natively hashable, but may contain nested unhashables)
+        args = {"coords": (10, 20, 30)}
+        result = ("formatted", ())
+
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+
+        assert cached == result
+        assert len(cache) == 1
+        assert cache.unhashable_skips == 0
+
+    def test_get_with_tuple_containing_list_cacheable(self) -> None:
+        """Verify get() caches tuple-with-nested-list args correctly."""
+        cache = FormatCache(maxsize=100)
+
+        # Tuple containing a list - should be converted and cached
+        args = {"data": (1, [2, 3], 4)}
+        result = ("formatted", ())
+
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+
+        assert cached == result
+        assert len(cache) == 1
+        assert cache.unhashable_skips == 0
+
+    @given(
+        st.tuples(st.integers(), st.integers(), st.integers()),
+    )
+    def test_get_with_various_tuples_cacheable(
+        self, tuple_value: tuple[int, int, int]
+    ) -> None:
+        """Property: get() caches tuple-valued args."""
+        cache = FormatCache(maxsize=100)
+        args = {"tuple_arg": tuple_value}
+        result = ("formatted", ())
+
+        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+
+        assert cached == result
+        assert cache.unhashable_skips == 0
 
     @given(
         st.lists(st.integers(), min_size=1, max_size=10),
