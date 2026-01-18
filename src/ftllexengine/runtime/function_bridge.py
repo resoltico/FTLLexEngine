@@ -65,7 +65,10 @@ class FluentNumber:
     Attributes:
         value: Original numeric value for matching
         formatted: Locale-formatted string for display
-        precision: Minimum fraction digits (for CLDR v operand), None if not specified
+        precision: Visible fraction digit count (CLDR v operand), computed from
+            the formatted string. This is the ACTUAL count of digits after the
+            decimal separator, not the minimum_fraction_digits parameter.
+            None if not specified (raw variable interpolation).
 
     Example:
         >>> fn = FluentNumber(value=1, formatted="1.00", precision=2)
@@ -73,8 +76,14 @@ class FluentNumber:
         '1.00'
         >>> fn.value  # Used for plural matching
         1
-        >>> fn.precision  # Used for CLDR v operand (fraction digit count)
+        >>> fn.precision  # CLDR v operand: 2 visible fraction digits
         2
+
+    Precision Semantics:
+        The precision field reflects what is VISIBLE in the formatted output:
+        - FluentNumber(1.5, "1.5", precision=1) - one visible fraction digit
+        - FluentNumber(1, "1.00", precision=2) - two visible fraction digits
+        - FluentNumber(1, "1", precision=0) - no visible fraction digits
     """
 
     value: int | float | Decimal

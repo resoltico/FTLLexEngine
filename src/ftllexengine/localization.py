@@ -318,7 +318,21 @@ class PathResourceLoader:
     _resolved_root: Path = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Cache resolved root directory at initialization."""
+        """Cache resolved root directory and validate template at initialization.
+
+        Raises:
+            ValueError: If base_path does not contain {locale} placeholder
+        """
+        # Fail-fast validation: Require {locale} placeholder in path template
+        # Without this placeholder, all locales would load from the same path,
+        # causing silent data corruption where wrong locale files are loaded.
+        if "{locale}" not in self.base_path:
+            msg = (
+                f"base_path must contain '{{locale}}' placeholder for locale substitution, "
+                f"got: '{self.base_path}'"
+            )
+            raise ValueError(msg)
+
         if self.root_dir is not None:
             resolved = Path(self.root_dir).resolve()
         else:

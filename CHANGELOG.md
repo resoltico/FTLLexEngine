@@ -13,6 +13,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-01-18
+
+### Breaking
+
+- **BREAKING**: Removed `FluentSyntaxError` exception class (DEAD-CODE-ERROR-001):
+  - Previous: `FluentSyntaxError` was exported from `ftllexengine` and `ftllexengine.diagnostics`
+  - Reason: Class was never raised by any code path; Fluent parser uses Junk nodes for syntax errors per robustness principle
+  - Migration: Remove all `FluentSyntaxError` imports and exception handlers; use Junk node detection instead
+  - Example: `if any(isinstance(e, Junk) for e in resource.body): ...`
+
+### Fixed
+
+- **NUMBER() CLDR Precision Calculation** (SEM-PRECISION-MISMATCH-001): Fixed precision calculation for CLDR plural rule matching:
+  - Previous: `FluentNumber.precision` was set to `minimum_fraction_digits` parameter, not actual visible digits
+  - Root cause: CLDR v operand must reflect ACTUAL formatted output (e.g., "1.2" has v=1, not v=0)
+  - Now: Added `_compute_visible_precision()` helper that counts digits after decimal separator in formatted string
+  - Impact: Plural category selection now matches CLDR specification for all locales
+  - Location: `runtime/functions.py` lines 39-72, 114-118
+
+- **Documentation: `max_source_size` Precision** (DOC-BUNDLE-001): Clarified `max_source_size` docstrings:
+  - Previous: "10M" was ambiguous (decimal megabytes vs binary mebibytes)
+  - Now: "10 MiB / 10,485,760 chars" provides unambiguous specification
+  - Location: `runtime/bundle.py` (3 occurrences)
+
+### Changed
+
+- **PathResourceLoader Validation** (USABILITY-LOCALIZATION-001): Added fail-fast validation for `{locale}` placeholder:
+  - Previous: Missing placeholder caused silent failures at runtime (locale substitution returned unchanged path)
+  - Now: `ValueError` raised at construction time with clear error message
+  - Impact: Configuration errors detected immediately, not at first resource load
+  - Location: `localization.py` `PathResourceLoader.__post_init__`
+
 ## [0.77.0] - 2026-01-17
 
 ### Fixed
@@ -2075,6 +2107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.78.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.78.0
 [0.77.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.77.0
 [0.76.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.76.0
 [0.75.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.75.0

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.78.0"
 domain: migration
-updated: "2026-01-14"
+updated: "2026-01-18"
 route:
   keywords: [migration, fluent.runtime, upgrade, breaking changes, mozilla fluent, python fluent]
   questions: ["how to migrate from fluent.runtime?", "how to upgrade to ftllexengine?"]
@@ -450,7 +450,6 @@ print(result)
 | fluent.runtime | FTLLexEngine | Notes |
 |----------------|--------------|-------|
 | `FluentFormatError` | `FluentError` (base) | Base exception (main package) |
-| N/A | `FluentSyntaxError` | Parse errors (main package) |
 | N/A | `FluentReferenceError` | Missing messages/variables (main package) |
 | N/A | `FluentResolutionError` | Runtime errors (main package) |
 | N/A | `FluentCyclicReferenceError` | Circular references (`ftllexengine.diagnostics`) |

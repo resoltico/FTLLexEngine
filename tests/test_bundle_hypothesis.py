@@ -284,7 +284,7 @@ class TestValidationErrorHandling:
         # Severely malformed FTL
         malformed_ftl = "this is not FTL at all $$$ [[[ {{{ \x00\x01\x02"
 
-        # validate_resource should catch FluentSyntaxError and return Junk
+        # Parser uses Junk nodes for syntax errors (robustness principle)
         result = bundle.validate_resource(malformed_ftl)
 
         # Should have errors (Junk entries)

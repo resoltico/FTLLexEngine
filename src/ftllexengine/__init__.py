@@ -16,7 +16,6 @@ Public API:
 
 Exceptions:
     FluentError - Base exception class
-    FluentSyntaxError - Parse errors
     FluentReferenceError - Unknown message/term references
     FluentResolutionError - Runtime resolution errors
 
@@ -50,7 +49,6 @@ from .diagnostics import (
     FluentError,
     FluentReferenceError,
     FluentResolutionError,
-    FluentSyntaxError,
 )
 from .syntax import parse as parse_ftl
 from .syntax import serialize as serialize_ftl
@@ -194,7 +192,6 @@ __all__ = [
     "FluentLocalization",
     "FluentReferenceError",
     "FluentResolutionError",
-    "FluentSyntaxError",
     "FluentValue",
     "__fluent_spec_version__",
     "__recommended_encoding__",

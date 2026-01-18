@@ -12,7 +12,6 @@ from ftllexengine import FluentBundle
 from ftllexengine.diagnostics import (
     FluentCyclicReferenceError,
     FluentReferenceError,
-    FluentSyntaxError,
 )
 from ftllexengine.runtime import FunctionRegistry, select_plural_category
 
@@ -89,14 +88,17 @@ class TestParserProperties:
         Fuzzing test: Parser should handle random text without crashing.
         Expected exceptions (graceful degradation) are caught.
         Unexpected exceptions (bugs) will fail the test.
+
+        Note: The parser uses Junk nodes for syntax errors (robustness principle)
+        and never raises exceptions. Resolution errors are caught here.
         """
         bundle = FluentBundle("en-US")
         handled_gracefully = False
         try:
             bundle.add_resource(random_text)
             handled_gracefully = True
-        except (FluentSyntaxError, FluentReferenceError, FluentCyclicReferenceError):
-            # Expected: Invalid syntax, missing references, circular deps
+        except (FluentReferenceError, FluentCyclicReferenceError):
+            # Expected: missing references, circular deps
             # Parser recovered gracefully (no crash)
             handled_gracefully = True
 

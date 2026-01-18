@@ -5,10 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ftllexengine.diagnostics import (
-    FluentReferenceError,
-    FluentSyntaxError,
-)
+from ftllexengine.diagnostics import FluentReferenceError
 from ftllexengine.runtime import FluentBundle
 
 
@@ -518,18 +515,6 @@ message2 = Second message
 
 class TestFluentBundleMockedErrors:
     """Test FluentBundle error handlers using mocking."""
-
-    def test_add_resource_with_fluent_syntax_error(self) -> None:
-        """Bundle handles FluentSyntaxError from parser."""
-        bundle = FluentBundle("en_US")
-
-        # Mock parser to raise FluentSyntaxError
-        with patch.object(bundle, "_parser") as mock_parser:
-            mock_parser.parse.side_effect = FluentSyntaxError("Invalid syntax")
-
-            # Should raise FluentSyntaxError (lines 91-93)
-            with pytest.raises(FluentSyntaxError, match="Invalid syntax"):
-                bundle.add_resource("msg = Hello")
 
     def test_format_pattern_with_keyerror_exception(self) -> None:
         """Bundle propagates KeyError from resolver (fail-fast behavior).

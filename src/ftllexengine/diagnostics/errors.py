@@ -14,7 +14,6 @@ __all__ = [
     "FluentParseError",
     "FluentReferenceError",
     "FluentResolutionError",
-    "FluentSyntaxError",
 ]
 
 
@@ -37,14 +36,6 @@ class FluentError(Exception):
         else:
             self.diagnostic = None
             super().__init__(message)
-
-
-class FluentSyntaxError(FluentError):
-    """FTL syntax error during parsing.
-
-    Parser continues after syntax errors (robustness principle).
-    Errors become Junk entries in AST.
-    """
 
 
 class FluentReferenceError(FluentError):

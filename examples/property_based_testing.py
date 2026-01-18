@@ -41,7 +41,9 @@ from ftllexengine import (
     parse_ftl,
     serialize_ftl,
 )
-from ftllexengine.diagnostics import FluentSyntaxError
+
+# Parser uses Junk nodes for syntax errors (robustness principle)
+# and never raises exceptions.
 
 if TYPE_CHECKING:
     # Type hints for mypy - RuleBasedStateMachine state
@@ -123,13 +125,15 @@ def example_2_parse_serialize_roundtrip() -> None:
 
         ftl_source = f"{message_id} = {message_value_clean}"
 
-        # Strategy: Use assume() to filter out invalid FTL
-        # This lets Hypothesis shrink to minimal failing examples while
-        # only testing the property on valid input
-        try:
-            # First parse
-            resource1 = parse_ftl(ftl_source)
-        except FluentSyntaxError:
+        # Parser uses Junk nodes for syntax errors (robustness principle)
+        # Check for Junk entries to filter invalid FTL
+        from ftllexengine.syntax.ast import Junk
+
+        # First parse
+        resource1 = parse_ftl(ftl_source)
+
+        # Filter out FTL with parse errors (Junk entries)
+        if any(isinstance(entry, Junk) for entry in resource1.entries):
             # Invalid FTL - property doesn't apply, skip this example
             assume(False)
 
@@ -375,10 +379,9 @@ def example_6_stateful_bundle_testing() -> None:
         state_machine.check_invariants()
 
         print("✓ Stateful properties verified successfully\n")
-    except (AssertionError, FluentSyntaxError) as e:
-        # Specific exceptions we expect from stateful testing
+    except AssertionError as e:
         # AssertionError: Invariant violated
-        # FluentSyntaxError: Invalid FTL generated
+        # Note: Parser uses Junk nodes for syntax errors, never raises exceptions
         print(f"✗ Stateful test found issue: {e}\n")
 
 

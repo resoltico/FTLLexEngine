@@ -20,7 +20,6 @@ from ftllexengine.diagnostics import (
     FluentError,
     FluentReferenceError,
     FluentResolutionError,
-    FluentSyntaxError,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode, SourceSpan
 
@@ -100,15 +99,6 @@ class TestFluentErrorConstruction:
 
 class TestErrorHierarchy:
     """Property tests for exception hierarchy."""
-
-    @given(message=error_messages)
-    @settings(max_examples=50)
-    def test_syntax_error_is_fluent_error(self, message: str) -> None:
-        """PROPERTY: FluentSyntaxError inherits from FluentError."""
-        error = FluentSyntaxError(message)
-
-        assert isinstance(error, FluentError)
-        assert isinstance(error, Exception)
 
     @given(message=error_messages)
     @settings(max_examples=50)
@@ -474,7 +464,6 @@ class TestExceptionBehavior:
     def test_specific_errors_catchable_as_base(self, message: str) -> None:
         """PROPERTY: Specific errors catchable as FluentError base class."""
         error_types = [
-            FluentSyntaxError,
             FluentReferenceError,
             FluentResolutionError,
             FluentCyclicReferenceError,

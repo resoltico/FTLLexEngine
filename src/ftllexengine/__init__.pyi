@@ -13,9 +13,6 @@ from .diagnostics import (
 from .diagnostics import (
     FluentResolutionError as FluentResolutionError,
 )
-from .diagnostics import (
-    FluentSyntaxError as FluentSyntaxError,
-)
 from .localization import FluentLocalization as FluentLocalization
 from .runtime import FluentBundle as FluentBundle
 from .runtime.function_bridge import FluentValue as FluentValue
@@ -36,7 +33,6 @@ __all__: list[str] = [
     "FluentLocalization",
     "FluentReferenceError",
     "FluentResolutionError",
-    "FluentSyntaxError",
     "FluentValue",
     "__fluent_spec_version__",
     "__recommended_encoding__",

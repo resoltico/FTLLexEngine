@@ -13,7 +13,6 @@ from .errors import (
     FluentParseError,
     FluentReferenceError,
     FluentResolutionError,
-    FluentSyntaxError,
 )
 from .formatter import DiagnosticFormatter, OutputFormat
 from .templates import ErrorTemplate
@@ -34,7 +33,6 @@ __all__ = [
     "FluentParseError",
     "FluentReferenceError",
     "FluentResolutionError",
-    "FluentSyntaxError",
     "OutputFormat",
     "SourceSpan",
     "ValidationError",

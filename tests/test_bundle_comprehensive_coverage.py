@@ -3,11 +3,10 @@
 Targets all remaining uncovered lines and branches in bundle.py to reach 100% coverage.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from ftllexengine.diagnostics import FluentSyntaxError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
 
@@ -186,34 +185,6 @@ class TestGetBabelLocale:
 class TestAddResourceErrorHandling:
     """Test add_resource() error paths."""
 
-    def test_add_resource_logs_error_with_source_path(self) -> None:
-        """Test add_resource() logs error with source_path when exception occurs (line 564)."""
-        bundle = FluentBundle("en")
-
-        # Create a mock parser that raises FluentSyntaxError
-        mock_parser = MagicMock()
-        mock_parser.parse.side_effect = FluentSyntaxError("Mock parser error")
-
-        # Replace the parser
-        bundle._parser = mock_parser
-
-        with pytest.raises(FluentSyntaxError, match="Mock parser error"):
-            bundle.add_resource("msg = Test", source_path="test.ftl")
-
-    def test_add_resource_logs_error_without_source_path(self) -> None:
-        """Test add_resource() logs error without source_path when exception occurs (line 566)."""
-        bundle = FluentBundle("en")
-
-        # Create a mock parser that raises FluentSyntaxError
-        mock_parser = MagicMock()
-        mock_parser.parse.side_effect = FluentSyntaxError("Mock parser error")
-
-        # Replace the parser
-        bundle._parser = mock_parser
-
-        with pytest.raises(FluentSyntaxError, match="Mock parser error"):
-            bundle.add_resource("msg = Test")
-
     def test_add_resource_clears_cache_when_enabled(self) -> None:
         """Test add_resource() clears cache (lines 559-560)."""
         bundle = FluentBundle("en", enable_cache=True)
@@ -238,10 +209,10 @@ class TestValidateResourceErrorHandling:
     """Test validate_resource() error paths."""
 
     def test_validate_resource_handles_critical_syntax_error(self) -> None:
-        """Test validate_resource() handles FluentSyntaxError (lines 741-750)."""
+        """Test validate_resource() handles syntax errors via Junk nodes."""
         bundle = FluentBundle("en")
 
-        # Trigger FluentSyntaxError during validation
+        # Syntax error produces Junk node (robustness principle)
         invalid_ftl = "msg = { broken"
 
         result = bundle.validate_resource(invalid_ftl)

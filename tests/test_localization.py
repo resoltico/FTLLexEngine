@@ -318,6 +318,20 @@ class TestPathResourceLoader:
 
         assert ftl_source == "hello = Hello, World!"
 
+    def test_path_resource_loader_missing_locale_placeholder_raises(self) -> None:
+        """PathResourceLoader raises ValueError when {locale} placeholder is missing."""
+        # Fail-fast: Missing placeholder would cause silent data corruption
+        # where all locales load from the same static path
+        with pytest.raises(ValueError, match=r"must contain '\{locale\}' placeholder"):
+            PathResourceLoader("locales/en")  # Missing {locale}
+
+        with pytest.raises(ValueError, match=r"must contain '\{locale\}' placeholder"):
+            PathResourceLoader("/absolute/path/to/locales")  # Missing {locale}
+
+        # Valid: Contains {locale} placeholder
+        loader = PathResourceLoader("locales/{locale}")  # Should not raise
+        assert "{locale}" not in loader.base_path.replace("{locale}", "X")
+
     def test_path_resource_loader_file_not_found(self, tmp_path: Path) -> None:
         """PathResourceLoader raises FileNotFoundError for missing files."""
         loader = PathResourceLoader(str(tmp_path / "{locale}"))

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.75.0"
+version: "0.78.0"
 domain: reference
-updated: "2026-01-16"
+updated: "2026-01-18"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?"]
@@ -786,7 +786,6 @@ if errors:
 ```python
 from ftllexengine import (
     FluentError,              # Base exception
-    FluentSyntaxError,        # Parse error
     FluentReferenceError,     # Missing message/variable/term
     FluentResolutionError,    # Runtime error during resolution
 )

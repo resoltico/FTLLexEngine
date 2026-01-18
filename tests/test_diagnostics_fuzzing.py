@@ -24,7 +24,6 @@ from ftllexengine.diagnostics import (
     FluentError,
     FluentReferenceError,
     FluentResolutionError,
-    FluentSyntaxError,
 )
 from ftllexengine.runtime.bundle import FluentBundle
 
@@ -93,15 +92,6 @@ class TestErrorMessageProperties:
         assert isinstance(error_str, str)
         # Should mention cycle
         assert "cycle" in error_str.lower() or "circular" in error_str.lower()
-
-    @given(st.text(min_size=1, max_size=100))
-    @settings(max_examples=100, deadline=None)
-    def test_syntax_error_formatting(self, detail: str) -> None:
-        """Property: Syntax errors format properly."""
-        error = FluentSyntaxError(detail)
-
-        error_str = str(error)
-        assert isinstance(error_str, str)
 
     @given(st.text(min_size=1, max_size=100))
     @settings(max_examples=100, deadline=None)

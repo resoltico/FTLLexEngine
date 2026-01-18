@@ -81,7 +81,7 @@ class FluentBundle:
 
     Parser Security:
         Configurable limits prevent DoS attacks:
-        - max_source_size: Maximum FTL source length in characters (default: 10M)
+        - max_source_size: Maximum FTL source length in characters (default: 10 MiB / 10,485,760 chars)
         - max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
     Examples:
@@ -180,7 +180,7 @@ class FluentBundle:
                       - Use pre-registered custom functions
                       - Share function registrations between bundles
                       - Override default function behavior
-            max_source_size: Maximum FTL source length in characters (default: 10M).
+            max_source_size: Maximum FTL source length in characters (default: 10 MiB / 10,485,760 chars).
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } } structures.
@@ -403,7 +403,7 @@ class FluentBundle:
             enable_cache: Enable format caching for performance
             cache_size: Maximum cache entries when caching enabled
             functions: Custom FunctionRegistry to use (default: standard registry)
-            max_source_size: Maximum FTL source size in characters (default: 10M)
+            max_source_size: Maximum FTL source size in characters (default: 10 MiB / 10,485,760 chars)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
         Returns:

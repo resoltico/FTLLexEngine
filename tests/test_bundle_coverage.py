@@ -5,14 +5,14 @@ Covers missing branches:
 - Line 307: Term with attributes (add_resource)
 - Line 337->332: Circular message reference duplicate detection
 - Line 349->344: Circular term reference duplicate detection
-- Line 426: FluentSyntaxError with source_path
+- Line 426: Syntax error handling with source_path
 - Line 486: Message with no value and no attributes
 - Line 492: Duplicate term ID warning
 - Line 502->504: Message without value (validate_resource)
 - Line 526: Term with attributes (validate_resource)
 - Line 530->529: Term referencing existing message
 - Line 538: Term referencing undefined term
-- Lines 551-556: Critical FluentSyntaxError in validate_resource
+- Lines 551-556: Critical syntax errors in validate_resource (produce Junk entries)
 """
 
 from __future__ import annotations
@@ -275,15 +275,15 @@ class TestTermReferencingUndefinedTerm:
 
 
 # ============================================================================
-# COVERAGE TARGET: Lines 551-556 (Critical FluentSyntaxError in validate_resource)
+# COVERAGE TARGET: Lines 551-556 (Critical syntax errors in validate_resource)
 # ============================================================================
 
 
 class TestCriticalSyntaxErrorInValidateResource:
-    """Test critical FluentSyntaxError handling in validate_resource (lines 551-556)."""
+    """Test critical syntax error handling in validate_resource (lines 551-556)."""
 
     def test_critical_syntax_error_in_validation(self) -> None:
-        """COVERAGE: Lines 551-556 - Critical FluentSyntaxError."""
+        """COVERAGE: Lines 551-556 - Critical syntax errors produce Junk entries."""
         bundle = FluentBundle("en_US", use_isolating=False)
 
         # Invalid FTL that raises critical syntax error

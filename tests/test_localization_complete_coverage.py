@@ -163,15 +163,11 @@ class TestLoadSummaryJunkHandling:
 class TestPathResourceLoaderEdgeCases:
     """Test edge cases in PathResourceLoader initialization."""
 
-    def test_root_dir_fallback_to_cwd_when_no_locale_placeholder(self) -> None:
-        """PathResourceLoader falls back to cwd when base_path has no {locale}."""
-        # Base path without {locale} placeholder
-        loader = PathResourceLoader(base_path="resources")
-
-        # Should have initialized _resolved_root (will be empty string prefix)
-        assert hasattr(loader, "_resolved_root")
-        # Resolved root should be set (either from 'resources' or cwd)
-        assert loader._resolved_root is not None
+    def test_base_path_without_locale_placeholder_raises(self) -> None:
+        """PathResourceLoader raises ValueError when base_path has no {locale}."""
+        # Base path without {locale} placeholder is a validation error
+        with pytest.raises(ValueError, match=r"must contain '\{locale\}' placeholder"):
+            PathResourceLoader(base_path="resources")
 
     def test_root_dir_resolution_with_empty_static_prefix(self) -> None:
         """PathResourceLoader resolves to cwd when static prefix is empty."""

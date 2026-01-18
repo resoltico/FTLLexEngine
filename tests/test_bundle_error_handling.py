@@ -10,7 +10,7 @@ Targets uncovered lines in bundle.py:
 - Line 463: Term attributes validation
 - Line 467: Term referencing undefined message warning
 - Line 475: Term referencing undefined term warning
-- Lines 488-493: FluentSyntaxError in validate_resource
+- Lines 488-493: Syntax error handling in validate_resource (produces Junk entries)
 """
 
 import logging
@@ -150,16 +150,16 @@ msg = { -company }
 
 
 class TestBundleValidateResourceSyntaxError:
-    """Test validate_resource with FluentSyntaxError (lines 488-493)."""
+    """Test validate_resource with malformed FTL (lines 488-493)."""
 
     def test_validate_resource_syntax_error_returns_junk(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """FluentSyntaxError in validate_resource returns Junk entry (lines 488-493)."""
+        """Syntax errors in validate_resource produce Junk entries (lines 488-493)."""
         bundle = FluentBundle("en")
 
-        # To trigger lines 488-493, we need validate_resource to raise FluentSyntaxError
-        # This happens when parsing fails critically during validation
+        # Parser uses Junk nodes for syntax errors (robustness principle)
+        # This tests that validation handles malformed input gracefully
 
         # Create critically malformed FTL
         malformed_ftl = """

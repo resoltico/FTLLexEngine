@@ -1,10 +1,10 @@
 ---
 afad: "3.1"
-version: "0.75.0"
+version: "0.78.0"
 domain: ERRORS
-updated: "2026-01-16"
+updated: "2026-01-18"
 route:
-  keywords: [FluentError, FluentSyntaxError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
+  keywords: [FluentError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]
 ---
 
@@ -16,7 +16,6 @@ route:
 
 ```
 FluentError
-  FluentSyntaxError
   FluentReferenceError
     FluentCyclicReferenceError
   FluentResolutionError
@@ -47,23 +46,6 @@ class FluentError(Exception):
 ### Constraints
 - Return: Exception instance.
 - State: Stores optional Diagnostic.
-
----
-
-## `FluentSyntaxError`
-
-### Signature
-```python
-class FluentSyntaxError(FluentError): ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: FTL syntax parse errors.
-- Behavior: Parser continues after errors (robustness principle).
 
 ---
 

@@ -16,14 +16,12 @@ from ftllexengine.localization import PathResourceLoader
 class TestPathResourceLoaderInitEdgeCases:
     """PathResourceLoader initialization edge cases (line 273 coverage)."""
 
-    def test_base_path_without_locale_placeholder(self) -> None:
-        """Base path without {locale} placeholder uses current directory."""
+    def test_base_path_without_locale_placeholder_raises(self) -> None:
+        """Base path without {locale} placeholder raises ValueError."""
         # Edge case: base_path has no {locale} placeholder
-        loader = PathResourceLoader(base_path="static/path")
-        # Should initialize without error
-        # The _resolved_root should be based on static/path or cwd
-        assert loader._resolved_root is not None
-        assert isinstance(loader._resolved_root, Path)
+        # This is a validation error
+        with pytest.raises(ValueError, match=r"must contain '\{locale\}' placeholder"):
+            PathResourceLoader(base_path="static/path")
 
     def test_base_path_empty_after_split(self) -> None:
         """Base path that results in empty static_prefix."""
@@ -90,11 +88,11 @@ class TestPathResourceLoaderTemplateEdgeCases:
         # Should use first part before first {locale}
         assert loader._resolved_root == Path("root").resolve()
 
-    def test_no_locale_placeholder_uses_whole_path(self) -> None:
-        """No {locale} placeholder uses whole path as static."""
-        loader = PathResourceLoader(base_path="static/resources")
-        # Should use the whole path as static prefix
-        assert loader._resolved_root == Path("static/resources").resolve()
+    def test_no_locale_placeholder_raises(self) -> None:
+        """No {locale} placeholder raises ValueError."""
+        # Missing placeholder is a validation error
+        with pytest.raises(ValueError, match=r"must contain '\{locale\}' placeholder"):
+            PathResourceLoader(base_path="static/resources")
 
     def test_locale_at_start_uses_cwd(self) -> None:
         """Template starting with {locale} uses cwd."""

@@ -36,6 +36,42 @@ __all__ = ["create_default_registry", "get_shared_registry"]
 logger = logging.getLogger(__name__)
 
 
+def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
+    """Count visible fraction digits in formatted number string.
+
+    CLDR plural rules use the 'v' operand which represents the count of visible
+    fraction digits in the source number WITH trailing zeros. This function
+    extracts that count from the locale-formatted string.
+
+    Args:
+        formatted: Locale-formatted number string (e.g., "1,234.56" or "1.234,56")
+        decimal_symbol: Locale-specific decimal separator (e.g., "." or ",")
+
+    Returns:
+        Number of digits after the decimal separator, or 0 if no decimal part.
+
+    Examples:
+        >>> _compute_visible_precision("1,234.56", ".")
+        2
+        >>> _compute_visible_precision("1.234,56", ",")
+        2
+        >>> _compute_visible_precision("1,234", ".")
+        0
+        >>> _compute_visible_precision("1.00", ".")
+        2
+    """
+    if decimal_symbol not in formatted:
+        return 0
+
+    # Find the last occurrence of decimal separator (handles edge cases)
+    # Split from the right to handle any prefix characters
+    _, fraction_part = formatted.rsplit(decimal_symbol, 1)
+
+    # Count only digit characters in the fraction part
+    # This ignores any trailing non-digit characters (currency symbols, etc.)
+    return sum(1 for char in fraction_part if char.isdigit())
+
+
 def number_format(
     value: int | float | Decimal,
     locale_code: str = "en-US",
@@ -63,19 +99,19 @@ def number_format(
             - "0.000": Scientific notation with 3 decimals
 
     Returns:
-        Formatted number string
+        FluentNumber with formatted string and computed precision for plural matching
 
     Examples:
         >>> number_format(1234.5, "en-US")
-        '1,234.5'
+        FluentNumber(value=1234.5, formatted='1,234.5')
         >>> number_format(1234.5, "de-DE")
-        '1.234,5'
+        FluentNumber(value=1234.5, formatted='1.234,5')
         >>> number_format(1234.5, "lv-LV")
-        '1 234,5'
+        FluentNumber(value=1234.5, formatted='1 234,5')
         >>> number_format(42, "en-US", minimum_fraction_digits=2)
-        '42.00'
+        FluentNumber(value=42, formatted='42.00')
         >>> number_format(-1234.56, "en-US", pattern="#,##0.00;(#,##0.00)")
-        '(1,234.56)'
+        FluentNumber(value=-1234.56, formatted='(1,234.56)')
 
     FTL Usage:
         price = { $amount NUMBER(minimumFractionDigits: 2) }
@@ -88,7 +124,18 @@ def number_format(
         Implements CLDR formatting rules via Babel.
         Matches Intl.NumberFormat semantics.
         Custom patterns follow Babel number pattern syntax.
+
+    Precision Calculation:
+        The precision (CLDR v operand) is computed from the ACTUAL formatted
+        string, not from the minimum_fraction_digits parameter. This ensures
+        correct plural category matching:
+        - number_format(1.2, min=0, max=3) -> "1.2" with precision=1 (not 0)
+        - number_format(1.0, min=0, max=3) -> "1" with precision=0
+        - number_format(1.00, min=2, max=2) -> "1.00" with precision=2
     """
+    # Lazy import for parser-only installations
+    from babel.numbers import get_decimal_symbol  # noqa: PLC0415
+
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
     ctx = LocaleContext.create(locale_code)
@@ -99,12 +146,14 @@ def number_format(
         use_grouping=use_grouping,
         pattern=pattern,
     )
-    # Return FluentNumber preserving formatted output, numeric value, and precision
-    # for proper plural category matching in select expressions.
-    # Precision (minimum_fraction_digits) is critical for CLDR plural rules:
-    # - 1 with precision=0 matches "one" category (v=0: no fraction digits)
-    # - 1 with precision=2 matches "other" category (v=2: "1.00" has 2 fraction digits)
-    return FluentNumber(value=value, formatted=formatted, precision=minimum_fraction_digits)
+
+    # Compute actual visible precision from formatted string (CLDR v operand)
+    # This is critical for correct plural category matching in select expressions.
+    # The precision must reflect the ACTUAL formatted output, not the minimum parameter.
+    decimal_symbol = get_decimal_symbol(ctx.babel_locale)
+    precision = _compute_visible_precision(formatted, decimal_symbol)
+
+    return FluentNumber(value=value, formatted=formatted, precision=precision)
 
 
 def datetime_format(

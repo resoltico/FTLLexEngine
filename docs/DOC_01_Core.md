@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.75.0"
+version: "0.78.0"
 domain: CORE
-updated: "2026-01-16"
+updated: "2026-01-18"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
@@ -154,7 +154,6 @@ def add_resource(
 
 ### Constraints
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
-- Raises: `FluentSyntaxError` on critical parse error.
 - State: Mutates internal message/term registries. Clears cache.
 - Thread: Safe (RWLock). Parse occurs outside write lock; only registration requires exclusive access.
 
@@ -584,7 +583,6 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk,
 ### Constraints
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
 - Raises: `ValueError` if locale not in fallback chain or contains leading/trailing whitespace.
-- Raises: `FluentSyntaxError` if FTL source contains critical syntax errors.
 - State: Mutates target bundle.
 - Thread: Safe (RWLock).
 

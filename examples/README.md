@@ -70,13 +70,14 @@ ftl_output = serialize_ftl(resource)
 ```python
 from ftllexengine import (
     FluentError,
-    FluentSyntaxError,
     FluentReferenceError,
     FluentResolutionError,
 )
 from ftllexengine.diagnostics import FluentCyclicReferenceError
 
 # Robust error handling
+# Parser uses Junk nodes for syntax errors (robustness principle)
+# and never raises exceptions.
 result, errors = bundle.format_pattern("msg", {"var": value})
 if errors:
     for error in errors:
@@ -92,7 +93,7 @@ if errors:
 from ftllexengine import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
 
-# Create custom registry (v0.18.0+)
+# Create custom registry
 registry = create_default_registry()
 
 # Register custom function
@@ -106,8 +107,6 @@ bundle = FluentBundle("en", functions=registry)
 ```
 
 **Recommended Pattern**: Use `create_default_registry()` and pass to `FluentBundle` constructor for isolated function registries. For single-bundle functions, use `bundle.add_function()` method.
-
-**Note**: The global `FUNCTION_REGISTRY` was removed in v0.18.0. Use `create_default_registry()` instead.
 
 ### Introspection
 
@@ -169,9 +168,7 @@ Demonstrates:
 
 ### [bidirectional_formatting.py](bidirectional_formatting.py)
 
-**Bi-directional localization (v0.5.0+, Breaking change in v0.8.0)** - Parse locale-formatted strings back to Python types.
-
-**v0.8.0 BREAKING CHANGE**: All parse functions now return `tuple[result, list[FluentParseError]]`.
+**Bi-directional localization** - Parse locale-formatted strings back to Python types.
 
 Demonstrates:
 1. Invoice processing with bi-directional localization (Latvian)
@@ -189,7 +186,7 @@ Demonstrates:
 - Financial precision with Decimal type
 - Form validation patterns
 - Import/export workflows
-- **v0.8.0 API**: Use `has_parse_errors()` and type guards from `ftllexengine.parsing.guards`
+- Use `has_parse_errors()` and type guards from `ftllexengine.parsing.guards`
 - **Note**: Babel's `parse_decimal()` accepts `NaN`, `Infinity`, and `Inf` (case-insensitive) as valid Decimal values - use `is_valid_decimal()` to reject these for financial data
 
 ---
@@ -259,7 +256,7 @@ Demonstrates:
 
 **Run**: `python examples/function_introspection.py`
 
-**Note**: Uses the new FunctionRegistry introspection API (`list_functions()`, `get_function_info()`, `__iter__`, `__len__`, `__contains__`) added in v0.4.0 for runtime function discovery.
+**Note**: Uses the new FunctionRegistry introspection API (`list_functions()`, `get_function_info()`, `__iter__`, `__len__`, `__contains__`) for runtime function discovery.
 
 ---
 
@@ -271,11 +268,11 @@ Demonstrates:
 1. Single-threaded initialization (recommended for static resources)
 2. Concurrent read operations with ThreadPoolExecutor
 3. Thread-local bundles (for per-thread customization)
-4. Dynamic resource loading (always thread-safe as of v0.42.0)
+4. Dynamic resource loading (always thread-safe)
 
 **Run**: `python examples/thread_safety.py`
 
-**Note**: As of v0.42.0, FluentBundle is always thread-safe. No manual locks or special parameters needed.
+**Note**: FluentBundle is always thread-safe. No manual locks or special parameters needed.
 
 ---
 
