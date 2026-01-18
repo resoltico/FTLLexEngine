@@ -465,6 +465,8 @@ def _build_dependency_graph(
     *,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
+    known_msg_deps: dict[str, set[str]] | None = None,
+    known_term_deps: dict[str, set[str]] | None = None,
 ) -> dict[str, set[str]]:
     """Build unified dependency graph for messages and terms.
 
@@ -476,6 +478,9 @@ def _build_dependency_graph(
         terms_dict: Map of term IDs to Term nodes from current resource
         known_messages: Optional set of message IDs already in bundle
         known_terms: Optional set of term IDs already in bundle
+        known_msg_deps: Optional dependency map for known messages. Maps message ID
+            to set of prefixed dependencies (e.g., {"msg:foo", "term:bar"}).
+        known_term_deps: Optional dependency map for known terms.
 
     Returns:
         Graph as adjacency list (node -> set of dependencies)
@@ -510,19 +515,27 @@ def _build_dependency_graph(
                 term_deps.add(f"term:{ref}")
         graph[f"term:{term_name}"] = term_deps
 
-    # Add known entries as nodes (with no outgoing edges since we don't have their ASTs)
-    # This allows cycle detection to find cycles that go through known entries
+    # Add known entries as nodes WITH their actual dependencies if provided.
+    # This enables detection of cross-resource cycles involving dependencies OF known entries.
     if known_messages:
         for known_msg in known_messages:
             node_key = f"msg:{known_msg}"
             if node_key not in graph:
-                graph[node_key] = set()
+                # Use provided dependencies if available, otherwise empty set
+                if known_msg_deps and known_msg in known_msg_deps:
+                    graph[node_key] = known_msg_deps[known_msg].copy()
+                else:
+                    graph[node_key] = set()
 
     if known_terms:
         for known_term in known_terms:
             node_key = f"term:{known_term}"
             if node_key not in graph:
-                graph[node_key] = set()
+                # Use provided dependencies if available, otherwise empty set
+                if known_term_deps and known_term in known_term_deps:
+                    graph[node_key] = known_term_deps[known_term].copy()
+                else:
+                    graph[node_key] = set()
 
     return graph
 
@@ -634,6 +647,8 @@ def validate_resource(
     parser: FluentParserV1 | None = None,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
+    known_msg_deps: dict[str, set[str]] | None = None,
+    known_term_deps: dict[str, set[str]] | None = None,
 ) -> ValidationResult:
     """Validate FTL resource without adding to a bundle.
 
@@ -655,6 +670,11 @@ def validate_resource(
             cross-resource reference validation)
         known_terms: Optional set of term IDs already in bundle (for
             cross-resource reference validation)
+        known_msg_deps: Optional dependency graph for known messages. Maps message
+            ID to set of dependencies (prefixed: "msg:name", "term:name"). Enables
+            detection of cross-resource cycles involving dependencies OF known entries.
+        known_term_deps: Optional dependency graph for known terms. Maps term ID
+            to set of dependencies (prefixed: "msg:name", "term:name").
 
     Returns:
         ValidationResult with parse errors and semantic warnings
@@ -718,6 +738,8 @@ def validate_resource(
         terms_dict,
         known_messages=known_messages,
         known_terms=known_terms,
+        known_msg_deps=known_msg_deps,
+        known_term_deps=known_term_deps,
     )
 
     # Pass 4: Detect circular dependencies

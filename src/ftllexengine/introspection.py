@@ -120,8 +120,17 @@ class FunctionCallInfo:
     name: str
     """Function name (e.g., 'NUMBER', 'DATETIME')."""
 
-    positional_args: tuple[str, ...]
-    """Positional argument variable names."""
+    positional_arg_vars: tuple[str, ...]
+    """Variable names used as positional arguments.
+
+    Contains only the names of VariableReference nodes passed as positional
+    arguments. Literal values, message references, and other expression types
+    are not included in this tuple.
+
+    Example:
+        FTL: { NUMBER($count, "literal", $extra) }
+        positional_arg_vars: ("count", "extra")  # literals not included
+    """
 
     named_args: frozenset[str]
     """Named argument keys."""
@@ -391,7 +400,7 @@ class IntrospectionVisitor(ASTVisitor[None]):
 
         func_info = FunctionCallInfo(
             name=func.id.name,
-            positional_args=tuple(positional),
+            positional_arg_vars=tuple(positional),
             named_args=frozenset(named),
             span=func.span,
         )

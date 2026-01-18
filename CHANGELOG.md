@@ -13,6 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-01-18
+
+### Breaking
+
+- **BREAKING**: Renamed `FunctionCallInfo.positional_args` to `positional_arg_vars` (SEM-INTROSPECTION-DATA-LOSS-001):
+  - Previous: Field named `positional_args` suggested it contained all positional arguments
+  - Actual behavior: Only contains variable reference names, not literals or other expressions
+  - New name: `positional_arg_vars` accurately describes contents (variable names only)
+  - Migration: Replace all `.positional_args` access with `.positional_arg_vars`
+  - Impact: Code using introspection API to analyze function calls
+  - Location: `introspection.py` lines 123-133, 392-397
+
+### Added
+
+- **Term Positional Arguments Validation Warning** (VAL-TERM-POSITIONAL-ARGS-001): SemanticValidator now warns when term references include positional arguments:
+  - Reason: Per Fluent spec, terms only accept named arguments; positional arguments are silently ignored at runtime
+  - Warning: `VALIDATION_TERM_POSITIONAL_ARGS` - "Term '-{name}' called with positional arguments; positional arguments are ignored for term references"
+  - Impact: Catches likely user errors at validation time instead of silent runtime behavior
+  - Location: `syntax/validator.py` lines 310-323
+
+- **Cross-Resource Cycle Detection** (VAL-CROSS-RESOURCE-CYCLES-001): `FluentBundle.validate_resource()` now detects cycles involving dependencies OF existing bundle entries:
+  - Previous: Only detected cycles within the new resource or involving known entry names (not their dependencies)
+  - Example gap: Resource 1 has `msg_a = { msg_b }`, Resource 2 has `msg_b = { msg_a }` - cycle was not detected
+  - Now: Bundle tracks dependencies (`_msg_deps`, `_term_deps`) for all loaded entries
+  - Impact: Validation now catches cross-resource cycles that would cause infinite loops at runtime
+  - Location: `runtime/bundle.py` lines 219-222, 628-652; `validation/resource.py` lines 467-469, 518-538
+
+### Changed
+
+- **Dependency Graph Extended Parameters**: `validate_resource()` and `_build_dependency_graph()` accept optional `known_msg_deps` and `known_term_deps` parameters for cross-resource validation.
+
 ## [0.78.0] - 2026-01-18
 
 ### Breaking
@@ -2107,6 +2138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.79.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.79.0
 [0.78.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.78.0
 [0.77.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.77.0
 [0.76.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.76.0

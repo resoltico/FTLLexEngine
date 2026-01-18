@@ -303,10 +303,24 @@ class SemanticValidator:
         """Validate term reference.
 
         Per spec:
-        - Terms can be called with arguments (valid)
+        - Terms can be called with named arguments (valid)
+        - Positional arguments are ignored at runtime (emit warning)
         - Term.attribute can also be called with arguments
         """
         if ref.arguments:
+            # Per Fluent spec, terms only accept named arguments.
+            # Positional arguments are silently ignored at runtime.
+            # Emit warning to catch likely user errors at validation time.
+            if ref.arguments.positional:
+                self._add_error(
+                    errors,
+                    DiagnosticCode.VALIDATION_TERM_POSITIONAL_ARGS,
+                    message=(
+                        f"Term '-{ref.id.name}' called with positional arguments; "
+                        f"positional arguments are ignored for term references"
+                    ),
+                    span=ref.span,
+                )
             self._validate_call_arguments(ref.arguments, errors, depth_guard)
 
     def _validate_function_reference(

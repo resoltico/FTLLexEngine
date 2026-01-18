@@ -111,9 +111,11 @@ class FluentBundle:
         "_max_source_size",
         "_messages",
         "_modified_in_context",
+        "_msg_deps",
         "_owns_registry",
         "_parser",
         "_rwlock",
+        "_term_deps",
         "_terms",
         "_use_isolating",
     )
@@ -213,6 +215,12 @@ class FluentBundle:
         self._use_isolating = use_isolating
         self._messages: dict[str, Message] = {}
         self._terms: dict[str, Term] = {}
+
+        # Dependency tracking for cross-resource cycle detection.
+        # Maps entry ID to set of (type-prefixed) dependencies.
+        # E.g., {"greeting": {"msg:welcome", "term:brand"}}
+        self._msg_deps: dict[str, set[str]] = {}
+        self._term_deps: dict[str, set[str]] = {}
 
         # Parser security configuration
         self._max_source_size = max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
@@ -605,6 +613,8 @@ class FluentBundle:
         """
         # Register messages and terms using structural pattern matching
         junk_entries: list[Junk] = []
+        from ftllexengine.introspection import extract_references  # noqa: PLC0415
+
         for entry in resource.entries:
             match entry:
                 case Message():
@@ -615,6 +625,14 @@ class FluentBundle:
                             msg_id,
                         )
                     self._messages[msg_id] = entry
+                    # Extract and store dependencies for cross-resource cycle detection
+                    msg_refs, term_refs = extract_references(entry)
+                    deps: set[str] = set()
+                    for ref in msg_refs:
+                        deps.add(f"msg:{ref}")
+                    for ref in term_refs:
+                        deps.add(f"term:{ref}")
+                    self._msg_deps[msg_id] = deps
                     logger.debug("Registered message: %s", msg_id)
                 case Term():
                     term_id = entry.id.name
@@ -624,6 +642,14 @@ class FluentBundle:
                             term_id,
                         )
                     self._terms[term_id] = entry
+                    # Extract and store dependencies for cross-resource cycle detection
+                    msg_refs, term_refs = extract_references(entry)
+                    deps_term: set[str] = set()
+                    for ref in msg_refs:
+                        deps_term.add(f"msg:{ref}")
+                    for ref in term_refs:
+                        deps_term.add(f"term:{ref}")
+                    self._term_deps[term_id] = deps_term
                     logger.debug("Registered term: %s", term_id)
                 case Junk():
                     # Collect junk entries, always log at WARNING level
@@ -701,13 +727,15 @@ class FluentBundle:
             ftllexengine.validation.validate_resource: Standalone validation function
         """
         # Delegate to validation module, reusing bundle's parser for consistency
-        # Pass existing bundle entries for cross-resource reference validation
+        # Pass existing bundle entries and their dependencies for cross-resource validation
         with self._rwlock.read():
             return _validate_resource_impl(
                 source,
                 parser=self._parser,
                 known_messages=frozenset(self._messages.keys()),
                 known_terms=frozenset(self._terms.keys()),
+                known_msg_deps=self._msg_deps,
+                known_term_deps=self._term_deps,
             )
 
     def format_pattern(

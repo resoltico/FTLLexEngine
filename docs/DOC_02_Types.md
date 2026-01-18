@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.75.0"
+version: "0.79.0"
 domain: TYPES
-updated: "2026-01-16"
+updated: "2026-01-18"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
@@ -825,7 +825,7 @@ class VariableInfo:
 @dataclass(frozen=True, slots=True)
 class FunctionCallInfo:
     name: str
-    positional_args: tuple[str, ...]
+    positional_arg_vars: tuple[str, ...]
     named_args: frozenset[str]
     span: Span | None = None
 ```
@@ -834,7 +834,7 @@ class FunctionCallInfo:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `str` | Y | Function name (e.g., 'NUMBER'). |
-| `positional_args` | `tuple[str, ...]` | Y | Positional argument variable names. |
+| `positional_arg_vars` | `tuple[str, ...]` | Y | Variable names used as positional arguments (excludes literals). |
 | `named_args` | `frozenset[str]` | Y | Named argument keys. |
 | `span` | `Span \| None` | N | Source position for IDE integration. |
 
@@ -842,6 +842,7 @@ class FunctionCallInfo:
 - Return: Immutable function call metadata.
 - State: Frozen dataclass.
 - Span: Populated from FunctionReference.span for parser-produced ASTs.
+- positional_arg_vars: Contains only VariableReference names; literals and other expressions not included.
 - Import: `from ftllexengine.introspection import FunctionCallInfo`
 
 ---

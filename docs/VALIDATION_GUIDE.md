@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.73.0"
+version: "0.79.0"
 domain: validation
-updated: "2026-01-14"
+updated: "2026-01-18"
 route:
   keywords: [validation, validate_resource, SemanticValidator, duplicate, cycle detection, FTL validation]
   questions: ["how to validate FTL?", "what validation checks exist?", "where is duplicate detection?", "how to detect cycles?"]
@@ -43,6 +43,7 @@ This separation follows single-responsibility principle: each validator handles 
 | Select without variants | `syntax.validator` | `SemanticValidator` | Node |
 | Duplicate variant keys | `syntax.validator` | `SemanticValidator` | Node |
 | Duplicate named arguments | `syntax.validator` | `SemanticValidator` | Node |
+| Term positional args warning | `syntax.validator` | `SemanticValidator` | Node |
 
 ---
 
@@ -149,6 +150,18 @@ msg = { -term }
 # Warning: Detects message -> term -> message cycle
 ```
 
+**Cross-Resource Cycles**: When validating via `FluentBundle.validate_resource()`, the validator also detects cycles involving entries already loaded in the bundle:
+```python
+bundle = FluentBundle("en")
+bundle.add_resource("msg_a = { msg_b }")  # msg_a depends on msg_b
+
+# Now validate a resource that completes the cycle
+result = bundle.validate_resource("msg_b = { msg_a }")
+# Warning: Circular reference detected - msg_a and msg_b form a cycle
+```
+
+This cross-resource detection works because the bundle tracks dependencies for all loaded entries.
+
 ### Pass 5: Long Chain Detection
 
 Warns about reference chains approaching `MAX_DEPTH` limit.
@@ -207,6 +220,18 @@ count = { $n ->
 ```python
 source = "msg = { NUMBER($n, style: 'decimal', style: 'percent') }"
 # Error: VALIDATION_NAMED_ARG_DUPLICATE
+```
+
+### Term Positional Arguments Warning
+
+Per Fluent specification, terms only accept named arguments. Positional arguments are silently ignored at runtime. The validator warns about this to catch likely user errors:
+
+```python
+source = """
+-brand = Acme Corp
+msg = { -brand($value) }
+"""
+# Warning: VALIDATION_TERM_POSITIONAL_ARGS - "Term '-brand' called with positional arguments; positional arguments are ignored for term references"
 ```
 
 ---

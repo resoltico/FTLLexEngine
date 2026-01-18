@@ -127,7 +127,7 @@ class TestFunctionIntrospection:
 
         func = funcs[0]
         assert func.name == "NUMBER"
-        assert "amount" in func.positional_args
+        assert "amount" in func.positional_arg_vars
         assert "minimumFractionDigits" in func.named_args
 
     def test_multiple_functions(self) -> None:
