@@ -311,6 +311,34 @@ class ErrorTemplate:
         )
 
     @staticmethod
+    def formatting_failed(
+        function_name: str,
+        value: str,
+        error_reason: str,
+    ) -> Diagnostic:
+        """Locale-aware formatting failed.
+
+        Used when NUMBER(), DATETIME(), or CURRENCY() fails to format a value.
+
+        Args:
+            function_name: The formatting function (NUMBER, DATETIME, CURRENCY)
+            value: The value that failed to format
+            error_reason: The reason formatting failed
+
+        Returns:
+            Diagnostic for FORMATTING_FAILED
+        """
+        msg = f"{function_name}() formatting failed for value '{value}': {error_reason}"
+        return Diagnostic(
+            code=DiagnosticCode.FORMATTING_FAILED,
+            message=msg,
+            span=None,
+            hint="Check that the value is valid for the specified format options",
+            help_url=f"{ErrorTemplate._DOCS_BASE}/functions.html",
+            function_name=function_name,
+        )
+
+    @staticmethod
     def function_arity_mismatch(
         function_name: str,
         expected: int,

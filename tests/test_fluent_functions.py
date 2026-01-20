@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 from babel import dates as babel_dates
 
-from ftllexengine.core.errors import FormattingError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import (
     create_default_registry,
@@ -128,31 +128,34 @@ class TestNumberFunction:
 class TestNumberFunctionErrorHandling:
     """Test number_format() function error handling.
 
-    FormattingError is raised with fallback_value for invalid inputs.
-    The resolver catches this exception and uses the fallback in output.
+    FrozenFluentError with ErrorCategory.FORMATTING is raised with fallback_value
+    for invalid inputs. The resolver catches this exception and uses the fallback in output.
     """
 
     def test_number_with_string_value_raises_formatting_error(self) -> None:
-        """number_format() raises FormattingError for invalid string."""
-        with pytest.raises(FormattingError) as exc_info:
+        """number_format() raises FrozenFluentError for invalid string."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             number_format("not a number")  # type: ignore
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Should include fallback value for resolver to use
         assert "not a number" in exc_info.value.fallback_value
 
     def test_number_with_none_raises_formatting_error(self) -> None:
-        """number_format() raises FormattingError for None."""
-        with pytest.raises(FormattingError) as exc_info:
+        """number_format() raises FrozenFluentError for None."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             number_format(None)  # type: ignore
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Fallback should be string representation
         assert exc_info.value.fallback_value is not None
 
     def test_number_with_invalid_type_raises_formatting_error(self) -> None:
-        """number_format() raises FormattingError for invalid types."""
-        with pytest.raises(FormattingError) as exc_info:
+        """number_format() raises FrozenFluentError for invalid types."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             number_format([1, 2, 3])  # type: ignore
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Fallback should be string representation
         assert exc_info.value.fallback_value is not None
 
@@ -173,10 +176,11 @@ class TestNumberFunctionErrorHandling:
                 locale.setlocale(locale.LC_ALL, old_locale)
 
     def test_number_with_dict_raises_formatting_error(self) -> None:
-        """number_format() raises FormattingError for dict types."""
-        with pytest.raises(FormattingError) as exc_info:
+        """number_format() raises FrozenFluentError for dict types."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             number_format({"key": "value"})  # type: ignore
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Fallback should be string representation
         assert exc_info.value.fallback_value is not None
 
@@ -287,20 +291,22 @@ class TestDatetimeFunctionErrorHandling:
     """Test datetime_format() function error handling."""
 
     def test_datetime_with_invalid_iso_string(self) -> None:
-        """datetime_format() raises FormattingError for invalid ISO string."""
-        with pytest.raises(FormattingError) as exc_info:
+        """datetime_format() raises FrozenFluentError for invalid ISO string."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             datetime_format("not a date")
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Should have meaningful error message and fallback
         assert "not ISO 8601" in str(exc_info.value)
         assert exc_info.value.fallback_value == "{!DATETIME}"
 
     def test_datetime_with_partial_iso_string(self) -> None:
-        """datetime_format() raises FormattingError for incomplete ISO string."""
+        """datetime_format() raises FrozenFluentError for incomplete ISO string."""
         # "2025-10" is not valid ISO 8601 datetime format
-        with pytest.raises(FormattingError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             datetime_format("2025-10")
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         assert exc_info.value.fallback_value == "{!DATETIME}"
 
     def test_datetime_with_year_overflow(self) -> None:
@@ -476,10 +482,11 @@ class TestDatetimeFunctionEdgeCases:
         assert "2025" in result or "25" in result
 
     def test_datetime_with_empty_string(self) -> None:
-        """datetime_format() raises FormattingError for empty string."""
-        with pytest.raises(FormattingError) as exc_info:
+        """datetime_format() raises FrozenFluentError for empty string."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             datetime_format("")
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Should have fallback value
         assert exc_info.value.fallback_value == "{!DATETIME}"
 
@@ -488,7 +495,7 @@ class TestDatetimeFunctionMockedErrors:
     """Test datetime_format() function error handlers using mocking."""
 
     def test_datetime_handles_overflow_error(self) -> None:
-        """datetime_format() raises FormattingError with fallback for OverflowError."""
+        """datetime_format() raises FrozenFluentError with fallback for OverflowError."""
         # Use a datetime that will cause OverflowError in Babel
         # Year 10000 is outside Babel's formatting range
         far_future_dt = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
@@ -498,9 +505,10 @@ class TestDatetimeFunctionMockedErrors:
         with patch("babel.dates.format_date") as mock_format:
             mock_format.side_effect = OverflowError("Year out of range")
 
-            with pytest.raises(FormattingError) as exc_info:
+            with pytest.raises(FrozenFluentError) as exc_info:
                 datetime_format(far_future_dt, "en_US")
 
+            assert exc_info.value.category == ErrorCategory.FORMATTING
             # Fallback should be ISO format
             assert exc_info.value.fallback_value == "9999-12-31T23:59:59+00:00"
 

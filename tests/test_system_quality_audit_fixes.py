@@ -18,7 +18,7 @@ from hypothesis import strategies as st
 from ftllexengine import FluentBundle
 from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
 from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.validation import validate_resource
 
 # ============================================================================
@@ -270,45 +270,44 @@ class TestCacheEntrySizeLimit:
 
     def test_default_max_entry_weight(self) -> None:
         """Default max_entry_weight is 10_000 characters."""
-        cache = FormatCache()
+        cache = IntegrityCache(strict=False, )
         assert cache.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
         assert cache.max_entry_weight == 10_000
 
     def test_custom_max_entry_weight(self) -> None:
         """Custom max_entry_weight is respected."""
-        cache = FormatCache(max_entry_weight=1000)
+        cache = IntegrityCache(strict=False, max_entry_weight=1000)
         assert cache.max_entry_weight == 1000
 
     def test_invalid_max_entry_weight_rejected(self) -> None:
         """Invalid max_entry_weight values are rejected."""
         with pytest.raises(ValueError, match="max_entry_weight must be positive"):
-            FormatCache(max_entry_weight=0)
+            IntegrityCache(strict=False, max_entry_weight=0)
 
         with pytest.raises(ValueError, match="max_entry_weight must be positive"):
-            FormatCache(max_entry_weight=-1)
+            IntegrityCache(strict=False, max_entry_weight=-1)
 
     def test_small_entries_cached(self) -> None:
         """Entries below max_entry_weight are cached."""
-        cache = FormatCache(max_entry_weight=1000)
+        cache = IntegrityCache(strict=False, max_entry_weight=1000)
 
         # Small result (100 chars)
-        small_result = ("x" * 100, ())
-        cache.put("msg", None, None, "en", True, small_result)
+        cache.put("msg", None, None, "en", True, "x" * 100, ())
 
         assert cache.size == 1
         assert cache.oversize_skips == 0
 
         # Retrieve
         cached = cache.get("msg", None, None, "en", True)
-        assert cached == small_result
+        assert cached is not None
+        assert cached.to_tuple() == ("x" * 100, ())
 
     def test_large_entries_not_cached(self) -> None:
         """Entries exceeding max_entry_weight are not cached."""
-        cache = FormatCache(max_entry_weight=100)
+        cache = IntegrityCache(strict=False, max_entry_weight=100)
 
         # Large result (200 chars)
-        large_result = ("x" * 200, ())
-        cache.put("msg", None, None, "en", True, large_result)
+        cache.put("msg", None, None, "en", True, "x" * 200, ())
 
         assert cache.size == 0
         assert cache.oversize_skips == 1
@@ -319,23 +318,21 @@ class TestCacheEntrySizeLimit:
 
     def test_boundary_entry_size(self) -> None:
         """Entry exactly at max_entry_weight is cached."""
-        cache = FormatCache(max_entry_weight=100)
+        cache = IntegrityCache(strict=False, max_entry_weight=100)
 
         # Entry exactly at limit
-        exact_result = ("x" * 100, ())
-        cache.put("msg", None, None, "en", True, exact_result)
+        cache.put("msg", None, None, "en", True, "x" * 100, ())
 
         assert cache.size == 1
         assert cache.oversize_skips == 0
 
     def test_get_stats_includes_oversize_skips(self) -> None:
         """get_stats() includes oversize_skips counter."""
-        cache = FormatCache(max_entry_weight=50)
+        cache = IntegrityCache(strict=False, max_entry_weight=50)
 
         # Add some large entries
         for i in range(5):
-            large_result = ("x" * 100, ())
-            cache.put(f"msg-{i}", None, None, "en", True, large_result)
+            cache.put(f"msg-{i}", None, None, "en", True, "x" * 100, ())
 
         stats = cache.get_stats()
         assert stats["oversize_skips"] == 5
@@ -344,10 +341,9 @@ class TestCacheEntrySizeLimit:
 
     def test_clear_resets_oversize_skips(self) -> None:
         """clear() resets oversize_skips counter."""
-        cache = FormatCache(max_entry_weight=50)
+        cache = IntegrityCache(strict=False, max_entry_weight=50)
 
-        large_result = ("x" * 100, ())
-        cache.put("msg", None, None, "en", True, large_result)
+        cache.put("msg", None, None, "en", True, "x" * 100, ())
         assert cache.oversize_skips == 1
 
         cache.clear()
@@ -370,7 +366,7 @@ class TestCacheEntrySizeLimit:
     @settings(max_examples=20)
     def test_max_entry_weight_property(self, size: int) -> None:
         """PROPERTY: max_entry_weight is correctly stored and returned."""
-        cache = FormatCache(max_entry_weight=size)
+        cache = IntegrityCache(strict=False, max_entry_weight=size)
         assert cache.max_entry_weight == size
 
 

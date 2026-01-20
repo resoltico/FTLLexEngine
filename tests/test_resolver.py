@@ -5,7 +5,7 @@ resolution, depth limiting, error handling, and Babel integration fallbacks.
 
 Coverage Focus:
     - GlobalDepthGuard depth limiting (line 111)
-    - FluentResolutionError handling in resolve_message (lines 353-357)
+    - FrozenFluentError handling in resolve_message (lines 353-357)
     - BabelImportError fallback in select expressions (lines 736-738)
     - Edge cases and error paths
 """
@@ -20,7 +20,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.babel_compat import BabelImportError
-from ftllexengine.diagnostics import ErrorTemplate, FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, ErrorTemplate, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.resolver import FluentResolver, GlobalDepthGuard
 from ftllexengine.syntax import (
@@ -45,7 +45,7 @@ class TestGlobalDepthGuard:
     """Tests for GlobalDepthGuard depth limiting mechanism."""
 
     def test_global_depth_guard_prevents_excessive_nesting(self) -> None:
-        """GlobalDepthGuard raises FluentResolutionError when depth exceeded (line 111)."""
+        """GlobalDepthGuard raises FrozenFluentError when depth exceeded."""
         # Create a guard with max_depth=2
         guard1 = GlobalDepthGuard(max_depth=2)
         guard2 = GlobalDepthGuard(max_depth=2)
@@ -55,11 +55,12 @@ class TestGlobalDepthGuard:
         with (
             guard1,
             guard2,
-            pytest.raises(FluentResolutionError, match=r"(?i)depth") as exc_info,
+            pytest.raises(FrozenFluentError, match=r"(?i)depth") as exc_info,
             guard3,
         ):
             pass
 
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
         assert "2" in str(exc_info.value)
 
     def test_global_depth_guard_depth_one_allows_single_nesting(self) -> None:
@@ -71,19 +72,19 @@ class TestGlobalDepthGuard:
             pass
 
     def test_global_depth_guard_depth_one_blocks_double_nesting(self) -> None:
-        """GlobalDepthGuard with max_depth=1 blocks nested calls (line 111)."""
+        """GlobalDepthGuard with max_depth=1 blocks nested calls."""
         guard1 = GlobalDepthGuard(max_depth=1)
         guard2 = GlobalDepthGuard(max_depth=1)
 
         with (
             guard1,
-            pytest.raises(FluentResolutionError, match=r"(?i)depth"),
+            pytest.raises(FrozenFluentError, match=r"(?i)depth"),
             guard2,
         ):
             pass
 
     def test_global_depth_guard_resets_depth_on_exit(self) -> None:
-        """GlobalDepthGuard resets depth on exit (line 124-125)."""
+        """GlobalDepthGuard resets depth on exit."""
         guard1 = GlobalDepthGuard(max_depth=5)
         guard2 = GlobalDepthGuard(max_depth=5)
 
@@ -96,7 +97,7 @@ class TestGlobalDepthGuard:
             pass
 
     def test_global_depth_guard_resets_depth_on_exception(self) -> None:
-        """GlobalDepthGuard resets depth even when exception occurs (line 124-125)."""
+        """GlobalDepthGuard resets depth even when exception occurs."""
         guard1 = GlobalDepthGuard(max_depth=5)
         guard2 = GlobalDepthGuard(max_depth=5)
 
@@ -123,14 +124,14 @@ class TestGlobalDepthGuard:
         try:
             self._nest_guards(guards[:max_depth])
             success_at_max = True
-        except FluentResolutionError:
+        except FrozenFluentError:
             success_at_max = False
 
         # Should fail at max_depth + 1
         try:
             self._nest_guards(guards[: max_depth + 1])
             success_at_max_plus_one = True
-        except FluentResolutionError:
+        except FrozenFluentError:
             success_at_max_plus_one = False
 
         assert success_at_max
@@ -153,7 +154,7 @@ class TestFluentResolverGlobalDepth:
     """Tests for FluentResolver handling of global depth exceeded errors."""
 
     def test_resolve_message_catches_global_depth_exceeded(self) -> None:
-        """resolve_message catches FluentResolutionError and returns fallback (lines 353-357)."""
+        """resolve_message catches FrozenFluentError and returns fallback."""
         # Create a resolver
         resolver = FluentResolver(
             locale="en-US",
@@ -169,11 +170,10 @@ class TestFluentResolverGlobalDepth:
             value=Pattern(elements=(TextElement(value="Hello"),)),
         )
 
-        # Mock GlobalDepthGuard to always raise FluentResolutionError
+        # Mock GlobalDepthGuard to always raise FrozenFluentError
         def mock_enter_raises(_self: GlobalDepthGuard) -> GlobalDepthGuard:
-            raise FluentResolutionError(
-                ErrorTemplate.expression_depth_exceeded(_self._max_depth)
-            )
+            diag = ErrorTemplate.expression_depth_exceeded(_self._max_depth)
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
         with patch.object(GlobalDepthGuard, "__enter__", mock_enter_raises):
             result, errors = resolver.resolve_message(message, {})
@@ -181,11 +181,12 @@ class TestFluentResolverGlobalDepth:
             # Should return fallback
             assert "{test}" in result or "test" in result
             assert len(errors) > 0
-            assert isinstance(errors[0], FluentResolutionError)
+            assert isinstance(errors[0], FrozenFluentError)
+            assert errors[0].category == ErrorCategory.RESOLUTION
             assert "depth" in str(errors[0]).lower()
 
     def test_resolve_message_global_depth_exceeded_uses_message_id(self) -> None:
-        """resolve_message uses message ID in fallback when depth exceeded (line 356)."""
+        """resolve_message uses message ID in fallback when depth exceeded."""
         resolver = FluentResolver(
             locale="en-US",
             messages={},
@@ -202,9 +203,8 @@ class TestFluentResolverGlobalDepth:
 
         # Mock GlobalDepthGuard to raise
         def mock_enter_raises(_self: GlobalDepthGuard) -> GlobalDepthGuard:
-            raise FluentResolutionError(
-                ErrorTemplate.expression_depth_exceeded(_self._max_depth)
-            )
+            diag = ErrorTemplate.expression_depth_exceeded(_self._max_depth)
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
         with patch.object(GlobalDepthGuard, "__enter__", mock_enter_raises):
             result, _errors = resolver.resolve_message(message, {})
@@ -213,7 +213,7 @@ class TestFluentResolverGlobalDepth:
             assert "custom-message-id" in result
 
     def test_resolve_message_collects_global_depth_error(self) -> None:
-        """resolve_message collects FluentResolutionError in errors tuple (line 355)."""
+        """resolve_message collects FrozenFluentError in errors tuple."""
         resolver = FluentResolver(
             locale="en-US",
             messages={},
@@ -227,18 +227,18 @@ class TestFluentResolverGlobalDepth:
             value=Pattern(elements=(TextElement(value="Hello"),)),
         )
 
-        # Mock to raise FluentResolutionError
+        # Mock to raise FrozenFluentError
         def mock_enter_raises(_self: GlobalDepthGuard) -> GlobalDepthGuard:
-            raise FluentResolutionError(
-                ErrorTemplate.expression_depth_exceeded(_self._max_depth)
-            )
+            diag = ErrorTemplate.expression_depth_exceeded(_self._max_depth)
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
         with patch.object(GlobalDepthGuard, "__enter__", mock_enter_raises):
             _result, errors = resolver.resolve_message(message, {})
 
             # Error should be collected
             assert len(errors) == 1
-            assert isinstance(errors[0], FluentResolutionError)
+            assert isinstance(errors[0], FrozenFluentError)
+            assert errors[0].category == ErrorCategory.RESOLUTION
 
 
 # ============================================================================
@@ -250,7 +250,7 @@ class TestFluentResolverBabelFallback:
     """Tests for FluentResolver Babel import error handling."""
 
     def test_select_expression_falls_back_when_babel_not_installed(self) -> None:
-        """Select expression falls through to default when Babel not installed (lines 736-738)."""
+        """Select expression falls through to default when Babel not installed."""
         # We need to test the BabelImportError path in _resolve_select_expression
         # This occurs when select_plural_category raises BabelImportError
 
@@ -304,7 +304,7 @@ class TestFluentResolverBabelFallback:
             assert errors[0].diagnostic.code.name == "PLURAL_SUPPORT_UNAVAILABLE"
 
     def test_select_expression_babel_error_uses_default_variant(self) -> None:
-        """Select expression uses default variant when Babel unavailable (line 738)."""
+        """Select expression uses default variant when Babel unavailable."""
         resolver = FluentResolver(
             locale="en-US",
             messages={},
@@ -355,7 +355,7 @@ class TestFluentResolverBabelFallback:
             assert "default-fallback" in result
 
     def test_select_expression_babel_error_with_number_literal(self) -> None:
-        """Select expression handles Babel error with NumberLiteral selector (lines 736-738)."""
+        """Select expression handles Babel error with NumberLiteral selector."""
         resolver = FluentResolver(
             locale="en-US",
             messages={},
@@ -476,14 +476,14 @@ class TestFluentResolverIntegration:
         try:
             self._nest_guards_property(guards[:max_depth])
             within_limit = True
-        except FluentResolutionError:
+        except FrozenFluentError:
             within_limit = False
 
         # Should fail beyond max_depth
         try:
             self._nest_guards_property(guards[: max_depth + 1])
             beyond_limit = True
-        except FluentResolutionError:
+        except FrozenFluentError:
             beyond_limit = False
 
         assert within_limit, f"Should succeed at depth {max_depth}"
@@ -510,7 +510,7 @@ class TestFluentResolverEdgeCases:
         guard = GlobalDepthGuard(max_depth=0)
 
         with (
-            pytest.raises(FluentResolutionError),
+            pytest.raises(FrozenFluentError),
             guard,
         ):
             pass

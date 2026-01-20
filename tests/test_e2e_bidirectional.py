@@ -37,10 +37,10 @@ from hypothesis import strategies as st
 
 from ftllexengine import (
     FluentBundle,
-    FluentReferenceError,
     parse_ftl,
     serialize_ftl,
 )
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.syntax.ast import Junk, Message, Term
 
 # =============================================================================
@@ -524,7 +524,8 @@ class TestParseFormatErrorHandling:
         result, errors = bundle.format_pattern("nonexistent")
         assert "{nonexistent}" in result
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_missing_attribute_returns_fallback(self) -> None:
         """Missing attribute returns fallback string with error."""

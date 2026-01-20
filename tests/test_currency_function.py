@@ -18,7 +18,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
-from ftllexengine.core.errors import FormattingError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.functions import currency_format
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -173,19 +173,21 @@ class TestCurrencyFunctionErrorHandling:
         assert "XXX" in result or "100" in result
 
     def test_currency_with_string_value_raises_formatting_error(self) -> None:
-        """Non-numeric value raises FormattingError with fallback."""
-        with pytest.raises(FormattingError) as exc_info:
+        """Non-numeric value raises FrozenFluentError with fallback."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             currency_format("not a number", "en-US", currency="USD")  # type: ignore
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Fallback should include currency and/or value
         fallback = exc_info.value.fallback_value
         assert "USD" in fallback or "not a number" in fallback
 
     def test_currency_with_none_raises_formatting_error(self) -> None:
-        """None value raises FormattingError with fallback."""
-        with pytest.raises(FormattingError) as exc_info:
+        """None value raises FrozenFluentError with fallback."""
+        with pytest.raises(FrozenFluentError) as exc_info:
             currency_format(None, "en-US", currency="EUR")  # type: ignore
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Fallback should include currency
         assert "EUR" in exc_info.value.fallback_value
 

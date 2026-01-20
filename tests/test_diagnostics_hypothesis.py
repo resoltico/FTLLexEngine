@@ -1,7 +1,7 @@
 """Hypothesis property-based tests for diagnostics and error handling.
 
 Critical areas tested:
-- FluentError hierarchy and diagnostic attachment
+- FrozenFluentError construction and categorization
 - Error message formatting consistency
 - Diagnostic code assignment
 - Error recovery and accumulation
@@ -15,11 +15,9 @@ from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
     Diagnostic,
+    ErrorCategory,
     ErrorTemplate,
-    FluentCyclicReferenceError,
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
+    FrozenFluentError,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode, SourceSpan
 
@@ -40,18 +38,18 @@ byte_offsets = st.integers(min_value=0, max_value=100000)
 
 
 # ============================================================================
-# PROPERTY TESTS - FLUENT ERROR CONSTRUCTION
+# PROPERTY TESTS - FROZEN FLUENT ERROR CONSTRUCTION
 # ============================================================================
 
 
-class TestFluentErrorConstruction:
-    """Property tests for FluentError exception construction."""
+class TestFrozenFluentErrorConstruction:
+    """Property tests for FrozenFluentError exception construction."""
 
     @given(message=error_messages)
     @settings(max_examples=100)
     def test_error_with_string_message(self, message: str) -> None:
-        """PROPERTY: FluentError can be constructed with string message."""
-        error = FluentError(message)
+        """PROPERTY: FrozenFluentError can be constructed with string message."""
+        error = FrozenFluentError(message, ErrorCategory.REFERENCE)
 
         assert str(error) == message
         assert error.diagnostic is None
@@ -60,7 +58,7 @@ class TestFluentErrorConstruction:
     @settings(max_examples=100)
     def test_error_preserves_message(self, message: str) -> None:
         """PROPERTY: Error message is preserved in exception."""
-        error = FluentError(message)
+        error = FrozenFluentError(message, ErrorCategory.RESOLUTION)
 
         # Message must be retrievable
         assert message in str(error)
@@ -75,7 +73,7 @@ class TestFluentErrorConstruction:
     def test_error_with_diagnostic_object(
         self, msg_id: str, line: int, col: int, start: int
     ) -> None:
-        """PROPERTY: FluentError can be constructed with Diagnostic object."""
+        """PROPERTY: FrozenFluentError can be constructed with Diagnostic object."""
         end = start + len(msg_id)
         span = SourceSpan(start=start, end=end, line=line, column=col)
         message_text = f"Unknown message: {msg_id}"
@@ -85,7 +83,9 @@ class TestFluentErrorConstruction:
             span=span,
         )
 
-        error = FluentError(diagnostic)
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
+        )
 
         assert error.diagnostic is not None
         assert error.diagnostic.code == DiagnosticCode.MESSAGE_NOT_FOUND
@@ -93,41 +93,56 @@ class TestFluentErrorConstruction:
 
 
 # ============================================================================
-# PROPERTY TESTS - ERROR HIERARCHY
+# PROPERTY TESTS - ERROR CATEGORIZATION
 # ============================================================================
 
 
-class TestErrorHierarchy:
-    """Property tests for exception hierarchy."""
+class TestErrorCategorization:
+    """Property tests for FrozenFluentError categorization via ErrorCategory."""
 
     @given(message=error_messages)
     @settings(max_examples=50)
-    def test_reference_error_is_fluent_error(self, message: str) -> None:
-        """PROPERTY: FluentReferenceError inherits from FluentError."""
-        error = FluentReferenceError(message)
+    def test_reference_category(self, message: str) -> None:
+        """PROPERTY: FrozenFluentError with REFERENCE category is catchable."""
+        error = FrozenFluentError(message, ErrorCategory.REFERENCE)
 
-        assert isinstance(error, FluentError)
+        assert error.category == ErrorCategory.REFERENCE
         assert isinstance(error, Exception)
 
     @given(message=error_messages)
     @settings(max_examples=50)
-    def test_resolution_error_is_fluent_error(self, message: str) -> None:
-        """PROPERTY: FluentResolutionError inherits from FluentError."""
-        error = FluentResolutionError(message)
+    def test_resolution_category(self, message: str) -> None:
+        """PROPERTY: FrozenFluentError with RESOLUTION category is catchable."""
+        error = FrozenFluentError(message, ErrorCategory.RESOLUTION)
 
-        assert isinstance(error, FluentError)
+        assert error.category == ErrorCategory.RESOLUTION
         assert isinstance(error, Exception)
 
     @given(message=error_messages)
     @settings(max_examples=50)
-    def test_cyclic_reference_error_is_reference_error(
-        self, message: str
-    ) -> None:
-        """PROPERTY: FluentCyclicReferenceError inherits from FluentReferenceError."""
-        error = FluentCyclicReferenceError(message)
+    def test_cyclic_category(self, message: str) -> None:
+        """PROPERTY: FrozenFluentError with CYCLIC category is catchable."""
+        error = FrozenFluentError(message, ErrorCategory.CYCLIC)
 
-        assert isinstance(error, FluentReferenceError)
-        assert isinstance(error, FluentError)
+        assert error.category == ErrorCategory.CYCLIC
+        assert isinstance(error, Exception)
+
+    @given(message=error_messages)
+    @settings(max_examples=50)
+    def test_parse_category(self, message: str) -> None:
+        """PROPERTY: FrozenFluentError with PARSE category is catchable."""
+        error = FrozenFluentError(message, ErrorCategory.PARSE)
+
+        assert error.category == ErrorCategory.PARSE
+        assert isinstance(error, Exception)
+
+    @given(message=error_messages)
+    @settings(max_examples=50)
+    def test_formatting_category(self, message: str) -> None:
+        """PROPERTY: FrozenFluentError with FORMATTING category is catchable."""
+        error = FrozenFluentError(message, ErrorCategory.FORMATTING)
+
+        assert error.category == ErrorCategory.FORMATTING
         assert isinstance(error, Exception)
 
 
@@ -414,7 +429,9 @@ class TestErrorRecovery:
         )
 
         # Create error from diagnostic
-        error = FluentReferenceError(diagnostic)
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
+        )
 
         # Should be able to extract location from formatted error
         formatted = str(error)
@@ -427,7 +444,10 @@ class TestErrorRecovery:
         self, messages: list[str]
     ) -> None:
         """PROPERTY: Multiple errors can be accumulated in a list."""
-        errors: list[FluentError] = [FluentError(msg) for msg in messages]
+        errors: list[FrozenFluentError] = [
+            FrozenFluentError(msg, ErrorCategory.REFERENCE)
+            for msg in messages
+        ]
 
         assert len(errors) == len(messages)
 
@@ -446,13 +466,13 @@ class TestExceptionBehavior:
     @given(message=error_messages)
     @settings(max_examples=50)
     def test_errors_can_be_raised_and_caught(self, message: str) -> None:
-        """PROPERTY: FluentError can be raised and caught as exception."""
+        """PROPERTY: FrozenFluentError can be raised and caught as exception."""
         caught = False
         caught_message = ""
 
         try:
-            raise FluentError(message)
-        except FluentError as e:
+            raise FrozenFluentError(message, ErrorCategory.REFERENCE)
+        except FrozenFluentError as e:
             caught = True
             caught_message = str(e)
 
@@ -461,47 +481,35 @@ class TestExceptionBehavior:
 
     @given(message=error_messages)
     @settings(max_examples=50)
-    def test_specific_errors_catchable_as_base(self, message: str) -> None:
-        """PROPERTY: Specific errors catchable as FluentError base class."""
-        error_types = [
-            FluentReferenceError,
-            FluentResolutionError,
-            FluentCyclicReferenceError,
+    def test_all_categories_are_catchable(self, message: str) -> None:
+        """PROPERTY: All ErrorCategory values are catchable as FrozenFluentError."""
+        categories = [
+            ErrorCategory.REFERENCE,
+            ErrorCategory.RESOLUTION,
+            ErrorCategory.CYCLIC,
+            ErrorCategory.PARSE,
+            ErrorCategory.FORMATTING,
         ]
 
-        for error_type in error_types:
+        for category in categories:
             caught = False
             try:
-                raise error_type(message)
-            except FluentError:
+                raise FrozenFluentError(message, category)
+            except FrozenFluentError:
                 caught = True
 
             assert caught
 
     @given(msg_id=identifiers)
     @settings(max_examples=50)
-    def test_cyclic_error_catchable_as_reference_error(
+    def test_cyclic_error_has_cyclic_category(
         self, msg_id: str
     ) -> None:
-        """PROPERTY: CyclicReferenceError catchable as ReferenceError."""
-        caught_as_cyclic = False
-        caught_as_reference = False
-
-        # Can catch as specific type
+        """PROPERTY: Cyclic errors have CYCLIC category."""
         cycle_msg = f"Cycle: {msg_id}"
-        try:
-            raise FluentCyclicReferenceError(cycle_msg)
-        except FluentCyclicReferenceError:
-            caught_as_cyclic = True
+        error = FrozenFluentError(cycle_msg, ErrorCategory.CYCLIC)
 
-        # Can catch as parent type
-        try:
-            raise FluentCyclicReferenceError(cycle_msg)
-        except FluentReferenceError:
-            caught_as_reference = True
-
-        assert caught_as_cyclic
-        assert caught_as_reference
+        assert error.category == ErrorCategory.CYCLIC
 
 
 # ============================================================================

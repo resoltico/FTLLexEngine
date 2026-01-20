@@ -157,8 +157,8 @@ class TestClearAllCaches:
 
     def test_clear_all_empty_is_noop(self) -> None:
         """Clearing all caches when empty does not raise."""
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]  # Multiple clears are safe
+        ftllexengine.clear_all_caches()
+        ftllexengine.clear_all_caches()  # Multiple clears are safe
 
     def test_clear_all_clears_locale_cache(self) -> None:
         """clear_all_caches() clears locale cache."""
@@ -167,7 +167,7 @@ class TestClearAllCaches:
         assert get_babel_locale.cache_info().currsize >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
+        ftllexengine.clear_all_caches()
 
         # Locale cache should be empty
         assert get_babel_locale.cache_info().currsize == 0
@@ -180,7 +180,7 @@ class TestClearAllCaches:
         assert _get_date_patterns.cache_info().currsize >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
+        ftllexengine.clear_all_caches()
 
         # Date caches should be empty
         assert _get_date_patterns.cache_info().currsize == 0
@@ -193,7 +193,7 @@ class TestClearAllCaches:
         assert _get_currency_pattern_fast.cache_info().currsize >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
+        ftllexengine.clear_all_caches()
 
         # Currency caches should be empty
         assert _get_currency_pattern_fast.cache_info().currsize == 0
@@ -210,7 +210,7 @@ class TestClearAllCaches:
         assert size >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
+        ftllexengine.clear_all_caches()
 
         # LocaleContext cache should be empty
         info_after = LocaleContext.cache_info()
@@ -233,7 +233,7 @@ class TestClearAllCaches:
         result1 = introspect_message(message)
 
         # Clear all caches
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
+        ftllexengine.clear_all_caches()
 
         # After clear, introspecting same message should create new result
         # (We can't directly check introspection cache size, but we can verify
@@ -300,9 +300,9 @@ class TestCacheLifecycleIdempotency:
         _get_date_patterns("en_US")
         _get_currency_pattern_fast()
 
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
-        ftllexengine.clear_all_caches()  # type: ignore[attr-defined]
+        ftllexengine.clear_all_caches()
+        ftllexengine.clear_all_caches()
+        ftllexengine.clear_all_caches()
 
         assert get_babel_locale.cache_info().currsize == 0
         assert _get_date_patterns.cache_info().currsize == 0

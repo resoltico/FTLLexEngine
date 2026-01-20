@@ -1,4 +1,4 @@
-"""Hypothesis property-based tests for FormatCache.
+"""Hypothesis property-based tests for IntegrityCache.
 
 Tests cache invariants, LRU eviction, thread safety, and robustness.
 Complements test_cache_basic.py with property-based testing.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 
 # ============================================================================
 # HYPOTHESIS STRATEGIES
@@ -26,9 +26,9 @@ locale_codes = st.sampled_from(["en_US", "de_DE", "lv_LV", "fr_FR", "ja_JP"])
 attributes = st.one_of(st.none(), st.text(min_size=1))
 
 # Strategy for cache values (result, errors) - remove arbitrary max_size
-cache_values: st.SearchStrategy[tuple[str, list]] = st.tuples(
+cache_values: st.SearchStrategy[tuple[str, tuple]] = st.tuples(
     st.text(min_size=0),
-    st.lists(st.just([]), max_size=0),  # Empty error list for simplicity
+    st.just(()),  # Empty error tuple for simplicity
 )
 
 # Strategy for message arguments - keep collection bound, remove text max_size
@@ -58,7 +58,7 @@ class TestCacheInvariants:
     @settings(max_examples=100)
     def test_cache_maxsize_enforced(self, maxsize: int) -> None:
         """INVARIANT: Cache never exceeds maxsize."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Add more than maxsize entries
         for i in range(maxsize + 10):
@@ -68,7 +68,8 @@ class TestCacheInvariants:
                 None,
                 "en_US",
                 True,
-                (f"result_{i}", ()),
+                f"result_{i}",
+                (),
             )
 
         # Cache should not exceed maxsize
@@ -88,15 +89,17 @@ class TestCacheInvariants:
         locale: str,
         args: dict | None,
         attr: str | None,
-        value: tuple,
+        value: tuple[str, tuple],
     ) -> None:
         """PROPERTY: get(k) after put(k, v) returns v."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
-        cache.put(msg_id, args, attr, locale, True, value)
-        result = cache.get(msg_id, args, attr, locale, True)
+        formatted, errors = value
+        cache.put(msg_id, args, attr, locale, True, formatted, errors)
+        entry = cache.get(msg_id, args, attr, locale, True)
 
-        assert result == value
+        assert entry is not None
+        assert entry.to_tuple() == value
 
     @given(
         msg_id=message_ids,
@@ -109,7 +112,7 @@ class TestCacheInvariants:
         locale: str,
     ) -> None:
         """PROPERTY: get(k) without put(k) returns None."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
         result = cache.get(msg_id, None, None, locale, True)
 
@@ -119,11 +122,11 @@ class TestCacheInvariants:
     @settings(max_examples=50)
     def test_clear_resets_cache_to_empty(self, maxsize: int) -> None:
         """PROPERTY: clear() empties cache and resets counters."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Add some entries
         for i in range(min(10, maxsize)):
-            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
 
         # Clear
         cache.clear()
@@ -144,12 +147,13 @@ class TestCacheInvariants:
         self,
         msg_id: str,
         locale: str,
-        value: tuple,
+        value: tuple[str, tuple],
     ) -> None:
         """PROPERTY: Cache hits increment hit counter."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
-        cache.put(msg_id, None, None, locale, True, value)
+        formatted, errors = value
+        cache.put(msg_id, None, None, locale, True, formatted, errors)
 
         # First get - cache hit
         initial_stats = cache.get_stats()
@@ -169,7 +173,7 @@ class TestCacheInvariants:
         locale: str,
     ) -> None:
         """PROPERTY: Cache misses increment miss counter."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
         initial_stats = cache.get_stats()
         cache.get(msg_id, None, None, locale, True)  # Cache miss
@@ -190,17 +194,17 @@ class TestLRUEviction:
     @settings(max_examples=50)
     def test_lru_evicts_least_recently_used(self, maxsize: int) -> None:
         """PROPERTY: LRU eviction removes oldest entry."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Fill cache to capacity
         for i in range(maxsize):
-            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
 
         # Access first entry to make it recently used
         cache.get("msg_0", None, None, "en_US", True)
 
         # Add one more entry (should evict msg_1, not msg_0)
-        cache.put("msg_new", None, None, "en_US", True, ("result_new", ()))
+        cache.put("msg_new", None, None, "en_US", True, "result_new", ())
 
         # msg_0 should still be in cache (recently accessed)
         assert cache.get("msg_0", None, None, "en_US", True) is not None
@@ -223,11 +227,11 @@ class TestLRUEviction:
         access_pattern: list[int],
     ) -> None:
         """PROPERTY: LRU eviction respects access patterns."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Fill cache
         for i in range(maxsize):
-            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
 
         # Access entries according to pattern
         for idx in access_pattern:
@@ -236,7 +240,7 @@ class TestLRUEviction:
 
         # Add new entries (will trigger evictions)
         for i in range(maxsize, maxsize + 3):
-            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
 
         # Recently accessed entries should still be in cache
         # (This tests the LRU property implicitly)
@@ -261,18 +265,20 @@ class TestCacheKeyHandling:
         self,
         msg_id: str,
         locale: str,
-        value: tuple,
+        value: tuple[str, tuple],
     ) -> None:
         """PROPERTY: Same key components retrieve same cached value."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
+        formatted, errors = value
         # Put with specific key
-        cache.put(msg_id, None, None, locale, True, value)
+        cache.put(msg_id, None, None, locale, True, formatted, errors)
 
         # Get with same key components
-        result = cache.get(msg_id, None, None, locale, True)
+        entry = cache.get(msg_id, None, None, locale, True)
 
-        assert result == value
+        assert entry is not None
+        assert entry.to_tuple() == value
 
     @given(
         msg_id=message_ids,
@@ -286,15 +292,16 @@ class TestCacheKeyHandling:
         msg_id: str,
         locale1: str,
         locale2: str,
-        value: tuple,
+        value: tuple[str, tuple],
     ) -> None:
         """PROPERTY: Different locales create different cache keys."""
         assume(locale1 != locale2)
 
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
+        formatted, errors = value
         # Put with locale1
-        cache.put(msg_id, None, None, locale1, True, value)
+        cache.put(msg_id, None, None, locale1, True, formatted, errors)
 
         # Get with locale2 should miss
         result = cache.get(msg_id, None, None, locale2, True)
@@ -315,15 +322,16 @@ class TestCacheKeyHandling:
         locale: str,
         attr1: str | None,
         attr2: str | None,
-        value: tuple,
+        value: tuple[str, tuple],
     ) -> None:
         """PROPERTY: Different attributes create different cache keys."""
         assume(attr1 != attr2)
 
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
+        formatted, errors = value
         # Put with attr1
-        cache.put(msg_id, None, attr1, locale, True, value)
+        cache.put(msg_id, None, attr1, locale, True, formatted, errors)
 
         # Get with attr2 should miss
         result = cache.get(msg_id, None, attr2, locale, True)
@@ -340,21 +348,23 @@ class TestCacheKeyHandling:
         self,
         msg_id: str,
         locale: str,
-        value: tuple,
+        value: tuple[str, tuple],
     ) -> None:
         """PROPERTY: Equivalent args dicts produce same cache key."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
+        formatted, errors = value
         # Put with args dict
         args = {"x": 1, "y": 2}
-        cache.put(msg_id, args, None, locale, True, value)
+        cache.put(msg_id, args, None, locale, True, formatted, errors)
 
         # Get with equivalent dict (different order)
         args_reordered = {"y": 2, "x": 1}
-        result = cache.get(msg_id, args_reordered, None, locale, True)
+        entry = cache.get(msg_id, args_reordered, None, locale, True)
 
         # Should hit cache (dict key normalized)
-        assert result == value
+        assert entry is not None
+        assert entry.to_tuple() == value
 
 
 # ============================================================================
@@ -381,15 +391,15 @@ class TestCacheRobustness:
     @settings(max_examples=200)
     def test_cache_handles_various_arg_types(self, args: dict) -> None:
         """ROBUSTNESS: Cache handles various argument types."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(maxsize=100, strict=False)
 
         # Should not crash with various arg types
         try:
-            cache.put("msg", args, None, "en_US", True, ("result", ()))
-            result = cache.get("msg", args, None, "en_US", True)
+            cache.put("msg", args, None, "en_US", True, "result", ())
+            entry = cache.get("msg", args, None, "en_US", True)
             # If put succeeded, get should return the value
-            if result is not None:
-                assert result == ("result", ())
+            if entry is not None:
+                assert entry.to_tuple() == ("result", ())
         except (TypeError, ValueError):
             # Some types may not be hashable - acceptable
             pass
@@ -405,11 +415,11 @@ class TestCacheRobustness:
         maxsize: int,
     ) -> None:
         """ROBUSTNESS: Cache handles duplicate puts gracefully."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Put same message multiple times
         for msg_id in msg_ids:
-            cache.put(msg_id, None, None, "en_US", True, (f"result_{msg_id}", ()))
+            cache.put(msg_id, None, None, "en_US", True, f"result_{msg_id}", ())
 
         # Cache should still respect maxsize
         assert cache.get_stats()["size"] <= maxsize
@@ -418,10 +428,10 @@ class TestCacheRobustness:
     @settings(max_examples=50)
     def test_cache_stats_never_negative(self, maxsize: int) -> None:
         """ROBUSTNESS: Cache stats are never negative."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Perform various operations
-        cache.put("msg", None, None, "en_US", True, ("result", ()))
+        cache.put("msg", None, None, "en_US", True, "result", ())
         cache.get("msg", None, None, "en_US", True)
         cache.get("missing", None, None, "en_US", True)
         cache.clear()
@@ -457,11 +467,11 @@ class TestCacheStatistics:
         operations: list[tuple[str, str]],
     ) -> None:
         """PROPERTY: hit_rate = hits / (hits + misses)."""
-        cache = FormatCache(maxsize=20)
+        cache = IntegrityCache(maxsize=20, strict=False)
 
         for op, msg_id in operations:
             if op == "put":
-                cache.put(msg_id, None, None, "en_US", True, (f"result_{msg_id}", ()))
+                cache.put(msg_id, None, None, "en_US", True, f"result_{msg_id}", ())
             elif op == "get":
                 cache.get(msg_id, None, None, "en_US", True)
 
@@ -487,11 +497,11 @@ class TestCacheStatistics:
         maxsize: int,
     ) -> None:
         """PROPERTY: size stat equals actual number of cached entries."""
-        cache = FormatCache(maxsize=maxsize)
+        cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Add entries
         for i in range(num_entries):
-            cache.put(f"msg_{i}", None, None, "en_US", True, (f"result_{i}", ()))
+            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
 
         stats = cache.get_stats()
         expected_size = min(num_entries, maxsize)

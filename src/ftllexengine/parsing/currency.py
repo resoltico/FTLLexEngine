@@ -1,6 +1,6 @@
 """Currency parsing with locale awareness.
 
-API: parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]].
+API: parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]].
 Parse errors returned in tuple. Raises BabelImportError if Babel not installed.
 
 Thread-safe. Uses Babel for currency symbol mapping and number parsing.
@@ -37,7 +37,7 @@ import functools
 import re
 from decimal import Decimal
 
-from ftllexengine.diagnostics import FluentParseError
+from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
@@ -433,7 +433,7 @@ def _resolve_currency_code(
     *,
     default_currency: str | None,
     infer_from_locale: bool,
-) -> tuple[str | None, FluentParseError | None]:
+) -> tuple[str | None, FrozenFluentError | None]:
     """Resolve currency string to ISO code with error handling.
 
     Helper function to reduce statement count in parse_currency.
@@ -460,9 +460,13 @@ def _resolve_currency_code(
         # ISO code - validate against CLDR data
         if currency_str not in valid_iso_codes:
             diagnostic = ErrorTemplate.parse_currency_code_invalid(currency_str, value)
-            return (None, FluentParseError(
-                diagnostic, input_value=value, locale_code=locale_code, parse_type="currency"
-            ))
+            context = FrozenErrorContext(
+                input_value=str(value), locale_code=locale_code, parse_type="currency"
+            )
+            error = FrozenFluentError(
+                str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+            )
+            return (None, error)
         return (currency_str, None)
 
     # It's a symbol - check if ambiguous
@@ -480,17 +484,25 @@ def _resolve_currency_code(
                 return (inferred, None)
         # No resolution available
         diagnostic = ErrorTemplate.parse_currency_ambiguous(currency_str, value)
-        return (None, FluentParseError(
-            diagnostic, input_value=value, locale_code=locale_code, parse_type="currency"
-        ))
+        context = FrozenErrorContext(
+            input_value=str(value), locale_code=locale_code, parse_type="currency"
+        )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        return (None, error)
 
     # Unambiguous symbol - use mapping
     mapped = symbol_map.get(currency_str)
     if mapped is None:
         diagnostic = ErrorTemplate.parse_currency_symbol_unknown(currency_str, value)
-        return (None, FluentParseError(
-            diagnostic, input_value=value, locale_code=locale_code, parse_type="currency"
-        ))
+        context = FrozenErrorContext(
+            input_value=str(value), locale_code=locale_code, parse_type="currency"
+        )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        return (None, error)
     return (mapped, None)
 
 
@@ -582,7 +594,7 @@ def parse_currency(
     *,
     default_currency: str | None = None,
     infer_from_locale: bool = False,
-) -> tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]:
+) -> tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]:
     """Parse locale-aware currency string to (amount, currency_code).
 
     Extracts both numeric value and currency code from formatted string.
@@ -600,7 +612,7 @@ def parse_currency(
     Returns:
         Tuple of (result, errors):
         - result: Tuple of (amount, currency_code), or None if parsing failed
-        - errors: Tuple of FluentParseError (empty tuple on success)
+        - errors: Tuple of FrozenFluentError (empty tuple on success)
 
     Raises:
         BabelImportError: If Babel is not installed
@@ -647,7 +659,7 @@ def parse_currency(
     Thread Safety:
         Thread-safe. Uses Babel (no global state).
     """
-    errors: list[FluentParseError] = []
+    errors: list[FrozenFluentError] = []
 
     # Lazy import to support parser-only installations
     try:
@@ -667,28 +679,30 @@ def parse_currency(
         diagnostic = ErrorTemplate.parse_currency_failed(  # type: ignore[unreachable]
             str(value), locale_code, f"Expected string, got {type(value).__name__}"
         )
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=str(value),
-                locale_code=locale_code,
-                parse_type="currency",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
     except (UnknownLocaleError, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="currency",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     # Extract currency symbol or code using tiered pattern matching.
@@ -707,14 +721,15 @@ def parse_currency(
         diagnostic = ErrorTemplate.parse_currency_failed(
             value, locale_code, "No currency symbol or code found"
         )
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="currency",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     currency_str = match.group(1)
@@ -745,14 +760,15 @@ def parse_currency(
         amount = parse_decimal(number_str, locale=locale)
     except NumberFormatError as e:
         diagnostic = ErrorTemplate.parse_amount_invalid(number_str, value, str(e))
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="currency",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     return ((amount, currency_code), tuple(errors))

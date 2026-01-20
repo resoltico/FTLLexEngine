@@ -12,7 +12,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics import FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.function_bridge import (
     FluentFunction,
     FluentValue,
@@ -206,14 +206,15 @@ class TestFunctionCalling:
         assert result == "42:2"
 
     def test_call_unknown_function_raises(self) -> None:
-        """Verify call raises FluentResolutionError for unknown function."""
+        """Verify call raises FrozenFluentError for unknown function."""
         registry = FunctionRegistry()
 
-        with pytest.raises(FluentResolutionError, match="UNKNOWN"):
+        with pytest.raises(FrozenFluentError, match="UNKNOWN") as exc_info:
             registry.call("UNKNOWN", [], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_call_function_with_type_error(self) -> None:
-        """Verify call wraps TypeError in FluentResolutionError."""
+        """Verify call wraps TypeError in FrozenFluentError."""
 
         def bad_func(value: str, required_param: str) -> str:
             return f"{value}:{required_param}"
@@ -222,11 +223,12 @@ class TestFunctionCalling:
         registry.register(bad_func, ftl_name="BAD")
 
         # Call without required parameter
-        with pytest.raises(FluentResolutionError, match="BAD"):
+        with pytest.raises(FrozenFluentError, match="BAD") as exc_info:
             registry.call("BAD", ["test"], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_call_function_with_value_error(self) -> None:
-        """Verify call wraps ValueError in FluentResolutionError."""
+        """Verify call wraps ValueError in FrozenFluentError."""
 
         def raises_value_error(_value: str) -> str:
             msg = "intentional error"
@@ -235,8 +237,9 @@ class TestFunctionCalling:
         registry = FunctionRegistry()
         registry.register(raises_value_error, ftl_name="ERROR")
 
-        with pytest.raises(FluentResolutionError, match="ERROR"):
+        with pytest.raises(FrozenFluentError, match="ERROR") as exc_info:
             registry.call("ERROR", ["test"], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_call_function_with_arithmetic_error(self) -> None:
         """Verify call propagates ArithmeticError (fail-fast behavior).

@@ -13,7 +13,7 @@ import contextlib
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics import FluentReferenceError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from tests.strategies import ftl_identifiers, ftl_simple_text
 
@@ -48,16 +48,17 @@ class TestBundleMessageRegistry:
     )
     @settings(max_examples=300)
     def test_unregistered_message_raises_error(self, msg_id: str) -> None:
-        """Property: Accessing unregistered message raises FluentReferenceError."""
+        """Property: Accessing unregistered message raises FrozenFluentError."""
         bundle = FluentBundle("en_US")
 
         nonexistent_id = f"never_registered_{msg_id}"
 
         result, errors = bundle.format_pattern(nonexistent_id)
         assert len(errors) == 1, f"Expected 1 error for nonexistent message, got {len(errors)}"
-        assert isinstance(errors[0], FluentReferenceError), (
-            f"Expected FluentReferenceError, got {type(errors[0])}"
+        assert isinstance(errors[0], FrozenFluentError), (
+            f"Expected FrozenFluentError, got {type(errors[0])}"
         )
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert result == f"{{{nonexistent_id}}}", f"Expected fallback, got {result}"
 
     @given(

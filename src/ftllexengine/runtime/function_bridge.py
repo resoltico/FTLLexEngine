@@ -35,7 +35,7 @@ from functools import wraps
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Protocol, overload
 
-from ftllexengine.diagnostics import ErrorTemplate, FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, ErrorTemplate, FrozenFluentError
 
 if TYPE_CHECKING:
     from ftllexengine.runtime.function_metadata import FunctionMetadata
@@ -414,12 +414,13 @@ class FunctionRegistry:
             The resolver will format non-string values to strings for final output.
 
         Raises:
-            FluentReferenceError: If function not found
-            FluentResolutionError: If function execution fails
+            FrozenFluentError: If function not found (category=REFERENCE)
+            FrozenFluentError: If function execution fails (category=RESOLUTION)
         """
         # Check if function exists
         if ftl_name not in self._functions:
-            raise FluentResolutionError(ErrorTemplate.function_not_found(ftl_name))
+            diag = ErrorTemplate.function_not_found(ftl_name)
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
         func_sig = self._functions[ftl_name]
 
@@ -447,7 +448,8 @@ class FunctionRegistry:
         try:
             return func_sig.callable(*positional, **python_kwargs)
         except (TypeError, ValueError) as e:
-            raise FluentResolutionError(ErrorTemplate.function_failed(ftl_name, str(e))) from e
+            diag = ErrorTemplate.function_failed(ftl_name, str(e))
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag) from e
 
     def has_function(self, ftl_name: str) -> bool:
         """Check if function is registered.

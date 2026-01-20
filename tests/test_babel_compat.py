@@ -496,8 +496,8 @@ class TestGetBabelDatesProperties:
             assert callable(getattr(dates, func_name))
 
 
-class TestBreakingChangesV071:
-    """Test that v0.71.0 breaking changes are correctly enforced."""
+class TestBabelCompatModuleExports:
+    """Test babel_compat module export boundaries."""
 
     def test_get_babel_locale_not_exported_from_babel_compat(self) -> None:
         """get_babel_locale is no longer exported from babel_compat module."""

@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from ftllexengine.constants import (
     DEFAULT_CACHE_SIZE,
@@ -22,15 +23,15 @@ from ftllexengine.core.depth_guard import depth_clamp
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
+    ErrorCategory,
     ErrorTemplate,
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
+    FrozenFluentError,
     ValidationResult,
 )
+from ftllexengine.integrity import FormattingIntegrityError, IntegrityContext
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.locale_utils import get_system_locale
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -115,6 +116,7 @@ class FluentBundle:
         "_owns_registry",
         "_parser",
         "_rwlock",
+        "_strict",
         "_term_deps",
         "_terms",
         "_use_isolating",
@@ -166,6 +168,7 @@ class FluentBundle:
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        strict: bool = False,
     ) -> None:
         """Initialize bundle for locale.
 
@@ -186,6 +189,10 @@ class FluentBundle:
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } } structures.
+            strict: Enable strict mode for financial applications (default: False).
+                   When True, format_pattern raises FormattingIntegrityError on ANY error
+                   instead of returning fallback values. Use for monetary/critical data
+                   where silent fallbacks are unacceptable.
 
         Raises:
             ValueError: If locale code is empty or has invalid format
@@ -207,12 +214,16 @@ class FluentBundle:
             >>>
             >>> # Stricter limits for untrusted input
             >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
+            >>>
+            >>> # Financial-grade strict mode
+            >>> bundle = FluentBundle("en", strict=True)
         """
         # Validate locale format
         FluentBundle._validate_locale_format(locale)
 
         self._locale = locale
         self._use_isolating = use_isolating
+        self._strict = strict
         self._messages: dict[str, Message] = {}
         self._terms: dict[str, Term] = {}
 
@@ -249,20 +260,22 @@ class FluentBundle:
             self._function_registry = get_shared_registry()
             self._owns_registry = False
 
-        # Format cache (opt-in)
-        self._cache: FormatCache | None = None
+        # Format cache (opt-in) with integrity verification
+        self._cache: IntegrityCache | None = None
         self._cache_size = cache_size
         if enable_cache:
-            self._cache = FormatCache(maxsize=cache_size)
+            # Default: strict=True for data integrity, write_once=False for flexibility
+            self._cache = IntegrityCache(maxsize=cache_size, strict=False)
 
         # Context manager state tracking (cache invalidation optimization)
         self._modified_in_context = False
 
         logger.info(
-            "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s)",
+            "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s, strict=%s)",
             locale,
             use_isolating,
             "enabled" if enable_cache else "disabled",
+            strict,
         )
 
     @property
@@ -292,6 +305,27 @@ class FluentBundle:
             True
         """
         return self._use_isolating
+
+    @property
+    def strict(self) -> bool:
+        """Get whether strict mode is enabled (read-only).
+
+        Strict mode raises FormattingIntegrityError on ANY formatting error
+        instead of returning fallback values. Essential for financial applications
+        where silent fallbacks are unacceptable.
+
+        Returns:
+            bool: True if strict mode is enabled, False otherwise
+
+        Example:
+            >>> bundle = FluentBundle("en", strict=True)
+            >>> bundle.strict
+            True
+            >>> bundle_normal = FluentBundle("en")
+            >>> bundle_normal.strict
+            False
+        """
+        return self._strict
 
     @property
     def cache_enabled(self) -> bool:
@@ -745,7 +779,7 @@ class FluentBundle:
         args: Mapping[str, FluentValue] | None = None,
         *,
         attribute: str | None = None,
-    ) -> tuple[str, tuple[FluentError, ...]]:
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Format message to string with error reporting.
 
         Mozilla python-fluent aligned API that returns both the formatted
@@ -759,13 +793,24 @@ class FluentBundle:
         Returns:
             Tuple of (formatted_string, errors)
             - formatted_string: Best-effort formatted output (never empty)
-            - errors: Tuple of FluentError instances encountered during resolution (immutable)
+            - errors: Tuple of FrozenFluentError instances encountered during resolution (immutable)
+
+        Raises:
+            FormattingIntegrityError: In strict mode, if ANY error occurs during formatting.
+                The exception carries the original errors, fallback value, and message ID.
 
         Note:
-            This method handles expected formatting errors gracefully. All
-            anticipated errors (missing messages, variables, references) are
-            collected and returned in the errors list. The formatted string
-            always contains a readable fallback value per Fluent specification.
+            In non-strict mode (default), this method handles expected formatting
+            errors gracefully. All anticipated errors (missing messages, variables,
+            references) are collected and returned in the errors list. The formatted
+            string always contains a readable fallback value per Fluent specification.
+
+            In strict mode (bundle.strict=True), FormattingIntegrityError is raised
+            immediately when ANY error occurs. This is required for financial applications
+            where silent fallbacks are unacceptable. The exception provides:
+            - fluent_errors: The original FrozenFluentError instances
+            - fallback_value: What would have been returned in non-strict mode
+            - message_id: The message that failed to format
 
             If an attribute name is duplicated within a message (validation warning),
             the last definition is used during resolution (last-wins semantics).
@@ -777,35 +822,81 @@ class FluentBundle:
             >>> assert result == 'Sveiki, pasaule!'
             >>> assert errors == ()
 
-            >>> # Missing variable - returns fallback and error
+            >>> # Missing variable - returns fallback and error (non-strict mode)
             >>> bundle.add_resource('msg = Hello { $name }!')
             >>> result, errors = bundle.format_pattern("msg", {})
             >>> assert result == 'Hello {$name}!'  # Readable fallback
             >>> assert len(errors) == 1
-            >>> assert isinstance(errors[0], FluentReferenceError)
+            >>> assert errors[0].category == ErrorCategory.REFERENCE
 
             >>> # Attribute access
             >>> result, errors = bundle.format_pattern("button-save", attribute="tooltip")
             >>> assert result == 'Saglabā pašreizējo ierakstu datubāzē'
             >>> assert errors == ()
+
+            >>> # Strict mode - raises on errors
+            >>> strict_bundle = FluentBundle("en", strict=True)
+            >>> strict_bundle.add_resource('msg = Hello { $name }!')
+            >>> strict_bundle.format_pattern("msg", {})  # Raises FormattingIntegrityError
         """
         with self._rwlock.read():
             return self._format_pattern_impl(message_id, args, attribute)
+
+    def _raise_strict_error(
+        self,
+        message_id: str,
+        fallback_value: str,
+        errors: tuple[FrozenFluentError, ...],
+    ) -> NoReturn:
+        """Raise FormattingIntegrityError for strict mode (internal helper).
+
+        Args:
+            message_id: The message ID that failed to format
+            fallback_value: The fallback value that would be returned in non-strict mode
+            errors: Tuple of FrozenFluentError instances
+
+        Raises:
+            FormattingIntegrityError: Always raised with error details
+        """
+        error_summary = "; ".join(str(e) for e in errors[:3])
+        if len(errors) > 3:
+            error_summary += f" (and {len(errors) - 3} more)"
+
+        context = IntegrityContext(
+            component="bundle",
+            operation="format_pattern",
+            key=message_id,
+            expected="<no errors>",
+            actual=f"<{len(errors)} error(s)>",
+            timestamp=time.monotonic(),
+        )
+
+        msg = (
+            f"Strict mode: formatting '{message_id}' produced {len(errors)} error(s): "
+            f"{error_summary}"
+        )
+        raise FormattingIntegrityError(
+            msg,
+            context=context,
+            fluent_errors=errors,
+            fallback_value=fallback_value,
+            message_id=message_id,
+        )
 
     def _format_pattern_impl(
         self,
         message_id: str,
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
-    ) -> tuple[str, tuple[FluentError, ...]]:
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Internal implementation of format_pattern (no locking)."""
         # Check cache first (if enabled)
         if self._cache is not None:
-            cached = self._cache.get(
+            cached_entry = self._cache.get(
                 message_id, args, attribute, self._locale, self._use_isolating
             )
-            if cached is not None:
-                return cached
+            if cached_entry is not None:
+                return cached_entry.to_tuple()
 
         # Validate message_id is non-empty string
         if not message_id or not isinstance(message_id, str):
@@ -814,7 +905,12 @@ class FluentBundle:
                 code=DiagnosticCode.MESSAGE_NOT_FOUND,
                 message="Invalid message ID: empty or non-string",
             )
-            error = FluentReferenceError(diagnostic)
+            error = FrozenFluentError(
+                str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
+            )
+            # Strict mode: raise instead of returning fallback
+            if self._strict:
+                self._raise_strict_error("<empty>", FALLBACK_INVALID, (error,))
             # Don't cache errors
             return (FALLBACK_INVALID, (error,))
 
@@ -827,7 +923,12 @@ class FluentBundle:
                 code=DiagnosticCode.INVALID_ARGUMENT,
                 message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
             )
-            error = FluentResolutionError(diagnostic)
+            error = FrozenFluentError(
+                str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
+            )
+            # Strict mode: raise instead of returning fallback
+            if self._strict:
+                self._raise_strict_error(message_id, FALLBACK_INVALID, (error,))
             return (FALLBACK_INVALID, (error,))
 
         # Validate attribute is None or a string
@@ -839,15 +940,24 @@ class FluentBundle:
                 code=DiagnosticCode.INVALID_ARGUMENT,
                 message=f"Invalid attribute type: expected str or None, got {type(attribute).__name__}",
             )
-            error = FluentResolutionError(diagnostic)
+            error = FrozenFluentError(
+                str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
+            )
+            # Strict mode: raise instead of returning fallback
+            if self._strict:
+                self._raise_strict_error(message_id, FALLBACK_INVALID, (error,))
             return (FALLBACK_INVALID, (error,))
 
         # Check if message exists
         if message_id not in self._messages:
             logger.warning("Message '%s' not found", message_id)
-            error = FluentReferenceError(ErrorTemplate.message_not_found(message_id))
+            diag = ErrorTemplate.message_not_found(message_id)
+            error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             # Don't cache missing message errors
             fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
+            # Strict mode: raise instead of returning fallback
+            if self._strict:
+                self._raise_strict_error(message_id, fallback, (error,))
             return (fallback, (error,))
 
         message = self._messages[message_id]
@@ -876,20 +986,24 @@ class FluentBundle:
             )
             for err in errors_tuple:
                 logger.debug("  - %s: %s", type(err).__name__, err)
+            # Strict mode: raise instead of returning fallback-containing result
+            if self._strict:
+                self._raise_strict_error(message_id, result, errors_tuple)
         else:
             logger.debug("Resolved message '%s': %s", message_id, result[:50])
 
         # Cache successful resolution (even if there are non-critical errors)
+        # Note: In strict mode, we won't reach here if there are errors
         if self._cache is not None:
             self._cache.put(
-                message_id, args, attribute, self._locale, self._use_isolating, (result, errors_tuple)
+                message_id, args, attribute, self._locale, self._use_isolating, result, errors_tuple
             )
 
         return (result, errors_tuple)
 
     def format_value(
         self, message_id: str, args: Mapping[str, FluentValue] | None = None
-    ) -> tuple[str, tuple[FluentError, ...]]:
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Format message to string (alias for format_pattern without attribute access).
 
         This method provides API consistency with FluentLocalization.format_value()
@@ -903,11 +1017,17 @@ class FluentBundle:
         Returns:
             Tuple of (formatted_string, errors)
             - formatted_string: Best-effort formatted output (never empty)
-            - errors: Tuple of FluentError instances encountered during resolution (immutable)
+            - errors: Tuple of FrozenFluentError instances encountered during resolution (immutable)
+
+        Raises:
+            FormattingIntegrityError: In strict mode, if ANY error occurs during formatting
 
         Note:
-            This method NEVER raises exceptions. All errors are collected
-            and returned in the errors list.
+            In non-strict mode, this method never raises exceptions. All errors
+            are collected and returned in the errors list.
+
+            In strict mode (bundle.strict=True), FormattingIntegrityError is raised
+            instead of returning fallback values when errors occur.
 
         Example:
             >>> bundle.add_resource("welcome = Hello, { $name }!")

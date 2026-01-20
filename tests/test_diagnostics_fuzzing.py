@@ -19,11 +19,9 @@ from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
     DiagnosticFormatter,
+    ErrorCategory,
     ErrorTemplate,
-    FluentCyclicReferenceError,
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
+    FrozenFluentError,
 )
 from ftllexengine.runtime.bundle import FluentBundle
 
@@ -74,7 +72,7 @@ class TestErrorMessageProperties:
     @settings(max_examples=100, deadline=None)
     def test_reference_error_formatting(self, msg: str) -> None:
         """Property: Reference errors format properly."""
-        error = FluentReferenceError(msg)
+        error = FrozenFluentError(msg, ErrorCategory.REFERENCE)
 
         error_str = str(error)
         assert isinstance(error_str, str)
@@ -86,7 +84,9 @@ class TestErrorMessageProperties:
         """Property: Cyclic errors format with full path."""
         # Create a Diagnostic using the ErrorTemplate
         diagnostic = ErrorTemplate.cyclic_reference(path)
-        error = FluentCyclicReferenceError(diagnostic)
+        error = FrozenFluentError(
+            diagnostic.message, ErrorCategory.CYCLIC, diagnostic=diagnostic
+        )
 
         error_str = str(error)
         assert isinstance(error_str, str)
@@ -97,7 +97,7 @@ class TestErrorMessageProperties:
     @settings(max_examples=100, deadline=None)
     def test_resolution_error_formatting(self, detail: str) -> None:
         """Property: Resolution errors format properly."""
-        error = FluentResolutionError(detail)
+        error = FrozenFluentError(detail, ErrorCategory.RESOLUTION)
 
         error_str = str(error)
         assert isinstance(error_str, str)
@@ -164,7 +164,7 @@ class TestDiagnosticIntegration:
             assert len(errors) > 0
             # Each error should be a proper error object
             for error in errors:
-                assert isinstance(error, FluentError)
+                assert isinstance(error, FrozenFluentError)
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
     @settings(max_examples=100, deadline=None)
@@ -206,7 +206,10 @@ b = { a }
 
         assert len(errors) > 0
         # Should have cyclic reference error
-        assert any(isinstance(e, FluentCyclicReferenceError) for e in errors)
+        assert any(
+            isinstance(e, FrozenFluentError) and e.category == ErrorCategory.CYCLIC
+            for e in errors
+        )
 
 
 class TestDiagnosticFormatter:
@@ -277,7 +280,7 @@ class TestDiagnosticEdgeCases:
     @settings(max_examples=50, deadline=None)
     def test_long_message_in_diagnostic(self, long_text: str) -> None:
         """Property: Long text in diagnostics doesn't crash."""
-        error = FluentReferenceError(long_text)
+        error = FrozenFluentError(long_text, ErrorCategory.REFERENCE)
         error_str = str(error)
         assert isinstance(error_str, str)
 
@@ -286,6 +289,6 @@ class TestDiagnosticEdgeCases:
         special_chars = ["<script>", "${cmd}", "\x00", "\n\r\t", "\\", '"']
 
         for char in special_chars:
-            error = FluentReferenceError(f"test{char}id")
+            error = FrozenFluentError(f"test{char}id", ErrorCategory.REFERENCE)
             error_str = str(error)
             assert isinstance(error_str, str)

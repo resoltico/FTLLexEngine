@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from ftllexengine import FluentBundle
+from ftllexengine.integrity import FormattingIntegrityError
 
 # Example 1: Simple message
 print("=" * 50)
@@ -238,9 +239,33 @@ result, _ = system_bundle.format_pattern("system-locale", {"locale": system_bund
 print(result)
 # Output: Detected system locale: en_US (or your system locale)
 
-# Example 10: Context Manager Support
+# Example 10: Strict Mode (Fail-Fast)
 print("\n" + "=" * 50)
-print("Example 10: Context Manager Support")
+print("Example 10: Strict Mode (Fail-Fast)")
+print("=" * 50)
+
+# In strict mode, ANY error raises an exception instead of returning a fallback
+# Use this when silent fallbacks are unacceptable (e.g., displaying "{$amount}")
+
+strict_bundle = FluentBundle("en", strict=True, use_isolating=False)
+strict_bundle.add_resource("""
+amount = Total: { $value }
+""")
+
+# Successful formatting works normally
+result, errors = strict_bundle.format_pattern("amount", {"value": "1,234.56"})
+print(f"[OK] Formatted: {result}")
+
+# Missing variable in strict mode raises exception
+try:
+    strict_bundle.format_pattern("amount", {})  # Missing $value
+except FormattingIntegrityError as e:
+    print(f"[FAIL-FAST] {e.message_id}: {len(e.fluent_errors)} error(s)")
+    print(f"  Fallback would have been: {e.fallback_value!r}")
+
+# Example 11: Context Manager Support
+print("\n" + "=" * 50)
+print("Example 11: Context Manager Support")
 print("=" * 50)
 
 # Context manager clears format cache on exit but preserves messages/terms

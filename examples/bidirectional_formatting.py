@@ -8,7 +8,7 @@ This enables locale-aware forms, invoices, and financial applications.
 
 API Notes:
 - Type guards (is_valid_decimal, is_valid_number) accept None for simplified patterns
-- All parse functions return tuple[result, tuple[FluentParseError, ...]] (immutable)
+- All parse functions return tuple[result, tuple[FrozenFluentError, ...]] (immutable)
 - Parse errors returned in tuple; BabelImportError raised if Babel not installed
 
 Implementation:

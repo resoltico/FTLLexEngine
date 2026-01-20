@@ -11,10 +11,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.core.depth_guard import (
-    DepthGuard,
-    DepthLimitExceededError,
-)
+from ftllexengine.core.depth_guard import DepthGuard
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
 
@@ -75,16 +73,17 @@ class TestDepthGuardContextManager:
         assert guard.current_depth == 0
 
     def test_context_manager_raises_on_exceeded(self):
-        """Context manager raises DepthLimitExceededError when depth exceeded."""
+        """Context manager raises FrozenFluentError when depth exceeded."""
         guard = DepthGuard(max_depth=3)
 
         with guard, guard, guard:  # noqa: SIM117
             # Depth is now 3, next entry should raise
-            with pytest.raises(DepthLimitExceededError) as exc_info:
+            with pytest.raises(FrozenFluentError) as exc_info:
                 with guard:
                     pass
 
         # Verify error details
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
         assert "Maximum expression nesting depth (3) exceeded" in str(exc_info.value)
 
     def test_context_manager_depth_restoration_on_error(self):
@@ -187,15 +186,16 @@ class TestCheckMethod:
         assert guard.current_depth == 2  # Verify depth tracked correctly
 
     def test_check_raises_at_limit(self):
-        """check() raises DepthLimitExceededError when depth >= max_depth."""
+        """check() raises FrozenFluentError when depth >= max_depth."""
         guard = DepthGuard(max_depth=2)
 
         guard.increment()
         guard.increment()
 
-        with pytest.raises(DepthLimitExceededError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             guard.check()
 
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
         assert "Maximum expression nesting depth (2) exceeded" in str(exc_info.value)
 
     def test_check_raises_above_limit(self):
@@ -204,8 +204,9 @@ class TestCheckMethod:
 
         guard.current_depth = 5  # Bypass normal increment
 
-        with pytest.raises(DepthLimitExceededError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             guard.check()
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
 
 class TestManualIncrementDecrement:
@@ -303,18 +304,23 @@ class TestResetMethod:
         assert guard.current_depth == 0
 
 
-class TestDepthLimitExceededError:
-    """Test DepthLimitExceededError exception class."""
+class TestFrozenFluentErrorFromDepthGuard:
+    """Test FrozenFluentError raised by DepthGuard."""
 
-    def test_depth_limit_exceeded_error_is_exception(self):
-        """DepthLimitExceededError is an Exception subclass."""
-        error = DepthLimitExceededError("Test error")
-        assert isinstance(error, Exception)
+    def test_depth_guard_error_is_frozen_fluent_error(self):
+        """DepthGuard raises FrozenFluentError with RESOLUTION category."""
+        guard = DepthGuard(max_depth=1)
 
-    def test_depth_limit_exceeded_error_message(self):
-        """DepthLimitExceededError carries diagnostic message."""
+        with guard, pytest.raises(FrozenFluentError) as exc_info, guard:
+            pass
+
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
+        assert isinstance(exc_info.value, Exception)
+
+    def test_depth_guard_error_message(self):
+        """DepthGuard error carries diagnostic message."""
         diagnostic = ErrorTemplate.expression_depth_exceeded(50)
-        error = DepthLimitExceededError(diagnostic)
+        error = FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
 
         assert "50" in str(error)
 
@@ -339,8 +345,9 @@ def test_property_context_manager_respects_max_depth(max_depth: int) -> None:
     assert guard.current_depth == 0  # All contexts exited
 
     # Nesting max_depth + 1 times should raise
-    with pytest.raises(DepthLimitExceededError):
+    with pytest.raises(FrozenFluentError) as exc_info:
         nest(max_depth + 1)
+    assert exc_info.value.category == ErrorCategory.RESOLUTION
 
 
 @given(

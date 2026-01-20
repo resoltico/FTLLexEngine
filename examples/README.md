@@ -68,12 +68,7 @@ ftl_output = serialize_ftl(resource)
 ### Error Handling
 
 ```python
-from ftllexengine import (
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
-)
-from ftllexengine.diagnostics import FluentCyclicReferenceError
+from ftllexengine.diagnostics import FrozenFluentError, ErrorCategory
 
 # Robust error handling
 # Parser uses Junk nodes for syntax errors (robustness principle)
@@ -81,10 +76,13 @@ from ftllexengine.diagnostics import FluentCyclicReferenceError
 result, errors = bundle.format_pattern("msg", {"var": value})
 if errors:
     for error in errors:
-        if isinstance(error, FluentReferenceError):
-            logger.warning(f"Missing translation: {error}")
-        elif isinstance(error, FluentResolutionError):
-            logger.error(f"Runtime error: {error}")
+        if isinstance(error, FrozenFluentError):
+            if error.category == ErrorCategory.REFERENCE:
+                logger.warning(f"Missing translation: {error}")
+            elif error.category == ErrorCategory.CYCLIC:
+                logger.error(f"Cyclic reference: {error}")
+            elif error.category == ErrorCategory.RESOLUTION:
+                logger.error(f"Runtime error: {error}")
 ```
 
 ### Advanced - Function Registry

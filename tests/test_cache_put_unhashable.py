@@ -1,6 +1,6 @@
 """Test coverage for cache.py put() with unhashable args (lines 135-137)."""
 
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 
 
 class TestCachePutUnhashable:
@@ -8,7 +8,7 @@ class TestCachePutUnhashable:
 
     def test_put_with_circular_reference_increments_skip_counter(self) -> None:
         """Test put() with circular reference increments unhashable_skips (lines 135-137)."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Create circular reference that causes RecursionError
         circular: dict[str, object] = {}
@@ -24,7 +24,8 @@ class TestCachePutUnhashable:
             attribute=None,
             locale_code="en",
             use_isolating=True,
-            result=("output", ()),
+            formatted="output",
+            errors=(),
         )
 
         # Should have incremented unhashable_skips counter
@@ -35,7 +36,7 @@ class TestCachePutUnhashable:
 
     def test_put_with_nested_circular_reference(self) -> None:
         """Test put() returns early when args contain nested circular references."""
-        cache = FormatCache(maxsize=50)
+        cache = IntegrityCache(strict=False, maxsize=50)
 
         # Nested circular reference
         nested: dict[str, object] = {"level1": {}}
@@ -49,7 +50,8 @@ class TestCachePutUnhashable:
             attribute=None,
             locale_code="lv",
             use_isolating=True,
-            result=("result", ()),
+            formatted="result",
+            errors=(),
         )
 
         # Should increment skip counter
@@ -60,7 +62,7 @@ class TestCachePutUnhashable:
 
     def test_put_with_custom_unhashable_object(self) -> None:
         """Test put() with custom unhashable object in args."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         class UnhashableObject:
             """Custom unhashable class."""
@@ -78,7 +80,8 @@ class TestCachePutUnhashable:
             attribute="attr",
             locale_code="en_US",
             use_isolating=True,
-            result=("value", ()),
+            formatted="value",
+            errors=(),
         )
 
         # Should increment skip counter

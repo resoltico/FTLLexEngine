@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from .constants import DEFAULT_CACHE_SIZE, FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
 from .diagnostics.codes import Diagnostic, DiagnosticCode
-from .diagnostics.errors import FluentError
+from .diagnostics.errors import ErrorCategory, FrozenFluentError
 from .runtime.bundle import FluentBundle
 from .runtime.function_bridge import FluentValue
 from .syntax import Junk
@@ -848,8 +848,8 @@ class FluentLocalization:
     def _handle_message_not_found(
         self,
         message_id: MessageId,
-        errors: list[FluentError],
-    ) -> tuple[str, tuple[FluentError, ...]]:
+        errors: list[FrozenFluentError],
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Handle message-not-found with consistent validation.
 
         Uses pattern matching to distinguish between empty/invalid message IDs
@@ -869,16 +869,26 @@ class FluentLocalization:
                     code=DiagnosticCode.MESSAGE_NOT_FOUND,
                     message=f"Message '{message_id}' not found in any locale",
                 )
-                errors.append(FluentError(diagnostic))
+                error = FrozenFluentError(
+                    str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
+                )
+                errors.append(error)
                 return (FALLBACK_MISSING_MESSAGE.format(id=message_id), tuple(errors))
             case _:
                 # Empty or invalid message ID
-                errors.append(FluentError("Empty or invalid message ID"))
+                diagnostic = Diagnostic(
+                    code=DiagnosticCode.MESSAGE_NOT_FOUND,
+                    message="Empty or invalid message ID",
+                )
+                error = FrozenFluentError(
+                    str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
+                )
+                errors.append(error)
                 return (FALLBACK_INVALID, tuple(errors))
 
     def format_value(
         self, message_id: MessageId, args: Mapping[str, FluentValue] | None = None
-    ) -> tuple[str, tuple[FluentError, ...]]:
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Format message with fallback chain.
 
         Tries each locale in priority order until message is found.
@@ -901,7 +911,7 @@ class FluentLocalization:
             >>> result
             'Sveiki!'
         """
-        errors: list[FluentError] = []
+        errors: list[FrozenFluentError] = []
 
         # Validate args is None or a Mapping (defensive check)
         if args is not None and not isinstance(args, Mapping):
@@ -909,7 +919,9 @@ class FluentLocalization:
                 code=DiagnosticCode.INVALID_ARGUMENT,
                 message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
             )
-            errors.append(FluentError(diagnostic))
+            errors.append(
+                FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
+            )
             return (FALLBACK_INVALID, tuple(errors))
 
         primary_locale = self._locales[0] if self._locales else None
@@ -964,7 +976,7 @@ class FluentLocalization:
         args: Mapping[str, FluentValue] | None = None,
         *,
         attribute: str | None = None,
-    ) -> tuple[str, tuple[FluentError, ...]]:
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Format message with attribute support (fallback chain).
 
         Extends format_value() with attribute access.
@@ -987,7 +999,7 @@ class FluentLocalization:
             >>> result
             'Klikšķiniet, lai iesniegtu'
         """
-        errors: list[FluentError] = []
+        errors: list[FrozenFluentError] = []
 
         # Validate args is None or a Mapping (defensive check)
         if args is not None and not isinstance(args, Mapping):
@@ -995,7 +1007,9 @@ class FluentLocalization:
                 code=DiagnosticCode.INVALID_ARGUMENT,
                 message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
             )
-            errors.append(FluentError(diagnostic))
+            errors.append(
+                FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
+            )
             return (FALLBACK_INVALID, tuple(errors))
 
         # Validate attribute is None or a string
@@ -1005,7 +1019,9 @@ class FluentLocalization:
                 code=DiagnosticCode.INVALID_ARGUMENT,
                 message=f"Invalid attribute type: expected str or None, got {attr_type}",
             )
-            errors.append(FluentError(diagnostic))
+            errors.append(
+                FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
+            )
             return (FALLBACK_INVALID, tuple(errors))
 
         primary_locale = self._locales[0] if self._locales else None

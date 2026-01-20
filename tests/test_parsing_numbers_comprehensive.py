@@ -9,7 +9,7 @@ from decimal import Decimal
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics import FluentParseError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.parsing.numbers import parse_decimal, parse_number
 
 
@@ -26,13 +26,15 @@ class TestParseNumberProperties:
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_number_error_structure(self, value: str, locale_code: str) -> None:
-        """Property: All errors in parse_number result are FluentParseError instances."""
+        """Property: All errors in parse_number result are FrozenFluentError instances."""
         _, errors = parse_number(value, locale_code)
         for error in errors:
-            assert isinstance(error, FluentParseError)
-            assert hasattr(error, "input_value")
-            assert hasattr(error, "locale_code")
-            assert hasattr(error, "parse_type")
+            assert isinstance(error, FrozenFluentError)
+            assert error.category == ErrorCategory.PARSE
+            assert error.context is not None
+            assert hasattr(error.context, "input_value")
+            assert hasattr(error.context, "locale_code")
+            assert hasattr(error.context, "parse_type")
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_number_result_xor_errors(self, value: str, locale_code: str) -> None:
@@ -68,25 +70,28 @@ class TestParseNumberProperties:
         result, errors = parse_number("not-a-number", "en_US")
         assert result is None
         assert len(errors) == 1
-        assert errors[0].parse_type == "number"
-        assert errors[0].input_value == "not-a-number"
-        assert errors[0].locale_code == "en_US"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "number"
+        assert errors[0].context.input_value == "not-a-number"
+        assert errors[0].context.locale_code == "en_US"
 
     def test_parse_number_invalid_locale(self) -> None:
         """Verify parse_number returns error for invalid locale code."""
         result, errors = parse_number("123", "invalid_LOCALE")
         assert result is None
         assert len(errors) == 1
-        assert errors[0].parse_type == "number"
-        assert errors[0].input_value == "123"
-        assert errors[0].locale_code == "invalid_LOCALE"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "number"
+        assert errors[0].context.input_value == "123"
+        assert errors[0].context.locale_code == "invalid_LOCALE"
 
     def test_parse_number_empty_string(self) -> None:
         """Verify parse_number handles empty string."""
         result, errors = parse_number("", "en_US")
         assert result is None
         assert len(errors) == 1
-        assert errors[0].parse_type == "number"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "number"
 
     @given(st.floats(allow_nan=False, allow_infinity=False))
     def test_parse_number_roundtrip_en_us(self, value: float) -> None:
@@ -135,13 +140,15 @@ class TestParseDecimalProperties:
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_decimal_error_structure(self, value: str, locale_code: str) -> None:
-        """Property: All errors in parse_decimal result are FluentParseError instances."""
+        """Property: All errors in parse_decimal result are FrozenFluentError instances."""
         _, errors = parse_decimal(value, locale_code)
         for error in errors:
-            assert isinstance(error, FluentParseError)
-            assert hasattr(error, "input_value")
-            assert hasattr(error, "locale_code")
-            assert hasattr(error, "parse_type")
+            assert isinstance(error, FrozenFluentError)
+            assert error.category == ErrorCategory.PARSE
+            assert error.context is not None
+            assert hasattr(error.context, "input_value")
+            assert hasattr(error.context, "locale_code")
+            assert hasattr(error.context, "parse_type")
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_decimal_result_xor_errors(self, value: str, locale_code: str) -> None:
@@ -177,25 +184,28 @@ class TestParseDecimalProperties:
         result, errors = parse_decimal("not-a-number", "en_US")
         assert result is None
         assert len(errors) == 1
-        assert errors[0].parse_type == "decimal"
-        assert errors[0].input_value == "not-a-number"
-        assert errors[0].locale_code == "en_US"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "decimal"
+        assert errors[0].context.input_value == "not-a-number"
+        assert errors[0].context.locale_code == "en_US"
 
     def test_parse_decimal_invalid_locale(self) -> None:
         """Verify parse_decimal returns error for invalid locale code."""
         result, errors = parse_decimal("123", "invalid_LOCALE")
         assert result is None
         assert len(errors) == 1
-        assert errors[0].parse_type == "decimal"
-        assert errors[0].input_value == "123"
-        assert errors[0].locale_code == "invalid_LOCALE"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "decimal"
+        assert errors[0].context.input_value == "123"
+        assert errors[0].context.locale_code == "invalid_LOCALE"
 
     def test_parse_decimal_empty_string(self) -> None:
         """Verify parse_decimal handles empty string."""
         result, errors = parse_decimal("", "en_US")
         assert result is None
         assert len(errors) == 1
-        assert errors[0].parse_type == "decimal"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "decimal"
 
     @given(st.integers(min_value=-1000000, max_value=1000000))
     def test_parse_decimal_integers_en_us(self, value: int) -> None:
@@ -257,25 +267,29 @@ class TestParseNumberErrorTypes:
         """Verify parse_number errors have parse_type='number'."""
         _, errors = parse_number("invalid", "en_US")
         assert len(errors) == 1
-        assert errors[0].parse_type == "number"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "number"
 
     def test_parse_decimal_error_has_decimal_parse_type(self) -> None:
         """Verify parse_decimal errors have parse_type='decimal'."""
         _, errors = parse_decimal("invalid", "en_US")
         assert len(errors) == 1
-        assert errors[0].parse_type == "decimal"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "decimal"
 
     def test_parse_number_locale_error_has_number_parse_type(self) -> None:
         """Verify parse_number locale errors have parse_type='number'."""
         _, errors = parse_number("123", "xx_INVALID")
         assert len(errors) == 1
-        assert errors[0].parse_type == "number"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "number"
 
     def test_parse_decimal_locale_error_has_decimal_parse_type(self) -> None:
         """Verify parse_decimal locale errors have parse_type='decimal'."""
         _, errors = parse_decimal("123", "xx_INVALID")
         assert len(errors) == 1
-        assert errors[0].parse_type == "decimal"
+        assert errors[0].context is not None
+        assert errors[0].context.parse_type == "decimal"
 
 
 class TestParseNumberLocaleVariations:
@@ -366,7 +380,15 @@ class TestParseNumberEdgeCases:
         """Property: parse_number returns error for strings with no digits."""
         assume(value.strip() != "")  # Skip empty strings
         # Skip special float literals that Babel/Python accept
-        special_literals = ("inf", "infinity", "-infinity", "+infinity", "nan", "-nan", "+nan")
+        special_literals = (
+            "inf",
+            "infinity",
+            "-infinity",
+            "+infinity",
+            "nan",
+            "-nan",
+            "+nan",
+        )
         assume(value.lower() not in special_literals)
         assume("inf" not in value.lower())
         assume("nan" not in value.lower())

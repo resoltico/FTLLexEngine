@@ -1,13 +1,13 @@
 """Ultimate coverage tests for the last 2 uncovered branches in resolver.py.
 
 Branches:
-- 390->386: Placeable case with FormattingError exception
+- 390->386: Placeable case with FrozenFluentError (FORMATTING category) exception
 - 616->611: NumberLiteral case with non-matching numeric value (fall-through)
 """
 
 from decimal import Decimal
 
-from ftllexengine.core.errors import FormattingError
+from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
@@ -27,20 +27,26 @@ from ftllexengine.syntax.ast import (
 
 
 class TestPlaceableWithFormattingError:
-    """Coverage for Placeable exception path with FormattingError (line 390->386)."""
+    """Coverage for Placeable exception path with FrozenFluentError FORMATTING."""
 
     def test_placeable_formatting_error_with_fallback(self) -> None:
-        """Placeable that raises FormattingError uses fallback value."""
-        # Create a message with a placeable that will trigger FormattingError
-        # This tests the exception path: case FormattingError(fallback_value=fallback)
+        """Placeable that raises FrozenFluentError (FORMATTING) uses fallback value."""
+        # Create a message with a placeable that will trigger formatting error
+        # This tests the exception path for FORMATTING category with fallback
 
-        # To trigger FormattingError, we need a function that raises it
-        # Let's register a custom function that raises FormattingError
+        # Register a custom function that raises FrozenFluentError with FORMATTING
         def raise_formatting_error(_value: str) -> str:
-            msg = "Custom formatting error"
-            raise FormattingError(
-                msg,
+            context = FrozenErrorContext(
+                input_value="test",
+                locale_code="en",
+                parse_type="custom",
                 fallback_value="FALLBACK",
+            )
+            msg = "Custom formatting error"
+            raise FrozenFluentError(
+                msg,
+                ErrorCategory.FORMATTING,
+                context=context,
             )
 
         registry = FunctionRegistry()
@@ -73,10 +79,11 @@ class TestPlaceableWithFormattingError:
 
         result, errors = resolver.resolve_message(message, {})
 
-        # FormattingError should be caught, fallback value used
+        # FrozenFluentError with FORMATTING should be caught, fallback value used
         assert result == "Before FALLBACK After"
         assert len(errors) == 1
-        assert isinstance(errors[0], FormattingError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.FORMATTING
 
 
 class TestNumberLiteralNonMatchingValue:

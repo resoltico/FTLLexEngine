@@ -1,7 +1,7 @@
 """Number parsing functions with locale awareness.
 
-- parse_number() returns tuple[float | None, tuple[FluentParseError, ...]]
-- parse_decimal() returns tuple[Decimal | None, tuple[FluentParseError, ...]]
+- parse_number() returns tuple[float | None, tuple[FrozenFluentError, ...]]
+- parse_decimal() returns tuple[Decimal | None, tuple[FrozenFluentError, ...]]
 - Parse errors returned in tuple
 - Raises BabelImportError if Babel is not installed
 
@@ -17,7 +17,7 @@ Python 3.13+.
 
 from decimal import Decimal, InvalidOperation
 
-from ftllexengine.diagnostics import FluentParseError
+from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
@@ -27,7 +27,7 @@ __all__ = ["parse_decimal", "parse_number"]
 def parse_number(
     value: str,
     locale_code: str,
-) -> tuple[float | None, tuple[FluentParseError, ...]]:
+) -> tuple[float | None, tuple[FrozenFluentError, ...]]:
     """Parse locale-aware number string to float.
 
     Warning:
@@ -46,7 +46,7 @@ def parse_number(
     Returns:
         Tuple of (result, errors):
         - result: Parsed float, or None if parsing failed
-        - errors: Tuple of FluentParseError (empty tuple on success)
+        - errors: Tuple of FrozenFluentError (empty tuple on success)
 
     Raises:
         BabelImportError: If Babel is not installed
@@ -76,7 +76,7 @@ def parse_number(
     See Also:
         parse_decimal: For exact precision (financial calculations)
     """
-    errors: list[FluentParseError] = []
+    errors: list[FrozenFluentError] = []
 
     # Lazy import to support parser-only installations
     try:
@@ -93,14 +93,15 @@ def parse_number(
         locale = Locale.parse(normalize_locale(locale_code))
     except (UnknownLocaleError, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="number",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="number",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     try:
@@ -115,21 +116,22 @@ def parse_number(
         OverflowError,  # float() on extremely large Decimal (e.g., 1e1000)
     ) as e:
         diagnostic = ErrorTemplate.parse_number_failed(value, locale_code, str(e))
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="number",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="number",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
 
 def parse_decimal(
     value: str,
     locale_code: str,
-) -> tuple[Decimal | None, tuple[FluentParseError, ...]]:
+) -> tuple[Decimal | None, tuple[FrozenFluentError, ...]]:
     """Parse locale-aware number string to Decimal (financial precision).
 
 
@@ -143,7 +145,7 @@ def parse_decimal(
     Returns:
         Tuple of (result, errors):
         - result: Parsed Decimal, or None if parsing failed
-        - errors: Tuple of FluentParseError (empty tuple on success)
+        - errors: Tuple of FrozenFluentError (empty tuple on success)
 
     Raises:
         BabelImportError: If Babel is not installed
@@ -176,7 +178,7 @@ def parse_decimal(
     Thread Safety:
         Thread-safe. Uses Babel (no global state).
     """
-    errors: list[FluentParseError] = []
+    errors: list[FrozenFluentError] = []
 
     # Lazy import to support parser-only installations
     try:
@@ -193,26 +195,28 @@ def parse_decimal(
         locale = Locale.parse(normalize_locale(locale_code))
     except (UnknownLocaleError, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="decimal",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="decimal",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     try:
         return (babel_parse_decimal(value, locale=locale), tuple(errors))
     except (NumberFormatError, InvalidOperation, ValueError, AttributeError, TypeError) as e:
         diagnostic = ErrorTemplate.parse_decimal_failed(value, locale_code, str(e))
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="decimal",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="decimal",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))

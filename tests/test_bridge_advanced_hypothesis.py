@@ -13,7 +13,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics import FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from tests.strategies import snake_case_identifiers
 
@@ -195,11 +195,12 @@ class TestErrorHandling:
     def test_calling_unregistered_function_raises_error(
         self, nonexistent_name: str
     ) -> None:
-        """Property: Calling unregistered function raises FluentResolutionError."""
+        """Property: Calling unregistered function raises FrozenFluentError."""
         registry = FunctionRegistry()
 
-        with pytest.raises(FluentResolutionError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             registry.call(nonexistent_name, [], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     @given(
         ftl_name=st.text(
@@ -209,7 +210,7 @@ class TestErrorHandling:
     )
     @settings(max_examples=200)
     def test_function_exception_wrapped(self, ftl_name: str, error_message: str) -> None:
-        """Property: Exceptions from functions are wrapped in FluentResolutionError."""
+        """Property: Exceptions from functions are wrapped in FrozenFluentError."""
         registry = FunctionRegistry()
 
         def failing_func() -> str:
@@ -217,8 +218,9 @@ class TestErrorHandling:
 
         registry.register(failing_func, ftl_name=ftl_name)
 
-        with pytest.raises(FluentResolutionError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             registry.call(ftl_name, [], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
 
 class TestRegistryQueries:

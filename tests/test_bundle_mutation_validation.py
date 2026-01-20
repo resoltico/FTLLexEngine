@@ -12,7 +12,7 @@ Phase: 1 (High-Impact Quick Wins)
 
 import pytest
 
-from ftllexengine.diagnostics import FluentReferenceError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime import FluentBundle
 
 
@@ -212,13 +212,14 @@ class TestFormatPatternErrorHandling:
     def test_format_missing_message_raises_error(self):
         """Kills: missing message error handling mutations.
 
-        Formatting missing message should raise FluentReferenceError.
+        Formatting missing message should raise FrozenFluentError.
         """
         bundle = FluentBundle("en")
 
         result, errors = bundle.format_pattern("nonexistent")
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         # Error message should include the message ID
         assert "nonexistent" in str(errors[0]).lower()
         assert result == "{nonexistent}"
@@ -226,13 +227,14 @@ class TestFormatPatternErrorHandling:
     def test_format_with_empty_message_id(self):
         """Kills: empty string handling mutations.
 
-        Empty message ID should raise FluentReferenceError.
+        Empty message ID should raise FrozenFluentError.
         """
         bundle = FluentBundle("en")
 
         result, errors = bundle.format_pattern("")
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert result == "{???}"  # Invalid message ID returns {???}
         assert "Invalid message ID" in str(errors[0])
 
@@ -456,7 +458,8 @@ class TestErrorMessageContent:
 
         result, errors = bundle.format_pattern("missing-message")
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         # Error should reference the ID
         assert "missing-message" in str(errors[0]).lower()
         assert result == "{missing-message}"

@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.78.0"
+version: "0.80.0"
 domain: CORE
-updated: "2026-01-18"
+updated: "2026-01-20"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?"]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?"]
 ---
 
 # Core API Reference
@@ -28,6 +28,7 @@ class FluentBundle:
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        strict: bool = False,
     ) -> None: ...
 ```
 
@@ -41,6 +42,7 @@ class FluentBundle:
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
+| `strict` | `bool` | N | Fail-fast mode: raises FormattingIntegrityError on ANY error. |
 
 ### Constraints
 - Return: FluentBundle instance.
@@ -49,6 +51,7 @@ class FluentBundle:
 - Thread: Always thread-safe via internal RWLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
+- Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback.
 
 ---
 
@@ -507,6 +510,23 @@ def cache_size(self) -> int:
 - Raises: None.
 - State: Read-only property. Returns configured value regardless of cache_enabled.
 - Thread: Safe.
+
+---
+
+## `FluentBundle.strict`
+
+### Signature
+```python
+@property
+def strict(self) -> bool:
+```
+
+### Constraints
+- Return: True if strict mode enabled (fail-fast on any error).
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+- Note: When True, any formatting error raises FormattingIntegrityError.
 
 ---
 

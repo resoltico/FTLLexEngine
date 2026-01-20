@@ -1,14 +1,14 @@
-"""Tests for FTL-MODERN-001: Breaking changes in v0.71.0 - FluentValue re-export removal.
+"""Tests for resolver module export boundaries.
 
-Verifies that FluentValue is no longer exported from runtime.resolver module
+Verifies that FluentValue is not exported from runtime.resolver module
 and must be imported from runtime.function_bridge instead.
 """
 
 import pytest
 
 
-class TestResolverBreakingChangesV071:
-    """Test breaking changes for resolver module in v0.71.0."""
+class TestResolverModuleExports:
+    """Test resolver module export boundaries."""
 
     def test_fluent_value_available_from_function_bridge(self) -> None:
         """FluentValue should be available from function_bridge module."""

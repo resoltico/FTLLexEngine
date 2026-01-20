@@ -18,8 +18,9 @@ from __future__ import annotations
 import re
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.core.depth_guard import DepthGuard, DepthLimitExceededError
+from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.core.identifier_validation import is_valid_identifier
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.enums import CommentType
 
 from .ast import (
@@ -276,9 +277,12 @@ def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
                         _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
                 case _:
                     pass  # Comments and Junk don't need validation
-    except DepthLimitExceededError as e:
-        msg = f"Validation depth limit exceeded (max: {max_depth}): {e}"
-        raise SerializationDepthError(msg) from e
+    except FrozenFluentError as e:
+        if e.category == ErrorCategory.RESOLUTION:
+            # Depth limit exceeded - wrap in SerializationDepthError
+            msg = f"Validation depth limit exceeded (max: {max_depth}): {e}"
+            raise SerializationDepthError(msg) from e
+        raise
 
 # FTL indentation constants per Fluent spec.
 # Standard continuation indent: 4 spaces.
@@ -348,9 +352,12 @@ class FluentSerializer(ASTVisitor):
 
         try:
             self._serialize_resource(resource, output, depth_guard)
-        except DepthLimitExceededError as e:
-            msg = f"AST nesting exceeds maximum depth ({max_depth})"
-            raise SerializationDepthError(msg) from e
+        except FrozenFluentError as e:
+            if e.category == ErrorCategory.RESOLUTION:
+                # Depth limit exceeded - wrap in SerializationDepthError
+                msg = f"AST nesting exceeds maximum depth ({max_depth})"
+                raise SerializationDepthError(msg) from e
+            raise
 
         return "".join(output)
 

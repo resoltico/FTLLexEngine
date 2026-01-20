@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ftllexengine.diagnostics import FluentReferenceError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime import FluentBundle
 
 
@@ -137,7 +137,8 @@ button-save = Saglabāt
         assert len(errors) == 1, (
             f"Expected 1 error for missing variable, got {len(errors)}: {errors}"
         )
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert "variable" in str(errors[0]).lower() or "name" in str(errors[0]).lower()
 
     def test_format_pattern_with_attribute_parameter(self, bundle: Any) -> None:
@@ -149,10 +150,11 @@ button-save = Saglabāt
         assert errors == (), f"Unexpected errors: {errors}"
 
     def test_format_pattern_missing_message_raises_error(self, bundle: Any) -> None:
-        """format_pattern for non-existent message raises FluentReferenceError."""
+        """format_pattern for non-existent message raises FrozenFluentError."""
         result, errors = bundle.format_pattern("nonexistent-message")
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert "not found" in str(errors[0]).lower()
         assert result == "{nonexistent-message}"
 
@@ -270,7 +272,8 @@ class TestFluentBundleErrorHandling:
         assert isinstance(result, str)
         assert "{$undefined}" in result  # Variable fallback
         assert len(errors) >= 1, f"Expected at least 1 error for undefined variable, got {errors}"
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_format_pattern_handles_key_error_gracefully(self, bundle: Any) -> None:
         """format_pattern handles KeyError (missing variable) gracefully."""
@@ -283,7 +286,8 @@ class TestFluentBundleErrorHandling:
         assert isinstance(result, str)
         assert "{$name}" in result
         assert len(errors) >= 1, f"Expected error for missing variable, got {errors}"
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_format_pattern_handles_attribute_error_gracefully(self, bundle: Any) -> None:
         """format_pattern handles AttributeError gracefully."""
@@ -295,7 +299,8 @@ class TestFluentBundleErrorHandling:
         # Should handle gracefully with fallback + error
         assert isinstance(result, str)
         assert len(errors) >= 1, f"Expected error for nonexistent attribute, got {errors}"
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert "attribute" in str(errors[0]).lower()
 
     def test_format_pattern_handles_unexpected_errors_gracefully(self, bundle: Any) -> None:
@@ -409,7 +414,8 @@ class TestFluentBundleEdgeCases:
         assert isinstance(result, str)
         assert "{$name}" in result
         assert len(errors) >= 1, f"Expected error for missing variable, got {errors}"
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_format_pattern_with_exception_in_resolver(self) -> None:
         """Bundle catches unexpected exceptions in resolver (lines 156-160)."""
@@ -455,7 +461,8 @@ another-valid = Also works
         # Should return fallback with variable reference
         assert result == "Value: {$required}"
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_format_pattern_with_attribute_error_from_resolver(self) -> None:
         """Bundle handles AttributeError from resolver (lines 148-151)."""
@@ -471,7 +478,8 @@ msg = Test message
         # Should return fallback with attribute reference
         assert result == "{msg.nonexistent}"
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_add_function_registers_successfully(self) -> None:
         """Bundle can register custom functions."""

@@ -367,15 +367,14 @@ class TestEmptyRegistryInvariants:
 
 
 # ============================================================================
-# PROPERTY TESTS - FINANCIAL GRADE EDGE CASES
+# PROPERTY TESTS - STRESS AND EDGE CASES
 # ============================================================================
 
 
-class TestFinancialGradeEdgeCases:
-    """Financial-grade edge case testing with Hypothesis.
+class TestStressAndEdgeCases:
+    """Stress and edge case testing with Hypothesis.
 
-    These tests ensure robustness for financial applications where
-    correctness is critical.
+    These tests ensure robustness under high load and unusual inputs.
     """
 
     @given(

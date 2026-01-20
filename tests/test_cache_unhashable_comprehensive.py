@@ -1,6 +1,6 @@
 """Comprehensive tests for runtime.cache argument handling.
 
-Tests FormatCache behavior with various argument types including hashable
+Tests IntegrityCache behavior with various argument types including hashable
 conversions (lists, dicts, sets) and truly unhashable objects.
 
 Lists, dicts, and sets are converted to hashable equivalents
@@ -13,7 +13,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 
 
 class TestCacheBasicOperations:
@@ -22,60 +22,59 @@ class TestCacheBasicOperations:
     def test_init_with_zero_maxsize_raises(self) -> None:
         """Verify __init__ raises ValueError for maxsize <= 0 (lines 65-66)."""
         with pytest.raises(ValueError, match="maxsize must be positive"):
-            FormatCache(maxsize=0)
+            IntegrityCache(strict=False, maxsize=0)
 
     def test_init_with_negative_maxsize_raises(self) -> None:
         """Verify __init__ raises ValueError for negative maxsize."""
         with pytest.raises(ValueError, match="maxsize must be positive"):
-            FormatCache(maxsize=-1)
+            IntegrityCache(strict=False, maxsize=-1)
 
     def test_get_cache_hit_path(self) -> None:
         """Verify cache hit path in get() (lines 106-108)."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Put a value in cache
         args = {"key": "value"}
-        result = ("formatted_text", ())
-        cache.put("msg-id", args, None, "en-US", True, result)
+        cache.put("msg-id", args, None, "en-US", True, "formatted_text", ())
 
         # Get should hit cache
         cached = cache.get("msg-id", args, None, "en-US", True)
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted_text", ())
         assert cache.hits == 1
         assert cache.misses == 0
 
     def test_put_updates_existing_key(self) -> None:
         """Verify put() updates existing key and moves to end (line 143)."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         args = {"key": "value"}
-        result1 = ("text1", ())
-        result2 = ("text2", ())
 
         # Put initial value
-        cache.put("msg-id", args, None, "en-US", True, result1)
+        cache.put("msg-id", args, None, "en-US", True, "text1", ())
         assert len(cache) == 1
 
         # Put updated value for same key
-        cache.put("msg-id", args, None, "en-US", True, result2)
+        cache.put("msg-id", args, None, "en-US", True, "text2", ())
         assert len(cache) == 1  # Still one entry
 
         # Get should return updated value
         cached = cache.get("msg-id", args, None, "en-US", True)
-        assert cached == result2
+        assert cached is not None
+        assert cached.to_tuple() == ("text2", ())
 
     def test_put_evicts_lru_when_full(self) -> None:
         """Verify put() evicts LRU entry when cache is full (line 146)."""
-        cache = FormatCache(maxsize=2)
+        cache = IntegrityCache(strict=False, maxsize=2)
 
         # Fill cache to capacity
-        cache.put("msg1", {"k": "v1"}, None, "en-US", True, ("text1", ()))
-        cache.put("msg2", {"k": "v2"}, None, "en-US", True, ("text2", ()))
+        cache.put("msg1", {"k": "v1"}, None, "en-US", True, "text1", ())
+        cache.put("msg2", {"k": "v2"}, None, "en-US", True, "text2", ())
         assert len(cache) == 2
 
         # Add third entry - should evict first (LRU)
-        cache.put("msg3", {"k": "v3"}, None, "en-US", True, ("text3", ()))
+        cache.put("msg3", {"k": "v3"}, None, "en-US", True, "text3", ())
         assert len(cache) == 2
 
         # First entry should be gone
@@ -90,20 +89,20 @@ class TestCacheBasicOperations:
 
     def test_make_key_with_none_args(self) -> None:
         """Verify _make_key handles None args correctly (line 205)."""
-        key = FormatCache._make_key("msg-id", None, None, "en-US", True)
+        key = IntegrityCache._make_key("msg-id", None, None, "en-US", True)
 
         assert key is not None
         assert key == ("msg-id", (), None, "en-US", True)
 
     def test_maxsize_property(self) -> None:
         """Verify maxsize property returns correct value (line 231)."""
-        cache = FormatCache(maxsize=500)
+        cache = IntegrityCache(strict=False, maxsize=500)
 
         assert cache.maxsize == 500
 
 
 class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
-    """Tests for FormatCache automatic conversion of unhashable types to hashable.
+    """Tests for IntegrityCache automatic conversion of unhashable types to hashable.
 
     Lists, dicts, sets, and tuples are converted to hashable equivalents
     (tuples, sorted tuples, frozensets) enabling caching for these types.
@@ -111,82 +110,86 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_get_with_list_value_now_cacheable(self) -> None:
         """Verify get() converts lists to tuples for caching."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Args contain a list (now converted to tuple)
         args = {"key": [1, 2, 3]}
-        result = ("formatted", ())
 
         # Put with list value
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
 
         # Get should find cached value (list converted to same tuple)
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_get_with_dict_value_now_cacheable(self) -> None:
         """Verify get() converts dicts to sorted tuples for caching."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Args contain a nested dict (now converted to sorted tuple)
         args = {"key": {"nested": "value"}}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_get_with_set_value_now_cacheable(self) -> None:
         """Verify get() converts sets to frozensets for caching."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Args contain a set (now converted to frozenset)
         args = {"key": {1, 2, 3}}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_put_with_list_value_now_caches(self) -> None:
         """Verify put() caches list values by converting to tuples."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Args contain a list (now converted to tuple)
         args = {"items": [1, 2, 3]}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
 
     def test_put_with_dict_value_now_caches(self) -> None:
         """Verify put() caches dict values by converting to tuples."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         args = {"config": {"option": "value"}}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
 
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_make_key_converts_list_to_tuple(self) -> None:
         """Verify _make_key converts lists to tuples."""
-        args = {"list_value": [1, 2, 3]}
+        args: dict[str, object] = {"list_value": [1, 2, 3]}
 
-        key = FormatCache._make_key("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        key = IntegrityCache._make_key(
+            "msg-id",
+            args,  # type: ignore[arg-type]
+            None,
+            "en-US",
+            True,
+        )
 
         assert key is not None  # Now returns valid key
 
@@ -197,41 +200,47 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
             "dict": {"nested": "value"},
         }
 
-        key = FormatCache._make_key("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        key = IntegrityCache._make_key(
+            "msg-id",
+            args,  # type: ignore[arg-type]
+            None,
+            "en-US",
+            True,
+        )
 
         assert key is not None  # Now returns valid key
 
     def test_make_hashable_list(self) -> None:
         """Verify _make_hashable converts lists to tuples."""
-        result = FormatCache._make_hashable([1, 2, 3])
+        result = IntegrityCache._make_hashable([1, 2, 3])
         assert result == (1, 2, 3)
 
     def test_make_hashable_dict(self) -> None:
         """Verify _make_hashable converts dicts to sorted tuples."""
-        result = FormatCache._make_hashable({"b": 2, "a": 1})
+        result = IntegrityCache._make_hashable({"b": 2, "a": 1})
         assert result == (("a", 1), ("b", 2))
 
     def test_make_hashable_set(self) -> None:
         """Verify _make_hashable converts sets to frozensets."""
-        result = FormatCache._make_hashable({1, 2, 3})
+        result = IntegrityCache._make_hashable({1, 2, 3})
         assert result == frozenset({1, 2, 3})
 
     def test_make_hashable_nested(self) -> None:
         """Verify _make_hashable handles nested structures."""
-        result = FormatCache._make_hashable([{"a": [1, 2]}, {3, 4}])
+        result = IntegrityCache._make_hashable([{"a": [1, 2]}, {3, 4}])
         # List -> tuple, dict -> sorted tuple, nested list -> tuple, set -> frozenset
         assert isinstance(result, tuple)
 
     def test_make_hashable_tuple_simple(self) -> None:
         """Verify _make_hashable handles simple tuples (already hashable)."""
-        result = FormatCache._make_hashable((1, 2, 3))
+        result = IntegrityCache._make_hashable((1, 2, 3))
         assert result == (1, 2, 3)
         assert isinstance(result, tuple)
 
     def test_make_hashable_tuple_with_nested_list(self) -> None:
         """Verify _make_hashable converts nested lists within tuples."""
         # Tuple containing a list - list should be converted to tuple
-        result = FormatCache._make_hashable((1, [2, 3], 4))
+        result = IntegrityCache._make_hashable((1, [2, 3], 4))
         assert result == (1, (2, 3), 4)
         assert isinstance(result, tuple)
         # Verify all elements are hashable
@@ -239,51 +248,51 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_make_hashable_tuple_with_nested_dict(self) -> None:
         """Verify _make_hashable converts nested dicts within tuples."""
-        result = FormatCache._make_hashable((1, {"b": 2, "a": 1}, 3))
+        result = IntegrityCache._make_hashable((1, {"b": 2, "a": 1}, 3))
         # Dict becomes sorted tuple of key-value pairs
         assert result == (1, (("a", 1), ("b", 2)), 3)
         hash(result)
 
     def test_make_hashable_tuple_with_nested_set(self) -> None:
         """Verify _make_hashable converts nested sets within tuples."""
-        result = FormatCache._make_hashable((1, {2, 3}, 4))
+        result = IntegrityCache._make_hashable((1, {2, 3}, 4))
         assert result == (1, frozenset({2, 3}), 4)
         hash(result)
 
     def test_make_hashable_deeply_nested_tuple(self) -> None:
         """Verify _make_hashable handles deeply nested structures in tuples."""
-        result = FormatCache._make_hashable((1, (2, [3, {"a": 4}]), 5))
+        result = IntegrityCache._make_hashable((1, (2, [3, {"a": 4}]), 5))
         # Inner list becomes tuple, inner dict becomes sorted tuple
         assert result == (1, (2, (3, (("a", 4),))), 5)
         hash(result)
 
     def test_get_with_tuple_value_cacheable(self) -> None:
         """Verify get() caches tuple-valued args correctly."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Args contain a tuple (natively hashable, but may contain nested unhashables)
         args = {"coords": (10, 20, 30)}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_get_with_tuple_containing_list_cacheable(self) -> None:
         """Verify get() caches tuple-with-nested-list args correctly."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Tuple containing a list - should be converted and cached
         args = {"data": (1, [2, 3], 4)}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -294,14 +303,14 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         self, tuple_value: tuple[int, int, int]
     ) -> None:
         """Property: get() caches tuple-valued args."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
         args = {"tuple_arg": tuple_value}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert cache.unhashable_skips == 0
 
     @given(
@@ -309,14 +318,14 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     )
     def test_get_with_various_lists_cacheable(self, list_value: list[int]) -> None:
         """Property: get() caches list-valued args."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
         args = {"list_arg": list_value}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert cache.unhashable_skips == 0
 
     @given(
@@ -324,18 +333,17 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     )
     def test_put_with_various_dicts_cacheable(self, dict_value: dict[str, int]) -> None:
         """Property: put() caches dict-valued args."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
         args = {"dict_arg": dict_value}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
 
     def test_mixed_hashable_and_converted_args(self) -> None:
         """Verify cache handles mixed hashable/convertible args correctly."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Some hashable, some convertible
         args: dict[str, object] = {
@@ -343,38 +351,38 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
             "int_arg": 42,
             "list_arg": [1, 2, 3],  # Converted to tuple
         }
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert cache.unhashable_skips == 0
 
     def test_empty_list_cacheable(self) -> None:
         """Verify empty lists are converted and cached."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         args: dict[str, list[object]] = {"empty_list": []}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
 
     def test_empty_dict_cacheable(self) -> None:
         """Verify empty dicts are converted and cached."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         args: dict[str, dict[object, object]] = {"empty_dict": {}}
-        result = ("formatted", ())
 
-        cache.put("msg-id", args, None, "en-US", True, result)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted", ())
         assert len(cache) == 1
 
 
@@ -383,7 +391,7 @@ class TestCacheTrulyUnhashableObjects:
 
     def test_unhashable_custom_object_skipped(self) -> None:
         """Verify cache skips custom unhashable objects that cannot be converted."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         class UnhashableClass:
             """Custom class that's not hashable and not convertible."""
@@ -404,7 +412,7 @@ class TestCacheTrulyUnhashableObjects:
 
     def test_unhashable_skips_property(self) -> None:
         """Verify unhashable_skips only counts truly unhashable objects."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Initial value
         assert cache.unhashable_skips == 0
@@ -419,13 +427,14 @@ class TestCacheTrulyUnhashableObjects:
             None,
             "en-US",
             True,
-            ("result", ()),
+            "result",
+            (),
         )
         assert cache.unhashable_skips == 0  # Not skipped anymore
 
     def test_unhashable_skips_resets_on_clear(self) -> None:
         """Verify unhashable_skips resets to 0 after clear()."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         class UnhashableClass:
             """Custom class that's not hashable."""
@@ -444,7 +453,7 @@ class TestCacheTrulyUnhashableObjects:
 
     def test_get_stats_includes_unhashable_skips(self) -> None:
         """Verify get_stats() includes unhashable_skips count."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         class UnhashableClass:
             """Custom class that's not hashable."""
@@ -464,13 +473,13 @@ class TestCacheTrulyUnhashableObjects:
 
     def test_hashable_args_do_not_increment_unhashable_skips(self) -> None:
         """Verify hashable args don't increment unhashable_skips counter."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Fully hashable args
         args: dict[str, object] = {"str": "value", "int": 42, "float": 3.14}
 
         cache.get("msg1", args, None, "en-US", True)  # type: ignore[arg-type]
-        cache.put("msg2", args, None, "en-US", True, ("result", ()))  # type: ignore[arg-type]
+        cache.put("msg2", args, None, "en-US", True, "result", ())  # type: ignore[arg-type]
 
         # Should not increment unhashable_skips
         assert cache.unhashable_skips == 0

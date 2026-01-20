@@ -62,7 +62,6 @@ def serialize(
 - State: None.
 - Thread: Safe.
 - Security: DepthGuard prevents stack overflow from adversarial ASTs. Identifier validation prevents invalid FTL output from programmatic AST construction.
-- Version: Named argument validation added in v0.74.0.
 
 ---
 

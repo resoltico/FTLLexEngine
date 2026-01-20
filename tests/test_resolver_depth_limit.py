@@ -6,7 +6,7 @@ stack overflow from long non-cyclic message chains.
 
 from ftllexengine import FluentBundle
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.diagnostics import FluentReferenceError
+from ftllexengine.diagnostics import FrozenFluentError
 
 # ============================================================================
 # UNIT TESTS - MAX DEPTH LIMIT
@@ -71,8 +71,11 @@ m4 = Final value
 
         # Should hit depth limit and return error
         assert len(errors) > 0
-        # At least one error should be about max depth
-        depth_errors = [e for e in errors if isinstance(e, FluentReferenceError)]
+        # At least one error should be about max depth (RESOLUTION for depth exceeded)
+        depth_errors = [
+            e for e in errors
+            if isinstance(e, FrozenFluentError)
+        ]
         assert len(depth_errors) > 0
 
     def test_exactly_at_limit_succeeds(self) -> None:

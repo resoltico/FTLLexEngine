@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ftllexengine.core.errors import FormattingError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.functions import datetime_format, number_format
 
 
@@ -406,10 +406,11 @@ class TestDatetimeFormatStringConversions:
     def test_datetime_format_invalid_strings(self, invalid_string):
         """Kills: invalid string handling mutations.
 
-        Invalid strings should raise FormattingError with fallback.
+        Invalid strings should raise FrozenFluentError with fallback.
         """
-        with pytest.raises(FormattingError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             datetime_format(invalid_string, "en-US", date_style="short")
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # Should have fallback value for resolver to use
         assert exc_info.value.fallback_value == "{!DATETIME}"
 

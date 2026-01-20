@@ -228,10 +228,7 @@ class TestBabelImportErrorPath:
             sys.modules.update(saved_modules)
 
 
-# test_importlib_metadata_import_error removed in v0.72.0
-# Reason: Tested dead code path (importlib.metadata unavailable try/except)
-# Python 3.13+ baseline guarantees importlib.metadata availability
-# See DEBT-DEAD-COMPAT-001 in ISSUES-RESOLVED.txt
+# Note: importlib.metadata availability test removed - Python 3.13+ guarantees it
 
 
 def test_package_not_found_error():

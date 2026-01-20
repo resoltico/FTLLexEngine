@@ -15,9 +15,16 @@ Public API:
     clear_all_caches - Clear all module-level caches (memory management)
 
 Exceptions:
-    FluentError - Base exception class
-    FluentReferenceError - Unknown message/term references
-    FluentResolutionError - Runtime resolution errors
+    FrozenFluentError - Immutable, sealed error type
+    ErrorCategory - Error classification enum (REFERENCE, RESOLUTION, CYCLIC, PARSE, FORMATTING)
+    FrozenErrorContext - Immutable context for parse/formatting errors
+
+Data Integrity:
+    DataIntegrityError - Base for system integrity failures
+    CacheCorruptionError - Checksum mismatch in cache
+    ImmutabilityViolationError - Mutation attempt on frozen object
+    IntegrityCheckFailedError - Generic verification failure
+    WriteConflictError - Write-once violation in cache
 
 Submodules:
     ftllexengine.syntax - Parser and AST (no Babel dependency)
@@ -27,6 +34,7 @@ Submodules:
     ftllexengine.diagnostics - Error types and validation results
     ftllexengine.localization - Resource loaders and type aliases (requires Babel)
     ftllexengine.runtime - Bundle and resolver (requires Babel)
+    ftllexengine.integrity - Data integrity exceptions (financial-grade safety)
 
 Installation:
     # Parser-only (no external dependencies):
@@ -46,9 +54,17 @@ from typing import TYPE_CHECKING
 
 # Core API - Always available (no Babel dependency)
 from .diagnostics import (
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
+    ErrorCategory,
+    FrozenErrorContext,
+    FrozenFluentError,
+)
+from .integrity import (
+    CacheCorruptionError,
+    DataIntegrityError,
+    ImmutabilityViolationError,
+    IntegrityCheckFailedError,
+    IntegrityContext,
+    WriteConflictError,
 )
 from .syntax import parse as parse_ftl
 from .syntax import serialize as serialize_ftl
@@ -186,20 +202,33 @@ __recommended_encoding__ = "UTF-8"  # Per spec: "The recommended encoding for Fl
 # pylint: disable=undefined-all-variable
 # Reason: FluentBundle, FluentLocalization, FluentValue, fluent_function are lazy-loaded
 # via __getattr__ to defer Babel dependency. Pylint cannot see these at static analysis time.
+# ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
+    # Bundle and Localization (lazy-loaded, require Babel)
     "FluentBundle",
-    "FluentError",
     "FluentLocalization",
-    "FluentReferenceError",
-    "FluentResolutionError",
     "FluentValue",
+    "fluent_function",
+    # Error types (immutable, sealed)
+    "ErrorCategory",
+    "FrozenErrorContext",
+    "FrozenFluentError",
+    # Data integrity exceptions
+    "CacheCorruptionError",
+    "DataIntegrityError",
+    "ImmutabilityViolationError",
+    "IntegrityCheckFailedError",
+    "IntegrityContext",
+    "WriteConflictError",
+    # Parsing API
+    "parse_ftl",
+    "serialize_ftl",
+    "validate_resource",
+    # Utility
+    "clear_all_caches",
+    # Metadata
     "__fluent_spec_version__",
     "__recommended_encoding__",
     "__spec_url__",
     "__version__",
-    "clear_all_caches",
-    "fluent_function",
-    "parse_ftl",
-    "serialize_ftl",
-    "validate_resource",
 ]

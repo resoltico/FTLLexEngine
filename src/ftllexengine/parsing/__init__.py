@@ -16,7 +16,7 @@ All parsing functions are thread-safe and use Babel for CLDR-compliant parsing.
 Public API:
     Type Aliases:
         ParseResult[T] - Generic type for parsing function returns:
-                         tuple[T | None, tuple[FluentParseError, ...]]
+                         tuple[T | None, tuple[FrozenFluentError, ...]]
 
     Parsing Functions:
         parse_number - Returns ParseResult[float]
@@ -46,7 +46,7 @@ Example:
 Python 3.13+. Uses Babel CLDR patterns + stdlib for all parsing.
 """
 
-from ftllexengine.diagnostics import FluentParseError
+from ftllexengine.diagnostics import FrozenFluentError
 
 from .currency import clear_currency_caches, parse_currency
 from .dates import clear_date_caches, parse_date, parse_datetime
@@ -60,7 +60,7 @@ from .guards import (
 from .numbers import parse_decimal, parse_number
 
 # Type alias for parsing function return values (defined after imports to satisfy linting)
-type ParseResult[T] = tuple[T | None, tuple[FluentParseError, ...]]
+type ParseResult[T] = tuple[T | None, tuple[FrozenFluentError, ...]]
 """Generic type alias for parsing function return values.
 
 All parse_* functions return this pattern:

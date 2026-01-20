@@ -16,22 +16,12 @@ import sys
 from dataclasses import dataclass, field
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.diagnostics import FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
-__all__ = ["DepthGuard", "DepthLimitExceededError", "depth_clamp"]
+__all__ = ["DepthGuard", "depth_clamp"]
 
 logger = logging.getLogger(__name__)
-
-
-class DepthLimitExceededError(FluentResolutionError):
-    """Raised when maximum expression depth is exceeded.
-
-    This error indicates either:
-    - Adversarial input designed to cause stack overflow
-    - Malformed programmatic AST construction
-    - Unintended deep nesting in FTL content
-    """
 
 
 @dataclass(slots=True)
@@ -74,14 +64,13 @@ class DepthGuard:
         """Enter guarded section, increment depth.
 
         Validates depth limit BEFORE incrementing to prevent state corruption
-        if DepthLimitExceededError is raised. Since __exit__ is not called when
+        if FrozenFluentError is raised. Since __exit__ is not called when
         __enter__ raises, incrementing first would leave current_depth permanently
         elevated, causing all subsequent operations to fail.
         """
         if self.current_depth >= self.max_depth:
-            raise DepthLimitExceededError(
-                ErrorTemplate.expression_depth_exceeded(self.max_depth)
-            )
+            diag = ErrorTemplate.expression_depth_exceeded(self.max_depth)
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
         self.current_depth += 1
         return self
 
@@ -109,15 +98,14 @@ class DepthGuard:
         Use when context manager pattern is not convenient.
 
         Raises:
-            DepthLimitExceededError: If depth limit exceeded
+            FrozenFluentError: If depth limit exceeded (category=RESOLUTION)
         """
         if self.current_depth >= self.max_depth:
-            raise DepthLimitExceededError(
-                ErrorTemplate.expression_depth_exceeded(self.max_depth)
-            )
+            diag = ErrorTemplate.expression_depth_exceeded(self.max_depth)
+            raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
     def increment(self) -> None:
-        """Manually increment depth (use with decrement for non-context-manager use)."""
+        """Manually increment depth (use with increment for non-context-manager use)."""
         self.current_depth += 1
 
     def decrement(self) -> None:

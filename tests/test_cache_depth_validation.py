@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.function_bridge import FluentNumber
 
 # ============================================================================
@@ -27,7 +27,7 @@ class TestMakeHashableDepthLimiting:
     def test_shallow_nesting_succeeds(self) -> None:
         """Shallow nested structures convert successfully."""
         shallow = {"a": [1, 2, {"b": 3}]}
-        result = FormatCache._make_hashable(shallow)
+        result = IntegrityCache._make_hashable(shallow)
         assert result is not None
 
     def test_moderate_nesting_succeeds(self) -> None:
@@ -37,7 +37,7 @@ class TestMakeHashableDepthLimiting:
         for _ in range(50):
             value = {"nested": value}
 
-        result = FormatCache._make_hashable(value)
+        result = IntegrityCache._make_hashable(value)
         assert result is not None
 
     def test_excessive_nesting_raises_type_error(self) -> None:
@@ -48,7 +48,7 @@ class TestMakeHashableDepthLimiting:
             value = {"nested": value}
 
         with pytest.raises(TypeError, match="Maximum nesting depth exceeded"):
-            FormatCache._make_hashable(value)
+            IntegrityCache._make_hashable(value)
 
     def test_custom_depth_limit_respected(self) -> None:
         """Custom depth parameter is respected."""
@@ -59,10 +59,10 @@ class TestMakeHashableDepthLimiting:
 
         # Should fail with depth=10
         with pytest.raises(TypeError, match="Maximum nesting depth exceeded"):
-            FormatCache._make_hashable(value, depth=10)
+            IntegrityCache._make_hashable(value, depth=10)
 
         # Should succeed with depth=20
-        result = FormatCache._make_hashable(value, depth=20)
+        result = IntegrityCache._make_hashable(value, depth=20)
         assert result is not None
 
     def test_list_nesting_depth_limited(self) -> None:
@@ -73,7 +73,7 @@ class TestMakeHashableDepthLimiting:
             value = [value]
 
         with pytest.raises(TypeError, match="Maximum nesting depth exceeded"):
-            FormatCache._make_hashable(value)
+            IntegrityCache._make_hashable(value)
 
     def test_set_nesting_depth_limited(self) -> None:
         """Set nesting cannot exceed depth limit.
@@ -83,7 +83,7 @@ class TestMakeHashableDepthLimiting:
         """
         # Sets with simple values should work
         value = {1, 2, 3}
-        result = FormatCache._make_hashable(value)
+        result = IntegrityCache._make_hashable(value)
         assert isinstance(result, frozenset)
 
     def test_mixed_nesting_depth_limited(self) -> None:
@@ -94,7 +94,7 @@ class TestMakeHashableDepthLimiting:
             value = {"nested": value} if i % 2 == 0 else [value]
 
         with pytest.raises(TypeError, match="Maximum nesting depth exceeded"):
-            FormatCache._make_hashable(value)
+            IntegrityCache._make_hashable(value)
 
 
 # ============================================================================
@@ -107,66 +107,66 @@ class TestMakeHashableTypeValidation:
 
     def test_string_accepted(self) -> None:
         """Strings are accepted as hashable."""
-        result = FormatCache._make_hashable("hello")
+        result = IntegrityCache._make_hashable("hello")
         assert result == "hello"
 
     def test_int_accepted(self) -> None:
         """Integers are accepted as hashable."""
-        result = FormatCache._make_hashable(42)
+        result = IntegrityCache._make_hashable(42)
         assert result == 42
 
     def test_float_accepted(self) -> None:
         """Floats are accepted as hashable."""
-        result = FormatCache._make_hashable(3.14)
+        result = IntegrityCache._make_hashable(3.14)
         assert result == 3.14
 
     def test_bool_accepted(self) -> None:
         """Booleans are accepted as hashable."""
-        result = FormatCache._make_hashable(True)
+        result = IntegrityCache._make_hashable(True)
         assert result is True
 
     def test_none_accepted(self) -> None:
         """None is accepted as hashable."""
-        result = FormatCache._make_hashable(None)
+        result = IntegrityCache._make_hashable(None)
         assert result is None
 
     def test_decimal_accepted(self) -> None:
         """Decimals are accepted as hashable."""
         value = Decimal("123.45")
-        result = FormatCache._make_hashable(value)
+        result = IntegrityCache._make_hashable(value)
         assert result == value
 
     def test_datetime_accepted(self) -> None:
         """Datetimes are accepted as hashable."""
         value = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
-        result = FormatCache._make_hashable(value)
+        result = IntegrityCache._make_hashable(value)
         assert result == value
 
     def test_date_accepted(self) -> None:
         """Dates are accepted as hashable."""
         value = date(2024, 1, 1)
-        result = FormatCache._make_hashable(value)
+        result = IntegrityCache._make_hashable(value)
         assert result == value
 
     def test_fluent_number_accepted(self) -> None:
         """FluentNumber is accepted as hashable."""
         value = FluentNumber(value=42, formatted="42")
-        result = FormatCache._make_hashable(value)
+        result = IntegrityCache._make_hashable(value)
         assert result == value
 
     def test_list_converted_to_tuple(self) -> None:
         """Lists are converted to tuples."""
-        result = FormatCache._make_hashable([1, 2, 3])
+        result = IntegrityCache._make_hashable([1, 2, 3])
         assert result == (1, 2, 3)
 
     def test_dict_converted_to_sorted_tuple(self) -> None:
         """Dicts are converted to sorted tuple of tuples."""
-        result = FormatCache._make_hashable({"b": 2, "a": 1})
+        result = IntegrityCache._make_hashable({"b": 2, "a": 1})
         assert result == (("a", 1), ("b", 2))
 
     def test_set_converted_to_frozenset(self) -> None:
         """Sets are converted to frozensets."""
-        result = FormatCache._make_hashable({1, 2, 3})
+        result = IntegrityCache._make_hashable({1, 2, 3})
         assert result == frozenset({1, 2, 3})
 
     def test_unknown_type_raises_type_error(self) -> None:
@@ -176,7 +176,7 @@ class TestMakeHashableTypeValidation:
             pass
 
         with pytest.raises(TypeError, match="Unknown type in cache key"):
-            FormatCache._make_hashable(CustomObject())
+            IntegrityCache._make_hashable(CustomObject())
 
 
 # ============================================================================
@@ -189,7 +189,7 @@ class TestMakeKeyIntegration:
 
     def test_make_key_with_simple_args(self) -> None:
         """_make_key handles simple arguments."""
-        key = FormatCache._make_key(
+        key = IntegrityCache._make_key(
             message_id="test",
             args={"name": "Alice", "count": 42},
             attribute=None,
@@ -202,7 +202,7 @@ class TestMakeKeyIntegration:
         """_make_key handles nested arguments via _make_hashable."""
         # Note: FluentValue doesn't include nested dicts, but _make_hashable
         # handles them for robustness. Using type: ignore for test.
-        key = FormatCache._make_key(
+        key = IntegrityCache._make_key(
             message_id="test",
             args={"items": [1, 2, 3]},  # type: ignore[dict-item]
             attribute=None,
@@ -218,7 +218,7 @@ class TestMakeKeyIntegration:
         for _ in range(MAX_DEPTH + 10):
             deep = {"nested": deep}
 
-        key = FormatCache._make_key(
+        key = IntegrityCache._make_key(
             message_id="test",
             args={"deep": deep},  # type: ignore[dict-item]
             attribute=None,
@@ -234,7 +234,7 @@ class TestMakeKeyIntegration:
         class CustomObject:
             pass
 
-        key = FormatCache._make_key(
+        key = IntegrityCache._make_key(
             message_id="test",
             args={"custom": CustomObject()},  # type: ignore[dict-item]
             attribute=None,
@@ -246,7 +246,7 @@ class TestMakeKeyIntegration:
 
     def test_make_key_with_fluent_value_types(self) -> None:
         """_make_key accepts all valid FluentValue types."""
-        key = FormatCache._make_key(
+        key = IntegrityCache._make_key(
             message_id="test",
             args={
                 "string": "hello",

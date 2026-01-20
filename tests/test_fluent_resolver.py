@@ -4,10 +4,7 @@ from typing import Any
 
 import pytest
 
-from ftllexengine.diagnostics import (
-    FluentCyclicReferenceError,
-    FluentReferenceError,
-)
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime import FluentBundle, FluentResolver, create_default_registry
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.syntax import (
@@ -350,7 +347,8 @@ login-button = Login
 
         assert result == "{login-button.nonexistent}"
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_duplicate_attribute_uses_last_wins(self) -> None:
         """Duplicate attributes resolve using last-wins semantics per Fluent spec."""
@@ -521,7 +519,8 @@ class TestFluentResolverAdvancedFeatures:
         # Attempting to resolve message without attribute should raise error
         _result, errors = resolver.resolve_message(message, {})
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert "has no value" in str(errors[0]).lower()
 
     def test_attribute_not_found_raises_error(self) -> None:
@@ -538,7 +537,8 @@ button = Save
         # Bundle catches and returns fallback with attribute reference
         assert result == "{button.nonexistent}"
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
 
     def test_circular_reference_direct_check(self) -> None:
         """Resolver's circular reference detection via ResolutionContext."""
@@ -566,7 +566,8 @@ button = Save
         # Now attempting to resolve "test" with this context should detect circular reference
         _result, errors = resolver.resolve_message(msg, {}, context=context)
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentCyclicReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.CYCLIC
         assert "circular reference" in str(errors[0]).lower()
 
     def test_message_reference_resolution(self) -> None:

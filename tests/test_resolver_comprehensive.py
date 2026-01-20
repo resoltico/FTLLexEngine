@@ -13,7 +13,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics import FluentReferenceError, FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
@@ -137,7 +137,7 @@ class TestUnknownExpressionType:
     """Test unknown expression type handling in _resolve_expression."""
 
     def test_unknown_expression_raises_resolution_error(self) -> None:
-        """Verify unknown expression type raises FluentResolutionError."""
+        """Verify unknown expression type raises FrozenFluentError with RESOLUTION category."""
         registry = FunctionRegistry()
         resolver = FluentResolver(
             locale="en_US",
@@ -155,9 +155,10 @@ class TestUnknownExpressionType:
 
         errors: list = []
         context = ResolutionContext()
-        with pytest.raises(FluentResolutionError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             resolver._resolve_expression(unknown, {}, errors, context)  # type: ignore[arg-type]
 
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
         error_msg = str(exc_info.value).lower()
         assert "unknown expression" in error_msg or "UnknownExpr" in str(exc_info.value)
 
@@ -437,7 +438,8 @@ class TestResolverFullIntegration:
         result, errors = bundle.format_pattern("msg")
         # Should have error
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         # Should have fallback
         assert "Start" in result
         assert "End" in result

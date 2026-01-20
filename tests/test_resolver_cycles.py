@@ -23,7 +23,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.diagnostics import FluentCyclicReferenceError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.resolver import ResolutionContext
 
@@ -44,7 +44,11 @@ class TestDirectCycles:
 
         assert isinstance(result, str)
         assert len(errors) > 0
-        assert any(isinstance(e, FluentCyclicReferenceError) for e in errors)
+        cyclic_errors = [
+            e for e in errors
+            if isinstance(e, FrozenFluentError) and e.category == ErrorCategory.CYCLIC
+        ]
+        assert len(cyclic_errors) > 0
 
     def test_term_references_itself(self) -> None:
         """Direct cycle: term references itself."""
@@ -79,7 +83,11 @@ msg-b = { msg-a }
 
         assert isinstance(result, str)
         assert len(errors) > 0
-        assert any(isinstance(e, FluentCyclicReferenceError) for e in errors)
+        cyclic_errors = [
+            e for e in errors
+            if isinstance(e, FrozenFluentError) and e.category == ErrorCategory.CYCLIC
+        ]
+        assert len(cyclic_errors) > 0
 
     def test_three_message_cycle(self) -> None:
         """Indirect cycle: a -> b -> c -> a."""
@@ -288,7 +296,11 @@ class TestCycleDetectionProperties:
         assert isinstance(result, str)
         assert "Final value" in result
         # Should have no cycle errors
-        assert not any(isinstance(e, FluentCyclicReferenceError) for e in errors)
+        cyclic_errors = [
+            e for e in errors
+            if isinstance(e, FrozenFluentError) and e.category == ErrorCategory.CYCLIC
+        ]
+        assert len(cyclic_errors) == 0
 
 
 @pytest.mark.fuzz

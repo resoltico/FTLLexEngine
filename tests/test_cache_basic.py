@@ -6,7 +6,7 @@ Validates FormatCache and FluentBundle caching behavior.
 import pytest
 
 from ftllexengine import FluentBundle
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 
 
 class TestCacheDisabled:
@@ -324,18 +324,18 @@ class TestCacheIntrospection:
 
     def test_cache_put_updates_existing_key(self) -> None:
         """Updating existing cache entry moves it to end (LRU)."""
-        # Test FormatCache.put() directly
-        cache = FormatCache(maxsize=2)
+        # Test IntegrityCache.put() directly
+        cache = IntegrityCache(strict=False, maxsize=2)
 
         # Put initial value
-        cache.put("msg1", {"name": "Alice"}, None, "en", True, ("Hello Alice", ()))
+        cache.put("msg1", {"name": "Alice"}, None, "en", True, "Hello Alice", ())
         assert len(cache) == 1
 
         # Put same key again (should call move_to_end)
-        cache.put("msg1", {"name": "Alice"}, None, "en", True, ("Hello Alice!", ()))
+        cache.put("msg1", {"name": "Alice"}, None, "en", True, "Hello Alice!", ())
         assert len(cache) == 1  # Size unchanged
 
         # Verify value was updated
-        result = cache.get("msg1", {"name": "Alice"}, None, "en", True)
-        assert result is not None
-        assert result[0] == "Hello Alice!"  # Updated value
+        entry = cache.get("msg1", {"name": "Alice"}, None, "en", True)
+        assert entry is not None
+        assert entry.formatted == "Hello Alice!"  # Updated value

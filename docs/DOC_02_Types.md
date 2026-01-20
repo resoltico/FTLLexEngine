@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.79.0"
+version: "0.80.0"
 domain: TYPES
-updated: "2026-01-18"
+updated: "2026-01-19"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
@@ -504,7 +504,6 @@ class NamedArgument:
 - State: Frozen dataclass.
 - FTL EBNF: `NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)`.
 - Validation: `serialize(validate=True)` rejects values that are not StringLiteral or NumberLiteral.
-- Version: Value type validation added in v0.74.0.
 
 ---
 

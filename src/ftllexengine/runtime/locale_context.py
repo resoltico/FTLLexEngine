@@ -46,7 +46,8 @@ from ftllexengine.constants import (
     MAX_LOCALE_CACHE_SIZE,
     MAX_LOCALE_CODE_LENGTH,
 )
-from ftllexengine.core.errors import FormattingError
+from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
+from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
 if TYPE_CHECKING:
@@ -429,11 +430,19 @@ class LocaleContext:
             )
 
         except (ValueError, TypeError, InvalidOperation, AttributeError, KeyError) as e:
-            # Formatting failed - raise FormattingError with fallback value
+            # Formatting failed - raise FrozenFluentError with fallback value
             # The resolver will catch this error, collect it, and use the fallback
             fallback = str(value)
-            msg = f"Number formatting failed for '{value}': {e}"
-            raise FormattingError(msg, fallback_value=fallback) from e
+            diagnostic = ErrorTemplate.formatting_failed("NUMBER", str(value), str(e))
+            context = FrozenErrorContext(
+                input_value=str(value),
+                locale_code=self.locale_code,
+                parse_type="number",
+                fallback_value=fallback,
+            )
+            raise FrozenFluentError(
+                str(diagnostic), ErrorCategory.FORMATTING, diagnostic=diagnostic, context=context
+            ) from e
 
     def format_datetime(
         self,
@@ -461,7 +470,8 @@ class LocaleContext:
             Formatted datetime string according to locale rules
 
         Raises:
-            FormattingError: If string value is not valid ISO 8601 format
+            FrozenFluentError: If string value is not valid ISO 8601 format
+                (category=FORMATTING)
 
         Examples:
             >>> from datetime import datetime, UTC
@@ -492,11 +502,22 @@ class LocaleContext:
             try:
                 dt_value = datetime.fromisoformat(value)
             except ValueError as e:
-                # Invalid datetime string - raise FormattingError with fallback
+                # Invalid datetime string - raise FrozenFluentError with fallback
                 # This ensures consistent error handling across all format_* methods
                 fallback = FALLBACK_FUNCTION_ERROR.format(name="DATETIME")
-                msg = f"Invalid datetime string '{value}': not ISO 8601 format"
-                raise FormattingError(msg, fallback_value=fallback) from e
+                diagnostic = ErrorTemplate.formatting_failed(
+                    "DATETIME", value, "not ISO 8601 format"
+                )
+                context = FrozenErrorContext(
+                    input_value=value,
+                    locale_code=self.locale_code,
+                    parse_type="datetime",
+                    fallback_value=fallback,
+                )
+                raise FrozenFluentError(
+                    str(diagnostic), ErrorCategory.FORMATTING,
+                    diagnostic=diagnostic, context=context
+                ) from e
         else:
             dt_value = value
 
@@ -550,11 +571,22 @@ class LocaleContext:
             )
 
         except (ValueError, OverflowError, AttributeError, KeyError) as e:
-            # Formatting failed - raise FormattingError with fallback value
+            # Formatting failed - raise FrozenFluentError with fallback value
             # The resolver will catch this error, collect it, and use the fallback
             fallback = dt_value.isoformat()
-            msg = f"DateTime formatting failed for '{dt_value}': {e}"
-            raise FormattingError(msg, fallback_value=fallback) from e
+            diagnostic = ErrorTemplate.formatting_failed(
+                "DATETIME", str(dt_value), str(e)
+            )
+            context = FrozenErrorContext(
+                input_value=str(dt_value),
+                locale_code=self.locale_code,
+                parse_type="datetime",
+                fallback_value=fallback,
+            )
+            raise FrozenFluentError(
+                str(diagnostic), ErrorCategory.FORMATTING,
+                diagnostic=diagnostic, context=context
+            ) from e
 
     def format_currency(
         self,
@@ -671,11 +703,22 @@ class LocaleContext:
             )
 
         except (ValueError, TypeError, InvalidOperation, AttributeError, KeyError) as e:
-            # Formatting failed - raise FormattingError with fallback value
+            # Formatting failed - raise FrozenFluentError with fallback value
             # The resolver will catch this error, collect it, and use the fallback
             fallback = f"{currency} {value}"
-            msg = f"Currency formatting failed for '{currency} {value}': {e}"
-            raise FormattingError(msg, fallback_value=fallback) from e
+            diagnostic = ErrorTemplate.formatting_failed(
+                "CURRENCY", f"{currency} {value}", str(e)
+            )
+            context = FrozenErrorContext(
+                input_value=f"{currency} {value}",
+                locale_code=self.locale_code,
+                parse_type="currency",
+                fallback_value=fallback,
+            )
+            raise FrozenFluentError(
+                str(diagnostic), ErrorCategory.FORMATTING,
+                diagnostic=diagnostic, context=context
+            ) from e
 
     def _get_iso_code_pattern(self) -> str | None:
         """Get CLDR pattern for ISO currency code display.

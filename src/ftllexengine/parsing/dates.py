@@ -1,7 +1,7 @@
 """Date and datetime parsing functions with locale awareness.
 
-- parse_date() returns tuple[date | None, tuple[FluentParseError, ...]]
-- parse_datetime() returns tuple[datetime | None, tuple[FluentParseError, ...]]
+- parse_date() returns tuple[date | None, tuple[FrozenFluentError, ...]]
+- parse_datetime() returns tuple[datetime | None, tuple[FrozenFluentError, ...]]
 - Parse errors returned in tuple
 - Raises BabelImportError if Babel is not installed
 - Pattern generation is cached per locale
@@ -41,7 +41,7 @@ from datetime import date, datetime, timezone
 from functools import cache
 from typing import Any
 
-from ftllexengine.diagnostics import FluentParseError
+from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
 
@@ -60,7 +60,7 @@ _DATETIME_SEPARATOR_FALLBACK: str = " "
 def parse_date(
     value: str,
     locale_code: str,
-) -> tuple[date | None, tuple[FluentParseError, ...]]:
+) -> tuple[date | None, tuple[FrozenFluentError, ...]]:
     """Parse locale-aware date string to date object.
 
     Only ISO 8601 and locale-specific CLDR patterns are supported.
@@ -79,7 +79,7 @@ def parse_date(
     Returns:
         Tuple of (result, errors):
         - result: Parsed date object, or None if parsing failed
-        - errors: Tuple of FluentParseError (empty tuple on success)
+        - errors: Tuple of FrozenFluentError (empty tuple on success)
 
     Raises:
         BabelImportError: If Babel is not installed
@@ -104,21 +104,22 @@ def parse_date(
     Thread Safety:
         Thread-safe. Uses Babel + stdlib (no global state).
     """
-    errors: list[FluentParseError] = []
+    errors: list[FrozenFluentError] = []
 
     # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):
         diagnostic = ErrorTemplate.parse_date_failed(  # type: ignore[unreachable]
             str(value), locale_code, f"Expected string, got {type(value).__name__}"
         )
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=str(value),
-                locale_code=locale_code,
-                parse_type="date",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="date",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     # Try ISO 8601 first (fastest path)
@@ -132,14 +133,15 @@ def parse_date(
     if not patterns:
         # Unknown locale
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="date",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="date",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     for pattern, has_era in patterns:
@@ -154,14 +156,15 @@ def parse_date(
     diagnostic = ErrorTemplate.parse_date_failed(
         value, locale_code, "No matching date pattern found"
     )
-    errors.append(
-        FluentParseError(
-            diagnostic,
-            input_value=value,
-            locale_code=locale_code,
-            parse_type="date",
-        )
+    context = FrozenErrorContext(
+        input_value=str(value),
+        locale_code=locale_code,
+        parse_type="date",
     )
+    error = FrozenFluentError(
+        str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+    )
+    errors.append(error)
     return (None, tuple(errors))
 
 
@@ -170,7 +173,7 @@ def parse_datetime(
     locale_code: str,
     *,
     tzinfo: timezone | None = None,
-) -> tuple[datetime | None, tuple[FluentParseError, ...]]:
+) -> tuple[datetime | None, tuple[FrozenFluentError, ...]]:
     """Parse locale-aware datetime string to datetime object.
 
     Only ISO 8601 and locale-specific CLDR patterns are supported.
@@ -189,7 +192,7 @@ def parse_datetime(
     Returns:
         Tuple of (result, errors):
         - result: Parsed datetime object, or None if parsing failed
-        - errors: Tuple of FluentParseError (empty tuple on success)
+        - errors: Tuple of FrozenFluentError (empty tuple on success)
 
     Raises:
         BabelImportError: If Babel is not installed
@@ -214,21 +217,22 @@ def parse_datetime(
     Thread Safety:
         Thread-safe. Uses Babel + stdlib (no global state).
     """
-    errors: list[FluentParseError] = []
+    errors: list[FrozenFluentError] = []
 
     # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):
         diagnostic = ErrorTemplate.parse_datetime_failed(  # type: ignore[unreachable]
             str(value), locale_code, f"Expected string, got {type(value).__name__}"
         )
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=str(value),
-                locale_code=locale_code,
-                parse_type="datetime",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="datetime",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     # Try ISO 8601 first (fastest path)
@@ -245,14 +249,15 @@ def parse_datetime(
     if not patterns:
         # Unknown locale
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
-        errors.append(
-            FluentParseError(
-                diagnostic,
-                input_value=value,
-                locale_code=locale_code,
-                parse_type="datetime",
-            )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="datetime",
         )
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        )
+        errors.append(error)
         return (None, tuple(errors))
 
     for pattern, has_era in patterns:
@@ -270,14 +275,15 @@ def parse_datetime(
     diagnostic = ErrorTemplate.parse_datetime_failed(
         value, locale_code, "No matching datetime pattern found"
     )
-    errors.append(
-        FluentParseError(
-            diagnostic,
-            input_value=value,
-            locale_code=locale_code,
-            parse_type="datetime",
-        )
+    context = FrozenErrorContext(
+        input_value=str(value),
+        locale_code=locale_code,
+        parse_type="datetime",
     )
+    error = FrozenFluentError(
+        str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+    )
+    errors.append(error)
     return (None, tuple(errors))
 
 

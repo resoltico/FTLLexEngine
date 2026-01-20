@@ -32,7 +32,7 @@ Built on the [Fluent specification](https://projectfluent.org/) that powers Fire
 
 - **Bidirectional** - Format data for display *and* parse user input back to Python types
 - **Thread-safe** - No global state. Serve 1000 concurrent requests without locale conflicts
-- **Financial-grade** - `Decimal` precision throughout. No float rounding surprises
+- **Strict mode** - Opt-in fail-fast. Errors raise exceptions, not silent `{$amount}` fallbacks
 - **Introspectable** - Query what variables a message needs before you call it
 - **Declarative grammar** - Plurals, gender, cases in `.ftl` files. Code stays clean
 
@@ -265,6 +265,33 @@ if not errors:
     # Decimal('19.58') - exact, every time
 ```
 
+### Strict Mode: No Silent Failures
+
+Some applications cannot tolerate silent fallbacks. A missing variable returning `{$amount}` instead of raising could display wrong data.
+
+```python
+from decimal import Decimal
+from ftllexengine import FluentBundle
+from ftllexengine.integrity import FormattingIntegrityError
+
+# strict=True raises on ANY error instead of returning fallback
+bundle = FluentBundle("en_US", strict=True, enable_cache=True)
+bundle.add_resource("balance = Account: { CURRENCY($amount, currency: \"USD\") }")
+
+# Works normally
+result, _ = bundle.format_pattern("balance", {"amount": Decimal("1234.56")})
+# "Account: $1,234.56"
+
+# Missing variable? Raises immediately - no silent fallback
+try:
+    bundle.format_pattern("balance", {})  # oops, forgot $amount
+except FormattingIntegrityError as e:
+    # e.message_id = "balance"
+    # e.fallback_value = "Account: {$amount}"  <- what non-strict would return
+    # e.fluent_errors = (FrozenFluentError(...),)
+    handle_incident(e)  # log, alert, fail request
+```
+
 ---
 
 ## Concurrent Requests? No Problem.
@@ -355,7 +382,7 @@ info.requires_variable("customer_name")
 | Scenario | Why FTLLexEngine |
 | :--- | :--- |
 | **Parsing user input** | Errors as data, not exceptions. Show helpful feedback. |
-| **Financial calculations** | `Decimal` precision. No float rounding bugs. |
+| **Financial calculations** | `Decimal` precision. Strict mode available. |
 | **Web servers** | Thread-safe. No global locale state. |
 | **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
 | **Multi-locale apps** | 200+ locales. CLDR-compliant. |
@@ -379,6 +406,7 @@ info.requires_variable("customer_name")
 | [Quick Reference](docs/QUICK_REFERENCE.md) | Copy-paste patterns for common tasks |
 | [API Reference](docs/DOC_00_Index.md) | Complete class and function documentation |
 | [Parsing Guide](docs/PARSING_GUIDE.md) | Bidirectional parsing deep-dive |
+| [Data Integrity](docs/DATA_INTEGRITY_ARCHITECTURE.md) | Strict mode, checksums, immutable errors |
 | [Terminology](docs/TERMINOLOGY.md) | Fluent and FTLLexEngine concepts |
 | [Examples](examples/) | Working code you can run |
 

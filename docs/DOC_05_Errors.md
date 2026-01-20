@@ -1,110 +1,103 @@
 ---
 afad: "3.1"
-version: "0.78.0"
+version: "0.80.0"
 domain: ERRORS
-updated: "2026-01-18"
+updated: "2026-01-19"
 route:
-  keywords: [FluentError, FluentReferenceError, FluentResolutionError, FormattingError, BabelImportError, ValidationResult, DiagnosticCode, Diagnostic]
-  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?"]
+  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
+  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?"]
 ---
 
 # Errors Reference
 
 ---
 
-## Exception Hierarchy
+## `ErrorCategory`
 
-```
-FluentError
-  FluentReferenceError
-    FluentCyclicReferenceError
-  FluentResolutionError
-    DepthLimitExceededError
-    FormattingError
-  FluentParseError
-
-BabelImportError (ImportError)
-```
-
----
-
-## `FluentError`
+Error categorization enum replacing the exception class hierarchy.
 
 ### Signature
 ```python
-class FluentError(Exception):
-    diagnostic: Diagnostic | None
+class ErrorCategory(StrEnum):
+    REFERENCE = "reference"
+    RESOLUTION = "resolution"
+    CYCLIC = "cyclic"
+    PARSE = "parse"
+    FORMATTING = "formatting"
+```
 
-    def __init__(self, message: str | Diagnostic) -> None: ...
+### Parameters
+| Value | Description |
+|:------|:------------|
+| `REFERENCE` | Unknown message, term, or variable reference. |
+| `RESOLUTION` | Runtime resolution failure (depth exceeded, function error). |
+| `CYCLIC` | Cyclic reference detected (e.g., `hello = { hello }`). |
+| `PARSE` | Bi-directional parsing failure (number, date, currency). |
+| `FORMATTING` | Locale-aware formatting failure. |
+
+### Constraints
+- StrEnum: Members ARE strings. `str(ErrorCategory.REFERENCE) == "reference"`
+- Usage: Check category instead of using isinstance() on subclasses.
+- Import: `from ftllexengine.diagnostics import ErrorCategory`
+
+---
+
+## `FrozenFluentError`
+
+Immutable, content-addressable Fluent error for financial-grade data integrity.
+
+### Signature
+```python
+@final
+class FrozenFluentError(Exception):
+    def __init__(
+        self,
+        message: str,
+        category: ErrorCategory,
+        diagnostic: Diagnostic | None = None,
+        context: FrozenErrorContext | None = None,
+    ) -> None: ...
+
+    def verify_integrity(self) -> bool: ...
+
+    @property
+    def message(self) -> str: ...
+    @property
+    def category(self) -> ErrorCategory: ...
+    @property
+    def diagnostic(self) -> Diagnostic | None: ...
+    @property
+    def context(self) -> FrozenErrorContext | None: ...
+    @property
+    def content_hash(self) -> bytes: ...
+    @property
+    def fallback_value(self) -> str: ...
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `message` | `str \| Diagnostic` | Y | Error message or structured diagnostic. |
+| `message` | `str` | Y | Human-readable error description. |
+| `category` | `ErrorCategory` | Y | Error categorization (replaces subclass hierarchy). |
+| `diagnostic` | `Diagnostic \| None` | N | Structured diagnostic information. |
+| `context` | `FrozenErrorContext \| None` | N | Additional context for parse/formatting errors. |
 
 ### Constraints
-- Return: Exception instance.
-- State: Stores optional Diagnostic.
+- Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
+- Sealed: Cannot be subclassed. Use `ErrorCategory` for classification.
+- Content-Addressed: BLAKE2b-128 hash computed at construction for integrity verification.
+- Hashable: Can be used in sets and as dict keys. Hash based on content, not identity.
+- Import: `from ftllexengine.diagnostics import FrozenFluentError`
 
 ---
 
-## `FluentReferenceError`
+## `FrozenFluentError.verify_integrity`
+
+Verify error content hasn't been corrupted.
 
 ### Signature
 ```python
-class FluentReferenceError(FluentError): ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: Unknown message or term reference.
-- Behavior: Returns message ID as fallback.
-
----
-
-## `FluentCyclicReferenceError`
-
-### Signature
-```python
-class FluentCyclicReferenceError(FluentReferenceError): ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: Cyclic reference detection (e.g., `hello = { hello }`).
-- Behavior: Returns message ID as fallback.
-
----
-
-## `FluentResolutionError`
-
-### Signature
-```python
-class FluentResolutionError(FluentError): ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: Runtime resolution errors.
-- Behavior: Returns partial result up to error point.
-
----
-
-## `DepthLimitExceededError`
-
-### Signature
-```python
-class DepthLimitExceededError(FluentResolutionError): ...
+def verify_integrity(self) -> bool:
 ```
 
 ### Parameters
@@ -112,44 +105,81 @@ class DepthLimitExceededError(FluentResolutionError): ...
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Purpose: Maximum expression/nesting depth exceeded.
-- Cause: Adversarial input, malformed AST, or deep Placeable nesting.
-- Behavior: Raised immediately when limit exceeded.
-- Import: `from ftllexengine.core.depth_guard import DepthLimitExceededError`
+- Return: True if content hash matches, False if corrupted.
+- Method: Recomputes BLAKE2b-128 hash and compares using constant-time comparison.
+- Security: Defense against timing attacks via `hmac.compare_digest()`.
 
 ---
 
-## `FluentParseError`
+## `FrozenErrorContext`
+
+Immutable context for parse/formatting errors.
 
 ### Signature
 ```python
-class FluentParseError(FluentError):
+@dataclass(frozen=True, slots=True)
+class FrozenErrorContext:
     input_value: str
     locale_code: str
     parse_type: str
-
-    def __init__(
-        self,
-        message: str | Diagnostic,
-        *,
-        input_value: str = "",
-        locale_code: str = "",
-        parse_type: str = "",
-    ) -> None: ...
+    fallback_value: str
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `message` | `str \| Diagnostic` | Y | Error message or diagnostic. |
-| `input_value` | `str` | N | String that failed; empty if not provided or genuinely empty. |
-| `locale_code` | `str` | N | Locale used; empty if locale-agnostic or unavailable. |
-| `parse_type` | `str` | N | Type (number/decimal/date/datetime/currency); empty if undetermined. |
+| `input_value` | `str` | Y | String that failed parsing/formatting. |
+| `locale_code` | `str` | Y | Locale used for parsing/formatting. |
+| `parse_type` | `str` | Y | Type (number/decimal/date/datetime/currency). |
+| `fallback_value` | `str` | Y | Value to use when formatting fails. |
 
 ### Constraints
-- Purpose: Bi-directional parsing errors.
-- Behavior: Returned in error list, never raised.
-- Empty Strings: Default parameter values indicate "not provided" or "unknown" state; empty string is the sentinel value for unavailable context.
+- Immutable: Frozen dataclass, cannot be modified.
+- Usage: Passed to `FrozenFluentError` for PARSE/FORMATTING errors.
+- Import: `from ftllexengine.diagnostics import FrozenErrorContext`
+
+---
+
+## `DataIntegrityError`
+
+Base exception for data integrity violations.
+
+### Signature
+```python
+class DataIntegrityError(Exception):
+    def __init__(self, message: str) -> None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `str` | Y | Error description. |
+
+### Constraints
+- Purpose: Base class for integrity-related exceptions.
+- Import: `from ftllexengine.integrity import DataIntegrityError`
+
+---
+
+## `ImmutabilityViolationError`
+
+Attempt to mutate an immutable object.
+
+### Signature
+```python
+class ImmutabilityViolationError(DataIntegrityError):
+    def __init__(self, message: str) -> None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `str` | Y | Description of mutation attempt. |
+
+### Constraints
+- Purpose: Raised when code attempts to modify a frozen FrozenFluentError or cache entry.
+- Raised By: `FrozenFluentError.__setattr__()`, `FrozenFluentError.__delattr__()`.
+- Import: `from ftllexengine.integrity import ImmutabilityViolationError`
 
 ---
 
@@ -176,26 +206,23 @@ class BabelImportError(ImportError):
 
 ---
 
-## `FormattingError`
+## `DepthLimitExceededError`
 
 ### Signature
 ```python
-class FormattingError(FluentResolutionError):
-    fallback_value: str
-
-    def __init__(self, message: str | Diagnostic, fallback_value: str) -> None: ...
+class DepthLimitExceededError(Exception):
+    def __init__(self, message: str) -> None: ...
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `message` | `str \| Diagnostic` | Y | Error message or Diagnostic object. |
-| `fallback_value` | `str` | Y | Value to use in output when formatting fails. |
 
 ### Constraints
-- Purpose: Locale-aware formatting errors (number, datetime, currency).
-- Behavior: Raised by LocaleContext methods; resolver catches and uses fallback_value.
-- Import: `from ftllexengine.core.errors import FormattingError`
+- Purpose: Maximum expression/nesting depth exceeded.
+- Cause: Adversarial input, malformed AST, or deep Placeable nesting.
+- Behavior: Raised immediately when limit exceeded.
+- Import: `from ftllexengine.core.depth_guard import DepthLimitExceededError`
 
 ---
 
@@ -215,7 +242,6 @@ class SerializationValidationError(ValueError): ...
 - Raised: When `serialize(validate=True)` detects invalid AST.
 - Common: SelectExpression without exactly one default variant, duplicate named argument names, named argument values not StringLiteral or NumberLiteral.
 - Import: `from ftllexengine.syntax import SerializationValidationError`
-- Version: Named argument validation added in v0.74.0.
 
 ---
 

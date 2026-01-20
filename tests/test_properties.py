@@ -9,10 +9,7 @@ from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
-from ftllexengine.diagnostics import (
-    FluentCyclicReferenceError,
-    FluentReferenceError,
-)
+from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.runtime import FunctionRegistry, select_plural_category
 
 from .strategies import (
@@ -97,7 +94,7 @@ class TestParserProperties:
         try:
             bundle.add_resource(random_text)
             handled_gracefully = True
-        except (FluentReferenceError, FluentCyclicReferenceError):
+        except FrozenFluentError:
             # Expected: missing references, circular deps
             # Parser recovered gracefully (no crash)
             handled_gracefully = True

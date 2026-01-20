@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from ftllexengine.diagnostics import FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FunctionRegistry, FunctionSignature
 
 # ============================================================================
@@ -248,14 +248,15 @@ class TestFunctionCalling:
         assert result == "5-50"
 
     def test_call_nonexistent_function_raises_error(self) -> None:
-        """Calling non-existent function raises FluentResolutionError."""
+        """Calling non-existent function raises FrozenFluentError with RESOLUTION category."""
         registry = FunctionRegistry()
 
-        with pytest.raises(FluentResolutionError, match="Function 'NONEXISTENT' not found"):
+        with pytest.raises(FrozenFluentError, match="Function 'NONEXISTENT' not found") as exc_info:
             registry.call("NONEXISTENT", [], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_call_function_that_raises_exception(self) -> None:
-        """Function that raises exception is wrapped in FluentResolutionError."""
+        """Function that raises exception is wrapped in FrozenFluentError."""
         registry = FunctionRegistry()
 
         def failing_func(_value: int) -> str:
@@ -264,8 +265,9 @@ class TestFunctionCalling:
 
         registry.register(failing_func, ftl_name="FAIL")
 
-        with pytest.raises(FluentResolutionError, match="Function 'FAIL' failed"):
+        with pytest.raises(FrozenFluentError, match="Function 'FAIL' failed") as exc_info:
             registry.call("FAIL", [42], {})
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
 
 # ============================================================================

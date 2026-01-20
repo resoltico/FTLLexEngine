@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from ftllexengine.diagnostics import FluentReferenceError, FluentResolutionError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
 from ftllexengine.runtime.resolver import FluentResolver
@@ -67,8 +67,9 @@ class TestResolverExpressionEdgeCases:
 
         errors: list = []
         context = ResolutionContext()
-        with pytest.raises(FluentResolutionError, match="Unknown expression type"):
+        with pytest.raises(FrozenFluentError, match="Unknown expression type") as exc_info:
             resolver._resolve_expression(unknown, {}, errors, context)  # type: ignore[arg-type]
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_resolve_bool_true_as_string(self) -> None:
         """Boolean True converts to lowercase 'true' string."""
@@ -343,7 +344,8 @@ class TestMessageReferenceEdgeCases:
         # Try to format a message that doesn't exist
         result, errors = bundle.format_pattern("missing", {})
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert result == "{missing}"
 
 
@@ -431,7 +433,8 @@ class TestResolverErrorPaths:
         # Missing variable returns default variant (errors in list)
         result, errors = bundle.format_pattern("test", {})
         assert len(errors) > 0  # Should have error
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         # Error contains diagnostic code
         assert "VARIABLE_NOT_PROVIDED" in str(errors[0])
         # Result shows default variant value (selector resilience: fallback on failure)
@@ -468,7 +471,8 @@ class TestFunctionArityValidation:
 
         _result, errors = bundle.format_pattern("bad", {})
         assert len(errors) > 0
-        assert isinstance(errors[0], FluentResolutionError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.RESOLUTION
         # Should get arity mismatch error
         assert "expects 1 argument" in str(errors[0]) or "ARITY" in str(errors[0])
 

@@ -1,9 +1,9 @@
-"""Tests for v0.79.0 issue resolutions.
+"""Tests for semantic validation and introspection edge cases.
 
 Tests for:
-- VAL-TERM-POSITIONAL-ARGS-001: SemanticValidator warns on term positional args
-- SEM-INTROSPECTION-DATA-LOSS-001: FunctionCallInfo.positional_arg_vars renamed
-- VAL-CROSS-RESOURCE-CYCLES-001: Cross-resource cycle detection
+- SemanticValidator warns when term references include positional arguments
+- FunctionCallInfo.positional_arg_vars naming accuracy
+- Cross-resource cycle detection
 
 Python 3.13+.
 """

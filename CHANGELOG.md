@@ -13,6 +13,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-01-20
+
+### Breaking
+
+- **BREAKING**: Replaced `FormatCache` with `IntegrityCache` (DATA-INTEGRITY-002):
+  - Previous: `FormatCache` class with simple LRU caching and tuple-based API
+  - Now: `IntegrityCache` class with BLAKE2b-128 checksum verification
+  - API change: `cache.put(...)` signature changed from `(msg_id, args, attr, locale, isolating, (result, errors))` to `(msg_id, args, attr, locale, isolating, result, errors)` (separate arguments)
+  - API change: `cache.get(...)` returns `IntegrityCacheEntry | None` instead of `tuple[str, tuple[Error, ...]] | None`
+  - Migration pattern:
+    ```python
+    # Before
+    from ftllexengine.runtime.cache import FormatCache
+    cache = FormatCache(maxsize=1000)
+    cache.put("msg", args, None, "en", True, (result, errors))
+    cached = cache.get("msg", args, None, "en", True)
+    if cached:
+        result, errors = cached
+
+    # After
+    from ftllexengine.runtime.cache import IntegrityCache
+    cache = IntegrityCache(maxsize=1000, strict=False)
+    cache.put("msg", args, None, "en", True, result, errors)
+    entry = cache.get("msg", args, None, "en", True)
+    if entry:
+        result, errors = entry.to_tuple()
+    ```
+  - Impact: All direct cache API usage must be updated; FluentBundle internal usage updated automatically
+
+- **BREAKING**: Replaced exception hierarchy with `FrozenFluentError` sealed class (DATA-INTEGRITY-001):
+  - Previous: `FluentError`, `FluentReferenceError`, `FluentResolutionError`, `FluentCyclicReferenceError`, `FluentParseError`, `FormattingError` exception classes
+  - Now: Single `FrozenFluentError` class with `ErrorCategory` enum for classification
+  - Migration pattern:
+    ```python
+    # Before
+    from ftllexengine import FluentReferenceError
+    if isinstance(error, FluentReferenceError): ...
+
+    # After
+    from ftllexengine.diagnostics import FrozenFluentError, ErrorCategory
+    if isinstance(error, FrozenFluentError) and error.category == ErrorCategory.REFERENCE: ...
+    ```
+  - Categories: `REFERENCE`, `RESOLUTION`, `CYCLIC`, `PARSE`, `FORMATTING`
+  - Impact: All code checking error types via isinstance() must be updated
+
+### Added
+
+- **IntegrityCache: Financial-Grade Format Caching** (DATA-INTEGRITY-002):
+  - Thread-safe LRU cache with BLAKE2b-128 checksum verification on every `get()`
+  - `IntegrityCacheEntry`: Immutable cache entry with `formatted`, `errors`, `checksum`, `created_at`, `sequence`
+  - `WriteLogEntry`: Immutable audit log entry for compliance and debugging
+  - Write-once semantics: Optional `write_once=True` prevents overwrites (data race prevention)
+  - Strict mode: `strict=True` (default) raises `CacheCorruptionError` on checksum mismatch; `strict=False` silently evicts
+  - Audit logging: `enable_audit=True` records all cache operations to internal log
+  - New integrity exceptions: `CacheCorruptionError`, `WriteConflictError`
+  - Sequence numbers: Monotonically increasing for audit trail integrity
+  - Configurable limits: `max_entry_weight`, `max_errors_per_entry`, `max_audit_entries`
+  - Import: `from ftllexengine.runtime.cache import IntegrityCache, IntegrityCacheEntry`
+
+- **Integrity Context and Exceptions** (DATA-INTEGRITY-002):
+  - `IntegrityContext`: Dataclass for error context (component, operation, key, expected, actual, timestamp)
+  - `CacheCorruptionError`: Raised when checksum verification fails (strict mode)
+  - `WriteConflictError`: Raised when write-once semantics violated (strict mode)
+  - Import: `from ftllexengine.integrity import CacheCorruptionError, WriteConflictError, IntegrityContext`
+
+- **FrozenFluentError: Immutable, Content-Addressable Errors** (DATA-INTEGRITY-001):
+  - Immutable: All attributes frozen after construction; mutation raises `ImmutabilityViolationError`
+  - Sealed: Cannot be subclassed (enforced at static analysis via `@final` and at runtime)
+  - Content-addressed: BLAKE2b-128 hash computed at construction for integrity verification
+  - Hashable: Can be used in sets and as dict keys; hash based on content, not identity
+  - Properties: `message`, `category`, `diagnostic`, `context`, `content_hash`, `fallback_value`
+  - Method: `verify_integrity()` - recomputes hash with constant-time comparison
+
+- **ErrorCategory Enum**: Replaces exception class hierarchy
+  - `REFERENCE`: Unknown message, term, or variable reference
+  - `RESOLUTION`: Runtime resolution failure (depth exceeded, function error)
+  - `CYCLIC`: Cyclic reference detected
+  - `PARSE`: Bi-directional parsing failure (number, date, currency)
+  - `FORMATTING`: Locale-aware formatting failure
+
+- **FrozenErrorContext Dataclass**: Immutable context for parse/formatting errors
+  - Fields: `input_value`, `locale_code`, `parse_type`, `fallback_value`
+  - Used to provide additional context for `PARSE` and `FORMATTING` category errors
+
+- **DataIntegrityError and ImmutabilityViolationError**: New integrity exceptions
+  - `DataIntegrityError`: Base class for data integrity violations
+  - `ImmutabilityViolationError`: Raised when attempting to mutate frozen objects
+  - Import: `from ftllexengine.integrity import DataIntegrityError, ImmutabilityViolationError`
+
+- **FormattingIntegrityError: Strict Mode Exception** (DATA-INTEGRITY-003):
+  - Raised when `strict=True` bundle encounters ANY formatting errors
+  - Carries original Fluent errors: `fluent_errors` property (tuple of FrozenFluentError)
+  - Carries fallback value: `fallback_value` property (what would have been returned in non-strict mode)
+  - Carries message ID: `message_id` property for identifying failed message
+  - Includes `IntegrityContext` for post-mortem analysis
+  - Import: `from ftllexengine.integrity import FormattingIntegrityError`
+
+- **FluentBundle strict Mode Parameter** (DATA-INTEGRITY-003):
+  - New `strict: bool = False` parameter in `FluentBundle.__init__`
+  - When `strict=True`: Any formatting error raises `FormattingIntegrityError` instead of returning fallback
+  - Property: `bundle.strict` returns current strict mode setting
+  - Use case: Financial applications that cannot accept silent fallbacks for missing translations
+  - Example:
+    ```python
+    bundle = FluentBundle("en", strict=True)
+    bundle.add_resource("msg = Hello, { $name }!")
+    # Raises FormattingIntegrityError instead of returning "Hello, {$name}!"
+    bundle.format_pattern("msg", {})
+    ```
+
 ## [0.79.0] - 2026-01-18
 
 ### Breaking
@@ -2138,6 +2248,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.80.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.80.0
 [0.79.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.79.0
 [0.78.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.78.0
 [0.77.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.77.0

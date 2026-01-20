@@ -14,7 +14,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.visitor import ASTVisitor
@@ -160,14 +160,14 @@ class TestFormatCacheHitRate:
 
     def test_get_stats_hit_rate_is_float(self) -> None:
         """hit_rate is a float, not an int."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
         stats = cache.get_stats()
 
         assert isinstance(stats["hit_rate"], float)
 
     def test_get_stats_hit_rate_has_precision(self) -> None:
         """hit_rate preserves decimal precision."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
 
         # Simulate some cache operations by directly manipulating stats
         # This tests the return type, not cache functionality
@@ -178,17 +178,17 @@ class TestFormatCacheHitRate:
 
     def test_get_stats_hit_rate_range(self) -> None:
         """hit_rate is between 0.0 and 100.0."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
         stats = cache.get_stats()
 
         assert 0.0 <= stats["hit_rate"] <= 100.0
 
     def test_get_stats_returns_correct_types(self) -> None:
         """get_stats returns dict[str, int | float]."""
-        cache = FormatCache(maxsize=100)
+        cache = IntegrityCache(strict=False, maxsize=100)
         stats = cache.get_stats()
 
-        # Check all keys exist
+        # Check all keys exist (IntegrityCache has additional integrity-related keys)
         expected_keys = {
             "size",
             "maxsize",
@@ -200,6 +200,13 @@ class TestFormatCacheHitRate:
             "oversize_skips",
             "error_bloat_skips",
             "max_errors_per_entry",
+            # IntegrityCache-specific keys
+            "corruption_detected",
+            "sequence",
+            "write_once",
+            "strict",
+            "audit_enabled",
+            "audit_entries",
         }
         assert set(stats.keys()) == expected_keys
 
@@ -214,6 +221,13 @@ class TestFormatCacheHitRate:
         assert isinstance(stats["oversize_skips"], int)
         assert isinstance(stats["error_bloat_skips"], int)
         assert isinstance(stats["max_errors_per_entry"], int)
+        # IntegrityCache-specific types
+        assert isinstance(stats["corruption_detected"], int)
+        assert isinstance(stats["sequence"], int)
+        assert isinstance(stats["write_once"], bool)
+        assert isinstance(stats["strict"], bool)
+        assert isinstance(stats["audit_enabled"], bool)
+        assert isinstance(stats["audit_entries"], int)
 
 
 class TestASTVisitorSlots:

@@ -2,9 +2,9 @@
 
 from ftllexengine.diagnostics import (
     DiagnosticCode,
+    ErrorCategory,
     ErrorTemplate,
-    FluentError,
-    FluentResolutionError,
+    FrozenFluentError,
 )
 
 
@@ -177,11 +177,11 @@ class TestErrorTemplates:
         assert diagnostic.argument_name == "pattern"
 
 
-class TestBackwardCompatibility:
-    """Test backward compatibility with existing error handling."""
+class TestFrozenFluentErrorWithDiagnostic:
+    """Test FrozenFluentError construction with Diagnostic objects."""
 
-    def test_fluent_error_accepts_diagnostic(self) -> None:
-        """FluentError still accepts Diagnostic objects."""
+    def test_frozen_error_accepts_diagnostic(self) -> None:
+        """FrozenFluentError accepts Diagnostic via diagnostic parameter."""
         diagnostic = ErrorTemplate.type_mismatch(
             function_name="NUMBER",
             argument_name="value",
@@ -189,20 +189,41 @@ class TestBackwardCompatibility:
             received_type="String",
         )
 
-        error = FluentError(diagnostic)
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
+        )
         assert error.diagnostic == diagnostic
         assert "TYPE_MISMATCH" in str(error)
 
-    def test_fluent_resolution_error_with_diagnostic(self) -> None:
-        """FluentResolutionError works with rich diagnostics."""
+    def test_frozen_error_with_resolution_category(self) -> None:
+        """FrozenFluentError with RESOLUTION category and rich diagnostics."""
         diagnostic = ErrorTemplate.function_failed("NUMBER", "Invalid value")
 
-        error = FluentResolutionError(diagnostic)
+        error = FrozenFluentError(
+            str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
+        )
         assert error.diagnostic == diagnostic
+        assert error.category == ErrorCategory.RESOLUTION
         assert error.diagnostic.function_name == "NUMBER"
 
-    def test_string_error_still_works(self) -> None:
-        """FluentError still accepts string messages."""
-        error = FluentError("Simple error message")
+    def test_frozen_error_string_only(self) -> None:
+        """FrozenFluentError accepts string message without diagnostic."""
+        error = FrozenFluentError("Simple error message", ErrorCategory.REFERENCE)
         assert str(error) == "Simple error message"
         assert error.diagnostic is None
+
+    def test_frozen_error_is_immutable(self) -> None:
+        """FrozenFluentError attributes cannot be modified after creation."""
+        error = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
+
+        # FrozenFluentError is automatically frozen at construction
+        # Content hash should be deterministic for identical content
+        hash1 = error.content_hash
+        error2 = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
+        hash2 = error2.content_hash
+
+        assert hash1 == hash2
+
+        # Verify integrity check works
+        assert error.verify_integrity()
+        assert error2.verify_integrity()

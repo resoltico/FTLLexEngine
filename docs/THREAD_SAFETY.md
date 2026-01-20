@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.74.0"
+version: "0.80.0"
 domain: architecture
-updated: "2026-01-15"
+updated: "2026-01-19"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?"]
@@ -23,7 +23,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 |:----------|:------------|:-----------|:------|
 | `FluentBundle` | Yes (reads) | Yes | Immutable after construction |
 | `FluentParserV1` | Yes | Yes | Stateless parsing |
-| `FormatCache` | Yes | Yes | RLock-protected |
+| `IntegrityCache` | Yes | Yes | RLock-protected |
 | `FunctionRegistry` | Copy-on-write | Copy-on-write | Copied on bundle init |
 | Introspection cache | Accepted race | Accepted race | Redundant computation, no corruption |
 | Parse error context | Thread-local | Requires clear | Call `clear_parse_error()` before parse |
@@ -37,7 +37,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 **Guarantees**:
 - All public properties are immutable after construction
 - `format_pattern()` creates isolated `ResolutionContext` per call
-- `FormatCache` uses `RLock` for internal synchronization
+- `IntegrityCache` uses `RLock` for internal synchronization
 - `FunctionRegistry` is copied on initialization (copy-on-write)
 - Batch operations (`get_all_message_variables()`) acquire single read lock for atomic snapshot
 
@@ -47,7 +47,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 bundle._locale       # str, immutable
 bundle._messages     # dict, populated once
 bundle._terms        # dict, populated once
-bundle._cache        # FormatCache, same instance forever
+bundle._cache        # IntegrityCache, same instance forever
 bundle._registry     # FunctionRegistry, copied from input
 ```
 

@@ -32,10 +32,7 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, invariant, rule
 
-from ftllexengine.diagnostics import (
-    FluentReferenceError,
-    FluentResolutionError,
-)
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.functions import create_default_registry
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax import (
@@ -240,7 +237,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
 
             # May have errors if message references unknown variables/messages/terms
             assert isinstance(result, str)
-        except (FluentReferenceError, FluentResolutionError):
+        except FrozenFluentError:
             # Expected if message references unknown variables/messages/terms
             pass
 
@@ -285,7 +282,8 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             message, args={}, attribute="nonexistent_attr_xyz"
         )
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert "attribute" in str(errors[0]).lower()
 
     @rule()
@@ -482,7 +480,8 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         # Should raise error when trying to resolve without specifying attribute
         result, errors = self.resolver.resolve_message(message, args={})
         assert len(errors) == 1
-        assert isinstance(errors[0], FluentReferenceError)
+        assert isinstance(errors[0], FrozenFluentError)
+        assert errors[0].category == ErrorCategory.REFERENCE
         assert "no value" in str(errors[0]).lower()
         assert isinstance(result, str)
 

@@ -1,39 +1,61 @@
-"""Thread-safe LRU cache for message formatting results.
+"""Thread-safe LRU cache with integrity verification for message formatting.
 
-Provides transparent caching of format_pattern() calls with automatic
-invalidation on resource/function changes.
+Provides financial-grade caching of format_pattern() calls with:
+- BLAKE2b-128 checksum verification on every get/put
+- Write-once semantics (optional) for data race prevention
+- Audit logging (optional) for post-mortem analysis
+- Immutable cache entries (frozen dataclasses)
+- Automatic invalidation on resource/function changes
 
 Architecture:
     - Thread-safe using threading.RLock (reentrant lock)
     - LRU eviction via OrderedDict
     - Immutable cache keys (tuples of hashable types)
-    - Automatic invalidation on bundle mutation
-    - Zero overhead when disabled
+    - Content-addressed entries with BLAKE2b-128 checksums
+    - Fail-fast on corruption (strict mode) or silent eviction (non-strict)
 
 Cache Key Structure:
-    (message_id, args_tuple, attribute, locale_code)
+    (message_id, args_tuple, attribute, locale_code, use_isolating)
     - message_id: str
     - args_tuple: tuple[tuple[str, Any], ...] (sorted, frozen)
     - attribute: str | None
     - locale_code: str (for multi-bundle scenarios)
+    - use_isolating: bool
 
 Thread Safety:
     All operations protected by RLock. Safe for concurrent reads and writes.
 
-Python 3.13+.
+Python 3.13+. Zero external dependencies.
 """
 
+from __future__ import annotations
+
+import hashlib
+import hmac
+import time
 from collections import OrderedDict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from threading import RLock
+from typing import final
 
 from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
-from ftllexengine.diagnostics import FluentError
+from ftllexengine.diagnostics import FrozenFluentError
+from ftllexengine.integrity import (
+    CacheCorruptionError,
+    IntegrityContext,
+    WriteConflictError,
+)
 from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 
-__all__ = ["FormatCache", "HashableValue"]
+__all__ = [
+    "HashableValue",
+    "IntegrityCache",
+    "IntegrityCacheEntry",
+    "WriteLogEntry",
+]
 
 # Realistic estimate of memory weight per FluentError object.
 # Each error carries Diagnostic objects with traceback information, message context,
@@ -41,9 +63,6 @@ __all__ = ["FormatCache", "HashableValue"]
 # - Error message strings (~50-100 bytes)
 # - Diagnostic traceback data (~50-100 bytes)
 # - Object overhead and references (~50 bytes)
-# Previous value (1000) made max_errors_per_entry=50 unreachable due to weight
-# calculation rejecting entries >10 errors. Reduced to 200 to align parameter
-# interaction: 50 errors x 200 bytes = 10,000 bytes (matches DEFAULT_MAX_ENTRY_SIZE).
 _ERROR_WEIGHT_BYTES: int = 200
 
 # Maximum number of errors allowed per cache entry.
@@ -73,42 +92,188 @@ type HashableValue = (
 # 5-tuple: (message_id, args_tuple, attribute, locale_code, use_isolating)
 type _CacheKey = tuple[str, tuple[tuple[str, HashableValue], ...], str | None, str, bool]
 
-# Internal type alias for cache values (prefixed with _ per naming convention)
-type _CacheValue = tuple[str, tuple[FluentError, ...]]
+# Internal type alias for legacy cache values (for FormatCache compatibility)
+type _CacheValue = tuple[str, tuple[FrozenFluentError, ...]]
 
 
-class FormatCache:
-    """Thread-safe LRU cache for format_pattern() results.
+@dataclass(frozen=True, slots=True)
+class IntegrityCacheEntry:
+    """Immutable cache entry with integrity metadata.
 
-    Uses OrderedDict for LRU eviction and RLock for thread safety.
-    Transparent to caller - returns None on cache miss.
-
-    Memory Protection:
-        The max_entry_weight parameter prevents unbounded memory usage by
-        skipping cache storage for results exceeding the weight limit.
-        Weight is calculated as: len(formatted_str) + (len(errors) * 200).
-        This protects against scenarios where large variable values produce
-        very large formatted strings or large error collections (e.g., 10MB
-        results cached 1000 times would consume 10GB of memory).
+    Each entry contains the formatted result, any errors, and a BLAKE2b-128
+    checksum computed from the content. The checksum enables detection of
+    memory corruption, hardware faults, or tampering.
 
     Attributes:
-        maxsize: Maximum number of cache entries
-        max_entry_weight: Maximum memory weight for cached results
-        hits: Number of cache hits (for metrics)
-        misses: Number of cache misses (for metrics)
+        formatted: Formatted message string
+        errors: Tuple of FrozenFluentError instances (immutable)
+        checksum: BLAKE2b-128 hash of (formatted, errors) for integrity verification
+        created_at: Monotonic timestamp when entry was created (time.monotonic())
+        sequence: Monotonically increasing sequence number for audit trail
+    """
+
+    formatted: str
+    errors: tuple[FrozenFluentError, ...]
+    checksum: bytes
+    created_at: float
+    sequence: int
+
+    @classmethod
+    def create(
+        cls,
+        formatted: str,
+        errors: tuple[FrozenFluentError, ...],
+        sequence: int,
+    ) -> IntegrityCacheEntry:
+        """Create entry with computed checksum.
+
+        Factory method that computes the BLAKE2b-128 checksum from the content
+        and creates an immutable entry with the current monotonic timestamp.
+
+        Args:
+            formatted: Formatted message string
+            errors: Tuple of FrozenFluentError instances
+            sequence: Sequence number for audit trail
+
+        Returns:
+            New IntegrityCacheEntry with computed checksum
+        """
+        checksum = cls._compute_checksum(formatted, errors)
+        return cls(
+            formatted=formatted,
+            errors=errors,
+            checksum=checksum,
+            created_at=time.monotonic(),
+            sequence=sequence,
+        )
+
+    @staticmethod
+    def _compute_checksum(
+        formatted: str,
+        errors: tuple[FrozenFluentError, ...],
+    ) -> bytes:
+        """Compute BLAKE2b-128 hash of cache content.
+
+        Uses BLAKE2b with 128-bit (16 byte) digest for fast cryptographic
+        hashing. This provides collision resistance sufficient for integrity
+        verification while minimizing memory overhead.
+
+        Args:
+            formatted: Formatted message string
+            errors: Tuple of errors to include in hash
+
+        Returns:
+            16-byte BLAKE2b digest
+        """
+        h = hashlib.blake2b(digest_size=16)
+        # Use surrogatepass to handle invalid Unicode (e.g., from fuzzing)
+        h.update(formatted.encode("utf-8", errors="surrogatepass"))
+        # Include error count and content hashes
+        h.update(len(errors).to_bytes(4, "big"))
+        for error in errors:
+            # Use error's content hash if available, otherwise hash the message
+            if hasattr(error, "content_hash"):
+                h.update(error.content_hash)
+            else:
+                h.update(str(error).encode("utf-8", errors="surrogatepass"))
+        return h.digest()
+
+    def verify(self) -> bool:
+        """Verify entry integrity.
+
+        Recomputes the checksum from current content and compares against
+        stored checksum using constant-time comparison (defense against
+        timing attacks).
+
+        Returns:
+            True if checksum matches (entry is valid), False otherwise
+        """
+        expected = self._compute_checksum(self.formatted, self.errors)
+        return hmac.compare_digest(self.checksum, expected)
+
+    def to_tuple(self) -> _CacheValue:
+        """Convert to legacy tuple format for backwards compatibility.
+
+        Returns:
+            (formatted, errors) tuple matching FormatCache return type
+        """
+        return (self.formatted, self.errors)
+
+
+@dataclass(frozen=True, slots=True)
+class WriteLogEntry:
+    """Immutable audit log entry for cache operations.
+
+    Records cache operations for post-mortem analysis and debugging.
+    Used when audit logging is enabled on IntegrityCache.
+
+    Attributes:
+        operation: Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION)
+        key_hash: Hash of cache key (privacy-preserving)
+        timestamp: Monotonic timestamp of operation
+        sequence: Cache entry sequence number (for PUT operations)
+        checksum_hex: Hex representation of entry checksum (for tracing)
+    """
+
+    operation: str
+    key_hash: str
+    timestamp: float
+    sequence: int
+    checksum_hex: str
+
+
+@final
+class IntegrityCache:
+    """Financial-grade format cache with integrity verification.
+
+    Thread-safe LRU cache that provides:
+    - BLAKE2b-128 checksum verification on every get()
+    - Write-once semantics (optional) to prevent data races
+    - Audit logging (optional) for compliance and debugging
+    - Fail-fast on corruption (strict mode) or silent eviction
+
+    This is the recommended cache for financial applications where
+    silent data corruption is unacceptable.
+
+    Thread Safety:
+        All operations are protected by RLock. Safe for concurrent access.
+
+    Memory Protection:
+        The max_entry_weight parameter prevents unbounded memory usage.
+        Weight is calculated as: len(formatted_str) + (len(errors) * 200).
+
+    Integrity Guarantees:
+        - Checksums computed on put(), verified on get()
+        - Corruption detected via BLAKE2b-128 mismatch
+        - Write-once mode prevents overwrites (data race protection)
+        - Audit log provides complete operation history
+
+    Example:
+        >>> cache = IntegrityCache(maxsize=1000, strict=True)
+        >>> cache.put("msg", None, None, "en_US", False, "Hello", ())
+        >>> entry = cache.get("msg", None, None, "en_US", False)
+        >>> assert entry is not None
+        >>> assert entry.verify()  # Integrity check
+        >>> result, errors = entry.to_tuple()  # Legacy format
     """
 
     __slots__ = (
+        "_audit_log",
         "_cache",
+        "_corruption_detected",
         "_error_bloat_skips",
         "_hits",
         "_lock",
+        "_max_audit_entries",
         "_max_entry_weight",
         "_max_errors_per_entry",
         "_maxsize",
         "_misses",
         "_oversize_skips",
+        "_sequence",
+        "_strict",
         "_unhashable_skips",
+        "_write_once",
     )
 
     def __init__(
@@ -116,18 +281,28 @@ class FormatCache:
         maxsize: int = 1000,
         max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
         max_errors_per_entry: int = _DEFAULT_MAX_ERRORS_PER_ENTRY,
+        *,
+        write_once: bool = False,
+        strict: bool = True,
+        enable_audit: bool = False,
+        max_audit_entries: int = 10000,
     ) -> None:
-        """Initialize format cache.
+        """Initialize integrity cache.
 
         Args:
             maxsize: Maximum number of entries (default: 1000)
             max_entry_weight: Maximum memory weight for cached results (default: 10_000).
                 Weight is calculated as: len(formatted_str) + (len(errors) * 200).
-                Results exceeding this weight are not cached to prevent memory
-                exhaustion from large formatted strings or large error collections.
-            max_errors_per_entry: Maximum number of errors per cache entry
-                (default: 50). Results with more errors are not cached to
-                prevent memory exhaustion from error collections.
+            max_errors_per_entry: Maximum number of errors per cache entry (default: 50).
+            write_once: If True, reject updates to existing keys (default: False).
+                Enables data race prevention for financial applications.
+            strict: If True, raise CacheCorruptionError on checksum mismatch (default: True).
+                If False, silently evict corrupted entries and return cache miss.
+            enable_audit: If True, maintain audit log of all operations (default: False).
+            max_audit_entries: Maximum audit log entries before oldest are evicted (default: 10000).
+
+        Raises:
+            ValueError: If maxsize, max_entry_weight, or max_errors_per_entry is not positive
         """
         if maxsize <= 0:
             msg = "maxsize must be positive"
@@ -139,16 +314,26 @@ class FormatCache:
             msg = "max_errors_per_entry must be positive"
             raise ValueError(msg)
 
-        self._cache: OrderedDict[_CacheKey, _CacheValue] = OrderedDict()
+        self._cache: OrderedDict[_CacheKey, IntegrityCacheEntry] = OrderedDict()
         self._maxsize = maxsize
         self._max_entry_weight = max_entry_weight
         self._max_errors_per_entry = max_errors_per_entry
-        self._lock = RLock()  # Reentrant lock for safety
+        self._lock = RLock()
+        self._write_once = write_once
+        self._strict = strict
+
+        # Audit logging
+        self._audit_log: list[WriteLogEntry] | None = [] if enable_audit else None
+        self._max_audit_entries = max_audit_entries
+
+        # Statistics
         self._hits = 0
         self._misses = 0
         self._unhashable_skips = 0
         self._oversize_skips = 0
         self._error_bloat_skips = 0
+        self._corruption_detected = 0
+        self._sequence = 0
 
     def get(
         self,
@@ -157,10 +342,10 @@ class FormatCache:
         attribute: str | None,
         locale_code: str,
         use_isolating: bool,
-    ) -> _CacheValue | None:
-        """Get cached result if exists.
+    ) -> IntegrityCacheEntry | None:
+        """Get cached entry with integrity verification.
 
-        Thread-safe. Returns None on cache miss.
+        Thread-safe. Verifies checksum before returning entry.
 
         Args:
             message_id: Message identifier
@@ -170,7 +355,10 @@ class FormatCache:
             use_isolating: Whether Unicode isolation marks are used
 
         Returns:
-            Cached (result, errors) tuple or None
+            IntegrityCacheEntry if found and valid, None on miss or corruption
+
+        Raises:
+            CacheCorruptionError: If strict=True and checksum mismatch detected
         """
         key = self._make_key(message_id, args, attribute, locale_code, use_isolating)
 
@@ -181,14 +369,39 @@ class FormatCache:
             return None
 
         with self._lock:
-            if key in self._cache:
-                # Move to end (mark as recently used)
-                self._cache.move_to_end(key)
-                self._hits += 1
-                return self._cache[key]
+            entry = self._cache.get(key)
+            if entry is None:
+                self._misses += 1
+                self._audit("MISS", key, None)
+                return None
 
-            self._misses += 1
-            return None
+            # INTEGRITY CHECK: Verify checksum before returning
+            if not entry.verify():
+                self._corruption_detected += 1
+                self._audit("CORRUPTION", key, entry)
+
+                if self._strict:
+                    # Fail-fast: raise immediately
+                    context = IntegrityContext(
+                        component="cache",
+                        operation="get",
+                        key=message_id,
+                        expected=entry.checksum.hex(),
+                        actual="<recomputed mismatch>",
+                        timestamp=time.monotonic(),
+                    )
+                    msg = f"Cache entry corruption detected for '{message_id}'"
+                    raise CacheCorruptionError(msg, context=context)
+                # Non-strict: evict corrupted entry, return miss
+                del self._cache[key]
+                self._misses += 1
+                return None
+
+            # Move to end (mark as recently used) and record hit
+            self._cache.move_to_end(key)
+            self._hits += 1
+            self._audit("HIT", key, entry)
+            return entry
 
     def put(
         self,
@@ -197,12 +410,12 @@ class FormatCache:
         attribute: str | None,
         locale_code: str,
         use_isolating: bool,
-        result: _CacheValue,
+        formatted: str,
+        errors: tuple[FrozenFluentError, ...],
     ) -> None:
-        """Store result in cache.
+        """Store entry with integrity metadata.
 
-        Thread-safe. Evicts LRU entry if cache is full.
-        Skips caching for results exceeding max_entry_weight or max_errors_per_entry.
+        Thread-safe. Computes checksum and stores immutable entry.
 
         Args:
             message_id: Message identifier
@@ -210,28 +423,24 @@ class FormatCache:
             attribute: Attribute name
             locale_code: Locale code
             use_isolating: Whether Unicode isolation marks are used
-            result: Format result to cache
-        """
-        # Check entry weight before caching (result is (formatted_str, errors))
-        formatted_str = result[0]
-        errors = result[1]
+            formatted: Formatted message string
+            errors: Tuple of FrozenFluentError instances
 
-        # Check formatted string size
-        if len(formatted_str) > self._max_entry_weight:
+        Raises:
+            WriteConflictError: If write_once=True and key already exists (strict mode)
+        """
+        # Check entry weight before caching
+        if len(formatted) > self._max_entry_weight:
             with self._lock:
                 self._oversize_skips += 1
             return
 
-        # Check error collection size (memory weight = count * estimated bytes per error)
         if len(errors) > self._max_errors_per_entry:
             with self._lock:
                 self._error_bloat_skips += 1
             return
 
-        # Calculate total memory weight (string + error collection)
-        # String: measured in characters (Python len())
-        # Errors: estimated weight in bytes (conservative: 1KB per error)
-        total_weight = len(formatted_str) + (len(errors) * _ERROR_WEIGHT_BYTES)
+        total_weight = len(formatted) + (len(errors) * _ERROR_WEIGHT_BYTES)
         if total_weight > self._max_entry_weight:
             with self._lock:
                 self._error_bloat_skips += 1
@@ -245,15 +454,43 @@ class FormatCache:
             return
 
         with self._lock:
+            # WRITE-ONCE: Reject updates to existing keys
+            if self._write_once and key in self._cache:
+                existing = self._cache[key]
+                self._audit("WRITE_ONCE_REJECTED", key, existing)
+
+                if self._strict:
+                    context = IntegrityContext(
+                        component="cache",
+                        operation="put",
+                        key=message_id,
+                        expected="<new entry>",
+                        actual=f"<existing seq={existing.sequence}>",
+                        timestamp=time.monotonic(),
+                    )
+                    msg = f"Write-once violation: '{message_id}' already cached"
+                    raise WriteConflictError(
+                        msg,
+                        context=context,
+                        existing_seq=existing.sequence,
+                        new_seq=self._sequence,
+                    )
+                return
+
+            # Increment sequence for new entry
+            self._sequence += 1
+            entry = IntegrityCacheEntry.create(formatted, errors, self._sequence)
+
+            # LRU eviction if needed
+            if len(self._cache) >= self._maxsize:
+                evicted_key, evicted_entry = self._cache.popitem(last=False)
+                self._audit("EVICT", evicted_key, evicted_entry)
+
             # Update existing or add new
             if key in self._cache:
-                # Move to end (mark as recently used)
                 self._cache.move_to_end(key)
-            # Evict LRU if cache is full
-            elif len(self._cache) >= self._maxsize:
-                self._cache.popitem(last=False)  # Remove first (oldest)
-
-            self._cache[key] = result
+            self._cache[key] = entry
+            self._audit("PUT", key, entry)
 
     def clear(self) -> None:
         """Clear all cached entries.
@@ -268,11 +505,14 @@ class FormatCache:
             self._unhashable_skips = 0
             self._oversize_skips = 0
             self._error_bloat_skips = 0
+            self._corruption_detected = 0
+            # Note: sequence NOT reset (monotonic for audit trail)
+            # Note: audit log NOT cleared (historical record)
 
     def get_stats(self) -> dict[str, int | float]:
         """Get cache statistics.
 
-        Thread-safe. Returns current metrics.
+        Thread-safe. Returns current metrics including integrity stats.
 
         Returns:
             Dict with keys:
@@ -286,6 +526,12 @@ class FormatCache:
             - unhashable_skips (int): Operations skipped due to unhashable args
             - oversize_skips (int): Operations skipped due to result weight
             - error_bloat_skips (int): Operations skipped due to error collection size
+            - corruption_detected (int): Number of checksum mismatches detected
+            - sequence (int): Current sequence number (total puts)
+            - write_once (bool): Whether write-once mode is enabled
+            - strict (bool): Whether strict mode is enabled
+            - audit_enabled (bool): Whether audit logging is enabled
+            - audit_entries (int): Number of audit log entries
         """
         with self._lock:
             total = self._hits + self._misses
@@ -302,7 +548,62 @@ class FormatCache:
                 "unhashable_skips": self._unhashable_skips,
                 "oversize_skips": self._oversize_skips,
                 "error_bloat_skips": self._error_bloat_skips,
+                "corruption_detected": self._corruption_detected,
+                "sequence": self._sequence,
+                "write_once": self._write_once,
+                "strict": self._strict,
+                "audit_enabled": self._audit_log is not None,
+                "audit_entries": len(self._audit_log) if self._audit_log is not None else 0,
             }
+
+    def get_audit_log(self) -> tuple[WriteLogEntry, ...]:
+        """Get audit log entries.
+
+        Thread-safe. Returns immutable copy of audit log.
+
+        Returns:
+            Tuple of WriteLogEntry instances (empty if audit disabled)
+        """
+        with self._lock:
+            if self._audit_log is None:
+                return ()
+            return tuple(self._audit_log)
+
+    def _audit(
+        self,
+        operation: str,
+        key: _CacheKey,
+        entry: IntegrityCacheEntry | None,
+    ) -> None:
+        """Record audit log entry (internal, assumes lock held).
+
+        Args:
+            operation: Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION)
+            key: Cache key
+            entry: Cache entry (None for MISS operations)
+        """
+        if self._audit_log is None:
+            return
+
+        # Create privacy-preserving key hash
+        key_hash = hashlib.blake2b(
+            str(key).encode("utf-8", errors="surrogatepass"),
+            digest_size=8,
+        ).hexdigest()
+
+        log_entry = WriteLogEntry(
+            operation=operation,
+            key_hash=key_hash,
+            timestamp=time.monotonic(),
+            sequence=entry.sequence if entry is not None else 0,
+            checksum_hex=entry.checksum.hex() if entry is not None else "",
+        )
+
+        self._audit_log.append(log_entry)
+
+        # Evict oldest entries if log exceeds limit
+        while len(self._audit_log) > self._max_audit_entries:
+            self._audit_log.pop(0)
 
     @staticmethod
     def _make_hashable(  # noqa: PLR0911 - type dispatch requires multiple returns
@@ -339,32 +640,25 @@ class FormatCache:
 
         match value:
             case list():
-                return tuple(FormatCache._make_hashable(v, depth - 1) for v in value)
+                return tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value)
             case tuple():
-                # Tuples may contain unhashable elements (e.g., nested lists)
-                # Recursively process to ensure all elements are hashable
-                return tuple(FormatCache._make_hashable(v, depth - 1) for v in value)
+                return tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value)
             case dict():
                 return tuple(
                     sorted(
-                        (k, FormatCache._make_hashable(v, depth - 1))
+                        (k, IntegrityCache._make_hashable(v, depth - 1))
                         for k, v in value.items()
                     )
                 )
             case set():
-                return frozenset(FormatCache._make_hashable(v, depth - 1) for v in value)
+                return frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value)
             case str() | int() | float() | bool() | None:
-                # Primitives are hashable
                 return value
             case Decimal() | datetime() | date():
-                # These types are hashable and part of FluentValue
                 return value
             case FluentNumber():
-                # FluentNumber is hashable (wraps numeric value with formatting)
                 return value
             case _:
-                # Unknown type - let hash() verification in _make_key catch failures
-                # This provides runtime safety while avoiding overly restrictive checks
                 msg = f"Unknown type in cache key: {type(value).__name__}"
                 raise TypeError(msg)
 
@@ -380,22 +674,6 @@ class FormatCache:
 
         Converts unhashable types (lists, dicts, sets) to hashable equivalents.
 
-        Performance Optimization:
-            Single-pass conversion: iterates args once, converting unhashable values
-            (list, dict, set) inline as encountered. This avoids the double iteration
-            penalty of checking for unhashables first, then converting.
-
-            Has O(N log N) complexity due to sorting for consistent key ordering.
-
-            The sorting is REQUIRED for correctness: without it, format_pattern()
-            called with args {"a": 1, "b": 2} and {"b": 2, "a": 1} would produce
-            different cache keys despite being semantically equivalent.
-
-        Robustness:
-            Catches RecursionError for deeply nested structures and TypeError
-            for unhashable values. Returns None in both cases to gracefully
-            bypass caching without failing the format operation.
-
         Args:
             message_id: Message identifier
             args: Message arguments (may contain unhashable values)
@@ -406,34 +684,22 @@ class FormatCache:
         Returns:
             Immutable cache key tuple, or None if conversion fails
         """
-        # Convert args dict to sorted tuple of tuples
         if args is None:
             args_tuple: tuple[tuple[str, HashableValue], ...] = ()
         else:
             try:
-                # Convert all values through _make_hashable for consistent type validation.
-                # _make_hashable handles primitives directly and converts collections.
                 items: list[tuple[str, HashableValue]] = []
                 for k, v in args.items():
-                    items.append((k, FormatCache._make_hashable(v)))
+                    items.append((k, IntegrityCache._make_hashable(v)))
                 args_tuple = tuple(sorted(items))
-
-                # Verify the result is actually hashable
                 hash(args_tuple)
             except (TypeError, RecursionError):
-                # Args contain deeply nested or truly unhashable values
                 return None
 
         return (message_id, args_tuple, attribute, locale_code, use_isolating)
 
     def __len__(self) -> int:
-        """Get current cache size.
-
-        Thread-safe.
-
-        Returns:
-            Number of entries in cache
-        """
+        """Get current cache size. Thread-safe."""
         with self._lock:
             return len(self._cache)
 
@@ -444,53 +710,51 @@ class FormatCache:
 
     @property
     def hits(self) -> int:
-        """Number of cache hits.
-
-        Thread-safe.
-        """
+        """Number of cache hits. Thread-safe."""
         with self._lock:
             return self._hits
 
     @property
     def misses(self) -> int:
-        """Number of cache misses.
-
-        Thread-safe.
-        """
+        """Number of cache misses. Thread-safe."""
         with self._lock:
             return self._misses
 
     @property
     def unhashable_skips(self) -> int:
-        """Number of operations skipped due to unhashable args.
-
-        Thread-safe.
-        """
+        """Number of operations skipped due to unhashable args. Thread-safe."""
         with self._lock:
             return self._unhashable_skips
 
     @property
     def oversize_skips(self) -> int:
-        """Number of operations skipped due to result weight exceeding max_entry_weight.
-
-        Thread-safe.
-        """
+        """Number of operations skipped due to result weight. Thread-safe."""
         with self._lock:
             return self._oversize_skips
 
     @property
     def max_entry_weight(self) -> int:
-        """Maximum memory weight for cached results.
-
-        Weight is calculated as: len(formatted_str) + (len(errors) * 200).
-        """
+        """Maximum memory weight for cached results."""
         return self._max_entry_weight
 
     @property
     def size(self) -> int:
-        """Current number of cached entries.
-
-        Thread-safe.
-        """
+        """Current number of cached entries. Thread-safe."""
         with self._lock:
             return len(self._cache)
+
+    @property
+    def corruption_detected(self) -> int:
+        """Number of checksum mismatches detected. Thread-safe."""
+        with self._lock:
+            return self._corruption_detected
+
+    @property
+    def write_once(self) -> bool:
+        """Whether write-once mode is enabled."""
+        return self._write_once
+
+    @property
+    def strict(self) -> bool:
+        """Whether strict mode is enabled."""
+        return self._strict

@@ -20,9 +20,9 @@ Resolution Groups:
 import pytest
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.diagnostics import FluentReferenceError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
-from ftllexengine.runtime.cache import FormatCache
+from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax import parse, serialize
 from ftllexengine.syntax.serializer import SerializationDepthError
@@ -205,15 +205,17 @@ class TestSecCacheErrorBloat001:
     """SEC-CACHE-ERROR-BLOAT-001: Error collection memory bounding."""
 
     def test_cache_skips_entries_with_excessive_errors(self) -> None:
-        """FormatCache skips caching when error count exceeds limit."""
-        cache = FormatCache(maxsize=100, max_errors_per_entry=10)
+        """IntegrityCache skips caching when error count exceeds limit."""
+        cache = IntegrityCache(strict=False, maxsize=100, max_errors_per_entry=10)
 
         # Create result with too many errors
-        many_errors = tuple(FluentReferenceError(f"Error {i}") for i in range(15))
-        result = ("formatted text", many_errors)
+        many_errors = tuple(
+            FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
+            for i in range(15)
+        )
 
         # Put should skip due to error count
-        cache.put("msg", None, None, "en", True, result)
+        cache.put("msg", None, None, "en", True, "formatted text", many_errors)
 
         # Verify it wasn't cached
         cached = cache.get("msg", None, None, "en", True)
@@ -224,8 +226,8 @@ class TestSecCacheErrorBloat001:
         assert stats["error_bloat_skips"] == 1
 
     def test_cache_skips_entries_with_error_weight_exceeding_limit(self) -> None:
-        """FormatCache skips caching when total error weight exceeds limit."""
-        cache = FormatCache(
+        """IntegrityCache skips caching when total error weight exceeds limit."""
+        cache = IntegrityCache(strict=False,
             maxsize=100,
             max_entry_weight=5000,  # 5KB string limit
             max_errors_per_entry=100,  # Allow 100 errors
@@ -235,11 +237,13 @@ class TestSecCacheErrorBloat001:
         # 25 errors * 200 bytes/error = 5000 bytes
         # String: 100 chars
         # Total: 5100 bytes > 5000 byte limit
-        errors = tuple(FluentReferenceError(f"Error {i}") for i in range(25))
-        result = ("x" * 100, errors)
+        errors = tuple(
+            FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
+            for i in range(25)
+        )
 
         # Put should skip due to total weight
-        cache.put("msg", None, None, "en", True, result)
+        cache.put("msg", None, None, "en", True, "x" * 100, errors)
 
         # Verify it wasn't cached
         cached = cache.get("msg", None, None, "en", True)
@@ -250,19 +254,22 @@ class TestSecCacheErrorBloat001:
         assert stats["error_bloat_skips"] == 1
 
     def test_cache_accepts_reasonable_error_collections(self) -> None:
-        """FormatCache caches results with reasonable error counts."""
-        cache = FormatCache(maxsize=100, max_errors_per_entry=50)
+        """IntegrityCache caches results with reasonable error counts."""
+        cache = IntegrityCache(strict=False, maxsize=100, max_errors_per_entry=50)
 
         # Create result with moderate errors
-        few_errors = tuple(FluentReferenceError(f"Error {i}") for i in range(5))
-        result = ("formatted text", few_errors)
+        few_errors = tuple(
+            FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
+            for i in range(5)
+        )
 
         # Put should succeed
-        cache.put("msg", None, None, "en", True, result)
+        cache.put("msg", None, None, "en", True, "formatted text", few_errors)
 
         # Verify it was cached
         cached = cache.get("msg", None, None, "en", True)
-        assert cached == result
+        assert cached is not None
+        assert cached.to_tuple() == ("formatted text", few_errors)
 
         # No error bloat skips
         stats = cache.get_stats()
@@ -270,7 +277,7 @@ class TestSecCacheErrorBloat001:
 
     def test_cache_stats_includes_max_errors_per_entry(self) -> None:
         """Cache stats includes max_errors_per_entry configuration."""
-        cache = FormatCache(max_errors_per_entry=25)
+        cache = IntegrityCache(strict=False, max_errors_per_entry=25)
 
         stats = cache.get_stats()
         assert "max_errors_per_entry" in stats
@@ -278,12 +285,15 @@ class TestSecCacheErrorBloat001:
 
     def test_cache_clear_resets_error_bloat_counter(self) -> None:
         """Cache.clear() resets error_bloat_skips counter."""
-        cache = FormatCache(max_errors_per_entry=5)
+        cache = IntegrityCache(strict=False, max_errors_per_entry=5)
 
         # Trigger some error bloat skips
-        many_errors = tuple(FluentReferenceError(f"Error {i}") for i in range(10))
-        cache.put("msg1", None, None, "en", True, ("text", many_errors))
-        cache.put("msg2", None, None, "en", True, ("text", many_errors))
+        many_errors = tuple(
+            FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
+            for i in range(10)
+        )
+        cache.put("msg1", None, None, "en", True, "text", many_errors)
+        cache.put("msg2", None, None, "en", True, "text", many_errors)
 
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 2

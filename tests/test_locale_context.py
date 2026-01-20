@@ -27,7 +27,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.core.babel_compat import BabelImportError
-from ftllexengine.core.errors import FormattingError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.locale_context import LocaleContext
 
 # ============================================================================
@@ -489,7 +489,7 @@ class TestFormatNumber:
     def test_format_number_error_raises_formatting_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """format_number() raises FormattingError on Babel error."""
+        """format_number() raises FrozenFluentError with FORMATTING category on Babel error."""
         def mock_format_decimal(*_args: object, **_kwargs: object) -> None:
             msg = "Mocked format error"
             raise ValueError(msg)
@@ -497,9 +497,10 @@ class TestFormatNumber:
         monkeypatch.setattr(babel_numbers, "format_decimal", mock_format_decimal)
 
         ctx = LocaleContext.create("en-US")
-        with pytest.raises(FormattingError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             ctx.format_number(123.45)
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         # After Decimal quantization with maximumFractionDigits=3 (default),
         # fallback preserves trailing zeros: "123.450" not "123.45"
         assert exc_info.value.fallback_value == "123.450"
@@ -547,12 +548,13 @@ class TestFormatDatetime:
         assert "10" in result or "27" in result
 
     def test_format_datetime_invalid_string_raises(self) -> None:
-        """format_datetime() raises FormattingError for invalid datetime string."""
+        """format_datetime() raises FrozenFluentError for invalid datetime string."""
         ctx = LocaleContext.create("en-US")
 
-        with pytest.raises(FormattingError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             ctx.format_datetime("not-a-date", date_style="short")
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         assert "not ISO 8601 format" in str(exc_info.value)
 
     def test_format_datetime_with_time_style(self) -> None:
@@ -584,7 +586,7 @@ class TestFormatDatetime:
     def test_format_datetime_error_raises_formatting_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """format_datetime() raises FormattingError on Babel error."""
+        """format_datetime() raises FrozenFluentError with FORMATTING category on Babel error."""
         def mock_format_date(*_args: object, **_kwargs: object) -> None:
             msg = "Mocked format error"
             raise ValueError(msg)
@@ -594,8 +596,9 @@ class TestFormatDatetime:
         ctx = LocaleContext.create("en-US")
         dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
 
-        with pytest.raises(FormattingError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             ctx.format_datetime(dt, date_style="short")
+        assert exc_info.value.category == ErrorCategory.FORMATTING
 
 
 # ============================================================================
@@ -647,7 +650,7 @@ class TestFormatCurrency:
     def test_format_currency_error_raises_formatting_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """format_currency() raises FormattingError on Babel error."""
+        """format_currency() raises FrozenFluentError with FORMATTING category on Babel error."""
         def mock_format_currency(*_args: object, **_kwargs: object) -> None:
             msg = "Mocked format error"
             raise ValueError(msg)
@@ -655,9 +658,10 @@ class TestFormatCurrency:
         monkeypatch.setattr(babel_numbers, "format_currency", mock_format_currency)
 
         ctx = LocaleContext.create("en-US")
-        with pytest.raises(FormattingError) as exc_info:
+        with pytest.raises(FrozenFluentError) as exc_info:
             ctx.format_currency(123.45, currency="USD")
 
+        assert exc_info.value.category == ErrorCategory.FORMATTING
         assert "USD 123.45" in exc_info.value.fallback_value
 
 

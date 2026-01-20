@@ -31,13 +31,10 @@ from ftllexengine.constants import (
 )
 from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.core.depth_guard import DepthGuard, depth_clamp
-from ftllexengine.core.errors import FormattingError
 from ftllexengine.diagnostics import (
+    ErrorCategory,
     ErrorTemplate,
-    FluentCyclicReferenceError,
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
+    FrozenFluentError,
 )
 from ftllexengine.runtime.function_bridge import FluentNumber, FunctionRegistry
 from ftllexengine.runtime.plural_rules import select_plural_category
@@ -110,8 +107,10 @@ class GlobalDepthGuard:
         """Enter guarded section, increment global depth."""
         current = _global_resolution_depth.get()
         if current >= self._max_depth:
-            raise FluentResolutionError(
-                ErrorTemplate.expression_depth_exceeded(self._max_depth)
+            raise FrozenFluentError(
+                str(ErrorTemplate.expression_depth_exceeded(self._max_depth)),
+                ErrorCategory.RESOLUTION,
+                diagnostic=ErrorTemplate.expression_depth_exceeded(self._max_depth),
             )
         self._token = _global_resolution_depth.set(current + 1)
         return self
@@ -267,7 +266,7 @@ class FluentResolver:
         attribute: str | None = None,
         *,
         context: ResolutionContext | None = None,
-    ) -> tuple[str, tuple[FluentError, ...]]:
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Resolve message to final string with error collection.
 
         Mozilla python-fluent aligned API:
@@ -295,7 +294,7 @@ class FluentResolver:
         Returns:
             Tuple of (formatted_string, errors)
             - formatted_string: Best-effort output (never empty)
-            - errors: Tuple of FluentError instances encountered (immutable)
+            - errors: Tuple of FrozenFluentError instances encountered (immutable)
 
         Note:
             Per Fluent spec, resolution never fails catastrophically.
@@ -307,7 +306,7 @@ class FluentResolver:
             during resolution. This matches the Fluent specification and Mozilla
             reference implementation behavior.
         """
-        errors: list[FluentError] = []
+        errors: list[FrozenFluentError] = []
         args = args or {}
 
         # Create fresh context if not provided (top-level call)
@@ -321,16 +320,16 @@ class FluentResolver:
         if attribute:
             attr = next((a for a in reversed(message.attributes) if a.id.name == attribute), None)
             if not attr:
-                error = FluentReferenceError(
-                    ErrorTemplate.attribute_not_found(attribute, message.id.name)
-                )
+                diag = ErrorTemplate.attribute_not_found(attribute, message.id.name)
+                error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
                 errors.append(error)
                 fallback = FALLBACK_MISSING_MESSAGE.format(id=f"{message.id.name}.{attribute}")
                 return (fallback, tuple(errors))
             pattern = attr.value
         else:
             if message.value is None:
-                error = FluentReferenceError(ErrorTemplate.message_no_value(message.id.name))
+                diag = ErrorTemplate.message_no_value(message.id.name)
+                error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
                 errors.append(error)
                 fallback = FALLBACK_MISSING_MESSAGE.format(id=message.id.name)
                 return (fallback, tuple(errors))
@@ -340,16 +339,16 @@ class FluentResolver:
         msg_key = f"{message.id.name}.{attribute}" if attribute else message.id.name
         if context.contains(msg_key):
             cycle_path = context.get_cycle_path(msg_key)
-            error = FluentCyclicReferenceError(ErrorTemplate.cyclic_reference(cycle_path))
+            diag = ErrorTemplate.cyclic_reference(cycle_path)
+            error = FrozenFluentError(str(diag), ErrorCategory.CYCLIC, diagnostic=diag)
             errors.append(error)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
             return (fallback, tuple(errors))
 
         # Check for maximum depth (prevents stack overflow from long non-cyclic chains)
         if context.is_depth_exceeded():
-            error = FluentReferenceError(
-                ErrorTemplate.max_depth_exceeded(msg_key, context.max_depth)
-            )
+            diag = ErrorTemplate.max_depth_exceeded(msg_key, context.max_depth)
+            error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             errors.append(error)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
             return (fallback, tuple(errors))
@@ -365,7 +364,7 @@ class FluentResolver:
                     return (result, tuple(errors))
                 finally:
                     context.pop()
-        except FluentResolutionError as e:
+        except FrozenFluentError as e:
             # Global depth exceeded - collect error and return fallback
             errors.append(e)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
@@ -375,7 +374,7 @@ class FluentResolver:
         self,
         pattern: Pattern,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> str:
         """Resolve pattern by walking elements.
@@ -410,17 +409,16 @@ class FluentResolver:
                         else:
                             parts.append(formatted)
 
-                    except (FluentReferenceError, FluentResolutionError) as e:
+                    except FrozenFluentError as e:
                         # Mozilla-aligned error handling:
                         # Collect error, show readable fallback (not {ERROR: ...})
                         errors.append(e)
-                        # Use pattern matching for type-safe fallback extraction
-                        match e:
-                            case FormattingError(fallback_value=fallback):
-                                # FormattingError carries the original value as fallback
-                                parts.append(fallback)
-                            case _:
-                                parts.append(self._get_fallback_for_placeable(element.expression))
+                        # Check category for type-safe fallback extraction
+                        if e.category == ErrorCategory.FORMATTING and e.fallback_value:
+                            # Formatting errors carry the original value as fallback
+                            parts.append(e.fallback_value)
+                        else:
+                            parts.append(self._get_fallback_for_placeable(element.expression))
 
         return "".join(parts)
 
@@ -428,7 +426,7 @@ class FluentResolver:
         self,
         expr: Expression,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> FluentValue:
         """Resolve expression to value.
@@ -459,7 +457,9 @@ class FluentResolver:
                 with context.expression_guard:
                     return self._resolve_expression(expr.expression, args, errors, context)
             case _:
-                raise FluentResolutionError(ErrorTemplate.unknown_expression(type(expr).__name__))
+                # Defensive: catch unknown expression types from programmatic AST construction
+                diag = ErrorTemplate.unknown_expression(type(expr).__name__)  # type: ignore[unreachable]
+                raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
     def _resolve_variable_reference(
         self,
@@ -472,24 +472,24 @@ class FluentResolver:
         if var_name not in args:
             # Include resolution path for debugging nested references
             resolution_path = tuple(context.stack) if context.stack else None
-            raise FluentReferenceError(
-                ErrorTemplate.variable_not_provided(
-                    var_name, resolution_path=resolution_path
-                )
+            diag = ErrorTemplate.variable_not_provided(
+                var_name, resolution_path=resolution_path
             )
+            raise FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
         return args[var_name]
 
     def _resolve_message_reference(
         self,
         expr: MessageReference,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> str:
         """Resolve message reference."""
         msg_id = expr.id.name
         if msg_id not in self.messages:
-            raise FluentReferenceError(ErrorTemplate.message_not_found(msg_id))
+            diag = ErrorTemplate.message_not_found(msg_id)
+            raise FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
         message = self.messages[msg_id]
         # resolve_message returns (result, errors) tuple
         # Pass the same context for proper cycle detection across nested calls
@@ -507,7 +507,7 @@ class FluentResolver:
         self,
         expr: TermReference,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> str:
         """Resolve term reference with cycle detection and argument handling.
@@ -520,7 +520,8 @@ class FluentResolver:
         """
         term_id = expr.id.name
         if term_id not in self.terms:
-            raise FluentReferenceError(ErrorTemplate.term_not_found(term_id))
+            diag = ErrorTemplate.term_not_found(term_id)
+            raise FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
         term = self.terms[term_id]
 
         # Select pattern (value or attribute)
@@ -531,9 +532,8 @@ class FluentResolver:
                 None,
             )
             if not attr:
-                raise FluentReferenceError(
-                    ErrorTemplate.term_attribute_not_found(expr.attribute.name, term_id)
-                )
+                diag = ErrorTemplate.term_attribute_not_found(expr.attribute.name, term_id)
+                raise FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             pattern = attr.value
         else:
             pattern = term.value
@@ -544,16 +544,16 @@ class FluentResolver:
         # Check for circular references
         if context.contains(term_key):
             cycle_path = context.get_cycle_path(term_key)
-            cycle_error = FluentCyclicReferenceError(ErrorTemplate.cyclic_reference(cycle_path))
+            diag = ErrorTemplate.cyclic_reference(cycle_path)
+            cycle_error = FrozenFluentError(str(diag), ErrorCategory.CYCLIC, diagnostic=diag)
             errors.append(cycle_error)
             # term_key already has '-' prefix, strip it for the template
             return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
 
         # Check for maximum depth
         if context.is_depth_exceeded():
-            depth_error = FluentReferenceError(
-                ErrorTemplate.max_depth_exceeded(term_key, context.max_depth)
-            )
+            diag = ErrorTemplate.max_depth_exceeded(term_key, context.max_depth)
+            depth_error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             errors.append(depth_error)
             # term_key already has '-' prefix, strip it for the template
             return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
@@ -583,13 +583,12 @@ class FluentResolver:
                     self._resolve_expression(pos_arg, args, errors, context)
 
                 # Emit warning that positional arguments are ignored
+                diag = ErrorTemplate.term_positional_args_ignored(
+                    term_name=term_id,
+                    count=len(expr.arguments.positional),
+                )
                 errors.append(
-                    FluentResolutionError(
-                        ErrorTemplate.term_positional_args_ignored(
-                            term_name=term_id,
-                            count=len(expr.arguments.positional),
-                        )
-                    )
+                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
                 )
 
         try:
@@ -695,7 +694,7 @@ class FluentResolver:
         self,
         expr: SelectExpression,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> str:
         """Resolve select expression by matching variant.
@@ -724,7 +723,7 @@ class FluentResolver:
                 selector_value = self._resolve_expression(
                     expr.selector, args, errors, context
                 )
-        except (FluentReferenceError, FluentResolutionError) as e:
+        except FrozenFluentError as e:
             # Collect the error but don't propagate - fall back to default variant
             errors.append(e)
             return self._resolve_fallback_variant(expr, args, errors, context)
@@ -776,8 +775,9 @@ class FluentResolver:
                     )
             except BabelImportError:
                 # Babel not installed - collect error, fall through to default
+                diag = ErrorTemplate.plural_support_unavailable()
                 errors.append(
-                    FluentResolutionError(ErrorTemplate.plural_support_unavailable())
+                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
                 )
 
         # Fallback: default variant
@@ -789,13 +789,14 @@ class FluentResolver:
         if expr.variants:
             return self._resolve_pattern(expr.variants[0].value, args, errors, context)
 
-        raise FluentResolutionError(ErrorTemplate.no_variants())
+        diag = ErrorTemplate.no_variants()
+        raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
     def _resolve_fallback_variant(
         self,
         expr: SelectExpression,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> str:
         """Resolve fallback variant when selector evaluation fails.
@@ -814,7 +815,7 @@ class FluentResolver:
             Resolved variant pattern string
 
         Raises:
-            FluentResolutionError: If no variants exist
+            FrozenFluentError: If no variants exist (category=RESOLUTION)
         """
         # Try default variant first
         default_variant = self._find_default_variant(expr.variants)
@@ -825,13 +826,14 @@ class FluentResolver:
         if expr.variants:
             return self._resolve_pattern(expr.variants[0].value, args, errors, context)
 
-        raise FluentResolutionError(ErrorTemplate.no_variants())
+        diag = ErrorTemplate.no_variants()
+        raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
     def _resolve_function_call(
         self,
         func_ref: FunctionReference,
         args: Mapping[str, FluentValue],
-        errors: list[FluentError],
+        errors: list[FrozenFluentError],
         context: ResolutionContext,
     ) -> FluentValue:
         """Resolve function call.
@@ -870,11 +872,10 @@ class FluentResolver:
             # instead of opaque TypeError from incorrect argument positioning
             expected_args = self.function_registry.get_expected_positional_args(func_name)
             if expected_args is not None and len(positional_values) != expected_args:
-                raise FluentResolutionError(
-                    ErrorTemplate.function_arity_mismatch(
-                        func_name, expected_args, len(positional_values)
-                    )
+                diag = ErrorTemplate.function_arity_mismatch(
+                    func_name, expected_args, len(positional_values)
                 )
+                raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
             # Built-in formatting functions expect signature: func(value, locale, *, ...)
             # Append locale after positional args (FTL passes exactly one value arg,

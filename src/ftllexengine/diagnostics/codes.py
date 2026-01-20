@@ -8,7 +8,55 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-__all__ = ["Diagnostic", "DiagnosticCode", "SourceSpan"]
+__all__ = [
+    "Diagnostic",
+    "DiagnosticCode",
+    "ErrorCategory",
+    "FrozenErrorContext",
+    "SourceSpan",
+]
+
+
+class ErrorCategory(Enum):
+    """Error categorization for FrozenFluentError.
+
+    Replaces the old FluentError subclass hierarchy with a flat enum.
+    This enables exhaustive pattern matching and prevents subclass-based
+    invariant violations.
+
+    Categories:
+        REFERENCE: Unknown message, term, or variable reference
+        RESOLUTION: Runtime resolution failure (type mismatch, function error)
+        CYCLIC: Cyclic reference detected in message resolution
+        PARSE: Bi-directional parsing failure (number, date, currency parsing)
+        FORMATTING: Locale-aware formatting failure (NUMBER, DATETIME, CURRENCY)
+    """
+
+    REFERENCE = "reference"
+    RESOLUTION = "resolution"
+    CYCLIC = "cyclic"
+    PARSE = "parse"
+    FORMATTING = "formatting"
+
+
+@dataclass(frozen=True, slots=True)
+class FrozenErrorContext:
+    """Immutable context for parse/formatting errors.
+
+    Carries additional information about the error context without
+    making the error object mutable.
+
+    Attributes:
+        input_value: String that failed to parse (empty if not applicable)
+        locale_code: Locale used for parsing/formatting (empty if not applicable)
+        parse_type: Type of parsing attempted (number, date, currency)
+        fallback_value: Value to use in output when formatting fails
+    """
+
+    input_value: str = ""
+    locale_code: str = ""
+    parse_type: str = ""
+    fallback_value: str = ""
 
 
 class DiagnosticCode(Enum):
@@ -45,6 +93,7 @@ class DiagnosticCode(Enum):
     FUNCTION_ARITY_MISMATCH = 2011
     TERM_POSITIONAL_ARGS_IGNORED = 2012
     PLURAL_SUPPORT_UNAVAILABLE = 2013
+    FORMATTING_FAILED = 2014
 
     # Syntax errors (3000-3999)
     UNEXPECTED_EOF = 3001

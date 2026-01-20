@@ -9,7 +9,7 @@ from deeply nested or programmatically constructed adversarial ASTs.
 import pytest
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.core.depth_guard import DepthLimitExceededError
+from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.syntax.ast import (
     Identifier,
     Message,
@@ -71,8 +71,9 @@ class TestASTVisitorDepthGuard:
         nested = create_deeply_nested_ast(MAX_DEPTH + 10)
 
         visitor = ASTVisitor()
-        with pytest.raises(DepthLimitExceededError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             visitor.generic_visit(nested)
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_visitor_respects_custom_max_depth(self) -> None:
         """Visitor can be configured with custom max depth."""
@@ -84,8 +85,9 @@ class TestASTVisitorDepthGuard:
 
         # Should fail with low limit
         visitor_low = ASTVisitor(max_depth=10)
-        with pytest.raises(DepthLimitExceededError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             visitor_low.generic_visit(nested)
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_visitor_depth_guard_resets_between_visits(self) -> None:
         """Depth guard resets after each complete traversal."""
@@ -114,8 +116,9 @@ class TestASTVisitorDepthGuard:
         nested = create_deeply_nested_ast(MAX_DEPTH + 10)
         visitor = CountingVisitor()
 
-        with pytest.raises(DepthLimitExceededError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             visitor.visit(nested)
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_visitor_subclass_must_call_super_init(self) -> None:
         """Visitor subclasses that skip super().__init__() fail at runtime."""
@@ -156,8 +159,9 @@ class TestASTTransformerDepthGuard:
         nested = create_deeply_nested_ast(MAX_DEPTH + 10)
 
         transformer = ASTTransformer()
-        with pytest.raises(DepthLimitExceededError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             transformer.transform(nested)
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_transformer_respects_custom_max_depth(self) -> None:
         """Transformer can be configured with custom max depth."""
@@ -169,8 +173,9 @@ class TestASTTransformerDepthGuard:
 
         # Should fail with low limit
         transformer_low = ASTTransformer(max_depth=10)
-        with pytest.raises(DepthLimitExceededError):
+        with pytest.raises(FrozenFluentError) as exc_info:
             transformer_low.transform(nested)
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
 
 
 # ============================================================================
@@ -249,6 +254,7 @@ class TestDepthGuardIntegration:
         nested = create_deeply_nested_ast(MAX_DEPTH + 10)
 
         visitor = BypassAttemptVisitor()
-        # Must raise DepthLimitExceededError even without generic_visit() calls
-        with pytest.raises(DepthLimitExceededError):
+        # Must raise FrozenFluentError even without generic_visit() calls
+        with pytest.raises(FrozenFluentError) as exc_info:
             visitor.visit(nested)
+        assert exc_info.value.category == ErrorCategory.RESOLUTION
