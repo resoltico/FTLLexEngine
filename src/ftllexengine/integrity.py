@@ -23,7 +23,10 @@ Python 3.13+. Zero external dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import final
+from typing import TYPE_CHECKING, final
+
+if TYPE_CHECKING:
+    from ftllexengine.diagnostics import FrozenFluentError
 
 __all__ = [
     "CacheCorruptionError",
@@ -259,8 +262,7 @@ class FormattingIntegrityError(DataIntegrityError):
     __slots__ = ("_fallback_value", "_fluent_errors", "_message_id")
 
     # Type annotations for __slots__ attributes (mypy requirement)
-    # FrozenFluentError imported at runtime to avoid circular import
-    _fluent_errors: tuple[object, ...]
+    _fluent_errors: tuple[FrozenFluentError, ...]
     _fallback_value: str
     _message_id: str
 
@@ -269,7 +271,7 @@ class FormattingIntegrityError(DataIntegrityError):
         message: str,
         context: IntegrityContext | None = None,
         *,
-        fluent_errors: tuple[object, ...] = (),
+        fluent_errors: tuple[FrozenFluentError, ...] = (),
         fallback_value: str = "",
         message_id: str = "",
     ) -> None:
@@ -289,7 +291,7 @@ class FormattingIntegrityError(DataIntegrityError):
         super().__init__(message, context)
 
     @property
-    def fluent_errors(self) -> tuple[object, ...]:
+    def fluent_errors(self) -> tuple[FrozenFluentError, ...]:
         """Original Fluent errors that triggered this exception."""
         return self._fluent_errors
 

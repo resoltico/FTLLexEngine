@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.80.0"
+version: "0.81.0"
 domain: architecture
 updated: "2026-01-19"
 route:
@@ -54,6 +54,11 @@ bundle._registry     # FunctionRegistry, copied from input
 **Not Thread-Safe**:
 - `add_resource()` - Mutates internal state; serialize calls externally
 - `add_function()` - Mutates registry; complete before concurrent reads
+
+**Reentrancy Limitation**:
+Calling write operations (`add_resource()`, `add_function()`) from within format operations raises `RuntimeError`. This includes calls from custom functions invoked during formatting. The RWLock does not support read-to-write lock upgrading (deadlock prevention).
+
+If you need lazy-loading patterns, load resources before formatting or use a separate bundle instance.
 
 ---
 

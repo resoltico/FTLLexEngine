@@ -326,6 +326,48 @@ class TestStrictModeWithCaching:
         assert stats["size"] == 0
 
 
+class TestStrictModeCachePropagation:
+    """Test that bundle strict mode propagates to cache.
+
+    When FluentBundle is created with strict=True and enable_cache=True,
+    the internal IntegrityCache must also use strict=True so that cache
+    corruption raises CacheCorruptionError rather than silently evicting.
+    """
+
+    def test_strict_bundle_has_strict_cache(self) -> None:
+        """Bundle with strict=True creates cache with strict=True."""
+        bundle = FluentBundle("en", strict=True, enable_cache=True)
+
+        # Access internal cache to verify strict mode
+        cache = bundle._cache  # pylint: disable=protected-access
+        assert cache is not None
+        assert cache.strict is True
+
+    def test_non_strict_bundle_has_non_strict_cache(self) -> None:
+        """Bundle with strict=False creates cache with strict=False."""
+        bundle = FluentBundle("en", strict=False, enable_cache=True)
+
+        cache = bundle._cache  # pylint: disable=protected-access
+        assert cache is not None
+        assert cache.strict is False
+
+    def test_strict_cache_stats_reflects_mode(self) -> None:
+        """Cache stats reflect strict mode setting."""
+        bundle = FluentBundle("en", strict=True, enable_cache=True)
+
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["strict"] is True
+
+    def test_non_strict_cache_stats_reflects_mode(self) -> None:
+        """Non-strict bundle cache stats reflect strict=False."""
+        bundle = FluentBundle("en", strict=False, enable_cache=True)
+
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["strict"] is False
+
+
 # ============================================================================
 # PROPERTY-BASED TESTS
 # ============================================================================

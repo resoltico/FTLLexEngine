@@ -13,6 +13,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-01-20
+
+### Fixed
+
+- **Cache Type Collision Prevention** (DATA-INTEGRITY-CACHE-COLLISION-001):
+  - Previous: Python's hash equality (`hash(1) == hash(True) == hash(1.0)`) caused cache collisions when these values produced different formatted outputs
+  - Example bug: Format with `v=1` cached "1", then format with `v=True` returned cached "1" instead of correct "true"
+  - Fix: `IntegrityCache._make_hashable()` now type-tags bool/int/float values to prevent hash collision
+  - Location: `runtime/cache.py` lines 664-672
+  - Impact: Correct cache behavior for mixed bool/int/float argument values
+
+- **Bundle Strict Mode Cache Propagation** (ARCH-STRICT-MODE-DISCONNECT-001):
+  - Previous: `FluentBundle(strict=True, enable_cache=True)` created cache with `strict=False`, ignoring bundle's strict setting
+  - Consequence: Cache corruption was silently handled instead of raising `CacheCorruptionError`
+  - Fix: Bundle's `strict` parameter now propagates to `IntegrityCache` constructor
+  - Location: `runtime/bundle.py` line 270
+  - Impact: Strict mode bundles now have fail-fast cache corruption detection
+
+- **FormattingIntegrityError Type Safety** (TYPE-ERROR-LOOSE-TYPING-001):
+  - Previous: `fluent_errors` property typed as `tuple[object, ...]` (loose typing)
+  - Consequence: Consumers lost IDE autocomplete and type inference for error properties
+  - Fix: Now typed as `tuple[FrozenFluentError, ...]` using TYPE_CHECKING import
+  - Location: `integrity.py` lines 265, 274, 294
+  - Impact: Improved type safety for strict mode error handling code
+
+### Added
+
+- **FluentBundle Reentrancy Documentation** (DOC-LOCKING-REENTRANCY-001):
+  - Added "Reentrancy Limitation" section to `FluentBundle` class docstring
+  - Documents that calling `add_resource()` or `add_function()` from custom functions during formatting raises `RuntimeError`
+  - Location: `runtime/bundle.py` lines 83-90
+
 ## [0.80.0] - 2026-01-20
 
 ### Breaking
@@ -2248,6 +2280,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.81.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.81.0
 [0.80.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.80.0
 [0.79.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.79.0
 [0.78.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.78.0

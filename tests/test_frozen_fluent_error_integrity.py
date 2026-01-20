@@ -569,3 +569,197 @@ class TestExceptionBehavior:
     def test_exception_args(self, error: FrozenFluentError) -> None:
         """Property: Exception args contain the message."""
         assert error.args == (error.message,)
+
+
+# =============================================================================
+# Complete Branch Coverage Tests
+# =============================================================================
+
+
+class TestCompleteBranchCoverage:
+    """Tests to achieve 100% branch coverage for errors.py."""
+
+    def test_setattr_unfrozen_branch(self) -> None:
+        """Test __setattr__ when _frozen is False (line 176 coverage).
+
+        This tests the defensive else branch in __setattr__ that allows
+        attribute setting when the object is not yet frozen. While this
+        branch is not normally reached (since __init__ uses object.__setattr__
+        directly), it exists as a defensive measure.
+
+        This test forcibly unfreezes an error to exercise the branch.
+        """
+        error = FrozenFluentError("test", ErrorCategory.REFERENCE)
+
+        # Verify object is initially frozen
+        assert error.verify_integrity() is True
+
+        # Forcibly unfreeze using object.__setattr__ to bypass immutability
+        object.__setattr__(error, "_frozen", False)
+
+        # Now call the instance's __setattr__ DIRECTLY - should reach line 176
+        # Must use the class method, not object.__setattr__
+        FrozenFluentError.__setattr__(error, "_message", "modified")
+
+        # Verify the change took effect (since we unfroze it)
+        assert error._message == "modified"
+
+        # Re-freeze for cleanup
+        object.__setattr__(error, "_frozen", True)
+
+    def test_eq_with_non_error_type_returns_not_implemented(self) -> None:
+        """Test __eq__ returns NotImplemented for non-FrozenFluentError types.
+
+        The __eq__ method should return NotImplemented (not False) when
+        comparing with objects that are not FrozenFluentError instances.
+        This allows Python to try the comparison from the other object's
+        perspective.
+        """
+        error = FrozenFluentError("test", ErrorCategory.REFERENCE)
+
+        # Test with various non-FrozenFluentError types
+        # Direct dunder call required to verify NotImplemented return value
+        # (using == operator would convert NotImplemented to False)
+        result = error.__eq__(42)  # pylint: disable=unnecessary-dunder-call
+        assert result is NotImplemented
+
+        result = error.__eq__("string")  # pylint: disable=unnecessary-dunder-call
+        assert result is NotImplemented
+
+        result = error.__eq__({"dict": "value"})  # pylint: disable=unnecessary-dunder-call
+        assert result is NotImplemented
+
+        result = error.__eq__([1, 2, 3])  # pylint: disable=unnecessary-dunder-call
+        assert result is NotImplemented
+
+        # The actual equality operator should return False (Python's default)
+        assert (error == 42) is False
+        assert (error == "string") is False
+
+    def test_compute_content_hash_with_all_fields(self) -> None:
+        """Test _compute_content_hash with all optional fields populated.
+
+        This ensures the hash computation includes all diagnostic and context
+        fields when present, achieving full branch coverage in the hash
+        computation logic.
+        """
+        diagnostic = Diagnostic(
+            code=DiagnosticCode.MESSAGE_NOT_FOUND,
+            message="Test diagnostic message",
+        )
+        context = FrozenErrorContext(
+            input_value="test input",
+            locale_code="en_US",
+            parse_type="number",
+            fallback_value="fallback",
+        )
+
+        error1 = FrozenFluentError(
+            "test message",
+            ErrorCategory.FORMATTING,
+            diagnostic=diagnostic,
+            context=context,
+        )
+
+        # Create another with same values
+        error2 = FrozenFluentError(
+            "test message",
+            ErrorCategory.FORMATTING,
+            diagnostic=diagnostic,
+            context=context,
+        )
+
+        # Hashes should be identical
+        assert error1.content_hash == error2.content_hash
+
+        # Verify hash includes all fields by changing each one
+        error3 = FrozenFluentError(
+            "different message",  # Changed
+            ErrorCategory.FORMATTING,
+            diagnostic=diagnostic,
+            context=context,
+        )
+        assert error1.content_hash != error3.content_hash
+
+        diagnostic2 = Diagnostic(
+            code=DiagnosticCode.TERM_NOT_FOUND,  # Different code
+            message="Test diagnostic message",
+        )
+        error4 = FrozenFluentError(
+            "test message",
+            ErrorCategory.FORMATTING,
+            diagnostic=diagnostic2,  # Changed
+            context=context,
+        )
+        assert error1.content_hash != error4.content_hash
+
+        context2 = FrozenErrorContext(
+            input_value="different input",  # Changed
+            locale_code="en_US",
+            parse_type="number",
+            fallback_value="fallback",
+        )
+        error5 = FrozenFluentError(
+            "test message",
+            ErrorCategory.FORMATTING,
+            diagnostic=diagnostic,
+            context=context2,  # Changed
+        )
+        assert error1.content_hash != error5.content_hash
+
+    def test_hash_with_surrogates_in_text(self) -> None:
+        """Test content hash computation with invalid Unicode surrogates.
+
+        The hash function uses surrogatepass error handling to ensure it can
+        hash any Python string, including those with unpaired surrogates from
+        malformed user input.
+        """
+        # Create error with unpaired surrogate (invalid Unicode)
+        # Python allows these in strings but they're not valid UTF-8
+        message_with_surrogate = "Error: \ud800 invalid"
+
+        error = FrozenFluentError(message_with_surrogate, ErrorCategory.PARSE)
+
+        # Should successfully compute hash without raising UnicodeEncodeError
+        assert len(error.content_hash) == 16
+        assert error.verify_integrity() is True
+
+        # Test with surrogate in context fields
+        context = FrozenErrorContext(
+            input_value="\ud800 surrogate input",
+            locale_code="en_US",
+            parse_type="\udc00 surrogate type",
+            fallback_value="\ud800\udc00 surrogate fallback",
+        )
+        error_with_context = FrozenFluentError(
+            "test",
+            ErrorCategory.FORMATTING,
+            context=context,
+        )
+        assert len(error_with_context.content_hash) == 16
+        assert error_with_context.verify_integrity() is True
+
+    @given(
+        message=st.text(),
+        category=error_categories(),
+    )
+    @settings(max_examples=50)
+    def test_repr_contains_all_constructor_args(
+        self, message: str, category: ErrorCategory
+    ) -> None:
+        """Property: __repr__ includes all constructor arguments for debugging."""
+        error = FrozenFluentError(message, category)
+        r = repr(error)
+
+        # Should contain class name
+        assert "FrozenFluentError" in r
+
+        # Should contain all field names
+        assert "message=" in r
+        assert "category=" in r
+        assert "diagnostic=" in r
+        assert "context=" in r
+
+        # Message should be represented (possibly truncated in repr)
+        # Category should be shown
+        assert category.name in r or str(category) in r

@@ -398,3 +398,128 @@ class TestCacheInternalProperties:
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert cache.size == stats["size"]
+
+
+class TestCacheTypeCollisionPrevention:
+    """Tests for type collision prevention in cache keys.
+
+    Python's hash equality means hash(1) == hash(True) == hash(1.0), which would
+    cause cache collisions when these values produce different formatted outputs.
+    The cache uses type-tagged tuples to prevent this.
+    """
+
+    def test_bool_int_produce_different_cache_entries(self) -> None:
+        """Boolean True and integer 1 produce distinct cache entries.
+
+        In Fluent, True formats as "true" while 1 formats as "1". Without type
+        tagging, Python's hash equality would cause cache collision.
+        """
+        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle.add_resource("msg = { $v }")
+
+        # Format with True first
+        result_bool, _ = bundle.format_pattern("msg", {"v": True})
+        # Format with 1 (would collide without type tagging)
+        result_int, _ = bundle.format_pattern("msg", {"v": 1})
+
+        # Results must differ - bool formats as "true", int as "1"
+        assert result_bool == "true"
+        assert result_int == "1"
+
+        # Cache should have 2 entries (not 1 due to collision)
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 2
+
+    def test_int_float_produce_different_cache_entries(self) -> None:
+        """Integer 1 and float 1.0 produce distinct cache entries.
+
+        Without type tagging, hash(1) == hash(1.0) would cause collision.
+        """
+        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle.add_resource("msg = { $v }")
+
+        # Format with int first
+        _result_int, _ = bundle.format_pattern("msg", {"v": 1})
+        # Format with float (would collide without type tagging)
+        _result_float, _ = bundle.format_pattern("msg", {"v": 1.0})
+
+        # Cache should have 2 entries
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 2
+
+    def test_bool_false_int_zero_distinct(self) -> None:
+        """Boolean False and integer 0 produce distinct cache entries.
+
+        hash(False) == hash(0) in Python.
+        """
+        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle.add_resource("msg = { $v }")
+
+        result_bool, _ = bundle.format_pattern("msg", {"v": False})
+        result_int, _ = bundle.format_pattern("msg", {"v": 0})
+
+        # bool formats as "false", int as "0"
+        assert result_bool == "false"
+        assert result_int == "0"
+
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 2
+
+    def test_cache_hit_returns_correct_typed_value(self) -> None:
+        """Cache hit returns value for correct type, not hash-equivalent type.
+
+        This is the critical test: after caching with int 1, looking up with
+        bool True must NOT return the cached "1", but cache miss and format "true".
+        """
+        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle.add_resource("msg = { $v }")
+
+        # Cache with int 1
+        bundle.format_pattern("msg", {"v": 1})
+
+        # Look up with bool True - must NOT be a cache hit for the int entry
+        result, _ = bundle.format_pattern("msg", {"v": True})
+
+        # If type tagging works, this returns "true" not "1"
+        assert result == "true"
+
+    @given(st.booleans(), st.integers())
+    def test_bool_int_always_distinct(self, b: bool, i: int) -> None:
+        """PROPERTY: Any bool and int pair with same Python hash produce distinct cache entries."""
+        # Only test when hash would collide
+        if hash(b) != hash(i):
+            return
+
+        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle.add_resource("msg = { $v }")
+
+        # Format both
+        bundle.format_pattern("msg", {"v": b})
+        bundle.format_pattern("msg", {"v": i})
+
+        # Should be 2 entries despite hash equality
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 2
+
+    @given(st.integers(), st.floats(allow_nan=False, allow_infinity=False))
+    def test_int_float_always_distinct_when_equal(self, i: int, f: float) -> None:
+        """PROPERTY: Int and float with same value produce distinct cache entries."""
+        # Only test when values are equal (and thus hash-equal)
+        if i != f:
+            return
+
+        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle.add_resource("msg = { $v }")
+
+        # Format both
+        bundle.format_pattern("msg", {"v": i})
+        bundle.format_pattern("msg", {"v": f})
+
+        # Should be 2 entries despite equality
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 2

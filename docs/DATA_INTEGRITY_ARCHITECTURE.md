@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.80.0"
+version: "0.81.0"
 domain: "architecture"
 updated: "2026-01-20"
 route: "/docs/data-integrity"

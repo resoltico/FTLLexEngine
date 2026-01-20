@@ -272,12 +272,20 @@ class TestIntegrityCacheMakeHashableTypes:
     """Test IntegrityCache._make_hashable type conversion."""
 
     def test_make_hashable_primitives(self) -> None:
-        """_make_hashable preserves primitives unchanged."""
+        """_make_hashable type-tags bool/int/float to prevent hash collisions.
+
+        Python's hash equality (hash(1) == hash(True) == hash(1.0)) would cause
+        cache collisions. Type-tagging ensures distinct cache keys.
+        """
+        # String and None are not tagged (no collision risk)
         assert IntegrityCache._make_hashable("text") == "text"
-        assert IntegrityCache._make_hashable(42) == 42
-        assert IntegrityCache._make_hashable(3.14) == 3.14
-        assert IntegrityCache._make_hashable(True) is True
         assert IntegrityCache._make_hashable(None) is None
+
+        # bool/int/float are type-tagged to prevent hash collision
+        assert IntegrityCache._make_hashable(42) == ("__int__", 42)
+        assert IntegrityCache._make_hashable(3.14) == ("__float__", 3.14)
+        assert IntegrityCache._make_hashable(True) == ("__bool__", True)
+        assert IntegrityCache._make_hashable(False) == ("__bool__", False)
 
     def test_make_hashable_decimal(self) -> None:
         """_make_hashable preserves Decimal unchanged."""
@@ -301,21 +309,27 @@ class TestIntegrityCacheMakeHashableTypes:
         assert isinstance(result, date)
 
     def test_make_hashable_list_to_tuple(self) -> None:
-        """_make_hashable converts list to tuple recursively."""
+        """_make_hashable converts list to tuple recursively with type-tagged ints."""
         result = IntegrityCache._make_hashable([1, 2, [3, 4]])
-        assert result == (1, 2, (3, 4))
+        # Ints are type-tagged
+        expected = (("__int__", 1), ("__int__", 2), (("__int__", 3), ("__int__", 4)))
+        assert result == expected
         assert isinstance(result, tuple)
 
     def test_make_hashable_dict_to_sorted_tuples(self) -> None:
-        """_make_hashable converts dict to sorted tuple of tuples."""
+        """_make_hashable converts dict to sorted tuple of tuples with type-tagged values."""
         result = IntegrityCache._make_hashable({"b": 2, "a": 1})
-        assert result == (("a", 1), ("b", 2))
+        # Ints are type-tagged
+        expected = (("a", ("__int__", 1)), ("b", ("__int__", 2)))
+        assert result == expected
         assert isinstance(result, tuple)
 
     def test_make_hashable_set_to_frozenset(self) -> None:
-        """_make_hashable converts set to frozenset recursively."""
+        """_make_hashable converts set to frozenset recursively with type-tagged ints."""
         result = IntegrityCache._make_hashable({1, 2, 3})
-        assert result == frozenset({1, 2, 3})
+        # Ints are type-tagged
+        expected = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
+        assert result == expected
         assert isinstance(result, frozenset)
 
     def test_make_hashable_unknown_type_raises(self) -> None:

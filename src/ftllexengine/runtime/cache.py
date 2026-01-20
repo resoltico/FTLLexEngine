@@ -74,6 +74,15 @@ _DEFAULT_MAX_ERRORS_PER_ENTRY: int = 50
 # Type alias for hashable values produced by _make_hashable().
 # Recursive definition: primitives plus tuple/frozenset of self.
 # Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged.
+#
+# Type-Tagging for Collision Prevention:
+#   Python's hash equality means hash(1) == hash(True) == hash(1.0), causing
+#   cache collisions when these values produce different formatted outputs.
+#   To prevent this, _make_hashable() returns type-tagged tuples for bool/int/float:
+#   - True  -> ("__bool__", True)
+#   - 1     -> ("__int__", 1)
+#   - 1.0   -> ("__float__", 1.0)
+#   These are distinct cache keys despite Python's hash equality.
 type HashableValue = (
     str
     | int
@@ -652,7 +661,16 @@ class IntegrityCache:
                 )
             case set():
                 return frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value)
-            case str() | int() | float() | bool() | None:
+            # Type-tagging for collision prevention: bool MUST be checked before int
+            # because bool is a subclass of int in Python. Without separate cases,
+            # True and 1 would hash-collide despite producing different formatted output.
+            case bool():
+                return ("__bool__", value)
+            case int():
+                return ("__int__", value)
+            case float():
+                return ("__float__", value)
+            case str() | None:
                 return value
             case Decimal() | datetime() | date():
                 return value

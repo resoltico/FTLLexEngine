@@ -111,19 +111,19 @@ class TestMakeHashableTypeValidation:
         assert result == "hello"
 
     def test_int_accepted(self) -> None:
-        """Integers are accepted as hashable."""
+        """Integers are type-tagged to prevent hash collision with bool/float."""
         result = IntegrityCache._make_hashable(42)
-        assert result == 42
+        assert result == ("__int__", 42)
 
     def test_float_accepted(self) -> None:
-        """Floats are accepted as hashable."""
+        """Floats are type-tagged to prevent hash collision with int."""
         result = IntegrityCache._make_hashable(3.14)
-        assert result == 3.14
+        assert result == ("__float__", 3.14)
 
     def test_bool_accepted(self) -> None:
-        """Booleans are accepted as hashable."""
+        """Booleans are type-tagged to prevent hash collision with int."""
         result = IntegrityCache._make_hashable(True)
-        assert result is True
+        assert result == ("__bool__", True)
 
     def test_none_accepted(self) -> None:
         """None is accepted as hashable."""
@@ -155,19 +155,23 @@ class TestMakeHashableTypeValidation:
         assert result == value
 
     def test_list_converted_to_tuple(self) -> None:
-        """Lists are converted to tuples."""
+        """Lists are converted to tuples with type-tagged int elements."""
         result = IntegrityCache._make_hashable([1, 2, 3])
-        assert result == (1, 2, 3)
+        # Ints are type-tagged
+        assert result == (("__int__", 1), ("__int__", 2), ("__int__", 3))
 
     def test_dict_converted_to_sorted_tuple(self) -> None:
-        """Dicts are converted to sorted tuple of tuples."""
+        """Dicts are converted to sorted tuple of tuples with type-tagged values."""
         result = IntegrityCache._make_hashable({"b": 2, "a": 1})
-        assert result == (("a", 1), ("b", 2))
+        # Ints are type-tagged
+        assert result == (("a", ("__int__", 1)), ("b", ("__int__", 2)))
 
     def test_set_converted_to_frozenset(self) -> None:
-        """Sets are converted to frozensets."""
+        """Sets are converted to frozensets with type-tagged int elements."""
         result = IntegrityCache._make_hashable({1, 2, 3})
-        assert result == frozenset({1, 2, 3})
+        # Ints are type-tagged
+        expected = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
+        assert result == expected
 
     def test_unknown_type_raises_type_error(self) -> None:
         """Unknown types raise TypeError with descriptive message."""

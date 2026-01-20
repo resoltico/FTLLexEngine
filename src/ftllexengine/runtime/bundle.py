@@ -80,6 +80,15 @@ class FluentBundle:
         concurrent format requests will see significant performance improvements
         compared to coarse-grained locking.
 
+    Reentrancy Limitation:
+        Modifying the bundle from within format operations is PROHIBITED and
+        raises RuntimeError. This includes calling add_resource() or add_function()
+        from custom functions invoked during formatting. The RWLock does not
+        support read-to-write lock upgrading (deadlock prevention).
+
+        If you need lazy-loading patterns, load resources before formatting
+        or use a separate bundle instance for dynamic content.
+
     Parser Security:
         Configurable limits prevent DoS attacks:
         - max_source_size: Maximum FTL source length in characters (default: 10 MiB / 10,485,760 chars)
@@ -264,8 +273,10 @@ class FluentBundle:
         self._cache: IntegrityCache | None = None
         self._cache_size = cache_size
         if enable_cache:
-            # Default: strict=True for data integrity, write_once=False for flexibility
-            self._cache = IntegrityCache(maxsize=cache_size, strict=False)
+            # Cache strict mode matches bundle strict mode for consistent error handling.
+            # When bundle strict=True, cache corruption raises CacheCorruptionError.
+            # When bundle strict=False, cache corruption silently evicts the entry.
+            self._cache = IntegrityCache(maxsize=cache_size, strict=self._strict)
 
         # Context manager state tracking (cache invalidation optimization)
         self._modified_in_context = False
