@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.82.0"
+version: "0.83.0"
 domain: "architecture"
-updated: "2026-01-20"
+updated: "2026-01-21"
 route: "/docs/data-integrity"
 ---
 
@@ -107,6 +107,8 @@ The BLAKE2b-128 content hash includes ALL error fields for complete audit trail 
    - Metadata: `severity`, `resolution_path` (each element)
 3. **Context (if present):** `input_value`, `locale_code`, `parse_type`, `fallback_value`
 
+**Length-Prefixing:** All string fields are length-prefixed (4-byte big-endian UTF-8 byte length) before hashing. This prevents collision attacks where concatenating different field sequences produces identical byte streams (e.g., `("ab", "c")` vs `("a", "bc")`).
+
 **Sentinel Bytes:** None values are distinguished from empty values using sentinel bytes, preventing collision between `span=None` and `span=SourceSpan(0, 0, 0, 0)`.
 
 **Invariants:**
@@ -137,13 +139,41 @@ The BLAKE2b-128 content hash includes ALL error fields for complete audit trail 
 
 The BLAKE2b-128 checksum includes ALL entry fields for complete audit trail integrity:
 
-1. **Content:** `formatted` (UTF-8 encoded message output)
-2. **Errors:** Each error's `content_hash` (or message string if unavailable)
+1. **Content:** `formatted` (UTF-8 encoded, length-prefixed message output)
+2. **Errors:** Each error's `content_hash` (or length-prefixed message string if unavailable)
 3. **Metadata:**
    - `created_at`: 8-byte IEEE 754 double (monotonic timestamp)
    - `sequence`: 8-byte signed big-endian integer (audit trail ordering)
 
+**Length-Prefixing:** All variable-length fields (formatted string, error messages) are length-prefixed (4-byte big-endian UTF-8 byte length) before hashing, preventing collision attacks from field concatenation.
+
 This means different entries with identical content will have different checksums if their metadata differs. This is correct behavior: the checksum protects the complete entry, not just its content.
+
+**Type-Tagging for Cache Keys:**
+
+Cache keys must distinguish between values that hash identically but have different types. The `_make_hashable()` function applies type-tagging to prevent collisions:
+
+| Type | Tag Format | Purpose |
+|:-----|:-----------|:--------|
+| `bool` | `("__bool__", value)` | Distinguish `True` from `1` |
+| `int` | `("__int__", value)` | Distinguish `1` from `1.0` |
+| `float` | `("__float__", value)` | Distinguish `1.0` from `1` |
+| `Decimal` | `("__decimal__", str(value))` | Preserve scale for CLDR plural rules (`Decimal("1.0")` vs `Decimal("1.00")`) |
+| `FluentNumber` | `("__fluentnumber__", type, value, formatted, precision)` | Preserve underlying type and formatting info |
+| `list` | `("__list__", tuple(...))` | Distinguish from tuple in formatted output |
+| `tuple` | `("__tuple__", tuple(...))` | Distinguish from list |
+
+**CLDR Plural Rule Preservation:** Decimal type-tagging uses `str(value)` instead of the numeric value. This preserves scale information critical for CLDR plural rules: `Decimal("1.0")` and `Decimal("1.00")` must cache separately because some locales have scale-dependent plural forms.
+
+**Recursive Verification:**
+
+The `IntegrityCacheEntry.verify()` method performs recursive integrity verification:
+
+1. Recomputes entry checksum from current field values
+2. For each `FrozenFluentError` in the errors tuple, calls `verify_integrity()`
+3. Returns `True` only if ALL checks pass (entry checksum AND all error content hashes)
+
+This defense-in-depth approach detects corruption at any level of the data hierarchy.
 
 **Invariants:**
 - Every `get()` verifies checksum before returning
@@ -192,6 +222,10 @@ DataIntegrityError (base - immutable after construction)
 | Metadata tampering | Complete field coverage in checksums/hashes |
 | Diagnostic field tampering | All 11 Diagnostic fields included in error hash |
 | Timestamp/sequence forgery | Metadata included in cache checksum |
+| Field concatenation collision | Length-prefixing prevents `("ab","c")` = `("a","bc")` |
+| Type confusion in cache keys | Type-tagging distinguishes `1` from `1.0` from `True` |
+| Decimal scale loss | `str(Decimal)` preserves scale for CLDR plural rules |
+| Nested error corruption | Recursive verification checks entry AND all contained errors |
 
 ### Trust Boundaries
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.82.0"
+version: "0.83.0"
 domain: ERRORS
-updated: "2026-01-19"
+updated: "2026-01-21"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?"]
@@ -91,6 +91,7 @@ class FrozenFluentError(Exception):
   - Core: `message`, `category.value`
   - Diagnostic (if present): `code.name`, `message`, `span` (start/end/line/column), `hint`, `help_url`, `function_name`, `argument_name`, `expected_type`, `received_type`, `ftl_location`, `severity`, `resolution_path`
   - Context (if present): `input_value`, `locale_code`, `parse_type`, `fallback_value`
+- Length-Prefixing: All string fields are length-prefixed (4-byte big-endian) before hashing. This prevents collision attacks where `("ab", "c")` and `("a", "bc")` would hash identically.
 - Import: `from ftllexengine.diagnostics import FrozenFluentError`
 
 ---

@@ -226,20 +226,26 @@ class TestSecCacheErrorBloat001:
         assert stats["error_bloat_skips"] == 1
 
     def test_cache_skips_entries_with_error_weight_exceeding_limit(self) -> None:
-        """IntegrityCache skips caching when total error weight exceeds limit."""
-        cache = IntegrityCache(strict=False,
+        """IntegrityCache skips caching when total error weight exceeds limit.
+
+        Dynamic weight calculation: base overhead (100) + actual string lengths.
+        Each error with a 100-char message: 100 + 100 = 200 bytes.
+        25 errors with 100-char messages = 5000 bytes.
+        String: 100 chars = 100 bytes.
+        Total: 5100 bytes > 5000 (max_entry_weight).
+        """
+        cache = IntegrityCache(
+            strict=False,
             maxsize=100,
-            max_entry_weight=5000,  # 5KB string limit
+            max_entry_weight=5000,  # 5KB limit
             max_errors_per_entry=100,  # Allow 100 errors
         )
 
-        # Create result with moderate error count but high total weight
-        # 25 errors * 200 bytes/error = 5000 bytes
-        # String: 100 chars
-        # Total: 5100 bytes > 5000 byte limit
+        # Create errors with long messages to trigger weight limit
+        # Each error: 100 base + 100 chars = 200 bytes
+        # 25 errors x 200 = 5000 bytes, plus 100 char string = 5100 > 5000
         errors = tuple(
-            FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
-            for i in range(25)
+            FrozenFluentError("E" * 100, ErrorCategory.REFERENCE) for _ in range(25)
         )
 
         # Put should skip due to total weight

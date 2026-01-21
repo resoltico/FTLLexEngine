@@ -88,6 +88,12 @@ class FrozenFluentError(Exception):
     _frozen: bool
     _message: str
 
+    # Python's exception handling sets these attributes when propagating exceptions.
+    # They must be allowed even after freeze to enable normal raise/except flow.
+    _PYTHON_EXCEPTION_ATTRS: frozenset[str] = frozenset(
+        ("__traceback__", "__context__", "__cause__", "__suppress_context__")
+    )
+
     def __init__(
         self,
         message: str,
@@ -120,6 +126,23 @@ class FrozenFluentError(Exception):
         super().__init__(message)
 
     @staticmethod
+    def _hash_string(h: hashlib.blake2b, s: str) -> None:
+        """Hash a string with length prefix for collision resistance.
+
+        Length-prefixing prevents collision between semantically different
+        values that would otherwise produce identical hash input when
+        concatenated. Example: ("abc", "d") vs ("ab", "cd") both produce
+        "abcd" without length-prefixing.
+
+        Args:
+            h: BLAKE2b hasher instance
+            s: String to hash
+        """
+        encoded = s.encode("utf-8", errors="surrogatepass")
+        h.update(len(encoded).to_bytes(4, "big"))
+        h.update(encoded)
+
+    @staticmethod
     def _compute_content_hash(
         message: str,
         category: ErrorCategory,
@@ -133,17 +156,19 @@ class FrozenFluentError(Exception):
         verification (not cryptographic security).
 
         Hash Composition:
-            The content hash covers ALL error fields for complete integrity:
-            1. message: Error description (UTF-8 encoded)
-            2. category: Error category value
+            All variable-length fields are length-prefixed to prevent collision
+            between semantically different values. The content hash covers ALL
+            error fields for complete integrity:
+            1. message: Error description (length-prefixed UTF-8)
+            2. category: Error category value (length-prefixed UTF-8)
             3. diagnostic (if present): ALL fields including:
-               - code.name, message
+               - code.name, message (length-prefixed)
                - span (start, end, line, column as 4-byte big-endian)
-               - hint, help_url, function_name, argument_name
-               - expected_type, received_type, ftl_location
-               - severity
-               - resolution_path (each element)
-            4. context (if present): input_value, locale_code, parse_type, fallback_value
+               - hint, help_url, function_name, argument_name (length-prefixed)
+               - expected_type, received_type, ftl_location (length-prefixed)
+               - severity (length-prefixed)
+               - resolution_path (each element length-prefixed)
+            4. context (if present): all fields length-prefixed
 
         Args:
             message: Error message
@@ -155,19 +180,18 @@ class FrozenFluentError(Exception):
             16-byte BLAKE2b digest
         """
         h = hashlib.blake2b(digest_size=16)
-        # Use surrogatepass to handle invalid Unicode surrogates in input
-        # This ensures hashing works for any Python string, including those
-        # containing unpaired surrogates from malformed user input
-        h.update(message.encode("utf-8", errors="surrogatepass"))
-        h.update(category.value.encode("utf-8"))
+
+        # Core fields (length-prefixed for collision resistance)
+        FrozenFluentError._hash_string(h, message)
+        FrozenFluentError._hash_string(h, category.value)
 
         if diagnostic is not None:
             # Hash ALL diagnostic fields for complete audit trail integrity
-            # Core fields
-            h.update(diagnostic.code.name.encode("utf-8"))
-            h.update(diagnostic.message.encode("utf-8", errors="surrogatepass"))
+            # Core fields (length-prefixed)
+            FrozenFluentError._hash_string(h, diagnostic.code.name)
+            FrozenFluentError._hash_string(h, diagnostic.message)
 
-            # Source location (span)
+            # Source location (span) - fixed-size integers, no length-prefix needed
             if diagnostic.span is not None:
                 h.update(diagnostic.span.start.to_bytes(4, "big", signed=True))
                 h.update(diagnostic.span.end.to_bytes(4, "big", signed=True))
@@ -177,7 +201,7 @@ class FrozenFluentError(Exception):
                 # Hash sentinel for None to distinguish from span with zeros
                 h.update(b"\x00\x00\x00\x00NOSPAN")
 
-            # Optional string fields (use sentinel for None distinction)
+            # Optional string fields (length-prefixed, sentinel for None)
             for field_value in (
                 diagnostic.hint,
                 diagnostic.help_url,
@@ -188,37 +212,48 @@ class FrozenFluentError(Exception):
                 diagnostic.ftl_location,
             ):
                 if field_value is not None:
-                    h.update(field_value.encode("utf-8", errors="surrogatepass"))
+                    FrozenFluentError._hash_string(h, field_value)
                 else:
                     h.update(b"\x00NONE")
 
-            # Severity (always present, required field)
-            h.update(diagnostic.severity.encode("utf-8"))
+            # Severity (always present, required field, length-prefixed)
+            FrozenFluentError._hash_string(h, diagnostic.severity)
 
             # Resolution path (tuple of strings or None)
             if diagnostic.resolution_path is not None:
+                # Include count for structural integrity
                 h.update(len(diagnostic.resolution_path).to_bytes(4, "big"))
                 for path_element in diagnostic.resolution_path:
-                    h.update(path_element.encode("utf-8", errors="surrogatepass"))
+                    # Each element length-prefixed for collision resistance
+                    FrozenFluentError._hash_string(h, path_element)
             else:
                 h.update(b"\x00NOPATH")
 
         if context is not None:
-            h.update(context.input_value.encode("utf-8", errors="surrogatepass"))
-            h.update(context.locale_code.encode("utf-8", errors="surrogatepass"))
-            h.update(context.parse_type.encode("utf-8", errors="surrogatepass"))
-            h.update(context.fallback_value.encode("utf-8", errors="surrogatepass"))
+            # All context fields length-prefixed
+            FrozenFluentError._hash_string(h, context.input_value)
+            FrozenFluentError._hash_string(h, context.locale_code)
+            FrozenFluentError._hash_string(h, context.parse_type)
+            FrozenFluentError._hash_string(h, context.fallback_value)
 
         return h.digest()
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Reject all attribute mutations after initialization.
+        """Reject attribute mutations after initialization.
+
+        Python's exception mechanism must be able to set __traceback__,
+        __context__, __cause__, and __suppress_context__ during propagation.
+        These are allowed even after freeze.
 
         Raises:
-            ImmutabilityViolationError: Always, if object is frozen
+            ImmutabilityViolationError: If attempting to modify non-exception
+                attributes after construction
         """
+        # Allow Python's internal exception handling attributes
+        if name in self._PYTHON_EXCEPTION_ATTRS:
+            object.__setattr__(self, name, value)
+            return
         if getattr(self, "_frozen", False):
-
             from ftllexengine.integrity import ImmutabilityViolationError  # noqa: PLC0415
 
             msg = f"Cannot modify frozen error attribute: {name}"

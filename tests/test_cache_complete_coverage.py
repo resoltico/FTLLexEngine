@@ -113,17 +113,22 @@ class TestIntegrityCacheErrorBloatProtection:
         assert cached is None
 
     def test_put_rejects_excessive_error_weight(self) -> None:
-        """put() skips caching when total weight (string + errors) exceeds limit."""
-        # Set small max_entry_weight to test total weight calculation
+        """put() skips caching when total weight (string + errors) exceeds limit.
+
+        Dynamic weight calculation: base overhead (100) + actual string lengths.
+        Each error with a 100-char message: 100 + 100 = 200 bytes.
+        10 errors with 100-char messages = 2000 bytes.
+        String: 100 chars = 100 bytes.
+        Total: 2100 bytes > 2000 (max_entry_weight).
+        """
         cache = IntegrityCache(strict=False, max_entry_weight=2000, max_errors_per_entry=50)
 
-        # Create result with small string but many errors
-        # String: 100 chars
-        # Errors: 10 errors x 200 bytes = 2000 bytes
-        # Total weight: 100 + 2000 = 2100 > 2000
+        # Create errors with long messages to trigger weight limit
+        # Each error: 100 base + 100 chars = 200 bytes
         errors: list[FrozenFluentError] = []
-        for i in range(10):
-            error = FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
+        for _ in range(10):
+            long_message = "E" * 100  # 100-char message
+            error = FrozenFluentError(long_message, ErrorCategory.REFERENCE)
             errors.append(error)
 
         cache.put("msg", None, None, "en", True, "x" * 100, tuple(errors))
@@ -288,11 +293,17 @@ class TestIntegrityCacheMakeHashableTypes:
         assert IntegrityCache._make_hashable(False) == ("__bool__", False)
 
     def test_make_hashable_decimal(self) -> None:
-        """_make_hashable preserves Decimal unchanged."""
+        """_make_hashable type-tags Decimal with str() to preserve scale.
+
+        Decimal("1.0") and Decimal("1") are equal in Python but produce
+        different plural forms in CLDR (visible fraction digits differ).
+        Type-tagging with str() preserves scale for correct cache keys.
+        """
         decimal_value = Decimal("123.45")
         result = IntegrityCache._make_hashable(decimal_value)
-        assert result == decimal_value
-        assert isinstance(result, Decimal)
+        # Decimal is type-tagged with str() to preserve scale
+        assert result == ("__decimal__", "123.45")
+        assert isinstance(result, tuple)
 
     def test_make_hashable_datetime(self) -> None:
         """_make_hashable preserves datetime unchanged."""
@@ -309,10 +320,16 @@ class TestIntegrityCacheMakeHashableTypes:
         assert isinstance(result, date)
 
     def test_make_hashable_list_to_tuple(self) -> None:
-        """_make_hashable converts list to tuple recursively with type-tagged ints."""
+        """_make_hashable type-tags list distinctly from tuple.
+
+        str([1,2]) = "[1, 2]" but str((1,2)) = "(1, 2)". Type-tagging
+        ensures these produce different cache keys despite both being
+        converted to tuples internally.
+        """
         result = IntegrityCache._make_hashable([1, 2, [3, 4]])
-        # Ints are type-tagged
-        expected = (("__int__", 1), ("__int__", 2), (("__int__", 3), ("__int__", 4)))
+        # Lists are type-tagged with "__list__" prefix, nested lists too
+        inner_list = ("__list__", (("__int__", 3), ("__int__", 4)))
+        expected = ("__list__", (("__int__", 1), ("__int__", 2), inner_list))
         assert result == expected
         assert isinstance(result, tuple)
 

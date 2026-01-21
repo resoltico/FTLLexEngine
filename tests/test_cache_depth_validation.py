@@ -131,10 +131,10 @@ class TestMakeHashableTypeValidation:
         assert result is None
 
     def test_decimal_accepted(self) -> None:
-        """Decimals are accepted as hashable."""
+        """Decimals are type-tagged with str() to preserve scale for CLDR rules."""
         value = Decimal("123.45")
         result = IntegrityCache._make_hashable(value)
-        assert result == value
+        assert result == ("__decimal__", "123.45")
 
     def test_datetime_accepted(self) -> None:
         """Datetimes are accepted as hashable."""
@@ -149,16 +149,17 @@ class TestMakeHashableTypeValidation:
         assert result == value
 
     def test_fluent_number_accepted(self) -> None:
-        """FluentNumber is accepted as hashable."""
+        """FluentNumber is type-tagged with underlying type info for precision."""
         value = FluentNumber(value=42, formatted="42")
         result = IntegrityCache._make_hashable(value)
-        assert result == value
+        # FluentNumber is type-tagged: (__fluentnumber__, type_name, value, formatted, precision)
+        assert result == ("__fluentnumber__", "int", 42, "42", None)
 
     def test_list_converted_to_tuple(self) -> None:
-        """Lists are converted to tuples with type-tagged int elements."""
+        """Lists are type-tagged to distinguish from tuples in formatted output."""
         result = IntegrityCache._make_hashable([1, 2, 3])
-        # Ints are type-tagged
-        assert result == (("__int__", 1), ("__int__", 2), ("__int__", 3))
+        # Lists are type-tagged with "__list__" prefix
+        assert result == ("__list__", (("__int__", 1), ("__int__", 2), ("__int__", 3)))
 
     def test_dict_converted_to_sorted_tuple(self) -> None:
         """Dicts are converted to sorted tuple of tuples with type-tagged values."""

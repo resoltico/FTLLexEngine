@@ -13,6 +13,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-01-21
+
+### Fixed
+
+- **Hash Composition Length-Prefixing** (SEC-HASH-COLLISION-LENGTH-PREFIX-001):
+  - Previous: String fields in hash composition were concatenated without length prefixes
+  - Security issue: Different field sequences could produce identical byte streams (e.g., `("ab", "c")` and `("a", "bc")` hash identically)
+  - Fix: All string fields now length-prefixed (4-byte big-endian UTF-8 byte length) before hashing
+  - Locations: `diagnostics/errors.py` `_hash_string()` helper, `runtime/cache.py` `_compute_checksum()`
+  - Impact: Collision attacks via field boundary manipulation now prevented
+
+- **FrozenFluentError Exception Attribute Whitelist** (IMPL-EXCEPTION-ATTRS-001):
+  - Previous: `FrozenFluentError.__setattr__()` blocked ALL attribute writes after freeze, including Python exception machinery
+  - Issue: Python sets `__traceback__`, `__context__`, `__cause__`, `__suppress_context__` on exceptions after construction
+  - Fix: Added `_PYTHON_EXCEPTION_ATTRS` whitelist allowing Python runtime to set exception machinery attributes
+  - Location: `diagnostics/errors.py` lines 113-115, 165-167
+  - Impact: FrozenFluentError now works correctly as a raisable exception in all contexts
+
+- **Cache Key Type Confusion for Decimal** (DATA-INTEGRITY-CACHE-DECIMAL-001):
+  - Previous: `Decimal` values used raw numeric representation in cache keys
+  - Issue: `Decimal("1.0")` and `Decimal("1.00")` produced same cache key despite different CLDR plural rule behavior
+  - Fix: Decimal now type-tagged with `str(value)` preserving scale: `("__decimal__", "1.0")` vs `("__decimal__", "1.00")`
+  - Location: `runtime/cache.py` `_make_hashable()` Decimal case
+  - Impact: Correct caching for locales with scale-dependent plural rules
+
+- **Cache Key Type Confusion for FluentNumber** (DATA-INTEGRITY-CACHE-FLUENTNUMBER-001):
+  - Previous: `FluentNumber` values lost underlying type information in cache keys
+  - Issue: `FluentNumber(value=1, ...)` with int value and `FluentNumber(value=1.0, ...)` with float value shared cache key
+  - Fix: FluentNumber now type-tagged with full info: `("__fluentnumber__", type_name, value, formatted, precision)`
+  - Location: `runtime/cache.py` `_make_hashable()` FluentNumber case
+  - Impact: Correct caching for FluentNumber with different underlying types or formatting
+
+- **Cache Key Type Confusion for list/tuple** (DATA-INTEGRITY-CACHE-LIST-TUPLE-001):
+  - Previous: Both `list` and `tuple` converted to plain tuple in cache keys
+  - Issue: `[1, 2]` and `(1, 2)` produced same cache key despite potentially different formatted output
+  - Fix: Lists tagged as `("__list__", ...)` and tuples as `("__tuple__", ...)`
+  - Location: `runtime/cache.py` `_make_hashable()` list/tuple cases
+  - Impact: Correct caching for list vs tuple argument values
+
+- **Cache Entry Recursive Verification** (DATA-INTEGRITY-RECURSIVE-VERIFY-001):
+  - Previous: `IntegrityCacheEntry.verify()` only checked entry checksum, not contained errors
+  - Issue: Corrupted `FrozenFluentError` objects inside cache entry could pass verification
+  - Fix: `verify()` now recursively calls `verify_integrity()` on all errors (defense-in-depth)
+  - Location: `runtime/cache.py` `IntegrityCacheEntry.verify()` method
+  - Impact: Complete integrity verification at all levels of data hierarchy
+
+### Changed
+
+- **Audit Log O(1) Eviction** (PERF-AUDIT-LOG-DEQUE-001):
+  - Previous: Audit log used `list` with slicing for eviction: `self._audit_log = self._audit_log[-max_entries:]`
+  - Performance issue: List slicing is O(n) for large logs
+  - Change: Now uses `deque(maxlen=max_entries)` for O(1) automatic eviction
+  - Location: `runtime/cache.py` lines 47, 467, 626
+  - Impact: Improved performance for audit-enabled caches with high write volume
+
+- **Dynamic Error Weight Calculation** (DATA-INTEGRITY-ERROR-WEIGHT-001):
+  - Previous: Static 200-byte estimate per error (`_ERROR_WEIGHT_BYTES = 200`)
+  - Issue: Errors with large messages or diagnostics exceeded estimate; errors with short messages wasted budget
+  - Change: Dynamic weight calculation: base overhead (100 bytes) + actual string lengths
+  - Location: `runtime/cache.py` `_estimate_error_weight()` function
+  - Impact: More accurate memory bounding for error bloat protection
+
 ## [0.82.0] - 2026-01-21
 
 ### Fixed
@@ -2315,6 +2377,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.83.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.83.0
 [0.82.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.82.0
 [0.81.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.81.0
 [0.80.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.80.0

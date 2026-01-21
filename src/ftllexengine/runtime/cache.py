@@ -34,7 +34,7 @@ import hashlib
 import hmac
 import struct
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -58,19 +58,60 @@ __all__ = [
     "WriteLogEntry",
 ]
 
-# Realistic estimate of memory weight per FluentError object.
-# Each error carries Diagnostic objects with traceback information, message context,
-# and error templates. 200 bytes is a realistic estimate that accounts for:
-# - Error message strings (~50-100 bytes)
-# - Diagnostic traceback data (~50-100 bytes)
-# - Object overhead and references (~50 bytes)
-_ERROR_WEIGHT_BYTES: int = 200
+# Base overhead per FrozenFluentError object (dataclass, slots, references).
+# Dynamic weight calculation adds actual string lengths on top of this.
+_ERROR_BASE_OVERHEAD: int = 100
 
 # Maximum number of errors allowed per cache entry.
 # Prevents memory exhaustion from pathological cases where resolution produces
 # many errors (e.g., cyclic references, deeply nested validation failures).
-# 50 errors at 200 bytes each = 10,000 bytes (DEFAULT_MAX_ENTRY_SIZE limit).
 _DEFAULT_MAX_ERRORS_PER_ENTRY: int = 50
+
+
+def _estimate_error_weight(error: FrozenFluentError) -> int:
+    """Estimate memory weight of a FrozenFluentError.
+
+    Computes actual weight based on error content rather than using a static
+    estimate. This provides accurate memory budget enforcement for financial
+    applications where complex errors with detailed diagnostics may exceed
+    simple estimates.
+
+    Args:
+        error: FrozenFluentError to estimate
+
+    Returns:
+        Estimated byte weight of the error
+    """
+    weight = _ERROR_BASE_OVERHEAD + len(error.message)
+
+    if error.diagnostic is not None:
+        diag = error.diagnostic
+        weight += len(diag.message)
+        # Optional string fields
+        for field in (
+            diag.hint,
+            diag.help_url,
+            diag.function_name,
+            diag.argument_name,
+            diag.expected_type,
+            diag.received_type,
+            diag.ftl_location,
+        ):
+            if field is not None:
+                weight += len(field)
+        # Resolution path
+        if diag.resolution_path is not None:
+            for path_element in diag.resolution_path:
+                weight += len(path_element)
+
+    if error.context is not None:
+        ctx = error.context
+        weight += len(ctx.input_value)
+        weight += len(ctx.locale_code)
+        weight += len(ctx.parse_type)
+        weight += len(ctx.fallback_value)
+
+    return weight
 
 # Type alias for hashable values produced by _make_hashable().
 # Recursive definition: primitives plus tuple/frozenset of self.
@@ -173,9 +214,11 @@ class IntegrityCacheEntry:
         verification while minimizing memory overhead.
 
         Hash Composition:
-            The checksum covers ALL entry fields for complete audit trail integrity:
-            1. formatted: Message output (UTF-8 encoded)
-            2. errors: Each error's content_hash (or message if unavailable)
+            All variable-length fields are length-prefixed to prevent collision
+            between semantically different values. The checksum covers ALL entry
+            fields for complete audit trail integrity:
+            1. formatted: Message output (length-prefixed UTF-8)
+            2. errors: Count + each error's content_hash
             3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
             4. sequence: Entry sequence number (8-byte signed big-endian)
 
@@ -189,8 +232,10 @@ class IntegrityCacheEntry:
             16-byte BLAKE2b digest
         """
         h = hashlib.blake2b(digest_size=16)
-        # Use surrogatepass to handle invalid Unicode (e.g., from fuzzing)
-        h.update(formatted.encode("utf-8", errors="surrogatepass"))
+        # Length-prefix formatted string for collision resistance
+        encoded = formatted.encode("utf-8", errors="surrogatepass")
+        h.update(len(encoded).to_bytes(4, "big"))
+        h.update(encoded)
         # Include error count and content hashes
         h.update(len(errors).to_bytes(4, "big"))
         for error in errors:
@@ -198,26 +243,37 @@ class IntegrityCacheEntry:
             if hasattr(error, "content_hash"):
                 h.update(error.content_hash)
             else:
-                h.update(str(error).encode("utf-8", errors="surrogatepass"))
+                error_encoded = str(error).encode("utf-8", errors="surrogatepass")
+                h.update(len(error_encoded).to_bytes(4, "big"))
+                h.update(error_encoded)
         # Include metadata fields for complete audit trail integrity
         h.update(struct.pack(">d", created_at))  # 8-byte big-endian IEEE 754 double
         h.update(sequence.to_bytes(8, "big", signed=True))  # 8-byte signed int
         return h.digest()
 
     def verify(self) -> bool:
-        """Verify entry integrity.
+        """Verify entry integrity recursively.
 
         Recomputes the checksum from current content and metadata, then compares
         against stored checksum using constant-time comparison (defense against
-        timing attacks).
+        timing attacks). Also recursively verifies each contained error's
+        integrity for defense-in-depth.
 
         Returns:
-            True if checksum matches (entry is valid), False otherwise
+            True if checksum matches AND all errors verify, False otherwise
         """
+        # First verify entry-level checksum
         expected = self._compute_checksum(
             self.formatted, self.errors, self.created_at, self.sequence
         )
-        return hmac.compare_digest(self.checksum, expected)
+        if not hmac.compare_digest(self.checksum, expected):
+            return False
+        # Recursively verify each error's integrity (defense-in-depth)
+        # Only verify errors that have the verify_integrity method
+        for error in self.errors:
+            if hasattr(error, "verify_integrity") and not error.verify_integrity():
+                return False
+        return True
 
     def to_tuple(self) -> _CacheValue:
         """Convert to legacy tuple format for backwards compatibility.
@@ -350,8 +406,10 @@ class IntegrityCache:
         self._write_once = write_once
         self._strict = strict
 
-        # Audit logging
-        self._audit_log: list[WriteLogEntry] | None = [] if enable_audit else None
+        # Audit logging with O(1) eviction via deque maxlen
+        self._audit_log: deque[WriteLogEntry] | None = (
+            deque(maxlen=max_audit_entries) if enable_audit else None
+        )
         self._max_audit_entries = max_audit_entries
 
         # Statistics
@@ -468,7 +526,8 @@ class IntegrityCache:
                 self._error_bloat_skips += 1
             return
 
-        total_weight = len(formatted) + (len(errors) * _ERROR_WEIGHT_BYTES)
+        # Dynamic weight calculation based on actual error content
+        total_weight = len(formatted) + sum(_estimate_error_weight(e) for e in errors)
         if total_weight > self._max_entry_weight:
             with self._lock:
                 self._error_bloat_skips += 1
@@ -627,24 +686,30 @@ class IntegrityCache:
             checksum_hex=entry.checksum.hex() if entry is not None else "",
         )
 
+        # deque with maxlen provides automatic O(1) eviction of oldest entries
         self._audit_log.append(log_entry)
 
-        # Evict oldest entries if log exceeds limit
-        while len(self._audit_log) > self._max_audit_entries:
-            self._audit_log.pop(0)
-
     @staticmethod
-    def _make_hashable(  # noqa: PLR0911 - type dispatch requires multiple returns
+    def _make_hashable(  # noqa: PLR0911, PLR0912 - type dispatch requires multiple returns/branches
         value: object, depth: int = MAX_DEPTH
     ) -> HashableValue:
         """Convert potentially unhashable value to hashable equivalent.
 
         Converts:
-            - list -> tuple (recursively)
-            - tuple -> tuple with converted elements (recursively)
+            - list -> ("__list__", tuple) - type-tagged for collision prevention
+            - tuple -> ("__tuple__", tuple) - type-tagged for collision prevention
             - dict -> tuple of sorted key-value tuples (recursively)
             - set -> frozenset (recursively)
-            - Known FluentValue types -> unchanged (already hashable)
+            - Decimal -> ("__decimal__", str) - str preserves scale for CLDR rules
+            - FluentNumber -> type-tagged with underlying type info
+            - Known primitive types -> type-tagged tuples
+
+        Type-Tagging Rationale:
+            Python's hash equality creates collision risk:
+            - hash(1) == hash(True) == hash(1.0)
+            - Decimal("1.0") == Decimal("1") but produce different plural forms
+            - list vs tuple: str([1,2]) != str((1,2)) but would hash same
+            Type-tagging creates distinct cache keys for semantically different values.
 
         Depth Protection:
             Uses explicit depth tracking consistent with codebase pattern
@@ -667,10 +732,17 @@ class IntegrityCache:
             raise TypeError(msg)
 
         match value:
+            # Type-tag list and tuple distinctly: str([1,2])="[1, 2]" vs str((1,2))="(1, 2)"
             case list():
-                return tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value)
+                return (
+                    "__list__",
+                    tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                )
             case tuple():
-                return tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value)
+                return (
+                    "__tuple__",
+                    tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                )
             case dict():
                 return tuple(
                     sorted(
@@ -691,10 +763,21 @@ class IntegrityCache:
                 return ("__float__", value)
             case str() | None:
                 return value
-            case Decimal() | datetime() | date():
+            # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
+            # CLDR plural rules use visible fraction digits (v operand) which differs
+            case Decimal():
+                return ("__decimal__", str(value))
+            case datetime() | date():
                 return value
+            # FluentNumber: type-tag with underlying value type for financial precision
             case FluentNumber():
-                return value
+                return (
+                    "__fluentnumber__",
+                    type(value.value).__name__,
+                    value.value,
+                    value.formatted,
+                    value.precision,
+                )
             case _:
                 msg = f"Unknown type in cache key: {type(value).__name__}"
                 raise TypeError(msg)
