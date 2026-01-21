@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, NoReturn
 
 from ftllexengine.constants import (
     DEFAULT_CACHE_SIZE,
+    DEFAULT_MAX_ENTRY_SIZE,
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
     MAX_DEPTH,
@@ -114,7 +115,12 @@ class FluentBundle:
 
     __slots__ = (
         "_cache",
+        "_cache_enable_audit",
+        "_cache_max_audit_entries",
+        "_cache_max_entry_weight",
+        "_cache_max_errors_per_entry",
         "_cache_size",
+        "_cache_write_once",
         "_function_registry",
         "_locale",
         "_max_nesting_depth",
@@ -174,6 +180,11 @@ class FluentBundle:
         use_isolating: bool = True,
         enable_cache: bool = False,
         cache_size: int = DEFAULT_CACHE_SIZE,
+        cache_write_once: bool = False,
+        cache_enable_audit: bool = False,
+        cache_max_audit_entries: int = 10000,
+        cache_max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
+        cache_max_errors_per_entry: int = 50,
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
@@ -189,6 +200,18 @@ class FluentBundle:
             enable_cache: Enable format caching for performance (default: False)
                          Cache provides 50x speedup on repeated format calls.
             cache_size: Maximum cache entries when caching enabled (default: 1000)
+            cache_write_once: Reject updates to existing cache keys (default: False).
+                             Enables data race prevention for financial applications.
+                             When True and strict=True, raises WriteConflictError on overwrite attempt.
+            cache_enable_audit: Maintain audit log of all cache operations (default: False).
+                               Enables post-mortem analysis and compliance logging.
+            cache_max_audit_entries: Maximum audit log entries before oldest eviction (default: 10000).
+                                    Only relevant when cache_enable_audit=True.
+            cache_max_entry_weight: Maximum memory weight for cached results (default: 10000).
+                                   Weight is calculated as: len(formatted_str) + sum(error_weights).
+                                   Results exceeding this limit are computed but not cached.
+            cache_max_errors_per_entry: Maximum errors per cache entry (default: 50).
+                                       Prevents memory exhaustion from pathological error cases.
             functions: Custom FunctionRegistry to use (default: standard registry with
                       NUMBER, DATETIME, CURRENCY). Pass a custom registry to:
                       - Use pre-registered custom functions
@@ -201,7 +224,8 @@ class FluentBundle:
             strict: Enable strict mode for financial applications (default: False).
                    When True, format_pattern raises FormattingIntegrityError on ANY error
                    instead of returning fallback values. Use for monetary/critical data
-                   where silent fallbacks are unacceptable.
+                   where silent fallbacks are unacceptable. Also affects cache corruption
+                   handling: raises CacheCorruptionError instead of silent eviction.
 
         Raises:
             ValueError: If locale code is empty or has invalid format
@@ -224,8 +248,11 @@ class FluentBundle:
             >>> # Stricter limits for untrusted input
             >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
             >>>
-            >>> # Financial-grade strict mode
-            >>> bundle = FluentBundle("en", strict=True)
+            >>> # Financial-grade strict mode with write-once cache
+            >>> bundle = FluentBundle("en", strict=True, enable_cache=True, cache_write_once=True)
+            >>>
+            >>> # Audit-enabled cache for compliance
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_enable_audit=True)
         """
         # Validate locale format
         FluentBundle._validate_locale_format(locale)
@@ -270,13 +297,28 @@ class FluentBundle:
             self._owns_registry = False
 
         # Format cache (opt-in) with integrity verification
+        # Store all cache configuration for introspection and lazy initialization
         self._cache: IntegrityCache | None = None
         self._cache_size = cache_size
+        self._cache_write_once = cache_write_once
+        self._cache_enable_audit = cache_enable_audit
+        self._cache_max_audit_entries = cache_max_audit_entries
+        self._cache_max_entry_weight = cache_max_entry_weight
+        self._cache_max_errors_per_entry = cache_max_errors_per_entry
+
         if enable_cache:
             # Cache strict mode matches bundle strict mode for consistent error handling.
             # When bundle strict=True, cache corruption raises CacheCorruptionError.
             # When bundle strict=False, cache corruption silently evicts the entry.
-            self._cache = IntegrityCache(maxsize=cache_size, strict=self._strict)
+            self._cache = IntegrityCache(
+                maxsize=cache_size,
+                max_entry_weight=cache_max_entry_weight,
+                max_errors_per_entry=cache_max_errors_per_entry,
+                write_once=cache_write_once,
+                strict=self._strict,
+                enable_audit=cache_enable_audit,
+                max_audit_entries=cache_max_audit_entries,
+            )
 
         # Context manager state tracking (cache invalidation optimization)
         self._modified_in_context = False
@@ -404,6 +446,113 @@ class FluentBundle:
         return self._cache.size
 
     @property
+    def cache_write_once(self) -> bool:
+        """Get whether cache write-once mode is enabled (read-only).
+
+        Write-once mode rejects updates to existing cache keys, preventing
+        data races in concurrent environments. Essential for financial
+        applications where cache overwrites could indicate race conditions.
+
+        Returns:
+            bool: True if write-once mode is configured
+
+        Example:
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_write_once=True)
+            >>> bundle.cache_write_once
+            True
+            >>> bundle_normal = FluentBundle("en", enable_cache=True)
+            >>> bundle_normal.cache_write_once
+            False
+
+        Note:
+            Returns configured value regardless of whether caching is enabled.
+        """
+        return self._cache_write_once
+
+    @property
+    def cache_enable_audit(self) -> bool:
+        """Get whether cache audit logging is enabled (read-only).
+
+        Audit logging maintains a history of all cache operations for
+        compliance and debugging purposes. Each operation (GET, PUT, HIT,
+        MISS, EVICT, CORRUPTION) is recorded with timestamps.
+
+        Returns:
+            bool: True if audit logging is configured
+
+        Example:
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_enable_audit=True)
+            >>> bundle.cache_enable_audit
+            True
+
+        Note:
+            Returns configured value regardless of whether caching is enabled.
+        """
+        return self._cache_enable_audit
+
+    @property
+    def cache_max_audit_entries(self) -> int:
+        """Get maximum audit log entries configuration (read-only).
+
+        The audit log uses a bounded deque with O(1) eviction of oldest
+        entries when the limit is reached.
+
+        Returns:
+            int: Configured maximum audit log entries
+
+        Example:
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_enable_audit=True, cache_max_audit_entries=5000)
+            >>> bundle.cache_max_audit_entries
+            5000
+
+        Note:
+            Returns configured value regardless of whether caching or audit is enabled.
+        """
+        return self._cache_max_audit_entries
+
+    @property
+    def cache_max_entry_weight(self) -> int:
+        """Get maximum cache entry weight configuration (read-only).
+
+        Weight is calculated as: len(formatted_str) + sum(error_weights).
+        Results exceeding this limit are computed but not cached, protecting
+        against memory exhaustion from large formatted outputs.
+
+        Returns:
+            int: Configured maximum entry weight in approximate bytes
+
+        Example:
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_max_entry_weight=5000)
+            >>> bundle.cache_max_entry_weight
+            5000
+
+        Note:
+            Returns configured value regardless of whether caching is enabled.
+        """
+        return self._cache_max_entry_weight
+
+    @property
+    def cache_max_errors_per_entry(self) -> int:
+        """Get maximum errors per cache entry configuration (read-only).
+
+        Entries with more errors than this limit are not cached, preventing
+        memory exhaustion from pathological cases where resolution produces
+        many errors (e.g., cyclic references, deeply nested validation failures).
+
+        Returns:
+            int: Configured maximum errors per cache entry
+
+        Example:
+            >>> bundle = FluentBundle("en", enable_cache=True, cache_max_errors_per_entry=25)
+            >>> bundle.cache_max_errors_per_entry
+            25
+
+        Note:
+            Returns configured value regardless of whether caching is enabled.
+        """
+        return self._cache_max_errors_per_entry
+
+    @property
     def max_source_size(self) -> int:
         """Maximum FTL source size in characters (read-only).
 
@@ -442,9 +591,15 @@ class FluentBundle:
         use_isolating: bool = True,
         enable_cache: bool = False,
         cache_size: int = DEFAULT_CACHE_SIZE,
+        cache_write_once: bool = False,
+        cache_enable_audit: bool = False,
+        cache_max_audit_entries: int = 10000,
+        cache_max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
+        cache_max_errors_per_entry: int = 50,
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        strict: bool = False,
     ) -> FluentBundle:
         """Factory method to create a FluentBundle using the system locale.
 
@@ -455,9 +610,15 @@ class FluentBundle:
             use_isolating: Wrap interpolated values in Unicode bidi isolation marks
             enable_cache: Enable format caching for performance
             cache_size: Maximum cache entries when caching enabled
+            cache_write_once: Reject updates to existing cache keys (data race prevention)
+            cache_enable_audit: Maintain audit log of all cache operations
+            cache_max_audit_entries: Maximum audit log entries before oldest eviction
+            cache_max_entry_weight: Maximum memory weight for cached results
+            cache_max_errors_per_entry: Maximum errors per cache entry
             functions: Custom FunctionRegistry to use (default: standard registry)
             max_source_size: Maximum FTL source size in characters (default: 10 MiB / 10,485,760 chars)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
+            strict: Enable strict mode (fail-fast on errors, strict cache corruption handling)
 
         Returns:
             Configured FluentBundle instance for system locale
@@ -478,9 +639,15 @@ class FluentBundle:
             use_isolating=use_isolating,
             enable_cache=enable_cache,
             cache_size=cache_size,
+            cache_write_once=cache_write_once,
+            cache_enable_audit=cache_enable_audit,
+            cache_max_audit_entries=cache_max_audit_entries,
+            cache_max_entry_weight=cache_max_entry_weight,
+            cache_max_errors_per_entry=cache_max_errors_per_entry,
             functions=functions,
             max_source_size=max_source_size,
             max_nesting_depth=max_nesting_depth,
+            strict=strict,
         )
 
     def __repr__(self) -> str:

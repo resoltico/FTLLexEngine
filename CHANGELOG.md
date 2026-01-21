@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-01-21
+
+### Added
+
+- **FluentBundle Cache Security Parameters** (API-CACHE-SECURITY-PARAMS-001):
+  - Previous: IntegrityCache security parameters (write_once, enable_audit, max_audit_entries, max_entry_weight, max_errors_per_entry) were not accessible through FluentBundle constructor
+  - Issue: Financial applications requiring cache audit trails or write-once semantics had no public API to enable these features
+  - Added: Five new parameters to `FluentBundle.__init__()` and `FluentBundle.for_system_locale()`:
+    - `cache_write_once: bool = False` - Reject updates to existing cache keys (data race prevention)
+    - `cache_enable_audit: bool = False` - Maintain audit log of all cache operations
+    - `cache_max_audit_entries: int = 10000` - Maximum audit log entries before oldest eviction
+    - `cache_max_entry_weight: int = 10000` - Maximum memory weight for cached results
+    - `cache_max_errors_per_entry: int = 50` - Maximum errors per cache entry
+  - Added: Five corresponding read-only properties for introspection:
+    - `cache_write_once`, `cache_enable_audit`, `cache_max_audit_entries`, `cache_max_entry_weight`, `cache_max_errors_per_entry`
+  - Locations: `runtime/bundle.py` `__init__()`, `for_system_locale()`, properties
+  - Impact: Full IntegrityCache feature exposure for financial-grade applications
+
+- **FluentBundle.for_system_locale strict Parameter** (API-FOR-SYSTEM-LOCALE-STRICT-001):
+  - Previous: `for_system_locale()` factory method did not accept `strict` parameter
+  - Issue: Creating strict-mode bundles with system locale detection required two-step initialization
+  - Added: `strict: bool = False` parameter to `for_system_locale()`
+  - Location: `runtime/bundle.py` `for_system_locale()` method
+  - Impact: Complete parameter parity between `__init__()` and `for_system_locale()`
+
 ## [0.83.0] - 2026-01-21
 
 ### Fixed
@@ -2377,6 +2402,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.84.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.84.0
 [0.83.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.83.0
 [0.82.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.82.0
 [0.81.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.81.0

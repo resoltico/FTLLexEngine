@@ -17,7 +17,6 @@ These tests verify:
 - Exception hierarchy and @final enforcement
 - Property access and data integrity
 
-Follows CLAUDE.md §5 Hypothesis-First Protocol.
 """
 
 from __future__ import annotations

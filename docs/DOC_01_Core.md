@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.83.0"
+version: "0.84.0"
 domain: CORE
 updated: "2026-01-21"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?"]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
 ---
 
 # Core API Reference
@@ -25,6 +25,11 @@ class FluentBundle:
         use_isolating: bool = True,
         enable_cache: bool = False,
         cache_size: int = 1000,
+        cache_write_once: bool = False,
+        cache_enable_audit: bool = False,
+        cache_max_audit_entries: int = 10000,
+        cache_max_entry_weight: int = 10000,
+        cache_max_errors_per_entry: int = 50,
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
@@ -39,6 +44,11 @@ class FluentBundle:
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
+| `cache_write_once` | `bool` | N | Reject updates to existing cache keys (data race prevention). |
+| `cache_enable_audit` | `bool` | N | Maintain audit log of all cache operations. |
+| `cache_max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
+| `cache_max_entry_weight` | `int` | N | Maximum memory weight for cached results. |
+| `cache_max_errors_per_entry` | `int` | N | Maximum errors per cache entry. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
@@ -51,7 +61,8 @@ class FluentBundle:
 - Thread: Always thread-safe via internal RWLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
-- Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback.
+- Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback. Also affects cache corruption handling.
+- Cache: Security parameters expose `IntegrityCache` features for financial-grade applications.
 
 ---
 
@@ -66,9 +77,15 @@ def for_system_locale(
     use_isolating: bool = True,
     enable_cache: bool = False,
     cache_size: int = 1000,
+    cache_write_once: bool = False,
+    cache_enable_audit: bool = False,
+    cache_max_audit_entries: int = 10000,
+    cache_max_entry_weight: int = 10000,
+    cache_max_errors_per_entry: int = 50,
     functions: FunctionRegistry | None = None,
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
+    strict: bool = False,
 ) -> FluentBundle:
 ```
 
@@ -78,9 +95,15 @@ def for_system_locale(
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `enable_cache` | `bool` | N | Enable format result caching. |
 | `cache_size` | `int` | N | Maximum cache entries. |
+| `cache_write_once` | `bool` | N | Reject updates to existing cache keys (data race prevention). |
+| `cache_enable_audit` | `bool` | N | Maintain audit log of all cache operations. |
+| `cache_max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
+| `cache_max_entry_weight` | `int` | N | Maximum memory weight for cached results. |
+| `cache_max_errors_per_entry` | `int` | N | Maximum errors per cache entry. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
+| `strict` | `bool` | N | Enable strict mode (fail-fast on errors). |
 
 ### Constraints
 - Return: FluentBundle with system locale.
@@ -510,6 +533,90 @@ def cache_size(self) -> int:
 - Raises: None.
 - State: Read-only property. Returns configured value regardless of cache_enabled.
 - Thread: Safe.
+
+---
+
+## `FluentBundle.cache_write_once`
+
+### Signature
+```python
+@property
+def cache_write_once(self) -> bool:
+```
+
+### Constraints
+- Return: True if write-once mode is configured.
+- Raises: None.
+- State: Read-only property. Returns configured value regardless of cache_enabled.
+- Thread: Safe.
+- Purpose: Prevents data races in concurrent environments. Essential for financial applications.
+
+---
+
+## `FluentBundle.cache_enable_audit`
+
+### Signature
+```python
+@property
+def cache_enable_audit(self) -> bool:
+```
+
+### Constraints
+- Return: True if audit logging is configured.
+- Raises: None.
+- State: Read-only property. Returns configured value regardless of cache_enabled.
+- Thread: Safe.
+- Purpose: Maintains history of cache operations for compliance and debugging.
+
+---
+
+## `FluentBundle.cache_max_audit_entries`
+
+### Signature
+```python
+@property
+def cache_max_audit_entries(self) -> int:
+```
+
+### Constraints
+- Return: Configured maximum audit log entries.
+- Raises: None.
+- State: Read-only property. Returns configured value regardless of cache_enabled or cache_enable_audit.
+- Thread: Safe.
+
+---
+
+## `FluentBundle.cache_max_entry_weight`
+
+### Signature
+```python
+@property
+def cache_max_entry_weight(self) -> int:
+```
+
+### Constraints
+- Return: Configured maximum entry weight in approximate bytes.
+- Raises: None.
+- State: Read-only property. Returns configured value regardless of cache_enabled.
+- Thread: Safe.
+- Purpose: Prevents memory exhaustion from large formatted outputs.
+
+---
+
+## `FluentBundle.cache_max_errors_per_entry`
+
+### Signature
+```python
+@property
+def cache_max_errors_per_entry(self) -> int:
+```
+
+### Constraints
+- Return: Configured maximum errors per cache entry.
+- Raises: None.
+- State: Read-only property. Returns configured value regardless of cache_enabled.
+- Thread: Safe.
+- Purpose: Prevents memory exhaustion from pathological error cases.
 
 ---
 

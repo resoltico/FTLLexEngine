@@ -49,18 +49,18 @@ Fuzzing generates thousands of test inputs automatically, feeding them to your c
 
 All fuzzing operations use `./scripts/fuzz.sh`:
 
-| Command | Purpose | Time |
-|---------|---------|------|
-| `./scripts/fuzz.sh` | Quick property tests | CPU-dependent |
-| `./scripts/fuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | Until Ctrl+C |
-| `./scripts/fuzz.sh --native` | Native Atheris byte-level chaos | Until Ctrl+C |
-| `./scripts/fuzz.sh --structured` | Structure-aware fuzzing (better coverage) | Until Ctrl+C |
-| `./scripts/fuzz.sh --perf` | Performance/ReDoS detection | Until Ctrl+C |
-| `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | Instant |
-| `./scripts/fuzz.sh --minimize FILE` | Minimize crash to smallest reproducer | ~60 seconds |
-| `./scripts/fuzz.sh --list` | List captured failures (with ages) | Instant |
-| `./scripts/fuzz.sh --clean` | Remove all failure artifacts | Instant |
-| `./scripts/fuzz.sh --corpus` | Check seed corpus health | Instant |
+| Command | Purpose | Test Selection | Time |
+|---------|---------|---------------|
+| `./scripts/fuzz.sh` | Quick property tests | `test_grammar_based_fuzzing.py` only | CPU-dependent |
+| `./scripts/fuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | **All Hypothesis tests** in `tests/` | Until Ctrl+C |
+| `./scripts/fuzz.sh --native` | Native fuzzing with Atheris | Custom targets in `fuzz/stability.py` | Until Ctrl+C |
+| `./scripts/fuzz.sh --structured` | Structure-aware fuzzing with Atheris | Custom targets in `fuzz/structured.py` | Until Ctrl+C |
+| `./scripts/fuzz.sh --perf` | Performance fuzzing to detect ReDoS | Custom targets in `fuzz/perf.py` | Until Ctrl+C |
+| `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | — | Quick |
+| `./scripts/fuzz.sh --minimize FILE` | Minimize crash to smallest reproducer | — | Quick |
+| `./scripts/fuzz.sh --list` | List captured failures (with ages) | — | Quick |
+| `./scripts/fuzz.sh --clean` | Remove all failure artifacts | — | Quick |
+| `./scripts/fuzz.sh --corpus` | Check seed corpus health | — | Quick |
 
 Common options:
 
@@ -147,7 +147,7 @@ A bug was found. Continue to Step 3.
 
 ## Workflow 2: Deep Fuzzing
 
-Use this for thorough testing before releases or after major changes.
+Use this for thorough testing before releases or after major changes. Runs **all Hypothesis tests** in the `tests/` directory using HypoFuzz for continuous coverage-guided exploration.
 
 ### Step 1: Run Continuous Fuzzing
 
@@ -386,6 +386,132 @@ This shows which seeds are duplicates. Add `--execute` to actually remove them.
 
 ---
 
+## Fuzzing Architecture
+
+FTLLexEngine uses a multi-layered fuzzing architecture designed for comprehensive testing of parsing, resolution, and runtime components.
+
+### Test Categorization & Markers
+
+Tests are categorized by purpose and execution characteristics:
+
+| Marker | Purpose | Execution | Included In |
+|--------|---------|-----------|-------------|
+| `@pytest.mark.property` | Property-based tests using Hypothesis | Normal CI runs | All modes |
+| `@pytest.mark.survivability` | Runtime crash/hang detection | Normal CI runs | All modes |
+| `@pytest.mark.survivability_extreme` | Extreme load survivability (manual) | Manual execution only | `--deep` only |
+| `@pytest.mark.hypofuzz` | Continuous fuzzing targets | Normal CI runs | All modes |
+| `@pytest.mark.fuzz` | Dedicated fuzz tests (excluded from CI) | Manual fuzzing only | `--deep` only |
+
+**Key Points:**
+- **No marker filtering**: All tests run by default unless explicitly marked with `@pytest.mark.fuzz`
+- **Hypothesis requirement**: Only tests using `@given` decorators can be fuzzed
+- **CI inclusion**: Tests without `@pytest.mark.fuzz` run in normal CI pipelines
+
+### Fuzzing Mode Test Selection
+
+| Mode | Engine | Test Selection | Purpose |
+|------|--------|----------------|---------|
+| `./scripts/fuzz.sh` | Hypothesis | `tests/test_grammar_based_fuzzing.py` only | Fast property checks |
+| `./scripts/fuzz.sh --deep` | HypoFuzz | **All Hypothesis tests** in `tests/` | Continuous coverage-guided fuzzing |
+| `./scripts/fuzz.sh --native` | Atheris | Custom fuzz targets in `fuzz/stability.py` | Byte-level chaos testing |
+| `./scripts/fuzz.sh --structured` | Atheris | Custom fuzz targets in `fuzz/structured.py` | Grammar-aware chaos testing |
+| `./scripts/fuzz.sh --perf` | Atheris | Custom fuzz targets in `fuzz/perf.py` | Performance/ReDoS detection |
+
+**HypoFuzz Selection Criteria:**
+```bash
+# Runs ALL tests in tests/ that use @given decorators
+uv run hypothesis fuzz --no-dashboard -n "$WORKERS" -- tests/
+```
+
+This means `--deep` mode includes:
+- Grammar-based fuzzing tests (`test_grammar_based_fuzzing.py`)
+- Runtime survivability tests (`test_runtime_survivability.py`)
+- Metamorphic property tests (`test_metamorphic_properties.py`)
+- All other Hypothesis tests in the `tests/` directory
+
+### Testing Pyramid
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    FUZZING LAYER                           │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  ./scripts/fuzz.sh --deep (HypoFuzz)             │    │
+│  │  - Continuous property-based testing              │    │
+│  │  - Coverage-guided exploration                     │    │
+│  │  - Finds logic errors, edge cases                 │    │
+│  └─────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  ./scripts/fuzz.sh --native (Atheris)             │    │
+│  │  - Byte-level mutation chaos                      │    │
+│  │  - Crash detection via libFuzzer                 │    │
+│  │  - Finds memory corruption, crashes              │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                   UNIT TEST LAYER                          │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  uv run scripts/test.sh                           │    │
+│  │  - Comprehensive unit test suite                  │    │
+│  │  - 95%+ coverage requirement                      │    │
+│  │  - Deterministic, fast execution                  │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### HypoFuzz Integration
+
+**Why HypoFuzz for `--deep` mode:**
+- **Coverage-guided**: Learns from execution paths to find new code
+- **Continuous**: Runs indefinitely, exploring edge cases
+- **Database-driven**: Saves examples and failures for regression testing
+- **Multi-worker**: Parallel execution for faster exploration
+
+**Database Files:**
+- `.hypothesis/examples/` - Coverage database (preserved across runs)
+- `.hypothesis/failures/` - Captured failing examples
+- `fuzz/seeds/` - Seed corpus for starting exploration
+
+### Atheris Integration
+
+**Why Atheris for `--native`/`--structured`/`--perf`:**
+- **libFuzzer backend**: Industry-standard fuzzing engine
+- **Corpus management**: Automatic minimization and corpus evolution
+- **Crash isolation**: Precise crash reproduction and minimization
+- **Performance profiling**: ReDoS detection with timing analysis
+
+**Corpus Files:**
+- `.fuzz_corpus/crash_*` - Crash artifacts
+- `fuzz/seeds/` - Grammar seeds for structured fuzzing
+
+### Marker Usage Guidelines
+
+**When to use each marker:**
+
+- `@pytest.mark.property`: Standard Hypothesis property tests that should run in CI
+- `@pytest.mark.survivability`: Runtime safety tests (crashes, hangs, memory issues)
+- `@pytest.mark.survivability_extreme`: Tests that may be too slow/resource-intensive for CI
+- `@pytest.mark.hypofuzz`: Tests specifically designed for continuous fuzzing
+- `@pytest.mark.fuzz`: Tests that should ONLY run during dedicated fuzzing sessions
+
+**Example usage:**
+```python
+# Runs in CI and fuzzing
+@pytest.mark.survivability
+@given(...)
+def test_cache_survives_extreme_conditions(self, ...):
+    # Test that may take seconds per example
+    pass
+
+# Runs ONLY in dedicated fuzzing (--deep mode)
+@pytest.mark.fuzz
+@given(...)
+def test_parser_fuzz_chaos(self, ...):
+    # May take minutes per example, too slow for CI
+    pass
+```
+
+---
+
 ## System Architecture
 
 ```
@@ -420,7 +546,9 @@ fuzz/
   crash_*                  <- Crash artifacts
 ```
 
-### The @pytest.mark.fuzz System
+### Test Marker System
+
+See [Fuzzing Architecture](#fuzzing-architecture) for complete marker usage guidelines.
 
 Tests marked with `@pytest.mark.fuzz` are excluded from normal test runs:
 

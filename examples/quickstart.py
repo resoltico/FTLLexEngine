@@ -291,6 +291,57 @@ print(f"After with block: {result}")
 
 print("[OK] Context manager exited cleanly (cache cleared, messages preserved)")
 
+# Example 12: Cache Security Parameters (Financial-Grade)
+print("\n" + "=" * 50)
+print("Example 12: Cache Security Parameters")
+print("=" * 50)
+
+# Financial applications can use cache security features:
+# - write_once: Prevents cache overwrites (data race prevention)
+# - enable_audit: Maintains audit trail of cache operations
+# - strict: Raises exceptions on errors instead of fallbacks
+
+financial_bundle = FluentBundle(
+    "en",
+    use_isolating=False,
+    enable_cache=True,
+    cache_write_once=True,      # Prevent data races
+    cache_enable_audit=True,    # Compliance audit trail
+    cache_max_entry_weight=5000,  # Memory protection
+    cache_max_errors_per_entry=10,  # Error bloat protection
+    strict=True,                # Fail-fast on ANY error
+)
+
+financial_bundle.add_resource("""
+balance = Account balance: { NUMBER($amount, minimumFractionDigits: 2) } USD
+transaction = { $type } of { NUMBER($amount, minimumFractionDigits: 2) } on { $date }
+""")
+
+# Format with financial values
+result, _ = financial_bundle.format_pattern("balance", {"amount": 12345.67})
+print(f"[FINANCIAL] {result}")
+
+result, _ = financial_bundle.format_pattern("transaction", {
+    "type": "Deposit",
+    "amount": 500.00,
+    "date": "2026-01-21",
+})
+print(f"[FINANCIAL] {result}")
+
+# Check cache configuration
+print("\nCache security settings:")
+print(f"  write_once: {financial_bundle.cache_write_once}")
+print(f"  audit_enabled: {financial_bundle.cache_enable_audit}")
+print(f"  max_entry_weight: {financial_bundle.cache_max_entry_weight}")
+print(f"  max_errors_per_entry: {financial_bundle.cache_max_errors_per_entry}")
+
+# Get cache stats including audit entries
+stats = financial_bundle.get_cache_stats()
+if stats:
+    print(f"  audit_entries: {stats.get('audit_entries', 0)}")
+    print(f"  cache_hits: {stats.get('hits', 0)}")
+    print(f"  cache_misses: {stats.get('misses', 0)}")
+
 print("\n" + "=" * 50)
 print("[SUCCESS] All examples completed successfully!")
 print("=" * 50)

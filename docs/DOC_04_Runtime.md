@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.83.0"
+version: "0.84.0"
 domain: RUNTIME
 updated: "2026-01-21"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?"]
 ---
 
 # Runtime Reference
@@ -1090,5 +1090,115 @@ deps = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
 cycles = detect_cycles(deps)
 # cycles: [['a', 'b', 'c', 'a']] (or canonical rotation)
 ```
+
+---
+
+## `IntegrityCache`
+
+Format result cache with cryptographic integrity verification for financial-grade applications.
+
+### Signature
+```python
+class IntegrityCache:
+    def __init__(
+        self,
+        maxsize: int = 1000,
+        max_entry_weight: int = 10000,
+        max_errors_per_entry: int = 50,
+        *,
+        write_once: bool = False,
+        strict: bool = False,
+        enable_audit: bool = False,
+        max_audit_entries: int = 10000,
+    ) -> None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `maxsize` | `int` | N | Maximum cache entries (LRU eviction). |
+| `max_entry_weight` | `int` | N | Maximum memory weight per entry in approximate bytes. |
+| `max_errors_per_entry` | `int` | N | Maximum errors stored per entry. |
+| `write_once` | `bool` | N | Reject updates to existing keys (data race prevention). |
+| `strict` | `bool` | N | Raise exceptions on corruption instead of silent eviction. |
+| `enable_audit` | `bool` | N | Maintain operation history for compliance. |
+| `max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
+
+### Constraints
+- Return: IntegrityCache instance.
+- State: Mutable cache with integrity verification.
+- Thread: Safe (internal locking).
+- Integrity: Each entry has SHA-256 checksum computed at creation and verified on retrieval.
+- Corruption: Corrupted entries are evicted silently (strict=False) or raise CacheCorruptionError (strict=True).
+- Import: `from ftllexengine.runtime.cache import IntegrityCache`
+- Access: Typically accessed via FluentBundle cache parameters, not directly constructed.
+
+---
+
+## `IntegrityCache.get`
+
+Retrieve cached format result with integrity verification.
+
+### Signature
+```python
+def get(self, key: CacheKey) -> IntegrityCacheEntry | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `key` | `CacheKey` | Y | Cache key (message_id, args_hash). |
+
+### Constraints
+- Return: IntegrityCacheEntry if found and valid, None otherwise.
+- Raises: `CacheCorruptionError` if strict=True and entry fails verification.
+- State: Read (may evict corrupted entries).
+- Thread: Safe.
+
+---
+
+## `IntegrityCache.put`
+
+Store format result with integrity checksum.
+
+### Signature
+```python
+def put(
+    self,
+    key: CacheKey,
+    formatted: str,
+    errors: tuple[FrozenFluentError, ...],
+) -> IntegrityCacheEntry:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `key` | `CacheKey` | Y | Cache key (message_id, args_hash). |
+| `formatted` | `str` | Y | Formatted message result. |
+| `errors` | `tuple[FrozenFluentError, ...]` | Y | Frozen errors from resolution. |
+
+### Constraints
+- Return: Created IntegrityCacheEntry.
+- Raises: `WriteConflictError` if write_once=True and strict=True and key exists with different content.
+- State: Mutates cache.
+- Thread: Safe.
+- Skip: Entry not stored if weight exceeds max_entry_weight or error count exceeds max_errors_per_entry.
+
+---
+
+## `IntegrityCache.get_stats`
+
+Get cache statistics including security parameters.
+
+### Signature
+```python
+def get_stats(self) -> dict[str, int | float | bool]:
+```
+
+### Constraints
+- Return: Dict with keys: size, maxsize, hits, misses, hit_rate, unhashable_skips, oversize_skips, error_bloat_skips, max_entry_weight, max_errors_per_entry, write_once, strict, audit_enabled, audit_entries.
+- State: Read-only.
+- Thread: Safe.
 
 ---
