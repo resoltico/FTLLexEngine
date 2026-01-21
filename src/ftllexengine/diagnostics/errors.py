@@ -132,6 +132,19 @@ class FrozenFluentError(Exception):
         cryptographic security. 128-bit digest is sufficient for integrity
         verification (not cryptographic security).
 
+        Hash Composition:
+            The content hash covers ALL error fields for complete integrity:
+            1. message: Error description (UTF-8 encoded)
+            2. category: Error category value
+            3. diagnostic (if present): ALL fields including:
+               - code.name, message
+               - span (start, end, line, column as 4-byte big-endian)
+               - hint, help_url, function_name, argument_name
+               - expected_type, received_type, ftl_location
+               - severity
+               - resolution_path (each element)
+            4. context (if present): input_value, locale_code, parse_type, fallback_value
+
         Args:
             message: Error message
             category: Error category
@@ -149,9 +162,46 @@ class FrozenFluentError(Exception):
         h.update(category.value.encode("utf-8"))
 
         if diagnostic is not None:
-            # Hash diagnostic code and message
+            # Hash ALL diagnostic fields for complete audit trail integrity
+            # Core fields
             h.update(diagnostic.code.name.encode("utf-8"))
             h.update(diagnostic.message.encode("utf-8", errors="surrogatepass"))
+
+            # Source location (span)
+            if diagnostic.span is not None:
+                h.update(diagnostic.span.start.to_bytes(4, "big", signed=True))
+                h.update(diagnostic.span.end.to_bytes(4, "big", signed=True))
+                h.update(diagnostic.span.line.to_bytes(4, "big", signed=True))
+                h.update(diagnostic.span.column.to_bytes(4, "big", signed=True))
+            else:
+                # Hash sentinel for None to distinguish from span with zeros
+                h.update(b"\x00\x00\x00\x00NOSPAN")
+
+            # Optional string fields (use sentinel for None distinction)
+            for field_value in (
+                diagnostic.hint,
+                diagnostic.help_url,
+                diagnostic.function_name,
+                diagnostic.argument_name,
+                diagnostic.expected_type,
+                diagnostic.received_type,
+                diagnostic.ftl_location,
+            ):
+                if field_value is not None:
+                    h.update(field_value.encode("utf-8", errors="surrogatepass"))
+                else:
+                    h.update(b"\x00NONE")
+
+            # Severity (always present, required field)
+            h.update(diagnostic.severity.encode("utf-8"))
+
+            # Resolution path (tuple of strings or None)
+            if diagnostic.resolution_path is not None:
+                h.update(len(diagnostic.resolution_path).to_bytes(4, "big"))
+                for path_element in diagnostic.resolution_path:
+                    h.update(path_element.encode("utf-8", errors="surrogatepass"))
+            else:
+                h.update(b"\x00NOPATH")
 
         if context is not None:
             h.update(context.input_value.encode("utf-8", errors="surrogatepass"))

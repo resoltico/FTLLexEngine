@@ -13,6 +13,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-01-21
+
+### Fixed
+
+- **Cache Checksum Includes Metadata** (SEC-METADATA-INTEGRITY-GAP-001):
+  - Previous: `IntegrityCacheEntry._compute_checksum()` only hashed `formatted` and `errors`, excluding `created_at` and `sequence`
+  - Security issue: Attacker could tamper with metadata fields without detection, compromising audit trail integrity
+  - Fix: Checksum now includes ALL entry fields:
+    1. `formatted`: Message output (UTF-8 encoded)
+    2. `errors`: Each error's content_hash
+    3. `created_at`: Monotonic timestamp (8-byte IEEE 754 double)
+    4. `sequence`: Entry sequence number (8-byte signed big-endian)
+  - Location: `runtime/cache.py` `_compute_checksum()` method
+  - Impact: Cache entries with tampered timestamps or sequences now fail `verify()`
+
+- **Error Content Hash Includes All Diagnostic Fields** (SEC-METADATA-INTEGRITY-GAP-002):
+  - Previous: `FrozenFluentError._compute_content_hash()` only hashed `diagnostic.code` and `diagnostic.message`, excluding 10 other fields
+  - Security issue: Diagnostic fields (span, hint, severity, resolution_path, etc.) could be tampered without detection
+  - Fix: Content hash now includes ALL Diagnostic fields:
+    - Core: `code.name`, `message`
+    - Location: `span` (start, end, line, column as 4-byte big-endian)
+    - Context: `hint`, `help_url`, `function_name`, `argument_name`, `expected_type`, `received_type`, `ftl_location`
+    - Metadata: `severity`, `resolution_path` (each element)
+    - Uses sentinel bytes for None distinction (prevents collision between None and empty/zero values)
+  - Location: `diagnostics/errors.py` `_compute_content_hash()` method
+  - Impact: Errors with tampered diagnostic fields now fail `verify_integrity()`
+
+### Changed
+
+- **Cache Checksum Semantics** (BREAKING for direct _compute_checksum users):
+  - `IntegrityCacheEntry._compute_checksum(formatted, errors)` signature changed to `_compute_checksum(formatted, errors, created_at, sequence)`
+  - `IntegrityCacheEntry.create()` now captures timestamp BEFORE computing checksum for consistency
+  - Different entries with same content now have different checksums (timestamps differ)
+  - This is correct behavior: checksums protect the entire entry, not just content
+
 ## [0.81.0] - 2026-01-20
 
 ### Fixed
@@ -2280,6 +2315,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.82.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.82.0
 [0.81.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.81.0
 [0.80.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.80.0
 [0.79.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.79.0

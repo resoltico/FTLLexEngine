@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.81.0"
+version: "0.82.0"
 domain: CORE
 updated: "2026-01-20"
 route:

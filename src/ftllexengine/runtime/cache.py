@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import struct
 import time
 from collections import OrderedDict
 from collections.abc import Mapping
@@ -147,12 +148,14 @@ class IntegrityCacheEntry:
         Returns:
             New IntegrityCacheEntry with computed checksum
         """
-        checksum = cls._compute_checksum(formatted, errors)
+        # Capture timestamp BEFORE computing checksum to ensure consistency
+        created_at = time.monotonic()
+        checksum = cls._compute_checksum(formatted, errors, created_at, sequence)
         return cls(
             formatted=formatted,
             errors=errors,
             checksum=checksum,
-            created_at=time.monotonic(),
+            created_at=created_at,
             sequence=sequence,
         )
 
@@ -160,16 +163,27 @@ class IntegrityCacheEntry:
     def _compute_checksum(
         formatted: str,
         errors: tuple[FrozenFluentError, ...],
+        created_at: float,
+        sequence: int,
     ) -> bytes:
-        """Compute BLAKE2b-128 hash of cache content.
+        """Compute BLAKE2b-128 hash of cache entry (content + metadata).
 
         Uses BLAKE2b with 128-bit (16 byte) digest for fast cryptographic
         hashing. This provides collision resistance sufficient for integrity
         verification while minimizing memory overhead.
 
+        Hash Composition:
+            The checksum covers ALL entry fields for complete audit trail integrity:
+            1. formatted: Message output (UTF-8 encoded)
+            2. errors: Each error's content_hash (or message if unavailable)
+            3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
+            4. sequence: Entry sequence number (8-byte signed big-endian)
+
         Args:
             formatted: Formatted message string
             errors: Tuple of errors to include in hash
+            created_at: Monotonic timestamp when entry was created
+            sequence: Sequence number for audit trail
 
         Returns:
             16-byte BLAKE2b digest
@@ -185,19 +199,24 @@ class IntegrityCacheEntry:
                 h.update(error.content_hash)
             else:
                 h.update(str(error).encode("utf-8", errors="surrogatepass"))
+        # Include metadata fields for complete audit trail integrity
+        h.update(struct.pack(">d", created_at))  # 8-byte big-endian IEEE 754 double
+        h.update(sequence.to_bytes(8, "big", signed=True))  # 8-byte signed int
         return h.digest()
 
     def verify(self) -> bool:
         """Verify entry integrity.
 
-        Recomputes the checksum from current content and compares against
-        stored checksum using constant-time comparison (defense against
+        Recomputes the checksum from current content and metadata, then compares
+        against stored checksum using constant-time comparison (defense against
         timing attacks).
 
         Returns:
             True if checksum matches (entry is valid), False otherwise
         """
-        expected = self._compute_checksum(self.formatted, self.errors)
+        expected = self._compute_checksum(
+            self.formatted, self.errors, self.created_at, self.sequence
+        )
         return hmac.compare_digest(self.checksum, expected)
 
     def to_tuple(self) -> _CacheValue:

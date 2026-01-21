@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.81.0"
+version: "0.82.0"
 domain: "architecture"
 updated: "2026-01-20"
 route: "/docs/data-integrity"
@@ -95,6 +95,20 @@ Some applications cannot tolerate silent fallbacks. A missing variable returning
 | Slots-only | Memory efficiency, prevents dynamic attributes |
 | Composition over inheritance | `ErrorCategory` enum replaces class hierarchy |
 
+**Content Hash Composition:**
+
+The BLAKE2b-128 content hash includes ALL error fields for complete audit trail integrity:
+
+1. **Core fields:** `message`, `category.value`
+2. **Diagnostic (if present):**
+   - Core: `code.name`, `message`
+   - Location: `span` (start, end, line, column as 4-byte big-endian)
+   - Context: `hint`, `help_url`, `function_name`, `argument_name`, `expected_type`, `received_type`, `ftl_location`
+   - Metadata: `severity`, `resolution_path` (each element)
+3. **Context (if present):** `input_value`, `locale_code`, `parse_type`, `fallback_value`
+
+**Sentinel Bytes:** None values are distinguished from empty values using sentinel bytes, preventing collision between `span=None` and `span=SourceSpan(0, 0, 0, 0)`.
+
 **Invariants:**
 - All attributes frozen after `__init__` completes
 - `verify_integrity()` always returns True for uncorrupted errors
@@ -103,6 +117,7 @@ Some applications cannot tolerate silent fallbacks. A missing variable returning
 **Security Properties:**
 - Constant-time hash comparison (`hmac.compare_digest`) prevents timing attacks
 - Surrogate handling (`errors="surrogatepass"`) prevents Unicode exploits
+- Complete field coverage prevents metadata tampering
 
 ### Cache Layer (IntegrityCache)
 
@@ -118,14 +133,28 @@ Some applications cannot tolerate silent fallbacks. A missing variable returning
 | Audit logging | Compliance and debugging for financial systems |
 | Sequence numbers | Monotonic ordering for audit trail integrity |
 
+**Checksum Composition:**
+
+The BLAKE2b-128 checksum includes ALL entry fields for complete audit trail integrity:
+
+1. **Content:** `formatted` (UTF-8 encoded message output)
+2. **Errors:** Each error's `content_hash` (or message string if unavailable)
+3. **Metadata:**
+   - `created_at`: 8-byte IEEE 754 double (monotonic timestamp)
+   - `sequence`: 8-byte signed big-endian integer (audit trail ordering)
+
+This means different entries with identical content will have different checksums if their metadata differs. This is correct behavior: the checksum protects the complete entry, not just its content.
+
 **Invariants:**
 - Every `get()` verifies checksum before returning
 - Corrupted entries are never returned (either raise or evict)
 - Sequence numbers never decrease, even after `clear()`
+- Metadata tampering is detected by checksum verification
 
 **Trade-offs:**
 - Checksum verification adds ~0.1 microseconds per `get()` - acceptable for financial correctness
 - Write-once mode prevents legitimate cache updates - use only when data race prevention is critical
+- Different timestamps produce different checksums - not suitable for content-only comparison
 
 ### Integrity Exception Layer
 
@@ -160,6 +189,9 @@ DataIntegrityError (base - immutable after construction)
 | Hash tampering | Constant-time comparison |
 | Cache poisoning | Checksum verification on every read |
 | Data race overwrites | Write-once semantics option |
+| Metadata tampering | Complete field coverage in checksums/hashes |
+| Diagnostic field tampering | All 11 Diagnostic fields included in error hash |
+| Timestamp/sequence forgery | Metadata included in cache checksum |
 
 ### Trust Boundaries
 

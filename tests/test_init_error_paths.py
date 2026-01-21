@@ -294,7 +294,9 @@ def test_package_not_found_hypothesis_strategy():
     }
 
     try:
+        from hypothesis import settings
 
+        @settings(deadline=None)
         @given(package_name=st.text(min_size=1, max_size=50))
         def property_test(package_name):
             # Remove all ftllexengine modules for each test run

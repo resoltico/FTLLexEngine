@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.81.0"
+version: "0.82.0"
 domain: ERRORS
 updated: "2026-01-19"
 route:
@@ -87,6 +87,10 @@ class FrozenFluentError(Exception):
 - Sealed: Cannot be subclassed. Use `ErrorCategory` for classification.
 - Content-Addressed: BLAKE2b-128 hash computed at construction for integrity verification.
 - Hashable: Can be used in sets and as dict keys. Hash based on content, not identity.
+- Hash Composition: Content hash includes ALL fields for complete audit trail integrity:
+  - Core: `message`, `category.value`
+  - Diagnostic (if present): `code.name`, `message`, `span` (start/end/line/column), `hint`, `help_url`, `function_name`, `argument_name`, `expected_type`, `received_type`, `ftl_location`, `severity`, `resolution_path`
+  - Context (if present): `input_value`, `locale_code`, `parse_type`, `fallback_value`
 - Import: `from ftllexengine.diagnostics import FrozenFluentError`
 
 ---

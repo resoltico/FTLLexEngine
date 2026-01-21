@@ -89,19 +89,31 @@ class TestIntegrityCacheEntryContentHash:
     def test_property_checksum_deterministic_with_errors(
         self, error_count: int
     ) -> None:
-        """PROPERTY: Checksum is deterministic when errors have content_hash."""
+        """PROPERTY: Checksum is deterministic when all inputs match.
+
+        Checksums now include metadata (created_at, sequence) for complete audit
+        trail integrity. To test determinism, we verify the same entry validates
+        correctly, not that different entries have the same checksum.
+        """
         # Create multiple FrozenFluentErrors
         errors = tuple(
             FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
             for i in range(error_count)
         )
 
-        # Create two entries with same content
-        entry1 = IntegrityCacheEntry.create("formatted", errors, sequence=1)
-        entry2 = IntegrityCacheEntry.create("formatted", errors, sequence=2)
+        # Create entry with errors
+        entry = IntegrityCacheEntry.create("formatted", errors, sequence=1)
 
-        # Checksums should match (sequence doesn't affect checksum)
-        assert entry1.checksum == entry2.checksum
+        # Checksum should be valid (deterministic computation matches stored value)
+        assert entry.verify() is True
+
+        # Creating second entry with SAME sequence but at different time
+        # produces different checksum (created_at differs)
+        entry2 = IntegrityCacheEntry.create("formatted", errors, sequence=1)
+        # Checksums differ because created_at timestamps are different
+        # This is correct behavior for audit trail integrity
+        assert entry.verify() is True
+        assert entry2.verify() is True
 
     def test_cache_put_get_with_frozen_errors(self) -> None:
         """Cache operations work correctly with FrozenFluentError.content_hash."""

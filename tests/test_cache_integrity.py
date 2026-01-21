@@ -35,11 +35,16 @@ class TestChecksumComputation:
         assert entry.checksum is not None
         assert len(entry.checksum) == 16  # BLAKE2b-128 = 16 bytes
 
-    def test_same_content_same_checksum(self) -> None:
-        """Identical content produces identical checksums."""
+    def test_different_metadata_different_checksum(self) -> None:
+        """Different metadata (sequence, timestamp) produces different checksums.
+
+        Checksums now include created_at and sequence for complete audit trail integrity.
+        Identical content with different metadata produces different checksums.
+        """
         entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1)
         entry2 = IntegrityCacheEntry.create("Hello", (), sequence=2)
-        assert entry1.checksum == entry2.checksum
+        # Checksums differ because sequence is different (and created_at likely differs)
+        assert entry1.checksum != entry2.checksum
 
     def test_different_content_different_checksum(self) -> None:
         """Different content produces different checksums."""
@@ -67,11 +72,17 @@ class TestChecksumComputation:
 
     @given(st.text(min_size=0, max_size=1000))
     @settings(max_examples=50)
-    def test_checksum_deterministic(self, text: str) -> None:
-        """PROPERTY: Checksum is deterministic for same input."""
-        entry1 = IntegrityCacheEntry.create(text, (), sequence=1)
-        entry2 = IntegrityCacheEntry.create(text, (), sequence=1)
-        assert entry1.checksum == entry2.checksum
+    def test_checksum_validates_correctly(self, text: str) -> None:
+        """PROPERTY: Checksum validation is deterministic for same entry.
+
+        Checksums now include metadata (created_at, sequence) for complete audit
+        trail integrity. Different entries with same content will have different
+        checksums due to different timestamps. We verify that each entry's
+        checksum validates correctly.
+        """
+        entry = IntegrityCacheEntry.create(text, (), sequence=1)
+        # Each entry should validate its own checksum correctly
+        assert entry.verify() is True
 
 
 # ============================================================================
