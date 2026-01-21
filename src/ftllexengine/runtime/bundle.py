@@ -29,7 +29,11 @@ from ftllexengine.diagnostics import (
     FrozenFluentError,
     ValidationResult,
 )
-from ftllexengine.integrity import FormattingIntegrityError, IntegrityContext
+from ftllexengine.integrity import (
+    FormattingIntegrityError,
+    IntegrityContext,
+    SyntaxIntegrityError,
+)
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.locale_utils import get_system_locale
 from ftllexengine.runtime.cache import IntegrityCache
@@ -797,11 +801,26 @@ class FluentBundle:
             Parser continues after errors (robustness principle). Junk entries
             are returned for programmatic error handling.
 
+        Raises:
+            TypeError: If source is not a string (e.g., bytes were passed).
+            SyntaxIntegrityError: In strict mode only, if parsing produces any
+                Junk entries. Financial applications using strict=True get
+                fail-fast behavior on syntax errors.
+
         Thread Safety:
             Parser is stateless and thread-safe. Parse operation can occur
             outside write lock without risk. Only registration step requires
             exclusive write access.
         """
+        # Type validation at API boundary - type hints are not enforced at runtime.
+        # Defensive check: users may pass bytes despite str annotation.
+        if not isinstance(source, str):
+            msg = (  # type: ignore[unreachable]
+                f"source must be str, not {type(source).__name__}. "
+                "Decode bytes to str (e.g., source.decode('utf-8')) before calling add_resource()."
+            )
+            raise TypeError(msg)
+
         # Parse outside lock (expensive, but safe - parser is stateless, source is immutable)
         resource = self._parser.parse(source)
 
@@ -906,7 +925,37 @@ class FluentBundle:
         # Mark bundle as modified for context manager tracking
         self._modified_in_context = True
 
-        return tuple(junk_entries)
+        # Strict mode: fail fast on syntax errors
+        junk_tuple = tuple(junk_entries)
+        if self._strict and junk_tuple:
+            source_desc = source_path or "<string>"
+            error_summary = "; ".join(
+                repr(j.content[:50]) for j in junk_tuple[:3]
+            )
+            if len(junk_tuple) > 3:
+                error_summary += f" (and {len(junk_tuple) - 3} more)"
+
+            context = IntegrityContext(
+                component="bundle",
+                operation="add_resource",
+                key=source_desc,
+                expected="<no syntax errors>",
+                actual=f"<{len(junk_tuple)} syntax error(s)>",
+                timestamp=time.monotonic(),
+            )
+
+            error_msg = (
+                f"Strict mode: {len(junk_tuple)} syntax error(s) in "
+                f"{source_desc}: {error_summary}"
+            )
+            raise SyntaxIntegrityError(
+                error_msg,
+                context=context,
+                junk_entries=junk_tuple,
+                source_path=source_path,
+            )
+
+        return junk_tuple
 
     def validate_resource(self, source: str) -> ValidationResult:
         """Validate FTL resource without adding to bundle.
@@ -925,6 +974,9 @@ class FluentBundle:
         Returns:
             ValidationResult with parse errors and semantic warnings
 
+        Raises:
+            TypeError: If source is not a string (e.g., bytes were passed).
+
         Example:
             >>> bundle = FluentBundle("lv")
             >>> result = bundle.validate_resource(ftl_source)
@@ -938,6 +990,15 @@ class FluentBundle:
         See Also:
             ftllexengine.validation.validate_resource: Standalone validation function
         """
+        # Type validation at API boundary - type hints are not enforced at runtime.
+        # Defensive check: users may pass bytes despite str annotation.
+        if not isinstance(source, str):
+            msg = (  # type: ignore[unreachable]
+                f"source must be str, not {type(source).__name__}. "
+                "Decode bytes to str (e.g., source.decode('utf-8')) before calling validate_resource()."
+            )
+            raise TypeError(msg)
+
         # Delegate to validation module, reusing bundle's parser for consistency
         # Pass existing bundle entries and their dependencies for cross-resource validation
         with self._rwlock.read():

@@ -15,6 +15,7 @@ Hierarchy:
     ├─ FormattingIntegrityError (strict mode formatting failure)
     ├─ ImmutabilityViolationError (mutation attempt on frozen object)
     ├─ IntegrityCheckFailedError (generic verification failure)
+    ├─ SyntaxIntegrityError (strict mode syntax error during resource loading)
     └─ WriteConflictError (write-once violation)
 
 Python 3.13+. Zero external dependencies.
@@ -27,6 +28,7 @@ from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
     from ftllexengine.diagnostics import FrozenFluentError
+    from ftllexengine.syntax.ast import Junk
 
 __all__ = [
     "CacheCorruptionError",
@@ -35,6 +37,7 @@ __all__ = [
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "SyntaxIntegrityError",
     "WriteConflictError",
 ]
 
@@ -100,9 +103,10 @@ class DataIntegrityError(Exception):
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_frozen", True)
 
-    # Python's exception handling sets these attributes when propagating exceptions
+    # Python's exception handling sets these attributes when propagating exceptions.
+    # __notes__ was added in Python 3.11 for Exception Groups (PEP 654/678).
     _PYTHON_EXCEPTION_ATTRS: frozenset[str] = frozenset(
-        ("__traceback__", "__context__", "__cause__", "__suppress_context__")
+        ("__traceback__", "__context__", "__cause__", "__suppress_context__", "__notes__")
     )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -311,4 +315,67 @@ class FormattingIntegrityError(DataIntegrityError):
             f"FormattingIntegrityError({self.args[0]!r}, "
             f"message_id={self._message_id!r}, "
             f"error_count={len(self._fluent_errors)})"
+        )
+
+
+@final
+class SyntaxIntegrityError(DataIntegrityError):
+    """Syntax errors in strict mode during resource loading.
+
+    Raised in strict mode when add_resource() encounters syntax errors
+    (Junk entries). Financial applications require fail-fast behavior -
+    loading partially valid FTL resources is unacceptable when formatting
+    monetary amounts or critical business data.
+
+    This exception carries the Junk entries that caused the failure,
+    enabling detailed error reporting and recovery strategies.
+
+    Attributes:
+        junk_entries: Tuple of Junk AST nodes representing syntax errors
+        source_path: Optional path to the source file (for error context)
+    """
+
+    __slots__ = ("_junk_entries", "_source_path")
+
+    # Type annotations for __slots__ attributes (mypy requirement)
+    _junk_entries: tuple[Junk, ...]
+    _source_path: str | None
+
+    def __init__(
+        self,
+        message: str,
+        context: IntegrityContext | None = None,
+        *,
+        junk_entries: tuple[Junk, ...] = (),
+        source_path: str | None = None,
+    ) -> None:
+        """Initialize SyntaxIntegrityError.
+
+        Args:
+            message: Human-readable error description
+            context: Structured diagnostic context (optional)
+            junk_entries: Tuple of Junk AST nodes from failed parse
+            source_path: Optional path to source file for context
+        """
+        # Must set these before calling super().__init__ which freezes
+        object.__setattr__(self, "_junk_entries", junk_entries)
+        object.__setattr__(self, "_source_path", source_path)
+        super().__init__(message, context)
+
+    @property
+    def junk_entries(self) -> tuple[Junk, ...]:
+        """Junk AST nodes representing syntax errors."""
+        return self._junk_entries
+
+    @property
+    def source_path(self) -> str | None:
+        """Optional path to the source file."""
+        return self._source_path
+
+    def __repr__(self) -> str:
+        """Return detailed representation for debugging."""
+        return (
+            f"SyntaxIntegrityError({self.args[0]!r}, "
+            f"source_path={self._source_path!r}, "
+            f"junk_count={len(self._junk_entries)})"
         )

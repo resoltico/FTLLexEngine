@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.84.0"
+version: "0.85.0"
 domain: ERRORS
 updated: "2026-01-21"
 route:
-  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
-  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?"]
+  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
+  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
 ---
 
 # Errors Reference
@@ -185,6 +185,95 @@ class ImmutabilityViolationError(DataIntegrityError):
 - Purpose: Raised when code attempts to modify a frozen FrozenFluentError or cache entry.
 - Raised By: `FrozenFluentError.__setattr__()`, `FrozenFluentError.__delattr__()`.
 - Import: `from ftllexengine.integrity import ImmutabilityViolationError`
+
+---
+
+## `SyntaxIntegrityError`
+
+Syntax errors detected in strict mode during resource loading.
+
+### Signature
+```python
+@final
+class SyntaxIntegrityError(DataIntegrityError):
+    def __init__(
+        self,
+        message: str,
+        context: IntegrityContext | None = None,
+        *,
+        junk_entries: tuple[Junk, ...] = (),
+        source_path: str | None = None,
+    ) -> None: ...
+
+    @property
+    def junk_entries(self) -> tuple[Junk, ...]: ...
+    @property
+    def source_path(self) -> str | None: ...
+    @property
+    def context(self) -> IntegrityContext | None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `str` | Y | Human-readable error description. |
+| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
+| `junk_entries` | `tuple[Junk, ...]` | N | Junk AST nodes representing syntax errors. |
+| `source_path` | `str \| None` | N | Path to source file for error context. |
+
+### Constraints
+- Purpose: Raised by `FluentBundle.add_resource()` in strict mode when syntax errors (Junk entries) are detected.
+- Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
+- Sealed: `@final` decorator prevents subclassing.
+- Financial: Financial applications require fail-fast behavior. Silent failures during resource loading are unacceptable for monetary formatting.
+- Import: `from ftllexengine.integrity import SyntaxIntegrityError` or `from ftllexengine import SyntaxIntegrityError`
+- Version: Added in v0.85.0.
+
+---
+
+## `FormattingIntegrityError`
+
+Formatting errors detected in strict mode during message formatting.
+
+### Signature
+```python
+@final
+class FormattingIntegrityError(DataIntegrityError):
+    def __init__(
+        self,
+        message: str,
+        context: IntegrityContext | None = None,
+        *,
+        fluent_errors: tuple[FrozenFluentError, ...] = (),
+        fallback_value: str = "",
+        message_id: str = "",
+    ) -> None: ...
+
+    @property
+    def fluent_errors(self) -> tuple[FrozenFluentError, ...]: ...
+    @property
+    def fallback_value(self) -> str: ...
+    @property
+    def message_id(self) -> str: ...
+    @property
+    def context(self) -> IntegrityContext | None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `str` | Y | Human-readable error description. |
+| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
+| `fluent_errors` | `tuple[FrozenFluentError, ...]` | N | Original Fluent errors that triggered exception. |
+| `fallback_value` | `str` | N | Fallback value that would have been returned in non-strict mode. |
+| `message_id` | `str` | N | Message ID that failed to format. |
+
+### Constraints
+- Purpose: Raised by `FluentBundle.format_pattern()` and `format_value()` in strict mode when formatting errors occur.
+- Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
+- Sealed: `@final` decorator prevents subclassing.
+- Financial: Financial applications require fail-fast behavior. Silent fallback values are unacceptable when formatting monetary amounts.
+- Import: `from ftllexengine.integrity import FormattingIntegrityError` or `from ftllexengine import FormattingIntegrityError`
 
 ---
 

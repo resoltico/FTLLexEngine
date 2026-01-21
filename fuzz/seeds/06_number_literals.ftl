@@ -13,3 +13,8 @@ price-range = { $price ->
     [9.99] Standard
    *[99.99] Premium
 }
+
+# Proper Number Literals
+direct-int = { 123 }
+direct-float = { 12.34 }
+direct-neg = { -0.5 }

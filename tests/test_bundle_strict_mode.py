@@ -387,11 +387,12 @@ class TestStrictModeProperties:
 
         assert exc_info.value.message_id == message_id
 
-    @given(st.text(min_size=1, max_size=20, alphabet="abcdefghijklmnopqrstuvwxyz_"))
+    @given(st.from_regex(r"[a-zA-Z][a-zA-Z0-9_]{0,19}", fullmatch=True))
     @settings(max_examples=50)
     def test_missing_variable_always_raises(self, var_name: str) -> None:
         """Any missing variable raises in strict mode."""
         bundle = FluentBundle("en", strict=True)
+        # Variable names must start with a letter (FTL spec)
         bundle.add_resource(f"msg = Hello {{ ${var_name} }}!")
 
         with pytest.raises(FormattingIntegrityError) as exc_info:

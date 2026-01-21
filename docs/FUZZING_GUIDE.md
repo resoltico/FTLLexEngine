@@ -54,6 +54,7 @@ All fuzzing operations use `./scripts/fuzz.sh`:
 | `./scripts/fuzz.sh` | Quick property tests | `test_grammar_based_fuzzing.py` only | CPU-dependent |
 | `./scripts/fuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | **All Hypothesis tests** in `tests/` | Until Ctrl+C |
 | `./scripts/fuzz.sh --native` | Native fuzzing with Atheris | Custom targets in `fuzz/stability.py` | Until Ctrl+C |
+| `./scripts/fuzz.sh --runtime` | End-to-end runtime fuzzing | Custom targets in `fuzz/runtime.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --structured` | Structure-aware fuzzing with Atheris | Custom targets in `fuzz/structured.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --perf` | Performance fuzzing to detect ReDoS | Custom targets in `fuzz/perf.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | — | Quick |
@@ -210,32 +211,80 @@ Atheris requires LLVM. Run this once:
 If not installed, follow these steps:
 
 ```bash
-# 1. Install LLVM
+# 1. Install LLVM (required for libFuzzer support)
 brew install llvm
 
-# 2. Build Atheris with LLVM
+# 2. Clear build cache (prevents reusing broken/cached binaries)
+uv cache clean atheris
+
+# 3. Build Atheris from source with RPATH
 CLANG_BIN="$(brew --prefix llvm)/bin/clang" \
 CC="$(brew --prefix llvm)/bin/clang" \
 CXX="$(brew --prefix llvm)/bin/clang++" \
-LDFLAGS="-L$(brew --prefix llvm)/lib/c++ -L$(brew --prefix llvm)/lib" \
+LDFLAGS="-L$(brew --prefix llvm)/lib/c++ -L$(brew --prefix llvm)/lib -Wl,-rpath,$(brew --prefix llvm)/lib/c++" \
 CPPFLAGS="-I$(brew --prefix llvm)/include" \
-uv pip install --reinstall --no-binary atheris atheris
+uv pip install --reinstall --no-cache-dir --no-binary :all: atheris
 
-# 3. Verify
-uv run python -c "import atheris; print('Atheris OK')"
+# 4. Verify
+./scripts/check-atheris.sh
 ```
 
-### Step 1: Run Stability Fuzzing
+> **Note:** Building Atheris from source can take a while to build (± 15 minutes on Apple Mac mini M4) as it compiles LLVM/libFuzzer components.
 
-**Timed run (60 seconds):**
+> **Why this works:** The `-Wl,-rpath` flag embeds the location of LLVM's libc++ directly into the Atheris binary. This ensures that when Atheris runs, it finds the modern C++ symbols it needs without interfering with the rest of your system libraries.
+
+### Common Issues & Troubleshooting
+
+#### `ImportError: symbol not found: __ZNSt3__1...`
+This is a C++ ABI mismatch. It happens when Atheris is linked against LLVM but tries to use Apple's system library at runtime. 
+**Solution:** Follow the 3-step reinstall above (especially the `uv cache clean` and `--no-binary :all:` parts).
+
+#### `dyld[...]: Symbol not found: ... Referenced from: ... node`
+This happens if you exported `DYLD_LIBRARY_PATH` globally in your shell. **This is dangerous and will break other programs like Node.js and system tools.**
+**Solution:**
+1. Run `unset DYLD_LIBRARY_PATH` immediately.
+2. Remove any such exports from your `.zshrc` or `.bash_profile`.
+3. Use the **Permanent Fix** above (RPATH) instead of environment variables.
+
+```bash
+uv run --python 3.13 ./scripts/fuzz.sh --native
+```
+
+#### `WARNING: Failed to find function "__sanitizer_..."`
+You may see 3-4 warnings about missing `__sanitizer_` functions when Atheris starts.
+**Status:** **Harmless.** This occurs because the standard Python interpreter is not compiled with AddressSanitizer (ASan). These warnings do not affect coverage collection or fuzzer performance. If you need full ASan support (detecting memory errors in C extensions), you would need a custom ASan-compiled Python, which is generally not required for fuzzing `FTLLexEngine`.
+
+
+### Native Fuzzing Modes
+
+| Mode | Script | Target | Focus |
+|------|--------|--------|-------|
+| `--native` | `fuzz/stability.py` | Parser Core | Crashes, hangs, and memory safety in the FTL parser. |
+| `--runtime` | `fuzz/runtime.py` | Runtime stack | `FluentBundle`, `IntegrityCache`, and **Strict Mode (v0.80.0)**. |
+| `--structured` | `fuzz/structured.py` | Parser & Grammar | Syntactically plausible FTL to explore deeper grammar code paths. |
+| `--perf` | `fuzz/perf.py` | Performance Regress | Algorithmic complexity issues and ReDoS vulnerabilities. |
+
+### Step 1: Run Stability or Runtime Fuzzing
+
+**Check parser stability:**
 ```bash
 ./scripts/fuzz.sh --native --time 60
 ```
 
+**Check runtime and Strict Mode integrity (v0.80.0):**
+```bash
+./scripts/fuzz.sh --runtime --time 60
+```
+
+> **Tip:** The `--runtime` fuzzer specifically verifies that `strict=True` bundles correctly raise `FormattingIntegrityError` on any failure and that the `IntegrityCache` remains consistent.
+
 **Endless run:**
 ```bash
-./scripts/fuzz.sh --native
+./scripts/fuzz.sh --runtime
 ```
+
+> **Tip:** You can stop the endless run at any time with `Ctrl+C`. Findings are saved **instantly** to the `.fuzz_corpus` directory as they are discovered. Stopping the script will not lose any previously found crashes.
+
 
 ### Step 2: Interpret Results
 
@@ -340,7 +389,12 @@ The threshold is 100ms + 20ms per KB. Inputs exceeding this are flagged.
 
 ## Corpus Management
 
-The seed corpus at `fuzz/seeds/` provides starting points for fuzzing.
+The seed corpus at `fuzz/seeds/` provides high-quality starting points for all fuzzer modes.
+
+The corpus is categorized to cover all concerns:
+- **Syntax Seeds (`01-20_*.ftl`)**: Cover all major FTL grammar features.
+- **Pathological Seeds (`21-24_*.ftl`)**: Trigger deep nesting, complex selects, and cyclic/chained references to stress the parser and resolver.
+- **Runtime Binary Seeds (`*.bin`)**: Pre-configured bitstrays that force the `--runtime` fuzzer into high-impact configurations (strict mode, cached, corruption detection).
 
 ### Check Corpus Health
 
@@ -348,15 +402,7 @@ The seed corpus at `fuzz/seeds/` provides starting points for fuzzing.
 ./scripts/fuzz.sh --corpus
 ```
 
-Output shows coverage of grammar features:
-
-```
-Feature coverage: 92.3%
-  Covered:  attribute, comment, message, select_expression...
-  Missing:  deeply_nested
-
-[PASS] Corpus is healthy.
-```
+This verifies that the seeds are still valid FTL and the binary seeds are readable.
 
 ### Add New Seeds
 

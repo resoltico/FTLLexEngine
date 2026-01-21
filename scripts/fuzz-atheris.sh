@@ -33,7 +33,7 @@ fi
 # =============================================================================
 
 # Check Python version compatibility (Atheris requires 3.11-3.13)
-PY_VERSION=$(uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+PY_VERSION=$(uv run --group fuzzing python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
 
 if [[ "$PY_VERSION" == "3.14" ]] || [[ "$PY_VERSION" > "3.14" ]]; then
     echo ""
@@ -58,7 +58,7 @@ if [[ "$PY_VERSION" == "3.14" ]] || [[ "$PY_VERSION" > "3.14" ]]; then
 fi
 
 # Check if Atheris is available
-if ! uv run python -c "import atheris" 2>/dev/null; then
+if ! uv run --group fuzzing python -c "import atheris" 2>/dev/null; then
     echo ""
     echo "=============================================================================="
     echo "[ERROR] Atheris is not installed."
@@ -104,7 +104,7 @@ echo ""
 START_TIME="${EPOCHREALTIME}"
 
 set +e
-uv run python "$TARGET_FILE" \
+uv run --group fuzzing python "$TARGET_FILE" \
     -workers="$JOBS" \
     -jobs=0 \
     -artifact_prefix="$CORPUS_DIR/crash_" \
@@ -129,10 +129,7 @@ EXEC_SPEED=$(grep -o 'exec/s: [0-9]*' "$LOG_FILE" | tail -1 | grep -o '[0-9]*' |
 set -e
 
 # Determine result status
-if [[ $EXIT_CODE -eq 0 ]]; then
-    STATUS_STR="pass"
-    FINDING_TYPE="none"
-elif [[ $CRASH_COUNT -gt 0 ]]; then
+if [[ $CRASH_COUNT -gt 0 ]]; then
     STATUS_STR="finding"
     if grep -q "PERFORMANCE BREACH" "$LOG_FILE"; then
         FINDING_TYPE="performance"
@@ -141,6 +138,9 @@ elif [[ $CRASH_COUNT -gt 0 ]]; then
     else
         FINDING_TYPE="unknown"
     fi
+elif [[ $EXIT_CODE -eq 0 ]] || [[ $EXIT_CODE -eq 130 ]]; then
+    STATUS_STR="pass"
+    FINDING_TYPE="none"
 else
     STATUS_STR="error"
     FINDING_TYPE="script_error"
@@ -149,7 +149,11 @@ fi
 echo ""
 echo "=============================================================================="
 if [[ "$STATUS_STR" == "pass" ]]; then
-    echo "Completed: No findings."
+    if [[ $EXIT_CODE -eq 130 ]]; then
+        echo "Stopped by user. No findings."
+    else
+        echo "Completed: No findings."
+    fi
 elif [[ "$STATUS_STR" == "finding" ]]; then
     echo "Findings: $CRASH_COUNT crash(es) detected."
     echo ""
@@ -163,7 +167,7 @@ elif [[ "$STATUS_STR" == "finding" ]]; then
     echo "Crash files:"
     find "$CORPUS_DIR" -name 'crash_*' -type f -exec basename {} \; | head -5
 else
-    echo "Error: Script or environment failure."
+    echo "Error: Script or environment failure (exit code $EXIT_CODE)."
 fi
 echo "=============================================================================="
 

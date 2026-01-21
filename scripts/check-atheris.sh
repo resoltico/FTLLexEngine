@@ -28,7 +28,7 @@ echo ""
 
 # Check 1: Python version
 echo -n "Python version... "
-PYTHON_VERSION=$(uv run python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
+PYTHON_VERSION=$(uv run --group fuzzing python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
 echo -e "${GREEN}$PYTHON_VERSION${NC}"
 
 # Check 1b: Python version compatibility
@@ -53,7 +53,7 @@ fi
 
 # Check 2: Atheris import
 echo -n "Atheris import... "
-if uv run python -c "import atheris" 2>/dev/null; then
+if uv run --group fuzzing python -c "import atheris" 2>/dev/null; then
     echo -e "${GREEN}OK${NC}"
 else
     echo -e "${RED}FAILED${NC}"
@@ -78,9 +78,11 @@ else
                 echo -e "${BOLD}CLANG_BIN=\"$LLVM_PREFIX/bin/clang\" \\"
                 echo "CC=\"$LLVM_PREFIX/bin/clang\" \\"
                 echo "CXX=\"$LLVM_PREFIX/bin/clang++\" \\"
-                echo "LDFLAGS=\"-L$LLVM_PREFIX/lib/c++ -L$LLVM_PREFIX/lib\" \\"
+                echo "LDFLAGS=\"-L$LLVM_PREFIX/lib/c++ -L$LLVM_PREFIX/lib -Wl,-rpath,$LLVM_PREFIX/lib/c++\" \\"
                 echo "CPPFLAGS=\"-I$LLVM_PREFIX/include\" \\"
-                echo -e "uv pip install --reinstall --no-binary atheris atheris${NC}"
+                echo -e "uv pip install --reinstall --no-cache-dir --no-binary :all: atheris${NC}"
+                echo ""
+                echo "The -Wl,-rpath flag ensures LLVM's libc++ is used at runtime."
             else
                 echo -e "${YELLOW}LLVM is not installed.${NC}"
                 echo ""
@@ -104,12 +106,51 @@ fi
 
 # Check 3: Atheris version
 echo -n "Atheris version... "
-ATHERIS_VERSION=$(uv run python -c "import atheris; print(atheris.__version__)" 2>/dev/null || echo "unknown")
+ATHERIS_VERSION=$(uv run --group fuzzing python -c "import importlib.metadata; print(importlib.metadata.version('atheris'))" 2>/dev/null || echo "unknown")
 echo -e "${GREEN}$ATHERIS_VERSION${NC}"
+
+# Check 3b: deep ABI compatibility check (macOS)
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo -n "ABI compatibility... "
+    # Try importing the core module that has the ABI-sensitive code
+    # This is where the symbol lookup error occurs
+    # Note: use || true to prevent set -e from exiting on Python failure
+    ABI_TEST=$(uv run --group fuzzing python -c "
+import atheris
+import atheris.core_with_libfuzzer
+print('OK')
+" 2>&1) || true
+
+    if [[ "$ABI_TEST" == *"OK"* ]]; then
+        echo -e "${GREEN}OK${NC}"
+    elif [[ "$ABI_TEST" == *"symbol not found"* ]]; then
+        echo -e "${RED}FAILED${NC}"
+        echo ""
+        echo -e "${YELLOW}[ERROR] C++ ABI mismatch detected.${NC}"
+        echo "Atheris expects symbols found in LLVM libc++ but is loading Apple's system libc++."
+        echo ""
+        echo -e "${BOLD}Quick Fix:${NC}"
+        if command -v brew &>/dev/null && brew --prefix llvm &>/dev/null; then
+            LLVM_PREFIX=$(brew --prefix llvm)
+            echo "  export DYLD_LIBRARY_PATH=\"$LLVM_PREFIX/lib/c++\""
+        else
+            echo "  # Find your LLVM installation and set DYLD_LIBRARY_PATH"
+        fi
+        echo ""
+        echo -e "${BOLD}Permanent Fix (Recommended):${NC}"
+        echo "Rebuild Atheris with rpath. Follow the instructions in docs/FUZZING_GUIDE.md."
+        exit 1
+    else
+        echo -e "${YELLOW}Warning: ABI check skipped${NC}"
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "$ABI_TEST"
+        fi
+    fi
+fi
 
 # Check 4: Basic fuzzing capability
 echo -n "Fuzzing capability... "
-FUZZ_TEST=$(uv run python -c "
+FUZZ_TEST=$(uv run --group fuzzing python -c "
 import atheris
 import sys
 def TestOneInput(data):
@@ -122,8 +163,9 @@ print('OK')
 if [[ "$FUZZ_TEST" == "OK" ]]; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${YELLOW}Warning: Basic test failed${NC}"
-    echo "Atheris may not be fully functional."
+    echo -e "${RED}FAILED${NC}"
+    echo "Atheris is installed but cannot initialize fuzzing."
+    exit 1
 fi
 
 echo ""

@@ -5,19 +5,7 @@ Generates syntactically plausible FTL using grammar-aware construction,
 then applies byte-level mutations. This improves coverage penetration
 compared to pure random byte fuzzing.
 
-Strategy:
-1. Use FuzzedDataProvider to make structural decisions (message count,
-   identifier length, presence of placeables, etc.)
-2. Generate valid FTL scaffolds based on those decisions
-3. Apply targeted mutations within the structure
-4. Feed to parser and detect unexpected exceptions
-
-This complements fuzz/stability.py (pure chaos) by focusing fuzzing
-effort on syntactically interesting inputs.
-
-Usage:
-    ./scripts/fuzz-atheris.sh 4 fuzz/structured.py
-    ./scripts/fuzz-atheris.sh 4 fuzz/structured.py -max_total_time=60
+Built for Python 3.13+ using modern PEPs (695, 585, 563).
 """
 
 from __future__ import annotations
@@ -27,9 +15,13 @@ import json
 import logging
 import string
 import sys
+from typing import Any
+
+# --- PEP 695 Type Aliases (Python 3.13) ---
+type FuzzStats = dict[str, int | str]
 
 # Crash-proof reporting: ensure summary is always emitted
-_fuzz_stats: dict[str, int | str] = {"status": "incomplete", "iterations": 0, "findings": 0}
+_fuzz_stats: FuzzStats = {"status": "incomplete", "iterations": 0, "findings": 0}
 
 
 def _emit_final_report() -> None:
@@ -55,26 +47,27 @@ except ImportError:
 # Suppress parser logging during fuzzing
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
-with atheris.instrument_imports():
+with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine.syntax.ast import Junk
     from ftllexengine.syntax.parser import FluentParserV1
+    from ftllexengine.syntax.serializer import FluentSerializer
 
 
-class UnexpectedCrash(Exception):  # noqa: N818 - Domain-specific name
-    """Raised when an unexpected exception is detected."""
+class StructuredFuzzError(Exception):
+    """Raised when an unexpected exception is detected during structured fuzzing."""
 
 
 # Exception contract: only these exceptions are acceptable for invalid input
 ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
 
 # Character sets for FTL generation per spec: [a-zA-Z][a-zA-Z0-9_-]*
-# CRITICAL: Both uppercase AND lowercase letters are valid per FTL specification.
 IDENTIFIER_FIRST = string.ascii_letters  # [a-zA-Z]
 IDENTIFIER_REST = string.ascii_letters + string.digits + "-_"  # [a-zA-Z0-9_-]
 TEXT_CHARS = string.ascii_letters + string.digits + " .,!?'-"
 SPECIAL_CHARS = "\t\n\r\x00\x1f\x7f\u200b\ufeff"  # Edge case characters
 
 
-def generate_identifier(fdp: atheris.FuzzedDataProvider, max_len: int = 20) -> str:
+def generate_identifier(fdp: Any, max_len: int = 20) -> str:
     """Generate a valid FTL identifier using fuzzer decisions."""
     if not fdp.remaining_bytes():
         return "msg"
@@ -92,12 +85,8 @@ def generate_identifier(fdp: atheris.FuzzedDataProvider, max_len: int = 20) -> s
     return first + "".join(rest_chars)
 
 
-def generate_text(fdp: atheris.FuzzedDataProvider, max_len: int = 50) -> str:
-    """Generate FTL-safe text content with Unicode support.
-
-    Mixes ASCII-only generation with full Unicode for comprehensive coverage.
-    (MAINT-FUZZ-STRUCTURED-UNICODE-GAP-001)
-    """
+def generate_text(fdp: Any, max_len: int = 50) -> str:
+    """Generate FTL-safe text content with Unicode support."""
     if not fdp.remaining_bytes():
         return "value"
 
@@ -129,14 +118,14 @@ def generate_text(fdp: atheris.FuzzedDataProvider, max_len: int = 50) -> str:
     return "".join(chars) or "value"
 
 
-def generate_simple_message(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_simple_message(fdp: Any) -> str:
     """Generate: msg-id = text value"""
     msg_id = generate_identifier(fdp)
     value = generate_text(fdp)
     return f"{msg_id} = {value}"
 
 
-def generate_message_with_variable(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_message_with_variable(fdp: Any) -> str:
     """Generate: msg-id = prefix { $var } suffix"""
     msg_id = generate_identifier(fdp)
     var_name = generate_identifier(fdp, max_len=10)
@@ -145,14 +134,14 @@ def generate_message_with_variable(fdp: atheris.FuzzedDataProvider) -> str:
     return f"{msg_id} = {prefix} {{ ${var_name} }} {suffix}"
 
 
-def generate_term(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_term(fdp: Any) -> str:
     """Generate: -term-id = value"""
     term_id = generate_identifier(fdp)
     value = generate_text(fdp)
     return f"-{term_id} = {value}"
 
 
-def generate_message_with_attribute(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_message_with_attribute(fdp: Any) -> str:
     """Generate message with attributes."""
     msg_id = generate_identifier(fdp)
     value = generate_text(fdp)
@@ -161,13 +150,8 @@ def generate_message_with_attribute(fdp: atheris.FuzzedDataProvider) -> str:
     return f"{msg_id} = {value}\n    .{attr_name} = {attr_value}"
 
 
-def generate_variant_key(fdp: atheris.FuzzedDataProvider) -> str:
-    """Generate a variant key (identifier or numeric literal).
-
-    FTL supports both text identifiers and numeric literals as variant keys:
-    - Text: [one], [other], [custom-key]
-    - Numeric: [0], [1], [3.14], [-1]
-    """
+def generate_variant_key(fdp: Any) -> str:
+    """Generate a variant key (identifier or numeric literal)."""
     if not fdp.remaining_bytes():
         return "other"
 
@@ -189,12 +173,12 @@ def generate_variant_key(fdp: atheris.FuzzedDataProvider) -> str:
             num_str = f"-{num_str}"
 
         return num_str
-    else:
-        # Generate text identifier key
-        return generate_identifier(fdp, max_len=10)
+
+    # Generate text identifier key
+    return generate_identifier(fdp, max_len=10)
 
 
-def generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_select_expression(fdp: Any) -> str:
     """Generate message with select expression."""
     msg_id = generate_identifier(fdp)
     var_name = generate_identifier(fdp, max_len=10)
@@ -202,8 +186,12 @@ def generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
     # Generate 2-4 variants
     num_variants = fdp.ConsumeIntInRange(2, 4) if fdp.remaining_bytes() else 2
 
-    # Randomize default variant position (can be any position, not always last)
-    default_idx = fdp.ConsumeIntInRange(0, num_variants - 1) if fdp.remaining_bytes() else num_variants - 1
+    # Randomize default variant position
+    default_idx = (
+        fdp.ConsumeIntInRange(0, num_variants - 1)
+        if fdp.remaining_bytes()
+        else num_variants - 1
+    )
 
     variants = []
 
@@ -219,7 +207,7 @@ def generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
     return f"{msg_id} = {{ ${var_name} ->\n{variants_str}\n}}"
 
 
-def generate_comment(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_comment(fdp: Any) -> str:
     """Generate FTL comment."""
     level = fdp.ConsumeIntInRange(1, 3) if fdp.remaining_bytes() else 1
     prefix = "#" * level
@@ -227,7 +215,7 @@ def generate_comment(fdp: atheris.FuzzedDataProvider) -> str:
     return f"{prefix} {content}"
 
 
-def generate_ftl_resource(fdp: atheris.FuzzedDataProvider) -> str:
+def generate_ftl_resource(fdp: Any) -> str:
     """Generate a complete FTL resource with multiple entries."""
     if not fdp.remaining_bytes():
         return "fallback = Fallback value"
@@ -258,16 +246,46 @@ def generate_ftl_resource(fdp: atheris.FuzzedDataProvider) -> str:
             entry = generator(fdp)
             entries.append(entry)
         except (IndexError, ValueError):
-            # Exhausted fuzzer data, stop
             break
 
     return "\n\n".join(entries) if entries else "fallback = Fallback value"
 
 
-def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
-    """Atheris entry point: generate structured FTL and detect crashes."""
-    global _fuzz_stats  # noqa: PLW0602 - Required for crash-proof reporting
+def _verify_semantic_invariants(source: str, result: Any) -> None:
+    """Verify semantic invariants that don't cause crashes but indicate logic bugs."""
+    # Check 1: Non-corrupted input should produce entries
+    if (
+        "corruption" not in source[:50]
+        and len(result.entries) == 0
+        and len(source.strip()) > 10
+    ):
+        # Suspicious: non-trivial input produced empty AST
+        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+        msg = f"Empty AST for non-trivial input: {source[:100]!r}"
+        raise AssertionError(msg)
 
+    # Check 2: Round-trip consistency for valid parses (no junk)
+    if not any(isinstance(e, Junk) for e in result.entries):
+        serializer = FluentSerializer()
+        parser = FluentParserV1()
+        try:
+            serialized = serializer.serialize(result)
+            reparsed = parser.parse(serialized)
+
+            # Entry count should match
+            if len(result.entries) != len(reparsed.entries):
+                _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+                msg = (
+                    f"Round-trip entry count mismatch: "
+                    f"{len(result.entries)} -> {len(reparsed.entries)}"
+                )
+                raise AssertionError(msg)
+        except ALLOWED_EXCEPTIONS:
+            pass  # Serialization may fail for edge cases
+
+
+def test_one_input(data: bytes) -> None:
+    """Atheris entry point: generate structured FTL and detect crashes."""
     _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
     _fuzz_stats["status"] = "running"
 
@@ -280,53 +298,14 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
     if fdp.remaining_bytes() and fdp.ConsumeBool() and len(source) > 0:
         # Corrupt a random position in the generated FTL
         pos = fdp.ConsumeIntInRange(0, len(source) - 1)
-        corruption = fdp.ConsumeUnicodeNoSurrogates(
-            min(3, fdp.remaining_bytes())
-        )
+        corruption = fdp.ConsumeUnicodeNoSurrogates(min(3, fdp.remaining_bytes()))
         source = source[:pos] + corruption + source[pos + 1 :]
 
     parser = FluentParserV1(max_source_size=1024 * 1024, max_nesting_depth=100)
 
     try:
         result = parser.parse(source)
-
-        # Semantic invariant checks (TRUST-FUZZ-NATIVE-LIMITATION-001)
-        # These catch logic bugs that don't cause crashes
-
-        # Check 1: Non-corrupted input should produce entries
-        # (corrupted input may legitimately produce all-junk)
-        if "corruption" not in source[:50]:  # Heuristic: corruption adds random chars
-            from ftllexengine.syntax.ast import Junk
-
-            valid_entries = [e for e in result.entries if not isinstance(e, Junk)]
-            # Plausible FTL should have at least one valid entry or some junk
-            if len(result.entries) == 0 and len(source.strip()) > 10:
-                # Suspicious: non-trivial input produced empty AST
-                _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
-                msg = f"Empty AST for non-trivial input: {source[:100]!r}"
-                raise AssertionError(msg)
-
-        # Check 2: Round-trip consistency for valid parses (no junk)
-        from ftllexengine.syntax.ast import Junk
-
-        if not any(isinstance(e, Junk) for e in result.entries):
-            from ftllexengine.syntax.serializer import FluentSerializer
-
-            serializer = FluentSerializer()
-            try:
-                serialized = serializer.serialize(result)
-                reparsed = parser.parse(serialized)
-
-                # Entry count should match
-                if len(result.entries) != len(reparsed.entries):
-                    _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
-                    msg = (
-                        f"Round-trip entry count mismatch: "
-                        f"{len(result.entries)} -> {len(reparsed.entries)}"
-                    )
-                    raise AssertionError(msg)
-            except ALLOWED_EXCEPTIONS:
-                pass  # Serialization may fail for edge cases
+        _verify_semantic_invariants(source, result)
 
     except ALLOWED_EXCEPTIONS:
         pass  # Expected for invalid/corrupted input
@@ -337,38 +316,34 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
         _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
         _fuzz_stats["status"] = "finding"
 
-        print()
-        print("=" * 80)
+        print("\n" + "=" * 80)
         print("[FINDING] STABILITY BREACH DETECTED (Structure-Aware)")
         print("=" * 80)
-        print(f"Exception: {type(e).__name__}: {e}")
-        print(f"Input size: {len(source)} chars")
-        print(f"Input preview: {source[:200]!r}...")
-        print()
-        print("Next steps:")
-        print("  1. Reproduce: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
-        print("  2. Create unit test in tests/ with crash input as literal")
-        print("  3. Fix the bug, run tests to confirm")
-        print("  4. See: docs/FUZZING_GUIDE.md (Bug Preservation Workflow)")
+        print(f"Exception Type: {type(e).__module__}.{type(e).__name__}")
+        print(f"Error Message:  {e}")
+        print(f"Input Preview:  {source[:200]!r}...")
+        print("-" * 80)
+        print("NEXT STEPS:")
+        print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
+        print("  2. Create test: Use tests/test_parser_survivability.py as template")
+        print("  3. Fix & Verify: Resolve the crash and confirm with --repro")
         print("=" * 80)
+
         msg = f"{type(e).__name__}: {e}"
-        raise UnexpectedCrash(msg) from e
+        raise StructuredFuzzError(msg) from e
 
 
 def main() -> None:
     """Run the structure-aware fuzzer."""
-    print()
+    print("\n" + "=" * 80)
+    print("Fluent Structure-Aware Fuzzer (Python 3.13 Edition)")
     print("=" * 80)
-    print("Structure-Aware Fuzzer")
-    print("=" * 80)
-    print("Target: Parser with grammar-guided input generation")
     print("Strategy: Generate valid FTL scaffolds, then mutate")
     print("Contract: Only ValueError, RecursionError, MemoryError allowed")
-    print("Press Ctrl+C to stop. Findings saved to .fuzz_corpus/crash_*")
-    print("=" * 80)
-    print()
+    print("Stopping: Press Ctrl+C at any time (findings auto-saved)")
+    print("=" * 80 + "\n")
 
-    atheris.Setup(sys.argv, TestOneInput)
+    atheris.Setup(sys.argv, test_one_input)
     atheris.Fuzz()
 
 

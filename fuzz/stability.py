@@ -5,9 +5,11 @@ Feeds random bytes to the parser and detects unexpected exceptions.
 Expected exceptions (ValueError, RecursionError, MemoryError) are allowed.
 Any other exception is reported as a finding.
 
+Built for Python 3.13+ using modern PEPs (695, 585, 563).
+
 Usage:
-    ./scripts/fuzz-atheris.sh 4 fuzz/stability.py
-    ./scripts/fuzz-atheris.sh 4 fuzz/stability.py -max_total_time=60
+    ./scripts/fuzz.sh --native
+    ./scripts/fuzz.sh --native --time 60
 """
 
 from __future__ import annotations
@@ -17,8 +19,11 @@ import json
 import logging
 import sys
 
+# --- PEP 695 Type Aliases (Python 3.13) ---
+type FuzzStats = dict[str, int | str]
+
 # Crash-proof reporting: ensure summary is always emitted
-_fuzz_stats: dict[str, int | str] = {"status": "incomplete", "iterations": 0, "findings": 0}
+_fuzz_stats: FuzzStats = {"status": "incomplete", "iterations": 0, "findings": 0}
 
 
 def _emit_final_report() -> None:
@@ -44,29 +49,29 @@ except ImportError:
 # Suppress parser logging during fuzzing
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
-with atheris.instrument_imports():
+with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.syntax.parser import FluentParserV1
 
 
-class UnexpectedCrash(Exception):  # noqa: N818 - Domain-specific name
-    """Raised when an unexpected exception is detected."""
+class StabilityBreachError(Exception):
+    """Raised when an unexpected exception is detected during parsing."""
 
 
 # Exception contract: only these exceptions are acceptable for invalid input
 ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
 
 
-def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
+def test_one_input(data: bytes) -> None:
     """Atheris entry point: parse fuzzed input and detect unexpected crashes."""
-    global _fuzz_stats  # noqa: PLW0602 - Required for crash-proof reporting
-
     _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
     _fuzz_stats["status"] = "running"
 
     fdp = atheris.FuzzedDataProvider(data)
 
+    # Limit source size to prevent OOM/timeouts in extremely large cases
+    # although parsing 1MB is usually fine, fuzzer might generate deep nesting.
     try:
-        source = fdp.ConsumeUnicodeNoSurrogates(len(data))
+        source = fdp.ConsumeUnicodeNoSurrogates(1024 * 1024)
     except (UnicodeDecodeError, ValueError):
         source = data.decode("utf-8", errors="replace")
 
@@ -85,32 +90,33 @@ def TestOneInput(data: bytes) -> None:  # noqa: N802 - Atheris required name
         print("=" * 80)
         print("[FINDING] STABILITY BREACH DETECTED")
         print("=" * 80)
-        print(f"Exception: {type(e).__name__}: {e}")
-        print(f"Input size: {len(source)} chars")
-        print()
-        print("Next steps:")
-        print("  1. Reproduce: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
-        print("  2. Create unit test in tests/ with crash input as literal")
-        print("  3. Fix the bug, run tests to confirm")
-        print("  4. See: docs/FUZZING_GUIDE.md (Bug Preservation Workflow)")
+        print(f"Exception Type: {type(e).__module__}.{type(e).__name__}")
+        print(f"Error Message: {e}")
+        print(f"Input Length:  {len(source)} characters")
+        print("-" * 80)
+        print("NEXT STEPS:")
+        print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
+        print("  2. Create test: Use tests/test_parser_survivability.py as template")
+        print("  3. Fix & Verify: Resolve the crash and confirm with --repro")
         print("=" * 80)
+
         msg = f"{type(e).__name__}: {e}"
-        raise UnexpectedCrash(msg) from e
+        raise StabilityBreachError(msg) from e
 
 
 def main() -> None:
     """Run the stability fuzzer."""
     print()
     print("=" * 80)
-    print("Stability Fuzzer")
+    print("Fluent Stability Fuzzer (Python 3.13 Edition)")
     print("=" * 80)
-    print("Target: Parser crash detection")
+    print("Target:   Parser crash detection")
     print("Contract: Only ValueError, RecursionError, MemoryError allowed")
-    print("Press Ctrl+C to stop. Findings saved to .fuzz_corpus/crash_*")
+    print("Stopping: Press Ctrl+C at any time (findings auto-saved)")
     print("=" * 80)
     print()
 
-    atheris.Setup(sys.argv, TestOneInput)
+    atheris.Setup(sys.argv, test_one_input)
     atheris.Fuzz()
 
 

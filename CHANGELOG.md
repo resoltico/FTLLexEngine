@@ -13,6 +13,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-01-21
+
+### Added
+
+- **SyntaxIntegrityError Exception** (ARCH-STRICT-SCOPE-001):
+  - Previous: `FluentBundle.add_resource()` returned Junk entries silently in strict mode
+  - Issue: Financial applications require fail-fast behavior; silent failures during resource loading are unacceptable for monetary formatting
+  - Added: `SyntaxIntegrityError` exception raised in strict mode when syntax errors (Junk entries) are detected
+  - Exception attributes:
+    - `junk_entries: tuple[Junk, ...]` - Junk AST nodes representing syntax errors
+    - `source_path: str | None` - Optional path to source file for error context
+    - `context: IntegrityContext` - Structured diagnostic context
+  - Export: Available from `ftllexengine` top-level package
+  - Location: `integrity.py`, `runtime/bundle.py` `_register_resource()`
+  - Impact: Complete strict mode coverage for both syntax (SyntaxIntegrityError) and formatting (FormattingIntegrityError)
+
+- **API Boundary Type Validation** (SEC-INPUT-VALIDATION-001):
+  - Previous: `add_resource()` and `validate_resource()` accepted any type without validation
+  - Issue: Passing `bytes` instead of `str` could cause confusing downstream errors; type safety requires explicit validation at public API boundaries
+  - Added: `isinstance(source, str)` check at entry point with descriptive `TypeError`
+  - Error message includes: actual type received, guidance to decode bytes (`source.decode('utf-8')`)
+  - Locations:
+    - `FluentBundle.add_resource()` - raises `TypeError` for non-string source
+    - `FluentBundle.validate_resource()` - raises `TypeError` for non-string source
+    - `validate_resource()` standalone function - raises `TypeError` for non-string source
+  - Impact: Clear error messages at API boundaries; defense-in-depth type safety
+
 ## [0.84.0] - 2026-01-21
 
 ### Added
@@ -2402,6 +2429,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.85.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.85.0
 [0.84.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.84.0
 [0.83.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.83.0
 [0.82.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.82.0

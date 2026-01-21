@@ -576,8 +576,16 @@ class TestStripEraHypothesisProperties:
         If text contains no era strings, output should equal input
         (modulo whitespace normalization).
         """
-        # Filter out text that might contain era substrings
-        if any(era.lower() in text.lower() for era in ["ad", "bc", "ce", "bce"]):
+        # Filter out text that might contain any era patterns
+        # Includes: plain (ad, bc, ce, bce), period-separated (a.d., b.c., c.e.),
+        # and full forms (anno domini, before christ, common era)
+        era_patterns = [
+            "ad", "bc", "ce", "bce",
+            "a.d.", "b.c.", "c.e.",
+            "anno domini", "before christ", "common era", "before common era",
+        ]
+        text_lower = text.lower()
+        if any(era in text_lower for era in era_patterns):
             return
 
         result = _strip_era(text)

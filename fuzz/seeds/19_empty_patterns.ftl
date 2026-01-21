@@ -1,3 +1,5 @@
 minimal = x
-space-only =
+empty-value = { "" }
 just-placeable = { $var }
+no-value-attributes-only =
+    .attr = Value

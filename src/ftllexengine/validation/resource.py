@@ -679,6 +679,9 @@ def validate_resource(
     Returns:
         ValidationResult with parse errors and semantic warnings
 
+    Raises:
+        TypeError: If source is not a string (e.g., bytes were passed).
+
     Example:
         >>> from ftllexengine.validation import validate_resource
         >>> result = validate_resource(ftl_source)
@@ -691,6 +694,15 @@ def validate_resource(
     Thread Safety:
         Thread-safe. Creates isolated parser if not provided.
     """
+    # Type validation at API boundary - type hints are not enforced at runtime.
+    # Defensive check: users may pass bytes despite str annotation.
+    if not isinstance(source, str):
+        msg = (  # type: ignore[unreachable]
+            f"source must be str, not {type(source).__name__}. "
+            "Decode bytes to str (e.g., source.decode('utf-8')) before calling validate_resource()."
+        )
+        raise TypeError(msg)
+
     if parser is None:
         # Local import to avoid import-time overhead for callers not providing parser
         from ftllexengine.syntax.parser import (  # noqa: PLC0415

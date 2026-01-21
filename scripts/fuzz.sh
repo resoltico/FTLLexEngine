@@ -52,7 +52,7 @@ disable_colors() {
 # Check Python version for Atheris compatibility (requires Python 3.11-3.13)
 check_atheris_python_version() {
     local py_version
-    py_version=$(uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+    py_version=$(uv run --group fuzzing python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
 
     # Compare version - 3.14 and higher are not supported
     if [[ "$py_version" == "3.14" ]] || [[ "$py_version" > "3.14" ]]; then
@@ -79,6 +79,179 @@ check_atheris_python_version() {
     fi
 }
 
+# Check Atheris libc++ ABI compatibility (macOS-specific)
+# Atheris compiled with LLVM may require LLVM's libc++ at runtime
+check_atheris_libc_abi() {
+    # Only relevant on macOS
+    if [[ "$(uname)" != "Darwin" ]]; then
+        return 0
+    fi
+
+    # Try importing the core module that has the ABI-sensitive code
+    # This is where the symbol lookup error occurs
+    # Note: use || true to prevent set -e from exiting on Python failure
+    local test_result
+    test_result=$(uv run --group fuzzing python -c "
+import atheris
+import atheris.core_with_libfuzzer  # This is where the ABI error occurs
+print('OK')
+" 2>&1) || true
+
+    if [[ "$test_result" != "OK" ]] && echo "$test_result" | grep -q "symbol not found"; then
+        # Try to auto-heal by finding LLVM's libc++
+        local llvm_libcpp=""
+        
+        # Check brew first (most reliable on macOS)
+        if command -v brew &>/dev/null; then
+            local llvm_prefix
+            llvm_prefix=$(brew --prefix llvm 2>/dev/null)
+            if [[ -d "$llvm_prefix/lib/c++" ]]; then
+                llvm_libcpp="$llvm_prefix/lib/c++"
+            fi
+        fi
+        
+        # Fallback to common paths
+        if [[ -z "$llvm_libcpp" ]]; then
+            for p in "/opt/homebrew/opt/llvm/lib/c++" "/usr/local/opt/llvm/lib/c++"; do
+                if [[ -d "$p" ]]; then
+                    llvm_libcpp="$p"
+                    break
+                fi
+            done
+        fi
+        
+        if [[ -n "$llvm_libcpp" ]]; then
+            # Verify if healing works
+            local healed_test
+            healed_test=$(DYLD_LIBRARY_PATH="$llvm_libcpp" uv run --group fuzzing python -c "import atheris.core_with_libfuzzer; print('OK')" 2>&1) || true
+            if [[ "$healed_test" == *"OK"* ]]; then
+                export DYLD_LIBRARY_PATH="$llvm_libcpp"
+                if [[ "$JSON_OUTPUT" == "false" ]]; then
+                    print_info "Auto-corrected C++ ABI mismatch using LLVM at $llvm_libcpp"
+                fi
+                return 0
+            fi
+        fi
+
+        # ABI mismatch detected and couldn't auto-heal
+        if [[ "$JSON_OUTPUT" == "true" ]]; then
+            echo '{"mode":"'"$MODE"'","status":"error","error":"atheris_libc_abi_mismatch","details":"Atheris requires LLVM libc++ at runtime"}'
+            exit 2
+        else
+            echo -e "${RED}[ERROR]${NC} Atheris C++ ABI mismatch detected."
+            echo ""
+            echo "Atheris was compiled with LLVM's libc++ but is loading Apple's"
+            echo "system libc++ at runtime. A required symbol is missing."
+            echo ""
+            echo -e "${BOLD}Quick fix:${NC} Run with LLVM's libc++ preloaded:"
+            if [[ -n "$llvm_prefix" ]]; then
+                echo -e "${BOLD}  DYLD_LIBRARY_PATH=\"$llvm_prefix/lib/c++\" ./scripts/fuzz.sh $MODE${NC}"
+            else
+                echo -e "${BOLD}  DYLD_LIBRARY_PATH=\"/path/to/llvm/lib/c++\" ./scripts/fuzz.sh $MODE${NC}"
+            fi
+            echo ""
+            echo -e "${BOLD}Permanent fix:${NC} Rebuild Atheris with rpath (BEST):"
+            if [[ -n "$llvm_prefix" ]]; then
+                echo "  CLANG_BIN=\"$llvm_prefix/bin/clang\" \\"
+                echo "  CC=\"$llvm_prefix/bin/clang\" \\"
+                echo "  CXX=\"$llvm_prefix/bin/clang++\" \\"
+                echo "  LDFLAGS=\"-L$llvm_prefix/lib/c++ -L$llvm_prefix/lib -Wl,-rpath,$llvm_prefix/lib/c++\" \\"
+                echo "  CPPFLAGS=\"-I$llvm_prefix/include\" \\"
+            else
+                echo "  brew install llvm"
+                echo "  # Then follow rebuild instructions in docs/FUZZING_GUIDE.md"
+            fi
+            echo "  uv pip install --reinstall --no-cache-dir --no-binary :all: atheris"
+            echo ""
+            echo "See docs/FUZZING_GUIDE.md for details."
+            exit 2
+        fi
+    fi
+
+    return 0
+}
+
+# Consolidated Atheris Preflight
+preflight_atheris() {
+    check_atheris_python_version
+    
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        echo -e "${BLUE}Initializing Atheris Native Engine...${NC}"
+    fi
+
+    # Combined info and ABI check (efficient)
+    local result
+    result=$(uv run --group fuzzing python -c "
+import sys
+import importlib.metadata
+# 1. Versions
+py_v = f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}'
+try:
+    ath_v = importlib.metadata.version('atheris')
+except:
+    ath_v = 'not_found'
+print(f'PY:{py_v}')
+print(f'ATH:{ath_v}')
+
+# 2. ABI check
+if ath_v != 'not_found':
+    try:
+        import atheris.core_with_libfuzzer
+        print('ABI:OK')
+    except ImportError as e:
+        if 'symbol not found' in str(e):
+            print('ABI:FAIL_SYMBOL')
+        else:
+            print(f'ABI:FAIL_OTHER:{e}')
+" 2>&1) || true
+
+    local py_ver=$(echo "$result" | grep '^PY:' | cut -d: -f2)
+    local ath_ver=$(echo "$result" | grep '^ATH:' | cut -d: -f2)
+    local abi_status=$(echo "$result" | grep '^ABI:' | cut -d: -f2)
+
+    # 1. Check Installation
+    if [[ "$ath_ver" == "not_found" ]]; then
+        if [[ "$JSON_OUTPUT" == "true" ]]; then
+            echo '{"mode":"'$MODE'","status":"error","error":"atheris_not_installed"}'
+            exit 2
+        else
+            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
+            echo ""
+            echo "Atheris requires special setup on macOS:"
+            echo "  1. Install LLVM: brew install llvm"
+            echo "  2. Run: ./scripts/check-atheris.sh"
+            echo ""
+            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
+            exit 2
+        fi
+    fi
+
+    # 2. Check ABI and Auto-Heal (calls original check for full logic if needed)
+    if [[ "$abi_status" == "FAIL_SYMBOL" ]]; then
+        check_atheris_libc_abi
+    elif [[ "$abi_status" == "FAIL_OTHER"* ]]; then
+        # Report unexpected import error
+        echo -e "${RED}[ERROR]${NC} Atheris failed to initialize: ${abi_status#FAIL_OTHER:}" >&2
+        exit 2
+    fi
+
+    # 3. Print Header (non-JSON)
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        echo -e "  Python:  $py_ver"
+        echo -e "  Atheris: $ath_ver"
+        
+        # Diagnostic info on request
+        if [[ "$VERBOSE" == "true" && "$(uname)" == "Darwin" ]]; then
+             local core_lib=$(uv run --group fuzzing python -c "import atheris.core_with_libfuzzer as c; print(c.__file__)" 2>/dev/null)
+             if [[ -n "$core_lib" ]]; then
+                 local linked=$(otool -L "$core_lib" 2>/dev/null | grep libc++ | head -1 | awk '{print $1}')
+                 echo -e "  Libc++:  $linked"
+             fi
+        fi
+        echo ""
+    fi
+}
+
 # Disable colors if not a terminal
 if [[ ! -t 1 ]]; then
     disable_colors
@@ -94,7 +267,8 @@ USAGE:
 MODES:
     (default)       Fast property tests (500 examples, ~2 min)
     --deep          Continuous coverage-guided fuzzing (HypoFuzz)
-    --native        Native fuzzing with Atheris (requires setup)
+    --native        Native fuzzing with Atheris (targets parser stability)
+    --runtime       End-to-end runtime fuzzing (targets Bundle/Strict mode)
     --structured    Structure-aware fuzzing with Atheris (requires setup)
     --perf          Performance fuzzing to detect ReDoS (Atheris)
     --minimize FILE Minimize a crash file to smallest reproducer (libFuzzer)
@@ -155,6 +329,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --native)
             MODE="native"
+            shift
+            ;;
+        --runtime)
+            MODE="runtime"
             shift
             ;;
         --perf)
@@ -419,7 +597,7 @@ run_deep() {
     trap 'USER_STOPPED="true"' INT
 
     set +e
-    uv run hypothesis fuzz --no-dashboard -n "$WORKERS" $EXTRA_ARGS -- tests/ 2>&1 | tee "$DEEP_OUTPUT_FILE"
+    uv run --group fuzzing hypothesis fuzz --no-dashboard -n "$WORKERS" $EXTRA_ARGS -- tests/ 2>&1 | tee "$DEEP_OUTPUT_FILE"
     EXIT_CODE=${PIPESTATUS[0]}
     set -e
 
@@ -492,25 +670,7 @@ run_deep() {
 run_native() {
     print_header
 
-    # Check Python version compatibility (Atheris requires 3.11-3.13)
-    check_atheris_python_version
-
-    # Check if Atheris is available
-    if ! uv run python -c "import atheris" 2>/dev/null; then
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"native","status":"error","error":"atheris_not_installed"}'
-            exit 2
-        else
-            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
-            echo ""
-            echo "Atheris requires special setup on macOS:"
-            echo "  1. Install LLVM: brew install llvm"
-            echo "  2. Run: ./scripts/check-atheris.sh"
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
-            exit 2
-        fi
-    fi
+    preflight_atheris
 
     # Build args
     EXTRA_ARGS=""
@@ -534,25 +694,42 @@ run_native() {
     exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/stability.py" $EXTRA_ARGS
 }
 
+# Mode: runtime - Atheris end-to-end runtime fuzzing
+run_runtime() {
+    print_header
+
+    preflight_atheris
+
+    # Build args
+    EXTRA_ARGS=""
+    if [[ -n "$TIME_LIMIT" ]]; then
+        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
+    fi
+
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        echo -e "Mode:    ${BOLD}End-to-End Runtime Fuzzing${NC}"
+        echo "Engine:  Atheris (libFuzzer)"
+        echo "Target:  fuzz/runtime.py (Bundle/Cache/Strict)"
+        echo "Workers: $WORKERS"
+        if [[ -n "$TIME_LIMIT" ]]; then
+            echo "Time:    ${TIME_LIMIT}s"
+        else
+            echo "Time:    Until Ctrl+C"
+        fi
+        echo ""
+        echo "This mode tests full runtime lifecycle and v0.80.0 strict mode integrity."
+        echo ""
+    fi
+
+    # Delegate to existing script
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/runtime.py" $EXTRA_ARGS
+}
+
 # Mode: perf - Atheris performance fuzzing
 run_perf() {
     print_header
 
-    # Check Python version compatibility (Atheris requires 3.11-3.13)
-    check_atheris_python_version
-
-    # Check if Atheris is available
-    if ! uv run python -c "import atheris" 2>/dev/null; then
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"perf","status":"error","error":"atheris_not_installed"}'
-            exit 2
-        else
-            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for setup instructions."
-            exit 2
-        fi
-    fi
+    preflight_atheris
 
     # Build args
     EXTRA_ARGS=""
@@ -705,25 +882,7 @@ run_corpus() {
 run_structured() {
     print_header
 
-    # Check Python version compatibility (Atheris requires 3.11-3.13)
-    check_atheris_python_version
-
-    # Check if Atheris is available
-    if ! uv run python -c "import atheris" 2>/dev/null; then
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"structured","status":"error","error":"atheris_not_installed"}'
-            exit 2
-        else
-            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
-            echo ""
-            echo "Atheris requires special setup on macOS:"
-            echo "  1. Install LLVM: brew install llvm"
-            echo "  2. Run: ./scripts/check-atheris.sh"
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
-            exit 2
-        fi
-    fi
+    preflight_atheris
 
     # Build args
     EXTRA_ARGS=""
@@ -781,25 +940,7 @@ run_minimize() {
         exit 2
     fi
 
-    # Check Python version compatibility (Atheris requires 3.11-3.13)
-    check_atheris_python_version
-
-    # Check if Atheris is available
-    if ! uv run python -c "import atheris" 2>/dev/null; then
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"minimize","status":"error","error":"atheris_not_installed"}'
-            exit 2
-        else
-            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
-            echo ""
-            echo "Atheris requires special setup on macOS:"
-            echo "  1. Install LLVM: brew install llvm"
-            echo "  2. Run: ./scripts/check-atheris.sh"
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
-            exit 2
-        fi
-    fi
+    preflight_atheris
 
     # Determine which fuzzer script to use based on crash file location/name
     # Default to structured.py since it covers more code paths
@@ -888,6 +1029,9 @@ case $MODE in
         ;;
     native)
         run_native
+        ;;
+    runtime)
+        run_runtime
         ;;
     perf)
         run_perf

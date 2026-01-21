@@ -1,0 +1,20 @@
+# Testing whitespace and indentation variations
+space-indent =
+    .attr = Value
+indent-indent =
+    .attr = Value
+Mixed-indent =
+    .attr1 = Value
+    .attr2 = Value
+Double-Space =
+  .attr = Value
+Triple-Space =
+   .attr = Value
+Quad-Space =
+    .attr = Value
+Five-Space =
+     .attr = Value
+no-indent-after-eq = Message
+  .attrib = Value
+trailing-spaces = Value   
+  .attr = Value    

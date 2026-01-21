@@ -519,17 +519,13 @@ class TestErrorHandlingRoundtrip:
     """Test error handling roundtrip properties."""
 
     @given(
-        st.text(
-            alphabet=st.characters(whitelist_categories=("Ll", "Lu")),
-            min_size=1,
-            max_size=10,
-        )
+        st.from_regex(r"[a-zA-Z][a-zA-Z0-9_-]{0,9}", fullmatch=True)
     )
     def test_property_invalid_args_error_consistent_across_modes(
         self, msg_id: str
     ) -> None:
         """Property: Invalid args produces consistent error across strict/non-strict."""
-        assume(msg_id.isidentifier())
+        # FTL identifiers: ASCII letters, digits, underscores, hyphens (start with letter)
 
         bundle_strict = FluentBundle("en", strict=True)
         bundle_normal = FluentBundle("en", strict=False)

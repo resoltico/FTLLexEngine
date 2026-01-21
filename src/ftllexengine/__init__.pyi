@@ -23,6 +23,9 @@ from .integrity import (
     DataIntegrityError as DataIntegrityError,
 )
 from .integrity import (
+    FormattingIntegrityError as FormattingIntegrityError,
+)
+from .integrity import (
     ImmutabilityViolationError as ImmutabilityViolationError,
 )
 from .integrity import (
@@ -30,6 +33,9 @@ from .integrity import (
 )
 from .integrity import (
     IntegrityContext as IntegrityContext,
+)
+from .integrity import (
+    SyntaxIntegrityError as SyntaxIntegrityError,
 )
 from .integrity import (
     WriteConflictError as WriteConflictError,
@@ -72,9 +78,11 @@ __all__: list[str] = [
     # Data integrity exceptions
     "CacheCorruptionError",
     "DataIntegrityError",
+    "FormattingIntegrityError",
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "SyntaxIntegrityError",
     "WriteConflictError",
     # Parsing API
     "parse_ftl",

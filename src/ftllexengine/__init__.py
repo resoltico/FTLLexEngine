@@ -22,8 +22,10 @@ Exceptions:
 Data Integrity:
     DataIntegrityError - Base for system integrity failures
     CacheCorruptionError - Checksum mismatch in cache
+    FormattingIntegrityError - Strict mode formatting failure
     ImmutabilityViolationError - Mutation attempt on frozen object
     IntegrityCheckFailedError - Generic verification failure
+    SyntaxIntegrityError - Strict mode syntax error during resource loading
     WriteConflictError - Write-once violation in cache
 
 Submodules:
@@ -61,9 +63,11 @@ from .diagnostics import (
 from .integrity import (
     CacheCorruptionError,
     DataIntegrityError,
+    FormattingIntegrityError,
     ImmutabilityViolationError,
     IntegrityCheckFailedError,
     IntegrityContext,
+    SyntaxIntegrityError,
     WriteConflictError,
 )
 from .syntax import parse as parse_ftl
@@ -216,9 +220,11 @@ __all__ = [
     # Data integrity exceptions
     "CacheCorruptionError",
     "DataIntegrityError",
+    "FormattingIntegrityError",
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "SyntaxIntegrityError",
     "WriteConflictError",
     # Parsing API
     "parse_ftl",
