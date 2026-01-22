@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.85.0"
+version: "0.86.0"
 domain: RUNTIME
 updated: "2026-01-21"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?"]
 ---
 
 # Runtime Reference
@@ -1128,8 +1128,9 @@ class IntegrityCache:
 - Return: IntegrityCache instance.
 - State: Mutable cache with integrity verification.
 - Thread: Safe (internal locking).
-- Integrity: Each entry has SHA-256 checksum computed at creation and verified on retrieval.
+- Integrity: Each entry has BLAKE2b-128 checksum computed at creation and verified on retrieval.
 - Corruption: Corrupted entries are evicted silently (strict=False) or raise CacheCorruptionError (strict=True).
+- NaN Handling: `float("nan")` and `Decimal("NaN")` values are normalized to canonical `"__NaN__"` representation for consistent cache key equality (prevents cache pollution from IEEE 754 NaN != NaN behavior).
 - Import: `from ftllexengine.runtime.cache import IntegrityCache`
 - Access: Typically accessed via FluentBundle cache parameters, not directly constructed.
 

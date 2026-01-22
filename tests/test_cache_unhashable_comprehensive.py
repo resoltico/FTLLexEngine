@@ -116,10 +116,10 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         args = {"key": [1, 2, 3]}
 
         # Put with list value
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
 
         # Get should find cached value (list converted to same tuple)
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
@@ -133,8 +133,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         # Args contain a nested dict (now converted to sorted tuple)
         args = {"key": {"nested": "value"}}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
+        cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
@@ -146,7 +146,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cache = IntegrityCache(strict=False, maxsize=100)
 
         # Args contain a set (now converted to frozenset)
-        args = {"key": {1, 2, 3}}
+        # Note: set is not in FluentValue type but is handled at runtime
+        args: dict[str, object] = {"key": {1, 2, 3}}
 
         cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
@@ -163,7 +164,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         # Args contain a list (now converted to tuple)
         args = {"items": [1, 2, 3]}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
@@ -174,7 +175,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
         args = {"config": {"option": "value"}}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
 
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
@@ -293,8 +294,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         # Args contain a tuple (natively hashable, but may contain nested unhashables)
         args = {"coords": (10, 20, 30)}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
+        cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
@@ -306,7 +307,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cache = IntegrityCache(strict=False, maxsize=100)
 
         # Tuple containing a list - should be converted and cached
-        args = {"data": (1, [2, 3], 4)}
+        # Note: tuple with mixed types (int, list, int) is complex for type inference
+        args: dict[str, object] = {"data": (1, [2, 3], 4)}
 
         cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
@@ -326,8 +328,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"tuple_arg": tuple_value}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
+        cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
@@ -341,8 +343,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"list_arg": list_value}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
+        cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
@@ -356,7 +358,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"dict_arg": dict_value}
 
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
@@ -438,12 +440,12 @@ class TestCacheTrulyUnhashableObjects:
         assert cache.unhashable_skips == 0
 
         # Lists/dicts/sets are now convertible, should NOT increment
-        cache.get("msg1", {"list": [1]}, None, "en-US", True)  # type: ignore[dict-item]
+        cache.get("msg1", {"list": [1]}, None, "en-US", True)
         assert cache.unhashable_skips == 0  # Not skipped anymore
 
         cache.put(
             "msg2",
-            {"dict": {}},  # type: ignore[dict-item]
+            {"dict": {}},
             None,
             "en-US",
             True,

@@ -58,7 +58,11 @@ class StructuredFuzzError(Exception):
 
 
 # Exception contract: only these exceptions are acceptable for invalid input
-ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
+# - ValueError: Invalid syntax, encoding issues, constraint violations
+# - RecursionError: Deeply nested input exceeding Python's recursion limit
+# - MemoryError: Input too large to process
+# - EOFError: Parser reached unexpected end of input (Cursor.current at EOF)
+ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError, EOFError)
 
 # Character sets for FTL generation per spec: [a-zA-Z][a-zA-Z0-9_-]*
 IDENTIFIER_FIRST = string.ascii_letters  # [a-zA-Z]

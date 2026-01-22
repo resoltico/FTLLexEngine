@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import struct
 import time
 from collections import OrderedDict, deque
@@ -760,12 +761,21 @@ class IntegrityCache:
             case int():
                 return ("__int__", value)
             case float():
+                # NaN normalization: float("nan") != float("nan") due to IEEE 754.
+                # Without normalization, NaN-containing keys are unretrievable,
+                # causing cache pollution (DoS risk via cache thrashing).
+                if math.isnan(value):
+                    return ("__float__", "__NaN__")
                 return ("__float__", value)
             case str() | None:
                 return value
             # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
             # CLDR plural rules use visible fraction digits (v operand) which differs
             case Decimal():
+                # NaN normalization: Decimal("NaN").is_nan() for IEEE 754 compliance.
+                # Same rationale as float NaN - prevents cache pollution.
+                if value.is_nan():
+                    return ("__decimal__", "__NaN__")
                 return ("__decimal__", str(value))
             case datetime() | date():
                 return value

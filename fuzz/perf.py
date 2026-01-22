@@ -82,14 +82,16 @@ def test_one_input(data: bytes) -> None:
     try:
         source = fdp.ConsumeUnicodeNoSurrogates(MAX_INPUT_SIZE)
     except (UnicodeDecodeError, ValueError):
-        source = data.decode("utf-8", errors="replace")[:MAX_INPUT_SIZE]
+        # Use surrogateescape (PEP 383) for lossless round-trip preservation.
+        # This matches repro.py decoding for consistent crash reproduction.
+        source = data.decode("utf-8", errors="surrogateescape")[:MAX_INPUT_SIZE]
 
     parser = FluentParserV1()
 
     start = time.perf_counter()
     try:
         parser.parse(source)
-    except (ValueError, RecursionError, MemoryError):
+    except (ValueError, RecursionError, MemoryError, EOFError):
         pass  # Expected for invalid input
     except Exception as e:
         # Unexpected crash during performance fuzzing is also a finding

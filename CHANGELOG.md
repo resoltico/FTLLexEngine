@@ -13,6 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-01-22
+
+### Fixed
+
+- **NaN Cache Pollution Prevention** (SEC-CACHE-NAN-POLLUTION-001):
+  - Previous: `float("nan")` and `Decimal("NaN")` values in cache arguments created unretrievable cache entries
+  - Security issue: NaN violates Python equality (`nan != nan`), so keys containing NaN can never be retrieved. Each `put()` with NaN creates a NEW entry, polluting the cache until legitimate entries are evicted (DoS via cache thrashing)
+  - Fix: NaN values normalized to canonical `"__NaN__"` string representation in `_make_hashable()`
+    - `float("nan")` -> `("__float__", "__NaN__")`
+    - `Decimal("NaN")` -> `("__decimal__", "__NaN__")`
+    - `Decimal("sNaN")` -> `("__decimal__", "__NaN__")` (signaling NaN also normalized)
+  - Location: `runtime/cache.py` `_make_hashable()` float and Decimal cases
+  - Impact: Cache entries with NaN arguments are now retrievable; cache pollution attack vector eliminated
+  - Financial context: NaN can appear in edge cases (division by zero, undefined calculations); cache must handle gracefully
+
+- **FluentValue Type Alias Collection Support** (TYPE-DEF-INCOMPLETE-001):
+  - Previous: `FluentValue` type alias excluded `Sequence` and `Mapping` types despite runtime support
+  - Issue: Passing `list` or `dict` arguments to `format_pattern()` caused false positive type errors in mypy/pyright strict mode
+  - Fix: Updated `FluentValue` to include recursive collection types:
+    ```python
+    type FluentValue = (
+        str | int | float | bool | Decimal | datetime | date | FluentNumber | None |
+        Sequence["FluentValue"] | Mapping[str, "FluentValue"]
+    )
+    ```
+  - Location: `runtime/function_bridge.py` line 112
+  - Impact: Static type checkers now accept collection arguments; type contract matches runtime capability
+  - Note: Python 3.13+ recursive type aliases (PEP 695) enable this definition
+
 ## [0.85.0] - 2026-01-21
 
 ### Added
@@ -2429,6 +2458,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.86.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.86.0
 [0.85.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.85.0
 [0.84.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.84.0
 [0.83.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.83.0

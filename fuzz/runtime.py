@@ -115,12 +115,14 @@ def _add_random_resources(
             bundle.add_resource(ftl)
 
             # If validly added but validator failed catastrophically (finding)
+            # Note: is_valid checks BOTH errors AND annotations (see ValidationResult)
             if (
                 v_res.is_valid is False
                 and not v_res.errors
+                and not v_res.annotations
                 and fdp.ConsumeProbability() < 0.01
             ):
-                msg = "Validator reported invalid but no errors collected."
+                msg = "Validator reported invalid but no diagnostics collected."
                 raise RuntimeIntegrityError(msg)
         except RuntimeIntegrityError:
             raise

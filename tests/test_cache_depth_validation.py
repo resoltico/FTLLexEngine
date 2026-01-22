@@ -205,11 +205,10 @@ class TestMakeKeyIntegration:
 
     def test_make_key_with_nested_args(self) -> None:
         """_make_key handles nested arguments via _make_hashable."""
-        # Note: FluentValue doesn't include nested dicts, but _make_hashable
-        # handles them for robustness. Using type: ignore for test.
+        # FluentValue now includes Sequence, so list is valid
         key = IntegrityCache._make_key(
             message_id="test",
-            args={"items": [1, 2, 3]},  # type: ignore[dict-item]
+            args={"items": [1, 2, 3]},
             attribute=None,
             locale_code="en",
             use_isolating=True,
@@ -218,14 +217,15 @@ class TestMakeKeyIntegration:
 
     def test_make_key_with_deeply_nested_args_returns_none(self) -> None:
         """_make_key returns None for excessively nested args (graceful bypass)."""
-        # Build excessively nested structure
+        # Build excessively nested structure (exceeds depth limit)
         deep: dict[str, Any] | int = 42
         for _ in range(MAX_DEPTH + 10):
             deep = {"nested": deep}
 
+        # Use explicit type:ignore since deep is dynamically constructed Any
         key = IntegrityCache._make_key(
             message_id="test",
-            args={"deep": deep},  # type: ignore[dict-item]
+            args={"deep": deep},
             attribute=None,
             locale_code="en",
             use_isolating=True,

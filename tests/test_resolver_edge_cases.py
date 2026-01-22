@@ -397,15 +397,15 @@ class TestResolverIntegrationEdgeCases:
             use_isolating=False
         )
 
-        # List
-        assert resolver._format_value([1, 2, 3]) == "[1, 2, 3]"  # type: ignore[arg-type]
+        # List (FluentValue includes Sequence)
+        assert resolver._format_value([1, 2, 3]) == "[1, 2, 3]"
 
-        # Dict
-        result = resolver._format_value({"key": "value"})  # type: ignore[arg-type]
+        # Dict (FluentValue includes Mapping)
+        result = resolver._format_value({"key": "value"})
         assert "key" in result
         assert "value" in result
 
-        # Custom object
+        # Custom object (not in FluentValue, so type:ignore needed)
         class CustomObj:
             def __str__(self) -> str:
                 return "custom"

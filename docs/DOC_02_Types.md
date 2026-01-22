@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.85.0"
+version: "0.86.0"
 domain: TYPES
 updated: "2026-01-21"
 route:
-  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass]
-  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?"]
+  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue]
+  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?"]
 ---
 
 # AST Types Reference
@@ -766,9 +766,14 @@ type ASTNode = Resource | Message | Term | ... # Union of all AST types
 
 ## `FluentValue`
 
+Type alias for values passable to Fluent functions and format_pattern().
+
 ### Signature
 ```python
-type FluentValue = str | int | float | bool | Decimal | datetime | date | FluentNumber | None
+type FluentValue = (
+    str | int | float | bool | Decimal | datetime | date | FluentNumber | None |
+    Sequence["FluentValue"] | Mapping[str, "FluentValue"]
+)
 ```
 
 ### Parameters
@@ -783,10 +788,14 @@ type FluentValue = str | int | float | bool | Decimal | datetime | date | Fluent
 | `date` | Date-only arguments. |
 | `FluentNumber` | Formatted number from NUMBER() function. |
 | `None` | Absent/null arguments. |
+| `Sequence["FluentValue"]` | Lists, tuples of FluentValue (recursive). |
+| `Mapping[str, "FluentValue"]` | Dicts with string keys (recursive). |
 
 ### Constraints
-- PEP 695 type alias. Export: `from ftllexengine import FluentValue`.
+- PEP 695 recursive type alias. Export: `from ftllexengine import FluentValue`.
 - Used for type-hinting resolver arguments: `args: dict[str, FluentValue]`.
+- Collections: Arbitrarily nested structures supported (e.g., `{"items": [1, 2, {"nested": "value"}]}`).
+- Cache: Collections handled correctly by `_make_hashable()` for cache key generation.
 - Location: `runtime/function_bridge.py`, exported from package root.
 
 ---

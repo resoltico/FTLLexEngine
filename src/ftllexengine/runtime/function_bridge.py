@@ -104,7 +104,24 @@ class FluentNumber:
 # Defined here (not in resolver.py) to avoid circular imports.
 # Note: Includes both datetime.date and datetime.datetime for flexibility.
 # FluentNumber added for NUMBER() identity preservation in select expressions.
-type FluentValue = str | int | float | bool | Decimal | datetime | date | FluentNumber | None
+#
+# Collections Support:
+#   Sequence[FluentValue] and Mapping[str, FluentValue] are supported for custom
+#   functions that need to pass structured data. The cache (_make_hashable) and
+#   resolver handle these types correctly. Collections are recursively typed.
+type FluentValue = (
+    str
+    | int
+    | float
+    | bool
+    | Decimal
+    | datetime
+    | date
+    | FluentNumber
+    | None
+    | Sequence["FluentValue"]
+    | Mapping[str, "FluentValue"]
+)
 
 # Attribute name for marking functions that require locale injection.
 # Used by FunctionRegistry.should_inject_locale() and @fluent_function decorator.

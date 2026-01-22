@@ -1396,9 +1396,7 @@ class TestArgumentTypeHandling:
         bundle = FluentBundle("en")
         bundle.add_resource(f"{msg_id} = {{ ${var_name} }}")
 
-        result, _errors = bundle.format_value(
-            msg_id, {var_name: list_value}  # type: ignore[dict-item]
-        )
+        result, _errors = bundle.format_value(msg_id, {var_name: list_value})
 
         # Lists may not be supported, but shouldn't crash
         assert isinstance(result, str)

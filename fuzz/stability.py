@@ -58,7 +58,11 @@ class StabilityBreachError(Exception):
 
 
 # Exception contract: only these exceptions are acceptable for invalid input
-ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError)
+# - ValueError: Invalid syntax, encoding issues, constraint violations
+# - RecursionError: Deeply nested input exceeding Python's recursion limit
+# - MemoryError: Input too large to process
+# - EOFError: Parser reached unexpected end of input (Cursor.current at EOF)
+ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError, EOFError)
 
 
 def test_one_input(data: bytes) -> None:
@@ -73,7 +77,9 @@ def test_one_input(data: bytes) -> None:
     try:
         source = fdp.ConsumeUnicodeNoSurrogates(1024 * 1024)
     except (UnicodeDecodeError, ValueError):
-        source = data.decode("utf-8", errors="replace")
+        # Use surrogateescape (PEP 383) for lossless round-trip preservation.
+        # This matches repro.py decoding for consistent crash reproduction.
+        source = data.decode("utf-8", errors="surrogateescape")
 
     parser = FluentParserV1(max_source_size=1024 * 1024, max_nesting_depth=100)
 
@@ -111,7 +117,7 @@ def main() -> None:
     print("Fluent Stability Fuzzer (Python 3.13 Edition)")
     print("=" * 80)
     print("Target:   Parser crash detection")
-    print("Contract: Only ValueError, RecursionError, MemoryError allowed")
+    print("Contract: Only ValueError, RecursionError, MemoryError, EOFError allowed")
     print("Stopping: Press Ctrl+C at any time (findings auto-saved)")
     print("=" * 80)
     print()

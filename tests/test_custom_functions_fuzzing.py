@@ -232,7 +232,7 @@ class TestFunctionErrorHandlingProperties:
     def test_unexpected_return_type_handled(self, value: str) -> None:
         """Property: Functions returning unexpected types are handled."""
         bundle = FluentBundle("en-US")
-        bundle.add_function("DICT", returning_dict)  # type: ignore[arg-type]
+        bundle.add_function("DICT", returning_dict)
         bundle.add_resource("msg = { DICT($val) }")
 
         result, _ = bundle.format_pattern("msg", {"val": value})
