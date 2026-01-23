@@ -4,6 +4,15 @@
 # See docs/FUZZING_GUIDE.md for usage.
 #
 # Note: Atheris is optional. Use ./scripts/fuzz.sh for the unified interface.
+#
+# Usage:
+#   fuzz-atheris.sh WORKERS TARGET_FILE [SEEDS_DIR] [EXTRA_ARGS...]
+#
+# Arguments:
+#   WORKERS     - Number of parallel fuzzing workers (default: 4)
+#   TARGET_FILE - Python fuzzer script (e.g., fuzz/stability.py)
+#   SEEDS_DIR   - Optional seed corpus directory (e.g., fuzz/seeds)
+#   EXTRA_ARGS  - Additional libFuzzer arguments (e.g., -max_total_time=60)
 
 set -e
 
@@ -31,6 +40,9 @@ fi
 # =============================================================================
 # Environment Auto-Detection
 # =============================================================================
+
+# Dedicated environment for fuzzing to avoid stomping by other tasks (e.g., linting)
+export UV_PROJECT_ENVIRONMENT=".venv-fuzzing"
 
 # Check Python version compatibility (Atheris requires 3.11-3.13)
 PY_VERSION=$(uv run --group fuzzing python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
@@ -82,12 +94,30 @@ CORPUS_DIR="$PROJECT_ROOT/.fuzz_corpus"
 LOG_FILE="$PROJECT_ROOT/.fuzz_corpus/fuzz.log"
 JOBS=${1:-4}
 TARGET_FILE=${2:-"fuzz/stability.py"}
+SEEDS_DIR=${3:-""}
 
-# Pass through additional arguments to the fuzzer (e.g., -max_total_time=60)
-shift 2 2>/dev/null || true
-EXTRA_ARGS="$@"
+# Shift past positional args to get EXTRA_ARGS
+shift 3 2>/dev/null || shift $# 2>/dev/null || true
+EXTRA_ARGS="$*"
 
 mkdir -p "$CORPUS_DIR"
+
+# =============================================================================
+# Seed Corpus Handling
+# =============================================================================
+# libFuzzer accepts multiple corpus directories:
+#   fuzzer working_corpus seed_corpus1 seed_corpus2 ...
+# The first directory is read-write (new inputs saved here).
+# Additional directories are read-only seed sources.
+
+SEED_ARGS=""
+SEED_COUNT=0
+if [[ -n "$SEEDS_DIR" && -d "$SEEDS_DIR" ]]; then
+    SEED_COUNT=$(find "$SEEDS_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [[ $SEED_COUNT -gt 0 ]]; then
+        SEED_ARGS="$SEEDS_DIR"
+    fi
+fi
 
 echo ""
 echo "=============================================================================="
@@ -96,6 +126,11 @@ echo "==========================================================================
 echo "Target:  $TARGET_FILE"
 echo "Workers: $JOBS"
 echo "Corpus:  $CORPUS_DIR"
+if [[ -n "$SEED_ARGS" ]]; then
+    echo "Seeds:   $SEEDS_DIR ($SEED_COUNT files)"
+else
+    echo "Seeds:   (none)"
+fi
 echo "Log:     $LOG_FILE"
 echo "Args:    ${EXTRA_ARGS:-'(none - runs indefinitely, Ctrl+C to stop)'}"
 echo "=============================================================================="
@@ -104,11 +139,13 @@ echo ""
 START_TIME="${EPOCHREALTIME}"
 
 set +e
+# shellcheck disable=SC2086
 uv run --group fuzzing python "$TARGET_FILE" \
     -workers="$JOBS" \
     -jobs=0 \
     -artifact_prefix="$CORPUS_DIR/crash_" \
     "$CORPUS_DIR" \
+    $SEED_ARGS \
     $EXTRA_ARGS 2>&1 | tee "$LOG_FILE"
 
 EXIT_CODE=${PIPESTATUS[0]}
@@ -179,6 +216,8 @@ printf "\"exit_code\":\"%d\"," "$EXIT_CODE"
 printf "\"duration_sec\":\"%s\"," "$DURATION"
 printf "\"target\":\"%s\"," "$TARGET_FILE"
 printf "\"workers\":\"%s\"," "$JOBS"
+printf "\"seeds_dir\":\"%s\"," "${SEEDS_DIR:-none}"
+printf "\"seeds_count\":\"%s\"," "$SEED_COUNT"
 printf "\"crash_count\":\"%s\"," "$CRASH_COUNT"
 printf "\"finding_type\":\"%s\"," "$FINDING_TYPE"
 printf "\"coverage\":\"%s\"," "$COVERAGE"

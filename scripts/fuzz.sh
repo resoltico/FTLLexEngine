@@ -7,6 +7,8 @@
 #   ./scripts/fuzz.sh --deep       Run continuous HypoFuzz
 #   ./scripts/fuzz.sh --native     Run Atheris native fuzzing
 #   ./scripts/fuzz.sh --perf       Run performance fuzzing (Atheris)
+#   ./scripts/fuzz.sh --iso        Run ISO introspection fuzzing (Atheris)
+#   ./scripts/fuzz.sh --fiscal     Run fiscal calendar fuzzing (Atheris)
 #   ./scripts/fuzz.sh --list       List captured failures
 #   ./scripts/fuzz.sh --corpus     Check corpus health
 #   ./scripts/fuzz.sh --help       Show this help
@@ -23,6 +25,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Dedicated environment for fuzzing to avoid stomping by other tasks (e.g., linting)
+export UV_PROJECT_ENVIRONMENT=".venv-fuzzing"
 
 # Defaults
 MODE="check"
@@ -271,6 +276,8 @@ MODES:
     --runtime       End-to-end runtime fuzzing (targets Bundle/Strict mode)
     --structured    Structure-aware fuzzing with Atheris (requires setup)
     --perf          Performance fuzzing to detect ReDoS (Atheris)
+    --iso           ISO 3166/4217 introspection fuzzing (requires Babel)
+    --fiscal        Fiscal calendar arithmetic fuzzing
     --minimize FILE Minimize a crash file to smallest reproducer (libFuzzer)
     --list          List all captured failures
     --clean         Remove all captured failures and crash artifacts
@@ -341,6 +348,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --structured)
             MODE="structured"
+            shift
+            ;;
+        --iso)
+            MODE="iso"
+            shift
+            ;;
+        --fiscal)
+            MODE="fiscal"
             shift
             ;;
         --repro)
@@ -690,8 +705,8 @@ run_native() {
         echo ""
     fi
 
-    # Delegate to existing script
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/stability.py" $EXTRA_ARGS
+    # Delegate to existing script with seed corpus
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/stability.py" "fuzz/seeds" $EXTRA_ARGS
 }
 
 # Mode: runtime - Atheris end-to-end runtime fuzzing
@@ -721,8 +736,8 @@ run_runtime() {
         echo ""
     fi
 
-    # Delegate to existing script
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/runtime.py" $EXTRA_ARGS
+    # Delegate to existing script with seed corpus
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/runtime.py" "fuzz/seeds" $EXTRA_ARGS
 }
 
 # Mode: perf - Atheris performance fuzzing
@@ -749,8 +764,8 @@ run_perf() {
         echo ""
     fi
 
-    # Delegate to existing script
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/perf.py" $EXTRA_ARGS
+    # Delegate to existing script with seed corpus
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/perf.py" "fuzz/seeds" $EXTRA_ARGS
 }
 
 # Helper: Calculate human-readable file age
@@ -905,8 +920,71 @@ run_structured() {
         echo ""
     fi
 
-    # Delegate to existing script
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/structured.py" $EXTRA_ARGS
+    # Delegate to existing script with seed corpus
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/structured.py" "fuzz/seeds" $EXTRA_ARGS
+}
+
+# Mode: iso - ISO 3166/4217 introspection fuzzing
+run_iso() {
+    print_header
+
+    preflight_atheris
+
+    # Build args
+    EXTRA_ARGS=""
+    if [[ -n "$TIME_LIMIT" ]]; then
+        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
+    fi
+
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        echo -e "Mode:    ${BOLD}ISO Introspection Fuzzing${NC}"
+        echo "Engine:  Atheris (libFuzzer)"
+        echo "Target:  fuzz/iso.py (ISO 3166/4217)"
+        echo "Workers: $WORKERS"
+        if [[ -n "$TIME_LIMIT" ]]; then
+            echo "Time:    ${TIME_LIMIT}s"
+        else
+            echo "Time:    Until Ctrl+C"
+        fi
+        echo ""
+        echo "This mode tests ISO territory/currency lookups, type guards, and cache integrity."
+        echo "Note: Requires Babel for full coverage."
+        echo ""
+    fi
+
+    # Delegate to existing script with seed corpus
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/iso.py" "fuzz/seeds" $EXTRA_ARGS
+}
+
+# Mode: fiscal - Fiscal calendar arithmetic fuzzing
+run_fiscal() {
+    print_header
+
+    preflight_atheris
+
+    # Build args
+    EXTRA_ARGS=""
+    if [[ -n "$TIME_LIMIT" ]]; then
+        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
+    fi
+
+    if [[ "$JSON_OUTPUT" == "false" ]]; then
+        echo -e "Mode:    ${BOLD}Fiscal Calendar Arithmetic Fuzzing${NC}"
+        echo "Engine:  Atheris (libFuzzer)"
+        echo "Target:  fuzz/fiscal.py (FiscalCalendar/Delta/Period)"
+        echo "Workers: $WORKERS"
+        if [[ -n "$TIME_LIMIT" ]]; then
+            echo "Time:    ${TIME_LIMIT}s"
+        else
+            echo "Time:    Until Ctrl+C"
+        fi
+        echo ""
+        echo "This mode tests fiscal calendar operations, date arithmetic, and boundary conditions."
+        echo ""
+    fi
+
+    # Delegate to existing script with seed corpus
+    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/fiscal.py" "fuzz/seeds" $EXTRA_ARGS
 }
 
 # Mode: repro - Reproduce a crash file
@@ -1038,6 +1116,12 @@ case $MODE in
         ;;
     structured)
         run_structured
+        ;;
+    iso)
+        run_iso
+        ;;
+    fiscal)
+        run_fiscal
         ;;
     repro)
         run_repro

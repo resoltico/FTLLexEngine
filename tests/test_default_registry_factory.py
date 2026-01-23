@@ -10,7 +10,7 @@ Tests for:
 import pytest
 
 from ftllexengine import FluentBundle
-from ftllexengine.introspection import IntrospectionVisitor, ReferenceExtractor
+from ftllexengine.introspection.message import IntrospectionVisitor, ReferenceExtractor
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import create_default_registry
 

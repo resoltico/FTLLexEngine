@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from ftllexengine.syntax.ast import (
+from ftllexengine.syntax.ast import (  # pylint: disable=C0413
     Attribute,
     Comment,
     FunctionReference,
@@ -40,7 +40,7 @@ from ftllexengine.syntax.ast import (
     TextElement,
     VariableReference,
 )
-from ftllexengine.syntax.parser import FluentParserV1
+from ftllexengine.syntax.parser import FluentParserV1  # pylint: disable=C0413
 
 if TYPE_CHECKING:
     from ftllexengine.syntax.ast import Resource
@@ -97,11 +97,12 @@ class CorpusHealth:
     duplicates: list[tuple[Path, Path]] = field(default_factory=list)
 
 
-def extract_features(resource: Resource) -> set[str]:
+def extract_features(resource: Resource) -> set[str]:  # noqa: PLR0915
     """Extract grammar features used in a resource."""
     features: set[str] = set()
 
-    def visit_node(node: object) -> None:
+    # Visitor dispatch for AST node types - inherently needs many branches
+    def visit_node(node: object) -> None:  # noqa: PLR0912, PLR0915
         match node:
             case Message():
                 features.add("message")
@@ -216,7 +217,7 @@ def analyze_seed(path: Path, parser: FluentParserV1) -> SeedAnalysis:
             content_hash=content_hash,
         )
 
-    except Exception as e:
+    except (OSError, UnicodeDecodeError, ValueError) as e:
         return SeedAnalysis(
             path=path,
             valid=False,
@@ -376,7 +377,7 @@ def print_coverage_report(health: CorpusHealth) -> None:
     print()
 
 
-def dedupe_corpus(seeds_dir: Path, health: CorpusHealth, dry_run: bool = True) -> None:
+def dedupe_corpus(_seeds_dir: Path, health: CorpusHealth, dry_run: bool = True) -> None:
     """Remove duplicate seeds from corpus."""
     if not health.duplicates:
         print("No duplicates to remove.")
@@ -406,7 +407,9 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="Output JSON report")
     parser.add_argument("--coverage", action="store_true", help="Show detailed coverage report")
     parser.add_argument("--dedupe", action="store_true", help="Show duplicate removal plan")
-    parser.add_argument("--execute", action="store_true", help="Actually execute dedupe (with --dedupe)")
+    parser.add_argument(
+        "--execute", action="store_true", help="Actually execute dedupe (with --dedupe)"
+    )
     args = parser.parse_args()
 
     if not SEEDS_DIR.exists():

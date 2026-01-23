@@ -1,8 +1,7 @@
-"""Variable introspection for FTL messages using Python 3.13 type system.
+"""FTL message introspection for variable, function, and reference extraction.
 
-This module provides best-in-class introspection capabilities for analyzing
-FTL message patterns and extracting metadata about variable usage, function calls,
-and message references.
+This module provides introspection capabilities for analyzing FTL message patterns
+and extracting metadata about variable usage, function calls, and message references.
 
 Key features:
 - Type-safe results using Python 3.13's TypeIs for runtime narrowing
@@ -20,9 +19,9 @@ import weakref
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .constants import MAX_DEPTH
-from .enums import ReferenceKind, VariableContext
-from .syntax.ast import (
+from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.enums import ReferenceKind, VariableContext
+from ftllexengine.syntax.ast import (
     FunctionReference,
     Message,
     MessageReference,
@@ -36,12 +35,13 @@ from .syntax.ast import (
     VariableReference,
     Variant,
 )
-from .syntax.visitor import ASTVisitor
+from ftllexengine.syntax.visitor import ASTVisitor
 
 if TYPE_CHECKING:
-    from .syntax.ast import Expression, InlineExpression, PatternElement
+    from ftllexengine.syntax.ast import Expression, InlineExpression, PatternElement
 
 __all__ = [
+    # Public API
     "FunctionCallInfo",
     "MessageIntrospection",
     "ReferenceInfo",
@@ -50,6 +50,9 @@ __all__ = [
     "extract_references",
     "extract_variables",
     "introspect_message",
+    # Internal (accessible for testing, not re-exported from package)
+    "IntrospectionVisitor",
+    "ReferenceExtractor",
 ]
 
 # ==============================================================================
@@ -536,7 +539,7 @@ def introspect_message(
         TypeError: If message is not a Message or Term AST node
 
     Example:
-        >>> from ftllexengine import FluentParserV1
+        >>> from ftllexengine.syntax.parser import FluentParserV1
         >>> parser = FluentParserV1()
         >>> resource = parser.parse("greeting = Hello, { $name }!")
         >>> msg = resource.entries[0]

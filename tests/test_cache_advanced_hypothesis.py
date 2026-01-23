@@ -26,7 +26,7 @@ locale_codes = st.sampled_from(["en_US", "de_DE", "lv_LV", "fr_FR", "ja_JP"])
 attributes = st.one_of(st.none(), st.text(min_size=1))
 
 # Strategy for cache values (result, errors) - remove arbitrary max_size
-cache_values: st.SearchStrategy[tuple[str, tuple]] = st.tuples(
+cache_values: st.SearchStrategy[tuple[str, tuple[()]]] = st.tuples(
     st.text(min_size=0),
     st.just(()),  # Empty error tuple for simplicity
 )
@@ -87,9 +87,9 @@ class TestCacheInvariants:
         self,
         msg_id: str,
         locale: str,
-        args: dict | None,
+        args: dict[str, int | float | str] | None,
         attr: str | None,
-        value: tuple[str, tuple],
+        value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: get(k) after put(k, v) returns v."""
         cache = IntegrityCache(maxsize=100, strict=False)
@@ -147,7 +147,7 @@ class TestCacheInvariants:
         self,
         msg_id: str,
         locale: str,
-        value: tuple[str, tuple],
+        value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Cache hits increment hit counter."""
         cache = IntegrityCache(maxsize=100, strict=False)
@@ -265,7 +265,7 @@ class TestCacheKeyHandling:
         self,
         msg_id: str,
         locale: str,
-        value: tuple[str, tuple],
+        value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Same key components retrieve same cached value."""
         cache = IntegrityCache(maxsize=100, strict=False)
@@ -292,7 +292,7 @@ class TestCacheKeyHandling:
         msg_id: str,
         locale1: str,
         locale2: str,
-        value: tuple[str, tuple],
+        value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Different locales create different cache keys."""
         assume(locale1 != locale2)
@@ -322,7 +322,7 @@ class TestCacheKeyHandling:
         locale: str,
         attr1: str | None,
         attr2: str | None,
-        value: tuple[str, tuple],
+        value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Different attributes create different cache keys."""
         assume(attr1 != attr2)
@@ -348,7 +348,7 @@ class TestCacheKeyHandling:
         self,
         msg_id: str,
         locale: str,
-        value: tuple[str, tuple],
+        value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Equivalent args dicts produce same cache key."""
         cache = IntegrityCache(maxsize=100, strict=False)
@@ -389,7 +389,9 @@ class TestCacheRobustness:
         ),
     )
     @settings(max_examples=200)
-    def test_cache_handles_various_arg_types(self, args: dict) -> None:
+    def test_cache_handles_various_arg_types(
+        self, args: dict[str, int | float | str | bool | None]
+    ) -> None:
         """ROBUSTNESS: Cache handles various argument types."""
         cache = IntegrityCache(maxsize=100, strict=False)
 

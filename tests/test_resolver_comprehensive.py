@@ -59,7 +59,7 @@ class TestNestedPlaceableExpression:
 
         # Resolve outer placeable - should unwrap to inner variable
         args = {"test": "value123"}
-        errors: list = []
+        errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         result = resolver._resolve_expression(outer_placeable, args, errors, context)
         assert result == "value123"
@@ -79,7 +79,7 @@ class TestNestedPlaceableExpression:
         string_lit = StringLiteral(value="literal_text")
         placeable = Placeable(expression=string_lit)
 
-        errors: list = []
+        errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         result = resolver._resolve_expression(placeable, {}, errors, context)
         assert result == "literal_text"
@@ -100,7 +100,7 @@ class TestNestedPlaceableExpression:
         number_lit = NumberLiteral(value=Decimal("42.5"), raw="42.5")
         placeable = Placeable(expression=number_lit)
 
-        errors: list = []
+        errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         result = resolver._resolve_expression(placeable, {}, errors, context)
         assert result == Decimal("42.5")
@@ -122,7 +122,7 @@ class TestNestedPlaceableExpression:
         level2 = Placeable(expression=level1)
         level3 = Placeable(expression=level2)
 
-        errors: list = []
+        errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         result = resolver._resolve_expression(level3, {}, errors, context)
         assert result == "deep"
@@ -153,7 +153,7 @@ class TestUnknownExpressionType:
 
         unknown = UnknownExpr()
 
-        errors: list = []
+        errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         with pytest.raises(FrozenFluentError) as exc_info:
             resolver._resolve_expression(unknown, {}, errors, context)  # type: ignore[arg-type]

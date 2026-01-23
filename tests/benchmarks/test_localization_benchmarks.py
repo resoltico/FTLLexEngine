@@ -7,6 +7,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from ftllexengine import FluentLocalization
@@ -33,7 +35,7 @@ class TestLocalizationBenchmarks:
         return l10n
 
     def test_format_first_locale_no_fallback(
-        self, benchmark, l10n_two_locales: FluentLocalization
+        self, benchmark: Any, l10n_two_locales: FluentLocalization
     ) -> None:
         """Benchmark formatting from first locale (no fallback)."""
         result, errors = benchmark(l10n_two_locales.format_value, "home")
@@ -42,7 +44,7 @@ class TestLocalizationBenchmarks:
         assert errors == ()
 
     def test_format_second_locale_fallback(
-        self, benchmark, l10n_two_locales: FluentLocalization
+        self, benchmark: Any, l10n_two_locales: FluentLocalization
     ) -> None:
         """Benchmark formatting with fallback to second locale."""
         result, errors = benchmark(l10n_two_locales.format_value, "about")
@@ -51,7 +53,7 @@ class TestLocalizationBenchmarks:
         assert errors == ()
 
     def test_format_three_locale_chain(
-        self, benchmark, l10n_three_locales: FluentLocalization
+        self, benchmark: Any, l10n_three_locales: FluentLocalization
     ) -> None:
         """Benchmark formatting through three-locale fallback chain."""
         result, errors = benchmark(l10n_three_locales.format_value, "contact")

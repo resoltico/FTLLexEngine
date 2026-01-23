@@ -78,10 +78,10 @@ def measure_serialize_time(resource: Resource) -> float:
     return end - start
 
 
-def measure_resolution_time(bundle: FluentBundle, msg_id: str, args: dict) -> float:
+def measure_resolution_time(bundle: FluentBundle, msg_id: str, args: dict[str, object]) -> float:
     """Measure time to resolve message (in seconds)."""
     start = time.perf_counter()
-    _ = bundle.format_pattern(msg_id, args)
+    _ = bundle.format_pattern(msg_id, args)  # type: ignore[arg-type]
     end = time.perf_counter()
     return end - start
 
@@ -139,7 +139,7 @@ class TestParserPerformanceScaling:
         )
 
     @pytest.mark.parametrize("message_count", [10, 50, 100, 200])
-    def test_parser_performance_baseline(self, message_count: int):
+    def test_parser_performance_baseline(self, message_count: int) -> None:
         """Test parser meets minimum performance baseline.
 
         Baseline: Should parse at least 1000 simple messages per second.
@@ -399,7 +399,7 @@ class TestPerformanceStress:
 
     @given(st.lists(ftl_simple_messages(), min_size=10, max_size=50))
     @settings(max_examples=10, deadline=2000)  # 2 second deadline per example
-    def test_hypothesis_enforced_deadline(self, messages: list[str]):
+    def test_hypothesis_enforced_deadline(self, messages: list[str]) -> None:
         """Property: Parser meets Hypothesis deadline for all generated inputs.
 
         This catches catastrophic backtracking or exponential algorithms.

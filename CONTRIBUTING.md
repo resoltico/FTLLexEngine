@@ -1,292 +1,157 @@
 ---
 afad: "3.1"
-version: "0.60.0"
+version: "0.87.0"
 domain: contributing
-updated: "2026-01-08"
+updated: "2026-01-22"
 route:
-  keywords: [contributing, development, setup, pull request, code style, workflow]
+  keywords: [contributing, development, setup, pull request, code style, workflow, pivot]
   questions: ["how to contribute?", "how to set up development?", "how to submit PR?"]
 ---
 
-# Contributing
+# Contributing to FTLLexEngine
 
 ## Setup
+
+FTLLexEngine uses `uv` for ultra-fast, deterministic dependency management. We employ a **Pivot** architecture that isolates your IDE environment from the validation silos.
 
 ```bash
 git clone https://github.com/resoltico/FTLLexEngine.git
 cd ftllexengine
+
+# 1. Setup your "IDE Sanctuary" (.venv)
+# This environment is for your editor, LSP, and manual exploration.
 uv sync --all-groups
+
+# 2. Verify and Initialize Atheris (macOS)
+# This sets up the isolated .venv-fuzzing environment.
+./scripts/check-atheris.sh --install
 ```
 
-## Scripts
+---
 
-| Script | Purpose | When to Use |
-|--------|---------|-------------|
-| `uv run scripts/lint.sh` | Code quality checks (ruff, mypy, pylint) | During development |
-| `uv run scripts/test.sh` | Run test suite with coverage | After code changes |
-| `uv run scripts/benchmark.sh` | Performance benchmarks | Before/after optimization |
-| `uv run scripts/bump-version.sh` | Update version in pyproject.toml | During release prep |
-| `uv run scripts/release.sh` | Full release automation | When releasing a version |
+## Environment Hierarchy
 
-All scripts support:
-- `--help` - Show usage documentation
-- `--ci` - Non-interactive mode (for CI/CD pipelines)
+To ensure data integrity and zero "environment stomping," the project is strictly siloed:
 
-**Execution order:** lint → test
+| Environment | Purpose | Managed By |
+|-------------|---------|------------|
+| `.venv` (Root) | **IDE Sanctuary** - Autocomplete, LSP, manual runs. | You (`uv sync`) |
+| `.venv-3.13` | **Validation Silo** - Clean-room lint/test baseline. | `scripts/test.sh` |
+| `.venv-3.14` | **Validation Silo** - Python 3.14 compatibility checks. | `scripts/lint.sh` |
+| `.venv-fuzzing` | **Specialized Toolchain** - Native Atheris/LLVM builds. | `scripts/check-atheris.sh` |
+
+---
+
+## Automated Scripts (The Pivot)
+
+All validation scripts are **self-isolating**. They automatically "pivot" into the correct silo, ensuring that testing Python 3.14 never breaks your Python 3.13 environment or your specialized Atheris build.
+
+| Script | Purpose | Preferred Command |
+|--------|---------|-------------------|
+| `scripts/lint.sh` | Quality checks (ruff, mypy, pylint) | `./scripts/lint.sh` |
+| `scripts/test.sh` | Test suite with coverage | `./scripts/test.sh` |
+| `scripts/check-atheris.sh` | Atheris/LLVM health check | `./scripts/check-atheris.sh` |
+| `scripts/fuzz.sh` | Unified fuzzing interface | `./scripts/fuzz.sh` |
+| `scripts/benchmark.sh` | Performance benchmarks | `uv run scripts/benchmark.sh` |
+| `scripts/release.sh` | Release automation | `uv run scripts/release.sh` |
+
+**Optimization**: Do not use `uv run --python X.Y` with these scripts. The scripts handle their internally versioned `uv run` pivots silently to avoid noise and environment overlap.
+
+---
+
+## Multi-Version Development
+
+FTLLexEngine guarantees performance and stability on both Python 3.13 and 3.14. 
+
+### The Master Control: `PY_VERSION`
+
+The `PY_VERSION` environment variable is the master control for environment selection. It directs both tests and linters to the correct silo.
+
+| Task | Command | Target Silo |
+|------|---------|-------------|
+| **Lint (3.13 default)** | `./scripts/lint.sh` | `.venv-3.13` |
+| **Lint (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/lint.sh` | `.venv-3.14` |
+| **Test (3.13 default)** | `./scripts/test.sh` | `.venv-3.13` |
+| **Test (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
+| **Full 3.14 Verification** | `PY_VERSION=3.14 ./scripts/lint.sh && PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
+
+### Why this works
+- **Zero Stomping**: Running 3.14 checks will **never** wipe your 3.13 environment.
+- **Instant Switching**: Switching between 3.13 and 3.14 is now instant (no `uv sync` overhead).
+- **Parallel Testing**: You can run 3.13 tests in one terminal and 3.14 tests in another simultaneously.
+
+---
 
 ## Code Standards
 
-Branch naming: `feature/description`, `fix/description`, `docs/description`
-
 Style:
-- PEP 8
-- 100 char line limit
-- Type hints required
-- Docstrings for public APIs
-
-Architecture:
-- Immutable data structures (frozen dataclasses)
-- No mutable global state
-- Pure functions
+- **PEP 8** adherence via Ruff.
+- **100 char** line limit.
+- **Strict Typing**: Type hints are mandatory.
+- **Immutability**: Preference for `frozen=True, slots=True` dataclasses.
 
 ```python
 from __future__ import annotations
 from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
-class Message:
-    """FTL message node."""
-    id: Identifier
-    value: Pattern | None
-    attributes: tuple[Attribute, ...]
+class LocaleContext:
+    """Context-aware locale container."""
+    tag: str
+    is_clobbered: bool = False
 ```
 
-## Testing
+---
+
+## Testing & Coverage
+
+All logic must be verified via deterministic unit tests and non-deterministic property tests.
 
 ```bash
-uv run scripts/test.sh           # Full suite with coverage
-uv run scripts/test.sh --quick   # Quick mode (no coverage)
-
-# Or directly with uv:
-uv run pytest tests/
-uv run pytest tests/ --cov=src/ftllexengine --cov-report=term-missing
-uv run pytest tests/test_fluent_parser.py
+./scripts/test.sh           # Full suite (95%+ requirement)
+./scripts/test.sh --quick   # Fast mode (no coverage)
 ```
 
-Example tests:
-```python
-def test_parse_simple_message():
-    parser = FluentParserV1()
-    resource = parser.parse("hello = World")
-    assert len(resource.entries) == 1
+### Property-Based Testing (Hypothesis)
+If you see `HYPOTHESIS DETECTED A LOGIC FLAW`, an edge case has been found.
+1. The failing input is saved to `.hypothesis/failures`.
+2. Review the `Falsifying example:` output.
+3. Fix the bug and re-run `./scripts/test.sh`.
 
-from hypothesis import given, strategies as st
-
-@given(st.text())
-def test_parser_never_crashes(source):
-    resource = FluentParserV1().parse(source)
-    assert resource is not None
-```
-
-Coverage requirement: 95%+
-
-## Quality Checks
-
-```bash
-uv run scripts/lint.sh           # Run all linters
-
-# Or individually via uv run:
-uv run mypy --strict src/ftllexengine
-uv run ruff check src/ tests/
-uv run pylint src/ftllexengine
-```
-
-## Multi-Version Development (Python 3.13 / 3.14)
-
-FTLLexEngine supports Python 3.13 and 3.14. CI automatically tests both versions in parallel. For local development, you can manually switch between versions.
-
-### Prerequisites
-
-Ensure both Python versions are installed:
-
-```bash
-# Check available versions
-uv python list
-
-# Install if needed
-uv python install 3.13
-uv python install 3.14
-```
-
-### Default Development (Python 3.13)
-
-Standard commands use Python 3.13 (the baseline):
-
-```bash
-uv run scripts/lint.sh      # Lints targeting py313
-uv run scripts/test.sh      # Tests on Python 3.13
-```
-
-### Testing Against Python 3.14
-
-**Linting** requires two switches:
-1. **`--python 3.14`**: Tells uv which interpreter to use
-2. **`PY_VERSION=3.14`**: Tells lint.sh which version to target for static analysis
-
-**Testing** requires only `--python 3.14`. Unlike linters (which have a separate "target version" setting), pytest simply runs on whatever interpreter is active.
-
-```bash
-# Run linting with Python 3.14 target (needs both switches)
-PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh
-
-# Run tests on Python 3.14 (only needs interpreter switch)
-uv run --python 3.14 scripts/test.sh
-
-# Run both (full verification)
-PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh && uv run --python 3.14 scripts/test.sh
-```
-
-### Quick Reference
-
-| Task | Command |
-|------|---------|
-| Lint (3.13 default) | `uv run scripts/lint.sh` |
-| Lint (3.14 explicit) | `PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh` |
-| Test (3.13 default) | `uv run scripts/test.sh` |
-| Test (3.14 explicit) | `uv run --python 3.14 scripts/test.sh` |
-| Full 3.14 verification | `PY_VERSION=3.14 uv run --python 3.14 scripts/lint.sh && uv run --python 3.14 scripts/test.sh` |
-
-### What the Environment Variable Does
-
-`PY_VERSION` controls the **target version** for static analysis tools:
-
-| Tool | Without `PY_VERSION` | With `PY_VERSION=3.14` |
-|------|---------------------|------------------------|
-| Ruff | `--target-version py313` | `--target-version py314` |
-| Mypy | `--python-version 3.13` | `--python-version 3.14` |
-| Pylint | `--py-version 3.13` | `--py-version 3.14` |
-
-This ensures linters check against the correct Python version's syntax rules and stdlib type stubs.
-
-### CI Behavior
-
-GitHub Actions automatically runs both versions in parallel via matrix strategy. You do not need to manually test both versions before every PR - CI handles this. However, if CI fails on 3.14 specifically, use the commands above to reproduce locally.
-
-## Property-Based Testing
-
-FTLLexEngine uses Hypothesis for property-based testing. When Hypothesis discovers edge cases, they are automatically saved to `.hypothesis/examples/` and replayed on subsequent test runs.
-
-If you see `HYPOTHESIS DETECTED A LOGIC FLAW`:
-1. This should be a bug that needs fixing
-2. The failing example is automatically saved
-3. Fix the bug and re-run tests to verify
+---
 
 ## Pull Requests
 
-Commit message format:
-```
-Short summary (<72 chars)
-
-Detailed description.
-
-Fixes #123
-```
-
-Use imperative mood.
-
-CI requirements:
-- All tests pass on Python 3.13 and 3.14 (4,600+ tests each)
-- Type checking passes (mypy --strict) on both versions
-- Linting passes (ruff, pylint) on both versions
-- Coverage 95%+
-
-Before submitting:
-```bash
-uv run scripts/lint.sh
-uv run scripts/test.sh
-```
-
-## Version Management
-
-**CRITICAL: Single Source of Truth**
-
-Version is managed in ONE location: `pyproject.toml`
-
-The `__version__` attribute auto-populates from package metadata via `importlib.metadata`. This makes version drift structurally impossible.
-
-### Developer Workflow for Version Changes
-
-1. **Edit version in pyproject.toml only:**
-   ```bash
-   # Edit: version = "0.28.0" in pyproject.toml
-   vim pyproject.toml
-   ```
-
-2. **Refresh environment:**
-   ```bash
-   uv sync
-   ```
-
-3. **Verify auto-sync worked:**
-   ```bash
-   python -c "import ftllexengine; print(ftllexengine.__version__)"
-   # Output: 0.28.0
-   ```
-
-4. **Run tests to validate:**
-   ```bash
-   uv run scripts/lint.sh
-   uv run scripts/test.sh
-   ```
-
-**NEVER** manually edit `__version__` in `src/ftllexengine/__init__.py` - it auto-updates from metadata.
-
-## Releases
-
-Versioning (Semantic Versioning):
-- Patch (0.0.x): Bug fixes
-- Minor (0.x.0): New features (backward compatible)
-- Major (x.0.0): Breaking changes
-
-### Manual Release Process
-
-1. Run `uv run scripts/lint.sh` and `uv run scripts/test.sh` (complete validation)
-2. Update version in `pyproject.toml` ONLY
-3. Run `uv sync` to refresh metadata
-4. Verify: `uv run python -c "import ftllexengine; print(ftllexengine.__version__)"`
-5. Commit: `Bump version to X.Y.Z`
-6. Tag: `git tag vX.Y.Z`
-7. Push: `git push origin main && git push origin vX.Y.Z`
-
-### Automated Release Process (Recommended)
-
-Use the release automation script for safer releases:
+### Mandatory Pre-Flight
+Before submitting a PR, ensure both versions pass verification:
 
 ```bash
+# Verify Baseline
+./scripts/lint.sh && ./scripts/test.sh
+
+# Verify Tomorrow (Python 3.14)
+PY_VERSION=3.14 ./scripts/lint.sh && PY_VERSION=3.14 ./scripts/test.sh
+```
+
+### CI Requirements
+- Parallel matrix testing on 3.13 and 3.14.
+- Coverage >= 95.00%.
+- Strict type checking (mypy) on all targets.
+- Successful documentation validation (`scripts/validate_docs.py`).
+
+---
+
+## Versioning & Releases
+
+**Single Source of Truth**: The version is managed exclusively in `pyproject.toml`.
+
+```bash
+# Standard Release Workflow
 # 1. Update version in pyproject.toml
-vim pyproject.toml  # Change version to 0.28.0
-
-# 2. Refresh metadata
+# 2. Sync to refresh package metadata
 uv sync
-
-# 3. Commit version change
-git add pyproject.toml
-git commit -m "Bump version to 0.28.0"
-
-# 4. Run release script (validates + creates tag)
+# 3. Validated Release
 uv run scripts/release.sh
-
-# 5. Push (as displayed by script)
-git push origin main --tags
 ```
 
-The release script will:
-- Validate version consistency between pyproject.toml and __version__
-- Check git working directory is clean
-- Run full test suite
-- Create properly formatted git tag
-- Display push commands
-
-**Options:**
-- `uv run scripts/release.sh --dry-run` - Validate only, no git operations
-- `uv run scripts/release.sh --help` - Show usage information
+**Note**: Never manually edit `__version__` in `src/`. It is auto-derived from package metadata at runtime to prevent version drift.

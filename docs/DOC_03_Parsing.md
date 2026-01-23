@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.87.0"
 domain: PARSING
-updated: "2026-01-21"
+updated: "2026-01-22"
 route:
-  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError]
-  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?"]
+  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
+  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
 ---
 
 # Parsing Reference
@@ -681,5 +681,455 @@ Patterns have leading/trailing blank lines trimmed.
 - Continuation: Multi-line patterns joined with newline (`\n`), not space.
 - Implementation: `_trim_pattern_blank_lines()` post-processes pattern elements.
 - Rationale: Per Fluent spec whitespace handling rules.
+
+---
+
+## Fiscal Calendar Arithmetic
+
+The fiscal calendar module provides date arithmetic for financial applications. No external dependencies.
+
+---
+
+## `MonthEndPolicy`
+
+Enumeration of month-end handling behaviors for date arithmetic.
+
+### Signature
+```python
+class MonthEndPolicy(StrEnum):
+    PRESERVE = "preserve"
+    CLAMP = "clamp"
+    STRICT = "strict"
+```
+
+### Members
+| Member | Value | Semantics |
+|:-------|:------|:----------|
+| `PRESERVE` | `"preserve"` | Try to preserve day; clamp if overflow |
+| `CLAMP` | `"clamp"` | Month-end dates stay at month-end |
+| `STRICT` | `"strict"` | Raise ValueError if day would overflow |
+
+### Constraints
+- Purpose: Control date arithmetic behavior at month boundaries.
+- Type: StrEnum (string-valued enumeration).
+
+---
+
+## `FiscalPeriod`
+
+Immutable fiscal period identifier for year, quarter, or month.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FiscalPeriod:
+    fiscal_year: int
+    quarter: int = 1
+    month: int = 1
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+| `quarter` | `int` | N | Fiscal quarter 1-4 (default: 1) |
+| `month` | `int` | N | Fiscal month 1-12 (default: 1) |
+
+### Constraints
+- Return: Immutable period identifier.
+- Raises: `ValueError` if quarter not 1-4 or month not 1-12.
+- State: Immutable (frozen dataclass).
+- Thread: Safe.
+- Hashable: Yes (usable as dict key).
+- Ordering: Comparable by (fiscal_year, quarter, month).
+
+---
+
+## `FiscalCalendar`
+
+Configuration for fiscal year boundaries and period calculations.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FiscalCalendar:
+    start_month: int = 1
+
+    def fiscal_year(self, d: date) -> int: ...
+    def fiscal_quarter(self, d: date) -> int: ...
+    def fiscal_month(self, d: date) -> int: ...
+    def fiscal_period(self, d: date) -> FiscalPeriod: ...
+    def fiscal_year_start(self, fiscal_year: int) -> date: ...
+    def fiscal_year_end(self, fiscal_year: int) -> date: ...
+    def quarter_start(self, fiscal_year: int, quarter: int) -> date: ...
+    def quarter_end(self, fiscal_year: int, quarter: int) -> date: ...
+    def date_range(self, d: date) -> tuple[date, date]: ...
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `start_month` | `int` | N | First month of fiscal year 1-12 (default: 1) |
+
+### Constraints
+- Return: Immutable calendar configuration.
+- Raises: `ValueError` if start_month not 1-12.
+- State: Immutable (frozen dataclass).
+- Thread: Safe.
+- Hashable: Yes.
+
+### Usage
+- When: Financial reporting with non-calendar fiscal years.
+- Prefer: start_month=1 for calendar year alignment.
+- Avoid: Changing calendar mid-computation (create new instance).
+
+### Example
+```python
+cal = FiscalCalendar(start_month=4)  # UK/Japan fiscal year
+cal.fiscal_quarter(date(2024, 7, 15))  # Returns 2
+```
+
+---
+
+## `FiscalCalendar.fiscal_year`
+
+### Signature
+```python
+def fiscal_year(self, d: date) -> int:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+
+### Constraints
+- Return: Fiscal year containing the date.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.fiscal_quarter`
+
+### Signature
+```python
+def fiscal_quarter(self, d: date) -> int:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+
+### Constraints
+- Return: Fiscal quarter 1-4 containing the date.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.fiscal_month`
+
+### Signature
+```python
+def fiscal_month(self, d: date) -> int:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+
+### Constraints
+- Return: Fiscal month 1-12 within fiscal year.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.fiscal_period`
+
+### Signature
+```python
+def fiscal_period(self, d: date) -> FiscalPeriod:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+
+### Constraints
+- Return: FiscalPeriod with year, quarter, and month.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.fiscal_year_start`
+
+### Signature
+```python
+def fiscal_year_start(self, fiscal_year: int) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+
+### Constraints
+- Return: First day of the fiscal year.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.fiscal_year_end`
+
+### Signature
+```python
+def fiscal_year_end(self, fiscal_year: int) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+
+### Constraints
+- Return: Last day of the fiscal year.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.quarter_start`
+
+### Signature
+```python
+def quarter_start(self, fiscal_year: int, quarter: int) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+| `quarter` | `int` | Y | Quarter 1-4 |
+
+### Constraints
+- Return: First day of the fiscal quarter.
+- Raises: `ValueError` if quarter not 1-4.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.quarter_end`
+
+### Signature
+```python
+def quarter_end(self, fiscal_year: int, quarter: int) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+| `quarter` | `int` | Y | Quarter 1-4 |
+
+### Constraints
+- Return: Last day of the fiscal quarter.
+- Raises: `ValueError` if quarter not 1-4.
+- State: Read-only.
+
+---
+
+## `FiscalCalendar.date_range`
+
+### Signature
+```python
+def date_range(self, d: date) -> tuple[date, date]:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date within target fiscal year |
+
+### Constraints
+- Return: Tuple of (fiscal_year_start, fiscal_year_end).
+- State: Read-only.
+
+---
+
+## `FiscalDelta`
+
+Immutable period delta for fiscal date arithmetic.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FiscalDelta:
+    years: int = 0
+    quarters: int = 0
+    months: int = 0
+    days: int = 0
+    month_end_policy: MonthEndPolicy = MonthEndPolicy.PRESERVE
+
+    def add_to(self, d: date) -> date: ...
+    def subtract_from(self, d: date) -> date: ...
+    def total_months(self) -> int: ...
+    def negate(self) -> Self: ...
+    def __neg__(self) -> Self: ...
+    def __add__(self, other: Self) -> Self: ...
+    def __sub__(self, other: Self) -> Self: ...
+    def __mul__(self, scalar: int) -> Self: ...
+    def __rmul__(self, scalar: int) -> Self: ...
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `years` | `int` | N | Years to add (default: 0) |
+| `quarters` | `int` | N | Quarters to add (default: 0) |
+| `months` | `int` | N | Months to add (default: 0) |
+| `days` | `int` | N | Days to add (default: 0) |
+| `month_end_policy` | `MonthEndPolicy` | N | Month-end handling (default: PRESERVE) |
+
+### Constraints
+- Return: Immutable delta.
+- Raises: `TypeError` if any numeric field is not int.
+- State: Immutable (frozen dataclass).
+- Thread: Safe.
+- Hashable: Yes.
+- Arithmetic: Supports +, -, *, negation.
+
+### Usage
+- When: Adding fiscal periods to dates.
+- Prefer: CLAMP policy for financial month-end calculations.
+- Avoid: Large deltas that may overflow date range.
+
+### Example
+```python
+delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.CLAMP)
+delta.add_to(date(2024, 1, 31))  # Returns date(2024, 2, 29)
+```
+
+---
+
+## `FiscalDelta.add_to`
+
+### Signature
+```python
+def add_to(self, d: date) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Base date |
+
+### Constraints
+- Return: Date with delta applied.
+- Raises: `ValueError` if STRICT policy and day overflows.
+- Raises: `OverflowError` if result out of date range.
+- State: Read-only.
+
+---
+
+## `FiscalDelta.subtract_from`
+
+### Signature
+```python
+def subtract_from(self, d: date) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Base date |
+
+### Constraints
+- Return: Date with negated delta applied.
+- Raises: `ValueError` if STRICT policy and day overflows.
+- Raises: `OverflowError` if result out of date range.
+- State: Read-only.
+
+---
+
+## `FiscalDelta.total_months`
+
+### Signature
+```python
+def total_months(self) -> int:
+```
+
+### Constraints
+- Return: Total months (years*12 + quarters*3 + months).
+- State: Read-only.
+
+---
+
+## `fiscal_quarter`
+
+Convenience function for fiscal quarter lookup.
+
+### Signature
+```python
+def fiscal_quarter(d: date, start_month: int = 1) -> int:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+| `start_month` | `int` | N | Fiscal year start month (default: 1) |
+
+### Constraints
+- Return: Fiscal quarter 1-4.
+- Raises: `ValueError` if start_month not 1-12.
+- State: None.
+- Thread: Safe.
+
+---
+
+## `fiscal_year_start`
+
+Convenience function for fiscal year start date.
+
+### Signature
+```python
+def fiscal_year_start(fiscal_year: int, start_month: int = 1) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+| `start_month` | `int` | N | Fiscal year start month (default: 1) |
+
+### Constraints
+- Return: First day of fiscal year.
+- Raises: `ValueError` if start_month not 1-12.
+- State: None.
+- Thread: Safe.
+
+---
+
+## `fiscal_year_end`
+
+Convenience function for fiscal year end date.
+
+### Signature
+```python
+def fiscal_year_end(fiscal_year: int, start_month: int = 1) -> date:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `fiscal_year` | `int` | Y | Fiscal year number |
+| `start_month` | `int` | N | Fiscal year start month (default: 1) |
+
+### Constraints
+- Return: Last day of fiscal year.
+- Raises: `ValueError` if start_month not 1-12.
+- State: None.
+- Thread: Safe.
 
 ---

@@ -13,7 +13,7 @@ import pytest
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
-from ftllexengine.runtime.resolver import FluentResolver
+from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
 from ftllexengine.syntax.ast import (
     Expression,
     Identifier,
@@ -57,7 +57,6 @@ class TestResolverExpressionEdgeCases:
             use_isolating=False
         )
 
-        from ftllexengine.runtime.resolver import ResolutionContext  # noqa: PLC0415
 
         # Create an invalid pattern with an object that's not a valid expression
         class UnknownExpr:
@@ -65,7 +64,7 @@ class TestResolverExpressionEdgeCases:
 
         unknown = UnknownExpr()
 
-        errors: list = []
+        errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         with pytest.raises(FrozenFluentError, match="Unknown expression type") as exc_info:
             resolver._resolve_expression(unknown, {}, errors, context)  # type: ignore[arg-type]

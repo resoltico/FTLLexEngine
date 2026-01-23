@@ -108,7 +108,7 @@ def extract_ftl_examples(markdown_path: Path) -> list[tuple[int, str]]:
     return examples
 
 
-def validate_file(markdown_path: Path, parser: object) -> list[str]:
+def validate_file(markdown_path: Path, parser: FluentParserV1) -> list[str]:
     """Validate all FTL examples in a markdown file.
 
     Args:
@@ -125,7 +125,7 @@ def validate_file(markdown_path: Path, parser: object) -> list[str]:
         ...     for error in errors:
         ...         print(error)
     """
-    errors = []
+    errors: list[str] = []
     examples = extract_ftl_examples(markdown_path)
 
     if not examples:
@@ -177,7 +177,7 @@ def validate_file(markdown_path: Path, parser: object) -> list[str]:
                     f"  {len(junk_entries)} parse error(s) in example"
                 )
 
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
             errors.append(
                 f"{markdown_path}:{line_num}: Parse exception: {e.__class__.__name__}: {e}"
             )
@@ -206,7 +206,7 @@ def main() -> int:
         print("        This script requires ftllexengine.syntax.* imports")
         return 2
 
-    parser = FluentParserV1()  # type: ignore[misc]
+    parser = FluentParserV1()
     all_errors = []
     files_checked = 0
     examples_found = 0
@@ -255,8 +255,8 @@ def main() -> int:
 
             errors = validate_file(md_file, parser)
             all_errors.extend(errors)
-        except Exception as e:
-            # SAFEGUARD: Catch any unexpected errors to prevent hangs
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            # SAFEGUARD: Catch file/encoding/parse errors to prevent hangs
             print(f"[WARN] Error processing {md_file}: {e}")
             # Continue processing other files
             continue

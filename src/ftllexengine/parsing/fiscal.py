@@ -1,0 +1,615 @@
+"""Fiscal calendar arithmetic for financial date calculations.
+
+Provides types for fiscal calendar configuration and date arithmetic:
+- FiscalCalendar: Configuration for fiscal year boundaries
+- FiscalDelta: Immutable period delta (years, quarters, months, days)
+- FiscalPeriod: Immutable fiscal period (year, quarter, month)
+
+Month-End Policy:
+    When adding months to a month-end date (e.g., Jan 31 + 1 month), the target
+    month may have fewer days. The month_end_policy parameter controls behavior:
+
+    - "preserve": Try to preserve the day-of-month; clamp if out of range.
+                  Jan 31 + 1 month -> Feb 28/29 (clamped to last day)
+                  This is the default and most common business rule.
+
+    - "clamp": Always clamp to last day if original was month-end.
+               Jan 31 + 1 month -> Feb 28/29 (last day of Feb)
+               Mar 15 + 1 month -> Apr 15 (day preserved, not month-end)
+               Useful for month-end reporting (always lands on month-end).
+
+    - "strict": Raise ValueError if day would be out of range.
+                Jan 31 + 1 month -> ValueError (no Feb 31)
+                Useful for validation where inexact dates are errors.
+
+No external dependencies. Thread-safe. Python 3.13+.
+"""
+
+from __future__ import annotations
+
+import calendar
+from dataclasses import dataclass
+from datetime import date, timedelta
+from enum import StrEnum
+from typing import TYPE_CHECKING, Self
+
+if TYPE_CHECKING:
+    pass
+
+# ruff: noqa: RUF022 - __all__ organized by category for readability
+__all__ = [
+    # Enums
+    "MonthEndPolicy",
+    # Data classes
+    "FiscalCalendar",
+    "FiscalDelta",
+    "FiscalPeriod",
+    # Factory functions
+    "fiscal_quarter",
+    "fiscal_year_start",
+    "fiscal_year_end",
+]
+
+
+# ============================================================================
+# ENUMS
+# ============================================================================
+
+
+class MonthEndPolicy(StrEnum):
+    """Policy for handling month-end dates in date arithmetic.
+
+    Controls behavior when adding months to a date where the target month
+    has fewer days than the source day-of-month.
+    """
+
+    PRESERVE = "preserve"
+    """Try to preserve day-of-month; clamp to last day if out of range."""
+
+    CLAMP = "clamp"
+    """If original date was month-end, result is also month-end."""
+
+    STRICT = "strict"
+    """Raise ValueError if resulting day would be out of range."""
+
+
+# ============================================================================
+# FISCAL PERIOD
+# ============================================================================
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class FiscalPeriod:
+    """Immutable fiscal period identifier.
+
+    Represents a specific fiscal year, quarter, or month within a fiscal calendar.
+    Ordering is by (fiscal_year, quarter, month).
+
+    Attributes:
+        fiscal_year: The fiscal year number.
+        quarter: Quarter within fiscal year (1-4).
+        month: Month within fiscal year (1-12).
+    """
+
+    fiscal_year: int
+    quarter: int
+    month: int
+
+    def __post_init__(self) -> None:
+        """Validate period values."""
+        if not 1 <= self.quarter <= 4:
+            msg = f"Quarter must be 1-4, got {self.quarter}"
+            raise ValueError(msg)
+        if not 1 <= self.month <= 12:
+            msg = f"Month must be 1-12, got {self.month}"
+            raise ValueError(msg)
+
+
+# ============================================================================
+# FISCAL CALENDAR
+# ============================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class FiscalCalendar:
+    """Configuration for a fiscal calendar.
+
+    Defines when the fiscal year starts. All fiscal period calculations
+    are relative to this configuration.
+
+    Attributes:
+        start_month: Calendar month when fiscal year begins (1-12).
+                     1 = Calendar year (Jan-Dec fiscal year)
+                     4 = UK/Japan government (Apr-Mar fiscal year)
+                     7 = Australia/NZ (Jul-Jun fiscal year)
+                     10 = US federal government (Oct-Sep fiscal year)
+
+    Thread-safe. Immutable. Hashable.
+    """
+
+    start_month: int = 1
+
+    def __post_init__(self) -> None:
+        """Validate start_month is 1-12."""
+        if not isinstance(self.start_month, int):
+            msg = f"start_month must be int, got {type(self.start_month).__name__}"  # type: ignore[unreachable]
+            raise TypeError(msg)
+        if not 1 <= self.start_month <= 12:
+            msg = f"start_month must be 1-12, got {self.start_month}"
+            raise ValueError(msg)
+
+    def fiscal_year(self, d: date) -> int:
+        """Get the fiscal year containing a date.
+
+        Args:
+            d: Calendar date.
+
+        Returns:
+            Fiscal year number. For calendars starting in month > 1,
+            the fiscal year is typically labeled by the ending calendar year.
+
+        Examples:
+            >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar fiscal year
+            >>> cal.fiscal_year(date(2024, 3, 15))   # Before fiscal year start
+            2024
+            >>> cal.fiscal_year(date(2024, 4, 1))   # First day of FY2025
+            2025
+        """
+        if d.month >= self.start_month:
+            # Date is in first part of fiscal year
+            return d.year + (1 if self.start_month > 1 else 0)
+        # Date is in second part of fiscal year (after calendar year boundary)
+        return d.year
+
+    def fiscal_quarter(self, d: date) -> int:
+        """Get the fiscal quarter (1-4) containing a date.
+
+        Args:
+            d: Calendar date.
+
+        Returns:
+            Quarter number (1-4) within the fiscal year.
+
+        Examples:
+            >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar fiscal year
+            >>> cal.fiscal_quarter(date(2024, 4, 15))  # Apr = Q1
+            1
+            >>> cal.fiscal_quarter(date(2024, 7, 15))  # Jul = Q2
+            2
+        """
+        fiscal_month = self.fiscal_month(d)
+        return (fiscal_month - 1) // 3 + 1
+
+    def fiscal_month(self, d: date) -> int:
+        """Get the fiscal month (1-12) of a date.
+
+        Args:
+            d: Calendar date.
+
+        Returns:
+            Month number (1-12) within the fiscal year.
+            Month 1 is the first month of the fiscal year.
+
+        Examples:
+            >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar fiscal year
+            >>> cal.fiscal_month(date(2024, 4, 15))  # Apr = Month 1
+            1
+            >>> cal.fiscal_month(date(2024, 3, 15))  # Mar = Month 12
+            12
+        """
+        # Calculate months since fiscal year start
+        month_offset = d.month - self.start_month
+        if month_offset < 0:
+            month_offset += 12
+        return month_offset + 1
+
+    def fiscal_period(self, d: date) -> FiscalPeriod:
+        """Get the full fiscal period for a date.
+
+        Args:
+            d: Calendar date.
+
+        Returns:
+            FiscalPeriod with fiscal year, quarter, and month.
+        """
+        return FiscalPeriod(
+            fiscal_year=self.fiscal_year(d),
+            quarter=self.fiscal_quarter(d),
+            month=self.fiscal_month(d),
+        )
+
+    def fiscal_year_start_date(self, fiscal_year: int) -> date:
+        """Get the first day of a fiscal year.
+
+        Args:
+            fiscal_year: The fiscal year number.
+
+        Returns:
+            First date of the fiscal year.
+
+        Examples:
+            >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar
+            >>> cal.fiscal_year_start_date(2025)
+            datetime.date(2024, 4, 1)
+        """
+        if self.start_month == 1:
+            return date(fiscal_year, 1, 1)
+        # Fiscal year labeled by end year, so start is in prior calendar year
+        return date(fiscal_year - 1, self.start_month, 1)
+
+    def fiscal_year_end_date(self, fiscal_year: int) -> date:
+        """Get the last day of a fiscal year.
+
+        Args:
+            fiscal_year: The fiscal year number.
+
+        Returns:
+            Last date of the fiscal year.
+
+        Examples:
+            >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar
+            >>> cal.fiscal_year_end_date(2025)
+            datetime.date(2025, 3, 31)
+        """
+        if self.start_month == 1:
+            return date(fiscal_year, 12, 31)
+        # End month is the month before start_month
+        end_month = self.start_month - 1 if self.start_month > 1 else 12
+        end_year = fiscal_year
+        last_day = calendar.monthrange(end_year, end_month)[1]
+        return date(end_year, end_month, last_day)
+
+    def quarter_start_date(self, fiscal_year: int, quarter: int) -> date:
+        """Get the first day of a fiscal quarter.
+
+        Args:
+            fiscal_year: The fiscal year number.
+            quarter: Quarter number (1-4).
+
+        Returns:
+            First date of the quarter.
+
+        Raises:
+            ValueError: If quarter is not 1-4.
+        """
+        if not 1 <= quarter <= 4:
+            msg = f"Quarter must be 1-4, got {quarter}"
+            raise ValueError(msg)
+
+        # Calculate the calendar month for this quarter start
+        fiscal_month = (quarter - 1) * 3 + 1  # Fiscal months 1, 4, 7, 10
+        return self._fiscal_month_to_date(fiscal_year, fiscal_month, day=1)
+
+    def quarter_end_date(self, fiscal_year: int, quarter: int) -> date:
+        """Get the last day of a fiscal quarter.
+
+        Args:
+            fiscal_year: The fiscal year number.
+            quarter: Quarter number (1-4).
+
+        Returns:
+            Last date of the quarter.
+
+        Raises:
+            ValueError: If quarter is not 1-4.
+        """
+        if not 1 <= quarter <= 4:
+            msg = f"Quarter must be 1-4, got {quarter}"
+            raise ValueError(msg)
+
+        # Calculate the calendar month for this quarter end
+        fiscal_month = quarter * 3  # Fiscal months 3, 6, 9, 12
+        cal_year, cal_month = self._fiscal_to_calendar_month(fiscal_year, fiscal_month)
+        last_day = calendar.monthrange(cal_year, cal_month)[1]
+        return date(cal_year, cal_month, last_day)
+
+    def _fiscal_to_calendar_month(self, fiscal_year: int, fiscal_month: int) -> tuple[int, int]:
+        """Convert fiscal year and month to calendar year and month.
+
+        Args:
+            fiscal_year: The fiscal year number.
+            fiscal_month: Month within fiscal year (1-12).
+
+        Returns:
+            Tuple of (calendar_year, calendar_month).
+        """
+        # Calculate calendar month
+        cal_month = (self.start_month + fiscal_month - 2) % 12 + 1
+
+        # Calculate calendar year
+        if self.start_month == 1:
+            cal_year = fiscal_year
+        elif cal_month >= self.start_month:
+            # In first part of fiscal year (same calendar year as start)
+            cal_year = fiscal_year - 1
+        else:
+            # In second part of fiscal year (after calendar year boundary)
+            cal_year = fiscal_year
+
+        return (cal_year, cal_month)
+
+    def _fiscal_month_to_date(self, fiscal_year: int, fiscal_month: int, day: int) -> date:
+        """Convert fiscal year, month, and day to calendar date.
+
+        Args:
+            fiscal_year: The fiscal year number.
+            fiscal_month: Month within fiscal year (1-12).
+            day: Day of month.
+
+        Returns:
+            Calendar date.
+        """
+        cal_year, cal_month = self._fiscal_to_calendar_month(fiscal_year, fiscal_month)
+        return date(cal_year, cal_month, day)
+
+
+# ============================================================================
+# FISCAL DELTA
+# ============================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class FiscalDelta:
+    """Immutable fiscal period delta for date arithmetic.
+
+    Represents a duration in fiscal terms: years, quarters, months, and days.
+    Can be added to or subtracted from dates.
+
+    The month_end_policy controls how month-end dates are handled when
+    the target month has fewer days.
+
+    Attributes:
+        years: Number of years (positive or negative).
+        quarters: Number of quarters (positive or negative).
+        months: Number of months (positive or negative).
+        days: Number of days (positive or negative).
+        month_end_policy: How to handle month-end date edge cases.
+
+    Thread-safe. Immutable. Hashable.
+    """
+
+    years: int = 0
+    quarters: int = 0
+    months: int = 0
+    days: int = 0
+    month_end_policy: MonthEndPolicy = MonthEndPolicy.PRESERVE
+
+    def __post_init__(self) -> None:
+        """Validate inputs are integers."""
+        for field in ("years", "quarters", "months", "days"):
+            value = getattr(self, field)
+            if not isinstance(value, int):
+                msg = f"{field} must be int, got {type(value).__name__}"
+                raise TypeError(msg)
+
+    def total_months(self) -> int:
+        """Get total delta in months (years + quarters + months).
+
+        Does not include days (those are applied separately).
+
+        Returns:
+            Total months from years, quarters, and months.
+        """
+        return self.years * 12 + self.quarters * 3 + self.months
+
+    def add_to(self, d: date) -> date:
+        """Add this delta to a date.
+
+        Applies month delta first (years + quarters + months), then days.
+
+        Args:
+            d: Starting date.
+
+        Returns:
+            Resulting date after adding delta.
+
+        Raises:
+            ValueError: If month_end_policy is STRICT and day overflows.
+            OverflowError: If resulting date is out of range.
+        """
+        # First apply months (years + quarters + months combined)
+        total_months = self.total_months()
+        result = _add_months(d, total_months, self.month_end_policy)
+
+        # Then apply days
+        if self.days != 0:
+            result = result + timedelta(days=self.days)
+
+        return result
+
+    def subtract_from(self, d: date) -> date:
+        """Subtract this delta from a date.
+
+        Equivalent to adding the negation of this delta.
+
+        Args:
+            d: Starting date.
+
+        Returns:
+            Resulting date after subtracting delta.
+
+        Raises:
+            ValueError: If month_end_policy is STRICT and day overflows.
+            OverflowError: If resulting date is out of range.
+        """
+        return self.negate().add_to(d)
+
+    def negate(self) -> Self:
+        """Return negation of this delta.
+
+        Returns:
+            New FiscalDelta with all values negated.
+        """
+        return type(self)(
+            years=-self.years,
+            quarters=-self.quarters,
+            months=-self.months,
+            days=-self.days,
+            month_end_policy=self.month_end_policy,
+        )
+
+    def __add__(self, other: FiscalDelta) -> FiscalDelta:
+        """Add two FiscalDeltas."""
+        if not isinstance(other, FiscalDelta):
+            return NotImplemented
+        return FiscalDelta(
+            years=self.years + other.years,
+            quarters=self.quarters + other.quarters,
+            months=self.months + other.months,
+            days=self.days + other.days,
+            month_end_policy=self.month_end_policy,
+        )
+
+    def __sub__(self, other: FiscalDelta) -> FiscalDelta:
+        """Subtract two FiscalDeltas."""
+        if not isinstance(other, FiscalDelta):
+            return NotImplemented
+        return FiscalDelta(
+            years=self.years - other.years,
+            quarters=self.quarters - other.quarters,
+            months=self.months - other.months,
+            days=self.days - other.days,
+            month_end_policy=self.month_end_policy,
+        )
+
+    def __neg__(self) -> Self:
+        """Negate this delta."""
+        return self.negate()
+
+    def __mul__(self, factor: int) -> FiscalDelta:
+        """Multiply delta by an integer factor."""
+        if not isinstance(factor, int):
+            return NotImplemented
+        return FiscalDelta(
+            years=self.years * factor,
+            quarters=self.quarters * factor,
+            months=self.months * factor,
+            days=self.days * factor,
+            month_end_policy=self.month_end_policy,
+        )
+
+    def __rmul__(self, factor: int) -> FiscalDelta:
+        """Right multiply delta by an integer factor."""
+        return self.__mul__(factor)
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+
+def _is_last_day_of_month(d: date) -> bool:
+    """Check if a date is the last day of its month."""
+    return d.day == calendar.monthrange(d.year, d.month)[1]
+
+
+def _add_months(d: date, months: int, policy: MonthEndPolicy) -> date:
+    """Add months to a date with month-end policy.
+
+    Args:
+        d: Starting date.
+        months: Number of months to add (can be negative).
+        policy: How to handle month-end dates.
+
+    Returns:
+        Resulting date.
+
+    Raises:
+        ValueError: If policy is STRICT and day overflows.
+    """
+    if months == 0:
+        return d
+
+    # Calculate target year and month
+    total_months = d.year * 12 + d.month - 1 + months
+    target_year = total_months // 12
+    target_month = total_months % 12 + 1
+
+    # Get max day of target month
+    max_day = calendar.monthrange(target_year, target_month)[1]
+
+    # Apply month-end policy
+    match policy:
+        case MonthEndPolicy.PRESERVE:
+            # Clamp day to max if needed
+            target_day = min(d.day, max_day)
+
+        case MonthEndPolicy.CLAMP:
+            # If original was month-end, result is month-end
+            target_day = max_day if _is_last_day_of_month(d) else min(d.day, max_day)
+
+        case MonthEndPolicy.STRICT:
+            # Raise if day would overflow
+            if d.day > max_day:
+                msg = (
+                    f"Day {d.day} does not exist in {target_year}-{target_month:02d} "
+                    f"(max day: {max_day})"
+                )
+                raise ValueError(msg)
+            target_day = d.day
+
+    return date(target_year, target_month, target_day)
+
+
+# ============================================================================
+# CONVENIENCE FACTORIES
+# ============================================================================
+
+
+def fiscal_quarter(d: date, start_month: int = 1) -> int:
+    """Get fiscal quarter for a date with given fiscal year start.
+
+    Convenience function for one-off lookups without creating FiscalCalendar.
+
+    Args:
+        d: Calendar date.
+        start_month: Month when fiscal year begins (1-12). Default 1 (calendar year).
+
+    Returns:
+        Quarter number (1-4) within fiscal year.
+
+    Examples:
+        >>> fiscal_quarter(date(2024, 4, 15), start_month=4)  # UK fiscal Q1
+        1
+        >>> fiscal_quarter(date(2024, 7, 15), start_month=1)  # Calendar Q3
+        3
+    """
+    return FiscalCalendar(start_month=start_month).fiscal_quarter(d)
+
+
+def fiscal_year_start(fiscal_year: int, start_month: int = 1) -> date:
+    """Get first day of a fiscal year.
+
+    Convenience function for one-off lookups without creating FiscalCalendar.
+
+    Args:
+        fiscal_year: The fiscal year number.
+        start_month: Month when fiscal year begins (1-12). Default 1 (calendar year).
+
+    Returns:
+        First date of the fiscal year.
+
+    Examples:
+        >>> fiscal_year_start(2025, start_month=4)  # UK FY2025 starts Apr 2024
+        datetime.date(2024, 4, 1)
+    """
+    return FiscalCalendar(start_month=start_month).fiscal_year_start_date(fiscal_year)
+
+
+def fiscal_year_end(fiscal_year: int, start_month: int = 1) -> date:
+    """Get last day of a fiscal year.
+
+    Convenience function for one-off lookups without creating FiscalCalendar.
+
+    Args:
+        fiscal_year: The fiscal year number.
+        start_month: Month when fiscal year begins (1-12). Default 1 (calendar year).
+
+    Returns:
+        Last date of the fiscal year.
+
+    Examples:
+        >>> fiscal_year_end(2025, start_month=4)  # UK FY2025 ends Mar 2025
+        datetime.date(2025, 3, 31)
+    """
+    return FiscalCalendar(start_month=start_month).fiscal_year_end_date(fiscal_year)

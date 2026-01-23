@@ -19,7 +19,7 @@ from hypothesis import strategies as st
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser.core import FluentParserV1
-from ftllexengine.syntax.parser.primitives import (
+from ftllexengine.syntax.parser.primitives import (  # type: ignore[attr-defined]
     _MAX_IDENTIFIER_LENGTH,
     _MAX_NUMBER_LENGTH,
     _MAX_STRING_LITERAL_LENGTH,

@@ -188,7 +188,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
     @rule(
         msg_id=messages,
     )
-    def resolve_simple_message(self, msg_id: str):
+    def resolve_simple_message(self, msg_id: str) -> None:
         """Resolve message without arguments.
 
         Metamorphic property: Resolving twice should produce same result.
@@ -222,7 +222,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         var_name=ftl_identifiers(),
         var_value=st.text(max_size=50),
     )
-    def resolve_message_with_args(self, msg_id: str, var_name: str, var_value: str):
+    def resolve_message_with_args(self, msg_id: str, var_name: str, var_value: str) -> None:
         """Resolve message with arguments.
 
         Tests argument passing and variable substitution.
@@ -246,7 +246,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         attr_name=ftl_identifiers(),
         text=st.text(min_size=1, max_size=50),
     )
-    def add_message_with_attribute(self, msg_id: str, attr_name: str, text: str):
+    def add_message_with_attribute(self, msg_id: str, attr_name: str, text: str) -> None:
         """Add message with attribute.
 
         Tests attribute resolution paths (lines 83-89).
@@ -270,7 +270,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         assert errors == (), f"Unexpected errors: {errors}"
 
     @rule(msg_id=messages)
-    def resolve_nonexistent_attribute(self, msg_id: str):
+    def resolve_nonexistent_attribute(self, msg_id: str) -> None:
         """Try to resolve non-existent attribute.
 
         Target: Line 86-88 (attribute not found error path).
@@ -319,7 +319,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         assert len(errors) > 0  # Should have error for nonexistent term
 
     @rule(term_id=terms)
-    def resolve_term_attribute_not_found(self, term_id: str):
+    def resolve_term_attribute_not_found(self, term_id: str) -> None:
         """Try to resolve term attribute that doesn't exist.
 
         Target: Line 182-185 (term attribute not found error path).
@@ -376,7 +376,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         msg_id1=ftl_identifiers(),
         msg_id2=ftl_identifiers(),
     )
-    def test_circular_reference_detection(self, msg_id1: str, msg_id2: str):
+    def test_circular_reference_detection(self, msg_id1: str, msg_id2: str) -> None:
         """Test circular reference detection.
 
         Target: Lines 97-99 (circular reference error).
@@ -418,7 +418,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         msg_id=ftl_identifiers(),
         number=st.integers(min_value=0, max_value=100),
     )
-    def add_message_with_select_expression(self, msg_id: str, number: int):
+    def add_message_with_select_expression(self, msg_id: str, number: int) -> None:
         """Add message with select expression (plural).
 
         Tests select expression resolution.
@@ -489,7 +489,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         msg_id=ftl_identifiers(),
         func_name=st.sampled_from(["NUMBER", "NONEXISTENT"]),
     )
-    def test_function_reference(self, msg_id: str, func_name: str):
+    def test_function_reference(self, msg_id: str, func_name: str) -> None:
         """Test function reference resolution.
 
         Tests both successful and failed function calls.

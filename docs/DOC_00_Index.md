@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.87.0"
 domain: INDEX
-updated: "2026-01-21"
+updated: "2026-01-22"
 route:
-  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?"]
+  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -72,9 +72,18 @@ from ftllexengine.diagnostics import (
 ### Introspection (`from ftllexengine.introspection import ...`)
 ```python
 from ftllexengine.introspection import (
+    # Message introspection
     introspect_message, MessageIntrospection,
     extract_variables, extract_references, clear_introspection_cache,
     VariableInfo, FunctionCallInfo, ReferenceInfo,
+    # ISO introspection (requires Babel)
+    TerritoryCode, CurrencyCode,  # Type aliases
+    TerritoryInfo, CurrencyInfo,  # Data classes
+    get_territory, get_currency, list_territories, list_currencies,
+    get_territory_currency,  # Lookup functions
+    is_valid_territory_code, is_valid_currency_code,  # Type guards
+    clear_iso_cache,  # Cache management
+    BabelImportError,  # Exception
 )
 ```
 
@@ -130,6 +139,23 @@ from ftllexengine.localization import (
 )
 ```
 
+### Parsing (`from ftllexengine.parsing import ...`)
+```python
+from ftllexengine.parsing import (
+    # Parse functions (require Babel)
+    parse_number, parse_decimal, parse_date, parse_datetime, parse_currency,
+    # Type guards
+    is_valid_number, is_valid_decimal, is_valid_date, is_valid_datetime, is_valid_currency,
+    # Type alias
+    ParseResult,
+    # Cache management
+    clear_date_caches, clear_currency_caches,
+    # Fiscal calendar (no Babel required)
+    FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy,
+    fiscal_quarter, fiscal_year_start, fiscal_year_end,
+)
+```
+
 ---
 
 ## File Routing Table
@@ -139,10 +165,12 @@ from ftllexengine.localization import (
 | FluentBundle, FluentLocalization, add_resource, format_pattern, format_value | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
+| FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FluentError, FluentReferenceError, FormattingError, BabelImportError, DepthGuard, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, build_dependency_graph, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
-| extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Introspection |
+| extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
+| TerritoryInfo, CurrencyInfo, get_territory, get_currency, ISO 3166, ISO 4217 | [DOC_02_Types.md](DOC_02_Types.md) | ISO Introspection |
 
 ---
 
@@ -151,10 +179,13 @@ from ftllexengine.localization import (
 ```
 ftllexengine/
   __init__.py              # Public API exports
-  constants.py             # MAX_DEPTH, MAX_PARSE_ERRORS, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings
+  constants.py             # MAX_DEPTH, MAX_PARSE_ERRORS, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
   enums.py                 # CommentType, VariableContext, ReferenceKind
   localization.py          # FluentLocalization, PathResourceLoader
-  introspection.py         # MessageIntrospection, introspect_message, extract_references
+  introspection/
+    __init__.py            # Introspection API exports (message + ISO)
+    message.py             # MessageIntrospection, introspect_message, extract_references
+    iso.py                 # TerritoryInfo, CurrencyInfo, get_territory, get_currency (requires Babel)
   core/
     __init__.py            # Core exports (BabelImportError, DepthGuard, FormattingError)
     babel_compat.py        # BabelImportError, Babel lazy import infrastructure
@@ -188,6 +219,7 @@ ftllexengine/
     dates.py               # parse_date, parse_datetime
     currency.py            # parse_currency
     guards.py              # Type guards
+    fiscal.py              # FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy (no Babel)
   diagnostics/
     __init__.py            # Error exports
     errors.py              # FluentError hierarchy
@@ -212,6 +244,8 @@ ftllexengine/
 | `LocaleCode` | `str` | localization.py |
 | `ResourceId` | `str` | localization.py |
 | `FTLSource` | `str` | localization.py |
+| `TerritoryCode` | `str` | introspection/iso.py |
+| `CurrencyCode` | `str` | introspection/iso.py |
 | `Entry` | `Message \| Term \| Comment \| Junk` | syntax/ast.py |
 | `PatternElement` | `TextElement \| Placeable` | syntax/ast.py |
 | `Expression` | `SelectExpression \| InlineExpression` | syntax/ast.py |

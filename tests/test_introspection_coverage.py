@@ -245,10 +245,10 @@ class TestIntrospectMessageTypeErrors:
         )
     )
     @settings(max_examples=30)
-    def test_introspect_message_with_arbitrary_types(self, invalid_input) -> None:
+    def test_introspect_message_with_arbitrary_types(self, invalid_input: object) -> None:
         """Introspecting non-Message types should raise TypeError (Hypothesis)."""
         with pytest.raises(TypeError, match="Expected Message or Term"):
-            introspect_message(invalid_input)
+            introspect_message(invalid_input)  # type: ignore[arg-type]
 
 
 class TestExtractVariablesEdgeCases:

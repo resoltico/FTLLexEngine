@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.localization import PathResourceLoader
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -158,7 +159,7 @@ def test_resolver_pattern_elements_all_text():
     )
 
     context = ResolutionContext()
-    errors: list = []
+    errors: list[FrozenFluentError] = []
 
     result = resolver._resolve_pattern(pattern, {}, errors, context)
 
@@ -227,7 +228,7 @@ def test_resolver_empty_pattern_elements():
     )
 
     context = ResolutionContext()
-    errors: list = []
+    errors: list[FrozenFluentError] = []
 
     result = resolver._resolve_pattern(pattern, {}, errors, context)
 

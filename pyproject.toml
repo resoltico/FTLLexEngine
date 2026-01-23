@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.86.0"
+version = "0.87.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -75,7 +75,7 @@ dev = [
     "Babel>=2.17.0,<3.0.0",  # Required for tests (locale formatting, parsing)
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
-    "hypothesis>=6.150.2",
+    "hypothesis>=6.150.3",
     "mypy>=1.19.1",
     "pylint>=4.0.4",
     "ruff>=0.14.11",
@@ -266,7 +266,8 @@ ignore = [
 "src/ftllexengine/__init__.py" = ["PLC0415", "F401"]
 
 # Visitor pattern: N802 (visit_NodeName methods follow stdlib ast.NodeVisitor convention)
-"src/ftllexengine/introspection.py" = ["N802"]
+# RUF022: __all__ organized by category (public/internal) for clarity
+"src/ftllexengine/introspection/message.py" = ["N802", "RUF022"]
 
 # Parser: Inherent complexity from EBNF grammar
 "src/ftllexengine/syntax/parser/core.py" = ["PLR0912"]
@@ -342,6 +343,12 @@ ignore = [
 "tests/conftest.py" = ["PLC0415"]
 "tests/helpers/type_assertions.py" = ["PLC0415"]
 "tests/test_fluent_parser_*.py" = ["PT018"]
+"tests/test_edge_case_validation.py" = ["PLC0415"]
+"tests/test_babel_compat.py" = ["PLC0415"]
+"tests/test_resolver_module_exports.py" = ["PLC0415"]
+
+# FUZZING - Atheris fuzzers with invariant comments that look like code
+"fuzz/**/*.py" = ["ERA001"]
 
 # Pylint configuration
 [tool.pylint.main]

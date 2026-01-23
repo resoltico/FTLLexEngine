@@ -29,6 +29,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.diagnostics.formatter import DiagnosticFormatter, OutputFormat
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -249,7 +250,7 @@ def test_resolver_pattern_loop_branches():
     )
 
     context = ResolutionContext()
-    errors: list = []
+    errors: list[FrozenFluentError] = []
 
     result = resolver._resolve_pattern(pattern, {"var": "VALUE"}, errors, context)
 

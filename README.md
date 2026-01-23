@@ -1,7 +1,7 @@
 <!--
 RETRIEVAL_HINTS:
-  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, currency, dates, thread-safe]
-  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, thread safety]
+  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, currency, dates, thread-safe, fiscal, iso, territory, decimal-digits]
+  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, thread safety, fiscal calendar, iso introspection, territory currency]
   related: [docs/QUICK_REFERENCE.md, docs/DOC_00_Index.md, docs/PARSING_GUIDE.md, docs/TERMINOLOGY.md]
 -->
 
@@ -20,9 +20,9 @@ RETRIEVAL_HINTS:
 
 **Declarative localization for Python. Plurals, grammar, and formatting in `.ftl` files - not your code.**
 
-"1 coffee" or "5 coffees" - simple in English. Polish has 4 plural forms. Arabic has 6. FTLLexEngine handles them declaratively so your code stays clean.
+"1 coffee" or "5 coffees" - simple in English. Polish has 4 plural forms. Arabic has 6. FTLLexEngine handles them all so your code stays clean.
 
-But it goes further: **bidirectional parsing**. Your customer types `"1 234,56"` in France or `"1,234.56"` in the US - FTLLexEngine parses both to `Decimal('1234.56')`. Errors come back as data, not exceptions.
+But it goes further: **bidirectional parsing**. Your customer types `"1 234,56"` in France or `"1,234.56"` in the US - FTLLexEngine parses both to `Decimal('1234.56')`. Parse errors return as structured data, not raised exceptions.
 
 Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe.
 
@@ -77,6 +77,7 @@ if errors:
 - [Customers Type Prices. You Get Decimals.](#customers-type-prices-you-get-decimals)
 - [Concurrent Requests? No Problem.](#concurrent-requests-no-problem)
 - [Know What Your Messages Need](#know-what-your-messages-need)
+- [Your Cafe Expands Worldwide](#your-cafe-expands-worldwide)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -87,13 +88,13 @@ if errors:
 ## Installation
 
 ```bash
-pip install ftllexengine[babel]
+uv add ftllexengine[babel]
 ```
 
-Or with uv:
+Or with pip:
 
 ```bash
-uv add ftllexengine[babel]
+pip install ftllexengine[babel]
 ```
 
 **Requirements**: Python >= 3.13 | Babel >= 2.17
@@ -102,8 +103,10 @@ uv add ftllexengine[babel]
 <summary>Parser-only installation (no Babel dependency)</summary>
 
 ```bash
-pip install ftllexengine
+uv add ftllexengine
 ```
+
+Or: `pip install ftllexengine`
 
 **Works without Babel:**
 - FTL syntax parsing (`parse_ftl()`, `serialize_ftl()`)
@@ -233,7 +236,7 @@ date_val, errors = parse_date("Jan 15, 2026", "en_US")
 ```python
 price, errors = parse_decimal("five fifty", "en_US")
 # price = None
-# errors = (FluentParseError(...),)
+# errors = (FrozenFluentError(...),)
 
 if errors:
     err = errors[0]
@@ -375,6 +378,66 @@ info.requires_variable("customer_name")
 
 ---
 
+## Your Cafe Expands Worldwide
+
+Your cafe chain opens in Tokyo, London, and New York. Each country uses a different currency. Each has a different fiscal year.
+
+**The problem:** Japan uses yen with no decimal places (no cents). Kuwait uses dinar with 3 decimal places. The UK fiscal year starts in April; the US federal government starts in October.
+
+**The solution:** Query ISO standards data and calculate fiscal periods.
+
+### Which Currency for Each Location?
+
+```python
+from ftllexengine.introspection.iso import get_territory_currency, get_currency
+
+# New location in Japan - what currency?
+currency_code = get_territory_currency("JP")
+# "JPY"
+
+# How many decimal places for yen?
+jpy = get_currency("JPY")
+jpy.decimal_digits
+# 0 - no cents in Japan
+
+# Compare to US dollar
+usd = get_currency("USD")
+usd.decimal_digits
+# 2 - dollars and cents
+```
+
+Your receipts format correctly - no `$5.00` in Tokyo, just `¥500`.
+
+### Quarterly Reports Across Time Zones
+
+```python
+from datetime import date
+from ftllexengine.parsing.fiscal import FiscalCalendar
+
+# UK cafe: fiscal year starts April
+uk_calendar = FiscalCalendar(start_month=4)
+
+# US cafe: calendar year
+us_calendar = FiscalCalendar(start_month=1)
+
+today = date(2026, 3, 15)
+
+# Same calendar date, different fiscal years
+uk_calendar.fiscal_year(today)
+# 2026 (UK FY2026 runs Apr 2025 - Mar 2026)
+
+us_calendar.fiscal_year(today)
+# 2026
+
+# When does UK Q4 end?
+uk_calendar.quarter_end_date(2026, 4)
+# date(2026, 3, 31)
+```
+
+Your accountants in London and New York see the correct fiscal periods for their jurisdiction.
+
+---
+
 ## When to Use FTLLexEngine
 
 ### Use It When:
@@ -386,6 +449,8 @@ info.requires_variable("customer_name")
 | **Web servers** | Thread-safe. No global locale state. |
 | **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
 | **Multi-locale apps** | 200+ locales. CLDR-compliant. |
+| **Multi-currency apps** | ISO 4217 data. Territory-to-currency mapping. Decimal places. |
+| **Fiscal calendar logic** | UK/Japan/Australia fiscal years. Quarter calculations. |
 | **AI integrations** | Introspect messages before formatting. |
 | **Content/code separation** | Translators edit `.ftl` files. Developers ship code. |
 

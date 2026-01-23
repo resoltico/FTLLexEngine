@@ -162,7 +162,7 @@ class TestSpecConformanceCoreFeatures:
         self,
         fixture_name: str,
         description: str,
-    ):
+    ) -> None:
         """Test structural conformance with official fixtures.
 
         Property: Parser produces same structure as reference implementation.
@@ -204,7 +204,7 @@ class TestSpecConformanceCoreFeatures:
         self,
         fixture_name: str,
         description: str,
-    ):
+    ) -> None:
         """Test parser determinism on official fixtures.
 
         Property: Parsing same fixture twice yields identical results.
@@ -237,7 +237,7 @@ class TestSpecConformanceErrorHandling:
         self,
         fixture_name: str,
         description: str,
-    ):
+    ) -> None:
         """Test parser robustness on error fixtures.
 
         Property: Parser never crashes on invalid input.
@@ -275,7 +275,7 @@ class TestSpecConformanceRoundtrip:
         self,
         fixture_name: str,
         description: str,
-    ):
+    ) -> None:
         """Test parse→serialize→parse convergence on official fixtures.
 
         Property: After first roundtrip, format stabilizes.

@@ -47,8 +47,11 @@ class TestBabelImportErrorGetDatePatterns:
         original_import = builtins.__import__
 
         def mock_import(
-            name: str, globals_: dict | None = None, locals_: dict | None = None,
-            fromlist: tuple[str, ...] = (), level: int = 0
+            name: str,
+            globals_: dict[str, object] | None = None,
+            locals_: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
         ) -> object:
             """Mock import that raises ImportError for babel module."""
             if name == "babel":
@@ -82,8 +85,11 @@ class TestBabelImportErrorGetDatePatterns:
             original_import = builtins.__import__
 
             def mock_import(
-                name: str, globals_: dict | None = None, locals_: dict | None = None,
-                fromlist: tuple[str, ...] = (), level: int = 0
+                name: str,
+                globals_: dict[str, object] | None = None,
+                locals_: dict[str, object] | None = None,
+                fromlist: tuple[str, ...] = (),
+                level: int = 0,
             ) -> object:
                 """Mock import that raises ImportError for babel."""
                 if name == "babel" or name.startswith("babel."):
@@ -125,8 +131,11 @@ class TestBabelImportErrorGetDatetimePatterns:
         original_import = builtins.__import__
 
         def mock_import(
-            name: str, globals_: dict | None = None, locals_: dict | None = None,
-            fromlist: tuple[str, ...] = (), level: int = 0
+            name: str,
+            globals_: dict[str, object] | None = None,
+            locals_: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
         ) -> object:
             """Mock import that raises ImportError for babel module."""
             if name == "babel":
@@ -161,8 +170,11 @@ class TestBabelImportErrorGetDatetimePatterns:
             original_import = builtins.__import__
 
             def mock_import(
-                name: str, globals_: dict | None = None, locals_: dict | None = None,
-                fromlist: tuple[str, ...] = (), level: int = 0
+                name: str,
+                globals_: dict[str, object] | None = None,
+                locals_: dict[str, object] | None = None,
+                fromlist: tuple[str, ...] = (),
+                level: int = 0,
             ) -> object:
                 """Mock import that raises ImportError for babel."""
                 if name == "babel" or name.startswith("babel."):
@@ -297,8 +309,11 @@ class TestStripEraLocalizedEraLoading:
         original_import = builtins.__import__
 
         def mock_import(
-            name: str, globals_: dict | None = None, locals_: dict | None = None,
-            fromlist: tuple[str, ...] = (), level: int = 0
+            name: str,
+            globals_: dict[str, object] | None = None,
+            locals_: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
         ) -> object:
             """Mock import that raises ImportError for babel in _strip_era."""
             if name == "babel":

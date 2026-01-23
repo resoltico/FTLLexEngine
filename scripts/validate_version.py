@@ -46,6 +46,7 @@ import os
 import re
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
@@ -90,8 +91,9 @@ def get_pyproject_version(root: Path) -> str | None:
     try:
         with pyproject_path.open("rb") as f:
             data = tomllib.load(f)
-        return data.get("project", {}).get("version")
-    except Exception:
+        version = data.get("project", {}).get("version")
+        return str(version) if version is not None else None
+    except (OSError, tomllib.TOMLDecodeError, KeyError):
         return None
 
 
@@ -102,9 +104,12 @@ def get_package_version() -> str | None:
         Version string or None if package not installed
     """
     try:
-        from importlib.metadata import version
+        from importlib.metadata import (  # noqa: PLC0415  # pylint: disable=C0415
+            PackageNotFoundError,
+            version,
+        )
         return version("ftllexengine")
-    except Exception:
+    except (ImportError, PackageNotFoundError):
         return None
 
 
@@ -115,9 +120,9 @@ def get_runtime_version() -> str | None:
         Version string or None if import fails
     """
     try:
-        import ftllexengine
+        import ftllexengine  # noqa: PLC0415  # pylint: disable=C0415
         return ftllexengine.__version__
-    except Exception:
+    except (ImportError, AttributeError):
         return None
 
 
@@ -263,7 +268,7 @@ def check_version_components(root: Path) -> CheckResult:
         )
 
     # Extract base version (before - or +)
-    base_version = version.split("-")[0].split("+")[0]
+    base_version = version.split("-", maxsplit=1)[0].split("+", maxsplit=1)[0]
     parts = base_version.split(".")
 
     if len(parts) != 3:
@@ -277,7 +282,7 @@ def check_version_components(root: Path) -> CheckResult:
             is_critical=True,
         )
 
-    for i, (name, value) in enumerate(zip(["MAJOR", "MINOR", "PATCH"], parts)):
+    for name, value in zip(["MAJOR", "MINOR", "PATCH"], parts, strict=True):
         if not value.isdigit():
             return CheckResult(
                 name="version_components",
@@ -358,7 +363,7 @@ def check_doc_frontmatter_versions(root: Path) -> CheckResult:
                         mismatched.append(
                             f"  {doc_file.name}: {doc_version} (expected {version})"
                         )
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             mismatched.append(f"  {doc_file.name}: Error reading file - {e}")
 
     if mismatched:
@@ -439,7 +444,7 @@ def check_quick_reference_version(root: Path) -> CheckResult:
             is_critical=True,
         )
 
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return CheckResult(
             name="quick_reference_version",
             passed=False,
@@ -507,7 +512,7 @@ def check_terminology_version(root: Path) -> CheckResult:
             is_critical=True,
         )
 
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return CheckResult(
             name="terminology_version",
             passed=False,
@@ -574,7 +579,7 @@ def check_changelog_mentions_version(root: Path) -> CheckResult:
             is_critical=False,  # Warning only
         )
 
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         return CheckResult(
             name="changelog_mentions_version",
             passed=True,
@@ -637,13 +642,107 @@ def check_changelog_has_version_link(root: Path) -> CheckResult:
             is_critical=False,  # Warning only
         )
 
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return CheckResult(
             name="changelog_version_link",
             passed=True,
             message="Error reading CHANGELOG.md (skipped)",
             is_critical=False,
         )
+
+
+# ==============================================================================
+# RESULT PROCESSING HELPERS
+# ==============================================================================
+
+
+@dataclass
+class CategorizedResults:
+    """Categorized check results."""
+
+    critical_failures: list[CheckResult]
+    doc_failures: list[CheckResult]
+    warnings: list[CheckResult]
+    passed: list[CheckResult]
+
+
+def categorize_results(checks: list[CheckResult]) -> CategorizedResults:
+    """Categorize check results by severity."""
+    critical_failures: list[CheckResult] = []
+    doc_failures: list[CheckResult] = []
+    warnings: list[CheckResult] = []
+    passed: list[CheckResult] = []
+
+    for result in checks:
+        if result.passed:
+            passed.append(result)
+        elif result.is_critical:
+            # Distinguish between critical and documentation failures
+            if "doc" in result.name or "quick_reference" in result.name:
+                doc_failures.append(result)
+            else:
+                critical_failures.append(result)
+        else:
+            warnings.append(result)
+
+    return CategorizedResults(critical_failures, doc_failures, warnings, passed)
+
+
+def print_check_results(checks: list[CheckResult]) -> None:
+    """Print individual check results."""
+    print(f"{Colors.BOLD}Checks:{Colors.RESET}")
+
+    for result in checks:
+        status = _get_status_string(result)
+        print(f"  {status} {result.name}")
+
+        if not result.passed:
+            for line in result.message.split("\n"):
+                print(f"         {line}")
+
+
+def _get_status_string(result: CheckResult) -> str:
+    """Get colored status string for a result."""
+    if result.passed:
+        return f"{Colors.GREEN}[PASS]{Colors.RESET}"
+    if result.is_critical:
+        return f"{Colors.RED}[FAIL]{Colors.RESET}"
+    return f"{Colors.YELLOW}[WARN]{Colors.RESET}"
+
+
+def print_summary_and_get_exit_code(
+    categorized: CategorizedResults, total: int
+) -> int:
+    """Print summary and return appropriate exit code."""
+    print()
+    passed_count = len(categorized.passed)
+
+    if categorized.critical_failures:
+        print(
+            f"{Colors.RED}{Colors.BOLD}[FAIL]{Colors.RESET} "
+            f"{len(categorized.critical_failures)} critical failure(s), "
+            f"{passed_count}/{total} checks passed"
+        )
+        return 1
+
+    if categorized.doc_failures:
+        print(
+            f"{Colors.RED}{Colors.BOLD}[FAIL]{Colors.RESET} "
+            f"{len(categorized.doc_failures)} documentation sync failure(s), "
+            f"{passed_count}/{total} checks passed"
+        )
+        return 2
+
+    if categorized.warnings:
+        print(
+            f"{Colors.YELLOW}{Colors.BOLD}[WARN]{Colors.RESET} "
+            f"{len(categorized.warnings)} warning(s), "
+            f"{passed_count}/{total} checks passed"
+        )
+        return 0
+
+    print(f"{Colors.GREEN}{Colors.BOLD}[OK]{Colors.RESET} All {total} version checks passed")
+    return 0
 
 
 # ==============================================================================
@@ -714,69 +813,10 @@ def main() -> int:
         check_changelog_has_version_link(root),
     ]
 
-    # Categorize results
-    critical_failures = []
-    doc_failures = []
-    warnings = []
-    passed = []
-
-    for result in checks:
-        if result.passed:
-            passed.append(result)
-        elif result.is_critical:
-            # Distinguish between critical and documentation failures
-            if "doc" in result.name or "quick_reference" in result.name:
-                doc_failures.append(result)
-            else:
-                critical_failures.append(result)
-        else:
-            warnings.append(result)
-
-    # Print results
-    print(f"{Colors.BOLD}Checks:{Colors.RESET}")
-
-    for result in checks:
-        if result.passed:
-            status = f"{Colors.GREEN}[PASS]{Colors.RESET}"
-        elif result.is_critical:
-            status = f"{Colors.RED}[FAIL]{Colors.RESET}"
-        else:
-            status = f"{Colors.YELLOW}[WARN]{Colors.RESET}"
-
-        print(f"  {status} {result.name}")
-
-        # Show details for failures/warnings
-        if not result.passed:
-            for line in result.message.split("\n"):
-                print(f"         {line}")
-
-    # Summary
-    print()
-    total = len(checks)
-    passed_count = len(passed)
-
-    if critical_failures:
-        print(f"{Colors.RED}{Colors.BOLD}[FAIL]{Colors.RESET} "
-              f"{len(critical_failures)} critical failure(s), "
-              f"{passed_count}/{total} checks passed")
-        return 1
-
-    if doc_failures:
-        print(f"{Colors.RED}{Colors.BOLD}[FAIL]{Colors.RESET} "
-              f"{len(doc_failures)} documentation sync failure(s), "
-              f"{passed_count}/{total} checks passed")
-        return 2
-
-    if warnings:
-        print(f"{Colors.YELLOW}{Colors.BOLD}[WARN]{Colors.RESET} "
-              f"{len(warnings)} warning(s), "
-              f"{passed_count}/{total} checks passed")
-        # Warnings don't fail the build
-        return 0
-
-    print(f"{Colors.GREEN}{Colors.BOLD}[OK]{Colors.RESET} "
-          f"All {total} version checks passed")
-    return 0
+    # Categorize, print, and summarize
+    categorized = categorize_results(checks)
+    print_check_results(checks)
+    return print_summary_and_get_exit_code(categorized, len(checks))
 
 
 if __name__ == "__main__":

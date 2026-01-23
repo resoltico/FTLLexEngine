@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-# --- ASSUMPTIONS TESTER (Platinum Standard) ---
+# --- ASSUMPTIONS TESTER ---
 pre_flight_diagnostics() {
     # Output Architecture Directive (OAD) for cross-agent legibility
     # @FORMAT: [STATUS:8][COMPONENT:20][MESSAGE]

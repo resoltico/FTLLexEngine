@@ -67,7 +67,7 @@ class TestParseNumberHypothesis:
     @given(
         invalid_input=st.one_of(
             st.text(
-                alphabet=st.characters(whitelist_categories=("L",)),
+                alphabet=st.characters(whitelist_categories=["L"]),
                 min_size=1,
                 max_size=20,
             ).filter(lambda x: x.upper() not in ("NAN", "INFINITY", "INF")),
@@ -94,7 +94,7 @@ class TestParseNumberHypothesis:
     @settings(max_examples=50)
     def test_parse_number_type_error_returns_error(self, value: object) -> None:
         """Non-string types return error in tuple; function never raises."""
-        result, errors = parse_number(value, "en_US")
+        result, errors = parse_number(value, "en_US")  # type: ignore[arg-type]
         assert len(errors) > 0
         assert result is None
 
@@ -183,7 +183,7 @@ class TestParseDecimalHypothesis:
     @given(
         invalid_input=st.one_of(
             st.text(
-                alphabet=st.characters(whitelist_categories=("L",)),
+                alphabet=st.characters(whitelist_categories=["L"]),
                 min_size=1,
                 max_size=20,
             ).filter(lambda x: x.upper() not in ("NAN", "INFINITY", "INF")),

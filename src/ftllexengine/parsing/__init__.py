@@ -1,17 +1,16 @@
-"""Bi-directional localization: Parse locale-aware display strings back to Python types.
+"""Bi-directional localization and fiscal calendar arithmetic.
+
+This module provides:
+1. Parse locale-aware display strings back to Python types
+2. Fiscal calendar arithmetic for financial date calculations
 
 Exception Contract:
     - Parse errors (malformed input, unknown locale): Returned in error tuple
     - Configuration errors (missing Babel): Raises BabelImportError
 
-All parsing functions require Babel for CLDR data. If Babel is not installed,
+Parsing functions require Babel for CLDR data. If Babel is not installed,
 functions raise BabelImportError with installation instructions.
-
-This module provides the inverse operations to ftllexengine.runtime.functions:
-- Formatting: Python data -> locale-aware display string
-- Parsing: Locale-aware display string -> Python data
-
-All parsing functions are thread-safe and use Babel for CLDR-compliant parsing.
+Fiscal calendar functions do NOT require Babel.
 
 Public API:
     Type Aliases:
@@ -32,24 +31,49 @@ Public API:
         is_valid_date - TypeIs guard for date (not None)
         is_valid_datetime - TypeIs guard for datetime (not None)
 
+    Fiscal Calendar:
+        FiscalCalendar - Configuration for fiscal year boundaries
+        FiscalDelta - Immutable period delta (years, quarters, months, days)
+        FiscalPeriod - Immutable fiscal period identifier
+        MonthEndPolicy - Enum for month-end date handling
+        fiscal_quarter - Get fiscal quarter for a date
+        fiscal_year_start - Get first day of a fiscal year
+        fiscal_year_end - Get last day of a fiscal year
+
     Cache Lifecycle:
         clear_date_caches - Clear cached CLDR date/datetime patterns
         clear_currency_caches - Clear cached CLDR currency data
 
-Example:
-    >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal
-    >>> result, errors = parse_decimal("1 234,56", "lv_LV")
-    >>> if not errors and is_valid_decimal(result):
-    ...     # mypy knows result is finite Decimal
-    ...     total = result.quantize(Decimal("0.01"))
+Examples:
+    Parsing:
+        >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal
+        >>> result, errors = parse_decimal("1 234,56", "lv_LV")
+        >>> if not errors and is_valid_decimal(result):
+        ...     total = result.quantize(Decimal("0.01"))
 
-Python 3.13+. Uses Babel CLDR patterns + stdlib for all parsing.
+    Fiscal Calendar:
+        >>> from ftllexengine.parsing import FiscalCalendar, FiscalDelta
+        >>> cal = FiscalCalendar(start_month=4)  # UK fiscal year
+        >>> cal.fiscal_quarter(date(2024, 7, 15))  # Returns 2 (Q2)
+        >>> delta = FiscalDelta(months=1)
+        >>> delta.add_to(date(2024, 1, 31))  # Returns date(2024, 2, 29)
+
+Python 3.13+. Parsing uses Babel CLDR patterns; fiscal uses stdlib only.
 """
 
 from ftllexengine.diagnostics import FrozenFluentError
 
 from .currency import clear_currency_caches, parse_currency
 from .dates import clear_date_caches, parse_date, parse_datetime
+from .fiscal import (
+    FiscalCalendar,
+    FiscalDelta,
+    FiscalPeriod,
+    MonthEndPolicy,
+    fiscal_quarter,
+    fiscal_year_end,
+    fiscal_year_start,
+)
 from .guards import (
     is_valid_currency,
     is_valid_date,
@@ -73,6 +97,7 @@ Example:
     ...     print(f"Parsed: {result}")
 """
 
+# ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
     # Type alias
     "ParseResult",
@@ -91,4 +116,12 @@ __all__ = [
     "parse_datetime",
     "parse_decimal",
     "parse_number",
+    # Fiscal calendar
+    "FiscalCalendar",
+    "FiscalDelta",
+    "FiscalPeriod",
+    "MonthEndPolicy",
+    "fiscal_quarter",
+    "fiscal_year_end",
+    "fiscal_year_start",
 ]

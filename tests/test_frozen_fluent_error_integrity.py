@@ -763,3 +763,234 @@ class TestCompleteBranchCoverage:
         # Message should be represented (possibly truncated in repr)
         # Category should be shown
         assert category.name in r or str(category) in r
+
+    def test_hash_with_diagnostic_span(self) -> None:
+        """Test content hash computation with Diagnostic containing SourceSpan.
+
+        This exercises lines 196-199 in _compute_content_hash where span
+        fields are hashed when diagnostic.span is not None.
+        """
+        from ftllexengine.diagnostics.codes import SourceSpan  # noqa: PLC0415
+
+        # Create diagnostic WITH span
+        diagnostic_with_span = Diagnostic(
+            code=DiagnosticCode.MESSAGE_NOT_FOUND,
+            message="Test message",
+            span=SourceSpan(start=10, end=20, line=5, column=3),
+            severity="error",
+        )
+
+        error1 = FrozenFluentError(
+            "test",
+            ErrorCategory.REFERENCE,
+            diagnostic=diagnostic_with_span,
+        )
+
+        # Create another with same span
+        error2 = FrozenFluentError(
+            "test",
+            ErrorCategory.REFERENCE,
+            diagnostic=diagnostic_with_span,
+        )
+
+        # Should have identical hashes
+        assert error1.content_hash == error2.content_hash
+
+        # Create diagnostic with different span values
+        diagnostic_different_span = Diagnostic(
+            code=DiagnosticCode.MESSAGE_NOT_FOUND,
+            message="Test message",
+            span=SourceSpan(start=100, end=200, line=10, column=15),
+            severity="error",
+        )
+
+        error3 = FrozenFluentError(
+            "test",
+            ErrorCategory.REFERENCE,
+            diagnostic=diagnostic_different_span,
+        )
+
+        # Should have different hash
+        assert error1.content_hash != error3.content_hash
+
+        # Verify integrity
+        assert error1.verify_integrity() is True
+        assert error3.verify_integrity() is True
+
+    def test_hash_with_diagnostic_optional_fields(self) -> None:
+        """Test content hash computation with all Diagnostic optional fields.
+
+        This exercises line 215 in _compute_content_hash where optional
+        string fields (hint, help_url, etc.) are hashed when not None.
+        """
+        # Create diagnostic with ALL optional string fields populated
+        diagnostic_full = Diagnostic(
+            code=DiagnosticCode.FUNCTION_FAILED,
+            message="Function error",
+            hint="Check your arguments",
+            help_url="https://example.com/help",
+            function_name="NUMBER",
+            argument_name="value",
+            expected_type="int | float",
+            received_type="str",
+            ftl_location="messages.ftl:42",
+            severity="error",
+        )
+
+        error1 = FrozenFluentError(
+            "test",
+            ErrorCategory.RESOLUTION,
+            diagnostic=diagnostic_full,
+        )
+
+        # Create another with same fields
+        error2 = FrozenFluentError(
+            "test",
+            ErrorCategory.RESOLUTION,
+            diagnostic=diagnostic_full,
+        )
+
+        # Should have identical hashes
+        assert error1.content_hash == error2.content_hash
+
+        # Change one optional field
+        diagnostic_changed = Diagnostic(
+            code=DiagnosticCode.FUNCTION_FAILED,
+            message="Function error",
+            hint="Different hint",  # Changed
+            help_url="https://example.com/help",
+            function_name="NUMBER",
+            argument_name="value",
+            expected_type="int | float",
+            received_type="str",
+            ftl_location="messages.ftl:42",
+            severity="error",
+        )
+
+        error3 = FrozenFluentError(
+            "test",
+            ErrorCategory.RESOLUTION,
+            diagnostic=diagnostic_changed,
+        )
+
+        # Should have different hash
+        assert error1.content_hash != error3.content_hash
+
+        # Verify integrity
+        assert error1.verify_integrity() is True
+        assert error3.verify_integrity() is True
+
+    def test_hash_with_diagnostic_resolution_path(self) -> None:
+        """Test content hash computation with Diagnostic resolution_path.
+
+        This exercises lines 225-228 in _compute_content_hash where
+        resolution_path tuple elements are hashed when not None.
+        """
+        # Create diagnostic with resolution_path
+        diagnostic_with_path = Diagnostic(
+            code=DiagnosticCode.CYCLIC_REFERENCE,
+            message="Cyclic reference detected",
+            resolution_path=("message1", "message2", "message3"),
+            severity="error",
+        )
+
+        error1 = FrozenFluentError(
+            "test",
+            ErrorCategory.CYCLIC,
+            diagnostic=diagnostic_with_path,
+        )
+
+        # Create another with same path
+        error2 = FrozenFluentError(
+            "test",
+            ErrorCategory.CYCLIC,
+            diagnostic=diagnostic_with_path,
+        )
+
+        # Should have identical hashes
+        assert error1.content_hash == error2.content_hash
+
+        # Create diagnostic with different resolution_path
+        diagnostic_different_path = Diagnostic(
+            code=DiagnosticCode.CYCLIC_REFERENCE,
+            message="Cyclic reference detected",
+            resolution_path=("message1", "message4", "message5"),  # Different
+            severity="error",
+        )
+
+        error3 = FrozenFluentError(
+            "test",
+            ErrorCategory.CYCLIC,
+            diagnostic=diagnostic_different_path,
+        )
+
+        # Should have different hash
+        assert error1.content_hash != error3.content_hash
+
+        # Create diagnostic with empty resolution_path
+        diagnostic_empty_path = Diagnostic(
+            code=DiagnosticCode.CYCLIC_REFERENCE,
+            message="Cyclic reference detected",
+            resolution_path=(),  # Empty tuple
+            severity="error",
+        )
+
+        error4 = FrozenFluentError(
+            "test",
+            ErrorCategory.CYCLIC,
+            diagnostic=diagnostic_empty_path,
+        )
+
+        # Should have different hash from non-empty path
+        assert error1.content_hash != error4.content_hash
+
+        # Verify integrity
+        assert error1.verify_integrity() is True
+        assert error3.verify_integrity() is True
+        assert error4.verify_integrity() is True
+
+    def test_setattr_allows_python_exception_attributes(self) -> None:
+        """Test __setattr__ allows Python exception mechanism attributes.
+
+        This exercises lines 254-255 in __setattr__ where Python's exception
+        handling attributes (__traceback__, __context__, __cause__,
+        __suppress_context__) are allowed even after freeze.
+        """
+        error = FrozenFluentError("test", ErrorCategory.REFERENCE)
+
+        # Python exception attributes should be settable even after freeze
+        # These are set by Python's exception handling mechanism
+        import sys  # noqa: PLC0415
+
+        # Create a dummy traceback by raising and catching
+        tb = None
+        try:
+            msg = "dummy"
+            raise ValueError(msg)
+        except ValueError:
+            tb = sys.exc_info()[2]
+
+        # Should NOT raise ImmutabilityViolationError
+        error.__traceback__ = tb
+        assert error.__traceback__ is tb
+
+        # Test __context__ (exception chaining)
+        context_error = ValueError("context")
+        error.__context__ = context_error
+        assert error.__context__ is context_error
+
+        # Test __cause__ (explicit exception chaining)
+        cause_error = RuntimeError("cause")
+        error.__cause__ = cause_error
+        assert error.__cause__ is cause_error
+
+        # Test __suppress_context__
+        error.__suppress_context__ = True
+        assert error.__suppress_context__ is True
+
+        # Verify error is still frozen for other attributes
+        with pytest.raises(ImmutabilityViolationError):
+            error._message = "modified"
+
+        # Verify integrity is maintained
+        assert error.verify_integrity() is True

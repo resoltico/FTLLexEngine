@@ -292,7 +292,7 @@ class TestFormatValueInvalidArgsTypeValidation:
         self,
         locale: str,
         message_id: str,
-        invalid_args: int | float | str | list | bool,
+        invalid_args: int | float | str | list[int] | bool,
     ) -> None:
         """format_value with non-Mapping args returns error (lines 895-900)."""
         l10n = FluentLocalization([locale])
@@ -355,7 +355,7 @@ class TestFormatPatternInvalidArgsTypeValidation:
         ),
     )
     def test_format_pattern_invalid_args_type_returns_error(
-        self, locale: str, message_id: str, invalid_args: int | float | str | list
+        self, locale: str, message_id: str, invalid_args: int | float | str | list[int]
     ) -> None:
         """format_pattern with non-Mapping args returns error (lines 981-986)."""
         l10n = FluentLocalization([locale])
@@ -393,7 +393,7 @@ class TestFormatPatternInvalidAttributeTypeValidation:
         ),
     )
     def test_format_pattern_invalid_attribute_type_returns_error(
-        self, locale: str, message_id: str, invalid_attr: int | float | list | dict
+        self, locale: str, message_id: str, invalid_attr: int | float | list[str] | dict[str, int]
     ) -> None:
         """format_pattern with non-str attribute returns error (lines 990-996)."""
         l10n = FluentLocalization([locale])

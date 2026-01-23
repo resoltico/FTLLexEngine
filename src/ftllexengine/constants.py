@@ -9,6 +9,8 @@ Constants are grouped by domain:
 - Cache limits: Memory bounds for caching subsystems
 - Input limits: DoS prevention via size constraints
 - Parser limits: Token length bounds and lookahead distance
+- Fallback strings: Error message templates
+- ISO 4217: Currency decimal digit specifications
 
 Python 3.13+. Zero external dependencies.
 """
@@ -34,6 +36,9 @@ __all__ = [
     "FALLBACK_MISSING_VARIABLE",
     "FALLBACK_MISSING_TERM",
     "FALLBACK_FUNCTION_ERROR",
+    # ISO 4217 currency data
+    "ISO_4217_DECIMAL_DIGITS",
+    "ISO_4217_DEFAULT_DECIMALS",
 ]
 
 # ============================================================================
@@ -204,3 +209,59 @@ FALLBACK_MISSING_TERM: str = "{{-{name}}}"  # -> {-brand}
 # from message references like {msg}. This intentional deviation from FTL syntax
 # makes function errors immediately identifiable in output without ambiguity.
 FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # -> {!NUMBER}
+
+# ============================================================================
+# ISO 4217 CURRENCY DECIMAL DIGITS
+# ============================================================================
+#
+# ISO 4217 specifies the number of decimal digits for each currency.
+# Most currencies use 2 decimal places. Exceptions:
+# - Zero decimals: JPY, KRW, VND (no subunits or subunits not used)
+# - Three decimals: TND, KWD, BHD, JOD, OMR (1/1000 subunits)
+# - Four decimals: CLF, UYW (accounting units)
+#
+# Source: ISO 4217:2015 and subsequent amendments
+# https://www.iso.org/iso-4217-currency-codes.html
+#
+# This is used by ISO introspection to provide accurate currency metadata.
+# Babel provides currency symbols and names but does NOT expose decimal digits.
+#
+# ============================================================================
+
+# Currencies with non-standard decimal digits (0, 3, or 4).
+# All currencies not listed here default to 2 decimal digits.
+ISO_4217_DECIMAL_DIGITS: dict[str, int] = {
+    # Zero decimal currencies (no minor unit or minor unit not used)
+    "BIF": 0,  # Burundian Franc
+    "CLP": 0,  # Chilean Peso
+    "DJF": 0,  # Djiboutian Franc
+    "GNF": 0,  # Guinean Franc
+    "ISK": 0,  # Icelandic Krona
+    "JPY": 0,  # Japanese Yen
+    "KMF": 0,  # Comorian Franc
+    "KRW": 0,  # South Korean Won
+    "PYG": 0,  # Paraguayan Guarani
+    "RWF": 0,  # Rwandan Franc
+    "UGX": 0,  # Ugandan Shilling
+    "UYI": 0,  # Uruguay Peso en Unidades Indexadas (accounting)
+    "VND": 0,  # Vietnamese Dong
+    "VUV": 0,  # Vanuatu Vatu
+    "XAF": 0,  # Central African CFA Franc
+    "XOF": 0,  # West African CFA Franc
+    "XPF": 0,  # CFP Franc (Pacific)
+    # Three decimal currencies (1/1000 minor unit)
+    "BHD": 3,  # Bahraini Dinar
+    "IQD": 3,  # Iraqi Dinar
+    "JOD": 3,  # Jordanian Dinar
+    "KWD": 3,  # Kuwaiti Dinar
+    "LYD": 3,  # Libyan Dinar
+    "OMR": 3,  # Omani Rial
+    "TND": 3,  # Tunisian Dinar
+    # Four decimal currencies (accounting/indexing units)
+    "CLF": 4,  # Unidad de Fomento (Chile)
+    "UYW": 4,  # Unidad Previsional (Uruguay)
+}
+
+# Default decimal digits for currencies not in ISO_4217_DECIMAL_DIGITS.
+# Per ISO 4217, the vast majority of currencies use 2 decimal places.
+ISO_4217_DEFAULT_DECIMALS: int = 2

@@ -86,7 +86,7 @@ class TestParseCurrencyHypothesis:
     @given(
         unknown_symbol=st.text(
             alphabet=st.characters(
-                whitelist_categories=("So",),  # Other symbols
+                whitelist_categories=["So"],  # Other symbols
                 blacklist_characters="€$£¥₹₽¢₡₦₧₨₩₪₫₱₴₵₸₺₼₾",
             ),
             min_size=1,
@@ -144,7 +144,7 @@ class TestParseCurrencyHypothesis:
     @given(
         invalid_number=st.one_of(
             st.text(
-                alphabet=st.characters(whitelist_categories=("L",)),  # Letters only
+                alphabet=st.characters(whitelist_categories=["L"]),  # Letters only
                 min_size=1,
                 max_size=10,
             ).filter(lambda x: x.upper() not in ("NAN", "INFINITY", "INF")),
@@ -180,7 +180,7 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=50)
     def test_parse_currency_type_error_returns_error(self, value: object) -> None:
         """Non-string types should return error in tuple; function never raises."""
-        result, errors = parse_currency(value, "en_US")
+        result, errors = parse_currency(value, "en_US")  # type: ignore[arg-type]
         assert len(errors) > 0
         assert result is None
 

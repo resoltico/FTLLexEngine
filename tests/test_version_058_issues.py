@@ -20,6 +20,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from ftllexengine import FluentBundle, FluentLocalization
 from ftllexengine.localization import PathResourceLoader
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -39,7 +41,7 @@ from ftllexengine.validation import validate_resource
 class TestParseDepthValidation:
     """Tests for PARSE-DEPTH-VAL-001: Parser depth validation."""
 
-    def test_depth_clamped_to_recursion_limit(self, caplog) -> None:
+    def test_depth_clamped_to_recursion_limit(self, caplog: pytest.LogCaptureFixture) -> None:
         """Parser clamps max_nesting_depth to sys.getrecursionlimit() - 50."""
         # Request depth exceeding recursion limit
         excessive_depth = sys.getrecursionlimit() + 100
@@ -361,11 +363,11 @@ class TestIntrospectionCacheDocumentation:
     """Tests for INTRO-CACHE-001: Cache race condition documented."""
 
     def test_introspection_cache_exists(self) -> None:
-        """Introspection module has cache."""
-        from ftllexengine import introspection
+        """Introspection message module has cache."""
+        from ftllexengine.introspection import message
 
-        # Cache should exist
-        assert hasattr(introspection, "_introspection_cache")
+        # Cache should exist in the message submodule
+        assert hasattr(message, "_introspection_cache")
 
     def test_clear_introspection_cache_works(self) -> None:
         """clear_introspection_cache() clears the cache."""

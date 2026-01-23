@@ -176,7 +176,7 @@ class TestSerializationProperties:
 
     @given(
         message_id=st.text(
-            alphabet=st.characters(whitelist_categories=("L",)),
+            alphabet=st.characters(whitelist_categories=["L"]),
             min_size=1,
             max_size=20,
         ).filter(lambda x: x and x[0].isalpha()),
@@ -284,12 +284,12 @@ class TestVariableReferenceSerialization:
 
     @given(
         msg_id=st.text(
-            alphabet=st.characters(whitelist_categories=("L",)),
+            alphabet=st.characters(whitelist_categories=["L"]),
             min_size=1,
             max_size=15,
         ).filter(lambda x: x and x[0].isalpha()),
         var_name=st.text(
-            alphabet=st.characters(whitelist_categories=("L",)),
+            alphabet=st.characters(whitelist_categories=["L"]),
             min_size=1,
             max_size=10,
         ).filter(lambda x: x and x[0].isalpha()),
@@ -1555,7 +1555,7 @@ class TestMessageCommentPreservation:
     @given(
         msg_id=st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=10),
         group_comment=st.text(
-            alphabet=st.characters(whitelist_categories=("L",)),
+            alphabet=st.characters(whitelist_categories=["L"]),
             min_size=1,
             max_size=20,
         ),

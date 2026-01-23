@@ -357,7 +357,7 @@ class TestConcurrentErrorHandling:
         results: list[tuple[str, int]] = []
         lock = threading.Lock()
 
-        def format_with_args(args: dict) -> None:
+        def format_with_args(args: dict[str, str]) -> None:
             result, errors = bundle.format_pattern("msg", args)
             with lock:
                 results.append((result, len(errors)))

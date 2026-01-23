@@ -14,12 +14,11 @@ from hypothesis import strategies as st
 
 from ftllexengine.enums import VariableContext
 from ftllexengine.introspection import (
-    IntrospectionVisitor,
-    ReferenceExtractor,
     extract_references,
     extract_variables,
     introspect_message,
 )
+from ftllexengine.introspection.message import IntrospectionVisitor, ReferenceExtractor
 from ftllexengine.syntax.ast import Message, Term
 from ftllexengine.syntax.parser.core import FluentParserV1
 

@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
 
 from ftllexengine.core.babel_compat import BabelImportError
 
@@ -44,7 +44,7 @@ def mock_babel_unavailable() -> Generator[None]:
     sys.modules.update(babel_modules)
 
 
-def _make_import_blocker(blocked_prefix: str = "babel"):
+def _make_import_blocker(blocked_prefix: str = "babel") -> Callable[..., object]:
     """Create an import blocker for Babel modules.
 
     Returns a function that wraps the original import and raises
@@ -54,9 +54,9 @@ def _make_import_blocker(blocked_prefix: str = "babel"):
 
     def mock_import(
         name: str,
-        globals_: dict | None = None,
-        locals_: dict | None = None,
-        fromlist: tuple = (),
+        globals_: dict[str, object] | None = None,
+        locals_: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:
         if name == blocked_prefix or name.startswith(f"{blocked_prefix}."):

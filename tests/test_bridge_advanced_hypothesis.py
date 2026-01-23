@@ -127,7 +127,7 @@ class TestFunctionRegistration:
         """Property: Functions with multiple parameters work correctly."""
         registry = FunctionRegistry()
 
-        def multi_param_func(*args, **kwargs) -> str:
+        def multi_param_func(*args: object, **kwargs: object) -> str:
             return f"called with {len(args)} args and {len(kwargs)} kwargs"
 
         multi_param_func.__name__ = "test_func"
@@ -166,9 +166,9 @@ class TestFunctionCalling:
         """Property: Positional arguments are passed through unchanged."""
         registry = FunctionRegistry()
 
-        received_args: list = []
+        received_args: list[int] = []
 
-        def test_func(*args) -> str:
+        def test_func(*args: int) -> str:
             received_args.extend(args)
             return "ok"
 
@@ -303,9 +303,9 @@ class TestMetamorphicProperties:
 
         registry = FunctionRegistry()
 
-        received_kwargs: dict = {}
+        received_kwargs: dict[str, int] = {}
 
-        def test_func(**kwargs) -> str:
+        def test_func(**kwargs: int) -> str:
             received_kwargs.clear()
             received_kwargs.update(kwargs)
             return "ok"

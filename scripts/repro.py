@@ -31,10 +31,165 @@ import argparse
 import json
 import sys
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ftllexengine.syntax.ast import Resource
 
 # Maximum input size (10 MB) - prevents memory exhaustion from malicious inputs
 MAX_INPUT_SIZE = 10 * 1024 * 1024
+
+
+@dataclass
+class ReadResult:
+    """Result of reading and decoding a file."""
+
+    source: str
+    has_invalid_utf8: bool
+    error: str | None = None
+    exit_code: int = 0
+
+
+def read_and_decode_file(file_path: Path, use_json: bool) -> ReadResult:
+    """Read file and decode to string.
+
+    Returns:
+        ReadResult with source text or error information.
+    """
+    if not file_path.exists():
+        if use_json:
+            error = json.dumps({
+                "result": "error", "error": "file_not_found", "file": str(file_path)
+            })
+        else:
+            error = f"[ERROR] File not found: {file_path}"
+        return ReadResult(source="", has_invalid_utf8=False, error=error, exit_code=2)
+
+    try:
+        data = file_path.read_bytes()
+    except OSError as e:
+        if use_json:
+            error = json.dumps({
+                "result": "error",
+                "error": "read_error",
+                "file": str(file_path),
+                "message": str(e),
+            })
+        else:
+            error = f"[ERROR] Cannot read file: {e}"
+        return ReadResult(source="", has_invalid_utf8=False, error=error, exit_code=2)
+
+    # Check size limit to prevent memory exhaustion
+    if len(data) > MAX_INPUT_SIZE:
+        if use_json:
+            error = json.dumps({
+                "result": "error",
+                "error": "file_too_large",
+                "file": str(file_path),
+                "size": len(data),
+                "max_size": MAX_INPUT_SIZE,
+            })
+        else:
+            size_mb = len(data) / (1024 * 1024)
+            error = f"[ERROR] File too large: {size_mb:.1f} MB (max: 10 MB)"
+        return ReadResult(source="", has_invalid_utf8=False, error=error, exit_code=2)
+
+    # Decode to string using surrogateescape (PEP 383) for invalid UTF-8
+    has_invalid_utf8 = False
+    try:
+        source = data.decode("utf-8")
+    except UnicodeDecodeError:
+        source = data.decode("utf-8", errors="surrogateescape")
+        has_invalid_utf8 = True
+
+    return ReadResult(source=source, has_invalid_utf8=has_invalid_utf8)
+
+
+def output_example(source: str) -> None:
+    """Output @example decorator for copy-paste into test file."""
+    escaped = repr(source)
+    print("# Add this decorator to your test function:")
+    print(f"@example(ftl={escaped})")
+    print()
+    print("# Or for hypothesis strategies:")
+    print(f"@example({escaped})")
+
+
+def output_finding(
+    file_path: Path,
+    source: str,
+    has_invalid_utf8: bool,
+    exc: BaseException,
+    use_json: bool,
+) -> None:
+    """Output crash finding information."""
+    if use_json:
+        print(json.dumps({
+            "result": "finding",
+            "file": str(file_path),
+            "input_length": len(source),
+            "has_invalid_utf8": has_invalid_utf8,
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+            "example_decorator": f"@example(ftl={source!r})",
+        }))
+    else:
+        print(f"[FINDING] Parser crashed with {type(exc).__name__}: {exc}")
+        print()
+        print("Full traceback:")
+        print("-" * 60)
+        traceback.print_exc()
+        print("-" * 60)
+        print()
+        print("Next steps:")
+        print("  1. Add @example decorator to preserve this case:")
+        escaped = repr(source)
+        print(f"     @example(ftl={escaped})")
+        print("  2. Fix the bug in the parser")
+        print("  3. Run: uv run scripts/fuzz.sh (to verify fix)")
+
+
+def output_success(
+    file_path: Path,
+    source: str,
+    has_invalid_utf8: bool,
+    result: Resource,
+    use_json: bool,
+    verbose: bool,
+) -> None:
+    """Output successful parse result."""
+    entry_count = len(result.entries)
+    message_count = sum(
+        1 for e in result.entries if hasattr(e, "id") and hasattr(e, "value")
+    )
+
+    if use_json:
+        print(json.dumps({
+            "result": "pass",
+            "file": str(file_path),
+            "input_length": len(source),
+            "has_invalid_utf8": has_invalid_utf8,
+            "entry_count": entry_count,
+            "message_count": message_count,
+        }))
+    else:
+        print("[OK] Parsed successfully")
+        print(f"     Entries: {entry_count}")
+        print(f"     Messages/Terms: {message_count}")
+
+        if verbose:
+            print()
+            print("Parsed AST:")
+            print("-" * 60)
+            for i, entry in enumerate(result.entries):
+                entry_type = type(entry).__name__
+                if hasattr(entry, "id"):
+                    print(f"  [{i}] {entry_type}: {entry.id.name}")
+                else:
+                    print(f"  [{i}] {entry_type}")
+            print("-" * 60)
 
 
 def main() -> int:
@@ -54,21 +209,14 @@ Examples:
   uv run python scripts/repro.py fuzz/seeds/complex.ftl
 """,
     )
-    parser.add_argument(
-        "file",
-        type=Path,
-        help="Crash file or FTL seed to reproduce",
-    )
+    parser.add_argument("file", type=Path, help="Crash file or FTL seed to reproduce")
     parser.add_argument(
         "--example",
         action="store_true",
         help="Output @example decorator for copy-paste into test file",
     )
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show parsed AST on success",
+        "--verbose", "-v", action="store_true", help="Show parsed AST on success"
     )
     parser.add_argument(
         "--json",
@@ -77,144 +225,57 @@ Examples:
     )
     args = parser.parse_args()
 
-    # Read file
-    file_path: Path = args.file
-    if not file_path.exists():
+    # Read and decode file
+    read_result = read_and_decode_file(args.file, args.json)
+    if read_result.error:
         if args.json:
-            print(json.dumps({"result": "error", "error": "file_not_found", "file": str(file_path)}))
+            print(read_result.error)
         else:
-            print(f"[ERROR] File not found: {file_path}", file=sys.stderr)
-        return 2
+            print(read_result.error, file=sys.stderr)
+        return read_result.exit_code
 
-    try:
-        data = file_path.read_bytes()
-    except OSError as e:
-        if args.json:
-            print(json.dumps({"result": "error", "error": "read_error", "file": str(file_path), "message": str(e)}))
-        else:
-            print(f"[ERROR] Cannot read file: {e}", file=sys.stderr)
-        return 2
+    source = read_result.source
+    has_invalid_utf8 = read_result.has_invalid_utf8
 
-    # Check size limit to prevent memory exhaustion
-    if len(data) > MAX_INPUT_SIZE:
-        if args.json:
-            print(json.dumps({
-                "result": "error",
-                "error": "file_too_large",
-                "file": str(file_path),
-                "size": len(data),
-                "max_size": MAX_INPUT_SIZE,
-            }))
-        else:
-            size_mb = len(data) / (1024 * 1024)
-            print(f"[ERROR] File too large: {size_mb:.1f} MB (max: 10 MB)", file=sys.stderr)
-        return 2
-
-    # Decode to string using surrogateescape (PEP 383) for invalid UTF-8
-    # This preserves original bytes as surrogates (U+DC80-U+DCFF), allowing:
-    # 1. Round-trip back to bytes via encode("utf-8", errors="surrogateescape")
-    # 2. Debugging original malformed input for crash reproducibility
-    # 3. Lossless handling unlike errors="replace" which loses data
-    has_invalid_utf8 = False
-    try:
-        source = data.decode("utf-8")
-    except UnicodeDecodeError:
-        source = data.decode("utf-8", errors="surrogateescape")
-        has_invalid_utf8 = True
-        if not args.json:
-            print("[WARN] File contains invalid UTF-8, using surrogateescape")
+    if has_invalid_utf8 and not args.json:
+        print("[WARN] File contains invalid UTF-8, using surrogateescape")
 
     # Output @example decorator if requested
     if args.example:
-        # Escape for Python string literal
-        escaped = repr(source)
-        print("# Add this decorator to your test function:")
-        print(f"@example(ftl={escaped})")
-        print()
-        print("# Or for hypothesis strategies:")
-        print(f"@example({escaped})")
+        output_example(source)
         return 0
 
     # Import parser (inside function to avoid import errors if package broken)
     try:
-        from ftllexengine.syntax.parser import FluentParserV1
+        from ftllexengine.syntax.parser import (  # noqa: PLC0415  # pylint: disable=C0415
+            FluentParserV1,
+        )
     except ImportError as e:
         if args.json:
-            print(json.dumps({"result": "error", "error": "import_error", "message": str(e)}))
+            print(json.dumps({
+                "result": "error", "error": "import_error", "message": str(e)
+            }))
         else:
             print(f"[ERROR] Cannot import FluentParserV1: {e}", file=sys.stderr)
         return 2
 
-    # Attempt parse
+    # Log info for non-JSON output
     if not args.json:
-        print(f"[INFO] Reproducing: {file_path}")
+        print(f"[INFO] Reproducing: {args.file}")
         print(f"[INFO] Input length: {len(source)} chars")
         print(f"[INFO] Input preview: {source[:100]!r}...")
         print()
 
+    # Attempt parse
     p = FluentParserV1()
 
     try:
         result = p.parse(source)
-    except Exception as e:
-        if args.json:
-            print(json.dumps({
-                "result": "finding",
-                "file": str(file_path),
-                "input_length": len(source),
-                "has_invalid_utf8": has_invalid_utf8,
-                "exception_type": type(e).__name__,
-                "exception_message": str(e),
-                "example_decorator": f"@example(ftl={repr(source)})",
-            }))
-        else:
-            print(f"[FINDING] Parser crashed with {type(e).__name__}: {e}")
-            print()
-            print("Full traceback:")
-            print("-" * 60)
-            traceback.print_exc()
-            print("-" * 60)
-            print()
-            print("Next steps:")
-            print("  1. Add @example decorator to preserve this case:")
-            escaped = repr(source)
-            print(f"     @example(ftl={escaped})")
-            print("  2. Fix the bug in the parser")
-            print("  3. Run: uv run scripts/fuzz.sh (to verify fix)")
+    except (ValueError, TypeError, AttributeError, KeyError, IndexError) as e:
+        output_finding(args.file, source, has_invalid_utf8, e, args.json)
         return 1
 
-    # Success
-    entry_count = len(result.entries)
-    message_count = sum(
-        1 for e in result.entries if hasattr(e, "id") and hasattr(e, "value")
-    )
-
-    if args.json:
-        print(json.dumps({
-            "result": "pass",
-            "file": str(file_path),
-            "input_length": len(source),
-            "has_invalid_utf8": has_invalid_utf8,
-            "entry_count": entry_count,
-            "message_count": message_count,
-        }))
-    else:
-        print("[OK] Parsed successfully")
-        print(f"     Entries: {entry_count}")
-        print(f"     Messages/Terms: {message_count}")
-
-        if args.verbose:
-            print()
-            print("Parsed AST:")
-            print("-" * 60)
-            for i, entry in enumerate(result.entries):
-                entry_type = type(entry).__name__
-                if hasattr(entry, "id"):
-                    print(f"  [{i}] {entry_type}: {entry.id.name}")
-                else:
-                    print(f"  [{i}] {entry_type}")
-            print("-" * 60)
-
+    output_success(args.file, source, has_invalid_utf8, result, args.json, args.verbose)
     return 0
 
 

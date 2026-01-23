@@ -45,8 +45,8 @@ class TestParserEdgeCases:
         Per SEC-PARSER-UNBOUNDED-001, identifiers are limited to prevent
         denial-of-service attacks via extremely long tokens.
         """
-        from ftllexengine.syntax.ast import Junk  # noqa: PLC0415
-        from ftllexengine.syntax.parser.primitives import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Junk
+        from ftllexengine.syntax.parser.primitives import (  # type: ignore[attr-defined]
             _MAX_IDENTIFIER_LENGTH,
         )
 

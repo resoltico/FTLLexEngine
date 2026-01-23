@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.87.0"
 domain: fuzzing
-updated: "2026-01-21"
+updated: "2026-01-22"
 route:
-  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security]
-  questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?"]
+  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, iso, fiscal, introspection]
+  questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "how to fuzz ISO introspection?", "how to fuzz fiscal calendar?"]
 ---
 
 # Fuzzing Guide
@@ -50,13 +50,15 @@ Fuzzing generates thousands of test inputs automatically, feeding them to your c
 All fuzzing operations use `./scripts/fuzz.sh`:
 
 | Command | Purpose | Test Selection | Time |
-|---------|---------|---------------|
+|---------|---------|---------------|------|
 | `./scripts/fuzz.sh` | Quick property tests | `test_grammar_based_fuzzing.py` only | CPU-dependent |
 | `./scripts/fuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | **All Hypothesis tests** in `tests/` | Until Ctrl+C |
 | `./scripts/fuzz.sh --native` | Native fuzzing with Atheris | Custom targets in `fuzz/stability.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --runtime` | End-to-end runtime fuzzing | Custom targets in `fuzz/runtime.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --structured` | Structure-aware fuzzing with Atheris | Custom targets in `fuzz/structured.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --perf` | Performance fuzzing to detect ReDoS | Custom targets in `fuzz/perf.py` | Until Ctrl+C |
+| `./scripts/fuzz.sh --iso` | ISO 3166/4217 introspection fuzzing | Custom targets in `fuzz/iso.py` | Until Ctrl+C |
+| `./scripts/fuzz.sh --fiscal` | Fiscal calendar arithmetic fuzzing | Custom targets in `fuzz/fiscal.py` | Until Ctrl+C |
 | `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | — | Quick |
 | `./scripts/fuzz.sh --minimize FILE` | Minimize crash to smallest reproducer | — | Quick |
 | `./scripts/fuzz.sh --list` | List captured failures (with ages) | — | Quick |
@@ -202,36 +204,49 @@ Use this for security audits. Atheris uses raw byte mutation, finding crashes th
 
 ### Prerequisites: macOS Setup
 
-Atheris requires LLVM. Run this once:
+Atheris requires LLVM and a custom build. We use an **isolated virtual environment** (`.venv-fuzzing`) to prevent other tasks (like multi-version linting) from breaking your fuzzing setup.
+
+Run the check script:
 
 ```bash
 ./scripts/check-atheris.sh
 ```
 
-If not installed, follow these steps:
+If Atheris is missing or identifies an ABI mismatch, run with the `--install` flag:
 
 ```bash
-# 1. Install LLVM (required for libFuzzer support)
-brew install llvm
+./scripts/check-atheris.sh --install
+```
 
-# 2. Clear build cache (prevents reusing broken/cached binaries)
+This will automatically:
+1. Install LLVM via Homebrew (if missing).
+2. Create/update the isolated `.venv-fuzzing` environment.
+3. Build Atheris from source with the correct `RPATH` settings.
+
+#### Manual Fail-safe (If Script Fails)
+
+If the script fails, you can run the build command manually. Ensure you target the correct environment:
+
+```bash
+# 1. Clean cache
 uv cache clean atheris
 
-# 3. Build Atheris from source with RPATH
+# 2. Build with LLVM toolchain
 CLANG_BIN="$(brew --prefix llvm)/bin/clang" \
 CC="$(brew --prefix llvm)/bin/clang" \
 CXX="$(brew --prefix llvm)/bin/clang++" \
 LDFLAGS="-L$(brew --prefix llvm)/lib/c++ -L$(brew --prefix llvm)/lib -Wl,-rpath,$(brew --prefix llvm)/lib/c++" \
 CPPFLAGS="-I$(brew --prefix llvm)/include" \
+UV_PROJECT_ENVIRONMENT=".venv-fuzzing" \
 uv pip install --reinstall --no-cache-dir --no-binary :all: atheris
 
-# 4. Verify
+# 3. Verify
 ./scripts/check-atheris.sh
 ```
 
 > **Note:** Building Atheris from source can take a while to build (± 15 minutes on Apple Mac mini M4) as it compiles LLVM/libFuzzer components.
 
-> **Why this works:** The `-Wl,-rpath` flag embeds the location of LLVM's libc++ directly into the Atheris binary. This ensures that when Atheris runs, it finds the modern C++ symbols it needs without interfering with the rest of your system libraries.
+> **Why this works:** The `-Wl,-rpath` flag embeds the location of LLVM's libc++ directly into the Atheris binary. This ensures that when Atheris runs, it finds the modern C++ symbols it needs without interfering with the rest of your system libraries. Using a dedicated `.venv-fuzzing` environment ensures this custom build is not wiped when you switch Python versions for linting or testing.
 
 ### Common Issues & Troubleshooting
 
@@ -260,9 +275,11 @@ You may see 3-4 warnings about missing `__sanitizer_` functions when Atheris sta
 | Mode | Script | Target | Focus |
 |------|--------|--------|-------|
 | `--native` | `fuzz/stability.py` | Parser Core | Crashes, hangs, and memory safety in the FTL parser. |
-| `--runtime` | `fuzz/runtime.py` | Runtime stack | `FluentBundle`, `IntegrityCache`, and **Strict Mode (v0.80.0)**. |
+| `--runtime` | `fuzz/runtime.py` | Runtime stack | `FluentBundle`, `IntegrityCache`, and **Strict Mode**. |
 | `--structured` | `fuzz/structured.py` | Parser & Grammar | Syntactically plausible FTL to explore deeper grammar code paths. |
 | `--perf` | `fuzz/perf.py` | Performance Regress | Algorithmic complexity issues and ReDoS vulnerabilities. |
+| `--iso` | `fuzz/iso.py` | ISO Introspection | ISO 3166/4217 territory and currency lookups, type guards, cache. |
+| `--fiscal` | `fuzz/fiscal.py` | Fiscal Calendar | FiscalCalendar, FiscalDelta, date arithmetic, boundary conditions. |
 
 ### Step 1: Run Stability or Runtime Fuzzing
 
@@ -271,7 +288,7 @@ You may see 3-4 warnings about missing `__sanitizer_` functions when Atheris sta
 ./scripts/fuzz.sh --native --time 60
 ```
 
-**Check runtime and Strict Mode integrity (v0.80.0):**
+**Check runtime and Strict Mode integrity:**
 ```bash
 ./scripts/fuzz.sh --runtime --time 60
 ```
@@ -284,6 +301,20 @@ You may see 3-4 warnings about missing `__sanitizer_` functions when Atheris sta
 ```
 
 > **Tip:** You can stop the endless run at any time with `Ctrl+C`. Findings are saved **instantly** to the `.fuzz_corpus` directory as they are discovered. Stopping the script will not lose any previously found crashes.
+
+**Check ISO introspection (requires Babel):**
+```bash
+./scripts/fuzz.sh --iso --time 60
+```
+
+> **Tip:** The `--iso` fuzzer tests ISO 3166-1 territory and ISO 4217 currency lookups via Babel's CLDR data. It verifies type guard consistency, cache integrity, and data class invariants.
+
+**Check fiscal calendar arithmetic:**
+```bash
+./scripts/fuzz.sh --fiscal --time 60
+```
+
+> **Tip:** The `--fiscal` fuzzer tests FiscalCalendar, FiscalDelta, and FiscalPeriod operations including month-end policies, quarter boundaries, and date arithmetic edge cases. No Babel required.
 
 
 ### Step 2: Interpret Results
@@ -391,10 +422,42 @@ The threshold is 100ms + 20ms per KB. Inputs exceeding this are flagged.
 
 The seed corpus at `fuzz/seeds/` provides high-quality starting points for all fuzzer modes.
 
-The corpus is categorized to cover all concerns:
-- **Syntax Seeds (`01-20_*.ftl`)**: Cover all major FTL grammar features.
-- **Pathological Seeds (`21-24_*.ftl`)**: Trigger deep nesting, complex selects, and cyclic/chained references to stress the parser and resolver.
-- **Runtime Binary Seeds (`*.bin`)**: Pre-configured bitstrays that force the `--runtime` fuzzer into high-impact configurations (strict mode, cached, corruption detection).
+### How Seeds Are Used
+
+**Automatic Loading**: All Atheris-based fuzzing modes (`--native`, `--runtime`, `--structured`, `--perf`, `--iso`, `--fiscal`) automatically load seeds from `fuzz/seeds/` at startup. You do not need to pass any additional flags.
+
+**libFuzzer Mechanics**: Under the hood, libFuzzer receives two corpus directories:
+
+```
+fuzzer .fuzz_corpus fuzz/seeds [options]
+        │            │
+        │            └── Read-only seed corpus (curated starting points)
+        └── Read-write working corpus (new interesting inputs saved here)
+```
+
+At startup, libFuzzer:
+1. Loads ALL files from `fuzz/seeds/` as raw bytes
+2. Loads any previously-saved inputs from `.fuzz_corpus/`
+3. Runs each input through the fuzzer target
+4. Keeps inputs that increase code coverage
+5. Uses coverage-increasing inputs as mutation bases
+6. Saves newly-discovered interesting inputs to `.fuzz_corpus/`
+
+**Cross-Mode Compatibility**: All seeds are passed to all fuzzing modes. libFuzzer intelligently handles this:
+- **Text seeds (`.ftl`)**: For parser fuzzers, decoded as UTF-8 FTL source. For binary fuzzers, the text bytes are interpreted as structured data (this is fine - the fuzzer learns what's useful).
+- **Binary seeds (`.bin`)**: For binary fuzzers, interpreted as `FuzzedDataProvider` input. For parser fuzzers, decoded as UTF-8 with surrogateescape (produces garbled but processable text).
+
+This cross-pollination is intentional. libFuzzer discovers which seeds are useful for which target through coverage feedback.
+
+### Seed Categories
+
+| Pattern | Purpose | Used By |
+|---------|---------|---------|
+| `01-20_*.ftl` | FTL grammar features (messages, terms, selects) | All modes |
+| `21-29_*.ftl` | Pathological cases (deep nesting, cycles, Unicode) | All modes |
+| `runtime_*.bin` | Runtime config (strict mode, caching, corruption) | `--runtime` primarily |
+| `iso_*.bin` | ISO 3166/4217 codes (valid, invalid, mixed) | `--iso` primarily |
+| `fiscal_*.bin` | Fiscal calendar dates (boundaries, leap years) | `--fiscal` primarily |
 
 ### Check Corpus Health
 
@@ -402,15 +465,15 @@ The corpus is categorized to cover all concerns:
 ./scripts/fuzz.sh --corpus
 ```
 
-This verifies that the seeds are still valid FTL and the binary seeds are readable.
+This validates that FTL seeds parse correctly and reports grammar feature coverage.
 
 ### Add New Seeds
 
-When the grammar changes, add new seed files:
+When the grammar changes or new edge cases are discovered:
 
-1. Create a `.ftl` file in `fuzz/seeds/`:
+1. Create a seed file in `fuzz/seeds/`:
    ```ftl
-   # fuzz/seeds/21_new_feature.ftl
+   # fuzz/seeds/30_new_feature.ftl
    new-feature = { $arg ->
        [case1] Value 1
       *[other] Default
@@ -422,13 +485,46 @@ When the grammar changes, add new seed files:
    ./scripts/fuzz.sh --corpus
    ```
 
+3. Seeds are automatically used in the next fuzzing run.
+
+### Creating Binary Seeds
+
+For `--runtime`, `--iso`, or `--fiscal` modes, you can create targeted binary seeds:
+
+```python
+# Example: Create an ISO seed for cache stress testing
+import struct
+
+# FuzzedDataProvider expects raw bytes
+# iso.py interprets: locale_len(1) + locale + code_len(1) + code + flags(1)
+seed = bytes([
+    5,                           # locale length
+    *b"en_US",                   # locale string
+    3,                           # code length
+    *b"USD",                     # currency code
+    0b00000011,                  # flags: check_territory=True, use_cache=True
+])
+
+with open("fuzz/seeds/iso_custom.bin", "wb") as f:
+    f.write(seed)
+```
+
 ### Remove Duplicate Seeds
 
 ```bash
 uv run python scripts/corpus-health.py --dedupe
 ```
 
-This shows which seeds are duplicates. Add `--execute` to actually remove them.
+Shows duplicate seeds. Add `--execute` to remove them.
+
+### Working Corpus vs Seed Corpus
+
+| Directory | Purpose | Git Tracked | Persistent |
+|-----------|---------|-------------|------------|
+| `fuzz/seeds/` | Curated starting points | Yes | Yes |
+| `.fuzz_corpus/` | Fuzzer-discovered inputs | No (.gitignore) | Between runs |
+
+The working corpus (`.fuzz_corpus/`) grows as the fuzzer discovers new coverage-increasing inputs. This is normal and beneficial - these discovered inputs are used as starting points in subsequent runs.
 
 ---
 
@@ -460,8 +556,11 @@ Tests are categorized by purpose and execution characteristics:
 | `./scripts/fuzz.sh` | Hypothesis | `tests/test_grammar_based_fuzzing.py` only | Fast property checks |
 | `./scripts/fuzz.sh --deep` | HypoFuzz | **All Hypothesis tests** in `tests/` | Continuous coverage-guided fuzzing |
 | `./scripts/fuzz.sh --native` | Atheris | Custom fuzz targets in `fuzz/stability.py` | Byte-level chaos testing |
+| `./scripts/fuzz.sh --runtime` | Atheris | Custom fuzz targets in `fuzz/runtime.py` | Runtime/Strict Mode testing |
 | `./scripts/fuzz.sh --structured` | Atheris | Custom fuzz targets in `fuzz/structured.py` | Grammar-aware chaos testing |
 | `./scripts/fuzz.sh --perf` | Atheris | Custom fuzz targets in `fuzz/perf.py` | Performance/ReDoS detection |
+| `./scripts/fuzz.sh --iso` | Atheris | Custom fuzz targets in `fuzz/iso.py` | ISO 3166/4217 introspection |
+| `./scripts/fuzz.sh --fiscal` | Atheris | Custom fuzz targets in `fuzz/fiscal.py` | Fiscal calendar arithmetic |
 
 **HypoFuzz Selection Criteria:**
 ```bash
@@ -576,13 +675,16 @@ tests/
   test_serializer_ast_fuzzing.py   <- AST-first serializer tests
   test_locale_fuzzing.py           <- Locale/plural rule tests
   test_concurrent_access.py        <- Thread safety tests
-  strategies.py                    <- Hypothesis strategies
+  strategies/                 <- Hypothesis strategies (ftl.py, iso.py, fiscal.py)
 
 fuzz/
   seeds/                   <- Seed corpus (git tracked)
   stability.py             <- Atheris crash detector (byte-level chaos)
   structured.py            <- Atheris crash detector (grammar-aware)
   perf.py                  <- Atheris performance detector
+  runtime.py               <- Atheris runtime stack fuzzer
+  iso.py                   <- Atheris ISO 3166/4217 introspection fuzzer
+  fiscal.py                <- Atheris fiscal calendar arithmetic fuzzer
 
 .hypothesis/               <- Hypothesis data (git ignored)
   examples/                <- Coverage database
@@ -590,32 +692,6 @@ fuzz/
 
 .fuzz_corpus/              <- Atheris corpus (git ignored)
   crash_*                  <- Crash artifacts
-```
-
-### Test Marker System
-
-See [Fuzzing Architecture](#fuzzing-architecture) for complete marker usage guidelines.
-
-Tests marked with `@pytest.mark.fuzz` are excluded from normal test runs:
-
-```python
-pytestmark = pytest.mark.fuzz  # All tests in file are fuzz tests
-```
-
-This separation exists because fuzz tests:
-- Run thousands of examples (slow)
-- May find new bugs each run (non-deterministic)
-- Are designed for dedicated fuzzing, not CI
-
-**To run fuzz tests explicitly:**
-```bash
-./scripts/fuzz.sh                    # Via unified interface
-uv run pytest -m fuzz tests/         # Direct pytest
-```
-
-**Normal tests skip fuzz-marked tests:**
-```bash
-uv run scripts/test.sh               # Skips fuzz tests
 ```
 
 ---
@@ -696,8 +772,11 @@ Different fuzzing tools have different Python version requirements:
 | `./scripts/fuzz.sh` | 3.13, 3.14 | Hypothesis | Property-based tests |
 | `./scripts/fuzz.sh --deep` | 3.13, 3.14 | HypoFuzz | Coverage-guided |
 | `./scripts/fuzz.sh --native` | 3.11-3.13 | Atheris | libFuzzer-based |
+| `./scripts/fuzz.sh --runtime` | 3.11-3.13 | Atheris | Runtime/Strict Mode |
 | `./scripts/fuzz.sh --structured` | 3.11-3.13 | Atheris | Grammar-aware |
 | `./scripts/fuzz.sh --perf` | 3.11-3.13 | Atheris | ReDoS detection |
+| `./scripts/fuzz.sh --iso` | 3.11-3.13 | Atheris | ISO introspection |
+| `./scripts/fuzz.sh --fiscal` | 3.11-3.13 | Atheris | Fiscal calendar |
 | `./scripts/fuzz.sh --minimize` | 3.11-3.13 | Atheris | Crash minimization |
 
 ### Why Atheris Requires Python 3.13 or Earlier
@@ -729,7 +808,11 @@ uv run --python 3.13 ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*
 | Deep fuzzing (5 min) | `./scripts/fuzz.sh --deep --time 300` |
 | Deep fuzzing (endless) | `./scripts/fuzz.sh --deep` |
 | Native fuzzing (1 min) | `./scripts/fuzz.sh --native --time 60` |
+| Runtime fuzzing | `./scripts/fuzz.sh --runtime --time 60` |
+| Structured fuzzing | `./scripts/fuzz.sh --structured --time 60` |
 | Performance fuzzing | `./scripts/fuzz.sh --perf --time 60` |
+| ISO introspection fuzzing | `./scripts/fuzz.sh --iso --time 60` |
+| Fiscal calendar fuzzing | `./scripts/fuzz.sh --fiscal --time 60` |
 | Minimize crash | `./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*` |
 | Reproduce crash | `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
 | List failures | `./scripts/fuzz.sh --list` |

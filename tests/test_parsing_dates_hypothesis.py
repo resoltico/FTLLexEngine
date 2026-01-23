@@ -71,7 +71,7 @@ class TestParseDateHypothesis:
     @given(
         invalid_date=st.one_of(
             st.text(
-                alphabet=st.characters(whitelist_categories=("L",)),  # Letters only
+                alphabet=st.characters(whitelist_categories=["L"]),  # Letters only
                 min_size=1,
             ),
             st.just("not-a-date"),
@@ -98,7 +98,7 @@ class TestParseDateHypothesis:
     @settings(max_examples=50)
     def test_parse_date_type_error_returns_error(self, value: object) -> None:
         """Non-string types should return error in tuple; function never raises."""
-        result, errors = parse_date(value, "en_US")
+        result, errors = parse_date(value, "en_US")  # type: ignore[arg-type]
         assert len(errors) > 0
         assert result is None
 
@@ -314,7 +314,7 @@ class TestParseDatetimeHypothesis:
     @given(
         invalid_datetime=st.one_of(
             st.text(
-                alphabet=st.characters(whitelist_categories=("L",)),
+                alphabet=st.characters(whitelist_categories=["L"]),
                 min_size=1,
             ),
             st.just("not-a-datetime"),
@@ -340,7 +340,7 @@ class TestParseDatetimeHypothesis:
     @settings(max_examples=50)
     def test_parse_datetime_type_error_returns_error(self, value: object) -> None:
         """Non-string types should return error in tuple; function never raises."""
-        result, errors = parse_datetime(value, "en_US")
+        result, errors = parse_datetime(value, "en_US")  # type: ignore[arg-type]
         assert len(errors) > 0
         assert result is None
 

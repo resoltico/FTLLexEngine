@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.87.0"
 domain: TYPES
-updated: "2026-01-21"
+updated: "2026-01-22"
 route:
-  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue]
-  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?"]
+  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
+  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
 ---
 
 # AST Types Reference
@@ -949,5 +949,296 @@ class ReferenceKind(StrEnum):
 ### Constraints
 - StrEnum: Members ARE strings. `str(ReferenceKind.MESSAGE) == "message"`
 - Import: `from ftllexengine.enums import ReferenceKind`
+
+---
+
+## ISO Introspection Types
+
+The introspection module provides type-safe access to ISO 3166 (territories) and ISO 4217 (currencies) data via Babel CLDR. Requires Babel installation: `pip install ftllexengine[babel]`.
+
+---
+
+## `TerritoryCode`
+
+Type alias for ISO 3166-1 alpha-2 territory codes.
+
+### Signature
+```python
+type TerritoryCode = str
+```
+
+### Constraints
+- Purpose: Type annotation for territory codes (e.g., "US", "LV", "DE").
+- Validation: Use `is_valid_territory_code()` to verify.
+- Import: `from ftllexengine.introspection import TerritoryCode`
+
+---
+
+## `CurrencyCode`
+
+Type alias for ISO 4217 currency codes.
+
+### Signature
+```python
+type CurrencyCode = str
+```
+
+### Constraints
+- Purpose: Type annotation for currency codes (e.g., "USD", "EUR", "GBP").
+- Validation: Use `is_valid_currency_code()` to verify.
+- Import: `from ftllexengine.introspection import CurrencyCode`
+
+---
+
+## `TerritoryInfo`
+
+ISO 3166-1 territory data with localized name.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class TerritoryInfo:
+    alpha2: TerritoryCode
+    name: str
+    default_currency: CurrencyCode | None
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `alpha2` | `TerritoryCode` | Y | ISO 3166-1 alpha-2 code |
+| `name` | `str` | Y | Localized display name |
+| `default_currency` | `CurrencyCode \| None` | Y | Primary currency or None |
+
+### Constraints
+- Return: Immutable territory data.
+- State: Frozen dataclass.
+- Thread: Safe.
+- Hashable: Yes.
+- Import: `from ftllexengine.introspection import TerritoryInfo`
+
+---
+
+## `CurrencyInfo`
+
+ISO 4217 currency data with localized presentation.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class CurrencyInfo:
+    code: CurrencyCode
+    name: str
+    symbol: str
+    decimal_digits: int
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `code` | `CurrencyCode` | Y | ISO 4217 currency code |
+| `name` | `str` | Y | Localized display name |
+| `symbol` | `str` | Y | Locale-specific symbol |
+| `decimal_digits` | `int` | Y | Standard decimal places (0, 2, 3, or 4) |
+
+### Constraints
+- Return: Immutable currency data.
+- State: Frozen dataclass.
+- Thread: Safe.
+- Hashable: Yes.
+- Import: `from ftllexengine.introspection import CurrencyInfo`
+
+---
+
+## `get_territory`
+
+Look up ISO 3166-1 territory by alpha-2 code.
+
+### Signature
+```python
+def get_territory(
+    code: str,
+    locale: str = "en",
+) -> TerritoryInfo | None:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `code` | `str` | Y | ISO 3166-1 alpha-2 code (case-insensitive) |
+| `locale` | `str` | N | Locale for name localization (default: "en") |
+
+### Constraints
+- Return: TerritoryInfo if found, None if unknown.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Cached per (code, locale) pair.
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import get_territory`
+
+---
+
+## `get_currency`
+
+Look up ISO 4217 currency by code.
+
+### Signature
+```python
+def get_currency(
+    code: str,
+    locale: str = "en",
+) -> CurrencyInfo | None:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `code` | `str` | Y | ISO 4217 currency code (case-insensitive) |
+| `locale` | `str` | N | Locale for name/symbol localization (default: "en") |
+
+### Constraints
+- Return: CurrencyInfo if found, None if unknown.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Cached per (code, locale) pair.
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import get_currency`
+
+---
+
+## `list_territories`
+
+List all known ISO 3166-1 territories.
+
+### Signature
+```python
+def list_territories(
+    locale: str = "en",
+) -> frozenset[TerritoryInfo]:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `locale` | `str` | N | Locale for name localization (default: "en") |
+
+### Constraints
+- Return: Frozen set of all TerritoryInfo objects.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Cached per locale.
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import list_territories`
+
+---
+
+## `list_currencies`
+
+List all known ISO 4217 currencies.
+
+### Signature
+```python
+def list_currencies(
+    locale: str = "en",
+) -> frozenset[CurrencyInfo]:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `locale` | `str` | N | Locale for name/symbol localization (default: "en") |
+
+### Constraints
+- Return: Frozen set of all CurrencyInfo objects.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Cached per locale.
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import list_currencies`
+
+---
+
+## `get_territory_currency`
+
+Get default currency for a territory.
+
+### Signature
+```python
+def get_territory_currency(territory: str) -> CurrencyCode | None:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `territory` | `str` | Y | ISO 3166-1 alpha-2 code (case-insensitive) |
+
+### Constraints
+- Return: ISO 4217 currency code or None if unknown.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Cached.
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import get_territory_currency`
+
+---
+
+## `is_valid_territory_code`
+
+Check if string is a valid ISO 3166-1 alpha-2 code.
+
+### Signature
+```python
+def is_valid_territory_code(value: str) -> TypeIs[TerritoryCode]:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `value` | `str` | Y | String to validate |
+
+### Constraints
+- Return: True if known ISO 3166-1 alpha-2 code.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Uses cached territory lookups.
+- Thread: Safe.
+- TypeIs: Narrows type in type checkers.
+- Import: `from ftllexengine.introspection import is_valid_territory_code`
+
+---
+
+## `is_valid_currency_code`
+
+Check if string is a valid ISO 4217 currency code.
+
+### Signature
+```python
+def is_valid_currency_code(value: str) -> TypeIs[CurrencyCode]:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `value` | `str` | Y | String to validate |
+
+### Constraints
+- Return: True if known ISO 4217 currency code.
+- Raises: `BabelImportError` if Babel not installed.
+- State: Uses cached currency lookups.
+- Thread: Safe.
+- TypeIs: Narrows type in type checkers.
+- Import: `from ftllexengine.introspection import is_valid_currency_code`
+
+---
+
+## `clear_iso_cache`
+
+Clear all ISO introspection caches.
+
+### Signature
+```python
+def clear_iso_cache() -> None:
+```
+
+### Constraints
+- Return: None.
+- Raises: Never.
+- State: Clears all cached territory and currency lookups.
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import clear_iso_cache`
 
 ---

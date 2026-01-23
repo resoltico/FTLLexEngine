@@ -201,7 +201,7 @@ def ftl_unicode_stress_text(draw: st.DrawFn) -> str:
         "\U0001F600",  # Emoji (non-BMP)
         "\U0001F469\u200D\U0001F4BB",  # ZWJ sequence (woman technologist)
         "\u202Eevil\u202C",  # RTL override
-        "cafe\u0301",  # Combining accent (é as e + combining acute)
+        "cafe\u0301",  # Combining accent (e as e + combining acute)
         "\u0627\u0644\u0639\u0631\u0628\u064A\u0629",  # Arabic
         "\u4E2D\u6587",  # Chinese
         "\u0928\u092E\u0938\u094D\u0924\u0947",  # Hindi (Devanagari)

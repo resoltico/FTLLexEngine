@@ -113,7 +113,7 @@ class TestGetLocaleClass:
 
     def test_get_locale_class_returns_locale_type(self) -> None:
         """get_locale_class returns the Babel Locale class."""
-        from babel import Locale  # noqa: PLC0415
+        from babel import Locale
 
         locale_class = get_locale_class()
         assert locale_class is Locale
@@ -130,7 +130,7 @@ class TestGetUnknownLocaleError:
 
     def test_get_unknown_locale_error_returns_exception_class(self) -> None:
         """get_unknown_locale_error returns the UnknownLocaleError class."""
-        from babel.core import UnknownLocaleError  # noqa: PLC0415
+        from babel.core import UnknownLocaleError
 
         error_class = get_unknown_locale_error()
         assert error_class is UnknownLocaleError
@@ -177,7 +177,7 @@ class TestGetBabelDates:
 
     def test_get_babel_dates_functions_work(self) -> None:
         """Returned module's functions work correctly."""
-        from datetime import date  # noqa: PLC0415
+        from datetime import date
 
         dates = get_babel_dates()
         test_date = date(2024, 1, 15)
@@ -501,7 +501,7 @@ class TestBabelCompatModuleExports:
 
     def test_get_babel_locale_not_exported_from_babel_compat(self) -> None:
         """get_babel_locale is no longer exported from babel_compat module."""
-        from ftllexengine.core import babel_compat  # noqa: PLC0415
+        from ftllexengine.core import babel_compat
 
         # get_babel_locale should NOT be in babel_compat's exports
         assert not hasattr(babel_compat, "get_babel_locale")
@@ -511,7 +511,7 @@ class TestBabelCompatModuleExports:
 
     def test_get_babel_locale_available_from_locale_utils(self) -> None:
         """get_babel_locale is still available from canonical location."""
-        from ftllexengine.locale_utils import (  # noqa: PLC0415
+        from ftllexengine.locale_utils import (
             get_babel_locale as canonical_get_babel_locale,
         )
 
@@ -524,6 +524,6 @@ class TestBabelCompatModuleExports:
         """Attempting to import get_babel_locale from babel_compat fails."""
         with pytest.raises(ImportError, match="cannot import name 'get_babel_locale'"):
             # pylint: disable=unused-import
-            from ftllexengine.core.babel_compat import (  # noqa: PLC0415
+            from ftllexengine.core.babel_compat import (  # type: ignore[attr-defined]
                 get_babel_locale,  # noqa: F401
             )

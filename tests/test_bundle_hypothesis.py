@@ -1390,7 +1390,7 @@ class TestArgumentTypeHandling:
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_list_argument_handling(
-        self, msg_id: str, var_name: str, list_value: list
+        self, msg_id: str, var_name: str, list_value: list[int]
     ) -> None:
         """PROPERTY: List arguments are handled."""
         bundle = FluentBundle("en")
@@ -1848,7 +1848,7 @@ class TestCacheBehavior:
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_different_args_different_results(
-        self, msg_id: str, var_name: str, values: list
+        self, msg_id: str, var_name: str, values: list[int]
     ) -> None:
         """PROPERTY: Different arguments produce different results."""
         bundle = FluentBundle("en")
@@ -2166,7 +2166,7 @@ msg = { $variant ->
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_alternating_text_and_placeables(
-        self, msg_id: str, text_segments: list
+        self, msg_id: str, text_segments: list[str]
     ) -> None:
         """PROPERTY: Alternating text and placeables work."""
         assume(all(len(seg) > 0 for seg in text_segments))
@@ -2398,7 +2398,7 @@ class TestResourceOrdering:
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_last_resource_wins(
-        self, msg_id: str, values: list
+        self, msg_id: str, values: list[str]
     ) -> None:
         """PROPERTY: Last added resource wins for same message ID."""
         assume(all(len(v) > 0 for v in values))

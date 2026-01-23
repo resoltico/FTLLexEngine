@@ -13,6 +13,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-01-23
+
+### Added
+
+- **ISO Introspection API** (FEATURE-ISO-INTROSPECTION-001):
+  - New `ftllexengine.introspection.iso` module for ISO 3166/4217 data access
+  - Type aliases: `TerritoryCode`, `CurrencyCode` (PEP 695 style)
+  - Data classes: `TerritoryInfo`, `CurrencyInfo` (immutable, hashable)
+  - Lookup functions:
+    - `get_territory(code, locale)` - ISO 3166-1 territory by alpha-2 code
+    - `get_currency(code, locale)` - ISO 4217 currency by code
+    - `list_territories(locale)` - All known territories
+    - `list_currencies(locale)` - All known currencies
+    - `get_territory_currency(territory)` - Default currency for territory
+  - Type guards: `is_valid_territory_code()`, `is_valid_currency_code()` (PEP 742 TypeIs)
+  - Cache management: `clear_iso_cache()` for memory control
+  - All results cached with `@functools.cache` for performance
+  - Requires Babel: Functions raise `BabelImportError` if unavailable
+  - Location: `introspection/iso.py`, exported from `ftllexengine.introspection`
+  - Financial context: Enables runtime territory-to-currency resolution for multi-currency applications
+
+- **Fiscal Calendar Arithmetic** (FEATURE-FISCAL-CALENDAR-001):
+  - New `ftllexengine.parsing.fiscal` module for fiscal date calculations
+  - `MonthEndPolicy` enum: PRESERVE, CLAMP, STRICT for month-end date handling
+  - `FiscalPeriod` dataclass: Immutable fiscal period identifier (year, quarter, month)
+  - `FiscalCalendar` dataclass: Configurable fiscal year boundaries with methods:
+    - `fiscal_year(date)` - Get fiscal year for date
+    - `fiscal_quarter(date)` - Get fiscal quarter (1-4) for date
+    - `fiscal_month(date)` - Get fiscal month (1-12) for date
+    - `fiscal_period(date)` - Get complete FiscalPeriod for date
+    - `fiscal_year_start(year)` - First day of fiscal year
+    - `fiscal_year_end(year)` - Last day of fiscal year
+    - `quarter_start(year, quarter)` - First day of fiscal quarter
+    - `quarter_end(year, quarter)` - Last day of fiscal quarter
+    - `date_range(date)` - Fiscal year date range tuple
+  - `FiscalDelta` dataclass: Period delta with arithmetic operators:
+    - Fields: years, quarters, months, days, month_end_policy
+    - Methods: `add_to(date)`, `subtract_from(date)`, `total_months()`, `negate()`
+    - Operators: `+`, `-`, `*`, unary `-`
+  - Convenience functions: `fiscal_quarter()`, `fiscal_year_start()`, `fiscal_year_end()`
+  - No external dependencies (stdlib only)
+  - Location: `parsing/fiscal.py`, exported from `ftllexengine.parsing`
+  - Financial context: UK (Apr), Japan (Apr), Australia (Jul), US federal (Oct) fiscal years
+
+- **ISO 4217 Decimal Digits Constants** (DATA-ISO4217-DECIMALS-001):
+  - New constants in `constants.py`:
+    - `ISO_4217_DECIMAL_DIGITS`: Dict mapping currency codes to decimal places
+    - `ISO_4217_DEFAULT_DECIMALS`: Default decimal places (2)
+  - Covers currencies with non-standard decimals:
+    - 0 decimals: JPY, KRW, VND, BIF, CLP, etc.
+    - 3 decimals: BHD, IQD, JOD, KWD, LYD, OMR, TND
+    - 4 decimals: CLF, UYW
+  - Used by `CurrencyInfo.decimal_digits` for accurate currency formatting
+  - Location: `constants.py`
+
 ## [0.86.0] - 2026-01-22
 
 ### Fixed
@@ -2458,6 +2513,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.87.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.87.0
 [0.86.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.86.0
 [0.85.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.85.0
 [0.84.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.84.0

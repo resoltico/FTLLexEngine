@@ -6,7 +6,8 @@ Tests reference extraction for message and term dependency analysis.
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.introspection import ReferenceExtractor, extract_references
+from ftllexengine.introspection import extract_references
+from ftllexengine.introspection.message import ReferenceExtractor
 from ftllexengine.syntax.ast import Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 

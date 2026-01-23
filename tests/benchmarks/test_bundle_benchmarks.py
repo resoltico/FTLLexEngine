@@ -7,6 +7,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from ftllexengine import FluentBundle
@@ -33,7 +35,7 @@ entries-count = {$count ->
         )
         return bundle
 
-    def test_format_simple_message(self, benchmark, bundle: FluentBundle) -> None:
+    def test_format_simple_message(self, benchmark: Any, bundle: FluentBundle) -> None:
         """Benchmark formatting simple message without variables."""
         result, errors = benchmark(bundle.format_pattern, "hello")
 
@@ -41,7 +43,7 @@ entries-count = {$count ->
         assert errors == ()
 
     def test_format_message_with_variable(
-        self, benchmark, bundle: FluentBundle
+        self, benchmark: Any, bundle: FluentBundle
     ) -> None:
         """Benchmark formatting message with single variable."""
         result, errors = benchmark(
@@ -52,7 +54,7 @@ entries-count = {$count ->
         assert errors == ()
 
     def test_format_message_with_multiple_variables(
-        self, benchmark, bundle: FluentBundle
+        self, benchmark: Any, bundle: FluentBundle
     ) -> None:
         """Benchmark formatting message with multiple variables."""
         args = {"firstName": "John", "lastName": "Doe", "age": 30}
@@ -63,7 +65,7 @@ entries-count = {$count ->
         assert errors == ()
 
     def test_format_select_expression(
-        self, benchmark, bundle: FluentBundle
+        self, benchmark: Any, bundle: FluentBundle
     ) -> None:
         """Benchmark formatting plural select expression."""
         result, errors = benchmark(
