@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.88.0"
+version: "0.89.0"
 domain: INDEX
-updated: "2026-01-23"
+updated: "2026-01-24"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -80,7 +80,7 @@ from ftllexengine.introspection import (
     TerritoryCode, CurrencyCode,  # Type aliases
     TerritoryInfo, CurrencyInfo,  # Data classes
     get_territory, get_currency, list_territories, list_currencies,
-    get_territory_currency,  # Lookup functions
+    get_territory_currencies,  # Lookup functions
     is_valid_territory_code, is_valid_currency_code,  # Type guards
     clear_iso_cache,  # Cache management
     BabelImportError,  # Exception

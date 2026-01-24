@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.87.0"
+version: "0.89.0"
 domain: fuzzing
-updated: "2026-01-22"
+updated: "2026-01-24"
 route:
   keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, iso, fiscal, introspection]
   questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "how to fuzz ISO introspection?", "how to fuzz fiscal calendar?"]

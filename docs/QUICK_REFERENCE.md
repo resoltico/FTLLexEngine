@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.88.0"
+version: "0.89.0"
 domain: reference
-updated: "2026-01-23"
+updated: "2026-01-24"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, cache_write_once, cache_enable_audit]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]

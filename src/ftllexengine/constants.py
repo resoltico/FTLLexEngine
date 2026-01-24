@@ -21,6 +21,7 @@ __all__ = [
     "MAX_DEPTH",
     # Cache limits
     "MAX_LOCALE_CACHE_SIZE",
+    "MAX_TERRITORY_CACHE_SIZE",
     "DEFAULT_CACHE_SIZE",
     "DEFAULT_MAX_ENTRY_SIZE",
     # Input limits
@@ -100,6 +101,13 @@ MAX_DEPTH: int = 100
 # 128 covers typical multi-region applications (major locales + variants).
 MAX_LOCALE_CACHE_SIZE: int = 128
 
+# Maximum cached territory-keyed entries (e.g., territory-to-currency mappings).
+# ISO 3166-1 defines ~249 alpha-2 territory codes. 300 provides margin for
+# complete coverage without cache thrashing when iterating all territories.
+# Distinct from MAX_LOCALE_CACHE_SIZE because domain cardinality differs:
+# locales are user-controlled (small working set), territories are enumerable (finite set).
+MAX_TERRITORY_CACHE_SIZE: int = 300
+
 # Default maximum cache entries for format results.
 # 1000 entries is sufficient for most applications (typical UI has <500 messages).
 DEFAULT_CACHE_SIZE: int = 1000
@@ -146,8 +154,10 @@ MAX_LOCALE_LENGTH_HARD_LIMIT: int = 1000
 # Maximum lookahead distance for variant marker detection.
 # Used by _is_variant_marker() to distinguish variant keys [x] from literal text.
 # Bounded lookahead prevents O(N^2) parsing on pathological inputs.
-# 128 characters is ample for any legitimate variant key (identifier + number).
-MAX_LOOKAHEAD_CHARS: int = 128
+# Must accommodate: '[' + optional_spaces + identifier (up to 256 chars) + optional_spaces + ']'
+# Value of 300 ensures variant keys with maximum-length identifiers parse correctly.
+# Dependency: Must exceed _MAX_IDENTIFIER_LENGTH (256) plus bracket/whitespace overhead.
+MAX_LOOKAHEAD_CHARS: int = 300
 
 # Maximum number of Junk (error) entries before parser aborts.
 # Prevents memory exhaustion from malformed input that generates excessive errors.

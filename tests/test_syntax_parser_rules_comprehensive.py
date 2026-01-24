@@ -183,8 +183,10 @@ class TestIsVariantMarkerEdgeCases:
 
     def test_lookahead_limit_exceeded(self) -> None:
         """Exceed lookahead limit returns False (line 292)."""
-        # Create variant key longer than MAX_LOOKAHEAD_CHARS
-        long_key = "a" * 200
+        # Create variant key longer than MAX_LOOKAHEAD_CHARS (300)
+        # Note: limit was increased from 128 to 300 in v0.89.0 to support
+        # identifiers up to 256 chars with bracket/whitespace overhead.
+        long_key = "a" * 350
         cursor = Cursor(f"[{long_key}]", 0)
         assert _is_variant_marker(cursor) is False
 

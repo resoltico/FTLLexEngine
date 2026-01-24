@@ -420,8 +420,8 @@ class FiscalDelta:
             Resulting date after adding delta.
 
         Raises:
-            ValueError: If month_end_policy is STRICT and day overflows.
-            OverflowError: If resulting date is out of range.
+            ValueError: If month_end_policy is STRICT and day overflows,
+                or if resulting date year is outside valid range (1-9999).
         """
         # First apply months (years + quarters + months combined)
         total_months = self.total_months()
@@ -445,8 +445,8 @@ class FiscalDelta:
             Resulting date after subtracting delta.
 
         Raises:
-            ValueError: If month_end_policy is STRICT and day overflows.
-            OverflowError: If resulting date is out of range.
+            ValueError: If month_end_policy is STRICT and day overflows,
+                or if resulting date year is outside valid range (1-9999).
         """
         return self.negate().add_to(d)
 
@@ -464,11 +464,15 @@ class FiscalDelta:
             month_end_policy=self.month_end_policy,
         )
 
-    def __add__(self, other: FiscalDelta) -> FiscalDelta:
-        """Add two FiscalDeltas."""
+    def __add__(self, other: FiscalDelta) -> Self:
+        """Add two FiscalDeltas.
+
+        Preserves subclass type: if self is a subclass of FiscalDelta,
+        the result is also that subclass.
+        """
         if not isinstance(other, FiscalDelta):
             return NotImplemented
-        return FiscalDelta(
+        return type(self)(
             years=self.years + other.years,
             quarters=self.quarters + other.quarters,
             months=self.months + other.months,
@@ -476,11 +480,15 @@ class FiscalDelta:
             month_end_policy=self.month_end_policy,
         )
 
-    def __sub__(self, other: FiscalDelta) -> FiscalDelta:
-        """Subtract two FiscalDeltas."""
+    def __sub__(self, other: FiscalDelta) -> Self:
+        """Subtract two FiscalDeltas.
+
+        Preserves subclass type: if self is a subclass of FiscalDelta,
+        the result is also that subclass.
+        """
         if not isinstance(other, FiscalDelta):
             return NotImplemented
-        return FiscalDelta(
+        return type(self)(
             years=self.years - other.years,
             quarters=self.quarters - other.quarters,
             months=self.months - other.months,
@@ -492,11 +500,15 @@ class FiscalDelta:
         """Negate this delta."""
         return self.negate()
 
-    def __mul__(self, factor: int) -> FiscalDelta:
-        """Multiply delta by an integer factor."""
+    def __mul__(self, factor: int) -> Self:
+        """Multiply delta by an integer factor.
+
+        Preserves subclass type: if self is a subclass of FiscalDelta,
+        the result is also that subclass.
+        """
         if not isinstance(factor, int):
             return NotImplemented
-        return FiscalDelta(
+        return type(self)(
             years=self.years * factor,
             quarters=self.quarters * factor,
             months=self.months * factor,
@@ -504,7 +516,7 @@ class FiscalDelta:
             month_end_policy=self.month_end_policy,
         )
 
-    def __rmul__(self, factor: int) -> FiscalDelta:
+    def __rmul__(self, factor: int) -> Self:
         """Right multiply delta by an integer factor."""
         return self.__mul__(factor)
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.88.0"
+version: "0.89.0"
 domain: TYPES
-updated: "2026-01-23"
+updated: "2026-01-24"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -1000,7 +1000,7 @@ ISO 3166-1 territory data with localized name.
 class TerritoryInfo:
     alpha2: TerritoryCode
     name: str
-    default_currency: CurrencyCode | None
+    currencies: tuple[CurrencyCode, ...]
 ```
 
 ### Parameters
@@ -1008,13 +1008,14 @@ class TerritoryInfo:
 |:-----|:-----|:----|:----------|
 | `alpha2` | `TerritoryCode` | Y | ISO 3166-1 alpha-2 code |
 | `name` | `str` | Y | Localized display name |
-| `default_currency` | `CurrencyCode \| None` | Y | Primary currency or None |
+| `currencies` | `tuple[CurrencyCode, ...]` | Y | Currency codes in priority order (may be empty) |
 
 ### Constraints
 - Return: Immutable territory data.
 - State: Frozen dataclass.
 - Thread: Safe.
 - Hashable: Yes.
+- Multi-Currency: Territories may have multiple legal tender currencies (e.g., Panama: PAB, USD).
 - Import: `from ftllexengine.introspection import TerritoryInfo`
 
 ---
@@ -1154,17 +1155,18 @@ def list_currencies(
 - State: Bounded cache per normalized locale.
 - Thread: Safe.
 - Normalization: Locale normalized (BCP-47/POSIX/lowercase accepted).
+- Consistency: Same currency count across all locales (uses English fallback for localized names).
 - Import: `from ftllexengine.introspection import list_currencies`
 
 ---
 
-## `get_territory_currency`
+## `get_territory_currencies`
 
-Get default currency for a territory.
+Get all currencies for a territory in priority order.
 
 ### Signature
 ```python
-def get_territory_currency(territory: str) -> CurrencyCode | None:
+def get_territory_currencies(territory: str) -> list[CurrencyCode]:
 ```
 
 ### Parameters
@@ -1173,12 +1175,13 @@ def get_territory_currency(territory: str) -> CurrencyCode | None:
 | `territory` | `str` | Y | ISO 3166-1 alpha-2 code (case-insensitive) |
 
 ### Constraints
-- Return: ISO 4217 currency code or None if unknown.
+- Return: List of ISO 4217 currency codes (empty if unknown territory).
 - Raises: `BabelImportError` if Babel not installed.
 - State: Bounded cache per normalized territory code.
 - Thread: Safe.
 - Normalization: Territory code uppercased internally.
-- Import: `from ftllexengine.introspection import get_territory_currency`
+- Multi-Currency: Returns all legal tender currencies, primary first (e.g., Panama: ["PAB", "USD"]).
+- Import: `from ftllexengine.introspection import get_territory_currencies`
 
 ---
 

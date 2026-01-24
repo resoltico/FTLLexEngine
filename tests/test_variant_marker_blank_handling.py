@@ -240,3 +240,140 @@ msg = {{ $count ->
             assert "one" in keys
 
         property_test()  # pylint: disable=no-value-for-parameter
+
+
+class TestLongIdentifierVariantKeys:
+    """Tests for variant keys with long identifiers (v0.89.0 fix).
+
+    Prior to v0.89.0, MAX_LOOKAHEAD_CHARS (128) was smaller than
+    _MAX_IDENTIFIER_LENGTH (256), causing variant keys with 129-256 char
+    identifiers to be misparsed as literal text.
+    """
+
+    def test_variant_key_with_max_length_identifier(self) -> None:
+        """Variant key with maximum length identifier (256 chars) parses correctly."""
+        parser = FluentParserV1()
+        long_id = "a" * 256  # Maximum allowed identifier length
+        ftl = f"""
+msg = {{ $type ->
+    [{long_id}] Long variant
+   *[other] Default
+}}
+"""
+        resource = parser.parse(ftl)
+
+        junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+        messages = [e for e in resource.entries if isinstance(e, Message)]
+
+        assert len(junk_entries) == 0, "Should not produce junk"
+        assert len(messages) == 1
+
+        msg = messages[0]
+        assert msg.value is not None
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+
+        # Verify long identifier variant was parsed
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+
+        keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
+        assert long_id in keys
+
+    def test_variant_key_with_200_char_identifier(self) -> None:
+        """Variant key with 200 char identifier parses correctly.
+
+        This tests the previously broken range (129-256 chars).
+        """
+        parser = FluentParserV1()
+        medium_id = "x" * 200
+        ftl = f"""
+selector = {{ $option ->
+    [{medium_id}] Medium long option
+   *[default] Fallback
+}}
+"""
+        resource = parser.parse(ftl)
+
+        junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+        messages = [e for e in resource.entries if isinstance(e, Message)]
+
+        assert len(junk_entries) == 0
+        assert len(messages) == 1
+
+        msg = messages[0]
+        assert msg.value is not None
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+
+        keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
+        assert medium_id in keys
+
+    def test_variant_key_with_129_char_identifier(self) -> None:
+        """Variant key with 129 char identifier parses correctly.
+
+        This is the boundary case - previously 128 was the limit.
+        """
+        parser = FluentParserV1()
+        boundary_id = "b" * 129
+        ftl = f"""
+edge = {{ $case ->
+    [{boundary_id}] Boundary case
+   *[other] Other
+}}
+"""
+        resource = parser.parse(ftl)
+
+        junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+        messages = [e for e in resource.entries if isinstance(e, Message)]
+
+        assert len(junk_entries) == 0
+        assert len(messages) == 1
+
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+
+        msg = messages[0]
+        assert msg.value is not None
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+        keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
+        assert boundary_id in keys
+
+    def test_variant_key_with_spaces_and_long_identifier(self) -> None:
+        """Variant key with spaces and long identifier parses correctly.
+
+        Tests combined space handling and long identifier support.
+        """
+        parser = FluentParserV1()
+        long_id = "identifier_" * 20  # 220 chars
+        ftl = f"""
+combined = {{ $value ->
+    [ {long_id} ] With spaces
+   *[short] Short key
+}}
+"""
+        resource = parser.parse(ftl)
+
+        junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+        messages = [e for e in resource.entries if isinstance(e, Message)]
+
+        assert len(junk_entries) == 0
+        assert len(messages) == 1
+
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+
+        msg = messages[0]
+        assert msg.value is not None
+        placeable = msg.value.elements[0]
+        assert isinstance(placeable, Placeable)
+        select = placeable.expression
+        assert isinstance(select, SelectExpression)
+        keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
+        assert long_id in keys

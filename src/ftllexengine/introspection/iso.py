@@ -22,6 +22,7 @@ from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
     ISO_4217_DEFAULT_DECIMALS,
     MAX_LOCALE_CACHE_SIZE,
+    MAX_TERRITORY_CACHE_SIZE,
 )
 from ftllexengine.locale_utils import normalize_locale
 
@@ -41,7 +42,7 @@ __all__ = [
     "get_currency",
     "list_territories",
     "list_currencies",
-    "get_territory_currency",
+    "get_territory_currencies",
     # Type guards
     "is_valid_territory_code",
     "is_valid_currency_code",
@@ -95,12 +96,14 @@ class TerritoryInfo:
     Attributes:
         alpha2: ISO 3166-1 alpha-2 code (e.g., 'US', 'DE').
         name: Localized display name (depends on locale used for lookup).
-        default_currency: Primary currency code or None if unknown.
+        currencies: All active legal tender currencies for this territory.
+            Multi-currency territories (e.g., Panama: PAB, USD) have multiple entries.
+            Empty tuple if no currency data available.
     """
 
     alpha2: TerritoryCode
     name: str
-    default_currency: CurrencyCode | None
+    currencies: tuple[CurrencyCode, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,12 +265,12 @@ def _get_territory_impl(
         return None
 
     name = territories[code_upper]
-    default_currency = get_territory_currency(code_upper)
+    currencies = get_territory_currencies(code_upper)
 
     return TerritoryInfo(
         alpha2=code_upper,
         name=name,
-        default_currency=default_currency,
+        currencies=tuple(currencies),
     )
 
 
@@ -363,12 +366,12 @@ def _list_territories_impl(
     for code, name in territories.items():
         # Filter to alpha-2 codes only (2 uppercase letters)
         if len(code) == 2 and code.isalpha() and code.isupper():
-            default_currency = get_territory_currency(code)
+            currencies = get_territory_currencies(code)
             result.add(
                 TerritoryInfo(
                     alpha2=code,
                     name=name,
-                    default_currency=default_currency,
+                    currencies=tuple(currencies),
                 )
             )
 
@@ -401,23 +404,42 @@ def _list_currencies_impl(
 ) -> frozenset[CurrencyInfo]:
     """Internal cached implementation for list_currencies.
 
+    Returns complete ISO 4217 currency set regardless of locale. When a currency
+    lacks a localized name in the target locale, falls back to English name.
+    This ensures consistent result sets across locales for financial applications.
+
     Args:
         locale_norm: Pre-normalized locale string.
 
     Returns:
         Frozen set of all CurrencyInfo objects.
     """
-    # Get all currency codes from Babel (English locale has complete list)
+    # Get all currency codes and English names from Babel
     currencies_en = _get_babel_currencies()
     result: set[CurrencyInfo] = set()
 
-    for code in currencies_en:
+    for code, english_name in currencies_en.items():
         # Filter to valid ISO 4217 codes (3 uppercase letters)
         if len(code) == 3 and code.isalpha() and code.isupper():
-            # Use impl directly since locale is already normalized
+            # Try to get localized info
             info = _get_currency_impl(code, locale_norm)
             if info is not None:
                 result.add(info)
+            else:
+                # Fallback: use English name when localized name unavailable
+                # This ensures complete currency list regardless of locale coverage
+                symbol = _get_babel_currency_symbol(code, locale_norm)
+                decimal_digits = ISO_4217_DECIMAL_DIGITS.get(
+                    code, ISO_4217_DEFAULT_DECIMALS
+                )
+                result.add(
+                    CurrencyInfo(
+                        code=code,
+                        name=english_name,
+                        symbol=symbol,
+                        decimal_digits=decimal_digits,
+                    )
+                )
 
     return frozenset(result)
 
@@ -427,12 +449,19 @@ def list_currencies(
 ) -> frozenset[CurrencyInfo]:
     """List all known ISO 4217 currencies.
 
+    Returns the complete ISO 4217 currency set regardless of locale. Currencies
+    are localized where CLDR data is available; otherwise, English names are
+    used as fallback. This ensures consistent result sets across all locales
+    for financial applications.
+
     Args:
         locale: Locale for name/symbol localization (default: 'en'). Accepts
             BCP-47 (en-US) or POSIX (en_US) formats; normalized internally.
 
     Returns:
-        Frozen set of all CurrencyInfo objects.
+        Frozen set of all CurrencyInfo objects. The set is complete and
+        consistent regardless of locale - same currencies returned for
+        all locales, only names/symbols differ based on CLDR coverage.
 
     Raises:
         BabelImportError: If Babel not installed.
@@ -442,40 +471,41 @@ def list_currencies(
     return _list_currencies_impl(normalize_locale(locale))
 
 
-@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
-def _get_territory_currency_impl(territory_upper: str) -> CurrencyCode | None:
-    """Internal cached implementation for get_territory_currency.
+@lru_cache(maxsize=MAX_TERRITORY_CACHE_SIZE)
+def _get_territory_currencies_impl(territory_upper: str) -> tuple[CurrencyCode, ...]:
+    """Internal cached implementation for get_territory_currencies.
 
     Args:
         territory_upper: Pre-uppercased ISO 3166-1 alpha-2 code.
 
     Returns:
-        ISO 4217 currency code or None if unknown.
+        Tuple of all active legal tender ISO 4217 currency codes.
+        Empty tuple if territory unknown or has no currency data.
     """
     currencies = _get_babel_territory_currencies(territory_upper)
-
-    if not currencies:
-        return None
-
-    # Return first active tender currency
-    return currencies[0]
+    return tuple(currencies)
 
 
-def get_territory_currency(territory: str) -> CurrencyCode | None:
-    """Get default currency for a territory.
+def get_territory_currencies(territory: str) -> list[CurrencyCode]:
+    """Get all active legal tender currencies for a territory.
+
+    Multi-currency territories (e.g., Panama with PAB and USD) return
+    all currencies currently in use. The order reflects CLDR precedence
+    (typically the most commonly used currency first).
 
     Args:
         territory: ISO 3166-1 alpha-2 code. Case-insensitive.
 
     Returns:
-        ISO 4217 currency code or None if unknown.
+        List of all active ISO 4217 currency codes for the territory.
+        Empty list if territory unknown or has no currency data.
 
     Raises:
         BabelImportError: If Babel not installed.
 
     Thread-safe. Result cached per normalized territory code.
     """
-    return _get_territory_currency_impl(territory.upper())
+    return list(_get_territory_currencies_impl(territory.upper()))
 
 
 # ============================================================================
@@ -538,4 +568,4 @@ def clear_iso_cache() -> None:
     _get_currency_impl.cache_clear()
     _list_territories_impl.cache_clear()
     _list_currencies_impl.cache_clear()
-    _get_territory_currency_impl.cache_clear()
+    _get_territory_currencies_impl.cache_clear()

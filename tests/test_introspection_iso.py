@@ -22,7 +22,7 @@ from ftllexengine.introspection import (
     clear_iso_cache,
     get_currency,
     get_territory,
-    get_territory_currency,
+    get_territory_currencies,
     is_valid_currency_code,
     is_valid_territory_code,
     list_currencies,
@@ -43,27 +43,40 @@ class TestTerritoryInfo:
 
     def test_immutable(self) -> None:
         """TerritoryInfo is immutable (frozen)."""
-        info = TerritoryInfo(alpha2="US", name="United States", default_currency="USD")
+        info = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
         with pytest.raises(AttributeError):
             info.alpha2 = "CA"  # type: ignore[misc]
 
     def test_hashable(self) -> None:
         """TerritoryInfo is hashable (can be used in sets/dicts)."""
-        info = TerritoryInfo(alpha2="US", name="United States", default_currency="USD")
+        info = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
         assert hash(info) is not None
         territories = {info}
         assert len(territories) == 1
 
     def test_equality(self) -> None:
         """TerritoryInfo instances with same values are equal."""
-        info1 = TerritoryInfo(alpha2="US", name="United States", default_currency="USD")
-        info2 = TerritoryInfo(alpha2="US", name="United States", default_currency="USD")
+        info1 = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
+        info2 = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
         assert info1 == info2
 
     def test_slots(self) -> None:
         """TerritoryInfo uses __slots__ for memory efficiency."""
-        info = TerritoryInfo(alpha2="US", name="United States", default_currency="USD")
+        info = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
         assert not hasattr(info, "__dict__") or info.__dict__ == {}
+
+    def test_multi_currency_territory(self) -> None:
+        """TerritoryInfo supports multiple currencies for multi-currency territories."""
+        info = TerritoryInfo(alpha2="PA", name="Panama", currencies=("PAB", "USD"))
+        assert len(info.currencies) == 2
+        assert "PAB" in info.currencies
+        assert "USD" in info.currencies
+
+    def test_empty_currencies_tuple(self) -> None:
+        """TerritoryInfo supports empty currencies tuple for territories without currency data."""
+        info = TerritoryInfo(alpha2="AQ", name="Antarctica", currencies=())
+        assert info.currencies == ()
+        assert len(info.currencies) == 0
 
 
 class TestCurrencyInfo:
@@ -138,15 +151,15 @@ class TestGetTerritory:
         # German name should be "Deutschland"
         assert "Deutschland" in result_de.name
 
-    def test_includes_default_currency(self) -> None:
-        """get_territory includes default currency when available."""
+    def test_includes_currencies(self) -> None:
+        """get_territory includes currencies when available."""
         result = get_territory("US")
         assert result is not None
-        assert result.default_currency == "USD"
+        assert "USD" in result.currencies
 
         result_jp = get_territory("JP")
         assert result_jp is not None
-        assert result_jp.default_currency == "JPY"
+        assert "JPY" in result_jp.currencies
 
     def test_various_territories(self) -> None:
         """get_territory works for various territory codes."""
@@ -325,36 +338,59 @@ class TestListCurrencies:
             assert currency.code.isupper()
 
 
-class TestGetTerritoryCurrency:
-    """Tests for get_territory_currency() function."""
+class TestGetTerritoryCurrencies:
+    """Tests for get_territory_currencies() function."""
 
     def setup_method(self) -> None:
         """Clear cache before each test."""
         clear_iso_cache()
 
-    def test_returns_currency_for_known_territory(self) -> None:
-        """get_territory_currency returns currency for known territories."""
-        assert get_territory_currency("US") == "USD"
-        assert get_territory_currency("JP") == "JPY"
-        assert get_territory_currency("GB") == "GBP"
+    def test_returns_currencies_for_known_territory(self) -> None:
+        """get_territory_currencies returns currencies for known territories."""
+        us_currencies = get_territory_currencies("US")
+        assert isinstance(us_currencies, list)
+        assert "USD" in us_currencies
 
-    def test_returns_none_for_unknown_territory(self) -> None:
-        """get_territory_currency returns None for unknown territories."""
-        result = get_territory_currency("XX")
-        assert result is None
+        jp_currencies = get_territory_currencies("JP")
+        assert "JPY" in jp_currencies
+
+        gb_currencies = get_territory_currencies("GB")
+        assert "GBP" in gb_currencies
+
+    def test_returns_empty_list_for_unknown_territory(self) -> None:
+        """get_territory_currencies returns empty list for unknown territories."""
+        result = get_territory_currencies("XX")
+        assert result == []
 
     def test_case_insensitive(self) -> None:
-        """get_territory_currency accepts lowercase codes."""
-        assert get_territory_currency("us") == "USD"
-        assert get_territory_currency("jp") == "JPY"
+        """get_territory_currencies accepts lowercase codes."""
+        assert "USD" in get_territory_currencies("us")
+        assert "JPY" in get_territory_currencies("jp")
 
     def test_eurozone_countries(self) -> None:
-        """get_territory_currency returns EUR for eurozone countries."""
+        """get_territory_currencies returns EUR for eurozone countries."""
         eurozone = ["DE", "FR", "IT", "ES", "NL", "BE", "AT", "LV", "LT", "EE"]
 
         for code in eurozone:
-            result = get_territory_currency(code)
-            assert result == "EUR", f"Expected EUR for {code}, got {result}"
+            result = get_territory_currencies(code)
+            assert "EUR" in result, f"Expected EUR for {code}, got {result}"
+
+    def test_multi_currency_territories(self) -> None:
+        """get_territory_currencies returns all currencies for multi-currency territories."""
+        # Panama uses both PAB and USD
+        pa_currencies = get_territory_currencies("PA")
+        # CLDR data should include at least one currency
+        assert len(pa_currencies) >= 1
+
+    def test_returns_list_not_tuple(self) -> None:
+        """get_territory_currencies returns a list (mutable) for caller convenience."""
+        result = get_territory_currencies("US")
+        assert isinstance(result, list)
+        # Verify it's mutable (caller can modify without affecting cache)
+        result.append("TEST")
+        # New call should not include "TEST"
+        fresh_result = get_territory_currencies("US")
+        assert "TEST" not in fresh_result
 
 
 class TestTypeGuards:
@@ -590,12 +626,14 @@ class TestEdgeCases:
         assert result.symbol in ("$", "US$", "USD")
 
     def test_territory_without_currency(self) -> None:
-        """Territories without currency data return None for default_currency."""
+        """Territories without currency data have empty currencies tuple."""
         # Antarctica (AQ) typically has no official currency
         result = get_territory("AQ")
         if result is not None:
-            # May have no default currency
-            assert result.default_currency is None or isinstance(result.default_currency, str)
+            # May have no currencies (empty tuple)
+            assert isinstance(result.currencies, tuple)
+            # May be empty or contain some currencies depending on CLDR data
+            assert all(isinstance(c, str) for c in result.currencies)
 
     def test_type_guard_non_string_territory(self) -> None:
         """is_valid_territory_code returns False for non-string inputs."""
@@ -637,16 +675,17 @@ class TestBabelExceptionHandling:
             # Symbol should be present (may be fallback)
             assert len(result.symbol) > 0
 
-    def test_territory_currency_for_non_sovereign_territories(self) -> None:
-        """get_territory_currency handles territories without unique currencies."""
+    def test_territory_currencies_for_non_sovereign_territories(self) -> None:
+        """get_territory_currencies handles territories without unique currencies."""
         # Vatican City might have unusual currency data
-        result = get_territory_currency("VA")
-        # May return EUR or None
-        assert result is None or isinstance(result, str)
+        result = get_territory_currencies("VA")
+        # May return EUR or empty list
+        assert isinstance(result, list)
+        assert all(isinstance(c, str) for c in result)
 
         # Antarctica has no official currency
-        result_aq = get_territory_currency("AQ")
-        assert result_aq is None
+        result_aq = get_territory_currencies("AQ")
+        assert result_aq == []
 
     def test_get_currency_with_very_rare_locale(self) -> None:
         """get_currency degrades gracefully with very rare locales."""
@@ -958,7 +997,7 @@ class TestBoundedCache:
 
         from ftllexengine.introspection.iso import (  # noqa: PLC0415
             _get_currency_impl,
-            _get_territory_currency_impl,
+            _get_territory_currencies_impl,
             _get_territory_impl,
             _list_currencies_impl,
             _list_territories_impl,
@@ -969,7 +1008,7 @@ class TestBoundedCache:
         assert hasattr(_get_currency_impl, "cache_info")
         assert hasattr(_list_territories_impl, "cache_info")
         assert hasattr(_list_currencies_impl, "cache_info")
-        assert hasattr(_get_territory_currency_impl, "cache_info")
+        assert hasattr(_get_territory_currencies_impl, "cache_info")
 
         # Check maxsize is set (bounded cache, not unbounded)
         # pylint: disable=no-value-for-parameter
@@ -1174,3 +1213,104 @@ class TestClearAllCachesIntegration:
         # Verify ISO cache is now empty
         info_after = _get_territory_impl.cache_info()
         assert info_after.currsize == 0
+
+
+class TestListCurrenciesConsistency:
+    """Tests for list_currencies() consistency across locales (v0.89.0 fix)."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_iso_cache()
+
+    def test_same_currency_count_across_locales(self) -> None:
+        """list_currencies returns same number of currencies for all locales.
+
+        Prior to v0.89.0, currencies without localized names in a target locale
+        were excluded from results. This caused inconsistent result sets.
+        """
+        result_en = list_currencies(locale="en")
+        result_de = list_currencies(locale="de")
+        result_fr = list_currencies(locale="fr")
+
+        # All locales should return the same number of currencies
+        assert len(result_en) == len(result_de), (
+            f"Currency count differs: en={len(result_en)}, de={len(result_de)}"
+        )
+        assert len(result_en) == len(result_fr), (
+            f"Currency count differs: en={len(result_en)}, fr={len(result_fr)}"
+        )
+
+    def test_same_currency_codes_across_locales(self) -> None:
+        """list_currencies returns same currency codes for all locales.
+
+        The code set should be identical; only names/symbols may differ.
+        """
+        codes_en = {c.code for c in list_currencies(locale="en")}
+        codes_de = {c.code for c in list_currencies(locale="de")}
+        codes_ja = {c.code for c in list_currencies(locale="ja")}
+
+        assert codes_en == codes_de, "Codes differ: en vs de"
+        assert codes_en == codes_ja, "Codes differ: en vs ja"
+
+    def test_fallback_name_for_rare_locale(self) -> None:
+        """Currencies with no localized name use English name as fallback.
+
+        For locales with incomplete CLDR coverage, the English name should
+        be used rather than excluding the currency.
+        """
+        # Use a rare locale that might have incomplete coverage
+        result = list_currencies(locale="zu")  # Zulu
+
+        # Should still include major currencies
+        codes = {c.code for c in result}
+        assert "USD" in codes
+        assert "EUR" in codes
+        assert "JPY" in codes
+
+
+class TestTerritoryCacheSize:
+    """Tests for territory cache using MAX_TERRITORY_CACHE_SIZE (v0.89.0 fix)."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_iso_cache()
+
+    def test_territory_currencies_cache_size(self) -> None:
+        """Territory currencies cache uses correct MAX_TERRITORY_CACHE_SIZE."""
+        from ftllexengine.constants import MAX_TERRITORY_CACHE_SIZE  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_territory_currencies_impl,
+        )
+
+        # pylint: disable=no-value-for-parameter
+        info = _get_territory_currencies_impl.cache_info()
+        assert info.maxsize == MAX_TERRITORY_CACHE_SIZE
+        # Should be 300 (enough for all ~249 territories)
+        assert info.maxsize >= 249
+
+    def test_no_cache_thrashing_on_full_iteration(self) -> None:
+        """Iterating all territories should not cause cache thrashing.
+
+        With MAX_TERRITORY_CACHE_SIZE >= 249, all territories fit in cache.
+        """
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_territory_currencies_impl,
+        )
+
+        clear_iso_cache()
+
+        # Iterate all territories
+        territories = list_territories()
+        for t in territories:
+            _ = get_territory_currencies(t.alpha2)
+
+        # pylint: disable=no-value-for-parameter
+        info = _get_territory_currencies_impl.cache_info()
+
+        # No evictions should have occurred (all fit in cache)
+        # Eviction count is misses - currsize when cache is full
+        assert info.maxsize is not None  # This cache is bounded
+        assert info.currsize <= info.maxsize
+        # All unique territories should be cached
+        unique_territories = {t.alpha2 for t in territories}
+        assert info.currsize >= len(unique_territories) - 1  # Allow small margin

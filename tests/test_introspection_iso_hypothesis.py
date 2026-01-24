@@ -15,7 +15,7 @@ from ftllexengine.introspection.iso import (
     TerritoryInfo,
     get_currency,
     get_territory,
-    get_territory_currency,
+    get_territory_currencies,
     is_valid_currency_code,
     is_valid_territory_code,
     list_currencies,
@@ -213,25 +213,26 @@ class TestTerritoryCurrencyProperties:
     """Property-based tests for territory-currency relationships."""
 
     @given(code=territory_codes)
-    def test_territory_currency_is_valid_or_none(self, code: str) -> None:
-        """get_territory_currency returns valid currency code or None."""
-        currency_code = get_territory_currency(code)
-        if currency_code is not None:
+    def test_territory_currencies_are_all_valid(self, code: str) -> None:
+        """get_territory_currencies returns list of valid currency codes."""
+        currencies = get_territory_currencies(code)
+        assert isinstance(currencies, list)
+        for currency_code in currencies:
             assert is_valid_currency_code(currency_code)
 
     @given(code=territory_codes)
-    def test_territory_default_currency_matches_lookup(self, code: str) -> None:
-        """TerritoryInfo.default_currency matches get_territory_currency."""
+    def test_territory_currencies_matches_lookup(self, code: str) -> None:
+        """TerritoryInfo.currencies matches get_territory_currencies."""
         territory = get_territory(code)
         assert territory is not None
-        direct_lookup = get_territory_currency(code)
-        assert territory.default_currency == direct_lookup
+        direct_lookup = get_territory_currencies(code)
+        assert list(territory.currencies) == direct_lookup
 
     @given(code=territory_codes)
-    def test_territory_currency_case_insensitive(self, code: str) -> None:
-        """get_territory_currency is case-insensitive."""
-        upper = get_territory_currency(code.upper())
-        lower = get_territory_currency(code.lower())
+    def test_territory_currencies_case_insensitive(self, code: str) -> None:
+        """get_territory_currencies is case-insensitive."""
+        upper = get_territory_currencies(code.upper())
+        lower = get_territory_currencies(code.lower())
         assert upper == lower
 
 

@@ -389,11 +389,11 @@ Your cafe chain opens in Tokyo, London, and New York. Each country uses a differ
 ### Which Currency for Each Location?
 
 ```python
-from ftllexengine.introspection.iso import get_territory_currency, get_currency
+from ftllexengine.introspection.iso import get_territory_currencies, get_currency
 
 # New location in Japan - what currency?
-currency_code = get_territory_currency("JP")
-# "JPY"
+currencies = get_territory_currencies("JP")
+# ["JPY"]
 
 # How many decimal places for yen?
 jpy = get_currency("JPY")
@@ -404,6 +404,10 @@ jpy.decimal_digits
 usd = get_currency("USD")
 usd.decimal_digits
 # 2 - dollars and cents
+
+# Multi-currency territories return all currencies
+panama_currencies = get_territory_currencies("PA")
+# ["PAB", "USD"] - Panama uses both Balboa and US Dollar
 ```
 
 Your receipts format correctly - no `$5.00` in Tokyo, just `¥500`.

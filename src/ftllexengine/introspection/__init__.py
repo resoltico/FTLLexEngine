@@ -41,7 +41,7 @@ from .iso import (
     clear_iso_cache,
     get_currency,
     get_territory,
-    get_territory_currency,
+    get_territory_currencies,
     is_valid_currency_code,
     is_valid_territory_code,
     list_currencies,
@@ -72,7 +72,7 @@ __all__ = [
     "get_currency",
     "list_territories",
     "list_currencies",
-    "get_territory_currency",
+    "get_territory_currencies",
     # ISO type guards
     "is_valid_territory_code",
     "is_valid_currency_code",

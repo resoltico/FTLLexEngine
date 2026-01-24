@@ -13,6 +13,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-01-24
+
+### Breaking Changes
+
+- **ISO Territory Currencies API Redesign** (API-ISO-MULTI-CURRENCY-001):
+  - Previous: `get_territory_currency(territory)` returned `CurrencyCode | None` (single currency)
+  - Issue: Multi-currency territories (e.g., Panama uses PAB and USD) had data loss; only first currency returned
+  - **Breaking**: Function renamed to `get_territory_currencies(territory)` returning `list[CurrencyCode]`
+  - **Breaking**: `TerritoryInfo.default_currency: CurrencyCode | None` replaced by `TerritoryInfo.currencies: tuple[CurrencyCode, ...]`
+  - Location: `introspection/iso.py`
+  - Migration: Replace `get_territory_currency(code)` with `get_territory_currencies(code)`, access `territory.currencies` (tuple) instead of `territory.default_currency`
+  - Impact: Financial applications can now access all legal tender currencies for any territory
+
+### Fixed
+
+- **ISO list_currencies Locale Filtering** (LOGIC-ISO-LIST-FILTERING-001):
+  - Previous: `list_currencies(locale)` filtered out currencies without localized names in target locale
+  - Issue: Result set varied by locale (e.g., 'fr' returned fewer currencies than 'en'), violating ISO 4217 completeness
+  - Fix: Returns complete ISO 4217 currency set regardless of locale; currencies without localized names use English name as fallback
+  - Location: `introspection/iso.py` `_list_currencies_impl()`
+  - Impact: Consistent currency list across all locales for financial applications
+
+- **ISO Territory Cache Size Mismatch** (PERF-ISO-CACHE-SIZE-001):
+  - Previous: `_get_territory_currency_impl` used `MAX_LOCALE_CACHE_SIZE` (128) as cache size
+  - Issue: ISO 3166-1 defines ~249 territories; iterating all territories caused cache thrashing (>50% eviction rate)
+  - Fix: Added `MAX_TERRITORY_CACHE_SIZE = 300` constant; territory-keyed caches now use appropriate size
+  - Location: `constants.py`, `introspection/iso.py`
+  - Impact: Full territory iteration no longer causes cache evictions
+
+- **FiscalDelta Operator Polymorphism** (LOGIC-FISCAL-DELTA-TYPE-001):
+  - Previous: `__add__`, `__sub__`, `__mul__` hardcoded `FiscalDelta()` constructor, breaking subclass polymorphism
+  - Issue: Subclasses of `FiscalDelta` lost type identity through arithmetic operations (e.g., `CustomDelta + delta` returned `FiscalDelta`, not `CustomDelta`)
+  - Fix: All operators now use `type(self)(...)` pattern, consistent with `negate()` method
+  - Location: `parsing/fiscal.py` `FiscalDelta.__add__()`, `__sub__()`, `__mul__()`, `__rmul__()`
+  - Impact: Subclasses properly preserve type through all arithmetic operations
+
+- **FiscalDelta.add_to Docstring Error** (DOCS-FISCAL-ERROR-DRIFT-001):
+  - Previous: Docstring claimed `OverflowError` for date range violations
+  - Issue: Python's `date()` constructor raises `ValueError` for year outside 1-9999, not `OverflowError`
+  - Fix: Docstring corrected to document `ValueError` for both day overflow and year range violations
+  - Location: `parsing/fiscal.py` `FiscalDelta.add_to()`, `subtract_from()` docstrings
+  - Impact: Callers can now correctly catch `ValueError` for all range violations
+
+- **Parser Variant Lookahead Limit Mismatch** (PARSER-VARIANT-LOOKAHEAD-MISMATCH-001):
+  - Previous: `MAX_LOOKAHEAD_CHARS` (128) was smaller than `_MAX_IDENTIFIER_LENGTH` (256)
+  - Issue: Valid variant keys with 129-256 character identifiers were misparsed as literal text
+  - Fix: Increased `MAX_LOOKAHEAD_CHARS` to 300 to accommodate maximum-length identifiers plus bracket/whitespace overhead
+  - Location: `constants.py`
+  - Impact: Variant keys with long identifiers now parse correctly per Fluent EBNF
+
 ## [0.88.0] - 2026-01-24
 
 ### Fixed
@@ -2584,6 +2634,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.89.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.89.0
 [0.88.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.88.0
 [0.87.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.87.0
 [0.86.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.86.0

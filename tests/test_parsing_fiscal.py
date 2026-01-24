@@ -851,3 +851,130 @@ class TestAddMonthsDefensiveDefaultCase:
 
         result_strict = _add_months(date(2024, 1, 15), 1, MonthEndPolicy.STRICT)
         assert result_strict == date(2024, 2, 15)
+
+
+# pylint: disable=unidiomatic-typecheck
+# Reason: We intentionally use type() instead of isinstance() to verify exact type
+# preservation - isinstance() would not distinguish between subclass and base class.
+class TestFiscalDeltaSubclassPolymorphism:
+    """Tests for FiscalDelta operator subclass preservation (v0.89.0 fix).
+
+    Prior to v0.89.0, operators like __add__, __sub__, __mul__ hardcoded
+    FiscalDelta constructor, breaking subclass polymorphism. Now they use
+    type(self)(...) to preserve subclass type.
+    """
+
+    def test_add_preserves_subclass_type(self) -> None:
+        """__add__ returns same type as self for subclasses."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+            custom_attr: str = "test"
+
+        delta1 = CustomDelta(months=1)
+        delta2 = FiscalDelta(months=2)
+
+        result = delta1 + delta2
+        assert type(result) is CustomDelta
+        assert result.months == 3
+
+    def test_sub_preserves_subclass_type(self) -> None:
+        """__sub__ returns same type as self for subclasses."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+
+        delta1 = CustomDelta(months=5)
+        delta2 = FiscalDelta(months=2)
+
+        result = delta1 - delta2
+        assert type(result) is CustomDelta
+        assert result.months == 3
+
+    def test_mul_preserves_subclass_type(self) -> None:
+        """__mul__ returns same type as self for subclasses."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+
+        delta = CustomDelta(months=2)
+
+        result = delta * 3
+        assert type(result) is CustomDelta
+        assert result.months == 6
+
+    def test_rmul_preserves_subclass_type(self) -> None:
+        """__rmul__ returns same type as self for subclasses."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+
+        delta = CustomDelta(months=2)
+
+        result = 3 * delta
+        assert type(result) is CustomDelta
+        assert result.months == 6
+
+    def test_neg_preserves_subclass_type(self) -> None:
+        """__neg__ returns same type as self for subclasses."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+
+        delta = CustomDelta(months=5, days=10)
+
+        result = -delta
+        assert type(result) is CustomDelta
+        assert result.months == -5
+        assert result.days == -10
+
+    def test_negate_preserves_subclass_type(self) -> None:
+        """negate() returns same type as self for subclasses."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+
+        delta = CustomDelta(years=1, months=6)
+
+        result = delta.negate()
+        assert type(result) is CustomDelta
+        assert result.years == -1
+        assert result.months == -6
+
+    def test_base_class_operations_return_base_type(self) -> None:
+        """Base FiscalDelta operations return FiscalDelta type."""
+        delta1 = FiscalDelta(months=1)
+        delta2 = FiscalDelta(months=2)
+
+        result_add = delta1 + delta2
+        assert type(result_add) is FiscalDelta
+
+        result_sub = delta1 - delta2
+        assert type(result_sub) is FiscalDelta
+
+        result_mul = delta1 * 2
+        assert type(result_mul) is FiscalDelta
+
+        result_neg = -delta1
+        assert type(result_neg) is FiscalDelta
+
+    def test_chained_operations_preserve_subclass(self) -> None:
+        """Chained operations preserve subclass through entire chain."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+
+        delta = CustomDelta(months=1)
+        other = FiscalDelta(months=2)
+
+        # Expression: (delta + other) * 2 - other = (1+2)*2 - 2 = 4
+        result = (delta + other) * 2 - other
+        assert type(result) is CustomDelta
+        assert result.months == 4
