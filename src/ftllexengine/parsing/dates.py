@@ -38,9 +38,10 @@ Python 3.13+.
 """
 
 from datetime import date, datetime, timezone
-from functools import cache
+from functools import lru_cache
 from typing import Any
 
+from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
@@ -287,7 +288,7 @@ def parse_datetime(
     return (None, tuple(errors))
 
 
-@cache
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
 def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     """Get strptime date patterns for locale with era flag.
 
@@ -392,7 +393,7 @@ def _extract_datetime_separator(locale: Any, style: str = "medium") -> str:
         return _DATETIME_SEPARATOR_FALLBACK
 
 
-@cache
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
 def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     """Get strptime datetime patterns for locale with era flag.
 

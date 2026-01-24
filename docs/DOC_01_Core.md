@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.88.0"
 domain: CORE
-updated: "2026-01-21"
+updated: "2026-01-23"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -1285,7 +1285,7 @@ def clear_all_caches() -> None:
 ### Constraints
 - Return: None.
 - Raises: Never.
-- State: Clears currency caches, date caches, locale cache, LocaleContext cache, and introspection cache.
+- State: Clears currency caches, date caches, locale cache, LocaleContext cache, message introspection cache, and ISO introspection cache.
 - Thread: Safe (each cache has internal thread safety).
 - Babel: Clears Babel-related caches only if Babel was used.
 - Import: `from ftllexengine import clear_all_caches`

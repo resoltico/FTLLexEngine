@@ -13,6 +13,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-01-24
+
+### Fixed
+
+- **ISO Introspection UnknownLocaleError Leak** (ROBUST-ISO-UNKNOWN-LOCALE-001):
+  - Previous: `_get_babel_currency_name()` and `_get_babel_currency_symbol()` only caught `(ValueError, LookupError, KeyError, AttributeError)`
+  - Issue: Babel's `UnknownLocaleError` inherits from `Exception`, not `LookupError`; very long or garbage locale strings caused the exception to leak to callers, violating the API contract that only `BabelImportError` should propagate
+  - Discovery: Atheris fuzzer with input `locale="x" * 100` triggered `UnknownLocaleError` in `get_currency()`
+  - Fix: Added defensive `except Exception` clause (matching `_get_babel_territories()` pattern) that checks for locale-related errors and returns graceful fallback
+  - Location: `introspection/iso.py` `_get_babel_currency_name()`, `_get_babel_currency_symbol()`
+  - Impact: API contract honored; garbage locale inputs return `None` or fallback instead of raising Babel-specific exceptions
+
+- **ISO Introspection Cache Integration** (MAINT-CACHE-MISSING-001):
+  - Previous: `clear_all_caches()` did not clear ISO introspection caches (territories, currencies)
+  - Issue: Memory from ISO lookups could not be reclaimed via the central cache clearing function
+  - Fix: `clear_all_caches()` now imports and calls `clear_iso_cache()` from introspection module
+  - Location: `__init__.py` `clear_all_caches()` function
+  - Impact: Complete cache clearing for long-running applications using ISO introspection
+
+- **ISO Introspection Bounded Caches** (SEC-DOS-UNBOUNDED-ISO-001):
+  - Previous: ISO lookup functions used unbounded `@functools.cache` (equivalent to `lru_cache(maxsize=None)`)
+  - Security issue: Attacker could exhaust memory by cycling through unique locale strings, as each unique input was permanently cached
+  - Fix: Replaced `@cache` with `@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)` on all cached functions
+  - Refactored to normalize inputs before caching:
+    - Public functions normalize inputs (code uppercasing, locale normalization)
+    - Internal `_impl` functions receive pre-normalized inputs and are cached
+  - Functions affected: `get_territory`, `get_currency`, `list_territories`, `list_currencies`, `get_territory_currency`
+  - Location: `introspection/iso.py`
+  - Impact: Memory exhaustion attack vector eliminated; cache bounded to 128 entries per function
+
+- **ISO Introspection Locale Normalization** (API-ISO-LOCALE-NORM-001):
+  - Previous: Locale parameters used directly as cache keys without normalization
+  - Issue: Variant formats ('en-US', 'en_US', 'en_us') created separate cache entries, wasting memory and reducing cache hit rates
+  - Fix: All locale parameters normalized via `normalize_locale()` before caching
+  - Code case also normalized: 'us', 'US', 'Us' now hit same cache entry
+  - Location: `introspection/iso.py` all public lookup functions
+  - Impact: Cache efficiency improved; consistent behavior with other locale-aware modules
+
+- **ISO Introspection Exception Narrowing** (ROBUST-ISO-EXCEPTIONS-001):
+  - Previous: Internal Babel wrappers used broad `except Exception:` catching all errors
+  - Issue: Logic bugs (NameError, TypeError) and system errors (MemoryError) were silently converted to "data not found" results, masking bugs in financial-grade contexts
+  - Fix: Narrowed exception handling to `(ValueError, LookupError, KeyError, AttributeError)`
+  - Babel's `UnknownLocaleError` (inherits from Exception, not LookupError) handled specially in `_get_babel_territories()`
+  - Logic bugs and system errors now propagate for proper debugging
+  - Location: `introspection/iso.py` `_get_babel_currency_name()`, `_get_babel_currency_symbol()`, `_get_babel_territory_currencies()`, `_get_babel_territories()`
+  - Impact: Fail-fast behavior for logic bugs; improved debuggability in financial applications
+
+- **FiscalDelta month_end_policy Validation** (SEC-INPUT-VALIDATION-002):
+  - Previous: `FiscalDelta` did not validate `month_end_policy` field at construction
+  - Issue: Passing invalid policy values (strings, None) caused `UnboundLocalError` deep in arithmetic operations instead of clear validation error at construction
+  - Fix: Added `isinstance(self.month_end_policy, MonthEndPolicy)` check in `__post_init__()`
+  - Added defensive default case in `_add_months()` match statement for defense-in-depth
+  - Location: `parsing/fiscal.py` `FiscalDelta.__post_init__()`, `_add_months()`
+  - Impact: Invalid inputs fail fast at construction with clear `TypeError`; arithmetic operations protected by defense-in-depth
+
+- **Date Parsing Bounded Caches** (SEC-DOS-UNBOUNDED-DATES-001):
+  - Previous: Date pattern cache functions used unbounded `@functools.cache`
+  - Security issue: Attacker could exhaust memory by calling `parse_date()` or `parse_datetime()` with millions of unique fake locale strings, each creating a permanent cache entry
+  - Fix: Replaced `@cache` with `@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)` on `_get_date_patterns()` and `_get_datetime_patterns()`
+  - Location: `parsing/dates.py` lines 291, 396
+  - Impact: Memory exhaustion attack vector eliminated; cache bounded to 128 entries per function; LRU eviction for high-volume applications
+
+### Changed
+
+- **RWLock Decorators Modernized to PEP 695** (MODERN-PEP695-RWLOCK-001):
+  - Previous: `with_read_lock` and `with_write_lock` decorators used legacy `TypeVar("T")` pattern
+  - Modernization: Converted to PEP 695 generic function syntax `def with_read_lock[T](...)`
+  - Removed module-level `T = TypeVar("T")` declaration
+  - Location: `runtime/rwlock.py` lines 265, 297
+  - Impact: Cleaner syntax aligned with Python 3.13+ standards; no API change
+
 ## [0.87.0] - 2026-01-23
 
 ### Added
@@ -2513,6 +2584,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.88.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.88.0
 [0.87.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.87.0
 [0.86.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.86.0
 [0.85.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.85.0

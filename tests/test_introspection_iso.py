@@ -861,3 +861,316 @@ class TestPrivateBabelWrappers:
             assert "USDD" not in codes  # Four-letter code
             # Valid codes should be present
             assert "USD" in codes
+
+
+class TestLocaleNormalization:
+    """Tests for locale input normalization (SEC-DOS-UNBOUNDED-ISO-001 fix)."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_iso_cache()
+
+    def test_locale_format_variants_return_same_cached_object(self) -> None:
+        """Different locale formats should hit the same cache entry."""
+        # Clear cache to start fresh
+        clear_iso_cache()
+
+        # Call with BCP-47 format
+        result_bcp47 = get_territory("US", locale="en-US")
+
+        # Call with POSIX format (should hit same cache)
+        result_posix = get_territory("US", locale="en_US")
+
+        # Call with lowercase
+        result_lower = get_territory("US", locale="en_us")
+
+        # All should return the same cached object
+        assert result_bcp47 is result_posix
+        assert result_posix is result_lower
+
+    def test_locale_normalization_for_get_currency(self) -> None:
+        """get_currency normalizes locale formats to single cache entry."""
+        clear_iso_cache()
+
+        result1 = get_currency("EUR", locale="de-DE")
+        result2 = get_currency("EUR", locale="de_DE")
+        result3 = get_currency("EUR", locale="de_de")
+
+        # Same cached object for all variants
+        assert result1 is result2
+        assert result2 is result3
+
+    def test_locale_normalization_for_list_territories(self) -> None:
+        """list_territories normalizes locale formats to single cache entry."""
+        clear_iso_cache()
+
+        result1 = list_territories(locale="fr-FR")
+        result2 = list_territories(locale="fr_FR")
+        result3 = list_territories(locale="fr_fr")
+
+        # Same cached object for all variants
+        assert result1 is result2
+        assert result2 is result3
+
+    def test_locale_normalization_for_list_currencies(self) -> None:
+        """list_currencies normalizes locale formats to single cache entry."""
+        clear_iso_cache()
+
+        result1 = list_currencies(locale="ja-JP")
+        result2 = list_currencies(locale="ja_JP")
+        result3 = list_currencies(locale="ja_jp")
+
+        # Same cached object for all variants
+        assert result1 is result2
+        assert result2 is result3
+
+    def test_code_case_normalization(self) -> None:
+        """Territory and currency codes are case-normalized."""
+        clear_iso_cache()
+
+        # Territory code case variants should hit same cache
+        t_upper = get_territory("US")
+        t_lower = get_territory("us")
+        t_mixed = get_territory("Us")
+
+        assert t_upper is t_lower
+        assert t_lower is t_mixed
+
+        # Currency code case variants should hit same cache
+        c_upper = get_currency("USD")
+        c_lower = get_currency("usd")
+        c_mixed = get_currency("Usd")
+
+        assert c_upper is c_lower
+        assert c_lower is c_mixed
+
+
+class TestBoundedCache:
+    """Tests for bounded LRU cache (SEC-DOS-UNBOUNDED-ISO-001 fix)."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_iso_cache()
+
+    def test_cache_uses_lru_with_maxsize(self) -> None:
+        """Cache implementation should use bounded LRU cache."""
+        # Import the internal cached functions to check their cache_info
+
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_currency_impl,
+            _get_territory_currency_impl,
+            _get_territory_impl,
+            _list_currencies_impl,
+            _list_territories_impl,
+        )
+
+        # All internal cached functions should have cache_info method (lru_cache feature)
+        assert hasattr(_get_territory_impl, "cache_info")
+        assert hasattr(_get_currency_impl, "cache_info")
+        assert hasattr(_list_territories_impl, "cache_info")
+        assert hasattr(_list_currencies_impl, "cache_info")
+        assert hasattr(_get_territory_currency_impl, "cache_info")
+
+        # Check maxsize is set (bounded cache, not unbounded)
+        # pylint: disable=no-value-for-parameter
+        # Note: cache_info() is a method added by @lru_cache decorator, not
+        # related to the function's parameters. Pylint doesn't understand this.
+        info = _get_territory_impl.cache_info()
+        assert info.maxsize is not None
+        assert info.maxsize > 0  # Should be MAX_LOCALE_CACHE_SIZE (128)
+
+    def test_cache_statistics_work(self) -> None:
+        """Cache statistics (hits, misses) should be tracked."""
+        from ftllexengine.introspection.iso import _get_territory_impl  # noqa: PLC0415
+
+        clear_iso_cache()
+
+        # pylint: disable=no-value-for-parameter
+        # Note: cache_info() is a method added by @lru_cache decorator, not
+        # related to the function's parameters. Pylint doesn't understand this.
+
+        # Get initial stats
+        initial_info = _get_territory_impl.cache_info()
+        initial_hits = initial_info.hits
+        initial_misses = initial_info.misses
+
+        # First call should be a miss
+        get_territory("US")
+        info_after_first = _get_territory_impl.cache_info()
+        assert info_after_first.misses == initial_misses + 1
+
+        # Second call should be a hit
+        get_territory("US")
+        info_after_second = _get_territory_impl.cache_info()
+        assert info_after_second.hits == initial_hits + 1
+
+
+class TestExceptionNarrowing:
+    """Tests for narrowed exception handling (ROBUST-ISO-EXCEPTIONS-001 fix)."""
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_iso_cache()
+
+    def test_value_error_is_caught(self) -> None:
+        """ValueError from Babel should be caught and handled gracefully."""
+        # Invalid locale formats trigger ValueError in Babel
+        # The function should return None rather than propagating
+        result = get_territory("US", locale="invalid")
+        # Should either work or return None, not raise
+        assert result is None or isinstance(result, TerritoryInfo)
+
+    def test_lookup_error_is_caught(self) -> None:
+        """LookupError (UnknownLocaleError) from Babel should be handled."""
+        # Test with a locale that doesn't exist in CLDR
+        try:
+            result = get_currency("USD", locale="xyz_ABC")
+            # Should return None or result, not raise
+            assert result is None or isinstance(result, CurrencyInfo)
+        except LookupError:
+            pytest.fail("LookupError should be caught, not propagated")
+
+    def test_attribute_key_error_handled(self) -> None:
+        """AttributeError and KeyError from data access should be handled."""
+        # These are handled internally; we verify by checking edge case inputs
+        # that might trigger such errors in Babel's data access
+        result = get_territory("XX")  # Unknown territory
+        assert result is None
+
+        result2 = get_currency("ZZZ")  # Unknown currency
+        assert result2 is None
+
+    def test_name_error_would_propagate(self) -> None:
+        """NameError (logic bug) should NOT be caught - verify via documentation.
+
+        This test verifies the design intent. Actual NameError testing would
+        require injecting bugs into the code, which is not practical.
+        The narrowed exception list excludes NameError, TypeError, MemoryError.
+        """
+        # Read the source to verify exception types
+        import inspect  # noqa: PLC0415
+
+        from ftllexengine.introspection import iso  # noqa: PLC0415
+
+        source = inspect.getsource(iso._get_babel_currency_name)
+
+        # Verify we're catching specific exceptions, not Exception
+        assert "except (ValueError, LookupError, KeyError, AttributeError):" in source
+        assert "except Exception:" not in source
+
+
+class TestUnknownLocaleErrorHandling:
+    """Tests for UnknownLocaleError handling (fuzzer-discovered regression).
+
+    Babel's UnknownLocaleError inherits from Exception, not LookupError.
+    These tests verify the defensive exception handling catches it properly.
+    """
+
+    def setup_method(self) -> None:
+        """Clear cache before each test."""
+        clear_iso_cache()
+
+    def test_very_long_invalid_locale_get_currency(self) -> None:
+        """get_currency handles very long invalid locales gracefully.
+
+        Regression test: fuzzer discovered UnknownLocaleError leak with
+        locale='x' * 100. Previously raised babel.core.UnknownLocaleError.
+        """
+        # Fuzzer-discovered input
+        long_locale = "x" * 100
+        result = get_currency("USD", locale=long_locale)
+        # Should return None (graceful degradation), not raise
+        assert result is None
+
+    def test_very_long_invalid_locale_get_territory(self) -> None:
+        """get_territory handles very long invalid locales gracefully.
+
+        Regression test for defensive exception handling.
+        """
+        long_locale = "x" * 100
+        result = get_territory("US", locale=long_locale)
+        # Should return None (graceful degradation), not raise
+        assert result is None
+
+    def test_garbage_locale_get_currency(self) -> None:
+        """get_currency handles garbage locale strings gracefully."""
+        garbage_locales = [
+            "!@#$%^",
+            "123456789",
+            "\x00\x01\x02",
+            "a" * 500,
+            "xx_YY_ZZ_AA_BB",
+        ]
+        for locale in garbage_locales:
+            result = get_currency("USD", locale=locale)
+            # Should return None, not raise
+            assert result is None, f"Failed for locale: {locale!r}"
+
+    def test_garbage_locale_get_territory(self) -> None:
+        """get_territory handles garbage locale strings gracefully."""
+        garbage_locales = [
+            "!@#$%^",
+            "123456789",
+            "\x00\x01\x02",
+            "a" * 500,
+            "xx_YY_ZZ_AA_BB",
+        ]
+        for locale in garbage_locales:
+            result = get_territory("US", locale=locale)
+            # Should return None, not raise
+            assert result is None, f"Failed for locale: {locale!r}"
+
+    def test_currency_symbol_fallback_on_invalid_locale(self) -> None:
+        """_get_babel_currency_symbol returns code as fallback for invalid locale."""
+        # When locale is invalid, the function should return the code as fallback
+        result = _get_babel_currency_symbol("USD", "x" * 100)
+        assert result == "USD"  # Falls back to code
+
+    def test_currency_name_none_on_invalid_locale(self) -> None:
+        """_get_babel_currency_name returns None for invalid locale."""
+        result = _get_babel_currency_name("USD", "x" * 100)
+        assert result is None
+
+    def test_list_territories_empty_on_invalid_locale(self) -> None:
+        """list_territories returns empty set for invalid locales."""
+        long_locale = "x" * 100
+        result = list_territories(locale=long_locale)
+        # Should return empty frozenset, not raise
+        assert isinstance(result, frozenset)
+        assert len(result) == 0
+
+    def test_list_currencies_with_invalid_locale(self) -> None:
+        """list_currencies handles invalid locales gracefully."""
+        long_locale = "x" * 100
+        result = list_currencies(locale=long_locale)
+        # Should return frozenset (may be empty), not raise
+        assert isinstance(result, frozenset)
+
+
+class TestClearAllCachesIntegration:
+    """Tests for clear_all_caches integration (MAINT-CACHE-MISSING-001 fix)."""
+
+    def test_clear_all_caches_includes_iso_cache(self) -> None:
+        """clear_all_caches should clear ISO introspection caches."""
+        from ftllexengine import clear_all_caches  # noqa: PLC0415
+        from ftllexengine.introspection.iso import _get_territory_impl  # noqa: PLC0415
+
+        # Populate ISO cache
+        get_territory("US")
+        get_currency("USD")
+        list_territories()
+
+        # pylint: disable=no-value-for-parameter
+        # Note: cache_info() is a method added by @lru_cache decorator, not
+        # related to the function's parameters. Pylint doesn't understand this.
+
+        # Verify cache is populated
+        info_before = _get_territory_impl.cache_info()
+        assert info_before.currsize > 0
+
+        # Clear ALL caches (not just ISO)
+        clear_all_caches()
+
+        # Verify ISO cache is now empty
+        info_after = _get_territory_impl.cache_info()
+        assert info_after.currsize == 0

@@ -116,7 +116,7 @@ def test_one_input(data: bytes) -> None:
         print(f"Ratio:      {ratio:.2f}x threshold")
         print("-" * 80)
         print("NEXT STEPS:")
-        print("  1. Review slow input: xxd .fuzz_corpus/crash_* | head -20")
+        print("  1. Review slow input: xxd .fuzz_artifacts/crash_* | head -20")
         print("  2. Create performance test in tests/")
         print("  3. Profile and fix the algorithm")
         print("=" * 80)

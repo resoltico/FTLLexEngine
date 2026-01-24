@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.88.0"
 domain: reference
-updated: "2026-01-21"
+updated: "2026-01-23"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, cache_write_once, cache_enable_audit]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -703,7 +703,7 @@ clear_all_caches()
 ```python
 from ftllexengine.locale_utils import clear_locale_cache
 from ftllexengine.parsing import clear_date_caches, clear_currency_caches
-from ftllexengine.introspection import clear_introspection_cache
+from ftllexengine.introspection import clear_introspection_cache, clear_iso_cache
 from ftllexengine.runtime.locale_context import LocaleContext
 
 # Clear specific caches
@@ -711,6 +711,7 @@ clear_locale_cache()           # Babel locale objects
 clear_date_caches()            # Date/datetime patterns
 clear_currency_caches()        # Currency maps and patterns
 clear_introspection_cache()    # Message introspection results
+clear_iso_cache()              # ISO territory/currency data
 LocaleContext.clear_cache()    # Locale context instances
 ```
 

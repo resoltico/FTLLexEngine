@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.87.0"
+version: "0.88.0"
 domain: PARSING
-updated: "2026-01-22"
+updated: "2026-01-23"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
@@ -994,10 +994,12 @@ class FiscalDelta:
 ### Constraints
 - Return: Immutable delta.
 - Raises: `TypeError` if any numeric field is not int.
+- Raises: `TypeError` if `month_end_policy` is not a `MonthEndPolicy` enum member.
 - State: Immutable (frozen dataclass).
 - Thread: Safe.
 - Hashable: Yes.
 - Arithmetic: Supports +, -, *, negation.
+- Validation: All fields validated at construction (fail-fast).
 
 ### Usage
 - When: Adding fiscal periods to dates.
@@ -1008,6 +1010,9 @@ class FiscalDelta:
 ```python
 delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.CLAMP)
 delta.add_to(date(2024, 1, 31))  # Returns date(2024, 2, 29)
+
+# Invalid policy raises TypeError at construction
+FiscalDelta(month_end_policy="invalid")  # TypeError: month_end_policy must be MonthEndPolicy
 ```
 
 ---

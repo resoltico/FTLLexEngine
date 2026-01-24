@@ -15,10 +15,15 @@ Python 3.13+. Babel is optional dependency.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cache
+from functools import lru_cache
 from typing import TYPE_CHECKING, TypeIs
 
-from ftllexengine.constants import ISO_4217_DECIMAL_DIGITS, ISO_4217_DEFAULT_DECIMALS
+from ftllexengine.constants import (
+    ISO_4217_DECIMAL_DIGITS,
+    ISO_4217_DEFAULT_DECIMALS,
+    MAX_LOCALE_CACHE_SIZE,
+)
+from ftllexengine.locale_utils import normalize_locale
 
 if TYPE_CHECKING:
     pass
@@ -132,9 +137,23 @@ def _get_babel_locale(locale_str: str) -> object:
 
 
 def _get_babel_territories(locale_str: str) -> dict[str, str]:
-    """Get territory names from Babel for a locale."""
-    locale = _get_babel_locale(locale_str)
-    return locale.territories  # type: ignore[attr-defined, no-any-return]
+    """Get territory names from Babel for a locale.
+
+    Returns empty dict if locale is invalid or data unavailable.
+    """
+    try:
+        locale = _get_babel_locale(locale_str)
+        return locale.territories  # type: ignore[attr-defined, no-any-return]
+    except (ValueError, LookupError, KeyError, AttributeError):
+        # Standard library exceptions from invalid data
+        return {}
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # Babel's UnknownLocaleError inherits from Exception (not LookupError).
+        # Catch it here to avoid propagating Babel-specific exceptions.
+        # We only suppress if it looks like a locale/data error.
+        if "locale" in str(exc).lower() or "unknown" in str(exc).lower():
+            return {}
+        raise  # Re-raise unexpected errors (logic bugs)
 
 
 def _get_babel_currencies() -> dict[str, str]:
@@ -160,9 +179,18 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
         if code.upper() not in locale.currencies:
             return None
         return get_currency_name(code, locale=locale_str)
-    except Exception:  # pylint: disable=broad-exception-caught
-        # Babel may raise various exceptions for invalid locales
+    except (ValueError, LookupError, KeyError, AttributeError):
+        # Babel raises ValueError/LookupError for invalid locales,
+        # KeyError/AttributeError for missing data. Logic bugs (NameError,
+        # TypeError) propagate to fail fast in financial-grade contexts.
         return None
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # Babel's UnknownLocaleError inherits from Exception (not LookupError).
+        # Catch it here to avoid propagating Babel-specific exceptions.
+        # We only suppress if it looks like a locale/data error.
+        if "locale" in str(exc).lower() or "unknown" in str(exc).lower():
+            return None
+        raise  # Re-raise unexpected errors (logic bugs)
 
 
 def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
@@ -173,9 +201,17 @@ def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
         raise BabelImportError from e
     try:
         return get_currency_symbol(code, locale=locale_str)
-    except Exception:  # pylint: disable=broad-exception-caught
-        # Babel may raise various exceptions for unknown codes or invalid locales
+    except (ValueError, LookupError, KeyError, AttributeError):
+        # Babel raises ValueError/LookupError for invalid locales,
+        # KeyError/AttributeError for unknown codes. Logic bugs propagate.
         return code
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        # Babel's UnknownLocaleError inherits from Exception (not LookupError).
+        # Catch it here to avoid propagating Babel-specific exceptions.
+        # We only suppress if it looks like a locale/data error.
+        if "locale" in str(exc).lower() or "unknown" in str(exc).lower():
+            return code
+        raise  # Re-raise unexpected errors (logic bugs)
 
 
 def _get_babel_territory_currencies(territory: str) -> list[str]:
@@ -195,8 +231,9 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
 
         # Return currently active tender currencies (end_date is None, tender is True)
         return [c[0] for c in currencies_info if c[2] is None and c[3]]
-    except Exception:  # pylint: disable=broad-exception-caught
-        # Babel data structure may change; degrade gracefully
+    except (ValueError, LookupError, KeyError, AttributeError):
+        # Babel raises ValueError/LookupError for invalid locales,
+        # KeyError/AttributeError for data access. Logic bugs propagate.
         return []
 
 
@@ -205,27 +242,21 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
 # ============================================================================
 
 
-@cache
-def get_territory(
-    code: str,
-    locale: str = "en",
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _get_territory_impl(
+    code_upper: str,
+    locale_norm: str,
 ) -> TerritoryInfo | None:
-    """Look up ISO 3166-1 territory by alpha-2 code.
+    """Internal cached implementation for get_territory.
 
     Args:
-        code: ISO 3166-1 alpha-2 code (e.g., 'US', 'LV'). Case-insensitive.
-        locale: Locale for name localization (default: 'en').
+        code_upper: Pre-uppercased ISO 3166-1 alpha-2 code.
+        locale_norm: Pre-normalized locale string.
 
     Returns:
         TerritoryInfo if found, None if unknown code.
-
-    Raises:
-        BabelImportError: If Babel not installed.
-
-    Thread-safe. Results cached per (code, locale) pair.
     """
-    code_upper = code.upper()
-    territories = _get_babel_territories(locale)
+    territories = _get_babel_territories(locale_norm)
 
     if code_upper not in territories:
         return None
@@ -240,32 +271,48 @@ def get_territory(
     )
 
 
-@cache
-def get_currency(
+def get_territory(
     code: str,
     locale: str = "en",
-) -> CurrencyInfo | None:
-    """Look up ISO 4217 currency by code.
+) -> TerritoryInfo | None:
+    """Look up ISO 3166-1 territory by alpha-2 code.
 
     Args:
-        code: ISO 4217 currency code (e.g., 'USD', 'EUR'). Case-insensitive.
-        locale: Locale for name/symbol localization (default: 'en').
+        code: ISO 3166-1 alpha-2 code (e.g., 'US', 'LV'). Case-insensitive.
+        locale: Locale for name localization (default: 'en'). Accepts BCP-47
+            (en-US) or POSIX (en_US) formats; normalized internally.
 
     Returns:
-        CurrencyInfo if found, None if unknown code.
+        TerritoryInfo if found, None if unknown code.
 
     Raises:
         BabelImportError: If Babel not installed.
 
-    Thread-safe. Results cached per (code, locale) pair.
+    Thread-safe. Results cached per normalized (code, locale) pair.
     """
-    code_upper = code.upper()
-    name = _get_babel_currency_name(code_upper, locale)
+    return _get_territory_impl(code.upper(), normalize_locale(locale))
+
+
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _get_currency_impl(
+    code_upper: str,
+    locale_norm: str,
+) -> CurrencyInfo | None:
+    """Internal cached implementation for get_currency.
+
+    Args:
+        code_upper: Pre-uppercased ISO 4217 currency code.
+        locale_norm: Pre-normalized locale string.
+
+    Returns:
+        CurrencyInfo if found, None if unknown code.
+    """
+    name = _get_babel_currency_name(code_upper, locale_norm)
 
     if name is None:
         return None
 
-    symbol = _get_babel_currency_symbol(code_upper, locale)
+    symbol = _get_babel_currency_symbol(code_upper, locale_norm)
     decimal_digits = ISO_4217_DECIMAL_DIGITS.get(code_upper, ISO_4217_DEFAULT_DECIMALS)
 
     return CurrencyInfo(
@@ -276,24 +323,41 @@ def get_currency(
     )
 
 
-@cache
-def list_territories(
+def get_currency(
+    code: str,
     locale: str = "en",
-) -> frozenset[TerritoryInfo]:
-    """List all known ISO 3166-1 territories.
+) -> CurrencyInfo | None:
+    """Look up ISO 4217 currency by code.
 
     Args:
-        locale: Locale for name localization (default: 'en').
+        code: ISO 4217 currency code (e.g., 'USD', 'EUR'). Case-insensitive.
+        locale: Locale for name/symbol localization (default: 'en'). Accepts
+            BCP-47 (en-US) or POSIX (en_US) formats; normalized internally.
 
     Returns:
-        Frozen set of all TerritoryInfo objects.
+        CurrencyInfo if found, None if unknown code.
 
     Raises:
         BabelImportError: If Babel not installed.
 
-    Thread-safe. Result cached per locale.
+    Thread-safe. Results cached per normalized (code, locale) pair.
     """
-    territories = _get_babel_territories(locale)
+    return _get_currency_impl(code.upper(), normalize_locale(locale))
+
+
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _list_territories_impl(
+    locale_norm: str,
+) -> frozenset[TerritoryInfo]:
+    """Internal cached implementation for list_territories.
+
+    Args:
+        locale_norm: Pre-normalized locale string.
+
+    Returns:
+        Frozen set of all TerritoryInfo objects.
+    """
+    territories = _get_babel_territories(locale_norm)
     result: set[TerritoryInfo] = set()
 
     for code, name in territories.items():
@@ -311,22 +375,37 @@ def list_territories(
     return frozenset(result)
 
 
-@cache
-def list_currencies(
+def list_territories(
     locale: str = "en",
-) -> frozenset[CurrencyInfo]:
-    """List all known ISO 4217 currencies.
+) -> frozenset[TerritoryInfo]:
+    """List all known ISO 3166-1 territories.
 
     Args:
-        locale: Locale for name/symbol localization (default: 'en').
+        locale: Locale for name localization (default: 'en'). Accepts BCP-47
+            (en-US) or POSIX (en_US) formats; normalized internally.
 
     Returns:
-        Frozen set of all CurrencyInfo objects.
+        Frozen set of all TerritoryInfo objects.
 
     Raises:
         BabelImportError: If Babel not installed.
 
-    Thread-safe. Result cached per locale.
+    Thread-safe. Result cached per normalized locale.
+    """
+    return _list_territories_impl(normalize_locale(locale))
+
+
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _list_currencies_impl(
+    locale_norm: str,
+) -> frozenset[CurrencyInfo]:
+    """Internal cached implementation for list_currencies.
+
+    Args:
+        locale_norm: Pre-normalized locale string.
+
+    Returns:
+        Frozen set of all CurrencyInfo objects.
     """
     # Get all currency codes from Babel (English locale has complete list)
     currencies_en = _get_babel_currencies()
@@ -335,14 +414,53 @@ def list_currencies(
     for code in currencies_en:
         # Filter to valid ISO 4217 codes (3 uppercase letters)
         if len(code) == 3 and code.isalpha() and code.isupper():
-            info = get_currency(code, locale)
+            # Use impl directly since locale is already normalized
+            info = _get_currency_impl(code, locale_norm)
             if info is not None:
                 result.add(info)
 
     return frozenset(result)
 
 
-@cache
+def list_currencies(
+    locale: str = "en",
+) -> frozenset[CurrencyInfo]:
+    """List all known ISO 4217 currencies.
+
+    Args:
+        locale: Locale for name/symbol localization (default: 'en'). Accepts
+            BCP-47 (en-US) or POSIX (en_US) formats; normalized internally.
+
+    Returns:
+        Frozen set of all CurrencyInfo objects.
+
+    Raises:
+        BabelImportError: If Babel not installed.
+
+    Thread-safe. Result cached per normalized locale.
+    """
+    return _list_currencies_impl(normalize_locale(locale))
+
+
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _get_territory_currency_impl(territory_upper: str) -> CurrencyCode | None:
+    """Internal cached implementation for get_territory_currency.
+
+    Args:
+        territory_upper: Pre-uppercased ISO 3166-1 alpha-2 code.
+
+    Returns:
+        ISO 4217 currency code or None if unknown.
+    """
+    currencies = _get_babel_territory_currencies(territory_upper)
+
+    if not currencies:
+        return None
+
+    # Return first active tender currency
+    return currencies[0]
+
+
 def get_territory_currency(territory: str) -> CurrencyCode | None:
     """Get default currency for a territory.
 
@@ -355,16 +473,9 @@ def get_territory_currency(territory: str) -> CurrencyCode | None:
     Raises:
         BabelImportError: If Babel not installed.
 
-    Thread-safe. Result cached.
+    Thread-safe. Result cached per normalized territory code.
     """
-    territory_upper = territory.upper()
-    currencies = _get_babel_territory_currencies(territory_upper)
-
-    if not currencies:
-        return None
-
-    # Return first active tender currency
-    return currencies[0]
+    return _get_territory_currency_impl(territory.upper())
 
 
 # ============================================================================
@@ -423,8 +534,8 @@ def clear_iso_cache() -> None:
     Call this if you need to free memory or after locale configuration changes.
     Thread-safe.
     """
-    get_territory.cache_clear()
-    get_currency.cache_clear()
-    list_territories.cache_clear()
-    list_currencies.cache_clear()
-    get_territory_currency.cache_clear()
+    _get_territory_impl.cache_clear()
+    _get_currency_impl.cache_clear()
+    _list_territories_impl.cache_clear()
+    _list_currencies_impl.cache_clear()
+    _get_territory_currency_impl.cache_clear()

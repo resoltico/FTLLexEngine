@@ -744,3 +744,110 @@ class TestEdgeCases:
         delta_strict = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
         result_strict = delta_strict.add_to(test_date)
         assert result_strict == date(2024, 2, 15)
+
+
+class TestFiscalDeltaMonthEndPolicyValidation:
+    """Tests for FiscalDelta month_end_policy validation (SEC-INPUT-VALIDATION-002 fix)."""
+
+    def test_valid_policy_preserve(self) -> None:
+        """FiscalDelta accepts MonthEndPolicy.PRESERVE."""
+        delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.PRESERVE)
+        assert delta.month_end_policy == MonthEndPolicy.PRESERVE
+
+    def test_valid_policy_clamp(self) -> None:
+        """FiscalDelta accepts MonthEndPolicy.CLAMP."""
+        delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.CLAMP)
+        assert delta.month_end_policy == MonthEndPolicy.CLAMP
+
+    def test_valid_policy_strict(self) -> None:
+        """FiscalDelta accepts MonthEndPolicy.STRICT."""
+        delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
+        assert delta.month_end_policy == MonthEndPolicy.STRICT
+
+    def test_invalid_policy_string(self) -> None:
+        """FiscalDelta rejects string month_end_policy."""
+        with pytest.raises(TypeError, match="month_end_policy must be MonthEndPolicy"):
+            FiscalDelta(months=1, month_end_policy="preserve")  # type: ignore[arg-type]
+
+    def test_invalid_policy_none(self) -> None:
+        """FiscalDelta rejects None month_end_policy."""
+        with pytest.raises(TypeError, match="month_end_policy must be MonthEndPolicy"):
+            FiscalDelta(months=1, month_end_policy=None)  # type: ignore[arg-type]
+
+    def test_invalid_policy_int(self) -> None:
+        """FiscalDelta rejects integer month_end_policy."""
+        with pytest.raises(TypeError, match="month_end_policy must be MonthEndPolicy"):
+            FiscalDelta(months=1, month_end_policy=1)  # type: ignore[arg-type]
+
+    def test_invalid_policy_dict(self) -> None:
+        """FiscalDelta rejects dict month_end_policy."""
+        with pytest.raises(TypeError, match="month_end_policy must be MonthEndPolicy"):
+            FiscalDelta(months=1, month_end_policy={})  # type: ignore[arg-type]
+
+    def test_invalid_policy_error_message_includes_type(self) -> None:
+        """Error message includes the actual type provided."""
+        with pytest.raises(TypeError, match="got str"):
+            FiscalDelta(months=1, month_end_policy="invalid")  # type: ignore[arg-type]
+
+        with pytest.raises(TypeError, match="got NoneType"):
+            FiscalDelta(months=1, month_end_policy=None)  # type: ignore[arg-type]
+
+
+class TestAddMonthsDefensiveDefaultCase:
+    """Tests for _add_months defensive default case (SEC-INPUT-VALIDATION-002 fix).
+
+    These tests verify the defense-in-depth default case in the match statement.
+    Under normal operation, FiscalDelta validation prevents invalid policies from
+    reaching _add_months. These tests use internal access to bypass validation.
+    """
+
+    def test_internal_function_raises_for_unknown_policy(self) -> None:
+        """_add_months raises ValueError for unknown policy (defense-in-depth).
+
+        This tests the defensive default case in the match statement. The case
+        should never be reached in normal operation because FiscalDelta validates
+        the policy at construction time. This is defense-in-depth.
+        """
+        from ftllexengine.parsing.fiscal import _add_months
+
+        # Create a mock "policy" that isn't a MonthEndPolicy enum member
+        # This simulates a scenario where invalid data bypasses validation
+        class FakePolicy:
+            """Fake policy object to test default case."""
+
+        with pytest.raises(ValueError, match="Unknown month_end_policy"):
+            _add_months(date(2024, 1, 15), 1, FakePolicy())  # type: ignore[arg-type]
+
+    def test_internal_function_raises_for_invalid_string_policy(self) -> None:
+        """_add_months raises ValueError for invalid string policy.
+
+        Note: MonthEndPolicy is a StrEnum, so valid string values like "preserve"
+        will match the enum cases. Only truly invalid strings trigger the default.
+        """
+        from ftllexengine.parsing.fiscal import _add_months
+
+        with pytest.raises(ValueError, match="Unknown month_end_policy"):
+            _add_months(date(2024, 1, 15), 1, "invalid_policy")  # type: ignore[arg-type]
+
+    def test_internal_function_raises_for_none_policy(self) -> None:
+        """_add_months raises ValueError for None policy."""
+        from ftllexengine.parsing.fiscal import _add_months
+
+        with pytest.raises(ValueError, match="Unknown month_end_policy"):
+            _add_months(date(2024, 1, 15), 1, None)  # type: ignore[arg-type]
+
+    def test_internal_function_works_with_valid_policies(self) -> None:
+        """_add_months works correctly with valid MonthEndPolicy values."""
+        from ftllexengine.parsing.fiscal import _add_months
+
+        # All valid policies should work without raising
+        result_preserve = _add_months(
+            date(2024, 1, 15), 1, MonthEndPolicy.PRESERVE
+        )
+        assert result_preserve == date(2024, 2, 15)
+
+        result_clamp = _add_months(date(2024, 1, 15), 1, MonthEndPolicy.CLAMP)
+        assert result_clamp == date(2024, 2, 15)
+
+        result_strict = _add_months(date(2024, 1, 15), 1, MonthEndPolicy.STRICT)
+        assert result_strict == date(2024, 2, 15)

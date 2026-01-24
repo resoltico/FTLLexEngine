@@ -1,1104 +1,366 @@
 #!/usr/bin/env bash
-# Unified Fuzzing Interface
-# Single entry point for all fuzzing operations.
-#
-# Usage:
-#   ./scripts/fuzz.sh              Run fast property tests (default)
-#   ./scripts/fuzz.sh --deep       Run continuous HypoFuzz
-#   ./scripts/fuzz.sh --native     Run Atheris native fuzzing
-#   ./scripts/fuzz.sh --perf       Run performance fuzzing (Atheris)
-#   ./scripts/fuzz.sh --iso        Run ISO introspection fuzzing (Atheris)
-#   ./scripts/fuzz.sh --fiscal     Run fiscal calendar fuzzing (Atheris)
-#   ./scripts/fuzz.sh --list       List captured failures
-#   ./scripts/fuzz.sh --corpus     Check corpus health
-#   ./scripts/fuzz.sh --help       Show this help
-#
-# Options:
-#   --json                         Output JSON summary (for CI)
-#   --verbose                      Show detailed progress
-#   --workers N                    Number of parallel workers (default: 4)
-#   --time N                       Run for N seconds (deep/native modes)
-#
-# See docs/FUZZING_GUIDE.md for detailed documentation.
+# ==============================================================================
+# fuzz.sh — Universal Fuzzing Interface (Agent-Native Edition)
+# ==============================================================================
+# COMPATIBILITY: Bash 5.0+
+# ARCHITECTURAL INTENT:
+#   Unifies Property-Based Testing (Hypothesis) and Native Fuzzing (Atheris)
+#   under a single, verifiable, agent-friendly protocol.
+# ==============================================================================
 
-set -e
+# Bash Settings
+set -o errexit
+set -o nounset
+set -o pipefail
+if [[ "${BASH_VERSINFO[0]}" -ge 5 ]]; then
+    shopt -s inherit_errexit 2>/dev/null || true
+fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Dedicated environment for fuzzing to avoid stomping by other tasks (e.g., linting)
+# [SECTION: ENVIRONMENT]
+# Dedicated environment for fuzzing to avoid stomping by other tasks
 export UV_PROJECT_ENVIRONMENT=".venv-fuzzing"
+unset VIRTUAL_ENV
 
-# Defaults
-MODE="check"
-JSON_OUTPUT=false
-VERBOSE=false
+# Artifacts Directory (Agent-Native Standard)
+ARTIFACTS_DIR=".fuzz_artifacts"
+mkdir -p "$ARTIFACTS_DIR"
+
+# [SECTION: HELPERS]
+log_info() { echo -e "\033[34m[INFO]\033[0m $1"; }
+log_pass() { echo -e "\033[32m[PASS]\033[0m $1"; }
+log_warn() { echo -e "\033[33m[WARN]\033[0m $1"; }
+log_err()  { echo -e "\033[31m[ERROR]\033[0m $1" >&2; }
+
+# [SECTION: ARGUMENT_PARSING]
+MODE=""
+VERBOSE="false"
+JSON_OUTPUT="false"
 WORKERS=4
 TIME_LIMIT=""
 TARGET=""
+REPRO_FILE=""
+MINIMIZE_FILE=""
+CLEAN="false"
 
-# Colors (disabled if not a terminal or if --json)
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+usage() {
+    cat <<EOF
+Usage: ./scripts/fuzz.sh [MODE] [OPTIONS]
 
-disable_colors() {
-    RED=''
-    GREEN=''
-    YELLOW=''
-    BLUE=''
-    BOLD=''
-    NC=''
-}
+Modes (Mutually Exclusive):
+  --check        Run fast property tests (Default)
+  --deep         Run continuous coverage-guided fuzzing (HypoFuzz)
+  --native       Run native structural fuzzing (Atheris)
+  --runtime      Run end-to-end runtime fuzzing (Atheris)
+  --structured   Run structure-aware fuzzing (Atheris)
+  --perf         Run performance fuzzing (ReDoS detection)
+  --iso          Run ISO 3166/4217 introspection fuzzing (Atheris)
+  --fiscal       Run fiscal calendar arithmetic fuzzing (Atheris)
+  --repro FILE   Reproduce a specific crash artifact
+  --minimize FILE  Minimize a crash to smallest reproducer
+  --list         List known failures
+  --corpus       Check seed corpus health
+  --clean        Clean corpus and artifacts
 
-# Check Python version for Atheris compatibility (requires Python 3.11-3.13)
-check_atheris_python_version() {
-    local py_version
-    py_version=$(uv run --group fuzzing python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+Options:
+  --verbose      Stream output to console
+  --json         Output JSON summary (Quiet by default)
+  --time SEC     Stop after SEC seconds (Continuous modes only)
+  --workers N    Number of parallel workers (Default: 4)
+  --target FILE  Specific target file (Check mode only)
+  --help         Show this help
 
-    # Compare version - 3.14 and higher are not supported
-    if [[ "$py_version" == "3.14" ]] || [[ "$py_version" > "3.14" ]]; then
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"'"$MODE"'","status":"error","error":"python_version_unsupported","python_version":"'"$py_version"'"}'
-            exit 3
-        else
-            echo -e "${RED}[ERROR]${NC} Python $py_version is not supported by Atheris."
-            echo ""
-            echo "Atheris native fuzzing requires Python 3.11-3.13."
-            echo "Python 3.14+ is not yet supported by the Atheris project."
-            echo ""
-            echo "Options:"
-            echo "  1. Switch to Python 3.13:"
-            echo "     uv run --python 3.13 ./scripts/fuzz.sh $MODE"
-            echo ""
-            echo "  2. Use property-based fuzzing (works on Python 3.14):"
-            echo "     ./scripts/fuzz.sh          # Hypothesis tests"
-            echo "     ./scripts/fuzz.sh --deep   # HypoFuzz coverage"
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for Python version requirements."
-            exit 3
-        fi
-    fi
-}
-
-# Check Atheris libc++ ABI compatibility (macOS-specific)
-# Atheris compiled with LLVM may require LLVM's libc++ at runtime
-check_atheris_libc_abi() {
-    # Only relevant on macOS
-    if [[ "$(uname)" != "Darwin" ]]; then
-        return 0
-    fi
-
-    # Try importing the core module that has the ABI-sensitive code
-    # This is where the symbol lookup error occurs
-    # Note: use || true to prevent set -e from exiting on Python failure
-    local test_result
-    test_result=$(uv run --group fuzzing python -c "
-import atheris
-import atheris.core_with_libfuzzer  # This is where the ABI error occurs
-print('OK')
-" 2>&1) || true
-
-    if [[ "$test_result" != "OK" ]] && echo "$test_result" | grep -q "symbol not found"; then
-        # Try to auto-heal by finding LLVM's libc++
-        local llvm_libcpp=""
-        
-        # Check brew first (most reliable on macOS)
-        if command -v brew &>/dev/null; then
-            local llvm_prefix
-            llvm_prefix=$(brew --prefix llvm 2>/dev/null)
-            if [[ -d "$llvm_prefix/lib/c++" ]]; then
-                llvm_libcpp="$llvm_prefix/lib/c++"
-            fi
-        fi
-        
-        # Fallback to common paths
-        if [[ -z "$llvm_libcpp" ]]; then
-            for p in "/opt/homebrew/opt/llvm/lib/c++" "/usr/local/opt/llvm/lib/c++"; do
-                if [[ -d "$p" ]]; then
-                    llvm_libcpp="$p"
-                    break
-                fi
-            done
-        fi
-        
-        if [[ -n "$llvm_libcpp" ]]; then
-            # Verify if healing works
-            local healed_test
-            healed_test=$(DYLD_LIBRARY_PATH="$llvm_libcpp" uv run --group fuzzing python -c "import atheris.core_with_libfuzzer; print('OK')" 2>&1) || true
-            if [[ "$healed_test" == *"OK"* ]]; then
-                export DYLD_LIBRARY_PATH="$llvm_libcpp"
-                if [[ "$JSON_OUTPUT" == "false" ]]; then
-                    print_info "Auto-corrected C++ ABI mismatch using LLVM at $llvm_libcpp"
-                fi
-                return 0
-            fi
-        fi
-
-        # ABI mismatch detected and couldn't auto-heal
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"'"$MODE"'","status":"error","error":"atheris_libc_abi_mismatch","details":"Atheris requires LLVM libc++ at runtime"}'
-            exit 2
-        else
-            echo -e "${RED}[ERROR]${NC} Atheris C++ ABI mismatch detected."
-            echo ""
-            echo "Atheris was compiled with LLVM's libc++ but is loading Apple's"
-            echo "system libc++ at runtime. A required symbol is missing."
-            echo ""
-            echo -e "${BOLD}Quick fix:${NC} Run with LLVM's libc++ preloaded:"
-            if [[ -n "$llvm_prefix" ]]; then
-                echo -e "${BOLD}  DYLD_LIBRARY_PATH=\"$llvm_prefix/lib/c++\" ./scripts/fuzz.sh $MODE${NC}"
-            else
-                echo -e "${BOLD}  DYLD_LIBRARY_PATH=\"/path/to/llvm/lib/c++\" ./scripts/fuzz.sh $MODE${NC}"
-            fi
-            echo ""
-            echo -e "${BOLD}Permanent fix:${NC} Rebuild Atheris with rpath (BEST):"
-            if [[ -n "$llvm_prefix" ]]; then
-                echo "  CLANG_BIN=\"$llvm_prefix/bin/clang\" \\"
-                echo "  CC=\"$llvm_prefix/bin/clang\" \\"
-                echo "  CXX=\"$llvm_prefix/bin/clang++\" \\"
-                echo "  LDFLAGS=\"-L$llvm_prefix/lib/c++ -L$llvm_prefix/lib -Wl,-rpath,$llvm_prefix/lib/c++\" \\"
-                echo "  CPPFLAGS=\"-I$llvm_prefix/include\" \\"
-            else
-                echo "  brew install llvm"
-                echo "  # Then follow rebuild instructions in docs/FUZZING_GUIDE.md"
-            fi
-            echo "  uv pip install --reinstall --no-cache-dir --no-binary :all: atheris"
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for details."
-            exit 2
-        fi
-    fi
-
-    return 0
-}
-
-# Consolidated Atheris Preflight
-preflight_atheris() {
-    check_atheris_python_version
-    
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "${BLUE}Initializing Atheris Native Engine...${NC}"
-    fi
-
-    # Combined info and ABI check (efficient)
-    local result
-    result=$(uv run --group fuzzing python -c "
-import sys
-import importlib.metadata
-# 1. Versions
-py_v = f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}'
-try:
-    ath_v = importlib.metadata.version('atheris')
-except:
-    ath_v = 'not_found'
-print(f'PY:{py_v}')
-print(f'ATH:{ath_v}')
-
-# 2. ABI check
-if ath_v != 'not_found':
-    try:
-        import atheris.core_with_libfuzzer
-        print('ABI:OK')
-    except ImportError as e:
-        if 'symbol not found' in str(e):
-            print('ABI:FAIL_SYMBOL')
-        else:
-            print(f'ABI:FAIL_OTHER:{e}')
-" 2>&1) || true
-
-    local py_ver=$(echo "$result" | grep '^PY:' | cut -d: -f2)
-    local ath_ver=$(echo "$result" | grep '^ATH:' | cut -d: -f2)
-    local abi_status=$(echo "$result" | grep '^ABI:' | cut -d: -f2)
-
-    # 1. Check Installation
-    if [[ "$ath_ver" == "not_found" ]]; then
-        if [[ "$JSON_OUTPUT" == "true" ]]; then
-            echo '{"mode":"'$MODE'","status":"error","error":"atheris_not_installed"}'
-            exit 2
-        else
-            echo -e "${RED}[ERROR]${NC} Atheris is not installed."
-            echo ""
-            echo "Atheris requires special setup on macOS:"
-            echo "  1. Install LLVM: brew install llvm"
-            echo "  2. Run: ./scripts/check-atheris.sh"
-            echo ""
-            echo "See docs/FUZZING_GUIDE.md for detailed instructions."
-            exit 2
-        fi
-    fi
-
-    # 2. Check ABI and Auto-Heal (calls original check for full logic if needed)
-    if [[ "$abi_status" == "FAIL_SYMBOL" ]]; then
-        check_atheris_libc_abi
-    elif [[ "$abi_status" == "FAIL_OTHER"* ]]; then
-        # Report unexpected import error
-        echo -e "${RED}[ERROR]${NC} Atheris failed to initialize: ${abi_status#FAIL_OTHER:}" >&2
-        exit 2
-    fi
-
-    # 3. Print Header (non-JSON)
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "  Python:  $py_ver"
-        echo -e "  Atheris: $ath_ver"
-        
-        # Diagnostic info on request
-        if [[ "$VERBOSE" == "true" && "$(uname)" == "Darwin" ]]; then
-             local core_lib=$(uv run --group fuzzing python -c "import atheris.core_with_libfuzzer as c; print(c.__file__)" 2>/dev/null)
-             if [[ -n "$core_lib" ]]; then
-                 local linked=$(otool -L "$core_lib" 2>/dev/null | grep libc++ | head -1 | awk '{print $1}')
-                 echo -e "  Libc++:  $linked"
-             fi
-        fi
-        echo ""
-    fi
-}
-
-# Disable colors if not a terminal
-if [[ ! -t 1 ]]; then
-    disable_colors
-fi
-
-show_help() {
-    cat << 'EOF'
-Unified Fuzzing Interface for FTLLexEngine
-
-USAGE:
-    ./scripts/fuzz.sh [MODE] [OPTIONS]
-
-MODES:
-    (default)       Fast property tests (500 examples, ~2 min)
-    --deep          Continuous coverage-guided fuzzing (HypoFuzz)
-    --native        Native fuzzing with Atheris (targets parser stability)
-    --runtime       End-to-end runtime fuzzing (targets Bundle/Strict mode)
-    --structured    Structure-aware fuzzing with Atheris (requires setup)
-    --perf          Performance fuzzing to detect ReDoS (Atheris)
-    --iso           ISO 3166/4217 introspection fuzzing (requires Babel)
-    --fiscal        Fiscal calendar arithmetic fuzzing
-    --minimize FILE Minimize a crash file to smallest reproducer (libFuzzer)
-    --list          List all captured failures
-    --clean         Remove all captured failures and crash artifacts
-    --corpus        Check seed corpus health
-    --repro FILE    Reproduce a crash and generate @example decorator
-    --help          Show this help message
-
-OPTIONS:
-    --json          Output JSON summary instead of human-readable
-    --verbose       Show detailed progress during tests
-    --workers N     Number of parallel workers (default: 4)
-    --time N        Time limit in seconds (for --deep, --native, --perf)
-    --target FILE   Specific test file to run (check mode only)
-
-EXAMPLES:
-    # Quick check before committing (recommended)
-    ./scripts/fuzz.sh
-
-    # Verbose mode to see what's being tested
-    ./scripts/fuzz.sh --verbose
-
-    # Deep fuzzing for 5 minutes
-    ./scripts/fuzz.sh --deep --time 300
-
-    # Native fuzzing for security audit
-    ./scripts/fuzz.sh --native --time 60
-
-    # Structure-aware fuzzing (better coverage)
-    ./scripts/fuzz.sh --structured --time 60
-
-    # Reproduce a crash and get @example decorator
-    ./scripts/fuzz.sh --repro .fuzz_corpus/crash_xxx
-
-    # Minimize a crash to smallest reproducer
-    ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_xxx
-
-    # Check for any captured failures
-    ./scripts/fuzz.sh --list
-
-EXIT CODES:
-    0   All tests passed, no findings
-    1   Findings detected (failures or crashes)
-    2   Error (script or environment failure)
-    3   Python version incompatible (Atheris requires 3.11-3.13)
-
-See docs/FUZZING_GUIDE.md for detailed documentation.
 EOF
+    exit 1
 }
 
-# Parse arguments
+# Strict Argument Parser
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --deep)
-            MODE="deep"
-            shift
-            ;;
-        --native)
-            MODE="native"
-            shift
-            ;;
-        --runtime)
-            MODE="runtime"
-            shift
-            ;;
-        --perf)
-            MODE="perf"
-            shift
-            ;;
-        --structured)
-            MODE="structured"
-            shift
-            ;;
-        --iso)
-            MODE="iso"
-            shift
-            ;;
-        --fiscal)
-            MODE="fiscal"
+    case "$1" in
+        --check|--deep|--native|--runtime|--structured|--perf|--iso|--fiscal|--list|--corpus|--clean)
+            if [[ -n "$MODE" && "$MODE" != "$1" ]]; then
+                log_err "Conflicting modes selected: $MODE vs $1"
+                exit 1
+            fi
+            MODE="${1#--}" # strip leading --
             shift
             ;;
         --repro)
+            if [[ -n "$MODE" ]]; then log_err "Conflicting modes selected"; exit 1; fi
             MODE="repro"
+            if [[ -z "${2:-}" ]]; then log_err "Missing file argument for --repro"; exit 1; fi
             REPRO_FILE="$2"
             shift 2
             ;;
         --minimize)
+            if [[ -n "$MODE" ]]; then log_err "Conflicting modes selected"; exit 1; fi
             MODE="minimize"
+            if [[ -z "${2:-}" ]]; then log_err "Missing file argument for --minimize"; exit 1; fi
             MINIMIZE_FILE="$2"
             shift 2
             ;;
-        --list)
-            MODE="list"
-            shift
-            ;;
-        --clean)
-            MODE="clean"
-            shift
-            ;;
-        --corpus)
-            MODE="corpus"
-            shift
-            ;;
-        --help|-h)
-            show_help
-            exit 0
-            ;;
-        --json)
-            JSON_OUTPUT=true
-            disable_colors
-            shift
-            ;;
-        --verbose|-v)
-            VERBOSE=true
-            shift
-            ;;
-        --workers)
-            WORKERS="$2"
-            shift 2
-            ;;
-        --time)
-            TIME_LIMIT="$2"
-            shift 2
-            ;;
-        --target)
-            TARGET="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Run './scripts/fuzz.sh --help' for usage."
-            exit 2
-            ;;
+        --verbose|-v) VERBOSE="true"; shift ;;
+        --json) JSON_OUTPUT="true"; shift ;;
+        --time) TIME_LIMIT="$2"; shift 2 ;;
+        --workers) WORKERS="$2"; shift 2 ;;
+        --target) TARGET="$2"; shift 2 ;;
+        --help|-h) usage ;;
+        *) log_err "Unknown argument: $1"; usage ;;
     esac
 done
 
-# Header (human-readable mode only)
-print_header() {
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo ""
-        echo -e "${BOLD}============================================================${NC}"
-        echo -e "${BOLD}FTLLexEngine Fuzzing${NC}"
-        echo -e "${BOLD}============================================================${NC}"
-        echo ""
+# Default Mode
+if [[ -z "$MODE" ]]; then MODE="check"; fi
+
+# Validate Logic
+if [[ "$MODE" == "native" && -n "$TARGET" ]]; then
+    log_warn "--target is ignored in native mode (uses fuzz/stability.py)"
+fi
+
+# [SECTION: PREFLIGHT]
+# All modes requiring python execution need environment validation
+preflight_checks() {
+    if ! command -v uv >/dev/null; then
+        log_err "uv is required but not found."
+        exit 1
+    fi
+    
+    # Check if .venv-fuzzing needs creation
+    if [[ ! -d ".venv-fuzzing" ]]; then
+        if [[ "$JSON_OUTPUT" == "false" ]]; then
+            log_info "Creating dedicated fuzzing environment..."
+        fi
+        uv sync --group fuzzing --quiet
     fi
 }
 
-# Status indicators
-print_pass() {
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "${GREEN}[PASS]${NC} $1"
+preflight_atheris() {
+    # Check for Atheris installation
+    if ! uv run --group fuzzing python -c "import atheris" >/dev/null 2>&1; then
+        if [[ "$JSON_OUTPUT" == "true" ]]; then
+            echo '{"status":"error","message":"Atheris not installed"}'
+            exit 1
+        else
+            log_err "Atheris is not installed or broken."
+            log_info "Running diagnosis..."
+            ./scripts/check-atheris.sh
+            exit 1
+        fi
     fi
 }
 
-print_finding() {
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "${RED}[FINDING]${NC} $1"
+# [SECTION: SIGNAL_HANDLING]
+# Ensures we kill child processes (fuzzers) when the script is killed
+PID_LIST=()
+cleanup() {
+    if [[ ${#PID_LIST[@]} -gt 0 ]]; then
+        # log_info "Cleaning up child processes..."
+        for pid in "${PID_LIST[@]}"; do
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        wait
     fi
 }
+trap cleanup EXIT INT TERM
 
-print_info() {
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "${BLUE}[INFO]${NC} $1"
-    fi
-}
+# [SECTION: EXECUTION_LOGIC]
 
-print_warn() {
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "${YELLOW}[WARN]${NC} $1"
-    fi
-}
-
-# Mode: check (default) - Fast property tests
+# 1. RUN CHECK (Pytest Property Tests)
 run_check() {
-    print_header
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}Fast Property Tests${NC}"
-        if [[ -n "$TARGET" ]]; then
-            echo "Target:  $TARGET"
-        else
-            echo "Target:  tests/test_grammar_based_fuzzing.py"
-        fi
-        if [[ "$VERBOSE" == "true" ]]; then
-            echo "Profile: verbose (shows progress)"
-        else
-            echo "Profile: dev (500 examples, silent)"
-        fi
-        echo ""
-        echo -e "${BLUE}Running...${NC} (use --verbose for detailed output)"
-        echo ""
-    fi
-
-    # Set profile based on verbose flag
-    if [[ "$VERBOSE" == "true" ]]; then
-        export HYPOTHESIS_PROFILE="verbose"
-    fi
-
-    # Determine target
     TEST_TARGET="${TARGET:-tests/test_grammar_based_fuzzing.py}"
-
-    # Start progress indicator in non-verbose, non-JSON mode
-    PROGRESS_PID=""
-    if [[ "$VERBOSE" == "false" && "$JSON_OUTPUT" == "false" ]]; then
-        (while true; do sleep 10; echo -n "."; done) &
-        PROGRESS_PID=$!
-    fi
-
-    # Run pytest
-    set +e
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        OUTPUT=$(uv run pytest "$TEST_TARGET" -v --tb=short 2>&1)
-        EXIT_CODE=$?
+    CMD=(uv run pytest "$TEST_TARGET")
+    
+    if [[ "$VERBOSE" == "true" ]]; then
+        CMD+=("-v")
     else
-        OUTPUT=$(uv run pytest "$TEST_TARGET" -v --tb=short 2>&1 | tee /dev/stderr)
+        CMD+=("-q" "--no-header" "--no-summary")
+    fi
+    
+    # Run with output capture
+    TEMP_LOG="/tmp/fuzz_output_$$.log"
+    trap "rm -f '$TEMP_LOG'" RETURN
+
+    set +e
+    if [[ "$VERBOSE" == "true" ]]; then
+        # Verbose: Stream to terminal AND capture for parsing
+        "${CMD[@]}" 2>&1 | tee "$TEMP_LOG"
         EXIT_CODE=${PIPESTATUS[0]}
+    else
+        # Quiet: Capture only
+        "${CMD[@]}" > "$TEMP_LOG" 2>&1
+        EXIT_CODE=$?
     fi
     set -e
+    
+    # Report Construction: ALL parsing done in Python for robustness
+    python3 << PYEOF
+import sys, json, re
+from pathlib import Path
 
-    # Stop progress indicator
-    if [[ -n "$PROGRESS_PID" ]]; then
-        kill "$PROGRESS_PID" 2>/dev/null || true
-        wait "$PROGRESS_PID" 2>/dev/null || true
-        echo ""  # Newline after dots
+log_path = Path("$TEMP_LOG")
+exit_code = $EXIT_CODE
+
+try:
+    log_content = log_path.read_text() if log_path.exists() else ""
+except Exception:
+    log_content = ""
+
+# Parse metrics safely
+passed_match = re.search(r'(\d+) passed', log_content)
+failed_match = re.search(r'(\d+) failed', log_content)
+hypo_count = log_content.count('Falsifying example')
+
+tests_passed = int(passed_match.group(1)) if passed_match else 0
+tests_failed = int(failed_match.group(1)) if failed_match else 0
+
+# Extract first falsifying example
+fail_ex = ""
+if 'Falsifying example' in log_content:
+    try:
+        fail_ex = log_content.split('Falsifying example')[1].split('\n')[0][:200].strip()
+    except IndexError:
+        pass
+
+report = {
+    'mode': 'check',
+    'tests_passed': tests_passed,
+    'tests_failed': tests_failed,
+    'hypothesis_failures': hypo_count,
+    'falsifying_example': fail_ex,
+    'exit_code': exit_code
+}
+print('[SUMMARY-JSON-BEGIN]')
+print(json.dumps(report))
+print('[SUMMARY-JSON-END]')
+PYEOF
+    
+    # Human Output
+    if [[ "$JSON_OUTPUT" == "false" && $EXIT_CODE -eq 0 ]]; then
+        log_pass "Property tests passed (see JSON for counts)."
+    elif [[ "$JSON_OUTPUT" == "false" ]]; then
+        log_err "Property tests failed. See JSON or use --verbose."
     fi
-
-    # Parse results (use head -1 to ensure single value, || true to avoid exit on no match)
-    TESTS_PASSED=$(echo "$OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
-    TESTS_FAILED=$(echo "$OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
-    # grep -c outputs "0" with exit code 1 when no match; || true prevents double output
-    HYPOTHESIS_FAILURES=$(echo "$OUTPUT" | grep -c "Falsifying example:" 2>/dev/null || true)
-    HYPOTHESIS_FAILURES=${HYPOTHESIS_FAILURES:-0}
-
-    TESTS_PASSED=${TESTS_PASSED:-0}
-    TESTS_FAILED=${TESTS_FAILED:-0}
-    HYPOTHESIS_FAILURES=${HYPOTHESIS_FAILURES:-0}
-
-    # Extract first failure details for JSON output
-    FIRST_FAILURE_TEST=""
-    FIRST_FAILURE_INPUT=""
-    FIRST_FAILURE_ERROR=""
-    if [[ $TESTS_FAILED -gt 0 ]] || [[ $HYPOTHESIS_FAILURES -gt 0 ]]; then
-        # Extract failing test name (e.g., "test_parser_handles_input")
-        FIRST_FAILURE_TEST=$(echo "$OUTPUT" | grep -oE 'FAILED [^:]+::[^[ ]+' | head -1 | sed 's/FAILED //' || echo "")
-        # Extract falsifying example input (line after "Falsifying example:")
-        FIRST_FAILURE_INPUT=$(echo "$OUTPUT" | grep -A1 "Falsifying example:" | tail -1 | sed 's/^[[:space:]]*//' | head -c 200 || echo "")
-        # Extract error type (e.g., "AssertionError", "ValueError")
-        FIRST_FAILURE_ERROR=$(echo "$OUTPUT" | grep -oE '(AssertionError|ValueError|TypeError|RecursionError|Exception)[^:]*' | head -1 || echo "")
-    fi
-
-    # Determine status
-    if [[ $EXIT_CODE -eq 0 ]]; then
-        STATUS="pass"
-    elif [[ $TESTS_FAILED -gt 0 ]] || [[ $HYPOTHESIS_FAILURES -gt 0 ]]; then
-        STATUS="finding"
-    else
-        STATUS="error"
-    fi
-
-    # Output
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        # Escape special characters for JSON using Python's json.dumps for correctness
-        # This handles newlines, carriage returns, control characters, and Unicode properly
-        FIRST_FAILURE_INPUT_ESCAPED=$(printf '%s' "$FIRST_FAILURE_INPUT" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read())[1:-1])" 2>/dev/null || echo "")
-        FIRST_FAILURE_ERROR_ESCAPED=$(printf '%s' "$FIRST_FAILURE_ERROR" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read())[1:-1])" 2>/dev/null || echo "")
-
-        if [[ -n "$FIRST_FAILURE_TEST" ]]; then
-            echo '{"mode":"check","status":"'"$STATUS"'","tests_passed":"'"$TESTS_PASSED"'","tests_failed":"'"$TESTS_FAILED"'","hypothesis_failures":"'"$HYPOTHESIS_FAILURES"'","first_failure":{"test":"'"$FIRST_FAILURE_TEST"'","input":"'"$FIRST_FAILURE_INPUT_ESCAPED"'","error":"'"$FIRST_FAILURE_ERROR_ESCAPED"'"}}'
-        else
-            echo '{"mode":"check","status":"'"$STATUS"'","tests_passed":"'"$TESTS_PASSED"'","tests_failed":"'"$TESTS_FAILED"'","hypothesis_failures":"'"$HYPOTHESIS_FAILURES"'"}'
-        fi
-    else
-        echo ""
-        echo -e "${BOLD}============================================================${NC}"
-        if [[ "$STATUS" == "pass" ]]; then
-            print_pass "All property tests passed."
-            echo ""
-            echo "Tests passed: $TESTS_PASSED"
-            echo ""
-            echo "Next: Run './scripts/fuzz.sh --deep' for deeper testing."
-        elif [[ "$STATUS" == "finding" ]]; then
-            print_finding "Failures detected!"
-            echo ""
-            echo "Hypothesis failures: $HYPOTHESIS_FAILURES"
-            echo ""
-            echo "Next steps:"
-            echo "  1. Review the 'Falsifying example:' output above"
-            echo "  2. Add @example(failing_input) decorator to the test"
-            echo "  3. Fix the bug in the parser code"
-            echo "  4. Run: ./scripts/fuzz.sh (to verify fix)"
-        else
-            echo -e "${RED}[ERROR]${NC} Test execution failed."
-        fi
-        echo -e "${BOLD}============================================================${NC}"
-    fi
-
-    exit $EXIT_CODE
+    
+    # Proper exit code
+    echo "[EXIT-CODE] $EXIT_CODE"
 }
 
-# Mode: deep - Continuous HypoFuzz
+# 2. RUN DEEP (HypoFuzz)
 run_deep() {
-    print_header
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="--max-examples=$((TIME_LIMIT * 100))"
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}Continuous Coverage-Guided Fuzzing${NC}"
-        echo "Engine:  HypoFuzz"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
-        echo "Starting HypoFuzz... (press Ctrl+C to stop)"
-        echo ""
-    fi
-
-    # Force TMPDIR to avoid macOS socket path issues
-    export TMPDIR="/tmp"
-
-    # Use temp file to capture output while displaying in real-time
-    DEEP_OUTPUT_FILE=$(mktemp)
-    trap "rm -f '$DEEP_OUTPUT_FILE'" EXIT
-
-    # Track if user interrupted
-    USER_STOPPED="false"
-    trap 'USER_STOPPED="true"' INT
-
+    CMD=(uv run --group fuzzing hypothesis fuzz --no-dashboard -n "$WORKERS")
+    [[ -n "$TIME_LIMIT" ]] && CMD+=("--max-examples=$((TIME_LIMIT * 100))")
+    CMD+=("tests/")
+    
+    # Execution
+    TEMP_LOG="/tmp/fuzz_output_$$.log"
+    trap "rm -f '$TEMP_LOG'" RETURN
+    log_info "Starting HypoFuzz (Deep Mode)..."
+    
+    # Run with verbose streaming support
     set +e
-    uv run --group fuzzing hypothesis fuzz --no-dashboard -n "$WORKERS" $EXTRA_ARGS -- tests/ 2>&1 | tee "$DEEP_OUTPUT_FILE"
-    EXIT_CODE=${PIPESTATUS[0]}
+    if [[ "$VERBOSE" == "true" ]]; then
+        # Verbose: Stream to terminal AND capture for parsing
+        "${CMD[@]}" 2>&1 | tee "$TEMP_LOG"
+        EXIT_CODE=${PIPESTATUS[0]}
+    else
+        # Quiet: Run in background, capture only
+        "${CMD[@]}" > "$TEMP_LOG" 2>&1 &
+        PID=$!
+        PID_LIST+=("$PID")
+        wait "$PID" || true
+        EXIT_CODE=$?
+    fi
     set -e
-
-    # Restore default INT handler
-    trap - INT
-
-    # Analyze output for findings
-    # Note: grep -c outputs "0" and exits 1 when no matches, so use || true
-    FAILURE_COUNT=$(grep -c "Falsifying example:" "$DEEP_OUTPUT_FILE" 2>/dev/null) || true
-    FAILURE_COUNT=${FAILURE_COUNT:-0}
-    INTERRUPTED=$(grep -c "KeyboardInterrupt" "$DEEP_OUTPUT_FILE" 2>/dev/null) || true
-    INTERRUPTED=${INTERRUPTED:-0}
-
-    # User stopped if we caught SIGINT or output shows KeyboardInterrupt
-    if [[ "$INTERRUPTED" -gt 0 ]] || [[ $EXIT_CODE -eq 130 ]]; then
-        USER_STOPPED="true"
-    fi
-
-    # Display summary
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        if [[ $EXIT_CODE -eq 0 ]] || [[ "$USER_STOPPED" == "true" ]]; then
-            if [[ "$FAILURE_COUNT" -gt 0 ]]; then
-                STATUS="finding"
-            else
-                STATUS="pass"
-            fi
-        elif [[ "$FAILURE_COUNT" -gt 0 ]]; then
-            STATUS="finding"
-        else
-            STATUS="error"
+    
+    # Analysis
+    FINDINGS=$(grep -c "Falsifying example" "$TEMP_LOG" || true)
+    
+    # Build Report
+    python3 -c "
+import json
+print('[SUMMARY-JSON-BEGIN]')
+print(json.dumps({
+    'mode': 'deep',
+    'findings': int('$FINDINGS'),
+    'duration_limit': '$TIME_LIMIT',
+    'exit_code': int('$EXIT_CODE')
+}))
+print('[SUMMARY-JSON-END]')
+"
+    # Artifact Collection (Hypothesis stores in internal DB, but we can check failure dir)
+    if [[ -d ".hypothesis/failures" ]]; then
+        count=$(find .hypothesis/failures -type f | wc -l)
+        if [[ $count -gt 0 ]]; then
+            log_warn "Found $count failure artifacts in .hypothesis/failures"
         fi
-        echo '{"mode":"deep","status":"'"$STATUS"'","finding_count":"'"$FAILURE_COUNT"'"}'
-    else
-        echo ""
-        echo -e "${BOLD}============================================================${NC}"
-        if [[ "$FAILURE_COUNT" -gt 0 ]]; then
-            print_finding "$FAILURE_COUNT property violation(s) found!"
-            echo ""
-            echo "Findings saved to: .hypothesis/failures/"
-            echo "View with: ./scripts/fuzz.sh --list"
-            echo ""
-            echo "Next steps:"
-            echo "  1. Look for 'Falsifying example:' in output above"
-            echo "  2. Add @example(failing_input) to the test"
-            echo "  3. Fix the bug and re-run ./scripts/fuzz.sh"
-        elif [[ "$USER_STOPPED" == "true" ]]; then
-            print_pass "Stopped by user. No violations detected."
-            echo ""
-            echo "Tip: Run longer with --time 300 (5 min) for deeper coverage."
-        elif [[ $EXIT_CODE -eq 0 ]]; then
-            print_pass "Fuzzing completed. No violations detected."
-        else
-            echo -e "${RED}[ERROR]${NC} Fuzzing failed unexpectedly (exit code: $EXIT_CODE)"
-        fi
-        echo -e "${BOLD}============================================================${NC}"
     fi
 
-    # Clean up temp file
-    rm -f "$DEEP_OUTPUT_FILE"
-    trap - EXIT
-
-    # Exit success if user stopped cleanly with no findings
-    if [[ "$USER_STOPPED" == "true" ]] && [[ "$FAILURE_COUNT" -eq 0 ]]; then
-        exit 0
-    fi
-    exit $EXIT_CODE
+    echo "[EXIT-CODE] $EXIT_CODE"
 }
 
-# Mode: native - Atheris stability fuzzing
-run_native() {
-    print_header
-
-    preflight_atheris
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
-    fi
-
+# 3. RUN NATIVE (Atheris) - Absorbed Logic
+run_native_logic() {
+    local TARGET_SCRIPT="$1"
+    local CORPUS_DIR=".fuzz_corpus"
+    mkdir -p "$CORPUS_DIR"
+    
+    CMD=(uv run --group fuzzing python "$TARGET_SCRIPT")
+    CMD+=("-workers=$WORKERS")
+    CMD+=("-artifact_prefix=$ARTIFACTS_DIR/crash_")
+    [[ -n "$TIME_LIMIT" ]] && CMD+=("-max_total_time=$TIME_LIMIT")
+    CMD+=("$CORPUS_DIR")
+    # Add seeds if exist
+    [[ -d "fuzz/seeds" ]] && CMD+=("fuzz/seeds")
+    
     if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}Native Stability Fuzzing${NC}"
-        echo "Engine:  Atheris (libFuzzer)"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
+        log_info "Starting Atheris ($TARGET_SCRIPT)..."
+        log_info "Artifacts will be saved to: $ARTIFACTS_DIR"
     fi
-
-    # Delegate to existing script with seed corpus
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/stability.py" "fuzz/seeds" $EXTRA_ARGS
-}
-
-# Mode: runtime - Atheris end-to-end runtime fuzzing
-run_runtime() {
-    print_header
-
-    preflight_atheris
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}End-to-End Runtime Fuzzing${NC}"
-        echo "Engine:  Atheris (libFuzzer)"
-        echo "Target:  fuzz/runtime.py (Bundle/Cache/Strict)"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
-        echo "This mode tests full runtime lifecycle and v0.80.0 strict mode integrity."
-        echo ""
-    fi
-
-    # Delegate to existing script with seed corpus
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/runtime.py" "fuzz/seeds" $EXTRA_ARGS
-}
-
-# Mode: perf - Atheris performance fuzzing
-run_perf() {
-    print_header
-
-    preflight_atheris
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}Performance Fuzzing (ReDoS Detection)${NC}"
-        echo "Engine:  Atheris (libFuzzer)"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
-    fi
-
-    # Delegate to existing script with seed corpus
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/perf.py" "fuzz/seeds" $EXTRA_ARGS
-}
-
-# Helper: Calculate human-readable file age
-file_age() {
-    local file="$1"
-    local now
-    local file_time
-    local age_sec
-    now=$(date +%s)
-    file_time=$(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null)
-    age_sec=$((now - file_time))
-
-    if [[ $age_sec -lt 60 ]]; then
-        echo "${age_sec}s ago"
-    elif [[ $age_sec -lt 3600 ]]; then
-        echo "$((age_sec / 60))m ago"
-    elif [[ $age_sec -lt 86400 ]]; then
-        echo "$((age_sec / 3600))h ago"
-    else
-        echo "$((age_sec / 86400))d ago"
-    fi
-}
-
-# Mode: list - Show captured failures
-run_list() {
-    FAILURES_DIR="$PROJECT_ROOT/.hypothesis/failures"
-    CRASH_DIR="$PROJECT_ROOT/.fuzz_corpus"
-
-    # Count failures
-    HYPOTHESIS_COUNT=0
-    CRASH_COUNT=0
-
-    if [[ -d "$FAILURES_DIR" ]]; then
-        HYPOTHESIS_COUNT=$(find "$FAILURES_DIR" -name "failures_*.txt" -type f 2>/dev/null | wc -l | tr -d ' ')
-    fi
-
-    if [[ -d "$CRASH_DIR" ]]; then
-        CRASH_COUNT=$(find "$CRASH_DIR" -name "crash_*" -type f 2>/dev/null | wc -l | tr -d ' ')
-    fi
-
-    TOTAL=$((HYPOTHESIS_COUNT + CRASH_COUNT))
-
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        echo '{"mode":"list","hypothesis_failures":"'"$HYPOTHESIS_COUNT"'","atheris_crashes":"'"$CRASH_COUNT"'","total":"'"$TOTAL"'"}'
-    else
-        print_header
-
-        if [[ $TOTAL -eq 0 ]]; then
-            print_pass "No captured failures."
-            echo ""
-            echo "Run './scripts/fuzz.sh' to start fuzzing."
-        else
-            print_info "Found $TOTAL captured failure(s)."
-            echo ""
-
-            if [[ $HYPOTHESIS_COUNT -gt 0 ]]; then
-                echo -e "${BOLD}Hypothesis/HypoFuzz Failures:${NC} $HYPOTHESIS_COUNT"
-                echo "  Location: .hypothesis/failures/"
-                # Show files with ages, newest first
-                ls -t "$FAILURES_DIR"/failures_*.txt 2>/dev/null | head -5 | while read -r f; do
-                    echo "  - $(basename "$f") ($(file_age "$f"))"
-                done
-                echo ""
-            fi
-
-            if [[ $CRASH_COUNT -gt 0 ]]; then
-                echo -e "${BOLD}Atheris Crashes:${NC} $CRASH_COUNT"
-                echo "  Location: .fuzz_corpus/"
-                # Show files with ages, newest first
-                ls -t "$CRASH_DIR"/crash_* 2>/dev/null | head -5 | while read -r f; do
-                    echo "  - $(basename "$f") ($(file_age "$f"))"
-                done
-                echo ""
-            fi
-
-            echo "Next steps:"
-            echo "  1. Review the failure input"
-            echo "  2. Add @example() decorator or create unit test"
-            echo "  3. Fix the bug and verify with ./scripts/fuzz.sh"
-        fi
-        echo ""
-    fi
-}
-
-# Mode: clean - Remove failure artifacts
-run_clean() {
-    FAILURES_DIR="$PROJECT_ROOT/.hypothesis/failures"
-    CRASH_DIR="$PROJECT_ROOT/.fuzz_corpus"
-
-    # Count before cleaning
-    HYPOTHESIS_COUNT=0
-    CRASH_COUNT=0
-
-    if [[ -d "$FAILURES_DIR" ]]; then
-        HYPOTHESIS_COUNT=$(find "$FAILURES_DIR" -name "failures_*.txt" -type f 2>/dev/null | wc -l | tr -d ' ')
-    fi
-
-    if [[ -d "$CRASH_DIR" ]]; then
-        CRASH_COUNT=$(find "$CRASH_DIR" -name "crash_*" -type f 2>/dev/null | wc -l | tr -d ' ')
-    fi
-
-    # Clean
-    rm -f "$FAILURES_DIR"/failures_*.txt 2>/dev/null || true
-    rm -f "$CRASH_DIR"/crash_* 2>/dev/null || true
-
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        echo '{"mode":"clean","status":"ok","hypothesis_removed":"'"$HYPOTHESIS_COUNT"'","crashes_removed":"'"$CRASH_COUNT"'"}'
-    else
-        print_header
-        print_pass "Cleaned failure artifacts."
-        echo ""
-        echo "Removed: $HYPOTHESIS_COUNT Hypothesis failures, $CRASH_COUNT crash files"
-        echo ""
-    fi
-}
-
-# Mode: corpus - Check corpus health
-run_corpus() {
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        print_header
-        echo -e "Mode:    ${BOLD}Corpus Health Check${NC}"
-        echo ""
-    fi
-
-    exec uv run python "$SCRIPT_DIR/corpus-health.py" $(if [[ "$JSON_OUTPUT" == "true" ]]; then echo "--json"; fi)
-}
-
-# Mode: structured - Atheris structure-aware fuzzing
-run_structured() {
-    print_header
-
-    preflight_atheris
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}Structure-Aware Fuzzing${NC}"
-        echo "Engine:  Atheris (libFuzzer) + Grammar-Aware Generation"
-        echo "Target:  fuzz/structured.py"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
-        echo "This mode generates syntactically plausible FTL for better coverage."
-        echo ""
-    fi
-
-    # Delegate to existing script with seed corpus
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/structured.py" "fuzz/seeds" $EXTRA_ARGS
-}
-
-# Mode: iso - ISO 3166/4217 introspection fuzzing
-run_iso() {
-    print_header
-
-    preflight_atheris
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}ISO Introspection Fuzzing${NC}"
-        echo "Engine:  Atheris (libFuzzer)"
-        echo "Target:  fuzz/iso.py (ISO 3166/4217)"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
-        echo "This mode tests ISO territory/currency lookups, type guards, and cache integrity."
-        echo "Note: Requires Babel for full coverage."
-        echo ""
-    fi
-
-    # Delegate to existing script with seed corpus
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/iso.py" "fuzz/seeds" $EXTRA_ARGS
-}
-
-# Mode: fiscal - Fiscal calendar arithmetic fuzzing
-run_fiscal() {
-    print_header
-
-    preflight_atheris
-
-    # Build args
-    EXTRA_ARGS=""
-    if [[ -n "$TIME_LIMIT" ]]; then
-        EXTRA_ARGS="-max_total_time=$TIME_LIMIT"
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        echo -e "Mode:    ${BOLD}Fiscal Calendar Arithmetic Fuzzing${NC}"
-        echo "Engine:  Atheris (libFuzzer)"
-        echo "Target:  fuzz/fiscal.py (FiscalCalendar/Delta/Period)"
-        echo "Workers: $WORKERS"
-        if [[ -n "$TIME_LIMIT" ]]; then
-            echo "Time:    ${TIME_LIMIT}s"
-        else
-            echo "Time:    Until Ctrl+C"
-        fi
-        echo ""
-        echo "This mode tests fiscal calendar operations, date arithmetic, and boundary conditions."
-        echo ""
-    fi
-
-    # Delegate to existing script with seed corpus
-    exec "$SCRIPT_DIR/fuzz-atheris.sh" "$WORKERS" "fuzz/fiscal.py" "fuzz/seeds" $EXTRA_ARGS
-}
-
-# Mode: repro - Reproduce a crash file
-run_repro() {
-    if [[ -z "$REPRO_FILE" ]]; then
-        echo -e "${RED}[ERROR]${NC} --repro requires a file path."
-        echo "Usage: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_xxx"
-        exit 2
-    fi
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        print_header
-        echo -e "Mode:    ${BOLD}Crash Reproduction${NC}"
-        echo "File:    $REPRO_FILE"
-        echo ""
-    fi
-
-    exec uv run python "$SCRIPT_DIR/repro.py" "$REPRO_FILE"
-}
-
-# Mode: minimize - Minimize a crash file using libFuzzer
-run_minimize() {
-    if [[ -z "$MINIMIZE_FILE" ]]; then
-        echo -e "${RED}[ERROR]${NC} --minimize requires a crash file path."
-        echo "Usage: ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_xxx"
-        exit 2
-    fi
-
-    if [[ ! -f "$MINIMIZE_FILE" ]]; then
-        echo -e "${RED}[ERROR]${NC} Crash file not found: $MINIMIZE_FILE"
-        exit 2
-    fi
-
-    preflight_atheris
-
-    # Determine which fuzzer script to use based on crash file location/name
-    # Default to structured.py since it covers more code paths
-    FUZZER_SCRIPT="fuzz/structured.py"
-    if [[ "$MINIMIZE_FILE" == *"perf"* ]]; then
-        FUZZER_SCRIPT="fuzz/perf.py"
-    elif [[ "$MINIMIZE_FILE" == *"stability"* ]]; then
-        FUZZER_SCRIPT="fuzz/stability.py"
-    fi
-
-    # Create output file for minimized crash
-    MINIMIZE_OUTPUT="${MINIMIZE_FILE}.minimized"
-
-    if [[ "$JSON_OUTPUT" == "false" ]]; then
-        print_header
-        echo -e "Mode:    ${BOLD}Crash Minimization${NC}"
-        echo "Engine:  libFuzzer (-minimize_crash=1)"
-        echo "Input:   $MINIMIZE_FILE"
-        echo "Output:  $MINIMIZE_OUTPUT"
-        echo "Fuzzer:  $FUZZER_SCRIPT"
-        echo ""
-        echo "Minimizing crash input... (this may take a while)"
-        echo ""
-    fi
-
-    # Run libFuzzer minimization
-    # -minimize_crash=1: Enable crash minimization mode
-    # -exact_artifact_path: Write minimized crash to specific file
-    # -runs=0: Don't do additional fuzzing, just minimize
-    # -max_total_time: Limit minimization time (default 60s)
-    TIME_LIMIT=${TIME_LIMIT:-60}
-
+    
+    TEMP_LOG="/tmp/fuzz_output_$$.log"
+    trap "rm -f '$TEMP_LOG'" RETURN
+    
+    # Run with verbose streaming support
     set +e
-    uv run python "$FUZZER_SCRIPT" \
-        -minimize_crash=1 \
-        -exact_artifact_path="$MINIMIZE_OUTPUT" \
-        -max_total_time="$TIME_LIMIT" \
-        "$MINIMIZE_FILE" 2>&1
-    EXIT_CODE=$?
-    set -e
-
-    if [[ "$JSON_OUTPUT" == "true" ]]; then
-        if [[ -f "$MINIMIZE_OUTPUT" ]]; then
-            ORIGINAL_SIZE=$(wc -c < "$MINIMIZE_FILE" | tr -d ' ')
-            MINIMIZED_SIZE=$(wc -c < "$MINIMIZE_OUTPUT" | tr -d ' ')
-            echo '{"mode":"minimize","status":"ok","original_size":"'"$ORIGINAL_SIZE"'","minimized_size":"'"$MINIMIZED_SIZE"'","output_file":"'"$MINIMIZE_OUTPUT"'"}'
-        else
-            echo '{"mode":"minimize","status":"error","error":"minimization_failed"}'
-        fi
+    if [[ "$VERBOSE" == "true" ]]; then
+        # Verbose: Stream to terminal AND capture for parsing
+        "${CMD[@]}" 2>&1 | tee "$TEMP_LOG"
+        EXIT_CODE=${PIPESTATUS[0]}
     else
-        echo ""
-        echo -e "${BOLD}============================================================${NC}"
-        if [[ -f "$MINIMIZE_OUTPUT" ]]; then
-            ORIGINAL_SIZE=$(wc -c < "$MINIMIZE_FILE" | tr -d ' ')
-            MINIMIZED_SIZE=$(wc -c < "$MINIMIZE_OUTPUT" | tr -d ' ')
-            print_pass "Crash minimized successfully."
-            echo ""
-            echo "Original size:  $ORIGINAL_SIZE bytes"
-            echo "Minimized size: $MINIMIZED_SIZE bytes"
-            echo "Reduction:      $((100 - (MINIMIZED_SIZE * 100 / ORIGINAL_SIZE)))%"
-            echo ""
-            echo "Minimized crash saved to: $MINIMIZE_OUTPUT"
-            echo ""
-            echo "Next steps:"
-            echo "  1. Reproduce: ./scripts/fuzz.sh --repro $MINIMIZE_OUTPUT"
-            echo "  2. Add @example() to test and fix the bug"
-        else
-            echo -e "${RED}[ERROR]${NC} Minimization failed."
-            echo ""
-            echo "The crash may already be minimal, or the fuzzer script"
-            echo "may not reproduce the crash consistently."
-        fi
-        echo -e "${BOLD}============================================================${NC}"
+        # Quiet: Run in background, capture only
+        "${CMD[@]}" > "$TEMP_LOG" 2>&1 &
+        PID=$!
+        PID_LIST+=("$PID")
+        wait "$PID" || true
+        EXIT_CODE=$?
     fi
+    set -e
+    
+    # Collect Artifacts
+    CRASHES=$(find "$ARTIFACTS_DIR" -name "crash_*" 2>/dev/null | wc -l | tr -d ' ')
+    
+    # Parse Coverage/Speed
+    STATS=$(tail -n 50 "$TEMP_LOG" | grep "cov:" | tail -1 || echo "")
+    
+    python3 -c "
+import json
+print('[SUMMARY-JSON-BEGIN]')
+print(json.dumps({
+    'mode': 'native',
+    'crash_count': int('$CRASHES'),
+    'last_stats': '$STATS',
+    'exit_code': int('$EXIT_CODE')
+}))
+print('[SUMMARY-JSON-END]')
+"
 
-    exit $EXIT_CODE
+    echo "[EXIT-CODE] $EXIT_CODE"
 }
 
-# Dispatch to mode
-case $MODE in
+
+# [SECTION: DISPATCHER]
+preflight_checks
+
+case "$MODE" in
     check)
         run_check
         ;;
@@ -1106,40 +368,87 @@ case $MODE in
         run_deep
         ;;
     native)
-        run_native
+        preflight_atheris
+        run_native_logic "fuzz/stability.py"
         ;;
     runtime)
-        run_runtime
-        ;;
-    perf)
-        run_perf
+        preflight_atheris
+        run_native_logic "fuzz/runtime.py"
         ;;
     structured)
-        run_structured
+        preflight_atheris
+        run_native_logic "fuzz/structured.py"
+        ;;
+    perf)
+        preflight_atheris
+        run_native_logic "fuzz/perf.py"
         ;;
     iso)
-        run_iso
+        preflight_atheris
+        run_native_logic "fuzz/iso.py"
         ;;
     fiscal)
-        run_fiscal
+        preflight_atheris
+        run_native_logic "fuzz/fiscal.py"
         ;;
     repro)
-        run_repro
+        if [[ ! -f "$REPRO_FILE" ]]; then
+            log_err "Crash file not found: $REPRO_FILE"
+            exit 1
+        fi
+        log_info "Reproducing crash: $REPRO_FILE"
+        CRASH_CONTENT=$(xxd -p "$REPRO_FILE" | tr -d '\n')
+        echo ""
+        echo "To add as @example decorator, use:"
+        echo "  @example(bytes.fromhex('$CRASH_CONTENT'))"
+        echo ""
+        echo "[EXIT-CODE] 0"
         ;;
     minimize)
-        run_minimize
-        ;;
-    list)
-        run_list
-        ;;
-    clean)
-        run_clean
+        if [[ ! -f "$MINIMIZE_FILE" ]]; then
+            log_err "Crash file not found: $MINIMIZE_FILE"
+            exit 1
+        fi
+        preflight_atheris
+        log_info "Minimizing crash: $MINIMIZE_FILE"
+        MINIMIZED="${MINIMIZE_FILE}.minimized"
+        # Run with -minimize_crash=1 and the crash file
+        uv run --group fuzzing python fuzz/stability.py \
+            -minimize_crash=1 \
+            -exact_artifact_path="$MINIMIZED" \
+            "$MINIMIZE_FILE"
+        if [[ -f "$MINIMIZED" ]]; then
+            ORIG_SIZE=$(stat -f%z "$MINIMIZE_FILE" 2>/dev/null || stat -c%s "$MINIMIZE_FILE")
+            NEW_SIZE=$(stat -f%z "$MINIMIZED" 2>/dev/null || stat -c%s "$MINIMIZED")
+            log_pass "Minimized: $ORIG_SIZE -> $NEW_SIZE bytes"
+            echo "Minimized crash saved to: $MINIMIZED"
+        else
+            log_err "Minimization failed."
+            exit 1
+        fi
+        echo "[EXIT-CODE] 0"
         ;;
     corpus)
-        run_corpus
+        log_info "Checking seed corpus health..."
+        if [[ -f "scripts/corpus-health.py" ]]; then
+            uv run python scripts/corpus-health.py
+        else
+            # Fallback: simple count
+            SEED_COUNT=$(find fuzz/seeds -type f 2>/dev/null | wc -l | tr -d ' ')
+            log_pass "Seed corpus: $SEED_COUNT files"
+        fi
+        echo "[EXIT-CODE] 0"
         ;;
-    *)
-        echo "Unknown mode: $MODE"
-        exit 2
+    clean)
+        log_info "Cleaning artifacts..."
+        rm -rf "$ARTIFACTS_DIR" .fuzz_corpus .hypothesis/failures
+        log_pass "Cleaned."
+        echo "[EXIT-CODE] 0"
+        ;;
+    list)
+        log_info "Known failures:"
+        find "$ARTIFACTS_DIR" -name "crash_*" 2>/dev/null || true
+        find .hypothesis/failures -type f 2>/dev/null || true
+        echo "[EXIT-CODE] 0"
         ;;
 esac

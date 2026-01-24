@@ -328,7 +328,7 @@ def test_one_input(data: bytes) -> None:
         print(f"Input Preview:  {source[:200]!r}...")
         print("-" * 80)
         print("NEXT STEPS:")
-        print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
+        print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_artifacts/crash_*")
         print("  2. Create test: Use tests/test_parser_survivability.py as template")
         print("  3. Fix & Verify: Resolve the crash and confirm with --repro")
         print("=" * 80)

@@ -375,12 +375,28 @@ class FiscalDelta:
     month_end_policy: MonthEndPolicy = MonthEndPolicy.PRESERVE
 
     def __post_init__(self) -> None:
-        """Validate inputs are integers."""
+        """Validate inputs at construction time.
+
+        Raises:
+            TypeError: If numeric fields are not int or month_end_policy is invalid.
+        """
         for field in ("years", "quarters", "months", "days"):
             value = getattr(self, field)
             if not isinstance(value, int):
                 msg = f"{field} must be int, got {type(value).__name__}"
                 raise TypeError(msg)
+
+        # Validate month_end_policy is a valid enum member.
+        # Note: Mypy sees the if-body as unreachable because the type annotation
+        # says MonthEndPolicy. However, at runtime users can pass invalid values
+        # bypassing type hints. This is intentional defense-in-depth for
+        # financial-grade applications where invalid inputs must fail fast.
+        if not isinstance(self.month_end_policy, MonthEndPolicy):
+            msg = (  # type: ignore[unreachable]
+                f"month_end_policy must be MonthEndPolicy, "
+                f"got {type(self.month_end_policy).__name__}"
+            )
+            raise TypeError(msg)
 
     def total_months(self) -> int:
         """Get total delta in months (years + quarters + months).
@@ -547,6 +563,14 @@ def _add_months(d: date, months: int, policy: MonthEndPolicy) -> date:
                 )
                 raise ValueError(msg)
             target_day = d.day
+
+        case _:
+            # Defense-in-depth: FiscalDelta validates at construction, but this
+            # ensures clear error if internal code paths bypass validation.
+            # Mypy sees this as unreachable (enum is exhaustive), but runtime
+            # type violations can occur. This is intentional defensive code.
+            msg = f"Unknown month_end_policy: {policy!r}"  # type: ignore[unreachable]
+            raise ValueError(msg)
 
     return date(target_year, target_month, target_day)
 

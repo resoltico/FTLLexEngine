@@ -142,7 +142,8 @@ def clear_all_caches() -> None:
     - CLDR date/datetime pattern caches (parsing.dates)
     - CLDR currency data caches (parsing.currency)
     - LocaleContext instance cache (runtime.locale_context)
-    - Introspection result cache (introspection)
+    - Message introspection result cache (introspection.message)
+    - ISO territory/currency introspection cache (introspection.iso)
 
     Useful for:
     - Memory reclamation in long-running server applications
@@ -181,10 +182,11 @@ def clear_all_caches() -> None:
     clear_locale_cache()
     LocaleContext.clear_cache()
 
-    # 3. Introspection cache
-    from .introspection import clear_introspection_cache
+    # 3. Introspection caches (message introspection + ISO standards data)
+    from .introspection import clear_introspection_cache, clear_iso_cache
 
     clear_introspection_cache()
+    clear_iso_cache()
 
 
 # Version information - Auto-populated from package metadata

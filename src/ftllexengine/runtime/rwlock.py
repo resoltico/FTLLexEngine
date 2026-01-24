@@ -29,14 +29,12 @@ import threading
 from collections.abc import Callable
 from contextlib import contextmanager
 from functools import wraps
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
 __all__ = ["RWLock"]
-
-T = TypeVar("T")
 
 
 class RWLock:
@@ -265,7 +263,9 @@ class RWLock:
             self._condition.notify_all()
 
 
-def with_read_lock(lock_attr: str = "_rwlock") -> Callable[[Callable[..., T]], Callable[..., T]]:
+def with_read_lock[T](
+    lock_attr: str = "_rwlock",
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator to acquire read lock for method execution.
 
     Args:
@@ -297,7 +297,9 @@ def with_read_lock(lock_attr: str = "_rwlock") -> Callable[[Callable[..., T]], C
     return decorator
 
 
-def with_write_lock(lock_attr: str = "_rwlock") -> Callable[[Callable[..., T]], Callable[..., T]]:
+def with_write_lock[T](
+    lock_attr: str = "_rwlock",
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator to acquire write lock for method execution.
 
     Args:

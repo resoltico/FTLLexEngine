@@ -449,7 +449,7 @@ def test_one_input(data: bytes) -> None:
         print(f"Error Message:  {e}")
         print("-" * 80)
         print("NEXT STEPS:")
-        print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
+        print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_artifacts/crash_*")
         print("  2. Create test in tests/test_parsing_fiscal.py")
         print("  3. Fix & Verify")
         print("=" * 80)

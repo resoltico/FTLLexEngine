@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.87.0"
+version: "0.88.0"
 domain: TYPES
-updated: "2026-01-22"
+updated: "2026-01-23"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -1071,8 +1071,9 @@ def get_territory(
 ### Constraints
 - Return: TerritoryInfo if found, None if unknown.
 - Raises: `BabelImportError` if Babel not installed.
-- State: Cached per (code, locale) pair.
+- State: Bounded cache per normalized (code, locale) pair.
 - Thread: Safe.
+- Normalization: Code uppercased, locale normalized (BCP-47/POSIX/lowercase accepted).
 - Import: `from ftllexengine.introspection import get_territory`
 
 ---
@@ -1098,8 +1099,9 @@ def get_currency(
 ### Constraints
 - Return: CurrencyInfo if found, None if unknown.
 - Raises: `BabelImportError` if Babel not installed.
-- State: Cached per (code, locale) pair.
+- State: Bounded cache per normalized (code, locale) pair.
 - Thread: Safe.
+- Normalization: Code uppercased, locale normalized (BCP-47/POSIX/lowercase accepted).
 - Import: `from ftllexengine.introspection import get_currency`
 
 ---
@@ -1123,8 +1125,9 @@ def list_territories(
 ### Constraints
 - Return: Frozen set of all TerritoryInfo objects.
 - Raises: `BabelImportError` if Babel not installed.
-- State: Cached per locale.
+- State: Bounded cache per normalized locale.
 - Thread: Safe.
+- Normalization: Locale normalized (BCP-47/POSIX/lowercase accepted).
 - Import: `from ftllexengine.introspection import list_territories`
 
 ---
@@ -1148,8 +1151,9 @@ def list_currencies(
 ### Constraints
 - Return: Frozen set of all CurrencyInfo objects.
 - Raises: `BabelImportError` if Babel not installed.
-- State: Cached per locale.
+- State: Bounded cache per normalized locale.
 - Thread: Safe.
+- Normalization: Locale normalized (BCP-47/POSIX/lowercase accepted).
 - Import: `from ftllexengine.introspection import list_currencies`
 
 ---
@@ -1171,8 +1175,9 @@ def get_territory_currency(territory: str) -> CurrencyCode | None:
 ### Constraints
 - Return: ISO 4217 currency code or None if unknown.
 - Raises: `BabelImportError` if Babel not installed.
-- State: Cached.
+- State: Bounded cache per normalized territory code.
 - Thread: Safe.
+- Normalization: Territory code uppercased internally.
 - Import: `from ftllexengine.introspection import get_territory_currency`
 
 ---
@@ -1237,8 +1242,9 @@ def clear_iso_cache() -> None:
 ### Constraints
 - Return: None.
 - Raises: Never.
-- State: Clears all cached territory and currency lookups.
+- State: Clears all bounded ISO introspection caches.
 - Thread: Safe.
+- Usage: Testing, memory pressure, locale configuration changes.
 - Import: `from ftllexengine.introspection import clear_iso_cache`
 
 ---

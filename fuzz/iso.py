@@ -369,7 +369,7 @@ def _report_finding(
     print(f"Locale:         {locale!r}")
     print("-" * 80)
     print("NEXT STEPS:")
-    print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_corpus/crash_*")
+    print("  1. Reproduce:  ./scripts/fuzz.sh --repro .fuzz_artifacts/crash_*")
     print("  2. Create test in tests/test_introspection_iso.py")
     print("  3. Fix & Verify")
     print("=" * 80)
