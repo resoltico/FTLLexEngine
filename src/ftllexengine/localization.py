@@ -527,6 +527,7 @@ class FluentLocalization:
         "_resource_ids",
         "_resource_loader",
         "_resources_loaded",
+        "_strict",
         "_use_isolating",
     )
 
@@ -540,6 +541,7 @@ class FluentLocalization:
         enable_cache: bool = False,
         cache_size: int = DEFAULT_CACHE_SIZE,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
+        strict: bool = False,
     ) -> None:
         """Initialize multi-locale localization.
 
@@ -556,6 +558,10 @@ class FluentLocalization:
                         debugging and monitoring which messages are missing translations.
                         The callback receives a FallbackInfo with requested_locale,
                         resolved_locale, and message_id.
+            strict: Enable strict mode for fail-fast integrity (default: False).
+                   When True, syntax errors in resources raise SyntaxIntegrityError
+                   and formatting errors raise FormattingIntegrityError.
+                   Financial applications should enable this for data integrity.
 
         Raises:
             ValueError: If locales is empty
@@ -586,6 +592,7 @@ class FluentLocalization:
         self._enable_cache = enable_cache
         self._cache_size = cache_size
         self._on_fallback = on_fallback
+        self._strict = strict
 
         # Bundle storage: only contains initialized bundles (no None markers)
         # Bundles are created lazily on first access via _get_or_create_bundle
@@ -645,6 +652,7 @@ class FluentLocalization:
                 use_isolating=self._use_isolating,
                 enable_cache=self._enable_cache,
                 cache_size=self._cache_size,
+                strict=self._strict,
             )
             # Apply any pending functions that were registered before bundle creation
             for name, func in self._pending_functions.items():

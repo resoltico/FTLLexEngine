@@ -348,7 +348,7 @@ class TestGetTerritoryCurrencies:
     def test_returns_currencies_for_known_territory(self) -> None:
         """get_territory_currencies returns currencies for known territories."""
         us_currencies = get_territory_currencies("US")
-        assert isinstance(us_currencies, list)
+        assert isinstance(us_currencies, tuple)
         assert "USD" in us_currencies
 
         jp_currencies = get_territory_currencies("JP")
@@ -357,10 +357,10 @@ class TestGetTerritoryCurrencies:
         gb_currencies = get_territory_currencies("GB")
         assert "GBP" in gb_currencies
 
-    def test_returns_empty_list_for_unknown_territory(self) -> None:
-        """get_territory_currencies returns empty list for unknown territories."""
+    def test_returns_empty_tuple_for_unknown_territory(self) -> None:
+        """get_territory_currencies returns empty tuple for unknown territories."""
         result = get_territory_currencies("XX")
-        assert result == []
+        assert result == ()
 
     def test_case_insensitive(self) -> None:
         """get_territory_currencies accepts lowercase codes."""
@@ -382,15 +382,12 @@ class TestGetTerritoryCurrencies:
         # CLDR data should include at least one currency
         assert len(pa_currencies) >= 1
 
-    def test_returns_list_not_tuple(self) -> None:
-        """get_territory_currencies returns a list (mutable) for caller convenience."""
+    def test_returns_tuple_for_immutability(self) -> None:
+        """get_territory_currencies returns an immutable tuple per architectural requirement."""
         result = get_territory_currencies("US")
-        assert isinstance(result, list)
-        # Verify it's mutable (caller can modify without affecting cache)
-        result.append("TEST")
-        # New call should not include "TEST"
-        fresh_result = get_territory_currencies("US")
-        assert "TEST" not in fresh_result
+        assert isinstance(result, tuple)
+        # Verify it's immutable (tuple cannot be modified)
+        # Callers can convert to list if mutation is needed: list(result)
 
 
 class TestTypeGuards:
@@ -679,13 +676,13 @@ class TestBabelExceptionHandling:
         """get_territory_currencies handles territories without unique currencies."""
         # Vatican City might have unusual currency data
         result = get_territory_currencies("VA")
-        # May return EUR or empty list
-        assert isinstance(result, list)
+        # May return EUR or empty tuple
+        assert isinstance(result, tuple)
         assert all(isinstance(c, str) for c in result)
 
         # Antarctica has no official currency
         result_aq = get_territory_currencies("AQ")
-        assert result_aq == []
+        assert result_aq == ()
 
     def test_get_currency_with_very_rare_locale(self) -> None:
         """get_currency degrades gracefully with very rare locales."""

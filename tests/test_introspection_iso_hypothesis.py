@@ -214,9 +214,9 @@ class TestTerritoryCurrencyProperties:
 
     @given(code=territory_codes)
     def test_territory_currencies_are_all_valid(self, code: str) -> None:
-        """get_territory_currencies returns list of valid currency codes."""
+        """get_territory_currencies returns tuple of valid currency codes."""
         currencies = get_territory_currencies(code)
-        assert isinstance(currencies, list)
+        assert isinstance(currencies, tuple)
         for currency_code in currencies:
             assert is_valid_currency_code(currency_code)
 
@@ -226,7 +226,7 @@ class TestTerritoryCurrencyProperties:
         territory = get_territory(code)
         assert territory is not None
         direct_lookup = get_territory_currencies(code)
-        assert list(territory.currencies) == direct_lookup
+        assert territory.currencies == direct_lookup
 
     @given(code=territory_codes)
     def test_territory_currencies_case_insensitive(self, code: str) -> None:

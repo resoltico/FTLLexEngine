@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.90.0"
+version: "0.91.0"
 domain: PARSING
-updated: "2026-01-24"
+updated: "2026-01-25"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
@@ -1147,6 +1147,54 @@ def fiscal_quarter(d: date, start_month: int = 1) -> int:
 - Raises: `ValueError` if start_month not 1-12.
 - State: None.
 - Thread: Safe.
+
+---
+
+## `fiscal_year`
+
+Convenience function for fiscal year lookup.
+
+### Signature
+```python
+def fiscal_year(d: date, start_month: int = 1) -> int:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+| `start_month` | `int` | N | Fiscal year start month (default: 1) |
+
+### Constraints
+- Return: Fiscal year number.
+- Raises: `ValueError` if start_month not 1-12.
+- State: None.
+- Thread: Safe.
+- Version: Added in v0.91.0.
+
+---
+
+## `fiscal_month`
+
+Convenience function for fiscal month lookup.
+
+### Signature
+```python
+def fiscal_month(d: date, start_month: int = 1) -> int:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `d` | `date` | Y | Date to classify |
+| `start_month` | `int` | N | Fiscal year start month (default: 1) |
+
+### Constraints
+- Return: Fiscal month 1-12 within fiscal year.
+- Raises: `ValueError` if start_month not 1-12.
+- State: None.
+- Thread: Safe.
+- Version: Added in v0.91.0.
 
 ---
 

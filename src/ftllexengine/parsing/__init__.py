@@ -37,6 +37,8 @@ Public API:
         FiscalPeriod - Immutable fiscal period identifier
         MonthEndPolicy - Enum for month-end date handling
         fiscal_quarter - Get fiscal quarter for a date
+        fiscal_year - Get fiscal year for a date
+        fiscal_month - Get fiscal month for a date
         fiscal_year_start - Get first day of a fiscal year
         fiscal_year_end - Get last day of a fiscal year
 
@@ -70,7 +72,9 @@ from .fiscal import (
     FiscalDelta,
     FiscalPeriod,
     MonthEndPolicy,
+    fiscal_month,
     fiscal_quarter,
+    fiscal_year,
     fiscal_year_end,
     fiscal_year_start,
 )
@@ -121,7 +125,9 @@ __all__ = [
     "FiscalDelta",
     "FiscalPeriod",
     "MonthEndPolicy",
+    "fiscal_month",
     "fiscal_quarter",
+    "fiscal_year",
     "fiscal_year_end",
     "fiscal_year_start",
 ]

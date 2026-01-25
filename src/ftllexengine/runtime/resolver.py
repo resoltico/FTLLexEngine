@@ -15,6 +15,7 @@ Thread Safety:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
@@ -60,6 +61,8 @@ if TYPE_CHECKING:
     from ftllexengine.runtime.function_bridge import FluentValue
 
 __all__ = ["FluentResolver", "ResolutionContext"]
+
+logger = logging.getLogger(__name__)
 
 # Unicode bidirectional isolation characters per Unicode TR9.
 # Used to prevent RTL/LTR text interference when interpolating values.
@@ -841,6 +844,12 @@ class FluentResolver:
         Uses FunctionRegistry to handle camelCase → snake_case parameter conversion.
         Uses metadata system to determine if locale injection is needed.
 
+        Exception Handling:
+            FrozenFluentError from registry (TypeError/ValueError) propagates to
+            pattern-level handler. Other exceptions (bugs in custom functions)
+            are caught here to provide graceful degradation per Fluent spec.
+            This ensures resolution "never fails catastrophically."
+
         Security:
             Wraps argument resolution in expression_guard to prevent DoS via deeply
             nested function calls like NUMBER(A(B(C(...)))). Each nested call
@@ -881,18 +890,59 @@ class FluentResolver:
             # Append locale after positional args (FTL passes exactly one value arg,
             # so this places locale as the second positional argument by contract)
             # FunctionRegistry.call() handles camelCase -> snake_case conversion
-            return self.function_registry.call(
-                func_name,
-                [*positional_values, self.locale],
-                named_values,
-            )
+            try:
+                return self.function_registry.call(
+                    func_name,
+                    [*positional_values, self.locale],
+                    named_values,
+                )
+            except FrozenFluentError:
+                # Already structured error from registry (TypeError/ValueError),
+                # let it propagate to pattern-level handler
+                raise
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Intentionally broad: Fluent spec requires graceful degradation for ANY
+                # exception from custom functions. Resolution must "never fail catastrophically."
+                logger.warning(
+                    "Custom function %s raised %s: %s",
+                    func_name,
+                    type(e).__name__,
+                    str(e),
+                )
+                diag = ErrorTemplate.function_failed(
+                    func_name, f"Uncaught exception: {type(e).__name__}: {e}"
+                )
+                errors.append(
+                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
+                )
+                return f"{{ {func_name}() }}"
 
         # Custom function or built-in that doesn't need locale: pass args as-is
-        return self.function_registry.call(
-            func_name,
-            positional_values,
-            named_values,
-        )
+        try:
+            return self.function_registry.call(
+                func_name,
+                positional_values,
+                named_values,
+            )
+        except FrozenFluentError:
+            # Already structured error from registry, let it propagate
+            raise
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Intentionally broad: Fluent spec requires graceful degradation for ANY
+            # exception from custom functions. Resolution must "never fail catastrophically."
+            logger.warning(
+                "Custom function %s raised %s: %s",
+                func_name,
+                type(e).__name__,
+                str(e),
+            )
+            diag = ErrorTemplate.function_failed(
+                func_name, f"Uncaught exception: {type(e).__name__}: {e}"
+            )
+            errors.append(
+                FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
+            )
+            return f"{{ {func_name}() }}"
 
     def _format_value(self, value: FluentValue) -> str:
         """Format FluentValue to string for final output.

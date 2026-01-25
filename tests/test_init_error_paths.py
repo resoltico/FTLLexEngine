@@ -144,10 +144,15 @@ class TestBabelImportErrorPath:
             import importlib
 
             # We need to mock the runtime import to fail with babel error
+            # Note: Relative imports use level>0, so "from .runtime" passes name="runtime"
             def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
-                if name == "ftllexengine.runtime" or (
-                    name.startswith("ftllexengine") and "runtime" in name
-                ):
+                # Handle both absolute and relative imports to runtime
+                is_runtime_import = (
+                    name == "ftllexengine.runtime"
+                    or (name.startswith("ftllexengine") and "runtime" in name)
+                    or (level > 0 and "runtime" in name)
+                )
+                if is_runtime_import:
                     raise ImportError("No module named 'babel'")
                 return original_import(name, globs, locs, fromlist, level)
 
@@ -198,10 +203,14 @@ class TestBabelImportErrorPath:
             original_import = builtins.__import__
 
             # Mock to raise a non-Babel ImportError
+            # Note: Relative imports use level>0, so "from .runtime" passes name="runtime"
             def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
-                if name == "ftllexengine.runtime" or (
-                    name.startswith("ftllexengine") and "runtime" in name
-                ):
+                is_runtime_import = (
+                    name == "ftllexengine.runtime"
+                    or (name.startswith("ftllexengine") and "runtime" in name)
+                    or (level > 0 and "runtime" in name)
+                )
+                if is_runtime_import:
                     # Raise error that does NOT mention babel
                     raise ImportError("Circular import detected in some_other_module")
                 return original_import(name, globs, locs, fromlist, level)

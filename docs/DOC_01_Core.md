@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.90.0"
+version: "0.91.0"
 domain: CORE
-updated: "2026-01-24"
+updated: "2026-01-25"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -671,6 +671,7 @@ class FluentLocalization:
         enable_cache: bool = False,
         cache_size: int = 1000,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
+        strict: bool = False,
     ) -> None: ...
 ```
 
@@ -684,6 +685,7 @@ class FluentLocalization:
 | `enable_cache` | `bool` | N | Enable format caching. |
 | `cache_size` | `int` | N | Max cache entries per bundle. |
 | `on_fallback` | `Callable[[FallbackInfo], None] \| None` | N | Callback on fallback locale resolution. |
+| `strict` | `bool` | N | Enable strict mode for all bundles. |
 
 ### Constraints
 - Return: FluentLocalization instance.
@@ -691,6 +693,7 @@ class FluentLocalization:
 - State: Lazy bundle initialization. Bundles created on first access. Locale format validated eagerly at construction.
 - Thread: Safe (RWLock).
 - Fallback: `on_fallback` invoked when message resolved from non-primary locale.
+- Strict: When True, all underlying FluentBundle instances use strict mode.
 
 ---
 

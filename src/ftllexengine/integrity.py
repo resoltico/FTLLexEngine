@@ -289,7 +289,8 @@ class FormattingIntegrityError(DataIntegrityError):
             message_id: Message ID that failed to format
         """
         # Must set these before calling super().__init__ which freezes
-        object.__setattr__(self, "_fluent_errors", fluent_errors)
+        # Defensive tuple() conversion ensures immutability even if caller passes list
+        object.__setattr__(self, "_fluent_errors", tuple(fluent_errors))
         object.__setattr__(self, "_fallback_value", fallback_value)
         object.__setattr__(self, "_message_id", message_id)
         super().__init__(message, context)
@@ -358,7 +359,8 @@ class SyntaxIntegrityError(DataIntegrityError):
             source_path: Optional path to source file for context
         """
         # Must set these before calling super().__init__ which freezes
-        object.__setattr__(self, "_junk_entries", junk_entries)
+        # Defensive tuple() conversion ensures immutability even if caller passes list
+        object.__setattr__(self, "_junk_entries", tuple(junk_entries))
         object.__setattr__(self, "_source_path", source_path)
         super().__init__(message, context)
 

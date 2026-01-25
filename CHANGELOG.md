@@ -13,6 +13,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-01-25
+
+### Breaking Changes
+
+- **ISO get_territory_currencies Returns Tuple** (ARCH-ISO-MUTABLE-RETURN-001):
+  - Previous: `get_territory_currencies(territory)` returned `list[CurrencyCode]`
+  - Issue: Mutable return type violates immutability protocol; callers could accidentally mutate cached data
+  - **Breaking**: Return type changed to `tuple[CurrencyCode, ...]`
+  - Location: `introspection/iso.py` `get_territory_currencies()`
+  - Migration: Replace `currencies.append(...)` with `currencies = (*currencies, new_code)` or convert explicitly with `list(get_territory_currencies(code))`
+  - Impact: API consistency with immutability protocol; cache integrity protected
+
+### Added
+
+- **Fiscal Convenience Functions** (API-FISCAL-CONSISTENCY-001):
+  - New `fiscal_year(date, start_month=1)` - Get fiscal year for a date
+  - New `fiscal_month(date, start_month=1)` - Get fiscal month (1-12) for a date
+  - Wrappers around `FiscalCalendar` for common use cases
+  - Location: `parsing/fiscal.py`
+  - Exported from: `ftllexengine.parsing`
+  - Impact: Simpler API for users who don't need full `FiscalCalendar` capabilities
+
+- **FluentLocalization Strict Mode** (API-STRICT-MODE-MISSING-001):
+  - New `strict: bool = False` parameter in `FluentLocalization.__init__()`
+  - Propagates strict mode to all `FluentBundle` instances created during resolution
+  - Location: `localization.py` `FluentLocalization.__init__()`, `_get_or_create_bundle()`
+  - Impact: Applications can now enable strict mode at the localization layer, not just bundle layer
+
+### Fixed
+
+- **Era String Caching Performance** (PERF-ERA-STRIP-REDUNDANT-001):
+  - Previous: `_strip_era()` created new `Babel.Locale` object on every call
+  - Issue: Locale instantiation is expensive; redundant when parsing many dates with same locale
+  - Fix: Added `_get_localized_era_strings(locale_code)` with `@lru_cache(maxsize=64)`
+  - Helper `_extract_era_strings_from_babel_locale()` extracted for code clarity
+  - Location: `parsing/dates.py`
+  - Impact: Date parsing performance improved for repeated locale usage
+
+- **Strict Mode Atomicity** (ARCH-STRICT-ATOMICITY-001):
+  - Previous: `FluentBundle._register_resource()` mutated bundle state before strict mode validation
+  - Issue: Failed strict validation left bundle in partially modified state; violated atomicity guarantee
+  - Fix: Implemented two-phase commit pattern - collect all entries first, validate, then apply
+  - Location: `runtime/bundle.py` `_register_resource()`
+  - Impact: Strict mode failures are now atomic; bundle state unchanged on `SyntaxIntegrityError`
+
+- **Error Class Defensive Tuple Conversion** (DEFENSIVE-INTEGRITY-TUPLE-001):
+  - Previous: `FormattingIntegrityError` and `SyntaxIntegrityError` stored tuple parameters directly
+  - Issue: If caller passed mutable sequence, stored reference could be mutated externally
+  - Fix: Added `tuple()` conversion in both constructors
+  - Location: `integrity.py` `FormattingIntegrityError.__init__()`, `SyntaxIntegrityError.__init__()`
+  - Impact: Error objects are now truly immutable regardless of caller input type
+
+- **Custom Function Exception Handling** (RES-FUNC-UNCAUGHT-EXCEPTION-001):
+  - Previous: Uncaught exceptions from custom functions propagated up, crashing resolution
+  - Issue: Fluent specification requires graceful degradation; one bad function shouldn't crash entire message
+  - Fix: Wrapped custom function calls in try/except; logs warning; returns placeholder `{ FUNCNAME() }`
+  - Re-raises `FrozenFluentError` (internal control flow) to preserve existing behavior
+  - Location: `runtime/resolver.py` `FluentResolver._resolve_function_call()`
+  - Impact: Spec-compliant graceful degradation; custom function bugs no longer crash resolution
+
 ## [0.90.0] - 2026-01-25
 
 ### Breaking Changes
@@ -2678,6 +2738,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.91.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.91.0
 [0.90.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.90.0
 [0.89.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.89.0
 [0.88.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.88.0

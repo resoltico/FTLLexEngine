@@ -20,9 +20,9 @@ RETRIEVAL_HINTS:
 
 **Declarative localization for Python. Plurals, grammar, and formatting in `.ftl` files - not your code.**
 
-"1 coffee" or "5 coffees" - simple in English. Polish has 4 plural forms. Arabic has 6. FTLLexEngine handles them all so your code stays clean.
+"1 bag" or "500 bags" - simple in English. Polish has 4 plural forms. Arabic has 6. FTLLexEngine handles them all so your code stays clean.
 
-But it goes further: **bidirectional parsing**. Your customer types `"1 234,56"` in France or `"1,234.56"` in the US - FTLLexEngine parses both to `Decimal('1234.56')`. Parse errors return as structured data, not raised exceptions.
+But it goes further: **bidirectional parsing**. Your buyer in Hamburg types `"12.450,00 EUR"`. Your seller in Bogota types `"45.000.000 COP"`. FTLLexEngine parses both to `Decimal` with currency code. Parse errors return as structured data, not raised exceptions.
 
 Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe.
 
@@ -31,7 +31,7 @@ Built on the [Fluent specification](https://projectfluent.org/) that powers Fire
 ## Why FTLLexEngine?
 
 - **Bidirectional** - Format data for display *and* parse user input back to Python types
-- **Thread-safe** - No global state. Serve 1000 concurrent requests without locale conflicts
+- **Thread-safe** - No global state. Process 1000 concurrent trades without locale conflicts
 - **Strict mode** - Opt-in fail-fast. Errors raise exceptions, not silent `{$amount}` fallbacks
 - **Introspectable** - Query what variables a message needs before you call it
 - **Declarative grammar** - Plurals, gender, cases in `.ftl` files. Code stays clean
@@ -45,24 +45,24 @@ from ftllexengine import FluentBundle
 
 bundle = FluentBundle("en_US")
 bundle.add_resource("""
-order = { $count ->
-    [one]   1 coffee
-   *[other] { $count } coffees
+shipment = { $bags ->
+    [one]   1 bag of coffee
+   *[other] { $bags } bags of coffee
 }
 """)
 
-result, _ = bundle.format_pattern("order", {"count": 5})
-# "5 coffees"
+result, _ = bundle.format_pattern("shipment", {"bags": 500})
+# "500 bags of coffee"
 ```
 
 **Parse user input back to Python types:**
 
 ```python
-from ftllexengine.parsing import parse_decimal
+from ftllexengine.parsing import parse_currency
 
-# French customer enters a price
-amount, errors = parse_decimal("1 234,56", "fr_FR")
-# amount = Decimal('1234.56') - not a float, not an exception
+# German buyer enters a bid price
+amount, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
+# amount = (Decimal('12450.00'), 'EUR')
 
 if errors:
     print(errors[0])  # Structured error with input, locale, parse type
@@ -73,11 +73,11 @@ if errors:
 ## Table of Contents
 
 - [Installation](#installation)
-- [Your Cafe Speaks Every Language](#your-cafe-speaks-every-language)
-- [Customers Type Prices. You Get Decimals.](#customers-type-prices-you-get-decimals)
-- [Concurrent Requests? No Problem.](#concurrent-requests-no-problem)
+- [Your Operation Speaks Every Language](#your-operation-speaks-every-language)
+- [Buyers and Sellers Type Prices. You Get Decimals.](#buyers-and-sellers-type-prices-you-get-decimals)
+- [Concurrent Trades? No Problem.](#concurrent-trades-no-problem)
 - [Know What Your Messages Need](#know-what-your-messages-need)
-- [Your Cafe Expands Worldwide](#your-cafe-expands-worldwide)
+- [Your Operation Spans Continents](#your-operation-spans-continents)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -122,23 +122,23 @@ Or: `pip install ftllexengine`
 
 ---
 
-## Your Cafe Speaks Every Language
+## Your Operation Speaks Every Language
 
-You run a coffee shop. "1 coffee" or "5 coffees" - simple in English. But your app goes global.
+You export specialty coffee. Your invoices go to Tokyo, Hamburg, and New York. "500 bags" - simple in English. But your documents go global.
 
 **The problem:** Polish has four plural forms. Arabic has six. Your if-statements turn into spaghetti.
 
 **The solution:** Move grammar rules to `.ftl` files. Your code just passes data.
 
-**cafe.ftl**
+**invoice.ftl**
 ```fluent
-order-message = { $count ->
-    [0]     no coffees ordered
-    [one]   1 coffee ordered
-   *[other] { $count } coffees ordered
+shipment-line = { $bags ->
+    [0]     No bags shipped
+    [one]   1 bag of { $origin } beans
+   *[other] { $bags } bags of { $origin } beans
 }
 
-total = Total: { CURRENCY($amount, currency: "USD") }
+invoice-total = Total: { CURRENCY($amount, currency: $currency) }
 ```
 
 ```python
@@ -147,65 +147,69 @@ from decimal import Decimal
 from ftllexengine import FluentBundle
 
 bundle = FluentBundle("en_US")
-bundle.add_resource(Path("cafe.ftl").read_text())
+bundle.add_resource(Path("invoice.ftl").read_text())
 
-result, _ = bundle.format_pattern("order-message", {"count": 5})
-# "5 coffees ordered"
+result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
+# "500 bags of Colombian beans"
 
-result, _ = bundle.format_pattern("total", {"amount": Decimal("18.75")})
-# "Total: $18.75"
+result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00"), "currency": "USD"})
+# "Total: $187,500.00"
 ```
 
-Now add Polish - four plural forms, zero code changes:
+Now add German - your Hamburg buyer needs invoices in their language:
 
-**cafe_pl.ftl**
+**invoice_de.ftl**
 ```fluent
-order-message = { $count ->
-    [0]     brak kaw
-    [one]   1 kawa
-    [few]   { $count } kawy
-    [many]  { $count } kaw
-   *[other] { $count } kawy
+shipment-line = { $bags ->
+    [0]     Keine Säcke versandt
+    [one]   1 Sack { $origin } Bohnen
+   *[other] { $bags } Säcke { $origin } Bohnen
 }
+
+invoice-total = Gesamt: { CURRENCY($amount, currency: $currency) }
 ```
 
 ```python
-bundle = FluentBundle("pl_PL")
-bundle.add_resource(Path("cafe_pl.ftl").read_text())
+bundle = FluentBundle("de_DE")
+bundle.add_resource(Path("invoice_de.ftl").read_text())
 
-result, _ = bundle.format_pattern("order-message", {"count": 5})
-# "5 kaw"
+result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianische"})
+# "500 Säcke kolumbianische Bohnen"
 
-result, _ = bundle.format_pattern("order-message", {"count": 2})
-# "2 kawy"
+result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00"), "currency": "EUR"})
+# "Gesamt: 187.500,00 €"
 ```
 
-Japanese? Same pattern, different script:
+Japanese for your Tokyo buyer:
 
-**cafe_ja.ftl**
+**invoice_ja.ftl**
 ```fluent
-order-message = { $count ->
-    [0]     コーヒーの注文なし
-    [one]   コーヒー1杯
-   *[other] コーヒー{ $count }杯
+shipment-line = { $bags ->
+    [0]     出荷なし
+   *[other] { $origin }豆 { $bags }袋
 }
+
+invoice-total = 合計: { CURRENCY($amount, currency: $currency) }
 ```
 
 ```python
 bundle = FluentBundle("ja_JP")
-bundle.add_resource(Path("cafe_ja.ftl").read_text())
+bundle.add_resource(Path("invoice_ja.ftl").read_text())
 
-result, _ = bundle.format_pattern("order-message", {"count": 3})
-# "コーヒー3杯"
+result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "コロンビア"})
+# "コロンビア豆 500袋"
+
+result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("28125000"), "currency": "JPY"})
+# "合計: ¥28,125,000"
 ```
 
-German, Spanish, Arabic - same pattern. Translators edit `.ftl` files. Developers ship features.
+Spanish for your origin operations in Colombia - same pattern. Translators edit `.ftl` files. Your trading platform ships features.
 
 ---
 
-## Customers Type Prices. You Get Decimals.
+## Buyers and Sellers Type Prices. You Get Decimals.
 
-A customer in Germany types their tip: `"5,00"`. A customer in the US types `"5.00"`. Both mean five dollars.
+A buyer in Germany enters their bid: `"12.450,00"`. A seller in Colombia enters their ask: `"45.000.000"`. Your system needs exact decimals for both.
 
 Most libraries only format *outbound* - they turn your data into display strings. FTLLexEngine works *both directions*.
 
@@ -213,44 +217,36 @@ Most libraries only format *outbound* - they turn your data into display strings
 from decimal import Decimal
 from ftllexengine.parsing import parse_currency, parse_decimal, parse_date
 
-# American customer types a tip
-tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
+# German buyer enters a bid in EUR
+bid_result, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
 if not errors:
-    tip, currency = tip_result  # (Decimal('5.00'), 'USD')
+    bid_amount, bid_currency = bid_result  # (Decimal('12450.00'), 'EUR')
 
-# German customer types a price
-price, errors = parse_decimal("1.234,56", "de_DE")
-# Decimal('1234.56')
+# Colombian seller enters an ask in COP
+ask_result, errors = parse_currency("45.000.000 COP", "es_CO", default_currency="COP")
+if not errors:
+    ask_amount, ask_currency = ask_result  # (Decimal('45000000'), 'COP')
 
-# French format: space for thousands, comma for decimal
-price, errors = parse_decimal("1 234,56", "fr_FR")
-# Decimal('1234.56')
-
-# Dates work too
-date_val, errors = parse_date("Jan 15, 2026", "en_US")
-# datetime.date(2026, 1, 15)
+# Contract date from Japanese buyer
+contract_date, errors = parse_date("2026年3月15日", "ja_JP")
+# datetime.date(2026, 3, 15)
 ```
 
 **When parsing fails, you get errors - not exceptions:**
 
 ```python
-price, errors = parse_decimal("five fifty", "en_US")
+price, errors = parse_decimal("twelve thousand", "en_US")
 # price = None
 # errors = (FrozenFluentError(...),)
 
 if errors:
     err = errors[0]
-    print(err)  # "Failed to parse decimal 'five fifty' for locale 'en_US': ..."
-
-    # Structured data for programmatic handling
-    err.input_value   # "five fifty"
-    err.locale_code   # "en_US"
-    err.parse_type    # "decimal"
+    print(err)  # "Failed to parse decimal 'twelve thousand' for locale 'en_US': ..."
 ```
 
-### Financial Calculations Stay Exact
+### Commodity Calculations Stay Exact
 
-Your cafe calculates bills. Float math fails you: `0.1 + 0.2 = 0.30000000000000004`.
+You calculate contract values. Float math fails you: `0.1 + 0.2 = 0.30000000000000004`.
 
 FTLLexEngine uses `Decimal` throughout:
 
@@ -258,19 +254,21 @@ FTLLexEngine uses `Decimal` throughout:
 from decimal import Decimal
 from ftllexengine.parsing import parse_currency
 
-tip_result, errors = parse_currency("$5.00", "en_US", default_currency="USD")
+# Parse the contract price
+price_result, errors = parse_currency("$4.25", "en_US", default_currency="USD")
 if not errors:
-    tip, currency = tip_result  # (Decimal('5.00'), 'USD')
+    price_per_lb, currency = price_result  # (Decimal('4.25'), 'USD')
 
-    subtotal = Decimal("13.50")  # 3 espressos at $4.50
-    tax = subtotal * Decimal("0.08")  # 8% tax
-    total = subtotal + tax + tip
-    # Decimal('19.58') - exact, every time
+    bags = 500
+    lbs_per_bag = Decimal("132")  # Standard 60kg bag
+    total_lbs = bags * lbs_per_bag
+    contract_value = total_lbs * price_per_lb
+    # Decimal('280500.00') - exact, every time
 ```
 
 ### Strict Mode: No Silent Failures
 
-Some applications cannot tolerate silent fallbacks. A missing variable returning `{$amount}` instead of raising could display wrong data.
+Commodity trading cannot tolerate silent fallbacks. A missing variable returning `{$price}` instead of raising could display wrong data on a trade confirmation.
 
 ```python
 from decimal import Decimal
@@ -279,27 +277,27 @@ from ftllexengine.integrity import FormattingIntegrityError
 
 # strict=True raises on ANY error instead of returning fallback
 bundle = FluentBundle("en_US", strict=True, enable_cache=True)
-bundle.add_resource("balance = Account: { CURRENCY($amount, currency: \"USD\") }")
+bundle.add_resource('confirm = Contract: { $bags } bags at { CURRENCY($price, currency: "USD") }/lb')
 
 # Works normally
-result, _ = bundle.format_pattern("balance", {"amount": Decimal("1234.56")})
-# "Account: $1,234.56"
+result, _ = bundle.format_pattern("confirm", {"bags": 500, "price": Decimal("4.25")})
+# "Contract: 500 bags at $4.25/lb"
 
 # Missing variable? Raises immediately - no silent fallback
 try:
-    bundle.format_pattern("balance", {})  # oops, forgot $amount
+    bundle.format_pattern("confirm", {"bags": 500})  # forgot $price
 except FormattingIntegrityError as e:
-    # e.message_id = "balance"
-    # e.fallback_value = "Account: {$amount}"  <- what non-strict would return
+    # e.message_id = "confirm"
+    # e.fallback_value = "Contract: 500 bags at {$price}/lb"
     # e.fluent_errors = (FrozenFluentError(...),)
-    handle_incident(e)  # log, alert, fail request
+    halt_trade(e)  # stop the trade, alert compliance
 ```
 
 ---
 
-## Concurrent Requests? No Problem.
+## Concurrent Trades? No Problem.
 
-Your cafe gets busy. Flask, FastAPI, Django - concurrent requests, each customer in a different locale.
+Your trading desk gets busy. Bids from Frankfurt, asks from Bogota, confirmations to Tokyo - concurrent requests, each in a different locale.
 
 **The problem:** Python's `locale` module uses global state. Thread A sets German, Thread B reads it, chaos ensues.
 
@@ -311,26 +309,29 @@ from decimal import Decimal
 from ftllexengine import FluentBundle
 
 # Create locale-specific bundles (typically done once at startup)
-us_bundle = FluentBundle("en_US")
 de_bundle = FluentBundle("de_DE")
-jp_bundle = FluentBundle("ja_JP")
+es_bundle = FluentBundle("es_CO")
+ja_bundle = FluentBundle("ja_JP")
 
-ftl_source = "receipt = Total: { CURRENCY($amount, currency: \"USD\") }"
-us_bundle.add_resource(ftl_source)
+ftl_source = 'confirm = { CURRENCY($amount, currency: $currency) } per { $unit }'
 de_bundle.add_resource(ftl_source)
-jp_bundle.add_resource(ftl_source)
+es_bundle.add_resource(ftl_source)
+ja_bundle.add_resource(ftl_source)
 
-def format_receipt(bundle, amount):
-    result, _ = bundle.format_pattern("receipt", {"amount": amount})
+def format_confirmation(bundle, amount, currency, unit):
+    result, _ = bundle.format_pattern("confirm", {
+        "amount": amount, "currency": currency, "unit": unit
+    })
     return result
 
 with ThreadPoolExecutor(max_workers=100) as executor:
     futures = [
-        executor.submit(format_receipt, us_bundle, Decimal("1234.50")),  # "Total: $1,234.50"
-        executor.submit(format_receipt, de_bundle, Decimal("1234.50")),  # "Total: 1.234,50 $"
-        executor.submit(format_receipt, jp_bundle, Decimal("1234.50")),  # "Total: $1,234.50"
+        executor.submit(format_confirmation, de_bundle, Decimal("4.25"), "USD", "lb"),
+        executor.submit(format_confirmation, es_bundle, Decimal("4.25"), "USD", "lb"),
+        executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "USD", "lb"),
     ]
-    receipts = [f.result() for f in futures]
+    confirmations = [f.result() for f in futures]
+    # ["4,25 $ per lb", "USD 4,25 per lb", "$4.25 per lb"]
 ```
 
 `FluentBundle` is thread-safe by design:
@@ -342,103 +343,108 @@ with ThreadPoolExecutor(max_workers=100) as executor:
 
 ## Know What Your Messages Need
 
-Your AI agent generates order confirmations. Before it calls `format_pattern()`, it needs to know: *what variables does this message require?*
+Your trading platform generates contract confirmations. Before it calls `format_pattern()`, it needs to know: *what variables does this message require?*
 
 ```python
 from ftllexengine import FluentBundle
 
 bundle = FluentBundle("en_US")
 bundle.add_resource("""
-order-confirmation = { $customer_name }, your order of { $quantity }
-    { $quantity ->
-        [one] coffee
-       *[other] coffees
-    } is ready. Total: { CURRENCY($total, currency: "USD") }
+contract = { $buyer } purchases { $bags ->
+        [one] 1 bag
+       *[other] { $bags } bags
+    } of { $grade } from { $seller } at { CURRENCY($price, currency: $currency) }/lb.
+    Shipment: { $port } by { DATETIME($ship_date) }.
 """)
 
-info = bundle.introspect_message("order-confirmation")
+info = bundle.introspect_message("contract")
 
 info.get_variable_names()
-# frozenset({'customer_name', 'quantity', 'total'})
+# frozenset({'buyer', 'bags', 'grade', 'seller', 'price', 'currency', 'port', 'ship_date'})
 
 info.get_function_names()
-# frozenset({'CURRENCY'})
+# frozenset({'CURRENCY', 'DATETIME'})
 
 info.has_selectors
-# True (uses plural selection)
+# True (uses plural selection for bags)
 
-info.requires_variable("customer_name")
+info.requires_variable("price")
 # True
 ```
 
 **Use cases:**
-- AI agents verify they have all required data before formatting
-- Form builders auto-generate input fields from message templates
-- Linters catch missing variables at build time, not runtime
+- Trading systems verify all required data before generating confirmations
+- Form builders auto-generate input fields from contract templates
+- Compliance tools catch missing variables at build time, not during live trading
 
 ---
 
-## Your Cafe Expands Worldwide
+## Your Operation Spans Continents
 
-Your cafe chain opens in Tokyo, London, and New York. Each country uses a different currency. Each has a different fiscal year.
+You source beans from Colombia, Ethiopia, and Brazil. You sell to importers in Japan, Germany, and the US. Each country uses different currencies. Each has different fiscal years for reporting.
 
-**The problem:** Japan uses yen with no decimal places (no cents). Kuwait uses dinar with 3 decimal places. The UK fiscal year starts in April; the US federal government starts in October.
+**The problem:** Japanese yen has no decimal places (no cents). Kuwaiti dinar has 3 decimal places. The UK fiscal year starts in April; Colombia's starts in January; Japan's corporate fiscal year often starts in April.
 
 **The solution:** Query ISO standards data and calculate fiscal periods.
 
-### Which Currency for Each Location?
+### Which Currency for Each Market?
 
 ```python
 from ftllexengine.introspection.iso import get_territory_currencies, get_currency
 
-# New location in Japan - what currency?
+# New buyer in Japan - what currency?
 currencies = get_territory_currencies("JP")
-# ["JPY"]
+# ("JPY",)
 
 # How many decimal places for yen?
 jpy = get_currency("JPY")
 jpy.decimal_digits
-# 0 - no cents in Japan
+# 0 - no decimal places for yen
 
-# Compare to US dollar
-usd = get_currency("USD")
-usd.decimal_digits
-# 2 - dollars and cents
+# Compare to Colombian peso
+cop = get_currency("COP")
+cop.decimal_digits
+# 2 - but typically displayed without decimals for large amounts
 
-# Multi-currency territories return all currencies
+# Multi-currency territories
 panama_currencies = get_territory_currencies("PA")
-# ["PAB", "USD"] - Panama uses both Balboa and US Dollar
+# ("PAB", "USD") - Panama uses both Balboa and US Dollar
 ```
 
-Your receipts format correctly - no `$5.00` in Tokyo, just `¥500`.
+Your invoices format correctly - `¥28,125,000` in Tokyo, `$187,500.00` in New York.
 
-### Quarterly Reports Across Time Zones
+### Quarterly Reports Across Jurisdictions
 
 ```python
 from datetime import date
-from ftllexengine.parsing.fiscal import FiscalCalendar
+from ftllexengine.parsing.fiscal import FiscalCalendar, fiscal_year, fiscal_quarter
 
-# UK cafe: fiscal year starts April
+# UK importer: fiscal year starts April
 uk_calendar = FiscalCalendar(start_month=4)
 
-# US cafe: calendar year
+# US operations: calendar year
 us_calendar = FiscalCalendar(start_month=1)
+
+# Japan operations: fiscal year starts April
+jp_calendar = FiscalCalendar(start_month=4)
 
 today = date(2026, 3, 15)
 
 # Same calendar date, different fiscal years
-uk_calendar.fiscal_year(today)
-# 2026 (UK FY2026 runs Apr 2025 - Mar 2026)
+uk_calendar.fiscal_year(today)  # 2026 (UK FY2026 runs Apr 2025 - Mar 2026)
+us_calendar.fiscal_year(today)  # 2026
+jp_calendar.fiscal_year(today)  # 2026
 
-us_calendar.fiscal_year(today)
-# 2026
+# Quick lookups without creating calendar objects
+fiscal_quarter(today, start_month=4)  # 4 (Q4 of fiscal year)
+fiscal_quarter(today, start_month=1)  # 1 (Q1 of calendar year)
 
-# When does UK Q4 end?
+# When does UK Q4 end for filing?
 uk_calendar.quarter_end_date(2026, 4)
 # date(2026, 3, 31)
 ```
 
-Your accountants in London and New York see the correct fiscal periods for their jurisdiction.
+Your compliance team in London, New York, and Tokyo each see the correct fiscal periods for their jurisdiction.
 
 ---
 
@@ -450,11 +456,11 @@ Your accountants in London and New York see the correct fiscal periods for their
 | :--- | :--- |
 | **Parsing user input** | Errors as data, not exceptions. Show helpful feedback. |
 | **Financial calculations** | `Decimal` precision. Strict mode available. |
-| **Web servers** | Thread-safe. No global locale state. |
+| **Trading systems** | Thread-safe. No global locale state. |
 | **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
 | **Multi-locale apps** | 200+ locales. CLDR-compliant. |
-| **Multi-currency apps** | ISO 4217 data. Territory-to-currency mapping. Decimal places. |
-| **Fiscal calendar logic** | UK/Japan/Australia fiscal years. Quarter calculations. |
+| **Multi-currency operations** | ISO 4217 data. Territory-to-currency mapping. Decimal places. |
+| **Cross-border compliance** | UK/Japan/US fiscal years. Quarter calculations. |
 | **AI integrations** | Introspect messages before formatting. |
 | **Content/code separation** | Translators edit `.ftl` files. Developers ship code. |
 

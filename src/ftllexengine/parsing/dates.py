@@ -682,6 +682,60 @@ def _is_word_boundary(text: str, idx: int, is_start: bool) -> bool:
     return idx >= len(text) or not text[idx].isalnum()
 
 
+def _extract_era_strings_from_babel_locale(babel_locale: Any) -> list[str]:
+    """Extract era strings from a Babel Locale object.
+
+    Helper for _get_localized_era_strings to reduce nesting.
+
+    Args:
+        babel_locale: Babel Locale instance with eras attribute.
+
+    Returns:
+        List of unique era strings from all width variants.
+    """
+    localized_eras: list[str] = []
+    if not hasattr(babel_locale, "eras") or not babel_locale.eras:
+        return localized_eras
+
+    # Babel eras: dict with keys 'wide', 'abbreviated', 'narrow'
+    # Each key maps to dict {0: 'BCE string', 1: 'CE string'}
+    for width_key in ("wide", "abbreviated", "narrow"):
+        era_dict = babel_locale.eras.get(width_key, {})
+        for era_idx in (0, 1):
+            era_text = era_dict.get(era_idx)
+            if era_text and era_text not in localized_eras:
+                localized_eras.append(era_text)
+    return localized_eras
+
+
+@lru_cache(maxsize=64)
+def _get_localized_era_strings(locale_code: str) -> tuple[str, ...]:
+    """Get localized era strings from Babel for a locale.
+
+    Cached per locale to avoid repeated Locale object instantiation.
+    Returns empty tuple if Babel unavailable or locale has no era data.
+
+    Args:
+        locale_code: Locale code (e.g., "ja_JP", "zh_Hans").
+
+    Returns:
+        Tuple of localized era strings from Babel CLDR data.
+        Empty tuple if Babel unavailable or locale invalid.
+    """
+    try:
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+    except ImportError:
+        # Babel not installed
+        return ()
+
+    try:
+        babel_locale = Locale.parse(locale_code)
+        return tuple(_extract_era_strings_from_babel_locale(babel_locale))
+    except (UnknownLocaleError, ValueError):
+        # Locale invalid or unknown
+        return ()
+
+
 def _strip_era(value: str, locale_code: str | None = None) -> str:
     """Strip era designations from date string.
 
@@ -702,35 +756,15 @@ def _strip_era(value: str, locale_code: str | None = None) -> str:
     Returns:
         Date string with era text removed and whitespace normalized
     """
-    # Build era strings list: English defaults + localized from Babel if available
-    era_strings = list(_ERA_STRINGS)
+    # Build era strings list: English defaults + localized from cached Babel lookup
+    era_strings: list[str] = list(_ERA_STRINGS)
 
-    # Attempt to load localized era strings from Babel
-    # Nested structure required for: ImportError check, UnknownLocaleError check, dict traversal
-    if locale_code is not None:  # pylint: disable=too-many-nested-blocks
-        try:
-            from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-
-            try:
-                babel_locale = Locale.parse(locale_code)
-                # Babel eras: dict with keys 'wide', 'abbreviated', 'narrow'
-                # Each key maps to dict {0: 'BCE string', 1: 'CE string'}
-                if hasattr(babel_locale, "eras") and babel_locale.eras:
-                    for width_key in ("wide", "abbreviated", "narrow"):
-                        if width_key in babel_locale.eras:
-                            era_dict = babel_locale.eras[width_key]
-                            # Add both BCE (0) and CE (1) era strings
-                            for era_idx in (0, 1):
-                                if era_idx in era_dict:
-                                    era_text = era_dict[era_idx]
-                                    if era_text and era_text not in era_strings:
-                                        era_strings.append(era_text)
-            except (UnknownLocaleError, ValueError):
-                # Locale invalid or unknown - use default English eras only
-                pass
-        except ImportError:
-            # Babel not installed - use default English eras only
-            pass
+    if locale_code is not None:
+        # Cached lookup for localized era strings (avoids repeated Locale instantiation)
+        localized = _get_localized_era_strings(locale_code)
+        for era_text in localized:
+            if era_text not in era_strings:
+                era_strings.append(era_text)
 
     result = value
     for era in era_strings:
@@ -943,6 +977,7 @@ def clear_date_caches() -> None:
     Clears cached CLDR date and datetime patterns from:
     - _get_date_patterns() - locale-specific date format patterns
     - _get_datetime_patterns() - locale-specific datetime format patterns
+    - _get_localized_era_strings() - locale-specific era designations
 
     Useful for:
     - Memory reclamation in long-running applications
@@ -961,3 +996,4 @@ def clear_date_caches() -> None:
     """
     _get_date_patterns.cache_clear()
     _get_datetime_patterns.cache_clear()
+    _get_localized_era_strings.cache_clear()

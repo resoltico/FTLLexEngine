@@ -828,12 +828,19 @@ class FluentBundle:
         with self._rwlock.write():
             return self._register_resource(resource, source_path)
 
-    def _register_resource(
+    def _register_resource(  # noqa: PLR0915 - Two-phase commit requires statement count
         self, resource: Resource, source_path: str | None
     ) -> tuple[Junk, ...]:
         """Register parsed resource entries (messages, terms, junk).
 
         Assumes caller holds write lock. Internal method for add_resource.
+
+        Two-phase commit for strict mode atomicity:
+        Phase 1: Collect all entries and validate (no state mutation)
+        Phase 2: Apply mutations only if strict mode check passes
+
+        This ensures that in strict mode, a resource with syntax errors
+        does not partially populate the bundle before raising an exception.
 
         Args:
             resource: Parsed FTL resource
@@ -842,91 +849,55 @@ class FluentBundle:
         Returns:
             Tuple of Junk entries from resource
         """
-        # Register messages and terms using structural pattern matching
-        junk_entries: list[Junk] = []
         from ftllexengine.introspection import extract_references  # noqa: PLC0415
+
+        # Phase 1: Collect entries without mutating bundle state
+        pending_messages: dict[str, Message] = {}
+        pending_terms: dict[str, Term] = {}
+        pending_msg_deps: dict[str, set[str]] = {}
+        pending_term_deps: dict[str, set[str]] = {}
+        junk_entries: list[Junk] = []
+        overwrite_warnings: list[tuple[str, str]] = []  # (type, id)
 
         for entry in resource.entries:
             match entry:
                 case Message():
                     msg_id = entry.id.name
-                    if msg_id in self._messages:
-                        logger.warning(
-                            "Overwriting existing message '%s' with new definition",
-                            msg_id,
-                        )
-                    self._messages[msg_id] = entry
-                    # Extract and store dependencies for cross-resource cycle detection
+                    # Check for overwrites (log later, after strict check)
+                    if msg_id in self._messages or msg_id in pending_messages:
+                        overwrite_warnings.append(("message", msg_id))
+                    pending_messages[msg_id] = entry
+                    # Extract dependencies for cross-resource cycle detection
                     msg_refs, term_refs = extract_references(entry)
                     deps: set[str] = set()
                     for ref in msg_refs:
                         deps.add(f"msg:{ref}")
                     for ref in term_refs:
                         deps.add(f"term:{ref}")
-                    self._msg_deps[msg_id] = deps
-                    logger.debug("Registered message: %s", msg_id)
+                    pending_msg_deps[msg_id] = deps
                 case Term():
                     term_id = entry.id.name
-                    if term_id in self._terms:
-                        logger.warning(
-                            "Overwriting existing term '-%s' with new definition",
-                            term_id,
-                        )
-                    self._terms[term_id] = entry
-                    # Extract and store dependencies for cross-resource cycle detection
+                    # Check for overwrites (log later, after strict check)
+                    if term_id in self._terms or term_id in pending_terms:
+                        overwrite_warnings.append(("term", term_id))
+                    pending_terms[term_id] = entry
+                    # Extract dependencies for cross-resource cycle detection
                     msg_refs, term_refs = extract_references(entry)
                     deps_term: set[str] = set()
                     for ref in msg_refs:
                         deps_term.add(f"msg:{ref}")
                     for ref in term_refs:
                         deps_term.add(f"term:{ref}")
-                    self._term_deps[term_id] = deps_term
-                    logger.debug("Registered term: %s", term_id)
+                    pending_term_deps[term_id] = deps_term
                 case Junk():
-                    # Collect junk entries, always log at WARNING level
-                    # Syntax errors are functional failures regardless of source origin
                     junk_entries.append(entry)
-                    # Use repr() to escape control characters while preserving Unicode readability.
-                    # repr() escapes control chars (prevents ANSI injection) but keeps Unicode
-                    # letters readable (e.g., 'Jānis' instead of 'J\xe2nis').
-                    source_desc = source_path or "<string>"
-                    logger.warning(
-                        "Syntax error in %s: %s",
-                        source_desc,
-                        repr(entry.content[:_LOG_TRUNCATE_WARNING]),
-                    )
                 case Comment():
-                    # Comments don't need registration - they're documentation only
+                    # Comments don't need registration
                     logger.debug("Skipping comment entry")
 
-        # Log summary with file context
-        junk_count = len(junk_entries)
-        if source_path:
-            logger.info(
-                "Added resource %s: %d messages, %d terms, %d junk entries",
-                source_path,
-                len(self._messages),
-                len(self._terms),
-                junk_count,
-            )
-        else:
-            logger.info(
-                "Added resource: %d messages, %d terms, %d junk entries",
-                len(self._messages),
-                len(self._terms),
-                junk_count,
-            )
-
-        # Invalidate cache (messages changed)
-        if self._cache is not None:
-            self._cache.clear()
-            logger.debug("Cache cleared after add_resource")
-
-        # Mark bundle as modified for context manager tracking
-        self._modified_in_context = True
-
-        # Strict mode: fail fast on syntax errors
         junk_tuple = tuple(junk_entries)
+
+        # Strict mode: fail fast on syntax errors BEFORE any state mutation
         if self._strict and junk_tuple:
             source_desc = source_path or "<string>"
             error_summary = "; ".join(
@@ -954,6 +925,66 @@ class FluentBundle:
                 junk_entries=junk_tuple,
                 source_path=source_path,
             )
+
+        # Phase 2: Apply mutations (only reached if strict check passes or not strict)
+        # Log overwrite warnings now that we know we'll proceed
+        for entry_type, entry_id in overwrite_warnings:
+            if entry_type == "message":
+                logger.warning(
+                    "Overwriting existing message '%s' with new definition",
+                    entry_id,
+                )
+            else:
+                logger.warning(
+                    "Overwriting existing term '-%s' with new definition",
+                    entry_id,
+                )
+
+        # Apply collected entries to bundle state
+        self._messages.update(pending_messages)
+        self._terms.update(pending_terms)
+        self._msg_deps.update(pending_msg_deps)
+        self._term_deps.update(pending_term_deps)
+
+        # Log registration of individual entries
+        for msg_id in pending_messages:
+            logger.debug("Registered message: %s", msg_id)
+        for term_id in pending_terms:
+            logger.debug("Registered term: %s", term_id)
+
+        # Log junk entries (always WARNING level for syntax errors)
+        source_desc = source_path or "<string>"
+        for junk in junk_entries:
+            logger.warning(
+                "Syntax error in %s: %s",
+                source_desc,
+                repr(junk.content[:_LOG_TRUNCATE_WARNING]),
+            )
+
+        # Log summary with file context
+        if source_path:
+            logger.info(
+                "Added resource %s: %d messages, %d terms, %d junk entries",
+                source_path,
+                len(self._messages),
+                len(self._terms),
+                len(junk_entries),
+            )
+        else:
+            logger.info(
+                "Added resource: %d messages, %d terms, %d junk entries",
+                len(self._messages),
+                len(self._terms),
+                len(junk_entries),
+            )
+
+        # Invalidate cache (messages changed)
+        if self._cache is not None:
+            self._cache.clear()
+            logger.debug("Cache cleared after add_resource")
+
+        # Mark bundle as modified for context manager tracking
+        self._modified_in_context = True
 
         return junk_tuple
 

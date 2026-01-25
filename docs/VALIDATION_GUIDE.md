@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.90.0"
+version: "0.91.0"
 domain: validation
-updated: "2026-01-24"
+updated: "2026-01-25"
 route:
   keywords: [validation, validate_resource, SemanticValidator, duplicate, cycle detection, FTL validation]
   questions: ["how to validate FTL?", "what validation checks exist?", "where is duplicate detection?", "how to detect cycles?"]

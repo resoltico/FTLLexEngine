@@ -37,6 +37,10 @@ if TYPE_CHECKING:
     pass
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
+# pylint: disable=redefined-outer-name
+# FiscalCalendar methods use parameter names (fiscal_year, fiscal_month) that shadow
+# module-level convenience functions. This is intentional - method parameters are used
+# within the method scope, and the module-level functions wrap these methods.
 __all__ = [
     # Enums
     "MonthEndPolicy",
@@ -46,6 +50,8 @@ __all__ = [
     "FiscalPeriod",
     # Factory functions
     "fiscal_quarter",
+    "fiscal_year",
+    "fiscal_month",
     "fiscal_year_start",
     "fiscal_year_end",
 ]
@@ -661,6 +667,50 @@ def fiscal_quarter(d: date, start_month: int = 1) -> int:
         3
     """
     return FiscalCalendar(start_month=start_month).fiscal_quarter(d)
+
+
+def fiscal_year(d: date, start_month: int = 1) -> int:
+    """Get fiscal year for a date with given fiscal year start.
+
+    Convenience function for one-off lookups without creating FiscalCalendar.
+
+    Args:
+        d: Calendar date.
+        start_month: Month when fiscal year begins (1-12). Default 1 (calendar year).
+
+    Returns:
+        Fiscal year number. For calendars starting in month > 1,
+        the fiscal year is typically labeled by the ending calendar year.
+
+    Examples:
+        >>> fiscal_year(date(2024, 3, 15), start_month=4)  # Before UK FY start
+        2024
+        >>> fiscal_year(date(2024, 4, 1), start_month=4)   # First day of UK FY2025
+        2025
+    """
+    return FiscalCalendar(start_month=start_month).fiscal_year(d)
+
+
+def fiscal_month(d: date, start_month: int = 1) -> int:
+    """Get fiscal month for a date with given fiscal year start.
+
+    Convenience function for one-off lookups without creating FiscalCalendar.
+
+    Args:
+        d: Calendar date.
+        start_month: Month when fiscal year begins (1-12). Default 1 (calendar year).
+
+    Returns:
+        Month number (1-12) within the fiscal year.
+        Month 1 is the first month of the fiscal year.
+
+    Examples:
+        >>> fiscal_month(date(2024, 4, 15), start_month=4)  # Apr = Month 1 for UK
+        1
+        >>> fiscal_month(date(2024, 3, 15), start_month=4)  # Mar = Month 12 for UK
+        12
+    """
+    return FiscalCalendar(start_month=start_month).fiscal_month(d)
 
 
 def fiscal_year_start(fiscal_year: int, start_month: int = 1) -> date:

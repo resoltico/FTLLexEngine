@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.90.0"
+version: "0.91.0"
 domain: INDEX
-updated: "2026-01-24"
+updated: "2026-01-25"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -152,7 +152,7 @@ from ftllexengine.parsing import (
     clear_date_caches, clear_currency_caches,
     # Fiscal calendar (no Babel required)
     FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy,
-    fiscal_quarter, fiscal_year_start, fiscal_year_end,
+    fiscal_quarter, fiscal_year, fiscal_month, fiscal_year_start, fiscal_year_end,
 )
 ```
 
@@ -165,7 +165,7 @@ from ftllexengine.parsing import (
 | FluentBundle, FluentLocalization, add_resource, format_pattern, format_value | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
-| FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
+| FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FluentError, FluentReferenceError, FormattingError, BabelImportError, DepthGuard, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, build_dependency_graph, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |

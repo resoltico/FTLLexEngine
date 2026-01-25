@@ -486,7 +486,7 @@ def _get_territory_currencies_impl(territory_upper: str) -> tuple[CurrencyCode, 
     return tuple(currencies)
 
 
-def get_territory_currencies(territory: str) -> list[CurrencyCode]:
+def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:
     """Get all active legal tender currencies for a territory.
 
     Multi-currency territories (e.g., Panama with PAB and USD) return
@@ -497,15 +497,15 @@ def get_territory_currencies(territory: str) -> list[CurrencyCode]:
         territory: ISO 3166-1 alpha-2 code. Case-insensitive.
 
     Returns:
-        List of all active ISO 4217 currency codes for the territory.
-        Empty list if territory unknown or has no currency data.
+        Tuple of all active ISO 4217 currency codes for the territory.
+        Empty tuple if territory unknown or has no currency data.
 
     Raises:
         BabelImportError: If Babel not installed.
 
     Thread-safe. Result cached per normalized territory code.
     """
-    return list(_get_territory_currencies_impl(territory.upper()))
+    return _get_territory_currencies_impl(territory.upper())
 
 
 # ============================================================================
