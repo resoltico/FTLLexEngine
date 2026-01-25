@@ -338,27 +338,28 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         return ()
 
 
-def _extract_datetime_separator(locale: Any, style: str = "medium") -> str:
-    """Extract the date-time separator from locale's CLDR dateTimeFormat.
+def _extract_datetime_separator(locale: Any, style: str = "medium") -> tuple[str, bool]:
+    """Extract the date-time separator and component order from locale's CLDR dateTimeFormat.
 
     CLDR dateTimeFormat patterns use {0} for time and {1} for date, e.g.:
-    - en_US: "{1}, {0}" -> separator is ", "
-    - ja_JP: "{1} {0}" -> separator is " "
-    - fr_FR medium: "{1}, {0}" -> separator is ", "
+    - en_US: "{1}, {0}" -> separator is ", ", is_time_first=False
+    - ja_JP: "{1} {0}" -> separator is " ", is_time_first=False
+    - Some locales: "{0} {1}" -> separator is " ", is_time_first=True
 
     Args:
         locale: Babel Locale object
         style: Format style to extract from ("short" or "medium")
 
     Returns:
-        The separator string between date and time components, extracted from
-        the locale's dateTimeFormat for the specified style. Falls back to
-        space (' ') if the style is unavailable or extraction fails.
+        Tuple of (separator, is_time_first):
+        - separator: The string between date and time components
+        - is_time_first: True if locale uses time-before-date order (pattern "{0}...{1}")
+        Falls back to (' ', False) if extraction fails.
     """
     try:
         datetime_format = locale.datetime_formats.get(style)
         if datetime_format is None:
-            return _DATETIME_SEPARATOR_FALLBACK
+            return _DATETIME_SEPARATOR_FALLBACK, False
 
         # Get the pattern string - may be str or DateTimePattern object
         pattern = str(datetime_format)
@@ -372,7 +373,10 @@ def _extract_datetime_separator(locale: Any, style: str = "medium") -> str:
         time_idx = pattern.find(time_placeholder)
 
         if date_idx == -1 or time_idx == -1:
-            return _DATETIME_SEPARATOR_FALLBACK
+            return _DATETIME_SEPARATOR_FALLBACK, False
+
+        # Determine if time comes first: "{0}...{1}" means time first
+        is_time_first = time_idx < date_idx
 
         # Handle both "{1}<sep>{0}" and "{0}<sep>{1}" orderings
         if date_idx < time_idx:
@@ -385,12 +389,12 @@ def _extract_datetime_separator(locale: Any, style: str = "medium") -> str:
             sep_end = date_idx
 
         if sep_start < sep_end:
-            return pattern[sep_start:sep_end]
+            return pattern[sep_start:sep_end], is_time_first
 
-        return _DATETIME_SEPARATOR_FALLBACK
+        return _DATETIME_SEPARATOR_FALLBACK, is_time_first
 
     except (AttributeError, TypeError, ValueError):
-        return _DATETIME_SEPARATOR_FALLBACK
+        return _DATETIME_SEPARATOR_FALLBACK, False
 
 
 @lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
@@ -440,18 +444,25 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         # Get date patterns and add time components for locale
         date_patterns = _get_date_patterns(locale_code)
 
-        # Get locale-specific separator from CLDR dateTimeFormat
-        sep = _extract_datetime_separator(locale)
+        # Get locale-specific separator and component order from CLDR dateTimeFormat
+        sep, is_time_first = _extract_datetime_separator(locale)
+
+        # Time format patterns (no era - era is carried by date pattern)
+        time_formats = [
+            "%H:%M:%S",  # 24-hour with seconds
+            "%H:%M",  # 24-hour without seconds
+            "%I:%M:%S %p",  # 12-hour with seconds
+            "%I:%M %p",  # 12-hour without seconds
+        ]
+
         for date_pat, has_era in date_patterns:
-            # Time components don't have era, inherit from date pattern
-            patterns.extend(
-                [
-                    (f"{date_pat}{sep}%H:%M:%S", has_era),  # 24-hour with seconds
-                    (f"{date_pat}{sep}%H:%M", has_era),  # 24-hour without seconds
-                    (f"{date_pat}{sep}%I:%M:%S %p", has_era),  # 12-hour with seconds
-                    (f"{date_pat}{sep}%I:%M %p", has_era),  # 12-hour without seconds
-                ]
-            )
+            for time_pat in time_formats:
+                # Respect locale's component order: date-first or time-first
+                if is_time_first:
+                    combined = f"{time_pat}{sep}{date_pat}"
+                else:
+                    combined = f"{date_pat}{sep}{time_pat}"
+                patterns.append((combined, has_era))
 
         return tuple(patterns)
 

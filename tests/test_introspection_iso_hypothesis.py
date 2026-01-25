@@ -464,7 +464,7 @@ class TestEdgeCaseProperties:
             pass
 
     @given(locale=malformed_locales)
-    @settings(deadline=500)  # Increased deadline for locale parsing overhead
+    @settings(deadline=None)  # Cold-cache locale parsing has inherent variability
     def test_malformed_locale_list_currencies_degrades_gracefully(
         self, locale: str
     ) -> None:

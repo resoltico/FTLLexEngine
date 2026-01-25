@@ -43,7 +43,7 @@ from decimal import Decimal
 from threading import RLock
 from typing import final
 
-from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
 from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.integrity import (
     CacheCorruptionError,
@@ -363,7 +363,7 @@ class IntegrityCache:
 
     def __init__(
         self,
-        maxsize: int = 1000,
+        maxsize: int = DEFAULT_CACHE_SIZE,
         max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
         max_errors_per_entry: int = _DEFAULT_MAX_ERRORS_PER_ENTRY,
         *,
@@ -375,7 +375,7 @@ class IntegrityCache:
         """Initialize integrity cache.
 
         Args:
-            maxsize: Maximum number of entries (default: 1000)
+            maxsize: Maximum number of entries (default: DEFAULT_CACHE_SIZE from constants)
             max_entry_weight: Maximum memory weight for cached results (default: 10_000).
                 Weight is calculated as: len(formatted_str) + (len(errors) * 200).
             max_errors_per_entry: Maximum number of errors per cache entry (default: 50).
@@ -780,11 +780,13 @@ class IntegrityCache:
             case datetime() | date():
                 return value
             # FluentNumber: type-tag with underlying value type for financial precision
+            # Recursively normalize inner value to handle NaN (float/Decimal) correctly.
+            # Without this, FluentNumber(value=float('nan')...) creates unretrievable keys.
             case FluentNumber():
                 return (
                     "__fluentnumber__",
                     type(value.value).__name__,
-                    value.value,
+                    IntegrityCache._make_hashable(value.value, depth - 1),
                     value.formatted,
                     value.precision,
                 )

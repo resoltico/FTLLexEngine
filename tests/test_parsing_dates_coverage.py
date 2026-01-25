@@ -165,10 +165,13 @@ class TestExtractDatetimeSeparator:
         from babel import Locale
 
         locale = Locale.parse("en_US")
-        separator = _extract_datetime_separator(locale)
+        separator, is_time_first = _extract_datetime_separator(locale)
 
-        # Should return a string separator
+        # Should return a string separator and date-first order for en_US
         assert isinstance(separator, str)
+        assert isinstance(is_time_first, bool)
+        # en_US uses date-first format
+        assert is_time_first is False
 
     def test_extract_separator_fallback_on_missing(self) -> None:
         """Test separator returns fallback when datetime_format missing."""
@@ -177,10 +180,11 @@ class TestExtractDatetimeSeparator:
         mock_locale = MagicMock()
         mock_locale.datetime_formats.get.return_value = None
 
-        separator = _extract_datetime_separator(mock_locale)
+        separator, is_time_first = _extract_datetime_separator(mock_locale)
 
-        # Should return fallback space
+        # Should return fallback space and date-first order
         assert separator == " "
+        assert is_time_first is False
 
     def test_extract_separator_missing_placeholders(self) -> None:
         """Test separator returns fallback when placeholders missing (line 312)."""
@@ -190,9 +194,10 @@ class TestExtractDatetimeSeparator:
         # Pattern without {0} or {1}
         mock_locale.datetime_formats.get.return_value = "no placeholders here"
 
-        separator = _extract_datetime_separator(mock_locale)
+        separator, is_time_first = _extract_datetime_separator(mock_locale)
 
         assert separator == " "
+        assert is_time_first is False
 
     def test_extract_separator_reversed_order(self) -> None:
         """Test separator extraction with reversed order {0} before {1} (lines 321-322)."""
@@ -202,10 +207,11 @@ class TestExtractDatetimeSeparator:
         # Pattern with {0} before {1}: time first, then date
         mock_locale.datetime_formats.get.return_value = "{0} at {1}"
 
-        separator = _extract_datetime_separator(mock_locale)
+        separator, is_time_first = _extract_datetime_separator(mock_locale)
 
-        # Should extract " at " as separator
+        # Should extract " at " as separator and detect time-first order
         assert separator == " at "
+        assert is_time_first is True
 
     def test_extract_separator_adjacent_placeholders(self) -> None:
         """Test separator returns fallback when placeholders adjacent (line 327)."""
@@ -215,10 +221,11 @@ class TestExtractDatetimeSeparator:
         # Pattern with adjacent placeholders (sep_start >= sep_end)
         mock_locale.datetime_formats.get.return_value = "{1}{0}"
 
-        separator = _extract_datetime_separator(mock_locale)
+        separator, is_time_first = _extract_datetime_separator(mock_locale)
 
-        # sep_start == sep_end, returns fallback
+        # sep_start == sep_end, returns fallback separator but order is still detected
         assert separator == " "
+        assert is_time_first is False  # date ({1}) comes before time ({0})
 
     def test_extract_separator_exception_handling(self) -> None:
         """Test separator returns fallback on exception (lines 329-330)."""
@@ -227,9 +234,10 @@ class TestExtractDatetimeSeparator:
         mock_locale = MagicMock()
         mock_locale.datetime_formats.get.side_effect = AttributeError("mock error")
 
-        separator = _extract_datetime_separator(mock_locale)
+        separator, is_time_first = _extract_datetime_separator(mock_locale)
 
         assert separator == " "
+        assert is_time_first is False
 
 
 # ============================================================================

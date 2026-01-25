@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.89.0"
+version: "0.90.0"
 domain: RUNTIME
 updated: "2026-01-24"
 route:
@@ -1130,7 +1130,7 @@ class IntegrityCache:
 - Thread: Safe (internal locking).
 - Integrity: Each entry has BLAKE2b-128 checksum computed at creation and verified on retrieval.
 - Corruption: Corrupted entries are evicted silently (strict=False) or raise CacheCorruptionError (strict=True).
-- NaN Handling: `float("nan")` and `Decimal("NaN")` values are normalized to canonical `"__NaN__"` representation for consistent cache key equality (prevents cache pollution from IEEE 754 NaN != NaN behavior).
+- NaN Handling: `float("nan")` and `Decimal("NaN")` values are normalized to canonical `"__NaN__"` representation for consistent cache key equality (prevents cache pollution from IEEE 754 NaN != NaN behavior). This normalization is applied recursively, including to `FluentNumber.value` (v0.90.0+).
 - Import: `from ftllexengine.runtime.cache import IntegrityCache`
 - Access: Typically accessed via FluentBundle cache parameters, not directly constructed.
 

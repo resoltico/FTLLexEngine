@@ -195,8 +195,9 @@ class TestExtractDatetimeSeparator:
         mock_locale.datetime_formats = MagicMock()
         mock_locale.datetime_formats.get.return_value = None
 
-        result = _extract_datetime_separator(mock_locale, "short")
-        assert result == " "  # Default fallback
+        separator, is_time_first = _extract_datetime_separator(mock_locale, "short")
+        assert separator == " "  # Default fallback
+        assert is_time_first is False
 
     def test_reversed_order_time_first(self) -> None:
         """Lines 316-317: Test reversed order pattern {0}<sep>{1}."""
@@ -205,8 +206,9 @@ class TestExtractDatetimeSeparator:
         # Pattern with time first: {0} then {1}
         mock_locale.datetime_formats.get.return_value = "{0} at {1}"
 
-        result = _extract_datetime_separator(mock_locale, "short")
-        assert result == " at "
+        separator, is_time_first = _extract_datetime_separator(mock_locale, "short")
+        assert separator == " at "
+        assert is_time_first is True
 
     def test_no_separator_between_placeholders(self) -> None:
         """Line 322: Test when sep_start >= sep_end."""
@@ -215,9 +217,10 @@ class TestExtractDatetimeSeparator:
         # Pattern where placeholders are adjacent or overlapping
         mock_locale.datetime_formats.get.return_value = "{1}{0}"
 
-        result = _extract_datetime_separator(mock_locale, "short")
-        # When sep_start >= sep_end, it returns fallback " "
-        assert result == " "
+        separator, is_time_first = _extract_datetime_separator(mock_locale, "short")
+        # When sep_start >= sep_end, it returns fallback " " but order is still detected
+        assert separator == " "
+        assert is_time_first is False  # date ({1}) comes before time ({0})
 
 
 class TestTokenizeBabelPattern:

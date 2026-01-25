@@ -152,8 +152,9 @@ class TestMakeHashableTypeValidation:
         """FluentNumber is type-tagged with underlying type info for precision."""
         value = FluentNumber(value=42, formatted="42")
         result = IntegrityCache._make_hashable(value)
-        # FluentNumber is type-tagged: (__fluentnumber__, type_name, value, formatted, precision)
-        assert result == ("__fluentnumber__", "int", 42, "42", None)
+        # FluentNumber values are type-tagged with recursively normalized inner value.
+        # Inner int 42 is normalized for NaN handling consistency.
+        assert result == ("__fluentnumber__", "int", ("__int__", 42), "42", None)
 
     def test_list_converted_to_tuple(self) -> None:
         """Lists are type-tagged to distinguish from tuples in formatted output."""

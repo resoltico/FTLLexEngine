@@ -464,14 +464,52 @@ class FiscalDelta:
             month_end_policy=self.month_end_policy,
         )
 
+    def with_policy(self, policy: MonthEndPolicy) -> Self:
+        """Return a copy with the specified month_end_policy.
+
+        Use this method to normalize deltas before arithmetic when they have
+        different policies. The new policy applies to the returned delta.
+
+        Args:
+            policy: The month_end_policy to use.
+
+        Returns:
+            New FiscalDelta with the same duration but different policy.
+
+        Example:
+            >>> strict = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
+            >>> preserve = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+            >>> # Convert strict to preserve before adding
+            >>> result = strict.with_policy(MonthEndPolicy.PRESERVE) + preserve
+        """
+        return type(self)(
+            years=self.years,
+            quarters=self.quarters,
+            months=self.months,
+            days=self.days,
+            month_end_policy=policy,
+        )
+
     def __add__(self, other: FiscalDelta) -> Self:
         """Add two FiscalDeltas.
 
         Preserves subclass type: if self is a subclass of FiscalDelta,
         the result is also that subclass.
+
+        Raises:
+            TypeError: If other is not a FiscalDelta.
+            ValueError: If self and other have different month_end_policy values.
+                Use with_policy() to normalize policies before arithmetic.
         """
         if not isinstance(other, FiscalDelta):
             return NotImplemented
+        if self.month_end_policy != other.month_end_policy:
+            msg = (
+                f"Cannot add FiscalDeltas with different month_end_policy: "
+                f"{self.month_end_policy.value!r} vs {other.month_end_policy.value!r}. "
+                f"Use with_policy() to normalize policies before arithmetic."
+            )
+            raise ValueError(msg)
         return type(self)(
             years=self.years + other.years,
             quarters=self.quarters + other.quarters,
@@ -485,9 +523,21 @@ class FiscalDelta:
 
         Preserves subclass type: if self is a subclass of FiscalDelta,
         the result is also that subclass.
+
+        Raises:
+            TypeError: If other is not a FiscalDelta.
+            ValueError: If self and other have different month_end_policy values.
+                Use with_policy() to normalize policies before arithmetic.
         """
         if not isinstance(other, FiscalDelta):
             return NotImplemented
+        if self.month_end_policy != other.month_end_policy:
+            msg = (
+                f"Cannot subtract FiscalDeltas with different month_end_policy: "
+                f"{self.month_end_policy.value!r} vs {other.month_end_policy.value!r}. "
+                f"Use with_policy() to normalize policies before arithmetic."
+            )
+            raise ValueError(msg)
         return type(self)(
             years=self.years - other.years,
             quarters=self.quarters - other.quarters,

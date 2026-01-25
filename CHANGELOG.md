@@ -13,6 +13,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-01-25
+
+### Breaking Changes
+
+- **FiscalDelta Policy Conflict Detection** (SEM-FISCAL-DELTA-POLICY-001):
+  - Previous: `FiscalDelta.__add__()` and `__sub__()` silently used `self.month_end_policy`, ignoring the right operand's policy
+  - Issue: Order-dependent behavior - `delta_preserve + delta_strict` gave preserve semantics, `delta_strict + delta_preserve` gave strict semantics
+  - **Breaking**: Operations now raise `ValueError` when operands have different `month_end_policy` values
+  - **New**: Added `with_policy(policy: MonthEndPolicy)` method for explicit policy conversion
+  - Location: `parsing/fiscal.py` `FiscalDelta.__add__()`, `__sub__()`, `with_policy()`
+  - Migration: Use `delta1.with_policy(MonthEndPolicy.PRESERVE) + delta2` to explicitly normalize policies before arithmetic
+  - Impact: Financial applications get explicit control over month-end behavior; silent semantic conflicts eliminated
+
+- **FluentNumber Cache Key Normalization** (BUG-CACHE-NAN-POLLUTION-001):
+  - Previous: `FluentNumber` containing NaN values used raw `value.value` in cache keys
+  - Issue: IEEE 754 NaN inequality (`nan != nan`) caused cache pollution - each `put()` created unretrievable entries
+  - **Breaking**: Cache key structure changed for `FluentNumber` - inner value now recursively normalized
+  - Fix: Inner value normalized via `_make_hashable()`, converting NaN to canonical `"__NaN__"` string
+  - Location: `runtime/cache.py` `IntegrityCache._make_hashable()`
+  - Impact: NaN-containing formatting results are now properly cached and retrievable
+
+### Fixed
+
+- **Datetime Parsing Component Order** (SEM-DATETIME-ORDER-001):
+  - Previous: `_get_datetime_patterns()` always generated date-first patterns (`{date}{sep}{time}`)
+  - Issue: Locales with time-first ordering (CLDR pattern `{0} {1}` where `{0}=time`) failed to parse correctly formatted datetimes
+  - Fix: `_extract_datetime_separator()` now returns `(separator, is_time_first)` tuple; `_get_datetime_patterns()` respects order
+  - Location: `parsing/dates.py` `_extract_datetime_separator()`, `_get_datetime_patterns()`
+  - Impact: Datetime parsing now works correctly for locales with time-before-date formatting conventions
+
+- **FluentValue and fluent_function Babel Independence** (ARCH-BABEL-FALSE-DEPENDENCY-001):
+  - Previous: `FluentValue` and `fluent_function` were in `_BABEL_REQUIRED_ATTRS`, incorrectly classified as requiring Babel
+  - Issue: Parser-only installations received confusing Babel-related error messages when importing pure Python utilities
+  - Fix: Moved to separate `_BABEL_INDEPENDENT_ATTRS` set with dedicated lazy loading (no Babel error handling)
+  - Location: `__init__.py` `_BABEL_REQUIRED_ATTRS`, `_BABEL_INDEPENDENT_ATTRS`, `__getattr__()`
+  - Impact: `from ftllexengine import FluentValue, fluent_function` works without Babel; clearer error messages
+
+- **IntegrityCache Constant Usage** (DEBT-CACHE-CONSTANTS-001):
+  - Previous: `IntegrityCache.__init__()` hardcoded `maxsize=1000` instead of using `DEFAULT_CACHE_SIZE`
+  - Issue: Inconsistent with `max_entry_weight` which correctly used `DEFAULT_MAX_ENTRY_SIZE` constant
+  - Fix: Changed to `maxsize: int = DEFAULT_CACHE_SIZE`; added constant to imports
+  - Location: `runtime/cache.py` `IntegrityCache.__init__()`
+  - Impact: Cache size configuration centralized in `constants.py`; no behavioral change (same default value)
+
 ## [0.89.0] - 2026-01-24
 
 ### Breaking Changes
@@ -2634,6 +2678,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.90.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.90.0
 [0.89.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.89.0
 [0.88.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.88.0
 [0.87.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.87.0

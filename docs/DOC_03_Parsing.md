@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.89.0"
+version: "0.90.0"
 domain: PARSING
 updated: "2026-01-24"
 route:
@@ -1067,6 +1067,63 @@ def total_months(self) -> int:
 ### Constraints
 - Return: Total months (years*12 + quarters*3 + months).
 - State: Read-only.
+
+---
+
+## `FiscalDelta.with_policy`
+
+Returns a copy with the specified month_end_policy.
+
+### Signature
+```python
+def with_policy(self, policy: MonthEndPolicy) -> Self:
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `policy` | `MonthEndPolicy` | Y | The policy to use in the returned delta |
+
+### Constraints
+- Return: New `FiscalDelta` with same duration but specified policy.
+- Preserves subclass type.
+- State: Read-only.
+- Version: Added in v0.90.0.
+
+### Example
+```python
+strict = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
+preserve = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+
+# Direct add fails due to policy mismatch
+try:
+    strict + preserve  # Raises ValueError
+except ValueError:
+    pass
+
+# Normalize policies before arithmetic
+result = strict.with_policy(MonthEndPolicy.PRESERVE) + preserve
+# result.months == 3, result.month_end_policy == PRESERVE
+```
+
+---
+
+## `FiscalDelta` Arithmetic
+
+### Policy Conflict Detection
+
+Arithmetic operations (`__add__`, `__sub__`) raise `ValueError` when operands have different `month_end_policy` values. This prevents silent semantic conflicts in financial calculations.
+
+```python
+d1 = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
+d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+
+d1 + d2  # ValueError: Cannot add FiscalDeltas with different month_end_policy
+```
+
+Use `with_policy()` to explicitly normalize policies before combining deltas.
+
+- Version: Changed in v0.90.0 (previously silent - left operand's policy won).
 
 ---
 

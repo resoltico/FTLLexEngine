@@ -978,3 +978,144 @@ class TestFiscalDeltaSubclassPolymorphism:
         result = (delta + other) * 2 - other
         assert type(result) is CustomDelta
         assert result.months == 4
+
+
+class TestFiscalDeltaPolicyConflict:
+    """Tests for FiscalDelta policy conflict detection (SEM-FISCAL-DELTA-POLICY-001 fix).
+
+    Arithmetic operations now raise ValueError when operands have different
+    month_end_policy values. Use with_policy() to normalize policies before arithmetic.
+    """
+
+    def test_add_same_policy_succeeds(self) -> None:
+        """Adding deltas with same policy succeeds."""
+        d1 = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.PRESERVE)
+        d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+        result = d1 + d2
+        assert result.months == 3
+        assert result.month_end_policy == MonthEndPolicy.PRESERVE
+
+    def test_add_different_policy_raises(self) -> None:
+        """Adding deltas with different policies raises ValueError."""
+        d1 = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.PRESERVE)
+        d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.STRICT)
+        with pytest.raises(ValueError, match="different month_end_policy"):
+            _ = d1 + d2
+
+    def test_add_policy_error_includes_values(self) -> None:
+        """Error message includes both policy values."""
+        d1 = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.CLAMP)
+        d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.STRICT)
+        with pytest.raises(ValueError, match="different month_end_policy") as exc_info:
+            _ = d1 + d2
+        assert "clamp" in str(exc_info.value)
+        assert "strict" in str(exc_info.value)
+
+    def test_sub_same_policy_succeeds(self) -> None:
+        """Subtracting deltas with same policy succeeds."""
+        d1 = FiscalDelta(months=5, month_end_policy=MonthEndPolicy.STRICT)
+        d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.STRICT)
+        result = d1 - d2
+        assert result.months == 3
+        assert result.month_end_policy == MonthEndPolicy.STRICT
+
+    def test_sub_different_policy_raises(self) -> None:
+        """Subtracting deltas with different policies raises ValueError."""
+        d1 = FiscalDelta(months=5, month_end_policy=MonthEndPolicy.CLAMP)
+        d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+        with pytest.raises(ValueError, match="different month_end_policy"):
+            _ = d1 - d2
+
+    def test_all_policy_combinations_detected(self) -> None:
+        """All three policies conflict with each other when different."""
+        policies = [MonthEndPolicy.PRESERVE, MonthEndPolicy.CLAMP, MonthEndPolicy.STRICT]
+        for p1 in policies:
+            for p2 in policies:
+                d1 = FiscalDelta(months=1, month_end_policy=p1)
+                d2 = FiscalDelta(months=1, month_end_policy=p2)
+                if p1 == p2:
+                    # Same policy: should succeed
+                    result = d1 + d2
+                    assert result.month_end_policy == p1
+                else:
+                    # Different policy: should raise
+                    with pytest.raises(ValueError, match="different month_end_policy"):
+                        _ = d1 + d2
+
+
+class TestFiscalDeltaWithPolicy:
+    """Tests for FiscalDelta.with_policy() method (SEM-FISCAL-DELTA-POLICY-001 fix).
+
+    The with_policy() method creates a copy with a different policy, enabling
+    explicit policy normalization before arithmetic.
+    """
+
+    def test_with_policy_returns_new_instance(self) -> None:
+        """with_policy() returns a new instance, not self."""
+        delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.PRESERVE)
+        new_delta = delta.with_policy(MonthEndPolicy.STRICT)
+        assert delta is not new_delta
+
+    def test_with_policy_changes_policy(self) -> None:
+        """with_policy() changes the policy."""
+        delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.PRESERVE)
+        new_delta = delta.with_policy(MonthEndPolicy.STRICT)
+        assert new_delta.month_end_policy == MonthEndPolicy.STRICT
+        # Original unchanged
+        assert delta.month_end_policy == MonthEndPolicy.PRESERVE
+
+    def test_with_policy_preserves_duration(self) -> None:
+        """with_policy() preserves all duration components."""
+        delta = FiscalDelta(years=1, quarters=2, months=3, days=4)
+        new_delta = delta.with_policy(MonthEndPolicy.CLAMP)
+        assert new_delta.years == 1
+        assert new_delta.quarters == 2
+        assert new_delta.months == 3
+        assert new_delta.days == 4
+
+    def test_with_policy_same_policy(self) -> None:
+        """with_policy() works when setting same policy (no-op equivalent)."""
+        delta = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.CLAMP)
+        new_delta = delta.with_policy(MonthEndPolicy.CLAMP)
+        assert new_delta.month_end_policy == MonthEndPolicy.CLAMP
+        assert new_delta == delta  # Equal by value
+
+    def test_with_policy_enables_arithmetic(self) -> None:
+        """with_policy() enables arithmetic between incompatible deltas."""
+        strict = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
+        preserve = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+
+        # Direct add fails
+        with pytest.raises(ValueError, match="different month_end_policy"):
+            _ = strict + preserve
+
+        # After normalizing, add succeeds
+        result = strict.with_policy(MonthEndPolicy.PRESERVE) + preserve
+        assert result.months == 3
+        assert result.month_end_policy == MonthEndPolicy.PRESERVE
+
+    def test_with_policy_preserves_subclass(self) -> None:
+        """with_policy() preserves subclass type."""
+
+        class CustomDelta(FiscalDelta):
+            """Subclass for testing polymorphism."""
+
+        delta = CustomDelta(months=1)
+        new_delta = delta.with_policy(MonthEndPolicy.STRICT)
+        assert type(new_delta) is CustomDelta
+        assert new_delta.month_end_policy == MonthEndPolicy.STRICT
+
+    def test_with_policy_in_expression(self) -> None:
+        """with_policy() works in chained expressions."""
+        d1 = FiscalDelta(months=1, month_end_policy=MonthEndPolicy.STRICT)
+        d2 = FiscalDelta(months=2, month_end_policy=MonthEndPolicy.PRESERVE)
+        d3 = FiscalDelta(months=3, month_end_policy=MonthEndPolicy.CLAMP)
+
+        # Convert all to PRESERVE before combining
+        result = (
+            d1.with_policy(MonthEndPolicy.PRESERVE)
+            + d2
+            + d3.with_policy(MonthEndPolicy.PRESERVE)
+        )
+        assert result.months == 6
+        assert result.month_end_policy == MonthEndPolicy.PRESERVE

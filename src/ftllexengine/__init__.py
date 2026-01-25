@@ -80,10 +80,16 @@ if TYPE_CHECKING:
     from .runtime import FluentBundle as FluentBundleType
     from .runtime.function_bridge import FluentValue as FluentValueType
 
-# Lazy-loaded attributes (require Babel)
+# Lazy-loaded attributes that require Babel for CLDR locale data
 _BABEL_REQUIRED_ATTRS = frozenset({
     "FluentBundle",
     "FluentLocalization",
+})
+
+# Lazy-loaded attributes that do NOT require Babel (pure Python utilities)
+# These are lazy-loaded to avoid runtime package initialization overhead,
+# not because of Babel dependency.
+_BABEL_INDEPENDENT_ATTRS = frozenset({
     "FluentValue",
     "fluent_function",
 })
@@ -93,10 +99,29 @@ _lazy_cache: dict[str, object] = {}
 
 
 def __getattr__(name: str) -> object:
-    """Lazy import for Babel-dependent components.
+    """Lazy import for components.
 
-    Provides clear error message when Babel is not installed.
+    Handles two categories:
+    - Babel-dependent (FluentBundle, FluentLocalization): Clear error if Babel missing
+    - Babel-independent (FluentValue, fluent_function): No Babel required, pure Python
     """
+    # Babel-independent utilities (no Babel dependency, lazy for package init overhead)
+    if name in _BABEL_INDEPENDENT_ATTRS:
+        if name in _lazy_cache:
+            return _lazy_cache[name]
+
+        if name == "FluentValue":
+            from .runtime.function_bridge import FluentValue
+
+            _lazy_cache[name] = FluentValue
+            return FluentValue
+        if name == "fluent_function":
+            from .runtime.function_bridge import fluent_function
+
+            _lazy_cache[name] = fluent_function
+            return fluent_function
+
+    # Babel-dependent components
     if name in _BABEL_REQUIRED_ATTRS:
         if name in _lazy_cache:
             return _lazy_cache[name]
@@ -104,20 +129,14 @@ def __getattr__(name: str) -> object:
         try:
             if name == "FluentBundle":
                 from .runtime import FluentBundle
+
                 _lazy_cache[name] = FluentBundle
                 return FluentBundle
             if name == "FluentLocalization":
                 from .localization import FluentLocalization
+
                 _lazy_cache[name] = FluentLocalization
                 return FluentLocalization
-            if name == "FluentValue":
-                from .runtime.function_bridge import FluentValue
-                _lazy_cache[name] = FluentValue
-                return FluentValue
-            if name == "fluent_function":
-                from .runtime.function_bridge import fluent_function
-                _lazy_cache[name] = fluent_function
-                return fluent_function
         except ImportError as e:
             if "babel" in str(e).lower() or "No module named 'babel'" in str(e):
                 msg = (
