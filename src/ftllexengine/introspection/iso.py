@@ -245,7 +245,7 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
 # ============================================================================
 
 
-@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+@lru_cache(maxsize=MAX_TERRITORY_CACHE_SIZE)
 def _get_territory_impl(
     code_upper: str,
     locale_norm: str,
@@ -296,7 +296,7 @@ def get_territory(
     return _get_territory_impl(code.upper(), normalize_locale(locale))
 
 
-@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+@lru_cache(maxsize=MAX_TERRITORY_CACHE_SIZE)
 def _get_currency_impl(
     code_upper: str,
     locale_norm: str,
@@ -509,6 +509,57 @@ def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:
 
 
 # ============================================================================
+# VALIDATION CODE SETS (Cache Pollution Prevention)
+# ============================================================================
+#
+# Security Design: Validation functions must NOT call get_territory/get_currency
+# because those functions cache individual lookup results (including None for
+# invalid codes). An attacker could fill the LRU cache with None entries by
+# validating random strings, evicting legitimate cached lookups.
+#
+# Solution: Validation uses membership checks against pre-cached code sets.
+# The _list_territories_impl/_list_currencies_impl functions cache the COMPLETE
+# set once per locale, so validation queries hit this single cached set without
+# polluting the individual lookup caches.
+#
+# ============================================================================
+
+
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _territory_codes_impl(locale_norm: str) -> frozenset[str]:
+    """Internal cached implementation returning all valid territory codes.
+
+    Extracts alpha-2 codes from the full territory list for O(1) validation.
+    Cached per locale because territory codes are locale-independent, but the
+    underlying _list_territories_impl is locale-keyed.
+
+    Args:
+        locale_norm: Pre-normalized locale string.
+
+    Returns:
+        Frozen set of all valid ISO 3166-1 alpha-2 codes.
+    """
+    return frozenset(t.alpha2 for t in _list_territories_impl(locale_norm))
+
+
+@lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _currency_codes_impl(locale_norm: str) -> frozenset[str]:
+    """Internal cached implementation returning all valid currency codes.
+
+    Extracts currency codes from the full currency list for O(1) validation.
+    Cached per locale because currency codes are locale-independent, but the
+    underlying _list_currencies_impl is locale-keyed.
+
+    Args:
+        locale_norm: Pre-normalized locale string.
+
+    Returns:
+        Frozen set of all valid ISO 4217 currency codes.
+    """
+    return frozenset(c.code for c in _list_currencies_impl(locale_norm))
+
+
+# ============================================================================
 # TYPE GUARDS (PEP 742)
 # ============================================================================
 
@@ -516,7 +567,8 @@ def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:
 def is_valid_territory_code(value: str) -> TypeIs[TerritoryCode]:
     """Check if string is a valid ISO 3166-1 alpha-2 code.
 
-    Validates against Babel's CLDR territory database.
+    Validates against Babel's CLDR territory database using O(1) set membership.
+    Does NOT cache invalid inputs (cache pollution prevention).
 
     Args:
         value: String to check.
@@ -529,14 +581,17 @@ def is_valid_territory_code(value: str) -> TypeIs[TerritoryCode]:
     """
     if not isinstance(value, str) or len(value) != 2:
         return False
-    # BabelImportError propagates naturally from get_territory
-    return get_territory(value) is not None
+    # Use membership check against cached code set (prevents cache pollution).
+    # normalize_locale("en") is used because territory codes are locale-independent;
+    # we just need any valid locale to trigger the Babel lookup once.
+    return value.upper() in _territory_codes_impl(normalize_locale("en"))
 
 
 def is_valid_currency_code(value: str) -> TypeIs[CurrencyCode]:
     """Check if string is a valid ISO 4217 currency code.
 
-    Validates against Babel's CLDR currency database.
+    Validates against Babel's CLDR currency database using O(1) set membership.
+    Does NOT cache invalid inputs (cache pollution prevention).
 
     Args:
         value: String to check.
@@ -549,8 +604,10 @@ def is_valid_currency_code(value: str) -> TypeIs[CurrencyCode]:
     """
     if not isinstance(value, str) or len(value) != 3:
         return False
-    # BabelImportError propagates naturally from get_currency
-    return get_currency(value) is not None
+    # Use membership check against cached code set (prevents cache pollution).
+    # normalize_locale("en") is used because currency codes are locale-independent;
+    # we just need any valid locale to trigger the Babel lookup once.
+    return value.upper() in _currency_codes_impl(normalize_locale("en"))
 
 
 # ============================================================================
@@ -569,3 +626,5 @@ def clear_iso_cache() -> None:
     _list_territories_impl.cache_clear()
     _list_currencies_impl.cache_clear()
     _get_territory_currencies_impl.cache_clear()
+    _territory_codes_impl.cache_clear()
+    _currency_codes_impl.cache_clear()

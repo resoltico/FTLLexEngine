@@ -202,6 +202,7 @@ class TestFormatCacheHitRate:
             "max_errors_per_entry",
             # IntegrityCache-specific keys
             "corruption_detected",
+            "idempotent_writes",
             "sequence",
             "write_once",
             "strict",
@@ -223,6 +224,7 @@ class TestFormatCacheHitRate:
         assert isinstance(stats["max_errors_per_entry"], int)
         # IntegrityCache-specific types
         assert isinstance(stats["corruption_detected"], int)
+        assert isinstance(stats["idempotent_writes"], int)
         assert isinstance(stats["sequence"], int)
         assert isinstance(stats["write_once"], bool)
         assert isinstance(stats["strict"], bool)

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.91.0"
+version: "0.92.0"
 domain: "architecture"
 updated: "2026-01-25"
 route: "/docs/data-integrity"
@@ -134,6 +134,7 @@ The BLAKE2b-128 content hash includes ALL error fields for complete audit trail 
 | Strict/non-strict modes | Fail-fast vs. silent eviction for different use cases |
 | Audit logging | Compliance and debugging for financial systems |
 | Sequence numbers | Monotonic ordering for audit trail integrity |
+| Idempotent write detection | Content-hash comparison for thundering herd tolerance |
 
 **Checksum Composition:**
 
@@ -148,6 +149,20 @@ The BLAKE2b-128 checksum includes ALL entry fields for complete audit trail inte
 **Length-Prefixing:** All variable-length fields (formatted string, error messages) are length-prefixed (4-byte big-endian UTF-8 byte length) before hashing, preventing collision attacks from field concatenation.
 
 This means different entries with identical content will have different checksums if their metadata differs. This is correct behavior: the checksum protects the complete entry, not just its content.
+
+**Idempotent Write Detection:**
+
+In write-once mode, concurrent writes of the same message pose a challenge: multiple threads may resolve the same message simultaneously (thundering herd). Without idempotent detection, all but the first thread would trigger `WriteConflictError`, even though all produced identical results.
+
+The cache computes a **content-only hash** (excluding metadata like `created_at` and `sequence`) to detect idempotent writes:
+
+1. Second write arrives for an existing key
+2. Cache computes content hash of new entry: `BLAKE2b-128(formatted, errors)`
+3. Compares with existing entry's content hash (constant-time via `hmac.compare_digest`)
+4. If identical: increment `idempotent_writes` counter, return silently (benign race)
+5. If different: TRUE conflict - raise `WriteConflictError` (strict) or log (non-strict)
+
+This allows write-once mode to work correctly under load without false-positive conflicts.
 
 **Type-Tagging for Cache Keys:**
 
@@ -185,6 +200,7 @@ This defense-in-depth approach detects corruption at any level of the data hiera
 - Checksum verification adds ~0.1 microseconds per `get()` - acceptable for financial correctness
 - Write-once mode prevents legitimate cache updates - use only when data race prevention is critical
 - Different timestamps produce different checksums - not suitable for content-only comparison
+- Idempotent detection adds hash comparison on cache hit - negligible for concurrent workloads
 
 ### Integrity Exception Layer
 

@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.91.0"
+version: "0.92.0"
 domain: RUNTIME
 updated: "2026-01-25"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
 ---
 
 # Runtime Reference
@@ -1130,7 +1130,8 @@ class IntegrityCache:
 - Thread: Safe (internal locking).
 - Integrity: Each entry has BLAKE2b-128 checksum computed at creation and verified on retrieval.
 - Corruption: Corrupted entries are evicted silently (strict=False) or raise CacheCorruptionError (strict=True).
-- NaN Handling: `float("nan")` and `Decimal("NaN")` values are normalized to canonical `"__NaN__"` representation for consistent cache key equality (prevents cache pollution from IEEE 754 NaN != NaN behavior). This normalization is applied recursively, including to `FluentNumber.value` (v0.90.0+).
+- NaN Handling: `float("nan")` and `Decimal("NaN")` values are normalized to canonical `"__NaN__"` representation for consistent cache key equality (prevents cache pollution from IEEE 754 NaN != NaN behavior). This normalization is applied recursively, including to `FluentNumber.value`.
+- Idempotent Writes: When `write_once=True`, concurrent writes with identical content are treated as idempotent success (not conflict). Content comparison uses `IntegrityCacheEntry.content_hash` which excludes metadata (created_at, sequence).
 - Import: `from ftllexengine.runtime.cache import IntegrityCache`
 - Access: Typically accessed via FluentBundle cache parameters, not directly constructed.
 
@@ -1169,7 +1170,7 @@ def put(
     key: CacheKey,
     formatted: str,
     errors: tuple[FrozenFluentError, ...],
-) -> IntegrityCacheEntry:
+) -> None:
 ```
 
 ### Parameters
@@ -1180,8 +1181,9 @@ def put(
 | `errors` | `tuple[FrozenFluentError, ...]` | Y | Frozen errors from resolution. |
 
 ### Constraints
-- Return: Created IntegrityCacheEntry.
+- Return: None.
 - Raises: `WriteConflictError` if write_once=True and strict=True and key exists with different content.
+- Idempotent: When write_once=True, identical content (same formatted+errors) silently succeeds without error (thundering herd safe).
 - State: Mutates cache.
 - Thread: Safe.
 - Skip: Entry not stored if weight exceeds max_entry_weight or error count exceeds max_errors_per_entry.
@@ -1198,8 +1200,83 @@ def get_stats(self) -> dict[str, int | float | bool]:
 ```
 
 ### Constraints
-- Return: Dict with keys: size, maxsize, hits, misses, hit_rate, unhashable_skips, oversize_skips, error_bloat_skips, max_entry_weight, max_errors_per_entry, write_once, strict, audit_enabled, audit_entries.
+- Return: Dict with keys: size, maxsize, hits, misses, hit_rate, unhashable_skips, oversize_skips, error_bloat_skips, corruption_detected, idempotent_writes, sequence, max_entry_weight, max_errors_per_entry, write_once, strict, audit_enabled, audit_entries.
 - State: Read-only.
 - Thread: Safe.
+
+---
+
+## `IntegrityCache.idempotent_writes`
+
+Property returning count of benign concurrent writes with identical content.
+
+### Signature
+```python
+@property
+def idempotent_writes(self) -> int:
+```
+
+### Constraints
+- Return: Number of writes detected as idempotent (identical content already cached).
+- State: Read-only.
+- Thread: Safe.
+- Counter: Reset to 0 when cache is cleared.
+
+---
+
+## `IntegrityCacheEntry`
+
+Immutable cache entry with cryptographic integrity metadata.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class IntegrityCacheEntry:
+    formatted: str
+    errors: tuple[FrozenFluentError, ...]
+    checksum: bytes
+    created_at: float
+    sequence: int
+```
+
+### Constraints
+- Return: Frozen dataclass instance.
+- Immutable: All fields are read-only after creation.
+- Checksum: BLAKE2b-128 hash of all fields (content + metadata) for complete audit trail integrity.
+- Import: `from ftllexengine.runtime.cache import IntegrityCacheEntry`
+
+---
+
+## `IntegrityCacheEntry.content_hash`
+
+Property returning content-only hash for idempotent write detection.
+
+### Signature
+```python
+@property
+def content_hash(self) -> bytes:
+```
+
+### Constraints
+- Return: 16-byte BLAKE2b digest of (formatted, errors) only.
+- Excludes: Does NOT include metadata (created_at, sequence).
+- Purpose: Two entries with identical content have identical content_hash regardless of when they were created.
+- Usage: Used by IntegrityCache.put() for idempotent write detection in thundering herd scenarios.
+
+---
+
+## `IntegrityCacheEntry.verify`
+
+Method to verify entry integrity.
+
+### Signature
+```python
+def verify(self) -> bool:
+```
+
+### Constraints
+- Return: True if checksum matches recomputed value AND all errors verify, False otherwise.
+- Thread: Safe (read-only).
+- Recursive: Verifies each FrozenFluentError's integrity if verify_integrity() method available.
 
 ---

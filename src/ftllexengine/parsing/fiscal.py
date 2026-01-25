@@ -259,8 +259,8 @@ class FiscalCalendar:
         """
         if self.start_month == 1:
             return date(fiscal_year, 12, 31)
-        # End month is the month before start_month
-        end_month = self.start_month - 1 if self.start_month > 1 else 12
+        # End month is the month before start_month (start_month is 2-12 here)
+        end_month = self.start_month - 1
         end_year = fiscal_year
         last_day = calendar.monthrange(end_year, end_month)[1]
         return date(end_year, end_month, last_day)

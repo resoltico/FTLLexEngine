@@ -13,6 +13,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-01-25
+
+### Added
+
+- **IntegrityCache Idempotent Write Support** (SEC-CACHE-STRICT-CONCURRENCY-DOS-001):
+  - Previous: `write_once=True` rejected ALL overwrites, even identical values
+  - Issue: Thundering herd scenarios caused N-1 threads to crash with `WriteConflictError` when multiple threads resolved same message simultaneously
+  - New: `content_hash` property on `IntegrityCacheEntry` for content-only comparison (excludes metadata)
+  - New: `idempotent_writes` counter and property on `IntegrityCache` tracking benign concurrent writes
+  - New: `WRITE_ONCE_IDEMPOTENT` and `WRITE_ONCE_CONFLICT` audit log operations for distinguishing benign races from true conflicts
+  - Fix: `put()` compares content hashes before rejecting; identical values treated as idempotent success
+  - Location: `runtime/cache.py` `IntegrityCacheEntry.content_hash`, `IntegrityCache.put()`, `IntegrityCache.idempotent_writes`
+  - Impact: High-concurrency cold-cache scenarios no longer cause false-positive errors; financial applications can safely use `write_once=True` under load
+
+### Fixed
+
+- **ISO Cache Size Complete Alignment** (DOCS-ISO-CACHE-SIZE-MISMATCH-001):
+  - Previous: `_get_territory_impl` and `_get_currency_impl` used `MAX_LOCALE_CACHE_SIZE` (128)
+  - Issue: CHANGELOG v0.89.0 claimed territory caches were fixed but implementation was incomplete; only `_get_territory_currencies_impl` was updated
+  - Fix: Both `_get_territory_impl` and `_get_currency_impl` now use `MAX_TERRITORY_CACHE_SIZE` (300)
+  - Location: `introspection/iso.py`
+  - Impact: Full territory/currency iteration no longer causes cache thrashing; documented fix now matches implementation
+
+- **ISO Validation Cache Pollution Prevention** (SEC-ISO-VALIDATION-POLLUTION-001):
+  - Previous: `is_valid_territory_code` and `is_valid_currency_code` called lookup functions, caching `None` for invalid inputs
+  - Issue: Attackers could fill LRU caches with `None` entries by validating random strings, evicting legitimate cached lookups
+  - Fix: Validation now uses O(1) membership check against cached enumerated code sets (`_territory_codes_impl`, `_currency_codes_impl`)
+  - Location: `introspection/iso.py` `is_valid_territory_code()`, `is_valid_currency_code()`, `clear_iso_cache()`
+  - Impact: Validation no longer pollutes lookup caches; O(1) validation via pre-cached frozen sets; cache clear includes new code set caches
+
+- **Fiscal Calendar Dead Code Removal** (DEBT-FISCAL-DEAD-CODE-001):
+  - Previous: `fiscal_year_end_date` contained unreachable `else 12` branch in `end_month` calculation
+  - Issue: Early return for `start_month == 1` made `start_month > 1` condition always true at subsequent line
+  - Fix: Simplified to `end_month = self.start_month - 1`
+  - Location: `parsing/fiscal.py` `FiscalCalendar.fiscal_year_end_date()`
+  - Impact: No behavioral change; code clarity improved
+
 ## [0.91.0] - 2026-01-25
 
 ### Breaking Changes
@@ -2738,6 +2775,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.92.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.92.0
 [0.91.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.91.0
 [0.90.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.90.0
 [0.89.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.89.0

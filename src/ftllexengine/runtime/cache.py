@@ -284,6 +284,55 @@ class IntegrityCacheEntry:
         """
         return (self.formatted, self.errors)
 
+    @staticmethod
+    def _compute_content_hash(
+        formatted: str,
+        errors: tuple[FrozenFluentError, ...],
+    ) -> bytes:
+        """Compute BLAKE2b-128 hash of content only (excludes metadata).
+
+        Used for idempotent write detection: two entries with identical content
+        should have identical content hashes regardless of created_at/sequence.
+
+        Hash Composition:
+            1. formatted: Message output (length-prefixed UTF-8)
+            2. errors: Count + each error's content_hash
+
+        Args:
+            formatted: Formatted message string
+            errors: Tuple of errors to include in hash
+
+        Returns:
+            16-byte BLAKE2b digest of content only
+        """
+        h = hashlib.blake2b(digest_size=16)
+        # Length-prefix formatted string for collision resistance
+        encoded = formatted.encode("utf-8", errors="surrogatepass")
+        h.update(len(encoded).to_bytes(4, "big"))
+        h.update(encoded)
+        # Include error count and content hashes
+        h.update(len(errors).to_bytes(4, "big"))
+        for error in errors:
+            # Use error's content hash if available, otherwise hash the message
+            if hasattr(error, "content_hash"):
+                h.update(error.content_hash)
+            else:
+                error_encoded = str(error).encode("utf-8", errors="surrogatepass")
+                h.update(len(error_encoded).to_bytes(4, "big"))
+                h.update(error_encoded)
+        return h.digest()
+
+    @property
+    def content_hash(self) -> bytes:
+        """Content-only hash for idempotent write detection.
+
+        Returns:
+            16-byte BLAKE2b digest of (formatted, errors) only.
+            Excludes metadata (created_at, sequence) so concurrent writes
+            with identical content produce identical hashes.
+        """
+        return self._compute_content_hash(self.formatted, self.errors)
+
 
 @dataclass(frozen=True, slots=True)
 class WriteLogEntry:
@@ -348,6 +397,7 @@ class IntegrityCache:
         "_corruption_detected",
         "_error_bloat_skips",
         "_hits",
+        "_idempotent_writes",
         "_lock",
         "_max_audit_entries",
         "_max_entry_weight",
@@ -420,6 +470,7 @@ class IntegrityCache:
         self._oversize_skips = 0
         self._error_bloat_skips = 0
         self._corruption_detected = 0
+        self._idempotent_writes = 0
         self._sequence = 0
 
     def get(
@@ -542,10 +593,25 @@ class IntegrityCache:
             return
 
         with self._lock:
-            # WRITE-ONCE: Reject updates to existing keys
+            # WRITE-ONCE: Check for duplicate keys with idempotent write detection
             if self._write_once and key in self._cache:
                 existing = self._cache[key]
-                self._audit("WRITE_ONCE_REJECTED", key, existing)
+
+                # IDEMPOTENT CHECK: Compare content hashes (excludes metadata).
+                # Thundering herd scenario: Multiple threads resolve same message
+                # simultaneously, all compute identical results. First thread wins,
+                # subsequent threads should succeed silently (idempotent write).
+                new_content_hash = IntegrityCacheEntry._compute_content_hash(
+                    formatted, errors
+                )
+                if hmac.compare_digest(existing.content_hash, new_content_hash):
+                    # Benign race: identical content already cached
+                    self._idempotent_writes += 1
+                    self._audit("WRITE_ONCE_IDEMPOTENT", key, existing)
+                    return
+
+                # TRUE CONFLICT: Different content for same key
+                self._audit("WRITE_ONCE_CONFLICT", key, existing)
 
                 if self._strict:
                     context = IntegrityContext(
@@ -594,6 +660,7 @@ class IntegrityCache:
             self._oversize_skips = 0
             self._error_bloat_skips = 0
             self._corruption_detected = 0
+            self._idempotent_writes = 0
             # Note: sequence NOT reset (monotonic for audit trail)
             # Note: audit log NOT cleared (historical record)
 
@@ -615,6 +682,7 @@ class IntegrityCache:
             - oversize_skips (int): Operations skipped due to result weight
             - error_bloat_skips (int): Operations skipped due to error collection size
             - corruption_detected (int): Number of checksum mismatches detected
+            - idempotent_writes (int): Concurrent writes with identical content (benign races)
             - sequence (int): Current sequence number (total puts)
             - write_once (bool): Whether write-once mode is enabled
             - strict (bool): Whether strict mode is enabled
@@ -637,6 +705,7 @@ class IntegrityCache:
                 "oversize_skips": self._oversize_skips,
                 "error_bloat_skips": self._error_bloat_skips,
                 "corruption_detected": self._corruption_detected,
+                "idempotent_writes": self._idempotent_writes,
                 "sequence": self._sequence,
                 "write_once": self._write_once,
                 "strict": self._strict,
@@ -880,6 +949,12 @@ class IntegrityCache:
         """Number of checksum mismatches detected. Thread-safe."""
         with self._lock:
             return self._corruption_detected
+
+    @property
+    def idempotent_writes(self) -> int:
+        """Number of benign concurrent writes with identical content. Thread-safe."""
+        with self._lock:
+            return self._idempotent_writes
 
     @property
     def write_once(self) -> bool:

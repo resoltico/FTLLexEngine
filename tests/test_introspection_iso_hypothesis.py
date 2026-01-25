@@ -476,3 +476,227 @@ class TestEdgeCaseProperties:
         except Exception:  # pylint: disable=broad-exception-caught
             # Babel may raise various exceptions for malformed locales
             pass
+
+
+# ============================================================================
+# CACHE POLLUTION PREVENTION PROPERTIES
+# ============================================================================
+
+
+class TestCachePollutionPrevention:
+    """Property-based tests for cache pollution prevention.
+
+    Validates that validation functions do NOT pollute the primary lookup caches
+    by caching None results for invalid codes. This is critical for financial
+    applications where attackers could degrade performance by flooding validation
+    with random strings.
+
+    Design: Validation uses membership check against a cached code set. The first
+    validation call triggers _list_*_impl which populates the lookup cache with
+    ALL VALID codes (one-time cost). Subsequent validations of INVALID codes use
+    O(1) set membership and do NOT add None entries to the cache.
+    """
+
+    def test_territory_validation_cache_stable_after_warmup(self) -> None:
+        """After initial warmup, validation doesn't modify lookup cache.
+
+        The validation function checks membership in a pre-built code set rather
+        than calling get_territory(). After the code set is populated, subsequent
+        validations (whether valid or invalid codes) don't add new lookup entries.
+        """
+        # Function-local import to access internal cache functions
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_territory_impl,
+            clear_iso_cache,
+        )
+
+        clear_iso_cache()
+
+        # First validation call populates the cache with all valid territories
+        is_valid_territory_code("US")
+
+        # pylint: disable=no-value-for-parameter  # lru_cache decorator adds cache_info()
+        cache_info_after_warmup = _get_territory_impl.cache_info()
+        initial_misses = cache_info_after_warmup.misses
+        initial_size = cache_info_after_warmup.currsize
+
+        # Validate multiple codes - both valid and known-invalid patterns
+        # After warmup, NONE of these should trigger new cache entries
+        test_codes = ["US", "GB", "DE", "XZ", "YZ", "00", "!!"]
+        for code in test_codes:
+            is_valid_territory_code(code)
+
+        # Cache should NOT have grown - validation uses set membership
+        cache_info_after = _get_territory_impl.cache_info()
+        # pylint: enable=no-value-for-parameter
+
+        # Miss count should not increase
+        assert cache_info_after.misses == initial_misses
+        # Size should not increase
+        assert cache_info_after.currsize == initial_size
+
+    def test_currency_validation_cache_stable_after_warmup(self) -> None:
+        """After initial warmup, validation doesn't modify lookup cache.
+
+        The validation function checks membership in a pre-built code set rather
+        than calling get_currency(). After the code set is populated, subsequent
+        validations (whether valid or invalid codes) don't add new lookup entries.
+        """
+        # Function-local import to access internal cache functions
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_currency_impl,
+            clear_iso_cache,
+        )
+
+        clear_iso_cache()
+
+        # First validation call populates the cache with all valid currencies
+        is_valid_currency_code("USD")
+
+        # pylint: disable=no-value-for-parameter  # lru_cache decorator adds cache_info()
+        cache_info_after_warmup = _get_currency_impl.cache_info()
+        initial_misses = cache_info_after_warmup.misses
+        initial_size = cache_info_after_warmup.currsize
+
+        # Validate multiple codes - both valid and known-invalid patterns
+        # After warmup, NONE of these should trigger new cache entries
+        test_codes = ["USD", "EUR", "GBP", "XZY", "YZX", "000", "!!!"]
+        for code in test_codes:
+            is_valid_currency_code(code)
+
+        # Cache should NOT have grown - validation uses set membership
+        cache_info_after = _get_currency_impl.cache_info()
+        # pylint: enable=no-value-for-parameter
+
+        # Miss count should not increase
+        assert cache_info_after.misses == initial_misses
+        # Size should not increase
+        assert cache_info_after.currsize == initial_size
+
+    @given(
+        invalid_codes=st.lists(
+            st.text(alphabet="XYZ", min_size=2, max_size=2),
+            min_size=10,
+            max_size=50,
+        )
+    )
+    def test_bulk_invalid_territory_validation(
+        self, invalid_codes: list[str]
+    ) -> None:
+        """PROPERTY: Bulk validation of invalid codes doesn't grow lookup cache.
+
+        After initial cache population, repeated validation of invalid codes
+        should not add any entries or trigger any cache misses.
+        """
+        # Function-local import to access internal cache functions
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_territory_impl,
+            clear_iso_cache,
+        )
+
+        clear_iso_cache()
+
+        # Warm up: First validation populates all valid territories
+        is_valid_territory_code("US")
+
+        # pylint: disable=no-value-for-parameter  # lru_cache decorator adds cache_info()
+        baseline = _get_territory_impl.cache_info()
+
+        # Validate many invalid codes
+        for code in invalid_codes:
+            if len(code) == 2 and code.isalpha():
+                is_valid_territory_code(code)
+
+        final = _get_territory_impl.cache_info()
+        # pylint: enable=no-value-for-parameter
+
+        # No new misses, no new entries
+        assert final.misses == baseline.misses
+        assert final.currsize == baseline.currsize
+
+    @given(
+        invalid_codes=st.lists(
+            st.text(alphabet="XYZ", min_size=3, max_size=3),
+            min_size=10,
+            max_size=50,
+        )
+    )
+    def test_bulk_invalid_currency_validation(
+        self, invalid_codes: list[str]
+    ) -> None:
+        """PROPERTY: Bulk validation of invalid codes doesn't grow lookup cache.
+
+        After initial cache population, repeated validation of invalid codes
+        should not add any entries or trigger any cache misses.
+        """
+        # Function-local import to access internal cache functions
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_currency_impl,
+            clear_iso_cache,
+        )
+
+        clear_iso_cache()
+
+        # Warm up: First validation populates all valid currencies
+        is_valid_currency_code("USD")
+
+        # pylint: disable=no-value-for-parameter  # lru_cache decorator adds cache_info()
+        baseline = _get_currency_impl.cache_info()
+
+        # Validate many invalid codes
+        for code in invalid_codes:
+            if len(code) == 3 and code.isalpha():
+                is_valid_currency_code(code)
+
+        final = _get_currency_impl.cache_info()
+        # pylint: enable=no-value-for-parameter
+
+        # No new misses, no new entries
+        assert final.misses == baseline.misses
+        assert final.currsize == baseline.currsize
+
+    def test_validation_uses_o1_membership_check(self) -> None:
+        """Validation uses O(1) set membership, not O(n) linear search.
+
+        Validates the implementation detail that validation goes through
+        cached code sets for constant-time lookup.
+        """
+        # Function-local import to access internal cache functions
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _currency_codes_impl,
+            _territory_codes_impl,
+            clear_iso_cache,
+        )
+
+        clear_iso_cache()
+
+        # First validation call should populate the code set cache
+        is_valid_territory_code("US")
+        is_valid_currency_code("USD")
+
+        # Verify code set caches were populated
+        territory_codes_info = _territory_codes_impl.cache_info()
+        currency_codes_info = _currency_codes_impl.cache_info()
+
+        assert territory_codes_info.currsize >= 1
+        assert currency_codes_info.currsize >= 1
+
+    def test_cache_clear_includes_code_set_caches(self) -> None:
+        """clear_iso_cache() also clears the validation code set caches."""
+        # Function-local import to access internal cache functions
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _currency_codes_impl,
+            _territory_codes_impl,
+            clear_iso_cache,
+        )
+
+        # Populate caches
+        is_valid_territory_code("US")
+        is_valid_currency_code("USD")
+
+        # Clear all caches
+        clear_iso_cache()
+
+        # Verify code set caches were cleared
+        assert _territory_codes_impl.cache_info().currsize == 0
+        assert _currency_codes_impl.cache_info().currsize == 0
