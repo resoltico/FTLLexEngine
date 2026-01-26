@@ -116,9 +116,9 @@ class TestMakeHashableTypeValidation:
         assert result == ("__int__", 42)
 
     def test_float_accepted(self) -> None:
-        """Floats are type-tagged to prevent hash collision with int."""
+        """Floats are type-tagged with str() to distinguish -0.0 from 0.0."""
         result = IntegrityCache._make_hashable(3.14)
-        assert result == ("__float__", 3.14)
+        assert result == ("__float__", "3.14")
 
     def test_bool_accepted(self) -> None:
         """Booleans are type-tagged to prevent hash collision with int."""
@@ -137,16 +137,17 @@ class TestMakeHashableTypeValidation:
         assert result == ("__decimal__", "123.45")
 
     def test_datetime_accepted(self) -> None:
-        """Datetimes are accepted as hashable."""
+        """Datetimes are type-tagged with isoformat and timezone info."""
         value = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         result = IntegrityCache._make_hashable(value)
-        assert result == value
+        # Aware datetime includes tzinfo string
+        assert result == ("__datetime__", "2024-01-01T12:00:00+00:00", "UTC")
 
     def test_date_accepted(self) -> None:
-        """Dates are accepted as hashable."""
+        """Dates are type-tagged with isoformat."""
         value = date(2024, 1, 1)
         result = IntegrityCache._make_hashable(value)
-        assert result == value
+        assert result == ("__date__", "2024-01-01")
 
     def test_fluent_number_accepted(self) -> None:
         """FluentNumber is type-tagged with underlying type info for precision."""

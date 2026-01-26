@@ -17,7 +17,9 @@ from ftllexengine.parsing import (
     FiscalDelta,
     FiscalPeriod,
     MonthEndPolicy,
+    fiscal_month,
     fiscal_quarter,
+    fiscal_year,
     fiscal_year_end,
     fiscal_year_start,
 )
@@ -662,6 +664,28 @@ class TestConvenienceFunctions:
         assert fiscal_quarter(date(2024, 7, 15), start_month=4) == 2
         assert fiscal_quarter(date(2024, 10, 15), start_month=4) == 3
         assert fiscal_quarter(date(2025, 1, 15), start_month=4) == 4
+
+    def test_fiscal_year_calendar_year(self) -> None:
+        """fiscal_year with calendar year."""
+        assert fiscal_year(date(2024, 1, 15)) == 2024
+        assert fiscal_year(date(2024, 6, 15)) == 2024
+        assert fiscal_year(date(2024, 12, 31)) == 2024
+
+    def test_fiscal_year_uk_fiscal(self) -> None:
+        """fiscal_year with UK fiscal year."""
+        assert fiscal_year(date(2024, 3, 15), start_month=4) == 2024
+        assert fiscal_year(date(2024, 4, 1), start_month=4) == 2025
+
+    def test_fiscal_month_calendar_year(self) -> None:
+        """fiscal_month with calendar year."""
+        assert fiscal_month(date(2024, 1, 15)) == 1
+        assert fiscal_month(date(2024, 6, 15)) == 6
+        assert fiscal_month(date(2024, 12, 15)) == 12
+
+    def test_fiscal_month_uk_fiscal(self) -> None:
+        """fiscal_month with UK fiscal year."""
+        assert fiscal_month(date(2024, 4, 15), start_month=4) == 1
+        assert fiscal_month(date(2024, 3, 15), start_month=4) == 12
 
     def test_fiscal_year_start_calendar_year(self) -> None:
         """fiscal_year_start with calendar year."""

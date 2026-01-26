@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.92.0"
+version: "0.93.0"
 domain: RUNTIME
-updated: "2026-01-25"
+updated: "2026-01-26"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -1130,7 +1130,11 @@ class IntegrityCache:
 - Thread: Safe (internal locking).
 - Integrity: Each entry has BLAKE2b-128 checksum computed at creation and verified on retrieval.
 - Corruption: Corrupted entries are evicted silently (strict=False) or raise CacheCorruptionError (strict=True).
-- NaN Handling: `float("nan")` and `Decimal("NaN")` values are normalized to canonical `"__NaN__"` representation for consistent cache key equality (prevents cache pollution from IEEE 754 NaN != NaN behavior). This normalization is applied recursively, including to `FluentNumber.value`.
+- Key Normalization: Cache keys are normalized to prevent hash collisions between values that format differently:
+  - NaN: `float("nan")` and `Decimal("NaN")` normalized to `"__NaN__"` (IEEE 754 NaN != NaN).
+  - Datetime: Includes isoformat and tzinfo string; same-UTC-instant different-timezone datetimes produce distinct keys.
+  - Float: Uses `str(value)` to distinguish `0.0` from `-0.0` (Python equality treats them as equal).
+  - Collections: Supports Sequence/Mapping ABCs (UserList, ChainMap) in addition to list/tuple/dict.
 - Idempotent Writes: When `write_once=True`, concurrent writes with identical content are treated as idempotent success (not conflict). Content comparison uses `IntegrityCacheEntry.content_hash` which excludes metadata (created_at, sequence).
 - Import: `from ftllexengine.runtime.cache import IntegrityCache`
 - Access: Typically accessed via FluentBundle cache parameters, not directly constructed.

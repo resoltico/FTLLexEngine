@@ -13,6 +13,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-01-26
+
+### Fixed
+
+- **Cache Key Datetime Timezone Collision Prevention** (INTEG-CACHE-DT-TZ-COLLISION-001):
+  - Previous: `IntegrityCache._make_hashable` returned datetime objects as-is
+  - Issue: Two datetime objects with same UTC instant but different tzinfo (e.g., 12:00 UTC vs 07:00 EST) compare equal in Python and share hash, but format to different local time strings; cache returned wrong formatted output
+  - Fix: datetime now returns `("__datetime__", isoformat, tz_key)` where tz_key distinguishes timezones
+  - Location: `runtime/cache.py` `IntegrityCache._make_hashable()`
+  - Impact: Financial applications with timezone-aware datetime formatting get correct cached results
+
+- **Cache Key Float Negative Zero Collision Prevention** (INTEG-CACHE-FLOAT-NEG-ZERO-001):
+  - Previous: `IntegrityCache._make_hashable` returned float values as `("__float__", value)`
+  - Issue: `0.0 == -0.0` in Python but locale formatting may distinguish them ("-0" vs "0"); cache returned wrong formatted output
+  - Fix: float now uses `("__float__", str(value))` to preserve sign representation
+  - Location: `runtime/cache.py` `IntegrityCache._make_hashable()`
+  - Impact: Applications with signed-zero semantics get correct cached results
+
+- **Cache Type Validation Robustness** (INTEG-CACHE-VERIFY-HASATTR-001):
+  - Previous: `_compute_checksum` and `verify` used `hasattr` without type validation
+  - Issue: Duck-typed objects with wrong `content_hash` type could cause unexpected errors in integrity-critical code
+  - Fix: Added `isinstance` type validation for `content_hash` (must be `bytes`) and `callable` check for `verify_integrity`
+  - Location: `runtime/cache.py` `IntegrityCacheEntry._compute_checksum()`, `_compute_content_hash()`, `verify()`
+  - Impact: More robust integrity verification with explicit type checking
+
+- **Cache Sequence/Mapping ABC Support** (INTEG-CACHE-MAPPING-SEQ-TYPE-GAP-001):
+  - Previous: `_make_hashable` used narrow type checks (`list`, `tuple`, `dict`) only
+  - Issue: Other Sequence types (UserList) and Mapping types (ChainMap) caused cache bypass
+  - Fix: Added fallback checks using `collections.abc.Sequence` and `Mapping` ABCs
+  - Location: `runtime/cache.py` `IntegrityCache._make_hashable()`
+  - Impact: Custom function implementations using ABC-compliant types now benefit from caching
+
+- **FrozenFluentError Python 3.11+ Compatibility** (INTEG-FROZENFLUENTEERROR-NOTES-001):
+  - Previous: `FrozenFluentError._PYTHON_EXCEPTION_ATTRS` missing `__notes__`
+  - Issue: `add_note()` and exception groups (PEP 654/678) raised `ImmutabilityViolationError` on Python 3.11+
+  - Fix: Added `__notes__` to allowed Python exception attributes, matching `DataIntegrityError`
+  - Location: `diagnostics/errors.py` `FrozenFluentError._PYTHON_EXCEPTION_ATTRS`
+  - Impact: Full compatibility with Python 3.11+ exception features
+
+- **Function Error Fallback Consistency** (INTEG-FALLBACK-FUNCTION-ERROR-001):
+  - Previous: Function failure fallback was `{ NUMBER() }` in exception handlers but `{!NUMBER}` in AST fallback
+  - Issue: Inconsistent output format for the same error condition made debugging harder
+  - Fix: All function error fallbacks now use `FALLBACK_FUNCTION_ERROR` constant from `constants.py`
+  - Location: `runtime/resolver.py` `FluentResolver._resolve_function_call()`
+  - Impact: Consistent error output format across all function failure scenarios
+
+### Changed
+
+- **Parser Pattern Logic Consolidation** (DEBT-DUPLICATE-PARSER-LOGIC-001):
+  - Previous: `parse_simple_pattern` and `parse_pattern` had ~80 lines of duplicated continuation handling logic
+  - Change: Extracted shared logic into `_process_continuation_line()` and `_append_newline_to_elements()` helpers
+  - Location: `syntax/parser/rules.py`
+  - Impact: Reduced maintenance burden; single point for pattern parsing fixes
+
+- **Resolver ContextVar Waiver Formalization** (ARCH-CONTEXTVAR-IMPLICIT-STATE-001):
+  - Previous: `_global_resolution_depth` ContextVar had security rationale but lacked formal waiver keywords
+  - Change: Added explicit "Architectural Decision" and "Trade-off" documentation
+  - Location: `runtime/resolver.py` module-level documentation
+  - Impact: Waiver is now formally recognized; prevents future refactoring attempts that would break security
+
+- **Bundle Cache Comment Accuracy** (DOCS-LAZY-CACHE-DRIFT-001):
+  - Previous: Comment mentioned "lazy initialization" but cache was created eagerly
+  - Change: Updated comment to accurately describe eager initialization behavior
+  - Location: `runtime/bundle.py` `FluentBundle.__init__()`
+  - Impact: Documentation matches implementation
+
 ## [0.92.0] - 2026-01-25
 
 ### Added
@@ -2775,6 +2841,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.93.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.93.0
 [0.92.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.92.0
 [0.91.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.91.0
 [0.90.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.90.0

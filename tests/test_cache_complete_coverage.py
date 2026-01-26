@@ -286,11 +286,13 @@ class TestIntegrityCacheMakeHashableTypes:
         assert IntegrityCache._make_hashable("text") == "text"
         assert IntegrityCache._make_hashable(None) is None
 
-        # bool/int/float are type-tagged to prevent hash collision
+        # bool/int are type-tagged to prevent hash collision
         assert IntegrityCache._make_hashable(42) == ("__int__", 42)
-        assert IntegrityCache._make_hashable(3.14) == ("__float__", 3.14)
         assert IntegrityCache._make_hashable(True) == ("__bool__", True)
         assert IntegrityCache._make_hashable(False) == ("__bool__", False)
+
+        # float uses str() to distinguish -0.0 from 0.0
+        assert IntegrityCache._make_hashable(3.14) == ("__float__", "3.14")
 
     def test_make_hashable_decimal(self) -> None:
         """_make_hashable type-tags Decimal with str() to preserve scale.
@@ -306,18 +308,24 @@ class TestIntegrityCacheMakeHashableTypes:
         assert isinstance(result, tuple)
 
     def test_make_hashable_datetime(self) -> None:
-        """_make_hashable preserves datetime unchanged."""
+        """_make_hashable type-tags datetime with isoformat and timezone.
+
+        Two datetimes representing the same UTC instant with different tzinfo
+        compare equal but format differently. Including tz_key prevents cache collision.
+        """
         dt = datetime(2024, 1, 1, 12, 0, 0)  # noqa: DTZ001
         result = IntegrityCache._make_hashable(dt)
-        assert result == dt
-        assert isinstance(result, datetime)
+        # Naive datetime gets "__naive__" tz_key
+        assert result == ("__datetime__", "2024-01-01T12:00:00", "__naive__")
+        assert isinstance(result, tuple)
 
     def test_make_hashable_date(self) -> None:
-        """_make_hashable preserves date unchanged."""
+        """_make_hashable type-tags date with isoformat."""
         d = date(2024, 1, 1)
         result = IntegrityCache._make_hashable(d)
-        assert result == d
-        assert isinstance(result, date)
+        # Date uses isoformat string
+        assert result == ("__date__", "2024-01-01")
+        assert isinstance(result, tuple)
 
     def test_make_hashable_list_to_tuple(self) -> None:
         """_make_hashable type-tags list distinctly from tuple.

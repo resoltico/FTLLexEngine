@@ -348,9 +348,9 @@ class TestNaNHashableValue:
         assert result == ("__decimal__", "__NaN__")
 
     def test_make_hashable_regular_float_unchanged(self) -> None:
-        """_make_hashable returns tagged value for regular floats."""
+        """_make_hashable returns tagged str for regular floats."""
         result = IntegrityCache._make_hashable(1.5)
-        assert result == ("__float__", 1.5)
+        assert result == ("__float__", "1.5")
 
     def test_make_hashable_regular_decimal_unchanged(self) -> None:
         """_make_hashable returns tagged str for regular Decimals."""
@@ -362,9 +362,9 @@ class TestNaNHashableValue:
         pos_inf = IntegrityCache._make_hashable(float("inf"))
         neg_inf = IntegrityCache._make_hashable(float("-inf"))
 
-        # Infinity should be preserved as-is (it has proper equality)
-        assert pos_inf == ("__float__", float("inf"))
-        assert neg_inf == ("__float__", float("-inf"))
+        # Infinity uses str() representation
+        assert pos_inf == ("__float__", "inf")
+        assert neg_inf == ("__float__", "-inf")
 
         # Verify they're distinct from NaN
         nan_result = IntegrityCache._make_hashable(float("nan"))

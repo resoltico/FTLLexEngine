@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC
 
 import pytest
 from hypothesis import given, settings
@@ -845,3 +846,114 @@ class TestIdempotentWritesConcurrency:
         # Only one entry should exist
         stats = cache.get_stats()
         assert stats["size"] == 1
+
+
+# ============================================================================
+# CACHE KEY COLLISION PREVENTION TESTS (v0.93.0)
+# ============================================================================
+
+
+class TestDatetimeTimezoneCollisionPrevention:
+    """Test that datetime objects with different timezones produce distinct cache keys.
+
+    Two datetime objects can represent the same UTC instant but have different tzinfo.
+    Python's datetime equality considers them equal, but they format to different
+    local time strings. The cache must distinguish them.
+    """
+
+    def test_same_utc_instant_different_timezone_distinct_keys(self) -> None:
+        """Datetimes with same UTC instant but different tzinfo produce distinct keys."""
+        from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+        # 12:00 UTC
+        dt_utc = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+        # 07:00 EST (UTC-5) = 12:00 UTC - SAME INSTANT
+        dt_est = datetime(2024, 1, 1, 7, 0, 0, tzinfo=timezone(timedelta(hours=-5)))
+
+        # Verify they represent the same instant (Python equality)
+        assert dt_utc == dt_est
+
+        # But they should produce DIFFERENT cache keys
+        key_utc = IntegrityCache._make_hashable(dt_utc)
+        key_est = IntegrityCache._make_hashable(dt_est)
+        assert key_utc != key_est
+
+    def test_naive_datetime_distinguished_from_aware(self) -> None:
+        """Naive datetime is distinguished from aware datetime."""
+        from datetime import datetime  # noqa: PLC0415
+
+        dt_naive = datetime(2024, 1, 1, 12, 0, 0)  # noqa: DTZ001
+        dt_aware = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+        key_naive = IntegrityCache._make_hashable(dt_naive)
+        key_aware = IntegrityCache._make_hashable(dt_aware)
+
+        # Different tz_key means different cache keys
+        assert key_naive != key_aware
+        assert isinstance(key_naive, tuple)
+        assert isinstance(key_aware, tuple)
+        assert key_naive[2] == "__naive__"
+        assert key_aware[2] == "UTC"
+
+
+class TestFloatNegativeZeroCollisionPrevention:
+    """Test that 0.0 and -0.0 produce distinct cache keys.
+
+    Python's 0.0 == -0.0, but locale-aware formatting may distinguish them
+    (e.g., "-0" vs "0"). The cache must treat them as distinct values.
+    """
+
+    def test_zero_and_negative_zero_distinct_keys(self) -> None:
+        """0.0 and -0.0 produce distinct cache keys."""
+        key_pos = IntegrityCache._make_hashable(0.0)
+        key_neg = IntegrityCache._make_hashable(-0.0)
+
+        # They're equal in Python
+        assert 0.0 == -0.0
+
+        # But distinct in cache keys (via str representation)
+        assert key_pos != key_neg
+        assert key_pos == ("__float__", "0.0")
+        assert key_neg == ("__float__", "-0.0")
+
+
+class TestSequenceMappingABCSupport:
+    """Test that Sequence and Mapping ABCs are supported, not just list/tuple/dict."""
+
+    def test_userlist_accepted(self) -> None:
+        """UserList (Sequence ABC) is accepted and type-tagged."""
+        from collections import UserList  # noqa: PLC0415
+
+        values = UserList([1, 2, 3])
+        result = IntegrityCache._make_hashable(values)
+
+        # Should be tagged as __seq__ (generic Sequence)
+        assert isinstance(result, tuple)
+        assert result[0] == "__seq__"
+        # Inner values are type-tagged
+        assert result[1] == (("__int__", 1), ("__int__", 2), ("__int__", 3))
+
+    def test_chainmap_accepted(self) -> None:
+        """ChainMap (Mapping ABC) is accepted."""
+        from collections import ChainMap  # noqa: PLC0415
+
+        values: ChainMap[str, int] = ChainMap({"a": 1}, {"b": 2})
+        result = IntegrityCache._make_hashable(values)
+
+        # Should be sorted tuple of key-value pairs like dict
+        assert isinstance(result, tuple)
+        # ChainMap flattens to view of first-found keys
+        assert ("a", ("__int__", 1)) in result
+        assert ("b", ("__int__", 2)) in result
+
+    def test_list_still_tagged_as_list(self) -> None:
+        """Regular list still uses __list__ tag, not __seq__."""
+        result = IntegrityCache._make_hashable([1, 2])
+        assert isinstance(result, tuple)
+        assert result[0] == "__list__"
+
+    def test_tuple_still_tagged_as_tuple(self) -> None:
+        """Regular tuple still uses __tuple__ tag, not __seq__."""
+        result = IntegrityCache._make_hashable((1, 2))
+        assert isinstance(result, tuple)
+        assert result[0] == "__tuple__"

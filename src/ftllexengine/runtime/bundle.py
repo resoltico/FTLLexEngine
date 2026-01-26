@@ -301,7 +301,7 @@ class FluentBundle:
             self._owns_registry = False
 
         # Format cache (opt-in) with integrity verification
-        # Store all cache configuration for introspection and lazy initialization
+        # Store cache configuration for introspection; created eagerly when enable_cache=True
         self._cache: IntegrityCache | None = None
         self._cache_size = cache_size
         self._cache_write_once = cache_write_once

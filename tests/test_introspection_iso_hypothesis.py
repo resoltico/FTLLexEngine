@@ -320,6 +320,7 @@ class TestCollectionProperties:
         assert locale_codes_set <= en_codes
 
     @given(locale=locale_codes)
+    @settings(deadline=None)  # First-run Babel CLDR loading causes timing variance
     def test_list_currencies_subset_of_english(self, locale: str) -> None:
         """Locale currency codes are subset of English (CLDR source)."""
         # CLDR data completeness varies by locale; English is the source

@@ -69,10 +69,20 @@ logger = logging.getLogger(__name__)
 UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
 
-# Global resolution depth tracking via contextvars.
-# Prevents custom functions from bypassing depth limits by calling back into
-# bundle.format_pattern(). Each async task/thread maintains independent state.
-# This tracks the number of nested resolve_message() calls across all contexts.
+# ContextVar State (Architectural Decision):
+# Global resolution depth tracking via contextvars prevents custom functions from
+# bypassing depth limits by calling back into bundle.format_pattern().
+#
+# Trade-off:
+# - Explicit parameter threading would require signature changes across resolver,
+#   function bridge, and all custom function implementations (~10+ signatures).
+# - ContextVar provides thread/async-safe implicit state with minimal API impact.
+# - Security requirement (DoS prevention via stack overflow) takes precedence over
+#   the explicit control flow principle.
+#
+# This is a permanent architectural pattern; the security mechanism cannot be
+# implemented without cross-context state tracking. Each async task/thread
+# maintains independent state via contextvars semantics.
 _global_resolution_depth: ContextVar[int] = ContextVar(
     "fluent_resolution_depth", default=0
 )
@@ -915,7 +925,7 @@ class FluentResolver:
                 errors.append(
                     FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
                 )
-                return f"{{ {func_name}() }}"
+                return FALLBACK_FUNCTION_ERROR.format(name=func_name)
 
         # Custom function or built-in that doesn't need locale: pass args as-is
         try:
@@ -942,7 +952,7 @@ class FluentResolver:
             errors.append(
                 FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
             )
-            return f"{{ {func_name}() }}"
+            return FALLBACK_FUNCTION_ERROR.format(name=func_name)
 
     def _format_value(self, value: FluentValue) -> str:
         """Format FluentValue to string for final output.

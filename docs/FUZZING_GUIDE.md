@@ -20,7 +20,9 @@ route:
 Run fuzzing with one command:
 
 ```bash
-./scripts/fuzz.sh
+```bash
+./scripts/fuzz_hypofuzz.sh
+```
 ```
 
 You will see either:
@@ -47,23 +49,25 @@ Fuzzing generates thousands of test inputs automatically, feeding them to your c
 
 ## Understanding the Interface
 
-All fuzzing operations use `./scripts/fuzz.sh`:
+All fuzzing operations are now split into two specialized scripts:
+1.  **Hypothesis/HypoFuzz**: `./scripts/fuzz_hypofuzz.sh` (Python 3.13+)
+2.  **Atheris**: `./scripts/fuzz_atheris.sh` (Python < 3.14, Isolated Environment)
 
 | Command | Purpose | Test Selection | Time |
 |---------|---------|---------------|------|
-| `./scripts/fuzz.sh` | Quick property tests | `test_grammar_based_fuzzing.py` only | CPU-dependent |
-| `./scripts/fuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | **All Hypothesis tests** in `tests/` | Until Ctrl+C |
-| `./scripts/fuzz.sh --native` | Native fuzzing with Atheris | Custom targets in `fuzz/stability.py` | Until Ctrl+C |
-| `./scripts/fuzz.sh --runtime` | End-to-end runtime fuzzing | Custom targets in `fuzz/runtime.py` | Until Ctrl+C |
-| `./scripts/fuzz.sh --structured` | Structure-aware fuzzing with Atheris | Custom targets in `fuzz/structured.py` | Until Ctrl+C |
-| `./scripts/fuzz.sh --perf` | Performance fuzzing to detect ReDoS | Custom targets in `fuzz/perf.py` | Until Ctrl+C |
-| `./scripts/fuzz.sh --iso` | ISO 3166/4217 introspection fuzzing | Custom targets in `fuzz/iso.py` | Until Ctrl+C |
-| `./scripts/fuzz.sh --fiscal` | Fiscal calendar arithmetic fuzzing | Custom targets in `fuzz/fiscal.py` | Until Ctrl+C |
-| `./scripts/fuzz.sh --repro FILE` | Reproduce a crash file | — | Quick |
-| `./scripts/fuzz.sh --minimize FILE` | Minimize crash to smallest reproducer | — | Quick |
-| `./scripts/fuzz.sh --list` | List captured failures (with ages) | — | Quick |
-| `./scripts/fuzz.sh --clean` | Remove all failure artifacts | — | Quick |
-| `./scripts/fuzz.sh --corpus` | Check seed corpus health | — | Quick |
+| `./scripts/fuzz_hypofuzz.sh` | Quick property tests | `tests/` (pytest) | CPU-dependent |
+| `./scripts/fuzz_hypofuzz.sh --deep` | Continuous deep fuzzing (HypoFuzz) | **All Hypothesis tests** in `tests/` | Until Ctrl+C |
+| `./scripts/fuzz_hypofuzz.sh --repro FILE` | Reproduce a failure (Hypothesis) | — | Quick |
+| `./scripts/fuzz_hypofuzz.sh --list` | List captured failures (Hypothesis) | — | Quick |
+| | | | |
+| `./scripts/fuzz_atheris.sh native` | Native stability fuzzing | Custom targets in `fuzz/stability.py` | Until Ctrl+C |
+| `./scripts/fuzz_atheris.sh runtime` | End-to-end runtime fuzzing | Custom targets in `fuzz/runtime.py` | Until Ctrl+C |
+| `./scripts/fuzz_atheris.sh structured` | Structure-aware fuzzing | Custom targets in `fuzz/structured.py` | Until Ctrl+C |
+| `./scripts/fuzz_atheris.sh perf` | Performance fuzzing (ReDoS) | Custom targets in `fuzz/perf.py` | Until Ctrl+C |
+| `./scripts/fuzz_atheris.sh iso` | ISO introspection fuzzing | Custom targets in `fuzz/iso.py` | Until Ctrl+C |
+| `./scripts/fuzz_atheris.sh fiscal` | Fiscal calendar fuzzing | Custom targets in `fuzz/fiscal.py` | Until Ctrl+C |
+| `./scripts/fuzz_atheris.sh --list` | List captured crashes (Atheris) | — | Quick |
+| `./scripts/fuzz_atheris.sh --corpus` | Check seed corpus health | — | Quick |
 
 Common options:
 
@@ -74,7 +78,7 @@ Common options:
 | `--workers N` | Use N parallel workers |
 | `--json` | Output JSON (for CI) |
 
-The `--structured` mode uses grammar-aware fuzzing for better coverage. The `--repro` mode reproduces crash files and generates `@example` decorators. The `--minimize` mode uses libFuzzer to reduce a crash file to the smallest input that still triggers the crash.
+The `--structured` target uses grammar-aware fuzzing for better coverage. The `--repro` command reproduces failures and generates `@example` decorators.
 
 ---
 
@@ -85,13 +89,17 @@ Use this before committing changes. Takes about 2 minutes.
 ### Step 1: Run the Check
 
 ```bash
-./scripts/fuzz.sh
+```bash
+./scripts/fuzz_hypofuzz.sh
+```
 ```
 
 For verbose output showing what's being tested:
 
 ```bash
-./scripts/fuzz.sh --verbose
+```bash
+./scripts/fuzz_hypofuzz.sh --verbose
+```
 ```
 
 ### Step 2: Interpret Results
@@ -102,7 +110,7 @@ For verbose output showing what's being tested:
 
 Tests passed: 12
 
-Next: Run './scripts/fuzz.sh --deep' for deeper testing.
+Next: Run './scripts/fuzz_hypofuzz.sh --deep' for deeper testing.
 ```
 
 Your code is good. You can commit.
@@ -141,7 +149,7 @@ A bug was found. Continue to Step 3.
 
 4. **Verify the fix:**
    ```bash
-   ./scripts/fuzz.sh
+   ./scripts/fuzz_hypofuzz.sh
    ```
 
 5. **Commit both** the test file and the fix.
@@ -156,12 +164,13 @@ Use this for thorough testing before releases or after major changes. Runs **all
 
 **Timed run (5 minutes):**
 ```bash
-./scripts/fuzz.sh --deep --time 300
+./scripts/fuzz_hypofuzz.sh --deep --time 300
 ```
 
 **Endless run (until Ctrl+C):**
 ```bash
-./scripts/fuzz.sh --deep
+```bash
+./scripts/fuzz_hypofuzz.sh --deep
 ```
 
 Press Ctrl+C when you want to stop. Results are saved automatically.
@@ -189,7 +198,7 @@ Violations found: 2
 Findings are saved to `.hypothesis/failures/`. To review:
 
 ```bash
-./scripts/fuzz.sh --list
+./scripts/fuzz_hypofuzz.sh --list
 ```
 
 Then follow the same fix process as Workflow 1.
@@ -206,47 +215,12 @@ Use this for security audits. Atheris uses raw byte mutation, finding crashes th
 
 Atheris requires LLVM and a custom build. We use an **isolated virtual environment** (`.venv-fuzzing`) to prevent other tasks (like multi-version linting) from breaking your fuzzing setup.
 
-Run the check script:
-
-```bash
-./scripts/check-atheris.sh
-```
-
-If Atheris is missing or identifies an ABI mismatch, run with the `--install` flag:
-
-```bash
-./scripts/check-atheris.sh --install
-```
-
-This will automatically:
-1. Install LLVM via Homebrew (if missing).
-2. Create/update the isolated `.venv-fuzzing` environment.
-3. Build Atheris from source with the correct `RPATH` settings.
-
-#### Manual Fail-safe (If Script Fails)
-
-If the script fails, you can run the build command manually. Ensure you target the correct environment:
-
-```bash
-# 1. Clean cache
-uv cache clean atheris
-
-# 2. Build with LLVM toolchain
-CLANG_BIN="$(brew --prefix llvm)/bin/clang" \
-CC="$(brew --prefix llvm)/bin/clang" \
-CXX="$(brew --prefix llvm)/bin/clang++" \
-LDFLAGS="-L$(brew --prefix llvm)/lib/c++ -L$(brew --prefix llvm)/lib -Wl,-rpath,$(brew --prefix llvm)/lib/c++" \
-CPPFLAGS="-I$(brew --prefix llvm)/include" \
-UV_PROJECT_ENVIRONMENT=".venv-fuzzing" \
-uv pip install --reinstall --no-cache-dir --no-binary :all: atheris
-
-# 3. Verify
-./scripts/check-atheris.sh
+./scripts/fuzz_atheris.sh native
 ```
 
 > **Note:** Building Atheris from source can take a while to build (± 15 minutes on Apple Mac mini M4) as it compiles LLVM/libFuzzer components.
 
-> **Why this works:** The `-Wl,-rpath` flag embeds the location of LLVM's libc++ directly into the Atheris binary. This ensures that when Atheris runs, it finds the modern C++ symbols it needs without interfering with the rest of your system libraries. Using a dedicated `.venv-fuzzing` environment ensures this custom build is not wiped when you switch Python versions for linting or testing.
+> **Why this works:** The `fuzz_atheris.sh` script automatically detects ABI mismatches and performs a "Binary Surgery" (reinstall with `-Wl,-rpath` flags). This ensures that when Atheris runs, it finds the modern C++ symbols it needs without interfering with the rest of your system libraries. Using a dedicated `.venv-atheris` environment ensures this custom build is not wiped when you switch Python versions for linting or testing.
 
 ### Common Issues & Troubleshooting
 
@@ -262,7 +236,8 @@ This happens if you exported `DYLD_LIBRARY_PATH` globally in your shell. **This 
 3. Use the **Permanent Fix** above (RPATH) instead of environment variables.
 
 ```bash
-uv run --python 3.13 ./scripts/fuzz.sh --native
+```bash
+./scripts/fuzz_atheris.sh native
 ```
 
 #### `WARNING: Failed to find function "__sanitizer_..."`
@@ -272,46 +247,46 @@ You may see 3-4 warnings about missing `__sanitizer_` functions when Atheris sta
 
 ### Native Fuzzing Modes
 
-| Mode | Script | Target | Focus |
-|------|--------|--------|-------|
-| `--native` | `fuzz/stability.py` | Parser Core | Crashes, hangs, and memory safety in the FTL parser. |
-| `--runtime` | `fuzz/runtime.py` | Runtime stack | `FluentBundle`, `IntegrityCache`, and **Strict Mode**. |
-| `--structured` | `fuzz/structured.py` | Parser & Grammar | Syntactically plausible FTL to explore deeper grammar code paths. |
-| `--perf` | `fuzz/perf.py` | Performance Regress | Algorithmic complexity issues and ReDoS vulnerabilities. |
-| `--iso` | `fuzz/iso.py` | ISO Introspection | ISO 3166/4217 territory and currency lookups, type guards, cache. |
-| `--fiscal` | `fuzz/fiscal.py` | Fiscal Calendar | FiscalCalendar, FiscalDelta, date arithmetic, boundary conditions. |
+| Target | Mode | Script | Target File | Focus |
+|--------|------|--------|-------------|-------|
+| `native` | Stability | `fuzz_atheris.sh` | `fuzz/stability.py` | Crashes, hangs, and memory safety in the FTL parser. |
+| `runtime` | End-to-End | `fuzz_atheris.sh` | `fuzz/runtime.py` | Runtime stack, `FluentBundle`, `IntegrityCache`, and **Strict Mode**. |
+| `structured` | Structured | `fuzz_atheris.sh` | `fuzz/structured.py` | Syntactically plausible FTL to explore deeper grammar code paths. |
+| `perf` | Performance | `fuzz_atheris.sh` | `fuzz/perf.py` | Algorithmic complexity issues and ReDoS vulnerabilities. |
+| `iso` | Introspection | `fuzz_atheris.sh` | `fuzz/iso.py` | ISO 3166/4217 territory and currency lookups, type guards, cache. |
+| `fiscal` | Fiscal | `fuzz_atheris.sh` | `fuzz/fiscal.py` | FiscalCalendar, FiscalDelta, date arithmetic, boundary conditions. |
 
 ### Step 1: Run Stability or Runtime Fuzzing
 
 **Check parser stability:**
 ```bash
-./scripts/fuzz.sh --native --time 60
+./scripts/fuzz_atheris.sh native --time 60
 ```
 
 **Check runtime and Strict Mode integrity:**
 ```bash
-./scripts/fuzz.sh --runtime --time 60
+./scripts/fuzz_atheris.sh runtime --time 60
 ```
 
 > **Tip:** The `--runtime` fuzzer specifically verifies that `strict=True` bundles correctly raise `FormattingIntegrityError` on any failure and that the `IntegrityCache` remains consistent.
 
 **Endless run:**
 ```bash
-./scripts/fuzz.sh --runtime
+./scripts/fuzz_atheris.sh runtime
 ```
 
 > **Tip:** You can stop the endless run at any time with `Ctrl+C`. Findings are saved **instantly** to the `.fuzz_corpus` directory as they are discovered. Stopping the script will not lose any previously found crashes.
 
 **Check ISO introspection (requires Babel):**
 ```bash
-./scripts/fuzz.sh --iso --time 60
+./scripts/fuzz_atheris.sh iso --time 60
 ```
 
 > **Tip:** The `--iso` fuzzer tests ISO 3166-1 territory and ISO 4217 currency lookups via Babel's CLDR data. It verifies type guard consistency, cache integrity, and data class invariants.
 
 **Check fiscal calendar arithmetic:**
 ```bash
-./scripts/fuzz.sh --fiscal --time 60
+./scripts/fuzz_atheris.sh fiscal --time 60
 ```
 
 > **Tip:** The `--fiscal` fuzzer tests FiscalCalendar, FiscalDelta, and FiscalPeriod operations including month-end policies, quarter boundaries, and date arithmetic edge cases. No Babel required.
@@ -338,7 +313,7 @@ Crash inputs are saved to `.fuzz_corpus/crash_*`.
 
 **Minimize the crash first** (reduces noise, faster debugging):
 ```bash
-./scripts/fuzz.sh --minimize .fuzz_corpus/crash_abc123
+./scripts/fuzz_atheris.sh --minimize .fuzz_corpus/crash_abc123
 ```
 
 Output:
@@ -352,13 +327,13 @@ Reduction:      97%
 Minimized crash saved to: .fuzz_corpus/crash_abc123.minimized
 
 Next steps:
-  1. Reproduce: ./scripts/fuzz.sh --repro .fuzz_corpus/crash_abc123.minimized
+  1. Reproduce: ./scripts/fuzz_hypofuzz.sh --repro .fuzz_corpus/crash_abc123.minimized
   2. Add @example() to test and fix the bug
 ```
 
 **Reproduce the minimized crash:**
 ```bash
-./scripts/fuzz.sh --repro .fuzz_corpus/crash_abc123.minimized
+./scripts/fuzz_hypofuzz.sh --repro .fuzz_corpus/crash_abc123.minimized
 ```
 
 This generates an `@example()` decorator you can paste into a test.
@@ -386,12 +361,12 @@ Use this to find ReDoS and algorithmic complexity bugs.
 
 **Timed run (60 seconds):**
 ```bash
-./scripts/fuzz.sh --perf --time 60
+./scripts/fuzz_atheris.sh perf --time 60
 ```
 
 **Endless run:**
 ```bash
-./scripts/fuzz.sh --perf
+./scripts/fuzz_atheris.sh perf
 ```
 
 ### Step 2: Interpret Results
@@ -462,7 +437,7 @@ This cross-pollination is intentional. libFuzzer discovers which seeds are usefu
 ### Check Corpus Health
 
 ```bash
-./scripts/fuzz.sh --corpus
+./scripts/fuzz_atheris.sh --corpus
 ```
 
 This validates that FTL seeds parse correctly and reports grammar feature coverage.
@@ -482,7 +457,7 @@ When the grammar changes or new edge cases are discovered:
 
 2. Verify the corpus:
    ```bash
-   ./scripts/fuzz.sh --corpus
+   ./scripts/fuzz_atheris.sh --corpus
    ```
 
 3. Seeds are automatically used in the next fuzzing run.
@@ -553,14 +528,14 @@ Tests are categorized by purpose and execution characteristics:
 
 | Mode | Engine | Test Selection | Purpose |
 |------|--------|----------------|---------|
-| `./scripts/fuzz.sh` | Hypothesis | `tests/test_grammar_based_fuzzing.py` only | Fast property checks |
-| `./scripts/fuzz.sh --deep` | HypoFuzz | **All Hypothesis tests** in `tests/` | Continuous coverage-guided fuzzing |
-| `./scripts/fuzz.sh --native` | Atheris | Custom fuzz targets in `fuzz/stability.py` | Byte-level chaos testing |
-| `./scripts/fuzz.sh --runtime` | Atheris | Custom fuzz targets in `fuzz/runtime.py` | Runtime/Strict Mode testing |
-| `./scripts/fuzz.sh --structured` | Atheris | Custom fuzz targets in `fuzz/structured.py` | Grammar-aware chaos testing |
-| `./scripts/fuzz.sh --perf` | Atheris | Custom fuzz targets in `fuzz/perf.py` | Performance/ReDoS detection |
-| `./scripts/fuzz.sh --iso` | Atheris | Custom fuzz targets in `fuzz/iso.py` | ISO 3166/4217 introspection |
-| `./scripts/fuzz.sh --fiscal` | Atheris | Custom fuzz targets in `fuzz/fiscal.py` | Fiscal calendar arithmetic |
+| `./scripts/fuzz_hypofuzz.sh` | Hypothesis | `tests/` | Fast property checks |
+| `./scripts/fuzz_hypofuzz.sh --deep` | HypoFuzz | **All Hypothesis tests** in `tests/` | Continuous coverage-guided fuzzing |
+| `./scripts/fuzz_atheris.sh native` | Atheris | Custom fuzz targets in `fuzz/stability.py` | Byte-level chaos testing |
+| `./scripts/fuzz_atheris.sh runtime` | Atheris | Custom fuzz targets in `fuzz/runtime.py` | Runtime/Strict Mode testing |
+| `./scripts/fuzz_atheris.sh structured` | Atheris | Custom fuzz targets in `fuzz/structured.py` | Grammar-aware chaos testing |
+| `./scripts/fuzz_atheris.sh perf` | Atheris | Custom fuzz targets in `fuzz/perf.py` | Performance/ReDoS detection |
+| `./scripts/fuzz_atheris.sh iso` | Atheris | Custom fuzz targets in `fuzz/iso.py` | ISO 3166/4217 introspection |
+| `./scripts/fuzz_atheris.sh fiscal` | Atheris | Custom fuzz targets in `fuzz/fiscal.py` | Fiscal calendar arithmetic |
 
 **HypoFuzz Selection Criteria:**
 ```bash
@@ -661,11 +636,9 @@ def test_parser_fuzz_chaos(self, ...):
 
 ```
 scripts/
-  fuzz.sh                  <- Unified entry point (use this)
-  corpus-health.py         <- Corpus management
-  fuzz-hypothesis.sh       <- Internal: HypoFuzz runner
-  fuzz-atheris.sh          <- Internal: Atheris runner
-  check-atheris.sh         <- Verify Atheris installation
+  fuzz_hypofuzz.sh       <- Property testing & HypoFuzz
+  fuzz_atheris.sh        <- Native Atheris fuzzing & corpus management
+  corpus-health.py       <- Corpus utility (used by fuzz_atheris.sh)
 
 tests/
   test_grammar_based_fuzzing.py    <- Parser property tests
@@ -709,7 +682,7 @@ No. The default profile runs silently and, depending on hardware, can take a lon
 
 Run the verification script:
 ```bash
-./scripts/check-atheris.sh
+./scripts/fuzz_atheris.sh native
 ```
 
 Common issues:
@@ -722,7 +695,7 @@ Common issues:
 1. Read the "Falsifying example:" output
 2. Add `@example(...)` decorator to the test
 3. Fix the bug
-4. Run `./scripts/fuzz.sh` to verify
+4. Run `./scripts/fuzz_hypofuzz.sh` to verify
 
 ### Too many failures to handle?
 
@@ -756,7 +729,7 @@ The `--minimize` mode may fail if:
 
 Try specifying more time:
 ```bash
-./scripts/fuzz.sh --minimize .fuzz_corpus/crash_* --time 120
+./scripts/fuzz_atheris.sh --minimize .fuzz_corpus/crash_* --time 120
 ```
 
 If minimization fails consistently, use `--repro` directly on the original crash file.
@@ -769,15 +742,15 @@ Different fuzzing tools have different Python version requirements:
 
 | Fuzzing Mode | Python Versions | Tool | Notes |
 |--------------|-----------------|------|-------|
-| `./scripts/fuzz.sh` | 3.13, 3.14 | Hypothesis | Property-based tests |
-| `./scripts/fuzz.sh --deep` | 3.13, 3.14 | HypoFuzz | Coverage-guided |
-| `./scripts/fuzz.sh --native` | 3.11-3.13 | Atheris | libFuzzer-based |
-| `./scripts/fuzz.sh --runtime` | 3.11-3.13 | Atheris | Runtime/Strict Mode |
-| `./scripts/fuzz.sh --structured` | 3.11-3.13 | Atheris | Grammar-aware |
-| `./scripts/fuzz.sh --perf` | 3.11-3.13 | Atheris | ReDoS detection |
-| `./scripts/fuzz.sh --iso` | 3.11-3.13 | Atheris | ISO introspection |
-| `./scripts/fuzz.sh --fiscal` | 3.11-3.13 | Atheris | Fiscal calendar |
-| `./scripts/fuzz.sh --minimize` | 3.11-3.13 | Atheris | Crash minimization |
+| `./scripts/fuzz_hypofuzz.sh` | 3.13, 3.14 | Hypothesis | Property-based tests |
+| `./scripts/fuzz_hypofuzz.sh --deep` | 3.13, 3.14 | HypoFuzz | Coverage-guided |
+| `./scripts/fuzz_atheris.sh native` | 3.11-3.13 | Atheris | libFuzzer-based |
+| `./scripts/fuzz_atheris.sh runtime` | 3.11-3.13 | Atheris | Runtime/Strict Mode |
+| `./scripts/fuzz_atheris.sh structured` | 3.11-3.13 | Atheris | Grammar-aware |
+| `./scripts/fuzz_atheris.sh perf` | 3.11-3.13 | Atheris | ReDoS detection |
+| `./scripts/fuzz_atheris.sh iso` | 3.11-3.13 | Atheris | ISO introspection |
+| `./scripts/fuzz_atheris.sh fiscal` | 3.11-3.13 | Atheris | Fiscal calendar |
+| `./scripts/fuzz_atheris.sh --minimize` | 3.11-3.13 | Atheris | Crash minimization |
 
 ### Why Atheris Requires Python 3.13 or Earlier
 
@@ -789,12 +762,11 @@ If your default Python is 3.14, switch to 3.13 for native fuzzing:
 
 ```bash
 # Run native/minimize fuzzing with Python 3.13
-uv run --python 3.13 ./scripts/fuzz.sh --native
-uv run --python 3.13 ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*
+./scripts/fuzz_atheris.sh native
 
 # Property-based fuzzing works on Python 3.14
-./scripts/fuzz.sh          # Works on 3.14
-./scripts/fuzz.sh --deep   # Works on 3.14
+./scripts/fuzz_hypofuzz.sh          # Works on 3.14
+./scripts/fuzz_hypofuzz.sh --deep   # Works on 3.14
 ```
 
 ---
@@ -803,116 +775,22 @@ uv run --python 3.13 ./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*
 
 | Task | Command |
 |------|---------|
-| Quick check | `./scripts/fuzz.sh` |
-| Verbose check | `./scripts/fuzz.sh --verbose` |
-| Deep fuzzing (5 min) | `./scripts/fuzz.sh --deep --time 300` |
-| Deep fuzzing (endless) | `./scripts/fuzz.sh --deep` |
-| Native fuzzing (1 min) | `./scripts/fuzz.sh --native --time 60` |
-| Runtime fuzzing | `./scripts/fuzz.sh --runtime --time 60` |
-| Structured fuzzing | `./scripts/fuzz.sh --structured --time 60` |
-| Performance fuzzing | `./scripts/fuzz.sh --perf --time 60` |
-| ISO introspection fuzzing | `./scripts/fuzz.sh --iso --time 60` |
-| Fiscal calendar fuzzing | `./scripts/fuzz.sh --fiscal --time 60` |
-| Minimize crash | `./scripts/fuzz.sh --minimize .fuzz_corpus/crash_*` |
-| Reproduce crash | `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
-| List failures | `./scripts/fuzz.sh --list` |
-| Clean all artifacts | `./scripts/fuzz.sh --clean` |
-| Check corpus | `./scripts/fuzz.sh --corpus` |
+| Quick check | `./scripts/fuzz_hypofuzz.sh` |
+| Verbose check | `./scripts/fuzz_hypofuzz.sh --verbose` |
+| Deep fuzzing (5 min) | `./scripts/fuzz_hypofuzz.sh --deep --time 300` |
+| Deep fuzzing (endless) | `./scripts/fuzz_hypofuzz.sh --deep` |
+| Native fuzzing | `./scripts/fuzz_atheris.sh native` |
+| Runtime fuzzing | `./scripts/fuzz_atheris.sh runtime` |
+| Structured fuzzing | `./scripts/fuzz_atheris.sh structured` |
+| Performance fuzzing | `./scripts/fuzz_atheris.sh perf` |
+| ISO fuzzing | `./scripts/fuzz_atheris.sh iso` |
+| Fiscal fuzzing | `./scripts/fuzz_atheris.sh fiscal` |
+| List failures (Hypothesis) | `./scripts/fuzz_hypofuzz.sh --list` |
+| List crashes (Atheris) | `./scripts/fuzz_atheris.sh --list` |
+| Clean all artifacts | `./scripts/fuzz_hypofuzz.sh --clean && ./scripts/fuzz_atheris.sh --clean` |
+| Check corpus | `./scripts/fuzz_atheris.sh --corpus` |
 | Replay failures | `uv run pytest tests/ -x -v` |
 
 ---
 
-## For AI Agents
 
-All fuzzing outputs include JSON summaries for automation:
-
-```bash
-./scripts/fuzz.sh --json
-```
-
-Output (pass):
-```json
-{"mode":"check","status":"pass","tests_passed":"12","tests_failed":"0","hypothesis_failures":"0"}
-```
-
-Output (finding):
-```json
-{
-  "mode": "check",
-  "status": "finding",
-  "tests_passed": "11",
-  "tests_failed": "1",
-  "hypothesis_failures": "1",
-  "first_failure": {
-    "test": "tests/test_grammar_based_fuzzing.py::test_roundtrip",
-    "input": "ftl='msg = { $x }'",
-    "error": "AssertionError"
-  }
-}
-```
-
-The `first_failure` object is included when failures are detected, containing:
-- `test`: Full test path (file::function)
-- `input`: Falsifying example (truncated to 200 chars)
-- `error`: Exception type
-
-### Crash Minimization JSON
-
-```bash
-./scripts/fuzz.sh --minimize .fuzz_corpus/crash_abc123 --json
-```
-
-Output (success):
-```json
-{
-  "mode": "minimize",
-  "status": "ok",
-  "original_size": "1247",
-  "minimized_size": "42",
-  "output_file": ".fuzz_corpus/crash_abc123.minimized"
-}
-```
-
-Output (failure):
-```json
-{"mode":"minimize","status":"error","error":"minimization_failed"}
-```
-
-### Crash Reproduction JSON
-
-The repro script also supports JSON output:
-
-```bash
-uv run python scripts/repro.py --json .fuzz_corpus/crash_*
-```
-
-Output (finding):
-```json
-{
-  "result": "finding",
-  "file": ".fuzz_corpus/crash_abc123",
-  "input_length": 42,
-  "has_invalid_utf8": false,
-  "exception_type": "KeyError",
-  "exception_message": "unexpected_key",
-  "example_decorator": "@example(ftl='...')"
-}
-```
-
-Output (pass):
-```json
-{
-  "result": "pass",
-  "file": "fuzz/seeds/01_simple.ftl",
-  "input_length": 150,
-  "has_invalid_utf8": false,
-  "entry_count": 5,
-  "message_count": 4
-}
-```
-
-Parse the summary to detect findings programmatically. Exit codes:
-- `0`: Pass (no findings)
-- `1`: Finding (failures detected)
-- `2`: Error (script failed to run)
-- `3`: Python version incompatible (Atheris modes require Python 3.11-3.13)

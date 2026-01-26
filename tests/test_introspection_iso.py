@@ -1311,3 +1311,80 @@ class TestTerritoryCacheSize:
         # All unique territories should be cached
         unique_territories = {t.alpha2 for t in territories}
         assert info.currsize >= len(unique_territories) - 1  # Allow small margin
+
+
+class _UnexpectedTestError(Exception):
+    """Custom exception for testing defensive error handling.
+
+    Defined at module level to avoid scoping issues with pytest.raises.
+    This exception type doesn't contain "locale" or "unknown" in its message,
+    triggering the defensive re-raise path in Babel wrapper functions.
+    """
+
+    def __str__(self) -> str:
+        return "Something went wrong - internal processing error"
+
+
+class TestDefensiveExceptionPropagation:
+    """Tests for defensive exception re-raising in Babel wrappers.
+
+    Lines 196 and 217 in iso.py implement defensive exception handling that
+    re-raises unexpected exceptions while catching Babel-specific errors.
+    These tests verify that logic bugs and unexpected exceptions propagate.
+    """
+
+    def test_currency_name_reraises_unexpected_exception(self) -> None:
+        """_get_babel_currency_name re-raises non-locale exceptions.
+
+        Tests line 196: raise statement in defensive exception handler.
+        """
+        # This test verifies that unexpected exceptions (not matching the
+        # "locale" or "unknown" pattern) are propagated rather than suppressed.
+
+        call_count = [0]  # Use list to allow modification in nested function
+        error_msg = "Internal error"
+
+        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+            """Mock Locale.parse to raise unexpected exception."""
+            call_count[0] += 1
+            raise _UnexpectedTestError(error_msg)
+
+        # Patch Babel's Locale.parse to inject our test exception
+        with patch("babel.Locale.parse", side_effect=mock_locale_parse):
+            #  The exception should propagate (not be suppressed)
+            exception_raised = False
+            result = None
+            try:
+                result = _get_babel_currency_name("USD", "en")
+            except _UnexpectedTestError:
+                exception_raised = True
+            except Exception as e:
+                pytest.fail(f"Unexpected exception type: {type(e).__name__}: {e}")
+
+            if not exception_raised:
+                pytest.fail(
+                    f"Expected _UnexpectedTestError to be raised. "
+                    f"Mock called {call_count[0]} times. Result: {result}"
+                )
+
+    def test_currency_symbol_reraises_unexpected_exception(self) -> None:
+        """_get_babel_currency_symbol re-raises non-locale exceptions.
+
+        Tests line 217: raise statement in defensive exception handler.
+        """
+        error_msg = "Internal error"
+
+        def mock_get_currency_symbol(code: str, locale: str | object = None) -> str:  # noqa: ARG001
+            """Mock that raises unexpected exception."""
+            raise _UnexpectedTestError(error_msg)
+
+        # Patch get_currency_symbol to trigger the exception path
+        with patch("babel.numbers.get_currency_symbol", side_effect=mock_get_currency_symbol):
+            # The exception should propagate (not be suppressed)
+            exception_raised = False
+            try:
+                _get_babel_currency_symbol("USD", "en")
+            except _UnexpectedTestError:
+                exception_raised = True
+
+            assert exception_raised, "Expected _UnexpectedTestError to be raised"

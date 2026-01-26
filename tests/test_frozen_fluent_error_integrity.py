@@ -994,3 +994,29 @@ class TestCompleteBranchCoverage:
 
         # Verify integrity is maintained
         assert error.verify_integrity() is True
+
+    def test_notes_attribute_allowed_for_python_311_compatibility(self) -> None:
+        """__notes__ attribute can be set for Python 3.11+ exception groups.
+
+        Python 3.11 added __notes__ for Exception Groups (PEP 654/678).
+        FrozenFluentError must allow this attribute to be set even after freeze
+        to support exception enrichment via add_note() and exception groups.
+        """
+        error = FrozenFluentError("test", ErrorCategory.RESOLUTION)
+
+        # Simulate what Python's add_note() does internally
+        # (it sets __notes__ attribute if not present, then appends)
+        error.__notes__ = []
+        error.__notes__.append("additional context")
+        error.__notes__.append("more info")
+
+        # Verify notes were set
+        assert hasattr(error, "__notes__")
+        assert error.__notes__ == ["additional context", "more info"]
+
+        # Verify error is still frozen for other attributes
+        with pytest.raises(ImmutabilityViolationError):
+            error._message = "modified"
+
+        # Verify integrity is maintained
+        assert error.verify_integrity() is True

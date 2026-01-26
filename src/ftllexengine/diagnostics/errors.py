@@ -90,8 +90,9 @@ class FrozenFluentError(Exception):
 
     # Python's exception handling sets these attributes when propagating exceptions.
     # They must be allowed even after freeze to enable normal raise/except flow.
+    # __notes__ was added in Python 3.11 for Exception Groups (PEP 654/678).
     _PYTHON_EXCEPTION_ATTRS: frozenset[str] = frozenset(
-        ("__traceback__", "__context__", "__cause__", "__suppress_context__")
+        ("__traceback__", "__context__", "__cause__", "__suppress_context__", "__notes__")
     )
 
     def __init__(
@@ -242,8 +243,8 @@ class FrozenFluentError(Exception):
         """Reject attribute mutations after initialization.
 
         Python's exception mechanism must be able to set __traceback__,
-        __context__, __cause__, and __suppress_context__ during propagation.
-        These are allowed even after freeze.
+        __context__, __cause__, __suppress_context__, and __notes__ during
+        propagation. These are allowed even after freeze.
 
         Raises:
             ImmutabilityViolationError: If attempting to modify non-exception

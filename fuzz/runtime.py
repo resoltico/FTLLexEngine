@@ -227,62 +227,81 @@ def test_one_input(data: bytes) -> None:
     )
 
     try:
-        bundle = FluentBundle(
-            locale,
-            strict=strict,
-            enable_cache=enable_cache,
-            use_isolating=use_isolating,
-            cache_write_once=cache_write_once,
-        )
-        if fdp.ConsumeBool():
-            bundle.add_function("FUZZ_FUNC", fuzzed_function)
-    except (ValueError, TypeError):
-        return
+        try:
+            bundle = FluentBundle(
+                locale,
+                strict=strict,
+                enable_cache=enable_cache,
+                use_isolating=use_isolating,
+                cache_write_once=cache_write_once,
+            )
+            if fdp.ConsumeBool():
+                bundle.add_function("FUZZ_FUNC", fuzzed_function)
+        except (ValueError, TypeError):
+            return
 
-    # 3. Resource & Validation Aspect
-    _add_random_resources(fdp, bundle)
+        # 3. Resource & Validation Aspect
+        _add_random_resources(fdp, bundle)
 
-    # 4. Arguments
-    args = generate_complex_args(fdp)
-    target_ids = [
-        "msg",
-        "msg2",
-        "msg3",
-        "ref",
-        "attr",
-        "cyclic",
-        "deep",
-        "func_call",
-        "nonexistent",
-    ]
+        # 4. Arguments
+        args = generate_complex_args(fdp)
+        target_ids = [
+            "msg",
+            "msg2",
+            "msg3",
+            "ref",
+            "attr",
+            "cyclic",
+            "deep",
+            "func_call",
+            "nonexistent",
+        ]
 
-    # 5. Concurrent Execution (RWLock & Race Testing)
-    barrier = threading.Barrier(2)
+        # 5. Concurrent Execution (RWLock & Race Testing)
+        barrier = threading.Barrier(2)
 
-    def worker_job() -> None:
-        """Concurrent worker to stress-test RWLock and Cache."""
-        with contextlib.suppress(threading.BrokenBarrierError):
-            barrier.wait(timeout=2.0)
+        def worker_job() -> None:
+            """Concurrent worker to stress-test RWLock and Cache."""
+            with contextlib.suppress(threading.BrokenBarrierError):
+                barrier.wait(timeout=2.0)
 
-        _execute_runtime_invariants(
-            fdp,
-            bundle,
-            target_ids,
-            args,
-            strict,
-            enable_cache,
-            cache_write_once,
-        )
+            _execute_runtime_invariants(
+                fdp,
+                bundle,
+                target_ids,
+                args,
+                strict,
+                enable_cache,
+                cache_write_once,
+            )
 
-    # 6. Thread Execution
-    threads = [threading.Thread(target=worker_job) for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=5.0)
-        if t.is_alive():
-            msg = "RWLock Deadlock detected."
-            raise RuntimeIntegrityError(msg)
+        # 6. Thread Execution
+        threads = [threading.Thread(target=worker_job) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5.0)
+            if t.is_alive():
+                msg = "RWLock Deadlock detected."
+                raise RuntimeIntegrityError(msg)
+
+    except CacheCorruptionError:
+        # If we are in strict mode, this is EXPECTED behavior when corruption occurs.
+        # We catch it here to prevent the fuzzer from treating it as a crash.
+        if strict:
+            return  # Correct behavior verified
+        
+        # If not strict, it should have been handled gracefully.
+        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+        raise
+
+    except KeyboardInterrupt:
+        _fuzz_stats["status"] = "stopped"
+        raise
+
+    except Exception:
+        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
+        raise
 
 
 def _simulate_corruption_incident(bundle: FluentBundle) -> None:

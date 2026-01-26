@@ -517,40 +517,18 @@ def parse_simple_pattern(
         # Note: Line endings are normalized to LF at parser entry.
         if ch == "\n":
             if is_indented_continuation(cursor):
-                # Skip newline
+                # Skip newline and process continuation
                 cursor = cursor.advance()
+                result = _process_continuation_line(cursor, common_indent)
+                cursor = result.cursor
+                common_indent = result.common_indent
 
-                # Skip any blank lines (consecutive newlines) before measuring indent.
-                # This matches is_indented_continuation() which looks past blank lines
-                # to find indented content. Without this, blank lines before first
-                # content would set common_indent to 0 (measuring at newline position).
-                while not cursor.is_eof and cursor.current == "\n":
-                    cursor = cursor.advance()
-
-                # Track common indentation from first continuation line
-                if common_indent is None:
-                    common_indent = _count_leading_spaces(cursor)
-                    # Skip the common indent
-                    cursor = cursor.skip_spaces()
-                    extra_spaces = ""
-                else:
-                    # Skip only common indent, preserve extra spaces
-                    cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
-
-                # Per Fluent spec, continuation lines are joined with newlines.
-                # IMPORTANT: The newline belongs to the END of the previous element,
-                # but extra_spaces belong to the START of the next element.
-                # Merge newline with previous element immediately.
-                if elements and not isinstance(elements[-1], Placeable):
-                    last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + "\n")
-                else:
-                    # No previous text element to merge with
-                    elements.append(TextElement(value="\n"))
+                # Merge newline with previous element
+                _append_newline_to_elements(elements)
 
                 # Store extra_spaces to prepend to next text element
-                if extra_spaces:
-                    text_acc.add(extra_spaces)
+                if result.extra_spaces:
+                    text_acc.add(result.extra_spaces)
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 
@@ -657,6 +635,83 @@ def _skip_common_indent(cursor: Cursor, common_indent: int) -> tuple[Cursor, str
     return cursor, "".join(extra_spaces)
 
 
+@dataclass(slots=True)
+class _ContinuationResult:
+    """Result of processing a continuation line.
+
+    Encapsulates all state changes from continuation processing to reduce
+    duplication between parse_simple_pattern and parse_pattern.
+    """
+
+    cursor: Cursor
+    common_indent: int
+    extra_spaces: str
+
+
+def _process_continuation_line(
+    cursor: Cursor,
+    common_indent: int | None,
+) -> _ContinuationResult:
+    """Process a continuation line after newline.
+
+    Shared logic for handling indented continuation lines in patterns.
+    Skips blank lines, tracks common indentation, and preserves extra spaces.
+
+    Per Fluent spec, common indentation handling:
+    - The first continuation line's indentation sets the "common indent" baseline
+    - Subsequent continuation lines have only the common indent stripped
+    - Extra indentation beyond the common baseline is preserved in the pattern
+
+    Args:
+        cursor: Position after the newline character (already advanced past newline)
+        common_indent: Current common indentation (None if not yet set)
+
+    Returns:
+        ContinuationResult with updated cursor, common_indent, and extra_spaces
+    """
+    # Skip any blank lines (consecutive newlines) before measuring indent.
+    # This matches is_indented_continuation() which looks past blank lines
+    # to find indented content. Without this, blank lines before first
+    # content would set common_indent to 0 (measuring at newline position).
+    while not cursor.is_eof and cursor.current == "\n":
+        cursor = cursor.advance()
+
+    # Track common indentation from first continuation line
+    if common_indent is None:
+        common_indent = _count_leading_spaces(cursor)
+        # Skip the common indent
+        cursor = cursor.skip_spaces()
+        extra_spaces = ""
+    else:
+        # Skip only common indent, preserve extra spaces
+        cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
+
+    return _ContinuationResult(
+        cursor=cursor,
+        common_indent=common_indent,
+        extra_spaces=extra_spaces,
+    )
+
+
+def _append_newline_to_elements(
+    elements: list[TextElement | Placeable],
+) -> None:
+    """Append newline to last element or create new TextElement.
+
+    Per Fluent spec, continuation lines are joined with newlines.
+    The newline belongs to the END of the previous element.
+
+    Args:
+        elements: List of pattern elements (mutated in place)
+    """
+    if elements and not isinstance(elements[-1], Placeable):
+        last_elem = elements[-1]
+        elements[-1] = TextElement(value=last_elem.value + "\n")
+    else:
+        # No previous text element to merge with
+        elements.append(TextElement(value="\n"))
+
+
 def parse_pattern(
     cursor: Cursor,
     context: ParseContext | None = None,
@@ -702,40 +757,18 @@ def parse_pattern(
         # Note: Line endings are normalized to LF at parser entry.
         if ch == "\n":
             if is_indented_continuation(cursor):
-                # Skip newline
+                # Skip newline and process continuation
                 cursor = cursor.advance()
+                result = _process_continuation_line(cursor, common_indent)
+                cursor = result.cursor
+                common_indent = result.common_indent
 
-                # Skip any blank lines (consecutive newlines) before measuring indent.
-                # This matches is_indented_continuation() which looks past blank lines
-                # to find indented content. Without this, blank lines before first
-                # content would set common_indent to 0 (measuring at newline position).
-                while not cursor.is_eof and cursor.current == "\n":
-                    cursor = cursor.advance()
-
-                # Track common indentation from first continuation line
-                if common_indent is None:
-                    common_indent = _count_leading_spaces(cursor)
-                    # Skip the common indent
-                    cursor = cursor.skip_spaces()
-                    extra_spaces = ""
-                else:
-                    # Skip only common indent, preserve extra spaces
-                    cursor, extra_spaces = _skip_common_indent(cursor, common_indent)
-
-                # Per Fluent spec, continuation lines are joined with newlines.
-                # IMPORTANT: The newline belongs to the END of the previous element,
-                # but extra_spaces belong to the START of the next element.
-                # Merge newline with previous element immediately.
-                if elements and not isinstance(elements[-1], Placeable):
-                    last_elem = elements[-1]
-                    elements[-1] = TextElement(value=last_elem.value + "\n")
-                else:
-                    # No previous text element to merge with
-                    elements.append(TextElement(value="\n"))
+                # Merge newline with previous element
+                _append_newline_to_elements(elements)
 
                 # Store extra_spaces to prepend to next text element
-                if extra_spaces:
-                    text_acc.add(extra_spaces)
+                if result.extra_spaces:
+                    text_acc.add(result.extra_spaces)
                 continue  # Continue parsing on next line
             break  # Not a continuation, stop parsing pattern
 

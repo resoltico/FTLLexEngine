@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.92.0"
+version: "0.93.0"
 domain: ERRORS
-updated: "2026-01-25"
+updated: "2026-01-26"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -84,6 +84,7 @@ class FrozenFluentError(Exception):
 
 ### Constraints
 - Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
+- Exception Attributes: Python exception mechanism attributes (`__traceback__`, `__context__`, `__cause__`, `__suppress_context__`, `__notes__`) are allowed even after freeze to support exception chaining and Python 3.11+ exception groups.
 - Sealed: Cannot be subclassed. Use `ErrorCategory` for classification.
 - Content-Addressed: BLAKE2b-128 hash computed at construction for integrity verification.
 - Hashable: Can be used in sets and as dict keys. Hash based on content, not identity.

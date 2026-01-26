@@ -36,7 +36,7 @@ import math
 import struct
 import time
 from collections import OrderedDict, deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -240,9 +240,11 @@ class IntegrityCacheEntry:
         # Include error count and content hashes
         h.update(len(errors).to_bytes(4, "big"))
         for error in errors:
-            # Use error's content hash if available, otherwise hash the message
-            if hasattr(error, "content_hash"):
-                h.update(error.content_hash)
+            # Use error's content hash if available and valid type, otherwise hash the message.
+            # Type validation ensures robustness against duck-typed objects with wrong type.
+            content_hash = getattr(error, "content_hash", None)
+            if isinstance(content_hash, bytes):
+                h.update(content_hash)
             else:
                 error_encoded = str(error).encode("utf-8", errors="surrogatepass")
                 h.update(len(error_encoded).to_bytes(4, "big"))
@@ -270,9 +272,11 @@ class IntegrityCacheEntry:
         if not hmac.compare_digest(self.checksum, expected):
             return False
         # Recursively verify each error's integrity (defense-in-depth)
-        # Only verify errors that have the verify_integrity method
+        # Only verify errors that have the verify_integrity method with correct signature.
+        # Type validation ensures robustness against duck-typed objects.
         for error in self.errors:
-            if hasattr(error, "verify_integrity") and not error.verify_integrity():
+            verify_method = getattr(error, "verify_integrity", None)
+            if callable(verify_method) and not verify_method():
                 return False
         return True
 
@@ -313,9 +317,11 @@ class IntegrityCacheEntry:
         # Include error count and content hashes
         h.update(len(errors).to_bytes(4, "big"))
         for error in errors:
-            # Use error's content hash if available, otherwise hash the message
-            if hasattr(error, "content_hash"):
-                h.update(error.content_hash)
+            # Use error's content hash if available and valid type, otherwise hash the message.
+            # Type validation ensures robustness against duck-typed objects with wrong type.
+            content_hash = getattr(error, "content_hash", None)
+            if isinstance(content_hash, bytes):
+                h.update(content_hash)
             else:
                 error_encoded = str(error).encode("utf-8", errors="surrogatepass")
                 h.update(len(error_encoded).to_bytes(4, "big"))
@@ -771,13 +777,21 @@ class IntegrityCache:
             - dict -> tuple of sorted key-value tuples (recursively)
             - set -> frozenset (recursively)
             - Decimal -> ("__decimal__", str) - str preserves scale for CLDR rules
+            - float -> ("__float__", str) - str preserves -0.0 sign
+            - datetime -> ("__datetime__", isoformat, tzinfo_str) - includes timezone
+            - date -> ("__date__", isoformat) - no timezone
             - FluentNumber -> type-tagged with underlying type info
+            - Mapping ABC -> tuple of sorted key-value tuples (for ChainMap, etc.)
+            - Sequence ABC -> ("__seq__", tuple) - for UserList, etc.
             - Known primitive types -> type-tagged tuples
 
         Type-Tagging Rationale:
             Python's hash equality creates collision risk:
             - hash(1) == hash(True) == hash(1.0)
             - Decimal("1.0") == Decimal("1") but produce different plural forms
+            - 0.0 == -0.0 but may format differently ("-0" vs "0")
+            - datetime objects at same UTC instant with different tzinfo are equal
+              but format to different local time strings
             - list vs tuple: str([1,2]) != str((1,2)) but would hash same
             Type-tagging creates distinct cache keys for semantically different values.
 
@@ -802,6 +816,9 @@ class IntegrityCache:
             raise TypeError(msg)
 
         match value:
+            # str and None: return as-is. Must check str before Sequence (str is Sequence).
+            case str() | None:
+                return value
             # Type-tag list and tuple distinctly: str([1,2])="[1, 2]" vs str((1,2))="(1, 2)"
             case list():
                 return (
@@ -835,9 +852,9 @@ class IntegrityCache:
                 # causing cache pollution (DoS risk via cache thrashing).
                 if math.isnan(value):
                     return ("__float__", "__NaN__")
-                return ("__float__", value)
-            case str() | None:
-                return value
+                # Use str() to distinguish -0.0 from 0.0 (0.0 == -0.0 in Python).
+                # Locale formatting may produce "-0" vs "0" for these values.
+                return ("__float__", str(value))
             # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
             # CLDR plural rules use visible fraction digits (v operand) which differs
             case Decimal():
@@ -846,8 +863,15 @@ class IntegrityCache:
                 if value.is_nan():
                     return ("__decimal__", "__NaN__")
                 return ("__decimal__", str(value))
-            case datetime() | date():
-                return value
+            case datetime():
+                # Include timezone info to distinguish same-instant different-offset datetimes.
+                # Two datetimes representing the same UTC instant but with different tzinfo
+                # compare equal, but they format to different local time strings.
+                tz_key = str(value.tzinfo) if value.tzinfo else "__naive__"
+                return ("__datetime__", value.isoformat(), tz_key)
+            case date():
+                # date has no timezone, isoformat is sufficient for unique key
+                return ("__date__", value.isoformat())
             # FluentNumber: type-tag with underlying value type for financial precision
             # Recursively normalize inner value to handle NaN (float/Decimal) correctly.
             # Without this, FluentNumber(value=float('nan')...) creates unretrievable keys.
@@ -860,6 +884,22 @@ class IntegrityCache:
                     value.precision,
                 )
             case _:
+                # Handle Mapping and Sequence ABCs for types like ChainMap, UserList.
+                # This fallback catches any Mapping/Sequence not matched above.
+                # Must be after specific type checks (dict, list, tuple, str).
+                if isinstance(value, Mapping):
+                    return tuple(
+                        sorted(
+                            (k, IntegrityCache._make_hashable(v, depth - 1))
+                            for k, v in value.items()
+                        )
+                    )
+                if isinstance(value, Sequence):
+                    # Generic Sequence (UserList, etc.) - tag distinctly from list/tuple
+                    return (
+                        "__seq__",
+                        tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                    )
                 msg = f"Unknown type in cache key: {type(value).__name__}"
                 raise TypeError(msg)
 

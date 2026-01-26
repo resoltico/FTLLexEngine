@@ -22,6 +22,7 @@ class TestResolverModuleExports:
         # This tests the BREAKING CHANGE: FluentValue removed from resolver exports
         with pytest.raises(ImportError, match="cannot import name 'FluentValue'"):
             # pylint: disable=unused-import
+            # Intentional ImportError test - FluentValue removed from resolver exports
             from ftllexengine.runtime.resolver import (  # type: ignore[attr-defined]
                 FluentValue,  # noqa: F401
             )
