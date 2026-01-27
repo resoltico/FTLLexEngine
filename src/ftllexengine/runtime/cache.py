@@ -443,7 +443,8 @@ class IntegrityCache:
         Args:
             maxsize: Maximum number of entries (default: DEFAULT_CACHE_SIZE from constants)
             max_entry_weight: Maximum memory weight for cached results (default: 10_000).
-                Weight is calculated as: len(formatted_str) + (len(errors) * 200).
+                Weight is calculated as: len(formatted_str) + sum(error_weight(e) for e in errors),
+                where error_weight computes actual content-based weight per error.
             max_errors_per_entry: Maximum number of errors per cache entry (default: 50).
             write_once: If True, reject updates to existing keys (default: False).
                 Enables data race prevention for financial applications.

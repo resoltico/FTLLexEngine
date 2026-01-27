@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.86.0"
+version: "0.95.0"
 domain: migration
-updated: "2026-01-21"
+updated: "2026-01-27"
 route:
   keywords: [migration, fluent.runtime, upgrade, breaking changes, mozilla fluent, python fluent]
   questions: ["how to migrate from fluent.runtime?", "how to upgrade to ftllexengine?"]

@@ -94,6 +94,14 @@ class FluentNumber:
         """Return formatted string for output."""
         return self.formatted
 
+    def __contains__(self, item: str) -> bool:
+        """Support membership testing on formatted string."""
+        return item in self.formatted
+
+    def __len__(self) -> int:
+        """Return length of formatted string."""
+        return len(self.formatted)
+
     def __repr__(self) -> str:
         """Return detailed representation for debugging."""
         return f"FluentNumber(value={self.value!r}, formatted={self.formatted!r})"

@@ -14,7 +14,7 @@ Python 3.13+.
 Reference: https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
 """
 
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 
 __all__ = ["select_plural_category"]
 
@@ -120,7 +120,7 @@ def select_plural_category(
         # Create quantizer with desired precision (e.g., 0.01 for 2 digits, 1 for 0 digits)
         quantizer = Decimal(10) ** -precision
         # Convert number to Decimal and quantize
-        decimal_value = Decimal(str(n)).quantize(quantizer)
+        decimal_value = Decimal(str(n)).quantize(quantizer, rounding=ROUND_HALF_EVEN)
         return plural_rule(decimal_value)
 
     # Apply CLDR plural rule with original value

@@ -241,7 +241,7 @@ class TestCurrencyDecimalsPropertyBased:
         # JPY should never have .00 or any decimal point before digits
         assert "JPY" in result
         # Remove the JPY code to check the number part
-        number_part = result.replace("JPY", "").replace(",", "").replace(" ", "").strip()
+        number_part = str(result).replace("JPY", "").replace(",", "").replace(" ", "").strip()
         # If there's a decimal point, it shouldn't be followed by digits
         # (The number should be rounded to integer for JPY)
         if "." in number_part:

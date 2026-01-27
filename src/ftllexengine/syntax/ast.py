@@ -361,6 +361,11 @@ class StringLiteral:
     value: str
     span: Span | None = None
 
+    @staticmethod
+    def guard(expr: object) -> TypeIs[StringLiteral]:
+        """Type guard for StringLiteral."""
+        return isinstance(expr, StringLiteral)
+
 
 @dataclass(frozen=True, slots=True)
 class NumberLiteral:

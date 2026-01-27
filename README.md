@@ -138,7 +138,7 @@ shipment-line = { $bags ->
    *[other] { $bags } bags of { $origin } beans
 }
 
-invoice-total = Total: { CURRENCY($amount, currency: $currency) }
+invoice-total = Total: { CURRENCY($amount, currency: "USD") }
 ```
 
 ```python
@@ -152,7 +152,7 @@ bundle.add_resource(Path("invoice.ftl").read_text())
 result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
 # "500 bags of Colombian beans"
 
-result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00"), "currency": "USD"})
+result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
 # "Total: $187,500.00"
 ```
 
@@ -166,7 +166,7 @@ shipment-line = { $bags ->
    *[other] { $bags } Säcke { $origin } Bohnen
 }
 
-invoice-total = Gesamt: { CURRENCY($amount, currency: $currency) }
+invoice-total = Gesamt: { CURRENCY($amount, currency: "EUR") }
 ```
 
 ```python
@@ -176,7 +176,7 @@ bundle.add_resource(Path("invoice_de.ftl").read_text())
 result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianische"})
 # "500 Säcke kolumbianische Bohnen"
 
-result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00"), "currency": "EUR"})
+result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
 # "Gesamt: 187.500,00 €"
 ```
 
@@ -189,7 +189,7 @@ shipment-line = { $bags ->
    *[other] { $origin }豆 { $bags }袋
 }
 
-invoice-total = 合計: { CURRENCY($amount, currency: $currency) }
+invoice-total = 合計: { CURRENCY($amount, currency: "JPY") }
 ```
 
 ```python
@@ -199,8 +199,8 @@ bundle.add_resource(Path("invoice_ja.ftl").read_text())
 result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "コロンビア"})
 # "コロンビア豆 500袋"
 
-result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("28125000"), "currency": "JPY"})
-# "合計: ¥28,125,000"
+result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("28125000")})
+# "合計: ￥28,125,000"
 ```
 
 Spanish for your origin operations in Colombia - same pattern. Translators edit `.ftl` files. Your trading platform ships features.
@@ -288,7 +288,7 @@ try:
     bundle.format_pattern("confirm", {"bags": 500})  # forgot $price
 except FormattingIntegrityError as e:
     # e.message_id = "confirm"
-    # e.fallback_value = "Contract: 500 bags at {$price}/lb"
+    # e.fallback_value = "Contract: 500 bags at {!CURRENCY}/lb"
     # e.fluent_errors = (FrozenFluentError(...),)
     halt_trade(e)  # stop the trade, alert compliance
 ```
@@ -313,25 +313,23 @@ de_bundle = FluentBundle("de_DE")
 es_bundle = FluentBundle("es_CO")
 ja_bundle = FluentBundle("ja_JP")
 
-ftl_source = 'confirm = { CURRENCY($amount, currency: $currency) } per { $unit }'
+ftl_source = 'confirm = { CURRENCY($amount, currency: "USD") } per { $unit }'
 de_bundle.add_resource(ftl_source)
 es_bundle.add_resource(ftl_source)
 ja_bundle.add_resource(ftl_source)
 
-def format_confirmation(bundle, amount, currency, unit):
-    result, _ = bundle.format_pattern("confirm", {
-        "amount": amount, "currency": currency, "unit": unit
-    })
+def format_confirmation(bundle, amount, unit):
+    result, _ = bundle.format_pattern("confirm", {"amount": amount, "unit": unit})
     return result
 
 with ThreadPoolExecutor(max_workers=100) as executor:
     futures = [
-        executor.submit(format_confirmation, de_bundle, Decimal("4.25"), "USD", "lb"),
-        executor.submit(format_confirmation, es_bundle, Decimal("4.25"), "USD", "lb"),
-        executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "USD", "lb"),
+        executor.submit(format_confirmation, de_bundle, Decimal("4.25"), "lb"),
+        executor.submit(format_confirmation, es_bundle, Decimal("4.25"), "lb"),
+        executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "lb"),
     ]
     confirmations = [f.result() for f in futures]
-    # ["4,25 $ per lb", "USD 4,25 per lb", "$4.25 per lb"]
+    # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]
 ```
 
 `FluentBundle` is thread-safe by design:
@@ -353,14 +351,14 @@ bundle.add_resource("""
 contract = { $buyer } purchases { $bags ->
         [one] 1 bag
        *[other] { $bags } bags
-    } of { $grade } from { $seller } at { CURRENCY($price, currency: $currency) }/lb.
+    } of { $grade } from { $seller } at { CURRENCY($price, currency: "USD") }/lb.
     Shipment: { $port } by { DATETIME($ship_date) }.
 """)
 
 info = bundle.introspect_message("contract")
 
 info.get_variable_names()
-# frozenset({'buyer', 'bags', 'grade', 'seller', 'price', 'currency', 'port', 'ship_date'})
+# frozenset({'buyer', 'bags', 'grade', 'seller', 'price', 'port', 'ship_date'})
 
 info.get_function_names()
 # frozenset({'CURRENCY', 'DATETIME'})
@@ -411,7 +409,7 @@ panama_currencies = get_territory_currencies("PA")
 # ("PAB", "USD") - Panama uses both Balboa and US Dollar
 ```
 
-Your invoices format correctly - `¥28,125,000` in Tokyo, `$187,500.00` in New York.
+Your invoices format correctly - `￥28,125,000` in Tokyo, `$187,500.00` in New York.
 
 ### Quarterly Reports Across Jurisdictions
 

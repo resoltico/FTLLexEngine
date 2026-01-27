@@ -6,12 +6,19 @@ This module provides a readers-writer lock that allows:
 - Writer preference to prevent starvation
 - Reentrant reader locks (same thread can acquire read lock multiple times)
 - Reentrant writer locks (same thread can acquire write lock multiple times)
+- Write-to-read lock downgrading (writer can acquire read locks)
 - Proper deadlock avoidance
 
 Architecture:
     RWLock uses a condition variable to coordinate reader and writer threads.
     Writers are prioritized when waiting to prevent indefinite write starvation
     in read-heavy workloads.
+
+Lock Downgrading:
+    A thread holding the write lock can acquire read locks without blocking.
+    This enables write-then-read patterns where a thread modifies data, then
+    reads it back for validation. When the write lock is released, any held
+    read locks automatically convert to regular reader locks.
 
 Upgrade Limitation:
     Read-to-write lock upgrades are not supported. A thread holding a read lock
@@ -47,6 +54,11 @@ class RWLock:
         All methods are thread-safe. The lock is reentrant for readers
         and writers (same thread can acquire read or write lock multiple times).
 
+    Lock Downgrading:
+        A thread holding the write lock can acquire read locks without blocking.
+        When the write lock is released, held read locks remain valid as regular
+        reader locks. This enables write-then-read validation patterns.
+
     Upgrade Limitation:
         Read-to-write lock upgrades are not supported. A thread holding a read
         lock cannot acquire the write lock (raises RuntimeError).
@@ -69,6 +81,13 @@ class RWLock:
         ...     with lock.write():  # Same thread can reacquire
         ...         # Still exclusive
         ...         pass
+        >>>
+        >>> # Write-to-read downgrading works
+        >>> with lock.write():
+        ...     # Modify data
+        ...     with lock.read():  # Can acquire read while holding write
+        ...         # Validate changes
+        ...         pass
     """
 
     __slots__ = (
@@ -77,6 +96,7 @@ class RWLock:
         "_condition",
         "_reader_threads",
         "_waiting_writers",
+        "_writer_held_reads",
         "_writer_reentry_count",
     )
 
@@ -100,6 +120,10 @@ class RWLock:
 
         # Track write lock reentry count for write reentrancy
         self._writer_reentry_count: int = 0
+
+        # Track read locks acquired while holding write lock (lock downgrading)
+        # When writer releases, these convert to regular reader locks
+        self._writer_held_reads: int = 0
 
     @contextmanager
     def read(self) -> Generator[None]:
@@ -151,17 +175,26 @@ class RWLock:
         """Acquire read lock (internal implementation).
 
         Blocks if:
-        - A writer is active
+        - A writer is active (unless current thread IS the active writer)
         - Writers are waiting (writer preference to prevent starvation)
 
         Allows reentrant acquisition by same thread.
+        Allows lock downgrading (write lock holder can acquire read locks).
         """
+        current_thread = threading.current_thread()
         current_thread_id = threading.get_ident()
 
         with self._condition:
             # Check if this thread already holds a read lock (reentrant case)
             if current_thread_id in self._reader_threads:
                 self._reader_threads[current_thread_id] += 1
+                return
+
+            # Lock downgrading: writer can acquire read locks without blocking
+            # These reads are tracked separately and convert to regular reads
+            # when the write lock is released
+            if self._active_writer == current_thread:
+                self._writer_held_reads += 1
                 return
 
             # Wait while writer is active OR writers are waiting (writer preference)
@@ -176,11 +209,18 @@ class RWLock:
         """Release read lock (internal implementation).
 
         Handles reentrant lock releases correctly.
+        Handles writer-held reads (lock downgrading) correctly.
         Notifies waiting writers when last reader exits.
         """
+        current_thread = threading.current_thread()
         current_thread_id = threading.get_ident()
 
         with self._condition:
+            # Check if this is a writer-held read (lock downgrading case)
+            if self._active_writer == current_thread and self._writer_held_reads > 0:
+                self._writer_held_reads -= 1
+                return
+
             if current_thread_id not in self._reader_threads:
                 msg = "Thread does not hold read lock"
                 raise RuntimeError(msg)
@@ -243,8 +283,11 @@ class RWLock:
         """Release write lock (internal implementation).
 
         Handles reentrant lock releases correctly.
+        Converts writer-held reads to regular reader locks when fully released.
         Notifies all waiting readers and writers when fully released.
         """
+        current_thread_id = threading.get_ident()
+
         with self._condition:
             if self._active_writer != threading.current_thread():
                 msg = "Thread does not hold write lock"
@@ -254,6 +297,14 @@ class RWLock:
             if self._writer_reentry_count > 0:
                 self._writer_reentry_count -= 1
                 return
+
+            # Convert writer-held reads to regular reader locks
+            # This enables lock downgrading: writer can acquire reads, release write,
+            # and continue as a reader without blocking
+            if self._writer_held_reads > 0:
+                self._active_readers += 1
+                self._reader_threads[current_thread_id] = self._writer_held_reads
+                self._writer_held_reads = 0
 
             # Release write lock
             self._active_writer = None

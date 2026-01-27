@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.93.0"
+version: "0.95.0"
 domain: RUNTIME
-updated: "2026-01-26"
+updated: "2026-01-27"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -36,7 +36,7 @@ class FluentNumber:
 - Return: Frozen dataclass instance.
 - State: Immutable. Safe for caching.
 - Thread: Safe.
-- Usage: Returned by `number_format()`. Preserves numeric identity and precision metadata for select expressions.
+- Usage: Returned by `number_format()` and `currency_format()`. Preserves numeric identity and precision metadata for select expressions.
 - Str: `str(fluent_number)` returns `formatted` for display.
 - Plural: Precision affects CLDR plural category selection. For example, "1.00" with precision=2 selects "other" category (v=2), not "one" (v=0).
 - Import: `from ftllexengine.runtime.function_bridge import FluentNumber`
@@ -120,7 +120,7 @@ def currency_format(
     currency: str,
     currency_display: Literal["symbol", "code", "name"] = "symbol",
     pattern: str | None = None,
-) -> str:
+) -> FluentNumber:
 ```
 
 ### Parameters
@@ -133,7 +133,7 @@ def currency_format(
 | `pattern` | `str \| None` | N | Custom CLDR currency pattern. |
 
 ### Constraints
-- Return: Formatted currency string.
+- Return: `FluentNumber` with formatted currency string and computed precision. Enables CURRENCY results as selectors in plural/select expressions.
 - Raises: `FormattingError` on formatting failure (invalid currency code, Babel error).
 - State: None.
 - Thread: Safe.
@@ -969,10 +969,11 @@ class RWLock:
 
 ### Constraints
 - Return: RWLock instance.
-- State: Tracks active readers, active writer, waiting writers, reader thread counts, writer reentry count.
+- State: Tracks active readers, active writer, waiting writers, reader thread counts, writer reentry count, writer-held reads.
 - Thread: Safe for all operations. Reentrant for both readers and writers (same thread can reacquire locks multiple times).
 - Purpose: Allows multiple concurrent readers OR single exclusive writer.
 - Writer Preference: Writers are prioritized when waiting to prevent reader starvation.
+- Lock Downgrading: Write-to-read downgrade supported. A thread holding the write lock can acquire read locks without blocking. When the write lock is released, held read locks convert to regular reader locks.
 - Upgrade Limitation: Read-to-write lock upgrades are prohibited. Thread holding read lock cannot acquire write lock (raises RuntimeError).
 - Usage: FluentBundle uses RWLock internally for concurrent format operations.
 - Import: `from ftllexengine.runtime.rwlock import RWLock`

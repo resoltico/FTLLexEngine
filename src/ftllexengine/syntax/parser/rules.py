@@ -180,6 +180,7 @@ def parse_variable_reference(cursor: Cursor) -> ParseResult[VariableReference] |
         return None  # "Expected variable reference (starts with $)", cursor, expected=["$"]
 
     cursor = cursor.advance()  # Skip $
+    id_start_pos = cursor.pos  # Start of identifier (after '$')
 
     # Parse identifier
     result = parse_identifier(cursor)
@@ -188,7 +189,10 @@ def parse_variable_reference(cursor: Cursor) -> ParseResult[VariableReference] |
 
     parse_result = result
     var_ref = VariableReference(
-        id=Identifier(parse_result.value),
+        id=Identifier(
+            parse_result.value,
+            span=Span(start=id_start_pos, end=parse_result.cursor.pos),
+        ),
         span=Span(start=start_pos, end=parse_result.cursor.pos),
     )
     return ParseResult(var_ref, parse_result.cursor)
@@ -852,6 +856,8 @@ def parse_variant_key(cursor: Cursor) -> ParseResult[Identifier | NumberLiteral]
         Success(ParseResult(Identifier | NumberLiteral, cursor)) on success
         Failure(ParseError(...)) on parse error
     """
+    start_pos = cursor.pos
+
     # Try number first (ASCII digits only, not Unicode like 2)
     if not cursor.is_eof and (cursor.current in _ASCII_DIGITS or cursor.current == "-"):
         num_result = parse_number(cursor)
@@ -870,7 +876,10 @@ def parse_variant_key(cursor: Cursor) -> ParseResult[Identifier | NumberLiteral]
             return None  # "Expected variant key (identifier or number)", cursor
 
         id_parse = id_result
-        return ParseResult(Identifier(id_parse.value), id_parse.cursor)
+        return ParseResult(
+            Identifier(id_parse.value, span=Span(start=start_pos, end=id_parse.cursor.pos)),
+            id_parse.cursor,
+        )
 
     # Parse as identifier
     id_result = parse_identifier(cursor)
@@ -878,7 +887,10 @@ def parse_variant_key(cursor: Cursor) -> ParseResult[Identifier | NumberLiteral]
         return id_result
 
     id_parse = id_result
-    return ParseResult(Identifier(id_parse.value), id_parse.cursor)
+    return ParseResult(
+        Identifier(id_parse.value, span=Span(start=start_pos, end=id_parse.cursor.pos)),
+        id_parse.cursor,
+    )
 
 
 def parse_variant(
@@ -1015,6 +1027,22 @@ def parse_select_expression(
     return ParseResult(select_expr, cursor)
 
 
+def _parse_message_attribute(cursor: Cursor) -> tuple[Identifier | None, Cursor]:
+    """Parse optional .attribute suffix on message/function references."""
+    if cursor.is_eof or cursor.current != ".":
+        return None, cursor
+    cursor = cursor.advance()  # Skip '.'
+    attr_start = cursor.pos  # Start of attribute identifier
+    attr_id_result = parse_identifier(cursor)
+    if attr_id_result is None:
+        return None, cursor
+    attr_id = Identifier(
+        attr_id_result.value,
+        span=Span(start=attr_start, end=attr_id_result.cursor.pos),
+    )
+    return attr_id, attr_id_result.cursor
+
+
 def parse_argument_expression(
     cursor: Cursor,
     context: ParseContext | None = None,
@@ -1118,13 +1146,16 @@ def parse_argument_expression(
                 return None
             return ParseResult(func_result.value, func_result.cursor)
 
-        # Message reference (or identifier for named argument name)
+        # Message reference with optional attribute (e.g., msg.attr)
+        # Per FTL spec: MessageReference can have attribute access
+        attribute, final_cursor = _parse_message_attribute(cursor_after_id)
         return ParseResult(
             MessageReference(
-                id=Identifier(name),
-                span=Span(start=start_pos, end=cursor_after_id.pos),
+                id=Identifier(name, span=Span(start=start_pos, end=cursor_after_id.pos)),
+                attribute=attribute,
+                span=Span(start=start_pos, end=final_cursor.pos),
             ),
-            cursor_after_id,
+            final_cursor,
         )
 
     return None  # "Expected argument expression"
@@ -1214,7 +1245,11 @@ def parse_call_arguments(
                 # This restriction enables static analysis by translation tools
                 return None  # f"Named argument '{arg_name}' requires a literal value", cursor
 
-            named.append(NamedArgument(name=Identifier(arg_name), value=value_expr))
+            # Reuse span from original identifier in MessageReference
+            named.append(NamedArgument(
+                name=Identifier(arg_name, span=arg_expr.id.span),
+                value=value_expr,
+            ))
             seen_named = True
 
         else:
@@ -1309,8 +1344,9 @@ def parse_function_reference(
 
     cursor = cursor.advance()  # Skip )
 
+    # Identifier span ends at id_parse.cursor.pos (before any whitespace)
     func_ref = FunctionReference(
-        id=Identifier(func_name),
+        id=Identifier(func_name, span=Span(start=start_pos, end=id_parse.cursor.pos)),
         arguments=args_parse.value,
         span=Span(start=start_pos, end=cursor.pos),
     )
@@ -1354,6 +1390,7 @@ def parse_term_reference(
         return None  # "Expected '-' at start of term reference", cursor, expected=["-"]
 
     cursor = cursor.advance()  # Skip '-'
+    id_start = cursor.pos  # Start of identifier (after '-')
 
     # Parse identifier
     id_result = parse_identifier(cursor)
@@ -1367,13 +1404,17 @@ def parse_term_reference(
     attribute: Identifier | None = None
     if not cursor.is_eof and cursor.current == ".":
         cursor = cursor.advance()  # Skip '.'
+        attr_start = cursor.pos  # Start of attribute identifier
 
         attr_id_result = parse_identifier(cursor)
         if attr_id_result is None:
             return attr_id_result
 
         attr_id_parse = attr_id_result
-        attribute = Identifier(attr_id_parse.value)
+        attribute = Identifier(
+            attr_id_parse.value,
+            span=Span(start=attr_start, end=attr_id_parse.cursor.pos),
+        )
         cursor = attr_id_parse.cursor
 
     # Check for optional arguments (case: "nominative")
@@ -1404,7 +1445,7 @@ def parse_term_reference(
         arguments = args_parse.value
 
     term_ref = TermReference(
-        id=Identifier(id_parse.value),
+        id=Identifier(id_parse.value, span=Span(start=id_start, end=id_parse.cursor.pos)),
         attribute=attribute,
         arguments=arguments,
         span=Span(start=start_pos, end=cursor.pos),
@@ -1452,17 +1493,6 @@ def _parse_inline_hyphen(
     return _parse_inline_number_literal(cursor)
 
 
-def _parse_message_attribute(cursor: Cursor) -> tuple[Identifier | None, Cursor]:
-    """Parse optional .attribute suffix on message/function references."""
-    if cursor.is_eof or cursor.current != ".":
-        return None, cursor
-    cursor = cursor.advance()  # Skip '.'
-    attr_id_result = parse_identifier(cursor)
-    if attr_id_result is None:
-        return None, cursor
-    return Identifier(attr_id_result.value), attr_id_result.cursor
-
-
 def _parse_inline_identifier(
     cursor: Cursor,
     context: ParseContext | None = None,
@@ -1501,7 +1531,7 @@ def _parse_inline_identifier(
     attribute, final_cursor = _parse_message_attribute(cursor_after_id)
     return ParseResult(
         MessageReference(
-            id=Identifier(name),
+            id=Identifier(name, span=Span(start=start_pos, end=cursor_after_id.pos)),
             attribute=attribute,
             span=Span(start=start_pos, end=final_cursor.pos),
         ),
@@ -1704,16 +1734,19 @@ def parse_placeable(
 # =============================================================================
 
 
-def parse_message_header(cursor: Cursor) -> ParseResult[str] | None:
+def parse_message_header(cursor: Cursor) -> ParseResult[tuple[str, int]] | None:
     """Parse message header: Identifier "="
 
-    Returns identifier string and cursor after '='.
+    Returns tuple of (identifier string, identifier end position) and cursor after '='.
+    The end position is needed for constructing Identifier spans.
     """
     id_result = parse_identifier(cursor)
     if id_result is None:
         return id_result
 
     id_parse = id_result
+    id_end_pos = id_parse.cursor.pos  # Capture end position before whitespace/equals
+
     # Per spec: Message ::= Identifier blank_inline? "=" ...
     cursor = skip_blank_inline(id_parse.cursor)
 
@@ -1721,7 +1754,7 @@ def parse_message_header(cursor: Cursor) -> ParseResult[str] | None:
         return None  # "Expected '=' after message ID", cursor
 
     cursor = cursor.advance()  # Skip =
-    return ParseResult(id_parse.value, cursor)
+    return ParseResult((id_parse.value, id_end_pos), cursor)
 
 
 def parse_message_attributes(
@@ -1825,6 +1858,7 @@ def parse_message(
     if id_result is None:
         return id_result
     id_parse = id_result
+    id_name, id_end_pos = id_parse.value  # Unpack (name, end_position)
     cursor = id_parse.cursor
 
     # Parse pattern (message value)
@@ -1849,7 +1883,7 @@ def parse_message(
 
     # Construct Message node
     message = Message(
-        id=Identifier(id_parse.value),
+        id=Identifier(id_name, span=Span(start=start_pos, end=id_end_pos)),
         value=pattern_parse.value,
         attributes=tuple(attributes_parse.value),
         span=Span(start=start_pos, end=cursor.pos),
@@ -1888,7 +1922,9 @@ def parse_attribute(
     if cursor.is_eof or cursor.current != ".":
         return None  # "Expected '.' at start of attribute", cursor, expected=["."]
 
+    attr_start_pos = cursor.pos  # Start of attribute (at '.')
     cursor = cursor.advance()  # Skip '.'
+    id_start_pos = cursor.pos  # Start of identifier (after '.')
 
     # Parse identifier after '.'
     id_result = parse_identifier(cursor)
@@ -1896,6 +1932,8 @@ def parse_attribute(
         return id_result
 
     id_parse = id_result
+    id_end_pos = id_parse.cursor.pos  # End of identifier
+
     # Per spec: Attribute ::= line_end blank? "." Identifier blank_inline? "=" ...
     cursor = skip_blank_inline(id_parse.cursor)
 
@@ -1916,7 +1954,11 @@ def parse_attribute(
 
     pattern_parse = pattern_result
 
-    attribute = Attribute(id=Identifier(id_parse.value), value=pattern_parse.value)
+    attribute = Attribute(
+        id=Identifier(id_parse.value, span=Span(start=id_start_pos, end=id_end_pos)),
+        value=pattern_parse.value,
+        span=Span(start=attr_start_pos, end=pattern_parse.cursor.pos),
+    )
 
     return ParseResult(attribute, pattern_parse.cursor)
 
@@ -1950,6 +1992,7 @@ def parse_term(
         return None  # "Expected '-' at start of term", cursor, expected=["-"]
 
     cursor = cursor.advance()  # Skip '-'
+    id_start_pos = cursor.pos  # Start of identifier (after '-')
 
     # Parse identifier
     id_result = parse_identifier(cursor)
@@ -1957,6 +2000,8 @@ def parse_term(
         return id_result
 
     id_parse = id_result
+    id_end_pos = id_parse.cursor.pos  # End of identifier
+
     # Per spec: Term ::= "-" Identifier blank_inline? "=" ...
     cursor = skip_blank_inline(id_parse.cursor)
 
@@ -1993,7 +2038,7 @@ def parse_term(
     span = Span(start=start_pos, end=cursor.pos)
 
     term = Term(
-        id=Identifier(id_parse.value),
+        id=Identifier(id_parse.value, span=Span(start=id_start_pos, end=id_end_pos)),
         value=pattern_parse.value,
         attributes=tuple(attributes),
         span=span,

@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.94.0"
+version = "0.95.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -364,7 +364,7 @@ disable = [
     "too-many-locals",            # Parser/resolver methods need many local variables
     "too-many-branches",          # Parser/resolver complexity inherent to EBNF grammar
     "too-many-statements",        # Parser methods implement complex state machines
-    "too-many-lines",             # Parser is monolithic by design (see Task 4)
+    "too-many-lines",             # Parser is monolithic by design (single-module EBNF implementation)
     "too-many-positional-arguments",  # Cache keys need many position-only args
     "protected-access",           # Test utilities and internal helpers need protected access
     "fixme",                      # TODOs are tracked separately

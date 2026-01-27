@@ -228,7 +228,7 @@ def currency_format(
     currency: str,
     currency_display: Literal["symbol", "code", "name"] = "symbol",
     pattern: str | None = None,
-) -> str:
+) -> FluentNumber:
     """Format currency with locale-specific formatting.
 
     Python-native API with snake_case parameters. FunctionRegistry bridges
@@ -246,22 +246,30 @@ def currency_format(
             CLDR currency pattern placeholders per Babel/CLDR spec.
 
     Returns:
-        Formatted currency string
+        FluentNumber with formatted currency string and computed precision.
+        Returning FluentNumber enables CURRENCY results to be used as selectors
+        in plural/select expressions, matching NUMBER() behavior.
 
     Examples:
         >>> currency_format(123.45, "en-US", currency="EUR")
-        '€123.45'
+        FluentNumber(value=123.45, formatted='€123.45', precision=2)
         >>> currency_format(123.45, "lv-LV", currency="EUR")
-        '123,45 €'
+        FluentNumber(value=123.45, formatted='123,45 €', precision=2)
         >>> currency_format(12345, "ja-JP", currency="JPY")
-        '¥12,345'
+        FluentNumber(value=12345, formatted='¥12,345', precision=0)
         >>> currency_format(123.456, "ar-BH", currency="BHD")
-        '123.456 د.ب.'
+        FluentNumber(value=123.456, formatted='123.456 د.ب.', precision=3)
 
     FTL Usage:
         price = { CURRENCY($amount, currency: "EUR") }
         price-code = { CURRENCY($amount, currency: $code, currencyDisplay: "code") }
         price-name = { CURRENCY($amount, currency: "EUR", currencyDisplay: "name") }
+
+        # CURRENCY can now be used as a selector (returns FluentNumber):
+        items = { CURRENCY($count, currency: "USD") ->
+            [one] One dollar item
+           *[other] Multiple dollar items
+        }
 
     Thread Safety:
         Thread-safe. Uses Babel (no global locale state mutation).
@@ -273,16 +281,33 @@ def currency_format(
         - JPY, KRW: 0 decimals
         - BHD, KWD, OMR: 3 decimals
         - Most others: 2 decimals
+
+    Precision Calculation:
+        The precision (CLDR v operand) is computed from the ACTUAL formatted
+        string, not from ISO 4217 defaults. This ensures correct plural category
+        matching for custom patterns or locales that deviate from standard
+        decimal places.
     """
+    # Lazy import for parser-only installations
+    from babel.numbers import get_decimal_symbol  # noqa: PLC0415
+
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
     ctx = LocaleContext.create(locale_code)
-    return ctx.format_currency(
+    formatted = ctx.format_currency(
         value,
         currency=currency,
         currency_display=currency_display,
         pattern=pattern,
     )
+
+    # Compute actual visible precision from formatted string (CLDR v operand)
+    # This is critical for correct plural category matching in select expressions.
+    # The precision must reflect the ACTUAL formatted output, not ISO 4217 defaults.
+    decimal_symbol = get_decimal_symbol(ctx.babel_locale)
+    precision = _compute_visible_precision(formatted, decimal_symbol)
+
+    return FluentNumber(value=value, formatted=formatted, precision=precision)
 
 
 # Mark built-in functions that require locale injection.

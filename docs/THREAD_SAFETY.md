@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.92.0"
+version: "0.95.0"
 domain: architecture
-updated: "2026-01-25"
+updated: "2026-01-27"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?"]
@@ -54,6 +54,9 @@ bundle._registry     # FunctionRegistry, copied from input
 **Not Thread-Safe**:
 - `add_resource()` - Mutates internal state; serialize calls externally
 - `add_function()` - Mutates registry; complete before concurrent reads
+
+**Write-to-Read Downgrading**:
+A thread holding the write lock can acquire read locks without blocking. When the write lock is released, held read locks convert to regular reader locks. This enables write-then-read validation patterns.
 
 **Reentrancy Limitation**:
 Calling write operations (`add_resource()`, `add_function()`) from within format operations raises `RuntimeError`. This includes calls from custom functions invoked during formatting. The RWLock does not support read-to-write lock upgrading (deadlock prevention).

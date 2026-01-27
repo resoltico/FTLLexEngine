@@ -116,7 +116,7 @@ class TestRoundtripCurrency:
             float(original_amount), "en-US", currency="USD", currency_display="symbol"
         )
         # $ is ambiguous - specify default_currency for roundtrip
-        result, errors = parse_currency(formatted, "en_US", default_currency="USD")
+        result, errors = parse_currency(str(formatted), "en_US", default_currency="USD")
 
         assert not errors
         assert result is not None
@@ -134,7 +134,7 @@ class TestRoundtripCurrency:
         formatted = currency_format(
             float(original_amount), "lv-LV", currency="EUR", currency_display="symbol"
         )
-        result, errors = parse_currency(formatted, "lv_LV")
+        result, errors = parse_currency(str(formatted), "lv_LV")
 
         assert not errors
         assert result is not None

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# FUZZ_PLUGIN: oom - Memory Density (Object Explosion)
 """Memory Density & Object Explosion Fuzzer (Atheris).
 
 Targets: ftllexengine.syntax.parser.FluentParserV1

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.92.0"
+version: "0.95.0"
 domain: CORE
-updated: "2026-01-25"
+updated: "2026-01-27"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]

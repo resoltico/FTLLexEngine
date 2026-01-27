@@ -294,8 +294,8 @@ class TestCurrencyMetamorphicProperties:
         """parse(format(a)) < parse(format(b)) iff a < b (ordering preserved)."""
         from ftllexengine.runtime.functions import currency_format
 
-        formatted1 = currency_format(float(amount1), "en_US", currency=currency)
-        formatted2 = currency_format(float(amount2), "en_US", currency=currency)
+        formatted1 = str(currency_format(float(amount1), "en_US", currency=currency))
+        formatted2 = str(currency_format(float(amount2), "en_US", currency=currency))
 
         # $ and £ are ambiguous - specify default_currency
         result1, errors1 = parse_currency(formatted1, "en_US", default_currency=currency)
@@ -329,8 +329,8 @@ class TestCurrencyMetamorphicProperties:
         from ftllexengine.runtime.functions import currency_format
 
         # Format in different locales
-        formatted1 = currency_format(float(amount), locale1, currency="EUR")
-        formatted2 = currency_format(float(amount), locale2, currency="EUR")
+        formatted1 = str(currency_format(float(amount), locale1, currency="EUR"))
+        formatted2 = str(currency_format(float(amount), locale2, currency="EUR"))
 
         # Parse with respective locales
         result1, errors1 = parse_currency(formatted1, locale1)
@@ -356,8 +356,8 @@ class TestCurrencyMetamorphicProperties:
         """parse(format(a)) + parse(format(a)) == parse(format(2*a)) (within precision)."""
         from ftllexengine.runtime.functions import currency_format
 
-        formatted1 = currency_format(float(amount), "en_US", currency="USD")
-        formatted2 = currency_format(float(amount * 2), "en_US", currency="USD")
+        formatted1 = str(currency_format(float(amount), "en_US", currency="USD"))
+        formatted2 = str(currency_format(float(amount * 2), "en_US", currency="USD"))
 
         # $ is ambiguous - specify default_currency
         result1, errors1 = parse_currency(formatted1, "en_US", default_currency="USD")
@@ -389,7 +389,7 @@ class TestCurrencyMetamorphicProperties:
         """Very large amounts should parse correctly (stress test)."""
         from ftllexengine.runtime.functions import currency_format
 
-        formatted = currency_format(float(amount), "en_US", currency=currency)
+        formatted = str(currency_format(float(amount), "en_US", currency=currency))
         # $ and £ are ambiguous - specify default_currency
         result, errors = parse_currency(formatted, "en_US", default_currency=currency)
 

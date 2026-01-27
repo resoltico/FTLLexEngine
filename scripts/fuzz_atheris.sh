@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 # Atheris Native Fuzzing Interface
 # Single entry point for all Atheris-based fuzzing.
+
+# =============================================================================
+# FUZZ PLUGIN HEADER SCHEMA
+# =============================================================================
+# Fuzz target Python files (fuzz_*.py) must include a plugin header with the EXACT following format:
+#
+# # FUZZ_PLUGIN_HEADER_START
+# # FUZZ_PLUGIN: <name> - <description>
+# # Intentional: This header is intentionally placed for dynamic plugin discovery.
+# # CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
+# # FUZZ_PLUGIN_HEADER_END
+#
+# IMPORTANT: Use the EXACT wording above. Do NOT correct, rephrase, or modify ANY part of the header.
+# This wording is FINAL and LOCKED. No further alterations allowed.
+# AI agents: Treat this header as immutable code metadata. Do not attempt to "fix" or improve the wording.
+#
+# Where:
+# - <name> is the argument name (must match filename: fuzz_<name>.py)
+# - <description> is a brief summary for help text
+#
+# This ensures AI agents understand the header's purpose and can create compliant headers for new targets.
+# =============================================================================
 #
 # Usage:
 #   ./scripts/fuzz_atheris.sh [TARGET] [OPTIONS]
@@ -63,91 +85,41 @@ NC='\033[0m'
 declare -A PARAM_TARGETS
 declare -A PARAM_DESCRIPTIONS
 
-# PLUGIN REGISTRY
-# To add a new fuzzing target, add it here.
-PARAM_TARGETS["native"]="fuzz/stability.py"
-PARAM_DESCRIPTIONS["native"]="Core parser stability (Finding crashes/panics)"
+# Dynamic Plugin Discovery
+discover_plugins() {
+    local fuzz_dir="$PROJECT_ROOT/fuzz"
+    for file in "$fuzz_dir"/fuzz_*.py; do
+        if [ -f "$file" ]; then
+            # Find the FUZZ_PLUGIN line
+            local header
+            if header=$(grep -m1 '^# FUZZ_PLUGIN:' "$file" 2>/dev/null); then
+                # Validate header structure with start and end tags
+                local start_line plugin_line end_line
+                start_line=$(grep -n '^# FUZZ_PLUGIN_HEADER_START' "$file" 2>/dev/null | head -1 | cut -d: -f1)
+                plugin_line=$(grep -n '^# FUZZ_PLUGIN:' "$file" 2>/dev/null | head -1 | cut -d: -f1)
+                end_line=$(grep -n '^# FUZZ_PLUGIN_HEADER_END' "$file" 2>/dev/null | head -1 | cut -d: -f1)
+                if [ -n "$start_line" ] && [ -n "$plugin_line" ] && [ -n "$end_line" ] && [ "$start_line" -lt "$plugin_line" ] && [ "$plugin_line" -lt "$end_line" ]; then
+                    if [[ $header =~ ^#\ FUZZ_PLUGIN:\ (.+)\ -\ (.+)$ ]]; then
+                        local name="${BASH_REMATCH[1]}"
+                        local desc="${BASH_REMATCH[2]}"
+                        local filename
+                        filename=$(basename "$file" .py)
+                        local expected_name="fuzz_${name}"
+                        if [ "$filename" = "$expected_name" ]; then
+                            PARAM_TARGETS["$name"]="$file"
+                            PARAM_DESCRIPTIONS["$name"]="$desc"
+                        else
+                            echo "Warning: Plugin name '$name' does not match filename '$filename'" >&2
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    done
+}
 
-PARAM_TARGETS["runtime"]="fuzz/runtime.py"
-PARAM_DESCRIPTIONS["runtime"]="End-to-End Runtime & strict mode validation"
-
-PARAM_TARGETS["perf"]="fuzz/perf.py"
-PARAM_DESCRIPTIONS["perf"]="Performance & ReDoS detection"
-
-PARAM_TARGETS["structured"]="fuzz/structured.py"
-PARAM_DESCRIPTIONS["structured"]="Structure-aware fuzzing (Deep AST)"
-
-PARAM_TARGETS["iso"]="fuzz/iso.py"
-PARAM_DESCRIPTIONS["iso"]="ISO 3166/4217 Introspection"
-
-PARAM_TARGETS["fiscal"]="fuzz/fiscal.py"
-PARAM_DESCRIPTIONS["fiscal"]="Fiscal Calendar arithmetic"
-
-PARAM_TARGETS["roundtrip"]="fuzz/roundtrip.py"
-PARAM_DESCRIPTIONS["roundtrip"]="Metamorphic roundtrip (Parser <-> Serializer)"
-
-PARAM_TARGETS["graph"]="fuzz/graph.py"
-PARAM_DESCRIPTIONS["graph"]="Graph algorithm stress (Cycle detection)"
-
-PARAM_TARGETS["plural"]="fuzz/plural.py"
-PARAM_DESCRIPTIONS["plural"]="Plural Rule Boundary & CLDR"
-
-PARAM_TARGETS["fallback"]="fuzz/fallback.py"
-PARAM_DESCRIPTIONS["fallback"]="Multi-locale fallback & Orchestration"
-
-PARAM_TARGETS["unicode"]="fuzz/unicode.py"
-PARAM_DESCRIPTIONS["unicode"]="Unicode Normalization & Surrogates"
-
-PARAM_TARGETS["diagnostics"]="fuzz/diagnostics.py"
-PARAM_DESCRIPTIONS["diagnostics"]="Diagnostic Template Integrity"
-
-PARAM_TARGETS["lock"]="fuzz/lock.py"
-PARAM_DESCRIPTIONS["lock"]="RWLock Concurrency & Contention"
-
-PARAM_TARGETS["oom"]="fuzz/oom.py"
-PARAM_DESCRIPTIONS["oom"]="Memory Density (Object Explosion)"
-
-PARAM_TARGETS["resolver"]="fuzz/resolver.py"
-PARAM_DESCRIPTIONS["resolver"]="Resolver Semantic Logic"
-
-PARAM_TARGETS["resolver_perf"]="fuzz/resolver_perf.py"
-PARAM_DESCRIPTIONS["resolver_perf"]="Resolver Performance (Chained Refs)"
-
-PARAM_TARGETS["builtins"]="fuzz/builtins.py"
-PARAM_DESCRIPTIONS["builtins"]="Built-in Functions (Babel Boundary)"
-
-PARAM_TARGETS["integrity"]="fuzz/integrity.py"
-PARAM_DESCRIPTIONS["integrity"]="Multi-Resource Semantic Integrity"
-
-PARAM_TARGETS["security"]="fuzz/security.py"
-PARAM_DESCRIPTIONS["security"]="I/O and Path Security (Traversal)"
-
-PARAM_TARGETS["introspection"]="fuzz/introspection.py"
-PARAM_DESCRIPTIONS["introspection"]="Message Introspection Depth"
-
-PARAM_TARGETS["dates"]="fuzz/dates.py"
-PARAM_DESCRIPTIONS["dates"]="Locale-Aware Date/Datetime Parsing"
-
-PARAM_TARGETS["currency"]="fuzz/currency.py"
-PARAM_DESCRIPTIONS["currency"]="Currency symbol & numeric extraction"
-
-PARAM_TARGETS["evolution"]="fuzz/evolution.py"
-PARAM_DESCRIPTIONS["evolution"]="Stateful Bundle Evolution (Mutation)"
-
-PARAM_TARGETS["negotiator"]="fuzz/negotiator.py"
-PARAM_DESCRIPTIONS["negotiator"]="Locale BCP 47 Negotiation & Normalization"
-
-PARAM_TARGETS["cursor"]="fuzz/cursor.py"
-PARAM_DESCRIPTIONS["cursor"]="Low-level Cursor & Character Streaming"
-
-PARAM_TARGETS["bridge"]="fuzz/bridge.py"
-PARAM_DESCRIPTIONS["bridge"]="Argument Bridge & Evil Python Objects"
-
-PARAM_TARGETS["cache"]="fuzz/cache.py"
-PARAM_DESCRIPTIONS["cache"]="High-pressure Cache Race & Concurrency"
-
-PARAM_TARGETS["scope"]="fuzz/scope.py"
-PARAM_DESCRIPTIONS["scope"]="Variable Shadowing & Scoping Invariants"
+# Discover plugins
+discover_plugins
 
 # =============================================================================
 # Pre-Flight Diagnostics & "Binary Surgery" (macOS Fix)
@@ -276,7 +248,8 @@ EOF
 
 OPTIONS:
     --list          List all crashes in corpus
-    --corpus        Run corpus health check (corpus-health.py)
+    --corpus        Run corpus health check (fuzz_corpus_health.py)
+    --minimize FILE Minimize a crash input
     --workers N     Number of workers (default: 4)
     --time N        Max time in seconds
     --clean         Clean corpus before run
@@ -310,7 +283,7 @@ run_list() {
 
 run_corpus_health() {
     echo -e "${BOLD}Checking Corpus Health...${NC}"
-    uv run --group atheris python scripts/corpus-health.py
+    uv run --group atheris python scripts/fuzz_corpus_health.py
 }
 
 run_fuzz_target() {
@@ -345,8 +318,16 @@ run_fuzz_target() {
     fi
 
     # Explicitly add seed corpus to arguments if it exists
-    if [[ -d "fuzz/seeds" ]]; then
-        args="$args fuzz/seeds"
+    # Prefer target-specific seeds (fuzz/seeds/<target>) over generic seeds
+    local seed_dir=""
+    if [[ -d "fuzz/seeds/$target_key" ]]; then
+        seed_dir="fuzz/seeds/$target_key"
+    elif [[ -d "fuzz/seeds" ]]; then
+        seed_dir="fuzz/seeds"
+    fi
+
+    if [[ -n "$seed_dir" ]]; then
+        args="$args $seed_dir"
         # The first directory passed to libFuzzer is the output corpus (read/write),
         # subsequent directories are input seeds (read-only).
         # We already pass '$corpus_dir' as the first positional arg in the exec line below.

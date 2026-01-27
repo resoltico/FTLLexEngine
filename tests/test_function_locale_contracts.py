@@ -95,8 +95,8 @@ class TestCurrencyLocaleContract:
 
         This test FAILS before the resolver.py fix and PASSES after.
         """
-        # Ground truth: Direct function call
-        expected = currency_format(amount, locale, currency=currency)
+        # Ground truth: Direct function call (returns FluentNumber; str() for comparison)
+        expected = str(currency_format(amount, locale, currency=currency))
 
         # System under test: FluentBundle (disable BIDI for fair comparison)
         bundle = FluentBundle(locale, use_isolating=False)
@@ -116,13 +116,13 @@ class TestCurrencyLocaleContract:
         amount = 100.0
 
         for display_mode in ["symbol", "code", "name"]:
-            # Ground truth
-            expected = currency_format(
+            # Ground truth (str() for comparison with bundle output)
+            expected = str(currency_format(
                 amount,
                 locale,
                 currency="EUR",
                 currency_display=cast(Literal["symbol", "code", "name"], display_mode),
-            )
+            ))
 
             # System under test (disable BIDI for fair comparison)
             bundle = FluentBundle(locale, use_isolating=False)
@@ -187,7 +187,7 @@ class TestContractTestMetaValidation:
         currency = "EUR"
 
         # Ground truth: Latvian format has symbol AFTER amount with space
-        expected = currency_format(amount, locale, currency=currency)
+        expected = str(currency_format(amount, locale, currency=currency))
         # Expected format: "123,45 €" (comma separator, symbol after)
 
         # System under test (disable BIDI for fair comparison)

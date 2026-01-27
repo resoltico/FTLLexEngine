@@ -120,17 +120,19 @@ class TestCurrencyFormatBehavior:
         # Invalid locale should still format successfully using en_US fallback
         result = currency_format(123.45, "invalid-locale", currency="EUR")
         # Should contain currency info (formatted with en_US rules)
-        assert isinstance(result, str)
+        assert isinstance(result, FluentNumber)
         assert "123" in result or "EUR" in result
 
     @given(
         st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e10),
         st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF"]),
     )
-    def test_currency_format_always_returns_string(self, value: float, currency: str) -> None:
-        """Property: currency_format always returns a string."""
+    def test_currency_format_always_returns_fluent_number(
+        self, value: float, currency: str,
+    ) -> None:
+        """Property: currency_format always returns a FluentNumber."""
         result = currency_format(value, "en-US", currency=currency)
-        assert isinstance(result, str)
+        assert isinstance(result, FluentNumber)
 
     def test_currency_format_invalid_locale_with_display_style(self) -> None:
         """Verify invalid locale with display style still formats successfully."""
@@ -140,9 +142,9 @@ class TestCurrencyFormatBehavior:
             currency="EUR",
             currency_display="name",
         )
-        # Should return formatted string using en_US fallback
-        assert isinstance(result, str)
-        assert "100" in result or "EUR" in result or "euro" in result.lower()
+        # Should return FluentNumber using en_US fallback
+        assert isinstance(result, FluentNumber)
+        assert "100" in result or "EUR" in result or "euro" in str(result).lower()
 
     def test_currency_format_success_case_basic(self) -> None:
         """Verify currency_format works correctly in success case."""

@@ -13,6 +13,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-01-28
+
+### Fixed
+
+- **RWLock Write-to-Read Reentrancy** (ARCH-RWLOCK-DEAD-004):
+  - Previous: Thread holding write lock deadlocked when acquiring read lock
+  - Issue: `_acquire_read()` checked for reentrant read locks but not write-to-read transitions
+  - Fix: Added write-owner bypass in `_acquire_read()` with `_writer_read_count` tracking
+  - Location: `runtime/rwlock.py` `_acquire_read()`, `_release_read()`
+  - Impact: Write lock holders can now acquire nested read locks without blocking
+
+- **CURRENCY Returns FluentNumber** (API-CURR-TYPE-003):
+  - Previous: `currency_format()` returned `str`, preventing use as plural selector
+  - Issue: Inconsistency with `number_format()` which returns `FluentNumber`
+  - Fix: `currency_format()` now returns `FluentNumber` with value, formatted string, and ISO 4217 precision
+  - Location: `runtime/functions.py` `currency_format()`, `runtime/function_bridge.py` `FluentNumber`
+  - Impact: `CURRENCY()` results can now be used in select/plural expressions
+
+- **AST Span Coverage** (FTL-B-001):
+  - Previous: `Identifier` and `Attribute` AST nodes had `span=None` after parsing
+  - Issue: Parser constructed these nodes without capturing start/end positions
+  - Fix: All `Identifier()` and `Attribute()` constructions in the parser now populate `span`
+  - Location: `syntax/parser/rules.py` (14 Identifier sites, 1 Attribute site)
+  - Impact: Complete source location tracking for all AST nodes
+
+- **Function Arguments Accept Message Attributes** (FTL-D-001):
+  - Previous: `NUMBER(msg.attr)` rejected by argument parser
+  - Issue: `parse_argument_expression` did not handle dot-notation attribute access
+  - Fix: Added message attribute parsing via `_parse_message_attribute` delegation
+  - Location: `syntax/parser/rules.py` `parse_argument_expression()`
+  - Impact: Full inline expression support in function call arguments
+
+- **Plural Rule Precision** (DEBT-PLURAL-ROUND-005):
+  - Previous: `Decimal.quantize()` called without explicit rounding mode
+  - Issue: Relied on mutable `decimal.getcontext().rounding` which can be modified by application code
+  - Fix: Added explicit `rounding=ROUND_HALF_EVEN` parameter
+  - Location: `runtime/plural_rules.py` `select_plural_category()`
+  - Impact: Deterministic banker's rounding regardless of ambient Decimal context
+
+- **StringLiteral.guard()** (FTL-C-001):
+  - Previous: `StringLiteral` lacked `guard()` static method present on all other AST literal types
+  - Fix: Added `guard()` returning `TypeIs[StringLiteral]` for type narrowing
+  - Location: `syntax/ast.py` `StringLiteral`
+  - Impact: API consistency with `NumberLiteral.guard()` and other AST node guards
+
+- **IntegrityCache Docstring** (DOCS-CACHE-WEIGHT-006):
+  - Previous: Docstring described weight formula as `len(formatted_str) + (len(errors) * 200)`
+  - Fix: Updated to describe content-based weight calculation via `_estimate_error_weight()`
+  - Location: `runtime/cache.py` `IntegrityCache.__init__`
+
+- **Pyproject.toml Self-Containment** (FTL-A-001):
+  - Previous: Comment referenced undocumented "Task 4"
+  - Fix: Replaced with self-contained architectural rationale
+  - Location: `pyproject.toml` pylint too-many-lines suppression
+
+### Added
+
+- `FluentNumber.__contains__()` and `FluentNumber.__len__()` methods for string-like protocol support
+
 ## [0.94.0] - 2026-01-27
 
 ### Fixed
@@ -2880,6 +2939,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.95.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.95.0
 [0.94.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.94.0
 [0.93.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.93.0
 [0.92.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.92.0
