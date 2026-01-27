@@ -290,7 +290,7 @@ def test_one_input(data: bytes) -> None:
         # We catch it here to prevent the fuzzer from treating it as a crash.
         if strict:
             return  # Correct behavior verified
-        
+
         # If not strict, it should have been handled gracefully.
         _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
         raise

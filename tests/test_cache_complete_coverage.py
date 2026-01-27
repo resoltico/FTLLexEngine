@@ -342,20 +342,25 @@ class TestIntegrityCacheMakeHashableTypes:
         assert isinstance(result, tuple)
 
     def test_make_hashable_dict_to_sorted_tuples(self) -> None:
-        """_make_hashable converts dict to sorted tuple of tuples with type-tagged values."""
+        """_make_hashable converts dict to type-tagged sorted tuple of tuples."""
         result = IntegrityCache._make_hashable({"b": 2, "a": 1})
-        # Ints are type-tagged
-        expected = (("a", ("__int__", 1)), ("b", ("__int__", 2)))
-        assert result == expected
+        # Dict is type-tagged with "__dict__" prefix, ints are also type-tagged
         assert isinstance(result, tuple)
+        assert result[0] == "__dict__"
+        inner = result[1]
+        assert isinstance(inner, tuple)
+        expected_inner = (("a", ("__int__", 1)), ("b", ("__int__", 2)))
+        assert inner == expected_inner
 
     def test_make_hashable_set_to_frozenset(self) -> None:
-        """_make_hashable converts set to frozenset recursively with type-tagged ints."""
+        """_make_hashable converts set to type-tagged frozenset with type-tagged ints."""
         result = IntegrityCache._make_hashable({1, 2, 3})
-        # Ints are type-tagged
-        expected = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
-        assert result == expected
-        assert isinstance(result, frozenset)
+        # Set is type-tagged with "__set__" prefix, ints are also type-tagged
+        assert isinstance(result, tuple)
+        assert result[0] == "__set__"
+        inner = result[1]
+        expected_inner = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
+        assert inner == expected_inner
 
     def test_make_hashable_unknown_type_raises(self) -> None:
         """_make_hashable raises TypeError for unknown types."""

@@ -46,7 +46,7 @@ class TestParserEdgeCases:
         denial-of-service attacks via extremely long tokens.
         """
         from ftllexengine.syntax.ast import Junk
-        from ftllexengine.syntax.parser.primitives import (  # type: ignore[attr-defined]
+        from ftllexengine.syntax.parser.primitives import (
             _MAX_IDENTIFIER_LENGTH,
         )
 

@@ -219,18 +219,25 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         assert result == expected
 
     def test_make_hashable_dict(self) -> None:
-        """Verify _make_hashable converts dicts to sorted tuples with type-tagged values."""
+        """Verify _make_hashable type-tags dicts and converts to sorted tuples."""
         result = IntegrityCache._make_hashable({"b": 2, "a": 1})
-        # Ints are type-tagged
-        expected = (("a", ("__int__", 1)), ("b", ("__int__", 2)))
-        assert result == expected
+        # Dict is type-tagged with "__dict__" prefix, ints are also type-tagged
+        assert isinstance(result, tuple)
+        assert result[0] == "__dict__"
+        inner = result[1]
+        assert isinstance(inner, tuple)
+        expected_inner = (("a", ("__int__", 1)), ("b", ("__int__", 2)))
+        assert inner == expected_inner
 
     def test_make_hashable_set(self) -> None:
-        """Verify _make_hashable converts sets to frozensets with type-tagged ints."""
+        """Verify _make_hashable type-tags sets and converts to frozensets."""
         result = IntegrityCache._make_hashable({1, 2, 3})
-        # Ints are type-tagged
-        expected = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
-        assert result == expected
+        # Set is type-tagged with "__set__" prefix, ints are also type-tagged
+        assert isinstance(result, tuple)
+        assert result[0] == "__set__"
+        inner = result[1]
+        expected_inner = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
+        assert inner == expected_inner
 
     def test_make_hashable_nested(self) -> None:
         """Verify _make_hashable handles nested structures."""
@@ -261,26 +268,26 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     def test_make_hashable_tuple_with_nested_dict(self) -> None:
         """Verify _make_hashable type-tags tuples with nested dicts."""
         result = IntegrityCache._make_hashable((1, {"b": 2, "a": 1}, 3))
-        # Outer tuple is type-tagged, dict becomes sorted tuple (not tagged)
-        inner_dict = (("a", ("__int__", 1)), ("b", ("__int__", 2)))
+        # Outer tuple is type-tagged, dict is also type-tagged with "__dict__"
+        inner_dict = ("__dict__", (("a", ("__int__", 1)), ("b", ("__int__", 2))))
         expected = ("__tuple__", (("__int__", 1), inner_dict, ("__int__", 3)))
         assert result == expected
         hash(result)
 
     def test_make_hashable_tuple_with_nested_set(self) -> None:
-        """Verify _make_hashable type-tags tuples with nested frozensets."""
+        """Verify _make_hashable type-tags tuples with nested sets."""
         result = IntegrityCache._make_hashable((1, {2, 3}, 4))
-        # Outer tuple is type-tagged, set becomes frozenset (not tagged)
-        inner_set = frozenset({("__int__", 2), ("__int__", 3)})
+        # Outer tuple is type-tagged, set is also type-tagged with "__set__"
+        inner_set = ("__set__", frozenset({("__int__", 2), ("__int__", 3)}))
         expected = ("__tuple__", (("__int__", 1), inner_set, ("__int__", 4)))
         assert result == expected
         hash(result)
 
     def test_make_hashable_deeply_nested_tuple(self) -> None:
-        """Verify _make_hashable type-tags all nested tuples and lists distinctly."""
+        """Verify _make_hashable type-tags all nested tuples, lists, and dicts."""
         result = IntegrityCache._make_hashable((1, (2, [3, {"a": 4}]), 5))
-        # All tuples are type-tagged with "__tuple__", all lists with "__list__"
-        inner_dict = (("a", ("__int__", 4)),)
+        # All tuples are type-tagged with "__tuple__", lists with "__list__", dicts with "__dict__"
+        inner_dict = ("__dict__", (("a", ("__int__", 4)),))
         inner_list = ("__list__", (("__int__", 3), inner_dict))
         inner_tuple = ("__tuple__", (("__int__", 2), inner_list))
         expected = ("__tuple__", (("__int__", 1), inner_tuple, ("__int__", 5)))

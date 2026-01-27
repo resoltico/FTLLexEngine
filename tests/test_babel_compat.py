@@ -524,6 +524,6 @@ class TestBabelCompatModuleExports:
         """Attempting to import get_babel_locale from babel_compat fails."""
         with pytest.raises(ImportError, match="cannot import name 'get_babel_locale'"):
             # pylint: disable=unused-import
-            from ftllexengine.core.babel_compat import (  # type: ignore[attr-defined]
+            from ftllexengine.core.babel_compat import (
                 get_babel_locale,  # noqa: F401
             )

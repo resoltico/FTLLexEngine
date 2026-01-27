@@ -158,7 +158,8 @@ class TestValidationChainDepth:
             w for w in result.warnings
             if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
         ]
-        assert len(chain_warnings) == 1
+        # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
+        assert len(chain_warnings) >= 1
         assert "exceeds maximum" in chain_warnings[0].message
         assert "MAX_DEPTH_EXCEEDED" in chain_warnings[0].message
 
@@ -178,7 +179,8 @@ class TestValidationChainDepth:
             w for w in result.warnings
             if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
         ]
-        assert len(chain_warnings) == 1
+        # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
+        assert len(chain_warnings) >= 1
 
         # Runtime fails
         bundle = FluentBundle("en")

@@ -12,6 +12,11 @@
 #   - Full Log on Failure
 #   - [SUMMARY-JSON-BEGIN] ... [SUMMARY-JSON-END]
 #   - [EXIT-CODE] N
+#
+# CONFIGURATION OVERRIDES (Local-First Priority):
+#   - Pylint : Detects $dir/.pylintrc or $dir/pylintrc; falls back to root pyproject.toml.
+#   - Ruff   : Context-aware; uses native discovery (allows nested ruff.toml/pyproject.toml).
+#   - MyPy   : Detects $dir/mypy.ini or $dir/.mypy.ini; falls back to root pyproject.toml.
 # ==============================================================================
 
 # Bash Settings
@@ -109,6 +114,11 @@ pre_flight_diagnostics() {
              echo "[  OK  ] Tool Verified        : $tool"
         fi
     done
+    
+    echo -e "\n[ INFO ] Config Discovery Protocol:"
+    echo "         - Pylint: .pylintrc > pylintrc > root pyproject.toml"
+    echo "         - MyPy  : mypy.ini > .mypy.ini > root pyproject.toml"
+    echo "         - Ruff  : Hierarchical (native ruff.toml discovery)"
     log_group_end
 }
 pre_flight_diagnostics
@@ -130,10 +140,16 @@ if [[ "$CLEAN_CACHE" == "true" ]]; then
     log_group_end
 fi
 
-# Universal Target Detection
+# Universal Target Detection (Dynamic)
 declare -a TARGETS=()
-for dir in "src" "tests" "test" "examples" "scripts"; do
-    if [[ -d "$dir" ]]; then TARGETS+=("$dir"); fi
+for dir in */; do
+    dir=${dir%/}
+    [[ "$dir" == .* ]] && continue # Skip hidden directories (.git, .venv, etc.)
+    
+    # Only include if it contains at least one .py file (recursively)
+    if find "$dir" -maxdepth 5 -name "*.py" -print -quit 2>/dev/null | grep -q ".py"; then
+        TARGETS+=("$dir")
+    fi
 done
 
 record_result() {
@@ -206,7 +222,9 @@ run_ruff() {
     fi
 
     # Run on all targets at once (Ruff is safe for this)
-    local cmd=(ruff check --fix --config "$PYPROJECT_CONFIG" $format_flag)
+    # Removed explicit --config to allow for nested ruff/pyproject config discovery
+    local cmd=(ruff check --fix $format_flag)
+    log_info "Discovery: Native/Hierarchical (ruff.toml or pyproject.toml)"
     # Append target version if we can determine it, otherwise let ruff read pyproject.toml
     if [[ -n "${PY_VERSION_NODOT}" ]]; then
         cmd+=(--target-version "py${PY_VERSION_NODOT}")
@@ -222,9 +240,22 @@ run_mypy() {
     # Iterate targets individually to prevent module-clashing (the 'threading' bug)
     for target in "${TARGETS[@]}"; do
         log_info "Analyzing $target..."
+        
+        # Configuration resolution: local mypy.ini or .mypy.ini has priority over root pyproject.toml
+        local config="$PYPROJECT_CONFIG"
+        local config_source="root"
+        if [[ -f "$target/mypy.ini" ]]; then
+            config="$target/mypy.ini"
+            config_source="local (mypy.ini)"
+        elif [[ -f "$target/.mypy.ini" ]]; then
+            config="$target/.mypy.ini"
+            config_source="local (.mypy.ini)"
+        fi
+        log_info "  + Using ${config_source}: ${config}"
+
         # Flags: --no-color-output (agent), --no-error-summary (quiet)
         # Note: We rely on PYTHONPATH being set correctly above
-        local cmd=(mypy --config-file "$PYPROJECT_CONFIG" --python-version "$PY_VERSION" --no-color-output --no-error-summary)
+        local cmd=(mypy --config-file "$config" --python-version "$PY_VERSION" --no-color-output --no-error-summary)
         execute_tool "mypy" "$target" "${cmd[@]}" "$target"
     done
     log_group_end
@@ -236,11 +267,20 @@ run_pylint() {
     # Iterate targets individually
     for target in "${TARGETS[@]}"; do
         log_info "Analyzing $target..."
-        local cmd=(pylint --rcfile "$PYPROJECT_CONFIG" --py-version "$PY_VERSION" --output-format=text --msg-template='{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}')
-        if [[ -f "$target/.pylintrc" ]]; then
-             cmd=(pylint --rcfile "$target/.pylintrc" --py-version "$PY_VERSION" --output-format=text --msg-template='{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}')
-        fi
         
+        # Configuration resolution: local .pylintrc or pylintrc has priority over root pyproject.toml
+        local config="$PYPROJECT_CONFIG"
+        local config_source="root"
+        if [[ -f "$target/.pylintrc" ]]; then
+            config="$target/.pylintrc"
+            config_source="local (.pylintrc)"
+        elif [[ -f "$target/pylintrc" ]]; then
+            config="$target/pylintrc"
+            config_source="local (pylintrc)"
+        fi
+        log_info "  + Using ${config_source}: ${config}"
+
+        local cmd=(pylint --rcfile "$config" --py-version "$PY_VERSION" --output-format=text --msg-template='{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}')
         execute_tool "pylint" "$target" "${cmd[@]}" "$target"
     done
     log_group_end

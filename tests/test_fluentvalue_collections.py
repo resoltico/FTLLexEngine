@@ -239,31 +239,42 @@ class TestFluentValueMakeHashable:
         assert result[1] == (("__int__", 1), ("__int__", 2), ("__int__", 3))
 
     def test_make_hashable_dict(self) -> None:
-        """_make_hashable converts dict to sorted tuple of pairs."""
+        """_make_hashable type-tags dict and converts to sorted tuple of pairs."""
         result = IntegrityCache._make_hashable({"b": 2, "a": 1})
 
-        # Dict converted to sorted tuple of (key, hashable_value) pairs
+        # Dict is type-tagged with "__dict__" prefix
         assert isinstance(result, tuple)
+        assert result[0] == "__dict__"
+        inner = result[1]
+        assert isinstance(inner, tuple)
         # Sorted by key
-        assert result == (("a", ("__int__", 1)), ("b", ("__int__", 2)))
+        assert inner == (("a", ("__int__", 1)), ("b", ("__int__", 2)))
 
     def test_make_hashable_nested_list_in_dict(self) -> None:
         """_make_hashable handles nested list inside dict."""
         result = IntegrityCache._make_hashable({"items": [1, 2]})
 
+        # Dict is type-tagged with "__dict__" prefix
         assert isinstance(result, tuple)
+        assert result[0] == "__dict__"
+        inner = result[1]
+        assert isinstance(inner, tuple)
         # items key maps to list - complex nested type access
-        first = result[0]
+        first = inner[0]
         assert isinstance(first, tuple)
         assert first[0] == "items"
         assert isinstance(first[1], tuple)
         assert first[1][0] == "__list__"
 
     def test_make_hashable_set(self) -> None:
-        """_make_hashable converts set to frozenset."""
+        """_make_hashable type-tags set and converts to frozenset."""
         result = IntegrityCache._make_hashable({1, 2, 3})
 
-        assert isinstance(result, frozenset)
+        # Set is type-tagged with "__set__" prefix
+        assert isinstance(result, tuple)
+        assert result[0] == "__set__"
+        inner = result[1]
+        assert isinstance(inner, frozenset)
 
 
 class TestFluentValueCollectionsHypothesis:

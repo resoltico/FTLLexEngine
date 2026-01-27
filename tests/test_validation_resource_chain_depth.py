@@ -144,10 +144,12 @@ class TestChainPathTruncation:
         # Use max_depth=5 to trigger warning
         warnings = _detect_long_chains(graph, max_depth=5)
 
-        assert len(warnings) == 1
+        # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
+        # With 15 nodes and max_depth=5, chains from msg0-msg8 all exceed the limit
+        assert len(warnings) >= 1
         assert warnings[0].code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
 
-        # Should show truncation marker
+        # First warning (deepest chain) should show truncation marker
         assert warnings[0].context is not None
         assert "..." in warnings[0].context
         assert "15 total" in warnings[0].context
@@ -181,9 +183,10 @@ class TestChainPathTruncation:
         # Use max_depth=5 to trigger warning
         warnings = _detect_long_chains(graph, max_depth=5)
 
-        assert len(warnings) == 1
+        # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
+        assert len(warnings) >= 1
 
-        # Should NOT show truncation for chains <= 10 nodes
+        # First warning (deepest chain = 10 nodes) should NOT show truncation
         assert warnings[0].context is not None
         assert "..." not in warnings[0].context
         assert "total" not in warnings[0].context
@@ -216,7 +219,9 @@ class TestChainPathTruncation:
         graph = _build_dependency_graph(messages_dict, terms_dict)
         warnings = _detect_long_chains(graph, max_depth=3)
 
-        assert len(warnings) == 1
+        # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
+        assert len(warnings) >= 1
+        # First warning (deepest chain) should not show truncation for < 10 nodes
         assert warnings[0].context is not None
         assert "..." not in warnings[0].context
 
@@ -251,8 +256,9 @@ class TestChainPathTruncation:
         graph = _build_dependency_graph(messages_dict, terms_dict)
         warnings = _detect_long_chains(graph, max_depth=5)
 
-        # Should show truncation
-        assert len(warnings) == 1
+        # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
+        # First warning (deepest chain) should show truncation for > 10 nodes
+        assert len(warnings) >= 1
         assert warnings[0].context is not None
         assert "..." in warnings[0].context
         assert f"{chain_length} total" in warnings[0].context

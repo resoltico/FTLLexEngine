@@ -83,6 +83,72 @@ PARAM_DESCRIPTIONS["iso"]="ISO 3166/4217 Introspection"
 PARAM_TARGETS["fiscal"]="fuzz/fiscal.py"
 PARAM_DESCRIPTIONS["fiscal"]="Fiscal Calendar arithmetic"
 
+PARAM_TARGETS["roundtrip"]="fuzz/roundtrip.py"
+PARAM_DESCRIPTIONS["roundtrip"]="Metamorphic roundtrip (Parser <-> Serializer)"
+
+PARAM_TARGETS["graph"]="fuzz/graph.py"
+PARAM_DESCRIPTIONS["graph"]="Graph algorithm stress (Cycle detection)"
+
+PARAM_TARGETS["plural"]="fuzz/plural.py"
+PARAM_DESCRIPTIONS["plural"]="Plural Rule Boundary & CLDR"
+
+PARAM_TARGETS["fallback"]="fuzz/fallback.py"
+PARAM_DESCRIPTIONS["fallback"]="Multi-locale fallback & Orchestration"
+
+PARAM_TARGETS["unicode"]="fuzz/unicode.py"
+PARAM_DESCRIPTIONS["unicode"]="Unicode Normalization & Surrogates"
+
+PARAM_TARGETS["diagnostics"]="fuzz/diagnostics.py"
+PARAM_DESCRIPTIONS["diagnostics"]="Diagnostic Template Integrity"
+
+PARAM_TARGETS["lock"]="fuzz/lock.py"
+PARAM_DESCRIPTIONS["lock"]="RWLock Concurrency & Contention"
+
+PARAM_TARGETS["oom"]="fuzz/oom.py"
+PARAM_DESCRIPTIONS["oom"]="Memory Density (Object Explosion)"
+
+PARAM_TARGETS["resolver"]="fuzz/resolver.py"
+PARAM_DESCRIPTIONS["resolver"]="Resolver Semantic Logic"
+
+PARAM_TARGETS["resolver_perf"]="fuzz/resolver_perf.py"
+PARAM_DESCRIPTIONS["resolver_perf"]="Resolver Performance (Chained Refs)"
+
+PARAM_TARGETS["builtins"]="fuzz/builtins.py"
+PARAM_DESCRIPTIONS["builtins"]="Built-in Functions (Babel Boundary)"
+
+PARAM_TARGETS["integrity"]="fuzz/integrity.py"
+PARAM_DESCRIPTIONS["integrity"]="Multi-Resource Semantic Integrity"
+
+PARAM_TARGETS["security"]="fuzz/security.py"
+PARAM_DESCRIPTIONS["security"]="I/O and Path Security (Traversal)"
+
+PARAM_TARGETS["introspection"]="fuzz/introspection.py"
+PARAM_DESCRIPTIONS["introspection"]="Message Introspection Depth"
+
+PARAM_TARGETS["dates"]="fuzz/dates.py"
+PARAM_DESCRIPTIONS["dates"]="Locale-Aware Date/Datetime Parsing"
+
+PARAM_TARGETS["currency"]="fuzz/currency.py"
+PARAM_DESCRIPTIONS["currency"]="Currency symbol & numeric extraction"
+
+PARAM_TARGETS["evolution"]="fuzz/evolution.py"
+PARAM_DESCRIPTIONS["evolution"]="Stateful Bundle Evolution (Mutation)"
+
+PARAM_TARGETS["negotiator"]="fuzz/negotiator.py"
+PARAM_DESCRIPTIONS["negotiator"]="Locale BCP 47 Negotiation & Normalization"
+
+PARAM_TARGETS["cursor"]="fuzz/cursor.py"
+PARAM_DESCRIPTIONS["cursor"]="Low-level Cursor & Character Streaming"
+
+PARAM_TARGETS["bridge"]="fuzz/bridge.py"
+PARAM_DESCRIPTIONS["bridge"]="Argument Bridge & Evil Python Objects"
+
+PARAM_TARGETS["cache"]="fuzz/cache.py"
+PARAM_DESCRIPTIONS["cache"]="High-pressure Cache Race & Concurrency"
+
+PARAM_TARGETS["scope"]="fuzz/scope.py"
+PARAM_DESCRIPTIONS["scope"]="Variable Shadowing & Scoping Invariants"
+
 # =============================================================================
 # Pre-Flight Diagnostics & "Binary Surgery" (macOS Fix)
 # =============================================================================

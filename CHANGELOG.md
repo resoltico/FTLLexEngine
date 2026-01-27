@@ -13,6 +13,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-01-27
+
+### Fixed
+
+- **Cache Key Collision: dict vs ChainMap** (SEC-CACHE-COLLISION-001):
+  - Previous: `dict` and `ChainMap` with identical content produced identical cache keys
+  - Issue: `str(dict)` differs from `str(ChainMap)` but cache returned wrong formatted output
+  - Fix: Added `"__dict__"` type-tag for dict and `"__mapping__"` type-tag for Mapping ABC
+  - Location: `runtime/cache.py` `IntegrityCache._make_hashable()`
+  - Impact: Distinct Mapping types now produce distinct cache keys
+
+- **Cache Key TypeError for frozenset** (TYPE-CACHE-FROZENSET-001):
+  - Previous: `frozenset` arguments caused `TypeError: Unknown type in cache key`
+  - Issue: `frozenset` is not a Sequence or Mapping; fell through to error handler
+  - Fix: Added explicit `case frozenset():` returning `("__frozenset__", ...)`
+  - Location: `runtime/cache.py` `IntegrityCache._make_hashable()`
+  - Impact: frozenset arguments now properly cached
+
+- **Hash Composition Type Markers** (SEC-HASH-AMBIGUITY-CACHE-001):
+  - Previous: Raw content_hash bytes concatenated without type marker
+  - Issue: Theoretical collision between hash bytes and length-prefixed strings
+  - Fix: Added `b"\x01"` marker before hash bytes, `b"\x00"` before encoded strings
+  - Location: `runtime/cache.py` `IntegrityCacheEntry._compute_checksum()`, `_compute_content_hash()`
+  - Impact: Unambiguous structural hashing for financial-grade integrity
+
+- **FrozenFluentError Section Markers** (SEC-HASH-AMBIGUITY-ERROR-001):
+  - Previous: Optional diagnostic/context sections had no presence markers
+  - Issue: Theoretical collision between different section configurations
+  - Fix: Added section markers `b"\x01DIAG"`/`b"\x00NODIAG"` and `b"\x01CTX"`/`b"\x00NOCTX"`
+  - Location: `diagnostics/errors.py` `FrozenFluentError._compute_content_hash()`
+  - Impact: Unambiguous structural hashing regardless of optional field presence
+
+- **Validation Reports All Deep Chains** (VAL-REDUNDANT-REPORTS-001):
+  - Previous: `_detect_long_chains` only reported the single longest chain
+  - Issue: Users had to fix and re-run to discover additional deep chains
+  - Fix: Now returns warnings for ALL chains exceeding max_depth, sorted by depth
+  - Location: `validation/resource.py` `_detect_long_chains()`
+  - Impact: Better UX for complex FTL files with multiple deep reference chains
+
 ## [0.93.0] - 2026-01-26
 
 ### Fixed
@@ -2841,6 +2880,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.94.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.94.0
 [0.93.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.93.0
 [0.92.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.92.0
 [0.91.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.91.0

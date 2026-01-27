@@ -158,18 +158,20 @@ class FrozenFluentError(Exception):
 
         Hash Composition:
             All variable-length fields are length-prefixed to prevent collision
-            between semantically different values. The content hash covers ALL
-            error fields for complete integrity:
+            between semantically different values. Section markers ensure
+            unambiguous structural hashing. The content hash covers ALL error
+            fields for complete integrity:
             1. message: Error description (length-prefixed UTF-8)
             2. category: Error category value (length-prefixed UTF-8)
-            3. diagnostic (if present): ALL fields including:
-               - code.name, message (length-prefixed)
-               - span (start, end, line, column as 4-byte big-endian)
-               - hint, help_url, function_name, argument_name (length-prefixed)
-               - expected_type, received_type, ftl_location (length-prefixed)
+            3. diagnostic section marker (b"\\x01DIAG" if present, b"\\x00NODIAG" if None)
+               - If present: code.name, message (length-prefixed)
+               - span (start, end, line, column as 4-byte big-endian or NOSPAN sentinel)
+               - hint, help_url, function_name, argument_name (length-prefixed or NONE sentinel)
+               - expected_type, received_type, ftl_location (length-prefixed or NONE sentinel)
                - severity (length-prefixed)
-               - resolution_path (each element length-prefixed)
-            4. context (if present): all fields length-prefixed
+               - resolution_path (count + each element length-prefixed, or NOPATH sentinel)
+            4. context section marker (b"\\x01CTX" if present, b"\\x00NOCTX" if None)
+               - If present: input_value, locale_code, parse_type, fallback_value (length-prefixed)
 
         Args:
             message: Error message
@@ -186,7 +188,11 @@ class FrozenFluentError(Exception):
         FrozenFluentError._hash_string(h, message)
         FrozenFluentError._hash_string(h, category.value)
 
+        # Section marker for diagnostic presence/absence.
+        # Ensures unambiguous structural hashing: (diagnostic=D, context=None) cannot
+        # collide with (diagnostic=None, context=C) regardless of field content.
         if diagnostic is not None:
+            h.update(b"\x01DIAG")  # Section marker: diagnostic present
             # Hash ALL diagnostic fields for complete audit trail integrity
             # Core fields (length-prefixed)
             FrozenFluentError._hash_string(h, diagnostic.code.name)
@@ -229,13 +235,20 @@ class FrozenFluentError(Exception):
                     FrozenFluentError._hash_string(h, path_element)
             else:
                 h.update(b"\x00NOPATH")
+        else:
+            h.update(b"\x00NODIAG")  # Section marker: diagnostic absent
 
+        # Section marker for context presence/absence.
+        # Ensures unambiguous structural hashing between error variants.
         if context is not None:
+            h.update(b"\x01CTX")  # Section marker: context present
             # All context fields length-prefixed
             FrozenFluentError._hash_string(h, context.input_value)
             FrozenFluentError._hash_string(h, context.locale_code)
             FrozenFluentError._hash_string(h, context.parse_type)
             FrozenFluentError._hash_string(h, context.fallback_value)
+        else:
+            h.update(b"\x00NOCTX")  # Section marker: context absent
 
         return h.digest()
 

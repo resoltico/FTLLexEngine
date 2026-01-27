@@ -94,7 +94,7 @@ class TestParseNumberHypothesis:
     @settings(max_examples=50)
     def test_parse_number_type_error_returns_error(self, value: object) -> None:
         """Non-string types return error in tuple; function never raises."""
-        result, errors = parse_number(value, "en_US")  # type: ignore[arg-type]
+        result, errors = parse_number(value, "en_US")
         assert len(errors) > 0
         assert result is None
 

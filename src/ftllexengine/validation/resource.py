@@ -592,53 +592,63 @@ def _detect_long_chains(
     graph: dict[str, set[str]],
     max_depth: int = MAX_DEPTH,
 ) -> list[ValidationWarning]:
-    """Detect reference chains that exceed maximum depth.
+    """Detect ALL reference chains that exceed maximum depth.
 
-    Computes the longest reference chain path in the dependency graph.
-    Warns if any chain exceeds max_depth (would fail at runtime).
+    Computes longest path from each node and reports ALL chains exceeding
+    max_depth. This allows users to see and fix all depth violations in a
+    single validation pass rather than iteratively discovering them.
 
     Args:
         graph: Unified dependency graph with type-prefixed nodes (msg:name, term:name)
         max_depth: Maximum allowed chain depth (default: MAX_DEPTH)
 
     Returns:
-        List of warnings for chains exceeding max_depth
+        List of warnings for ALL chains exceeding max_depth, sorted by depth
+        (deepest first) for prioritized remediation
     """
     if not graph:
         return []
 
     longest_paths = _compute_longest_paths(graph)
 
-    # Find the longest chain
-    max_chain_depth, max_chain_path = 0, []
-    for _node, (_, path) in longest_paths.items():
-        if len(path) > max_chain_depth:
-            max_chain_depth = len(path)
-            max_chain_path = path
+    # Collect ALL chains exceeding max_depth
+    exceeding_chains: list[tuple[int, list[str], str]] = []
+    for node, (depth, path) in longest_paths.items():
+        # Only report chains starting from their origin (first node in path)
+        # to avoid duplicate warnings for the same chain from different nodes
+        if depth > max_depth and path and path[0] == node:
+            exceeding_chains.append((depth, path, node))
 
-    if max_chain_depth <= max_depth:
+    if not exceeding_chains:
         return []
 
-    # Format path for human-readable output
-    formatted = [
-        node[4:] if node.startswith("msg:") else f"-{node[5:]}"
-        for node in max_chain_path[:10]
-    ]
-    chain_str = " -> ".join(formatted)
-    if len(max_chain_path) > 10:
-        chain_str += f" -> ... ({len(max_chain_path)} total)"
+    # Sort by depth descending (deepest chains first) for prioritized remediation
+    exceeding_chains.sort(key=lambda x: x[0], reverse=True)
 
-    return [
-        ValidationWarning(
-            code=DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name,
-            message=(
-                f"Reference chain depth ({max_chain_depth}) exceeds maximum ({max_depth}); "
-                f"will fail at runtime with MAX_DEPTH_EXCEEDED"
-            ),
-            context=chain_str,
-            severity=WarningSeverity.WARNING,
+    warnings: list[ValidationWarning] = []
+    for chain_depth, chain_path, _origin in exceeding_chains:
+        # Format path for human-readable output
+        formatted = [
+            node[4:] if node.startswith("msg:") else f"-{node[5:]}"
+            for node in chain_path[:10]
+        ]
+        chain_str = " -> ".join(formatted)
+        if len(chain_path) > 10:
+            chain_str += f" -> ... ({len(chain_path)} total)"
+
+        warnings.append(
+            ValidationWarning(
+                code=DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name,
+                message=(
+                    f"Reference chain depth ({chain_depth}) exceeds maximum ({max_depth}); "
+                    f"will fail at runtime with MAX_DEPTH_EXCEEDED"
+                ),
+                context=chain_str,
+                severity=WarningSeverity.WARNING,
+            )
         )
-    ]
+
+    return warnings
 
 
 def validate_resource(

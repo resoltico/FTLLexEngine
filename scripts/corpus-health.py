@@ -295,7 +295,7 @@ def print_human_report(health: CorpusHealth) -> None:
     print()
 
     # Coverage
-    print(f"Feature coverage: {health.coverage_percent:.1f}%")
+    print(f"Grammar Feature Coverage: {health.coverage_percent:.1f}%")
     print(f"  Covered:  {', '.join(sorted(health.features_covered & set(GRAMMAR_FEATURES)))}")
     if health.features_missing:
         print(f"  Missing:  {', '.join(sorted(health.features_missing))}")
@@ -345,7 +345,7 @@ def print_coverage_report(health: CorpusHealth) -> None:
     """Print detailed coverage report."""
     print()
     print("=" * 60)
-    print("Feature Coverage Detail")
+    print("Grammar Feature Coverage Detail")
     print("=" * 60)
     print()
 

@@ -310,7 +310,7 @@ class TestValidateResource:
 
     def test_validate_comments_and_junk_skip(self) -> None:
         """COVERAGE: Lines 120-121 - Comments don't need validation."""
-        from ftllexengine.syntax.ast import (  # type: ignore[attr-defined]  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415
             CommentType,
         )
 

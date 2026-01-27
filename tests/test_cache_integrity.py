@@ -934,17 +934,20 @@ class TestSequenceMappingABCSupport:
         assert result[1] == (("__int__", 1), ("__int__", 2), ("__int__", 3))
 
     def test_chainmap_accepted(self) -> None:
-        """ChainMap (Mapping ABC) is accepted."""
+        """ChainMap (Mapping ABC) is accepted with __mapping__ tag."""
         from collections import ChainMap  # noqa: PLC0415
 
         values: ChainMap[str, int] = ChainMap({"a": 1}, {"b": 2})
         result = IntegrityCache._make_hashable(values)
 
-        # Should be sorted tuple of key-value pairs like dict
+        # Should be tagged tuple with __mapping__ prefix
         assert isinstance(result, tuple)
+        assert result[0] == "__mapping__"
         # ChainMap flattens to view of first-found keys
-        assert ("a", ("__int__", 1)) in result
-        assert ("b", ("__int__", 2)) in result
+        inner = result[1]
+        assert isinstance(inner, tuple)
+        assert ("a", ("__int__", 1)) in inner
+        assert ("b", ("__int__", 2)) in inner
 
     def test_list_still_tagged_as_list(self) -> None:
         """Regular list still uses __list__ tag, not __seq__."""

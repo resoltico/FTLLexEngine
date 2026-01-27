@@ -84,7 +84,10 @@ class TestMakeHashableDepthLimiting:
         # Sets with simple values should work
         value = {1, 2, 3}
         result = IntegrityCache._make_hashable(value)
-        assert isinstance(result, frozenset)
+        # Set is type-tagged with "__set__" prefix
+        assert isinstance(result, tuple)
+        assert result[0] == "__set__"
+        assert isinstance(result[1], frozenset)
 
     def test_mixed_nesting_depth_limited(self) -> None:
         """Mixed dict/list nesting respects depth limit."""
@@ -164,17 +167,24 @@ class TestMakeHashableTypeValidation:
         assert result == ("__list__", (("__int__", 1), ("__int__", 2), ("__int__", 3)))
 
     def test_dict_converted_to_sorted_tuple(self) -> None:
-        """Dicts are converted to sorted tuple of tuples with type-tagged values."""
+        """Dicts are type-tagged and converted to sorted tuple of tuples."""
         result = IntegrityCache._make_hashable({"b": 2, "a": 1})
-        # Ints are type-tagged
-        assert result == (("a", ("__int__", 1)), ("b", ("__int__", 2)))
+        # Dict is type-tagged with "__dict__" prefix, ints are also type-tagged
+        assert isinstance(result, tuple)
+        assert result[0] == "__dict__"
+        inner = result[1]
+        assert isinstance(inner, tuple)
+        assert inner == (("a", ("__int__", 1)), ("b", ("__int__", 2)))
 
     def test_set_converted_to_frozenset(self) -> None:
-        """Sets are converted to frozensets with type-tagged int elements."""
+        """Sets are type-tagged and converted to frozensets with type-tagged ints."""
         result = IntegrityCache._make_hashable({1, 2, 3})
-        # Ints are type-tagged
-        expected = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
-        assert result == expected
+        # Set is type-tagged with "__set__" prefix, ints are also type-tagged
+        assert isinstance(result, tuple)
+        assert result[0] == "__set__"
+        inner = result[1]
+        expected_inner = frozenset({("__int__", 1), ("__int__", 2), ("__int__", 3)})
+        assert inner == expected_inner
 
     def test_unknown_type_raises_type_error(self) -> None:
         """Unknown types raise TypeError with descriptive message."""

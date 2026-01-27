@@ -54,7 +54,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         clear_iso_cache,
         get_currency,
         get_territory,
-        get_territory_currency,
+        get_territory_currencies,
         is_valid_currency_code,
         is_valid_territory_code,
         list_currencies,
@@ -200,15 +200,6 @@ def _verify_territory_invariants(
     if not isinstance(result.name, str) or not result.name:
         msg = f"TerritoryInfo.name invalid: {result.name!r}"
         raise ISOFuzzError(msg)
-
-    # Invariant: default_currency is None or valid 3-letter code
-    if result.default_currency is not None:
-        if not isinstance(result.default_currency, str):
-            msg = f"TerritoryInfo.default_currency type error: {type(result.default_currency)}"
-            raise ISOFuzzError(msg)
-        if len(result.default_currency) != 3:
-            msg = f"TerritoryInfo.default_currency invalid length: {result.default_currency!r}"
-            raise ISOFuzzError(msg)
 
     # Invariant: Hashable (can be used in sets/dicts)
     try:
@@ -400,12 +391,16 @@ def test_one_input(data: bytes) -> None:
         currency = get_currency(currency_code, locale)
         _verify_currency_invariants(currency_code, locale, currency)
 
-        # Test get_territory_currency
+        # Test get_territory_currencies
         if territory is not None:
-            default_currency = get_territory_currency(territory_code)
-            if default_currency is not None and len(default_currency) != 3:
-                msg = f"get_territory_currency returned invalid: {default_currency!r}"
+            currencies = get_territory_currencies(territory_code)
+            if not isinstance(currencies, tuple):
+                msg = f"get_territory_currencies returned non-tuple: {type(currencies)}"
                 raise ISOFuzzError(msg)
+            for curr_code in currencies:
+                if not isinstance(curr_code, str) or len(curr_code) != 3:
+                    msg = f"get_territory_currencies returned invalid code: {curr_code!r}"
+                    raise ISOFuzzError(msg)
 
         # Verify type guard consistency
         if fdp.ConsumeBool():

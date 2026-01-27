@@ -219,7 +219,8 @@ class IntegrityCacheEntry:
             between semantically different values. The checksum covers ALL entry
             fields for complete audit trail integrity:
             1. formatted: Message output (length-prefixed UTF-8)
-            2. errors: Count + each error's content_hash
+            2. errors: Count + each error with type marker (b"\\x01" + hash or
+               b"\\x00" + length-prefixed string) for structural disambiguation
             3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
             4. sequence: Entry sequence number (8-byte signed big-endian)
 
@@ -242,10 +243,14 @@ class IntegrityCacheEntry:
         for error in errors:
             # Use error's content hash if available and valid type, otherwise hash the message.
             # Type validation ensures robustness against duck-typed objects with wrong type.
+            # Type markers (b"\x01" for hash, b"\x00" for encoded) ensure structural
+            # disambiguation: a 16-byte hash cannot collide with a length-prefixed string.
             content_hash = getattr(error, "content_hash", None)
             if isinstance(content_hash, bytes):
+                h.update(b"\x01")  # Type marker: raw content hash follows
                 h.update(content_hash)
             else:
+                h.update(b"\x00")  # Type marker: length-prefixed string follows
                 error_encoded = str(error).encode("utf-8", errors="surrogatepass")
                 h.update(len(error_encoded).to_bytes(4, "big"))
                 h.update(error_encoded)
@@ -300,7 +305,8 @@ class IntegrityCacheEntry:
 
         Hash Composition:
             1. formatted: Message output (length-prefixed UTF-8)
-            2. errors: Count + each error's content_hash
+            2. errors: Count + each error with type marker (b"\\x01" + hash or
+               b"\\x00" + length-prefixed string) for structural disambiguation
 
         Args:
             formatted: Formatted message string
@@ -319,10 +325,14 @@ class IntegrityCacheEntry:
         for error in errors:
             # Use error's content hash if available and valid type, otherwise hash the message.
             # Type validation ensures robustness against duck-typed objects with wrong type.
+            # Type markers (b"\x01" for hash, b"\x00" for encoded) ensure structural
+            # disambiguation: a 16-byte hash cannot collide with a length-prefixed string.
             content_hash = getattr(error, "content_hash", None)
             if isinstance(content_hash, bytes):
+                h.update(b"\x01")  # Type marker: raw content hash follows
                 h.update(content_hash)
             else:
+                h.update(b"\x00")  # Type marker: length-prefixed string follows
                 error_encoded = str(error).encode("utf-8", errors="surrogatepass")
                 h.update(len(error_encoded).to_bytes(4, "big"))
                 h.update(error_encoded)
@@ -831,14 +841,32 @@ class IntegrityCache:
                     tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
                 )
             case dict():
-                return tuple(
-                    sorted(
-                        (k, IntegrityCache._make_hashable(v, depth - 1))
-                        for k, v in value.items()
-                    )
+                # Type-tag dict to distinguish from Mapping ABC (e.g., ChainMap).
+                # str(dict({"a": 1})) = "{'a': 1}" vs str(ChainMap({"a": 1})) = "ChainMap({'a': 1})"
+                # Both must produce distinct cache keys since formatting differs.
+                return (
+                    "__dict__",
+                    tuple(
+                        sorted(
+                            (k, IntegrityCache._make_hashable(v, depth - 1))
+                            for k, v in value.items()
+                        )
+                    ),
                 )
             case set():
-                return frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value)
+                # Convert mutable set to immutable frozenset for hashability.
+                # Tag distinguishes from frozenset since str(set) != str(frozenset).
+                return (
+                    "__set__",
+                    frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                )
+            case frozenset():
+                # Explicit frozenset case - already hashable but tag for type distinction.
+                # str(frozenset({1})) = "frozenset({1})" vs str({1}) = "{1}"
+                return (
+                    "__frozenset__",
+                    frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                )
             # Type-tagging for collision prevention: bool MUST be checked before int
             # because bool is a subclass of int in Python. Without separate cases,
             # True and 1 would hash-collide despite producing different formatted output.
@@ -888,11 +916,16 @@ class IntegrityCache:
                 # This fallback catches any Mapping/Sequence not matched above.
                 # Must be after specific type checks (dict, list, tuple, str).
                 if isinstance(value, Mapping):
-                    return tuple(
-                        sorted(
-                            (k, IntegrityCache._make_hashable(v, depth - 1))
-                            for k, v in value.items()
-                        )
+                    # Type-tag Mapping ABC to distinguish from dict.
+                    # str(ChainMap({"a": 1})) = "ChainMap({'a': 1})" vs str(dict) = "{'a': 1}"
+                    return (
+                        "__mapping__",
+                        tuple(
+                            sorted(
+                                (k, IntegrityCache._make_hashable(v, depth - 1))
+                                for k, v in value.items()
+                            )
+                        ),
                     )
                 if isinstance(value, Sequence):
                     # Generic Sequence (UserList, etc.) - tag distinctly from list/tuple
