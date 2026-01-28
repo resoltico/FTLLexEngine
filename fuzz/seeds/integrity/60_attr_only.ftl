@@ -1,0 +1,2 @@
+msg =
+    .tooltip = Tooltip only

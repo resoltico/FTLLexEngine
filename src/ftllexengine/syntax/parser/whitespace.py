@@ -18,8 +18,12 @@ def skip_blank_inline(cursor: Cursor) -> Cursor:
 
     Used in contexts where spec requires blank_inline:
     - Between tokens on same line (identifier = value)
-    - Inside call arguments and select expressions
-    - Before/after operators (=, ->, :)
+    - Before/after operators on same line (=, :)
+    - Inside variant key brackets [key]
+
+    Note: CallArguments uses skip_blank (not blank_inline) per FTL spec.
+    The spec defines CallArguments ::= blank? "(" blank? argument_list blank? ")"
+    where blank allows newlines for multiline argument formatting.
 
     Args:
         cursor: Current position in source
@@ -47,6 +51,7 @@ def skip_blank(cursor: Cursor) -> Cursor:
     - Between entries in resource
     - Inside select expression variant lists
     - Before/after patterns with line breaks
+    - Inside CallArguments (enables multiline argument formatting)
 
     Args:
         cursor: Current position in source

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, TypeIs
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
     ISO_4217_DEFAULT_DECIMALS,
+    MAX_CURRENCY_CACHE_SIZE,
     MAX_LOCALE_CACHE_SIZE,
     MAX_TERRITORY_CACHE_SIZE,
 )
@@ -296,7 +297,7 @@ def get_territory(
     return _get_territory_impl(code.upper(), normalize_locale(locale))
 
 
-@lru_cache(maxsize=MAX_TERRITORY_CACHE_SIZE)
+@lru_cache(maxsize=MAX_CURRENCY_CACHE_SIZE)
 def _get_currency_impl(
     code_upper: str,
     locale_norm: str,

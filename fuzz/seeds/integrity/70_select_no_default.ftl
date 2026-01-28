@@ -1,0 +1,3 @@
+msg = { $count ->
+    [one] One
+}

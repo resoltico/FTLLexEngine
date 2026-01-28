@@ -1,0 +1,10 @@
+msg0 = Unique value 0 { $var0 }
+msg1 = Unique value 1 { $var1 }
+msg2 = Unique value 2 { $var2 }
+msg3 = Unique value 3 { $var0 }
+msg4 = Unique value 4 { $var1 }
+msg5 = Unique value 5 { $var2 }
+msg6 = Unique value 6 { $var0 }
+msg7 = Unique value 7 { $var1 }
+msg8 = Unique value 8 { $var2 }
+msg9 = Unique value 9 { $var0 }

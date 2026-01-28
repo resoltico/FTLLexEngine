@@ -1,0 +1,11 @@
+msg = val
+    .attr0 = val
+    .attr1 = val
+    .attr2 = val
+    .attr3 = val
+    .attr4 = val
+    .attr5 = val
+    .attr6 = val
+    .attr7 = val
+    .attr8 = val
+    .attr9 = val

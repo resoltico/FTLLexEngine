@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.96.0"
+version: "0.97.0"
 domain: RUNTIME
 updated: "2026-01-28"
 route:
@@ -853,6 +853,24 @@ DEFAULT_CACHE_SIZE: int = 1000
 - Purpose: Default maximum cache entries for FluentBundle format results.
 - Usage: Referenced by `FluentBundle.__init__`, `create()`, `for_system_locale()`.
 - Import: `from ftllexengine.constants import DEFAULT_CACHE_SIZE`
+
+---
+
+### `MAX_CURRENCY_CACHE_SIZE`
+
+```python
+MAX_CURRENCY_CACHE_SIZE: int = 300
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 300 |
+| Location | `ftllexengine.constants` |
+
+- Purpose: Maximum LRU cache entries for individual currency lookups.
+- Usage: `_get_currency_impl` in `ftllexengine.introspection.iso`.
+- Import: `from ftllexengine.constants import MAX_CURRENCY_CACHE_SIZE`
 
 ---
 

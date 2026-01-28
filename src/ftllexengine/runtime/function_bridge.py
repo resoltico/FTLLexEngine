@@ -370,7 +370,12 @@ class FunctionRegistry:
                 if p.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD)
                 and p.name != "self"
             ]
-            if len(positional_capable) < 2:
+            # Check if function has VAR_POSITIONAL (*args) which can accept any number of
+            # positional arguments. A function with *args can receive (value, locale_code).
+            has_var_positional = any(
+                p.kind == Parameter.VAR_POSITIONAL for p in sig.parameters.values()
+            )
+            if not has_var_positional and len(positional_capable) < 2:
                 msg = (
                     f"Function '{ftl_name}' marked with inject_locale=True requires "
                     f"at least 2 positional parameters (value, locale_code), but has "

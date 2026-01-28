@@ -1,0 +1,2 @@
+msg = Value
+    .tooltip = Tooltip

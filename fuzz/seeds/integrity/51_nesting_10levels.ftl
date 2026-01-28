@@ -1,0 +1,10 @@
+msg_1 = { msg_2 }
+msg_2 = { msg_3 }
+msg_3 = { msg_4 }
+msg_4 = { msg_5 }
+msg_5 = { msg_6 }
+msg_6 = { msg_7 }
+msg_7 = { msg_8 }
+msg_8 = { msg_9 }
+msg_9 = { msg_10 }
+msg_10 = Very Deep

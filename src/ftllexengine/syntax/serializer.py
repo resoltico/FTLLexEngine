@@ -711,22 +711,29 @@ class FluentSerializer(ASTVisitor):
     def _serialize_call_arguments(
         self, args: CallArguments, output: list[str], depth_guard: DepthGuard
     ) -> None:
-        """Serialize CallArguments."""
+        """Serialize CallArguments.
+
+        Security: Argument expressions are wrapped in depth_guard to prevent
+        deeply nested term/function arguments from bypassing depth limits.
+        Without this, -term(arg: -term(arg: ...)) could cause stack overflow.
+        """
         output.append("(")
 
-        # Positional arguments
+        # Positional arguments - protected by depth_guard to enforce depth limits
         for i, arg in enumerate(args.positional):
             if i > 0:
                 output.append(", ")
-            self._serialize_expression(arg, output, depth_guard)
+            with depth_guard:
+                self._serialize_expression(arg, output, depth_guard)
 
-        # Named arguments
+        # Named arguments - protected by depth_guard to enforce depth limits
         named_arg: NamedArgument
         for i, named_arg in enumerate(args.named):
             if i > 0 or args.positional:
                 output.append(", ")
             output.append(f"{named_arg.name.name}: ")
-            self._serialize_expression(named_arg.value, output, depth_guard)
+            with depth_guard:
+                self._serialize_expression(named_arg.value, output, depth_guard)
 
         output.append(")")
 

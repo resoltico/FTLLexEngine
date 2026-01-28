@@ -1,0 +1,1 @@
+msg = { NUMBER($count) } items

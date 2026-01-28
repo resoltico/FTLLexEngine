@@ -1,0 +1,2 @@
+msg = First
+msg = { msg }

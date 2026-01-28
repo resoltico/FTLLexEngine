@@ -394,14 +394,14 @@ class TestIntrospectionCacheDocumentation:
 
 
 class TestParserThreadLocalDocumentation:
-    """Tests for FTL-PAR-THREADLOCAL-001: Thread-local storage documented."""
+    """Tests for FTL-PAR-THREADLOCAL-001: Task-local storage documented."""
 
     def test_parser_primitives_module_has_thread_local(self) -> None:
-        """Parser primitives module uses thread-local for error context."""
+        """Parser primitives module uses contextvars for error context."""
         from ftllexengine.syntax.parser import primitives
 
-        # Should have thread-local context
-        assert hasattr(primitives, "_error_thread_local")
+        # Should have contextvars-based context (replaced threading.local)
+        assert hasattr(primitives, "_error_context_var")
 
     def test_clear_parse_error_works(self) -> None:
         """clear_parse_error() clears thread-local state."""

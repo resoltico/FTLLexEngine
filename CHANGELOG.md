@@ -13,6 +13,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-01-28
+
+### Fixed
+
+- **ISO 4217 Currency Code Validation** (API-CURR-VALIDATE-001):
+  - Previous: `parse_currency()` accepted invalid `default_currency` values (lowercase, wrong length, non-alphabetic) and returned them verbatim
+  - Issue: API contract violation; ISO 4217 requires exactly 3 uppercase ASCII letters
+  - Fix: Added `_is_valid_iso_4217_format()` helper; `_resolve_currency_code()` now validates `default_currency` parameter before accepting it
+  - Location: `parsing/currency.py` `_is_valid_iso_4217_format()`, `_resolve_currency_code()`
+  - Impact: Invalid `default_currency` values now return proper error tuple instead of corrupting output
+
+- **Parser Async Error Context Safety** (SEC-PARSER-ASYNC-ERROR-UNSAFE-001):
+  - Previous: `primitives.py` used `threading.local()` for parse error context
+  - Issue: Thread-local storage leaks context between async tasks sharing the same thread
+  - Fix: Replaced `threading.local()` with `contextvars.ContextVar`, providing automatic task-local isolation
+  - Location: `syntax/parser/primitives.py` `_error_context_var`
+  - Impact: Parse error context is now isolated per async task; no cross-task contamination in asyncio/ASGI
+
+- **Resolver Term Argument Depth Bypass** (SEC-RESOLVER-DEPTH-BYPASS-001):
+  - Previous: Term argument evaluation in `_resolve_term_reference` bypassed `expression_guard`
+  - Issue: Malicious FTL with deeply nested term arguments could bypass depth limits
+  - Fix: Wrapped term argument evaluation in `with context.expression_guard:` block
+  - Location: `runtime/resolver.py` `_resolve_term_reference()`
+  - Impact: Term arguments now respect expression depth limits, preventing DoS
+
+- **Serializer Argument Depth Bypass** (SEC-SERIALIZER-DEPTH-BYPASS-001):
+  - Previous: `_serialize_call_arguments` did not wrap argument serialization in `depth_guard`
+  - Issue: Malicious ASTs with deeply nested function arguments could bypass depth limits
+  - Fix: Added `with depth_guard:` around positional and named argument serialization
+  - Location: `syntax/serializer.py` `_serialize_call_arguments()`
+  - Impact: Function call arguments now respect serialization depth limits
+
+- **CallArguments Blank Handling** (SPEC-PARSER-BLANK-HANDLING-001):
+  - Previous: `parse_call_arguments` used `skip_blank_inline` (spaces only)
+  - Issue: FTL spec defines `CallArguments ::= blank? "(" ...` where `blank` includes newlines
+  - Fix: Changed to `skip_blank` to allow multiline function argument formatting
+  - Location: `syntax/parser/rules.py` `parse_call_arguments()`
+  - Impact: Multiline function arguments now parse correctly per FTL specification
+
+- **FunctionRegistry VAR_POSITIONAL Support** (MAINT-FUNC-REGISTRY-VAR-POSITIONAL-001):
+  - Previous: `inject_locale` validation rejected functions with `*args` and fewer than 2 named positional params
+  - Issue: Functions using `*args` can accept `(value, locale_code)` positionally
+  - Fix: Added `VAR_POSITIONAL` detection; skip minimum parameter check when `*args` present
+  - Location: `runtime/function_bridge.py` `FunctionRegistry.register()`
+  - Impact: Functions with `*args` signatures now work with `inject_locale=True`
+
+- **Currency Cache Size Constant Mismatch** (MAINT-CONST-MISMATCH-001):
+  - Previous: `_get_currency_impl` used `MAX_TERRITORY_CACHE_SIZE` for its LRU cache
+  - Issue: Currency and territory lookups have different cardinalities; shared limit is incorrect
+  - Fix: Added `MAX_CURRENCY_CACHE_SIZE` constant (300); updated `_get_currency_impl` to use it
+  - Location: `constants.py`, `introspection/iso.py` `_get_currency_impl()`
+  - Impact: Currency cache sized independently from territory cache
+
+### Added
+
+- **AST Span Fields** (ARCH-AST-SPAN-MISSING-001):
+  - Added optional `span: Span | None = None` field to `Pattern`, `TextElement`, and `Placeable` AST nodes
+  - These nodes were the only pattern-level AST nodes missing span support
+  - Impact: Uniform span interface across all AST nodes for source mapping and diagnostics
+
+- `MAX_CURRENCY_CACHE_SIZE` constant in `ftllexengine.constants` (value: 300)
+
 ## [0.96.0] - 2026-01-28
 
 ### Fixed
@@ -2980,6 +3042,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.97.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.97.0
 [0.96.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.96.0
 [0.95.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.95.0
 [0.94.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.94.0

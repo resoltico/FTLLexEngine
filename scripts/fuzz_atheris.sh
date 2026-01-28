@@ -286,10 +286,106 @@ run_corpus_health() {
     uv run --group atheris python scripts/fuzz_corpus_health.py
 }
 
+parse_and_display_report() {
+    local target_key="$1"
+    local corpus_dir="$PROJECT_ROOT/.fuzz_corpus"
+
+    # Try to read JSON report from file (written during fuzzing)
+    local report_file="$corpus_dir/fuzz_${target_key}_report.json"
+    local json_report=""
+
+    if [[ -f "$report_file" ]]; then
+        json_report=$(cat "$report_file" 2>/dev/null)
+    fi
+
+    if [[ -z "$json_report" ]]; then
+        echo -e "\n${YELLOW}[WARN] No JSON summary found (fuzzer may not have completed enough iterations)${NC}" >&2
+        return 0
+    fi
+
+    # Check for jq availability
+    if ! command -v jq &> /dev/null; then
+        echo -e "\n${YELLOW}[WARN] jq not found - install for detailed reporting${NC}" >&2
+        echo "$json_report" | grep -o '"findings":[0-9]*' >&2
+        return 0
+    fi
+
+    # Parse key metrics
+    local status iterations findings
+    status=$(echo "$json_report" | jq -r '.status // "unknown"')
+    iterations=$(echo "$json_report" | jq -r '.iterations // 0')
+    findings=$(echo "$json_report" | jq -r '.findings // 0')
+
+    # Display summary header
+    echo -e "\n${BOLD}============================================================${NC}"
+    echo -e "${BOLD}Fuzzing Campaign Summary${NC}"
+    echo -e "${BOLD}============================================================${NC}"
+    echo "Status:     $status"
+    echo "Iterations: $(printf "%'d" "$iterations")"
+    echo "Findings:   $(printf "%'d" "$findings")"
+
+    # Performance metrics (if available)
+    local perf_mean perf_p95 perf_p99
+    perf_mean=$(echo "$json_report" | jq -r '.perf_mean_ms // empty')
+    perf_p95=$(echo "$json_report" | jq -r '.perf_p95_ms // empty')
+    perf_p99=$(echo "$json_report" | jq -r '.perf_p99_ms // empty')
+
+    if [[ -n "$perf_mean" ]]; then
+        echo ""
+        echo "Performance:"
+        echo "  Mean:     ${perf_mean}ms"
+        if [[ -n "$perf_p95" ]]; then
+            echo "  P95:      ${perf_p95}ms"
+        fi
+        if [[ -n "$perf_p99" ]]; then
+            echo "  P99:      ${perf_p99}ms"
+        fi
+    fi
+
+    # Memory metrics (if available)
+    local mem_peak mem_delta
+    mem_peak=$(echo "$json_report" | jq -r '.memory_peak_mb // empty')
+    mem_delta=$(echo "$json_report" | jq -r '.memory_delta_mb // empty')
+
+    if [[ -n "$mem_peak" ]]; then
+        echo ""
+        echo "Memory:"
+        echo "  Peak:     ${mem_peak}MB"
+        if [[ -n "$mem_delta" ]]; then
+            echo "  Delta:    ${mem_delta}MB"
+        fi
+    fi
+
+    # CRITICAL: Alert on findings
+    if [[ "$findings" -gt 0 ]]; then
+        echo -e "\n${RED}${BOLD}[WARNING] API Contract Violations Detected${NC}"
+        echo -e "${RED}Found $findings violations during fuzzing campaign${NC}"
+        echo ""
+
+        # Extract and display top error patterns
+        echo "Top Error Patterns:"
+        echo "$json_report" | jq -r 'to_entries | map(select(.key | startswith("error_") or startswith("contract_"))) | sort_by(-.value) | limit(10; .[]) | "  \(.key): \(.value)"' 2>/dev/null || true
+
+        echo ""
+        echo -e "${YELLOW}Action Required:${NC}"
+        echo "  1. Review error patterns above"
+        echo "  2. Inspect full JSON report in fuzzer stderr"
+        echo "  3. Fix API contract violations in source code"
+        echo "  4. Re-run fuzzer to verify fixes"
+
+        echo -e "${BOLD}============================================================${NC}"
+        return 1
+    else
+        echo -e "\n${GREEN}[OK] No API contract violations detected${NC}"
+        echo -e "${BOLD}============================================================${NC}"
+        return 0
+    fi
+}
+
 run_fuzz_target() {
     local target_key="$1"
     local target_script="${PARAM_TARGETS[$target_key]}"
-    
+
     if [[ -z "$target_script" ]]; then
         echo -e "${RED}[ERROR] Unknown target: $target_key${NC}"
         show_help
@@ -330,17 +426,29 @@ run_fuzz_target() {
         args="$args $seed_dir"
         # The first directory passed to libFuzzer is the output corpus (read/write),
         # subsequent directories are input seeds (read-only).
-        # We already pass '$corpus_dir' as the first positional arg in the exec line below.
+        # We already pass '$corpus_dir' as the first positional arg below.
     fi
 
-    # Run
-    # Note: We use 'exec' to replace the shell, letting the python process handle signals
-    exec uv run --group atheris python "$target_script" \
+    # Run fuzzer (report will be written to .fuzz_corpus/fuzz_<target>_report.json)
+    local exit_code=0
+    uv run --group atheris python "$target_script" \
         -workers="$WORKERS" \
         -jobs=0 \
         -artifact_prefix="$corpus_dir/crash_" \
         "$corpus_dir" \
-        $args
+        $args \
+        || exit_code=$?
+
+    # Parse and display report from file
+    if ! parse_and_display_report "$target_key"; then
+        echo -e "\n${RED}[FAIL] Fuzzer detected API contract violations${NC}" >&2
+        exit 1
+    fi
+
+    # Return fuzzer exit code if non-zero
+    if [[ $exit_code -ne 0 ]]; then
+        exit $exit_code
+    fi
 }
 
 

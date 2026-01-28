@@ -22,6 +22,7 @@ __all__ = [
     # Cache limits
     "MAX_LOCALE_CACHE_SIZE",
     "MAX_TERRITORY_CACHE_SIZE",
+    "MAX_CURRENCY_CACHE_SIZE",
     "DEFAULT_CACHE_SIZE",
     "DEFAULT_MAX_ENTRY_SIZE",
     # Input limits
@@ -107,6 +108,13 @@ MAX_LOCALE_CACHE_SIZE: int = 128
 # Distinct from MAX_LOCALE_CACHE_SIZE because domain cardinality differs:
 # locales are user-controlled (small working set), territories are enumerable (finite set).
 MAX_TERRITORY_CACHE_SIZE: int = 300
+
+# Maximum cached currency-keyed entries (e.g., currency name/symbol lookups).
+# ISO 4217 defines ~180 active currency codes. 300 provides margin for historical
+# currencies and complete coverage without cache thrashing when iterating all currencies.
+# Semantically distinct from MAX_TERRITORY_CACHE_SIZE to enable independent tuning
+# of currency-specific vs territory-specific caches.
+MAX_CURRENCY_CACHE_SIZE: int = 300
 
 # Default maximum cache entries for format results.
 # 1000 entries is sufficient for most applications (typical UI has <500 messages).

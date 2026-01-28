@@ -1,0 +1,2 @@
+-brand = Firefox
+msg = { -brand }

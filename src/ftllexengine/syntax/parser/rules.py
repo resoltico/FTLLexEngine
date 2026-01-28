@@ -1184,7 +1184,9 @@ def parse_call_arguments(
         Failure(ParseError(...)) on parse error
     """
     # Per spec: CallArguments ::= blank? "(" blank? argument_list blank? ")"
-    cursor = skip_blank_inline(cursor)
+    # The spec uses blank (spaces AND newlines), not blank_inline (spaces only).
+    # This enables multiline formatting of function/term arguments.
+    cursor = skip_blank(cursor)
 
     positional: list[InlineExpression] = []
     named: list[NamedArgument] = []
@@ -1193,7 +1195,7 @@ def parse_call_arguments(
 
     # Parse comma-separated arguments
     while not cursor.is_eof:
-        cursor = skip_blank_inline(cursor)
+        cursor = skip_blank(cursor)
 
         # Check for end of arguments
         if cursor.current == ")":
@@ -1206,13 +1208,13 @@ def parse_call_arguments(
 
         arg_parse = arg_result
         arg_expr = arg_parse.value
-        cursor = skip_blank_inline(arg_parse.cursor)
+        cursor = skip_blank(arg_parse.cursor)
 
         # Check if this is a named argument (followed by :)
         if not cursor.is_eof and cursor.current == ":":
             # This is a named argument
             cursor = cursor.advance()  # Skip :
-            cursor = skip_blank_inline(cursor)
+            cursor = skip_blank(cursor)
 
             # The argument expression must be an identifier (MessageReference)
             if not isinstance(arg_expr, MessageReference):
@@ -1258,12 +1260,12 @@ def parse_call_arguments(
                 return None  # "Positional arguments must come before named arguments", cursor
             positional.append(arg_expr)
 
-        cursor = skip_blank_inline(cursor)
+        cursor = skip_blank(cursor)
 
         # Check for comma (optional before closing paren)
         if not cursor.is_eof and cursor.current == ",":
             cursor = cursor.advance()  # Skip comma
-            cursor = skip_blank_inline(cursor)
+            cursor = skip_blank(cursor)
 
     call_args = CallArguments(positional=tuple(positional), named=tuple(named))
     return ParseResult(call_args, cursor)

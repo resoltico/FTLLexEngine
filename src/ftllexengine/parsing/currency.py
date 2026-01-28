@@ -426,6 +426,19 @@ def _get_currency_maps() -> tuple[dict[str, str], set[str], dict[str, str], froz
     return merged_symbols, merged_ambiguous, merged_locales, merged_codes
 
 
+def _is_valid_iso_4217_format(code: str) -> bool:
+    """Check if code matches ISO 4217 format: exactly 3 uppercase ASCII letters.
+
+    This validates format only, not existence in CLDR database.
+    Per ISO 4217 standard, currency codes are exactly 3 uppercase ASCII letters.
+    """
+    return (
+        len(code) == ISO_CURRENCY_CODE_LENGTH
+        and code.isupper()
+        and code.isalpha()
+    )
+
+
 def _resolve_currency_code(
     currency_str: str,
     locale_code: str,
@@ -448,11 +461,7 @@ def _resolve_currency_code(
     Returns:
         Tuple of (currency_code, error) - one will be None
     """
-    is_iso_code = (
-        len(currency_str) == ISO_CURRENCY_CODE_LENGTH
-        and currency_str.isupper()
-        and currency_str.isalpha()
-    )
+    is_iso_code = _is_valid_iso_4217_format(currency_str)
 
     symbol_map, ambiguous_symbols, locale_to_currency, valid_iso_codes = _get_currency_maps()
 
@@ -472,6 +481,16 @@ def _resolve_currency_code(
     # It's a symbol - check if ambiguous
     if currency_str in ambiguous_symbols:
         if default_currency:
+            # Validate default_currency is a valid ISO 4217 format
+            if not _is_valid_iso_4217_format(default_currency):
+                diagnostic = ErrorTemplate.parse_currency_code_invalid(default_currency, value)
+                context = FrozenErrorContext(
+                    input_value=str(value), locale_code=locale_code, parse_type="currency"
+                )
+                error = FrozenFluentError(
+                    str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+                )
+                return (None, error)
             return (default_currency, None)
         if infer_from_locale:
             # Locale-aware resolution for ambiguous symbols

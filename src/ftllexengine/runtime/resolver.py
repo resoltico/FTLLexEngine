@@ -577,12 +577,20 @@ class FluentResolver:
         # "Terms receive such data from messages in which they are used"
         # This means ONLY explicit parameterization like -term(arg: val), NOT
         # implicit access to the calling message's $variables.
+        #
+        # Security: Argument evaluation is wrapped in expression_guard to prevent
+        # deeply nested term arguments from bypassing depth limits. Without this,
+        # -term(arg: -term(arg: ...)) could cause stack overflow via unbounded recursion.
         term_args: dict[str, FluentValue] = {}
         if expr.arguments is not None:
             # Evaluate named arguments (the primary use case for term args)
+            # Protected by expression_guard to enforce depth limits on argument expressions
             for named_arg in expr.arguments.named:
                 arg_name = named_arg.name.name
-                arg_value = self._resolve_expression(named_arg.value, args, errors, context)
+                with context.expression_guard:
+                    arg_value = self._resolve_expression(
+                        named_arg.value, args, errors, context
+                    )
                 term_args[arg_name] = arg_value
 
             # Evaluate positional arguments (per Fluent spec, term arguments section)
@@ -591,9 +599,11 @@ class FluentResolver:
             # Positional arguments in term references are technically parsed but have
             # no binding semantics - there's no parameter name to assign the value to.
             # We evaluate them to catch expression errors but discard the result.
+            # Protected by expression_guard to enforce depth limits on argument expressions
             if expr.arguments.positional:
                 for pos_arg in expr.arguments.positional:
-                    self._resolve_expression(pos_arg, args, errors, context)
+                    with context.expression_guard:
+                        self._resolve_expression(pos_arg, args, errors, context)
 
                 # Emit warning that positional arguments are ignored
                 diag = ErrorTemplate.term_positional_args_ignored(

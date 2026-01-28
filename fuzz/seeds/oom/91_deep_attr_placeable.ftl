@@ -1,0 +1,11 @@
+msg = val
+    .attr0 = {{{{{ $var }}}}}
+    .attr1 = {{{{{ $var }}}}}
+    .attr2 = {{{{{ $var }}}}}
+    .attr3 = {{{{{ $var }}}}}
+    .attr4 = {{{{{ $var }}}}}
+    .attr5 = {{{{{ $var }}}}}
+    .attr6 = {{{{{ $var }}}}}
+    .attr7 = {{{{{ $var }}}}}
+    .attr8 = {{{{{ $var }}}}}
+    .attr9 = {{{{{ $var }}}}}

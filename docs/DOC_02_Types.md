@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.96.0"
+version: "0.97.0"
 domain: TYPES
 updated: "2026-01-28"
 route:
@@ -179,12 +179,14 @@ class Junk:
 @dataclass(frozen=True, slots=True)
 class Pattern:
     elements: tuple[PatternElement, ...]
+    span: Span | None = None
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `elements` | `tuple[PatternElement, ...]` | Y | Text and placeable elements. |
+| `span` | `Span \| None` | N | Source location span. |
 
 ### Constraints
 - Return: Immutable pattern node.
@@ -199,6 +201,7 @@ class Pattern:
 @dataclass(frozen=True, slots=True)
 class TextElement:
     value: str
+    span: Span | None = None
 
     @staticmethod
     def guard(elem: object) -> TypeIs[TextElement]: ...
@@ -208,6 +211,7 @@ class TextElement:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `value` | `str` | Y | Plain text content. |
+| `span` | `Span \| None` | N | Source location span. |
 
 ### Constraints
 - Return: Immutable text element.
@@ -222,6 +226,7 @@ class TextElement:
 @dataclass(frozen=True, slots=True)
 class Placeable:
     expression: Expression
+    span: Span | None = None
 
     @staticmethod
     def guard(elem: object) -> TypeIs[Placeable]: ...
@@ -231,6 +236,7 @@ class Placeable:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `expression` | `Expression` | Y | Contained expression. |
+| `span` | `Span \| None` | N | Source location span. |
 
 ### Constraints
 - Return: Immutable placeable node.

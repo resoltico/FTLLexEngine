@@ -7,40 +7,40 @@ Error Context:
     Functions store error context on failure via _set_parse_error().
     Retrieve with get_last_parse_error() for detailed diagnostics.
 
-Thread-Local State (Architectural Decision):
-    This module uses thread-local storage for parse error context rather than
-    explicit parameter passing. This design choice prioritizes performance for
-    high-frequency operations:
+Task-Local State (Architectural Decision):
+    This module uses contextvars for parse error context rather than explicit
+    parameter passing. This design choice prioritizes performance for
+    high-frequency operations while providing automatic async safety:
 
     Performance Rationale:
     - Primitive functions (parse_identifier, parse_number, parse_string_literal)
       are called 100+ times per parse operation
     - Explicit context threading would require ~10 signature changes and
       200+ call site updates throughout the parser
-    - Parameter marshaling overhead on the hot path degrades microsecond-scale
-      primitive operations
-    - Thread-local approach reduces 200-line primitives from growing to 300+ lines
+    - ContextVar.get()/set() is O(1) with no performance penalty vs thread-local
+    - Task-local approach reduces 200-line primitives from growing to 300+ lines
 
     Trade-off Analysis:
     - Parser operations are synchronous and single-threaded per parse call
     - Error context only needed for the most recent primitive failure
-    - Each thread maintains independent state (no cross-thread conflicts)
+    - Each async task maintains independent state (automatic isolation)
     - Context lifetime is scoped to single parse operation
-    - Caller controls cleanup via clear_parse_error() before each parse
+    - Automatic cleanup per task (no manual clear_parse_error() required in async)
 
-    Thread Safety:
-    For async frameworks that reuse threads across parse operations, the caller
-    MUST call clear_parse_error() before each parse to prevent error context
-    leakage between operations.
+    Async Safety:
+    contextvars provides automatic task-local isolation. In async frameworks
+    (asyncio, ASGI), each task has its own copy of the error context. No
+    manual cleanup is required between parse operations in async contexts.
 
     This is a permanent architectural pattern where performance benefits of
     implicit state outweigh the cost of reduced explicitness for this specific
-    high-frequency primitive layer.
+    high-frequency primitive layer, with the added benefit of automatic async
+    safety via contextvars.
 """
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal
-from threading import local as thread_local
 
 from ftllexengine.constants import (
     _MAX_IDENTIFIER_LENGTH,
@@ -97,10 +97,6 @@ _ASCII_DIGITS: str = "0123456789"
 # is_identifier_start, is_identifier_char
 # See identifier_validation.py for the unified source of truth for FTL identifier grammar.
 
-# Thread-local storage for parse error context
-_error_thread_local = thread_local()
-
-
 @dataclass(frozen=True, slots=True)
 class ParseErrorContext:
     """Context information for parse failures.
@@ -119,12 +115,20 @@ class ParseErrorContext:
     expected: tuple[str, ...] = ()
 
 
+# Task-local storage for parse error context via contextvars.
+# ContextVar provides automatic isolation per async task, unlike thread-local
+# which only isolates per thread (causing context leakage in async frameworks).
+_error_context_var: ContextVar[ParseErrorContext | None] = ContextVar(
+    "parse_error_context", default=None
+)
+
+
 def _set_parse_error(
     message: str, position: int, expected: tuple[str, ...] = ()
 ) -> None:
     """Store parse error context for later retrieval."""
-    _error_thread_local.last_error = ParseErrorContext(
-        message=message, position=position, expected=expected
+    _error_context_var.set(
+        ParseErrorContext(message=message, position=position, expected=expected)
     )
 
 
@@ -140,12 +144,12 @@ def get_last_parse_error() -> ParseErrorContext | None:
         ...     error = get_last_parse_error()
         ...     print(f"Error at position {error.position}: {error.message}")
     """
-    return getattr(_error_thread_local, "last_error", None)
+    return _error_context_var.get()
 
 
 def clear_parse_error() -> None:
     """Clear the last parse error context."""
-    _error_thread_local.last_error = None
+    _error_context_var.set(None)
 
 
 def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:

@@ -263,16 +263,28 @@ class Junk:
 
 @dataclass(frozen=True, slots=True)
 class Pattern:
-    """Text pattern with optional placeables."""
+    """Text pattern with optional placeables.
+
+    Attributes:
+        elements: Sequence of text segments and placeables
+        span: Source position in normalized (LF-only) source text
+    """
 
     elements: tuple[PatternElement, ...]
+    span: Span | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class TextElement:
-    """Plain text segment."""
+    """Plain text segment.
+
+    Attributes:
+        value: The text content
+        span: Source position in normalized (LF-only) source text
+    """
 
     value: str
+    span: Span | None = None
 
     @staticmethod
     def guard(elem: object) -> TypeIs[TextElement]:
@@ -295,9 +307,15 @@ class TextElement:
 
 @dataclass(frozen=True, slots=True)
 class Placeable:
-    """Dynamic content: { expression }"""
+    """Dynamic content: { expression }
+
+    Attributes:
+        expression: The contained expression
+        span: Source position in normalized (LF-only) source text
+    """
 
     expression: Expression
+    span: Span | None = None
 
     @staticmethod
     def guard(elem: object) -> TypeIs[Placeable]:
