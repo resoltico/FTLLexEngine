@@ -316,6 +316,11 @@ def _get_currency_impl(
         return None
 
     symbol = _get_babel_currency_symbol(code_upper, locale_norm)
+
+    # ISO 4217 standard is the authoritative source for currency decimal precision.
+    # Babel's CLDR data may differ from ISO 4217 for specific currencies (e.g., IQD:
+    # Babel reports 0 decimals, ISO 4217 specifies 3). For financial-grade accuracy,
+    # the hardcoded ISO 4217 data is used as the source of truth.
     decimal_digits = ISO_4217_DECIMAL_DIGITS.get(code_upper, ISO_4217_DEFAULT_DECIMALS)
 
     return CurrencyInfo(

@@ -43,12 +43,18 @@ def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
     fraction digits in the source number WITH trailing zeros. This function
     extracts that count from the locale-formatted string.
 
+    Only leading consecutive digits after the decimal separator are counted.
+    This correctly handles formatted strings where non-digit characters or
+    literal text (e.g., currency names, custom pattern suffixes) follow the
+    fractional digits.
+
     Args:
         formatted: Locale-formatted number string (e.g., "1,234.56" or "1.234,56")
         decimal_symbol: Locale-specific decimal separator (e.g., "." or ",")
 
     Returns:
-        Number of digits after the decimal separator, or 0 if no decimal part.
+        Number of leading consecutive digits after the decimal separator,
+        or 0 if no decimal part.
 
     Examples:
         >>> _compute_visible_precision("1,234.56", ".")
@@ -59,6 +65,8 @@ def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
         0
         >>> _compute_visible_precision("1.00", ".")
         2
+        >>> _compute_visible_precision("100.00 Dollars 123", ".")
+        2
     """
     if decimal_symbol not in formatted:
         return 0
@@ -67,9 +75,17 @@ def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
     # Split from the right to handle any prefix characters
     _, fraction_part = formatted.rsplit(decimal_symbol, 1)
 
-    # Count only digit characters in the fraction part
-    # This ignores any trailing non-digit characters (currency symbols, etc.)
-    return sum(1 for char in fraction_part if char.isdigit())
+    # Count leading consecutive digit characters in the fraction part.
+    # Stop at the first non-digit to exclude literal text that may contain
+    # digits (e.g., custom Babel patterns with quoted literals like
+    # "#,##0.00 'Dollars 123'" produce "100.00 Dollars 123").
+    count = 0
+    for char in fraction_part:
+        if char.isdigit():
+            count += 1
+        else:
+            break
+    return count
 
 
 def number_format(

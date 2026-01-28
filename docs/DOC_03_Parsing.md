@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.95.0"
+version: "0.96.0"
 domain: PARSING
-updated: "2026-01-27"
+updated: "2026-01-28"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
@@ -62,6 +62,7 @@ def serialize(
 - State: None.
 - Thread: Safe.
 - Security: DepthGuard prevents stack overflow from adversarial ASTs. Identifier validation prevents invalid FTL output from programmatic AST construction.
+- Roundtrip: Programmatic ASTs with embedded newlines followed by whitespace within a single TextElement are serialized using separate-line format with structural indentation, preserving whitespace through serialize-parse cycles.
 
 ---
 

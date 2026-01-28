@@ -13,6 +13,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-01-28
+
+### Fixed
+
+- **Visible Precision Digit Count** (PRECISION-DIGIT-COUNT-001):
+  - Previous: `_compute_visible_precision` counted ALL digits in fraction part, including digits after non-digit characters (e.g., `"1.20%"` returned 3 instead of 2)
+  - Issue: CLDR plural rule `v` operand requires counting only leading consecutive fraction digits
+  - Fix: Changed to break-on-first-non-digit loop instead of summing all digit characters
+  - Location: `runtime/functions.py` `_compute_visible_precision()`
+  - Impact: Correct `v` operand for formatted numbers with trailing non-digit suffixes
+
+- **Serializer Roundtrip Data Loss** (SERIALIZER-INDENT-LOSS-001):
+  - Previous: Programmatic ASTs with embedded newlines followed by whitespace within a single TextElement lost significant whitespace during serialize-parse roundtrips
+  - Issue: `_pattern_needs_separate_line` only checked first element; regex-based indent replacement skipped lines already at 4-space indent
+  - Fix: Added embedded newline+whitespace detection in `_pattern_needs_separate_line`; replaced conditional regex with unconditional `str.replace("\n", "\n    ")`
+  - Location: `syntax/serializer.py` `_pattern_needs_separate_line()`, `_serialize_pattern()`
+  - Impact: Programmatic ASTs now roundtrip correctly through serialize-parse cycles
+
+- **Resolver Duplicate Error Handling** (DRY-RESOLVER-CALL-001):
+  - Previous: Two identical ~20-line try/except blocks for locale-injected and non-locale function calls
+  - Issue: DRY violation; inconsistency risk between the two code paths
+  - Fix: Extracted `_call_function_safe()` method encapsulating shared error handling
+  - Location: `runtime/resolver.py` `_call_function_safe()`
+  - Impact: Single error handling path for all function calls; reduced maintenance surface
+
+- **ASTTransformer Type Safety** (TYPE-SAFETY-VISITOR-001):
+  - Previous: `_transform_list` accepted any `ASTNode` subclass without field-level type validation
+  - Issue: Buggy transformers could silently produce wrong-typed nodes, corrupting AST structure
+  - Fix: Added `expected_types` parameter to `_transform_list` and `_validate_element_type` static method; all call sites in `generic_visit` now pass explicit expected types
+  - Location: `syntax/visitor.py` `_transform_list()`, `_validate_element_type()`, `generic_visit()`
+  - Impact: Runtime TypeError for transformers producing nodes that violate field type constraints
+
+- **ISO 4217 Data Integrity Documentation** (MAINT-ISO-CURRENCY-DATA-001, MAINT-ISO-PRECISION-001):
+  - Previous: Comment in `constants.py` falsely claimed Babel does not expose decimal digit data
+  - Fix: Updated comment to accurately describe the relationship between hardcoded ISO 4217 data and Babel CLDR data, documenting known discrepancies (e.g., IQD: Babel=0, ISO 4217=3)
+  - Location: `constants.py` `ISO_4217_DECIMAL_DIGITS` comment
+
+### Added
+
+- `scripts/verify_iso4217.py`: CI verification script comparing hardcoded ISO 4217 decimal digits against Babel CLDR data; reports discrepancies as warnings (ISO 4217 standard is authoritative)
+
 ## [0.95.0] - 2026-01-28
 
 ### Fixed
@@ -2939,6 +2980,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.96.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.96.0
 [0.95.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.95.0
 [0.94.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.94.0
 [0.93.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.93.0

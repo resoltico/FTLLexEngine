@@ -15,8 +15,6 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import re
-
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.core.identifier_validation import is_valid_identifier
@@ -518,18 +516,23 @@ class FluentSerializer(ASTVisitor):
     def _pattern_needs_separate_line(self, pattern: Pattern) -> bool:
         """Check if pattern needs separate-line serialization for roundtrip correctness.
 
-        Returns True if any TextElement starting with whitespace is preceded by
-        an element ending with newline. This structure would lose the leading
-        whitespace during roundtrip if serialized on the same line, because:
+        Returns True in two cases:
 
-        1. Parser sets common_indent from first continuation line's FULL indentation
-        2. Serializer adds 4-space continuation indent after newlines
-        3. Content's leading whitespace becomes part of combined indentation
-        4. On re-parse, common_indent strips ALL indentation including content whitespace
+        1. Cross-element: A TextElement starting with whitespace is preceded by
+           an element ending with newline. Without separate-line serialization,
+           the leading whitespace merges with structural indentation and is
+           stripped during re-parse.
 
-        By outputting on a separate line, we establish initial_common_indent before
-        any content with embedded leading whitespace, so extra whitespace is preserved
-        as extra_spaces on subsequent continuation lines.
+        2. Intra-element: A single TextElement contains an embedded newline
+           followed by whitespace. Programmatically constructed ASTs may have
+           this structure (parser-produced ASTs split at newlines). Without
+           separate-line serialization, the inline start causes the parser to
+           calculate common_indent from continuation lines, stripping the
+           semantic whitespace.
+
+        By outputting on a separate line, we establish initial_common_indent
+        before any content with embedded leading whitespace, so extra whitespace
+        is preserved as extra_spaces on subsequent continuation lines.
         """
         prev_ends_newline = False
         for elem in pattern.elements:
@@ -537,7 +540,16 @@ class FluentSerializer(ASTVisitor):
                 # Check if this element starts with whitespace and follows a newline
                 if prev_ends_newline and elem.value and elem.value[0] == " ":
                     return True
-                prev_ends_newline = elem.value.endswith("\n")
+                # Check for embedded newlines followed by whitespace within
+                # a single TextElement. This handles programmatically constructed
+                # ASTs where newlines and indented content coexist in one element.
+                value = elem.value
+                idx = value.find("\n")
+                while idx != -1 and idx + 1 < len(value):
+                    if value[idx + 1] == " ":
+                        return True
+                    idx = value.find("\n", idx + 1)
+                prev_ends_newline = value.endswith("\n")
             else:
                 # Placeable doesn't end with newline
                 prev_ends_newline = False
@@ -576,12 +588,15 @@ class FluentSerializer(ASTVisitor):
                 # Literal braces must become Placeable(StringLiteral("{"/"}")
                 text = element.value
 
-                # Handle newlines: add indentation after each newline for continuation
-                # Only add indentation if not already present (prevents double-indentation
-                # in roundtrip scenarios where the parsed AST already contains indented text)
+                # Handle newlines: add 4-space structural indentation after each
+                # newline to create valid FTL continuation lines.
+                # Unconditional replacement is correct because:
+                # - Parser-produced ASTs split at newlines, so embedded newlines
+                #   only appear at element ends (no existing structural indent)
+                # - Programmatic ASTs may embed newlines with content whitespace
+                #   that must be preserved ON TOP of structural indentation
                 if "\n" in text:
-                    # Use regex to replace "\n" not followed by 4+ spaces
-                    text = re.sub(r"\n(?!    )", "\n    ", text)
+                    text = text.replace("\n", "\n    ")
 
                 if "{" in text or "}" in text:
                     # Split and emit braces as StringLiteral Placeables

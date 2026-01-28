@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.95.0"
+version: "0.96.0"
 domain: TYPES
-updated: "2026-01-27"
+updated: "2026-01-28"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -631,9 +631,10 @@ class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
 - State: Maintains dispatch cache and depth guard.
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `DepthLimitExceededError` when traversal exceeds max_depth. `TypeError` if visit method returns None for required scalar field or list for any scalar field.
+- Raises: `DepthLimitExceededError` when traversal exceeds max_depth. `TypeError` if visit method returns None for required scalar field, list for any scalar field, or a node whose type does not match the field's expected types.
 - Depth: Guard inherited from ASTVisitor.visit() (bypass-proof).
 - Immutable: Uses `dataclasses.replace()` for node modifications.
+- Type Validation: `_transform_list` validates that each transformed node matches the field's expected types. For example, `Pattern.elements` accepts only `TextElement | Placeable`; producing a `Message` raises `TypeError` identifying the field and unexpected type.
 - Required Fields: `Message.id`, `Term.id`, `Term.value`, `Placeable.expression`, `Variant.key`, `Variant.value`, etc. require single ASTNode return. Returning None or list raises TypeError.
 - Optional Fields: `Message.comment`, `Message.value`, `Term.comment`, `MessageReference.attribute`, `TermReference.attribute`, `TermReference.arguments` accept None returns for node removal. Returning list still raises TypeError.
 

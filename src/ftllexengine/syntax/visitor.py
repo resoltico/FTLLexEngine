@@ -26,17 +26,22 @@ from .ast import (
     ASTNode,
     Attribute,
     CallArguments,
+    Comment,
     FunctionReference,
     Identifier,
+    Junk,
     Message,
     MessageReference,
     NamedArgument,
+    NumberLiteral,
     Pattern,
     Placeable,
     Resource,
     SelectExpression,
+    StringLiteral,
     Term,
     TermReference,
+    TextElement,
     VariableReference,
     Variant,
 )
@@ -388,7 +393,14 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
         # Use pattern matching for type-safe child transformation
         match node:
             case Resource(entries=entries):
-                return replace(node, entries=self._transform_list(entries))
+                return replace(
+                    node,
+                    entries=self._transform_list(
+                        entries,
+                        "Resource.entries",
+                        (Message, Term, Comment, Junk),
+                    ),
+                )
             case Message(id=id_node, value=value, attributes=attrs, comment=comment):
                 # Message.value and Message.comment are optional - allow None returns
                 validated_value = (
@@ -409,7 +421,9 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                     node,
                     id=self._validate_scalar_result(self.visit(id_node), "Message.id"),
                     value=validated_value,
-                    attributes=self._transform_list(attrs),
+                    attributes=self._transform_list(
+                        attrs, "Message.attributes", (Attribute,)
+                    ),
                     comment=validated_comment,
                 )
             case Term(id=id_node, value=value, attributes=attrs, comment=comment):
@@ -425,11 +439,18 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                     node,
                     id=self._validate_scalar_result(self.visit(id_node), "Term.id"),
                     value=self._validate_scalar_result(self.visit(value), "Term.value"),
-                    attributes=self._transform_list(attrs),
+                    attributes=self._transform_list(
+                        attrs, "Term.attributes", (Attribute,)
+                    ),
                     comment=validated_comment,
                 )
             case Pattern(elements=elements):
-                return replace(node, elements=self._transform_list(elements))
+                return replace(
+                    node,
+                    elements=self._transform_list(
+                        elements, "Pattern.elements", (TextElement, Placeable)
+                    ),
+                )
             case Placeable(expression=expr):
                 validated_expr = self._validate_scalar_result(
                     self.visit(expr), "Placeable.expression"
@@ -442,7 +463,9 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     selector=validated_selector,
-                    variants=self._transform_list(variants),
+                    variants=self._transform_list(
+                        variants, "SelectExpression.variants", (Variant,)
+                    ),
                 )
             case Variant(key=key, value=value):
                 return replace(
@@ -506,8 +529,18 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
             case CallArguments(positional=pos, named=named):
                 return replace(
                     node,
-                    positional=self._transform_list(pos),
-                    named=self._transform_list(named),
+                    positional=self._transform_list(
+                        pos,
+                        "CallArguments.positional",
+                        (
+                            StringLiteral, NumberLiteral, VariableReference,
+                            MessageReference, TermReference, FunctionReference,
+                            Placeable,
+                        ),
+                    ),
+                    named=self._transform_list(
+                        named, "CallArguments.named", (NamedArgument,)
+                    ),
                 )
             case NamedArgument(name=name, value=value):
                 return replace(
@@ -526,17 +559,28 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 # NumberLiteral, Comment, Junk. Return as-is (immutable).
                 return node
 
-    def _transform_list(self, nodes: tuple[ASTNode, ...]) -> tuple[ASTNode, ...]:
-        """Transform a tuple of nodes.
+    def _transform_list(
+        self,
+        nodes: tuple[ASTNode, ...],
+        field_name: str,
+        expected_types: tuple[type[ASTNode], ...],
+    ) -> tuple[ASTNode, ...]:
+        """Transform a tuple of nodes with runtime type validation.
 
-        Handles node removal (None) and expansion (lists) using Python 3.13 features.
-        AST nodes use tuples (immutable) instead of lists.
+        Handles node removal (None) and expansion (lists). Validates that
+        each resulting node is an instance of one of the expected types,
+        preventing silent AST corruption from buggy transformers.
 
         Args:
-            nodes: Tuple of AST nodes
+            nodes: Tuple of AST nodes to transform.
+            field_name: Dotted field name for error messages (e.g., "Pattern.elements").
+            expected_types: Tuple of allowed node types for this field.
 
         Returns:
-            Transformed tuple (flattened, with None removed)
+            Transformed tuple (flattened, with None removed, type-validated).
+
+        Raises:
+            TypeError: If any transformed node is not an instance of expected_types.
         """
         result: list[ASTNode] = []
         for node in nodes:
@@ -548,10 +592,39 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                     # Remove node (don't add to result)
                     continue
                 case list():
-                    # Expand node (add all items)
+                    # Expand node (add all items after validation)
+                    for item in transformed:
+                        self._validate_element_type(item, field_name, expected_types)
                     result.extend(transformed)
                 case _:
-                    # Replace node (add single item)
+                    # Replace node (add single item after validation)
+                    self._validate_element_type(transformed, field_name, expected_types)
                     result.append(transformed)
 
         return tuple(result)
+
+    @staticmethod
+    def _validate_element_type(
+        node: ASTNode,
+        field_name: str,
+        expected_types: tuple[type[ASTNode], ...],
+    ) -> None:
+        """Validate that a transformed node matches the expected field type.
+
+        Args:
+            node: Transformed AST node.
+            field_name: Dotted field name for error messages.
+            expected_types: Tuple of allowed node types.
+
+        Raises:
+            TypeError: If node is not an instance of any expected type.
+        """
+        if not isinstance(node, expected_types):
+            expected_names = " | ".join(t.__name__ for t in expected_types)
+            msg = (
+                f"Transformer produced {type(node).__name__} for "
+                f"'{field_name}', expected {expected_names}. "
+                f"Transformers must return nodes matching the field's "
+                f"type constraint to maintain AST structural integrity."
+            )
+            raise TypeError(msg)

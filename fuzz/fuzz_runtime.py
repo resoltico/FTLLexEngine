@@ -594,6 +594,8 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         else fdp.ConsumeUnicodeNoSurrogates(10)
     )
 
+    target_ids: list[str] = []
+
     try:
         try:
             bundle = FluentBundle(

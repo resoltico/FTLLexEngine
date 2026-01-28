@@ -233,8 +233,11 @@ FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # -> {!NUMBER}
 # Source: ISO 4217:2015 and subsequent amendments
 # https://www.iso.org/iso-4217-currency-codes.html
 #
-# This is used by ISO introspection to provide accurate currency metadata.
-# Babel provides currency symbols and names but does NOT expose decimal digits.
+# Babel exposes decimal digits via babel.numbers.get_currency_precision(),
+# but its CLDR data may differ from ISO 4217 for specific currencies (e.g.,
+# IQD: Babel reports 0 decimals, ISO 4217 specifies 3). This hardcoded
+# constant is the authoritative source for ISO 4217 decimal precision.
+# Used by both the introspection module and parser-only installations.
 #
 # ============================================================================
 

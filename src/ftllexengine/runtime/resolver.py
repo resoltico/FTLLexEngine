@@ -900,46 +900,53 @@ class FluentResolver:
             # Append locale after positional args (FTL passes exactly one value arg,
             # so this places locale as the second positional argument by contract)
             # FunctionRegistry.call() handles camelCase -> snake_case conversion
-            try:
-                return self.function_registry.call(
-                    func_name,
-                    [*positional_values, self.locale],
-                    named_values,
-                )
-            except FrozenFluentError:
-                # Already structured error from registry (TypeError/ValueError),
-                # let it propagate to pattern-level handler
-                raise
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                # Intentionally broad: Fluent spec requires graceful degradation for ANY
-                # exception from custom functions. Resolution must "never fail catastrophically."
-                logger.warning(
-                    "Custom function %s raised %s: %s",
-                    func_name,
-                    type(e).__name__,
-                    str(e),
-                )
-                diag = ErrorTemplate.function_failed(
-                    func_name, f"Uncaught exception: {type(e).__name__}: {e}"
-                )
-                errors.append(
-                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-                )
-                return FALLBACK_FUNCTION_ERROR.format(name=func_name)
+            return self._call_function_safe(
+                func_name,
+                [*positional_values, self.locale],
+                named_values,
+                errors,
+            )
 
         # Custom function or built-in that doesn't need locale: pass args as-is
+        return self._call_function_safe(
+            func_name,
+            positional_values,
+            named_values,
+            errors,
+        )
+
+    def _call_function_safe(
+        self,
+        func_name: str,
+        positional: list[FluentValue],
+        named: dict[str, FluentValue],
+        errors: list[FrozenFluentError],
+    ) -> FluentValue:
+        """Call a registered function with graceful error handling.
+
+        FrozenFluentError from the registry propagates directly (already
+        structured). Any other exception is caught and converted to a
+        diagnostic error per Fluent spec requirement that resolution must
+        "never fail catastrophically."
+
+        Args:
+            func_name: Function name as it appears in FTL.
+            positional: Positional argument values (locale may be appended).
+            named: Named argument values (camelCase keys from FTL).
+            errors: Mutable error accumulator for the current resolution.
+
+        Returns:
+            Function result on success, or fallback error string on failure.
+        """
         try:
-            return self.function_registry.call(
-                func_name,
-                positional_values,
-                named_values,
-            )
+            return self.function_registry.call(func_name, positional, named)
         except FrozenFluentError:
-            # Already structured error from registry, let it propagate
+            # Already structured error from registry (TypeError/ValueError),
+            # let it propagate to pattern-level handler
             raise
         except Exception as e:  # pylint: disable=broad-exception-caught
-            # Intentionally broad: Fluent spec requires graceful degradation for ANY
-            # exception from custom functions. Resolution must "never fail catastrophically."
+            # Intentionally broad: Fluent spec requires graceful degradation
+            # for ANY exception from custom functions.
             logger.warning(
                 "Custom function %s raised %s: %s",
                 func_name,
