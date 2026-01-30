@@ -22,11 +22,14 @@ from ftllexengine.syntax.ast import (
     Identifier,
     MessageReference,
     NumberLiteral,
+    Pattern,
     Placeable,
     SelectExpression,
     StringLiteral,
     TermReference,
+    TextElement,
     VariableReference,
+    Variant,
 )
 
 # ============================================================================
@@ -362,7 +365,7 @@ class TestFallbackGeneration:
         assert fallback == "{!NUMBER}"
 
     def test_fallback_select_expression(self) -> None:
-        """Verify fallback for SelectExpression uses generic {???}."""
+        """Verify fallback for SelectExpression with valid construction."""
         registry = FunctionRegistry()
         resolver = FluentResolver(
             locale="en_US",
@@ -372,22 +375,27 @@ class TestFallbackGeneration:
             use_isolating=False,
         )
 
-        # SelectExpression with unknown selector type
-        select_expr_unknown = SelectExpression(
-            selector=Mock(),
-            variants=(),
-        )
-        fallback = resolver._get_fallback_for_placeable(select_expr_unknown)
-        assert fallback == "{{???} -> ...}"
-
-        # SelectExpression with VariableReference selector provides context
+        # SelectExpression with VariableReference selector (valid construction)
         var_selector = VariableReference(id=Identifier(name="status"))
+        default_variant = Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="default"),)),
+            default=True,
+        )
         select_expr_var = SelectExpression(
             selector=var_selector,
-            variants=(),
+            variants=(default_variant,),
         )
         fallback = resolver._get_fallback_for_placeable(select_expr_var)
-        assert fallback == "{{$status} -> ...}"
+        assert "{$status}" in fallback
+
+    def test_select_expression_empty_variants_rejected(self) -> None:
+        """SelectExpression with empty variants is rejected at construction."""
+        with pytest.raises(ValueError, match="requires at least one variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="x")),
+                variants=(),
+            )
 
 
 # ============================================================================

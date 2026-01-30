@@ -626,13 +626,17 @@ def _ensure_unique_variant_keys_with_default(
             )
         )
 
-    # Ensure at least one default
-    if not any(v.default for v in unique_variants):
-        unique_variants[-1] = Variant(
-            key=unique_variants[-1].key,
-            value=unique_variants[-1].value,
-            default=True,
-        )
+    # Ensure exactly one default variant (required by SelectExpression.__post_init__)
+    # First, strip all defaults
+    unique_variants = [
+        Variant(key=v.key, value=v.value, default=False) for v in unique_variants
+    ]
+    # Then set exactly the last one as default
+    unique_variants[-1] = Variant(
+        key=unique_variants[-1].key,
+        value=unique_variants[-1].value,
+        default=True,
+    )
 
     return tuple(unique_variants)
 

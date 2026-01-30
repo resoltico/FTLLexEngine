@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.97.0"
+version: "0.98.0"
 domain: CORE
-updated: "2026-01-28"
+updated: "2026-01-30"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -61,7 +61,7 @@ class FluentBundle:
 - Thread: Always thread-safe via internal RWLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
-- Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback. Also affects cache corruption handling.
+- Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback. Errors are cached before raising; subsequent cache hits re-raise without re-resolution.
 - Cache: Security parameters expose `IntegrityCache` features for financial-grade applications.
 
 ---
@@ -633,7 +633,7 @@ def strict(self) -> bool:
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
-- Note: When True, any formatting error raises FormattingIntegrityError.
+- Note: When True, any formatting error raises FormattingIntegrityError. Errors are cached before raising; cache hits re-raise without re-resolution.
 
 ---
 

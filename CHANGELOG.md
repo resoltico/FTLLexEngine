@@ -13,6 +13,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-01-30
+
+### Breaking Changes
+
+- **AST Construction Validation** (VAL-AST-CONSTRUCT-UNSAFE-001):
+  - `Message.__post_init__` raises `ValueError` if both `value` is `None` and `attributes` is empty
+  - `Term.__post_init__` raises `ValueError` if `value` is `None`
+  - `SelectExpression.__post_init__` raises `ValueError` if `variants` is empty or does not contain exactly one default variant
+  - Code that constructs these AST nodes with invalid state must be updated
+
+- **Strict Mode Cache-Before-Raise** (RUN-BUNDLE-STRICT-CACHE-BYPASS-001):
+  - Strict mode now caches resolution results before raising `FormattingIntegrityError`
+  - Cache hits in strict mode also re-raise if the cached result contains errors
+  - Previous behavior: errors were not cached; repeated calls re-resolved each time
+
+- **Attribute-Granular Cycle Detection** (VAL-RESOURCE-ATTR-CYCLE-FP-001):
+  - Dependency graph tracks attribute-level references (`msg.tooltip` vs `msg`)
+  - Cross-attribute references within the same message are no longer flagged as circular
+  - `extract_references()` now returns attribute-qualified reference names (e.g., `"msg.tooltip"`)
+
+### Fixed
+
+- **Select Expression EOF Crash** (BUG-PARSER-SELECT-EOF-001):
+  - Previous: `parse_select_expression` accessed `cursor.current` after inner `skip_blank` without EOF check
+  - Issue: Unterminated select expressions (missing closing `}`) caused unhandled `EOFError` crash
+  - Fix: Added `cursor.is_eof` guard after `skip_blank` inside the variant parsing loop
+  - Location: `syntax/parser/rules.py` `parse_select_expression()`
+  - Impact: Malformed select expressions now fail gracefully instead of crashing the parser
+
+- **ISO 4217 Non-ASCII Bypass** (PARSE-CURR-ISO-FORMAT-BUG-001):
+  - Previous: `_is_valid_iso_4217_format()` accepted non-ASCII uppercase letters (e.g., Cyrillic)
+  - Fix: Added `code.isascii()` check before `code.isupper()` and `code.isalpha()`
+  - Location: `parsing/currency.py`
+
+- **Number Format DoS** (SEC-NUM-FORMAT-DOS-001):
+  - Previous: `format_number()` accepted arbitrary fraction digit values, enabling unbounded string allocation
+  - Fix: Added `MAX_FORMAT_DIGITS` constant (100) and bounds validation in `format_number()`
+  - Location: `constants.py`, `runtime/locale_context.py`
+
+- **Diagnostic Log Injection** (SEC-DIAG-LOG-INJECTION-001):
+  - Previous: User-controlled message text rendered verbatim in text-format diagnostics
+  - Fix: Added `_escape_control_chars()` to `DiagnosticFormatter` for RUST and SIMPLE output formats
+  - Location: `diagnostics/formatter.py`
+
+- **RWLock Mixed Thread Identification** (MAINT-RWLOCK-MIXED-IDENT-001):
+  - Previous: `_active_writer` stored `threading.Thread`; comparisons used `threading.get_ident()` (int)
+  - Fix: Unified on `threading.get_ident()` (int); `_active_writer` type changed to `int | None`
+  - Location: `runtime/rwlock.py`
+
+- **CLDR Date/Datetime Missing "full" Style** (PARSE-DATE-STYLE-GAP-001):
+  - Previous: `_DATE_PARSE_STYLES` and `_DATETIME_PARSE_STYLES` omitted "full" CLDR style
+  - Fix: Added "full" to both style tuples; used `hasattr` for safe pattern attribute access
+  - Location: `parsing/dates.py`
+
+- **Date Pattern Attribute Access** (PARSE-DATE-ATTR-BUG-001):
+  - Previous: Direct `.pattern` access on Babel format objects could raise `AttributeError`
+  - Fix: Added `hasattr(fmt, "pattern")` check with `str(fmt)` fallback
+  - Location: `parsing/dates.py`
+
 ## [0.97.0] - 2026-01-28
 
 ### Fixed
@@ -3042,6 +3101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.98.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.98.0
 [0.97.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.97.0
 [0.96.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.96.0
 [0.95.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.95.0

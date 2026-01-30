@@ -108,8 +108,8 @@ class RWLock:
         # Track active readers count
         self._active_readers: int = 0
 
-        # Track which thread (if any) holds write lock
-        self._active_writer: threading.Thread | None = None
+        # Track which thread ID (if any) holds write lock
+        self._active_writer: int | None = None
 
         # Track waiting writers count (for priority scheduling)
         self._waiting_writers: int = 0
@@ -181,7 +181,6 @@ class RWLock:
         Allows reentrant acquisition by same thread.
         Allows lock downgrading (write lock holder can acquire read locks).
         """
-        current_thread = threading.current_thread()
         current_thread_id = threading.get_ident()
 
         with self._condition:
@@ -193,7 +192,7 @@ class RWLock:
             # Lock downgrading: writer can acquire read locks without blocking
             # These reads are tracked separately and convert to regular reads
             # when the write lock is released
-            if self._active_writer == current_thread:
+            if self._active_writer == current_thread_id:
                 self._writer_held_reads += 1
                 return
 
@@ -212,12 +211,11 @@ class RWLock:
         Handles writer-held reads (lock downgrading) correctly.
         Notifies waiting writers when last reader exits.
         """
-        current_thread = threading.current_thread()
         current_thread_id = threading.get_ident()
 
         with self._condition:
             # Check if this is a writer-held read (lock downgrading case)
-            if self._active_writer == current_thread and self._writer_held_reads > 0:
+            if self._active_writer == current_thread_id and self._writer_held_reads > 0:
                 self._writer_held_reads -= 1
                 return
 
@@ -247,7 +245,6 @@ class RWLock:
         Raises:
             RuntimeError: If thread attempts read-to-write lock upgrade.
         """
-        current_thread = threading.current_thread()
         current_thread_id = threading.get_ident()
 
         with self._condition:
@@ -260,7 +257,7 @@ class RWLock:
                 raise RuntimeError(msg)
 
             # Check if this thread already holds the write lock (reentrant case)
-            if self._active_writer == current_thread:
+            if self._active_writer == current_thread_id:
                 self._writer_reentry_count += 1
                 return
 
@@ -273,7 +270,7 @@ class RWLock:
                     self._condition.wait()
 
                 # Acquire write lock
-                self._active_writer = current_thread
+                self._active_writer = current_thread_id
 
             finally:
                 # Decrement waiting writers count
@@ -289,7 +286,7 @@ class RWLock:
         current_thread_id = threading.get_ident()
 
         with self._condition:
-            if self._active_writer != threading.current_thread():
+            if self._active_writer != current_thread_id:
                 msg = "Thread does not hold write lock"
                 raise RuntimeError(msg)
 

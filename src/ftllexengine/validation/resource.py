@@ -31,7 +31,7 @@ from ftllexengine.diagnostics import (
     WarningSeverity,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.introspection import extract_references
+from ftllexengine.introspection import extract_references, extract_references_by_attribute
 from ftllexengine.syntax import Junk, Message, Resource, Term
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.validator import SemanticValidator
@@ -337,12 +337,15 @@ def _check_undefined_references(
         line, column = _get_entry_position(message, line_cache)
 
         for ref in msg_refs:
-            if ref not in all_messages:
+            # Strip attribute qualification for existence check
+            # "msg.tooltip" -> check if "msg" exists
+            base_ref = ref.split(".", 1)[0] if "." in ref else ref
+            if base_ref not in all_messages:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
-                        message=f"Message '{msg_name}' references undefined message '{ref}'",
-                        context=ref,
+                        message=f"Message '{msg_name}' references undefined message '{base_ref}'",
+                        context=base_ref,
                         line=line,
                         column=column,
                         severity=WarningSeverity.CRITICAL,
@@ -350,12 +353,15 @@ def _check_undefined_references(
                 )
 
         for ref in term_refs:
-            if ref not in all_terms:
+            # Strip attribute qualification for existence check
+            # "term.attr" -> check if "term" exists
+            base_ref = ref.split(".", 1)[0] if "." in ref else ref
+            if base_ref not in all_terms:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
-                        message=f"Message '{msg_name}' references undefined term '-{ref}'",
-                        context=f"-{ref}",
+                        message=f"Message '{msg_name}' references undefined term '-{base_ref}'",
+                        context=f"-{base_ref}",
                         line=line,
                         column=column,
                         severity=WarningSeverity.CRITICAL,
@@ -368,12 +374,14 @@ def _check_undefined_references(
         line, column = _get_entry_position(term, line_cache)
 
         for ref in msg_refs:
-            if ref not in all_messages:
+            # Strip attribute qualification for existence check
+            base_ref = ref.split(".", 1)[0] if "." in ref else ref
+            if base_ref not in all_messages:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
-                        message=f"Term '-{term_name}' references undefined message '{ref}'",
-                        context=ref,
+                        message=f"Term '-{term_name}' references undefined message '{base_ref}'",
+                        context=base_ref,
                         line=line,
                         column=column,
                         severity=WarningSeverity.CRITICAL,
@@ -381,12 +389,14 @@ def _check_undefined_references(
                 )
 
         for ref in term_refs:
-            if ref not in all_terms:
+            # Strip attribute qualification for existence check
+            base_ref = ref.split(".", 1)[0] if "." in ref else ref
+            if base_ref not in all_terms:
                 warnings.append(
                     ValidationWarning(
                         code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
-                        message=f"Term '-{term_name}' references undefined term '-{ref}'",
-                        context=f"-{ref}",
+                        message=f"Term '-{term_name}' references undefined term '-{base_ref}'",
+                        context=f"-{base_ref}",
                         line=line,
                         column=column,
                         severity=WarningSeverity.CRITICAL,
@@ -426,7 +436,8 @@ def _detect_circular_references(
             seen_cycle_keys.add(cycle_key)
 
             # Format cycle for human-readable output
-            # Convert "msg:foo" -> "foo", "term:bar" -> "-bar"
+            # Convert "msg:foo" -> "foo", "msg:foo.bar" -> "foo.bar",
+            # "term:baz" -> "-baz", "term:baz.attr" -> "-baz.attr"
             formatted_parts: list[str] = []
             for node in cycle:
                 if node.startswith("msg:"):
@@ -487,33 +498,68 @@ def _build_dependency_graph(
     """
     graph: dict[str, set[str]] = {}
 
-    # Add message nodes with all their dependencies (both message and term refs)
+    # Helper to resolve a reference string to a graph node key.
+    # References may be attribute-qualified ("msg.attr") or bare ("msg").
+    def _resolve_msg_ref(ref: str) -> str | None:
+        """Resolve a message reference to its graph node key, or None if unknown."""
+        if "." in ref:
+            # Attribute-qualified reference (e.g., "msg.tooltip")
+            base, attr = ref.split(".", 1)
+            if base in messages_dict or (known_messages and base in known_messages):
+                return f"msg:{base}.{attr}"
+        # Bare message reference
+        elif ref in messages_dict or (known_messages and ref in known_messages):
+            return f"msg:{ref}"
+        return None
+
+    def _resolve_term_ref(ref: str) -> str | None:
+        """Resolve a term reference to its graph node key, or None if unknown."""
+        if "." in ref:
+            # Attribute-qualified reference (e.g., "-term.attr")
+            base, attr = ref.split(".", 1)
+            if base in terms_dict or (known_terms and base in known_terms):
+                return f"term:{base}.{attr}"
+        elif ref in terms_dict or (known_terms and ref in known_terms):
+            return f"term:{ref}"
+        return None
+
+    # Add message nodes with attribute-granular dependencies.
+    # Each attribute gets its own node in the graph to avoid false positive
+    # cycles when msg.a references msg.b (non-cyclic intra-message reference).
     for msg_name, message in messages_dict.items():
-        msg_refs, term_refs = extract_references(message)
-        deps: set[str] = set()
-        # Message references: add edge if target exists in current resource or known entries
-        for ref in msg_refs:
-            if ref in messages_dict or (known_messages and ref in known_messages):
-                deps.add(f"msg:{ref}")
-        # Term references: add edge if target exists in current resource or known entries
-        for ref in term_refs:
-            if ref in terms_dict or (known_terms and ref in known_terms):
-                deps.add(f"term:{ref}")
-        graph[f"msg:{msg_name}"] = deps
+        refs_by_attr = extract_references_by_attribute(message)
+
+        for attr_name, (msg_refs, term_refs) in refs_by_attr.items():
+            node_key = f"msg:{msg_name}" if attr_name is None else f"msg:{msg_name}.{attr_name}"
+
+            deps: set[str] = set()
+            for ref in msg_refs:
+                resolved = _resolve_msg_ref(ref)
+                if resolved is not None:
+                    deps.add(resolved)
+            for ref in term_refs:
+                resolved = _resolve_term_ref(ref)
+                if resolved is not None:
+                    deps.add(resolved)
+            graph[node_key] = deps
 
     # Add term nodes with all their dependencies (both message and term refs)
     for term_name, term in terms_dict.items():
-        msg_refs, term_refs = extract_references(term)
-        term_deps: set[str] = set()
-        # Message references: add edge if target exists in current resource or known entries
-        for ref in msg_refs:
-            if ref in messages_dict or (known_messages and ref in known_messages):
-                term_deps.add(f"msg:{ref}")
-        # Term references: add edge if target exists in current resource or known entries
-        for ref in term_refs:
-            if ref in terms_dict or (known_terms and ref in known_terms):
-                term_deps.add(f"term:{ref}")
-        graph[f"term:{term_name}"] = term_deps
+        refs_by_attr = extract_references_by_attribute(term)
+
+        for attr_name, (msg_refs, term_refs) in refs_by_attr.items():
+            node_key = f"term:{term_name}" if attr_name is None else f"term:{term_name}.{attr_name}"
+
+            term_deps: set[str] = set()
+            for ref in msg_refs:
+                resolved = _resolve_msg_ref(ref)
+                if resolved is not None:
+                    term_deps.add(resolved)
+            for ref in term_refs:
+                resolved = _resolve_term_ref(ref)
+                if resolved is not None:
+                    term_deps.add(resolved)
+            graph[node_key] = term_deps
 
     # Add known entries as nodes WITH their actual dependencies if provided.
     # This enables detection of cross-resource cycles involving dependencies OF known entries.

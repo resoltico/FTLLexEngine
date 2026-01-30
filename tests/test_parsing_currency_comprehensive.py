@@ -480,3 +480,143 @@ class TestUnknownSymbolError:
 
         assert result is None
         assert error is not None
+
+
+# ============================================================================
+# LINES 486-493: Invalid default_currency format validation
+# ============================================================================
+
+
+class TestInvalidDefaultCurrencyFormat:
+    """Test invalid default_currency format validation (lines 486-493)."""
+
+    def test_resolve_currency_code_invalid_default_currency(self) -> None:
+        """Test ambiguous symbol with invalid default_currency format.
+
+        When an ambiguous symbol is provided with a default_currency that
+        doesn't match ISO 4217 format (3 uppercase letters), lines 486-493
+        should return an error.
+        """
+        resolve_fn = currency_module._resolve_currency_code
+
+        # $ is ambiguous - needs default_currency
+        # Provide invalid default_currency (not 3 uppercase letters)
+        result, error = resolve_fn(
+            "$",  # Ambiguous symbol
+            "en_US",  # locale_code
+            "$100",  # value
+            default_currency="invalid",  # Invalid format (not 3 uppercase)
+            infer_from_locale=False,
+        )
+
+        # Should return None result with error
+        assert result is None
+        assert error is not None
+        assert "invalid" in str(error).lower()
+
+    def test_resolve_currency_code_lowercase_default_currency(self) -> None:
+        """Test ambiguous symbol with lowercase default_currency."""
+        resolve_fn = currency_module._resolve_currency_code
+
+        result, error = resolve_fn(
+            "$",  # Ambiguous symbol
+            "en_US",  # locale_code
+            "$100",  # value
+            default_currency="usd",  # Lowercase (invalid)
+            infer_from_locale=False,
+        )
+
+        assert result is None
+        assert error is not None
+
+    def test_resolve_currency_code_short_default_currency(self) -> None:
+        """Test ambiguous symbol with too-short default_currency."""
+        resolve_fn = currency_module._resolve_currency_code
+
+        result, error = resolve_fn(
+            "$",  # Ambiguous symbol
+            "en_US",  # locale_code
+            "$100",  # value
+            default_currency="US",  # Too short (only 2 chars)
+            infer_from_locale=False,
+        )
+
+        assert result is None
+        assert error is not None
+
+    def test_resolve_currency_code_long_default_currency(self) -> None:
+        """Test ambiguous symbol with too-long default_currency."""
+        resolve_fn = currency_module._resolve_currency_code
+
+        result, error = resolve_fn(
+            "$",  # Ambiguous symbol
+            "en_US",  # locale_code
+            "$100",  # value
+            default_currency="USDD",  # Too long (4 chars)
+            infer_from_locale=False,
+        )
+
+        assert result is None
+        assert error is not None
+
+    def test_resolve_currency_code_numeric_default_currency(self) -> None:
+        """Test ambiguous symbol with numeric default_currency."""
+        resolve_fn = currency_module._resolve_currency_code
+
+        result, error = resolve_fn(
+            "$",  # Ambiguous symbol
+            "en_US",  # locale_code
+            "$100",  # value
+            default_currency="123",  # Numeric (invalid)
+            infer_from_locale=False,
+        )
+
+        assert result is None
+        assert error is not None
+
+
+# ============================================================================
+# LINES 822-825: clear_currency_caches() function
+# ============================================================================
+
+
+class TestClearCurrencyCaches:
+    """Test clear_currency_caches() function (lines 822-825)."""
+
+    def test_clear_currency_caches_executes(self) -> None:
+        """Test that clear_currency_caches() executes without error."""
+        from ftllexengine.parsing.currency import clear_currency_caches
+
+        # Should execute without raising
+        clear_currency_caches()
+
+    def test_clear_currency_caches_invalidates_caches(self) -> None:
+        """Test that clear_currency_caches() actually clears cached data."""
+        from ftllexengine.parsing.currency import (
+            _get_currency_maps,
+            clear_currency_caches,
+        )
+
+        # Warm up cache
+        maps1 = _get_currency_maps()
+        assert maps1 is not None
+
+        # Clear caches
+        clear_currency_caches()
+
+        # Get maps again - should rebuild
+        maps2 = _get_currency_maps()
+        assert maps2 is not None
+
+        # Maps should be equal in content (same data source)
+        # but may be different objects if cache was cleared
+        assert len(maps1[0]) == len(maps2[0])  # Same number of symbols
+
+    def test_clear_currency_caches_multiple_calls(self) -> None:
+        """Test that clear_currency_caches() can be called multiple times."""
+        from ftllexengine.parsing.currency import clear_currency_caches
+
+        # Should handle multiple clears without error
+        clear_currency_caches()
+        clear_currency_caches()
+        clear_currency_caches()

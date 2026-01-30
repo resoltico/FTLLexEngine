@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.97.0"
+version: "0.98.0"
 domain: RUNTIME
-updated: "2026-01-28"
+updated: "2026-01-30"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -74,6 +74,7 @@ def number_format(
 - State: None.
 - Thread: Safe.
 - Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
+- Bounds: Fraction digit parameters clamped to `MAX_FORMAT_DIGITS` (20). Values exceeding the limit are silently clamped.
 - Rounding: Uses CLDR half-up rounding (2.5->3, 3.5->4). Matches Intl.NumberFormat behavior.
 
 ---
@@ -910,6 +911,25 @@ MAX_DEPTH: int = 100
 
 ---
 
+### `MAX_FORMAT_DIGITS`
+
+```python
+MAX_FORMAT_DIGITS: int = 20
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 20 |
+| Location | `ftllexengine.constants` |
+
+- Purpose: Upper bound on `minimum_fraction_digits` and `maximum_fraction_digits` in `number_format()` and `currency_format()`.
+- Usage: Values exceeding this limit are clamped to prevent excessive memory allocation during formatting.
+- Security: Prevents DoS via pathological fraction digit requests.
+- Import: `from ftllexengine.constants import MAX_FORMAT_DIGITS`
+
+---
+
 ## `DepthGuard`
 
 ### Signature
@@ -987,7 +1007,7 @@ class RWLock:
 
 ### Constraints
 - Return: RWLock instance.
-- State: Tracks active readers, active writer, waiting writers, reader thread counts, writer reentry count, writer-held reads.
+- State: Tracks active readers, active writer (as `int` thread identity), waiting writers, reader thread counts, writer reentry count, writer-held reads.
 - Thread: Safe for all operations. Reentrant for both readers and writers (same thread can reacquire locks multiple times).
 - Purpose: Allows multiple concurrent readers OR single exclusive writer.
 - Writer Preference: Writers are prioritized when waiting to prevent reader starvation.
@@ -1060,7 +1080,7 @@ def build_dependency_graph(
 | `term_entries` | `Mapping[str, tuple[set[str], set[str]]] \| None` | N | Term ID to (msg_refs, term_refs) tuple (IDs without "-" prefix) |
 
 ### Constraints
-- Return: Tuple of (message_deps, term_deps) where message_deps maps message IDs to referenced message IDs, and term_deps maps prefixed keys to referenced term IDs. Prefixed keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs.
+- Return: Tuple of (message_deps, term_deps) where message_deps maps message IDs to referenced message IDs, and term_deps maps prefixed keys to referenced term IDs. Prefixed keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs. References are attribute-qualified (e.g., "msg.attr") when the reference targets a specific attribute.
 - Raises: Never.
 - State: None (pure function).
 - Thread: Safe.

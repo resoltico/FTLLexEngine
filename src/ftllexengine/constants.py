@@ -32,6 +32,8 @@ __all__ = [
     # Parser limits
     "MAX_LOOKAHEAD_CHARS",
     "MAX_PARSE_ERRORS",
+    # Format limits
+    "MAX_FORMAT_DIGITS",
     # Fallback strings
     "FALLBACK_INVALID",
     "FALLBACK_MISSING_MESSAGE",
@@ -194,6 +196,19 @@ _MAX_NUMBER_LENGTH: int = 1000
 # FTL strings may contain long text blocks (e.g., legal disclaimers, terms).
 # 1M characters (~2-4MB with Unicode) is generous while preventing abuse.
 _MAX_STRING_LITERAL_LENGTH: int = 1_000_000
+
+# ============================================================================
+# FORMAT LIMITS
+# ============================================================================
+
+# Maximum number of fraction/integer digits in number formatting.
+# Prevents DoS via unbounded string allocation ("0" * N) when processing
+# minimumFractionDigits or maximumFractionDigits from FTL NUMBER() calls.
+# 100 digits exceeds any real-world financial requirement:
+# - IEEE 754 decimal128: 34 significant digits
+# - Largest real-world precision (cryptocurrency): ~18 digits
+# - Scientific notation: rarely exceeds 30 digits
+MAX_FORMAT_DIGITS: int = 100
 
 # ============================================================================
 # FALLBACK STRINGS

@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 from ftllexengine.constants import (
     FALLBACK_FUNCTION_ERROR,
+    MAX_FORMAT_DIGITS,
     MAX_LOCALE_CACHE_SIZE,
     MAX_LOCALE_CODE_LENGTH,
 )
@@ -372,6 +373,20 @@ class LocaleContext:
             Uses Babel's format_decimal() which implements CLDR rules.
             Matches Intl.NumberFormat behavior in JavaScript.
         """
+        # Validate digit parameters to prevent DoS via unbounded string allocation
+        if not 0 <= minimum_fraction_digits <= MAX_FORMAT_DIGITS:
+            msg = (
+                f"minimum_fraction_digits must be 0-{MAX_FORMAT_DIGITS}, "
+                f"got {minimum_fraction_digits}"
+            )
+            raise ValueError(msg)
+        if not 0 <= maximum_fraction_digits <= MAX_FORMAT_DIGITS:
+            msg = (
+                f"maximum_fraction_digits must be 0-{MAX_FORMAT_DIGITS}, "
+                f"got {maximum_fraction_digits}"
+            )
+            raise ValueError(msg)
+
         # Lazy import to support parser-only installations
         from babel import numbers as babel_numbers  # noqa: PLC0415
 

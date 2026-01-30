@@ -83,10 +83,12 @@ class TestSelectExpressionTransformation:
                 Variant(
                     key=Identifier(name="one"),
                     value=Pattern(elements=(TextElement(value="one item"),)),
+                    default=False,
                 ),
                 Variant(
                     key=Identifier(name="other"),
                     value=Pattern(elements=(TextElement(value="many items"),)),
+                    default=True,
                 ),
             ),
         )

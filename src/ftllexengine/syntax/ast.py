@@ -163,6 +163,16 @@ class Message:
     comment: Comment | None = None
     span: Span | None = None
 
+    def __post_init__(self) -> None:
+        """Validate Fluent spec invariants.
+
+        Per Fluent spec, a message must have either a value pattern or
+        at least one attribute (or both).
+        """
+        if self.value is None and not self.attributes:
+            msg = "Message must have a value or at least one attribute"
+            raise ValueError(msg)
+
     @staticmethod
     def guard(entry: object) -> TypeIs[Message]:
         """Type guard for Message (used in entry filtering)."""
@@ -182,6 +192,17 @@ class Term:
     attributes: tuple[Attribute, ...]
     comment: Comment | None = None
     span: Span | None = None
+
+    def __post_init__(self) -> None:
+        """Validate Fluent spec invariants.
+
+        Per Fluent spec, a term must always have a value pattern.
+        The type annotation (Pattern, not Pattern | None) enforces this
+        at the type level; this validates at runtime for programmatic construction.
+        """
+        if self.value is None:  # pragma: no branch - runtime guard for programmatic construction
+            msg = "Term must have a value pattern (cannot be None)"  # type: ignore[unreachable]
+            raise ValueError(msg)
 
     @staticmethod
     def guard(entry: object) -> TypeIs[Term]:
@@ -342,6 +363,20 @@ class SelectExpression:
     selector: InlineExpression
     variants: tuple[Variant, ...]
     span: Span | None = None
+
+    def __post_init__(self) -> None:
+        """Validate Fluent spec invariants.
+
+        Per Fluent spec, a select expression must have at least one variant,
+        and exactly one variant must be marked as the default (with *).
+        """
+        if not self.variants:
+            msg = "SelectExpression requires at least one variant"
+            raise ValueError(msg)
+        default_count = sum(1 for v in self.variants if v.default)
+        if default_count != 1:
+            msg = f"SelectExpression requires exactly one default variant, got {default_count}"
+            raise ValueError(msg)
 
     @staticmethod
     def guard(expr: object) -> TypeIs[SelectExpression]:

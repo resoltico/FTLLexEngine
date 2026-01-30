@@ -434,6 +434,7 @@ def _is_valid_iso_4217_format(code: str) -> bool:
     """
     return (
         len(code) == ISO_CURRENCY_CODE_LENGTH
+        and code.isascii()
         and code.isupper()
         and code.isalpha()
     )

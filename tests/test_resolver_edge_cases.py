@@ -155,83 +155,32 @@ test = { $count ->
         result, _ = bundle.format_pattern("test", {"count": 5})
         assert "Many items" in result
 
-    def test_select_with_no_default_uses_first_variant(self) -> None:
-        """Select with no default variant uses first variant as fallback."""
-        # Manually create AST without default to test fallback
-        msg = Message(
-            id=Identifier(name="test"),
-            value=Pattern(
-                elements=(
-                    Placeable(
-                        expression=SelectExpression(
-                            selector=VariableReference(id=Identifier(name="x")),
-                            variants=(
-                                Variant(
-                                    key=Identifier(name="a"),
-                                    value=Pattern(elements=(TextElement(value="A"),)),
-                                    default=False,  # No default!
-                                ),
-                                Variant(
-                                    key=Identifier(name="b"),
-                                    value=Pattern(elements=(TextElement(value="B"),)),
-                                    default=False,
-                                ),
-                            ),
-                        )
+    def test_select_with_no_default_raises_at_construction(self) -> None:
+        """SelectExpression with no default variant raises ValueError at construction."""
+        with pytest.raises(ValueError, match="exactly one default variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="x")),
+                variants=(
+                    Variant(
+                        key=Identifier(name="a"),
+                        value=Pattern(elements=(TextElement(value="A"),)),
+                        default=False,
                     ),
-                )
-            ),
-            attributes=(),
-        )
-
-        resolver = FluentResolver(
-            locale="en",
-            messages={"test": msg},
-            terms={},
-            function_registry=create_default_registry(),
-            use_isolating=False,
-        )
-
-        # Non-matching value should use first variant
-        result, _ = resolver.resolve_message(msg, {"x": "unknown"})
-
-        assert "A" in result
-
-    def test_select_with_empty_variants_raises_error(self) -> None:
-        """Select with no variants raises error.
-
-        Note: This tests internal resolver logic. The parser would normally
-        reject empty variants, but we can test the resolver's handling directly.
-        """
-        # Create select expression with empty variants tuple
-        msg = Message(
-            id=Identifier(name="test"),
-            value=Pattern(
-                elements=(
-                    Placeable(
-                        expression=SelectExpression(
-                            selector=VariableReference(id=Identifier(name="x")),
-                            variants=(),  # Empty!
-                        )
+                    Variant(
+                        key=Identifier(name="b"),
+                        value=Pattern(elements=(TextElement(value="B"),)),
+                        default=False,
                     ),
-                )
-            ),
-            attributes=(),
-        )
+                ),
+            )
 
-        resolver = FluentResolver(
-            locale="en",
-            messages={"test": msg},
-            terms={},
-            function_registry=create_default_registry(),
-            use_isolating=False,
-        )
-
-        # The resolver will use the variable value as text when variants are empty
-        # This tests the fallback behavior
-        result, _ = resolver.resolve_message(msg, {"x": "value"})
-        # Should handle gracefully - check that it doesn't crash
-        assert isinstance(result, str)
+    def test_select_with_empty_variants_raises_at_construction(self) -> None:
+        """SelectExpression with no variants raises ValueError at construction."""
+        with pytest.raises(ValueError, match="at least one variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="x")),
+                variants=(),
+            )
 
     def test_select_with_malformed_number_literal_key(self) -> None:
         """Select with invalid NumberLiteral.raw falls through gracefully.

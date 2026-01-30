@@ -454,13 +454,20 @@ class ReferenceExtractor(ASTVisitor[MessageReference | TermReference]):
         self.term_refs: set[str] = set()
 
     def visit_MessageReference(self, node: MessageReference) -> MessageReference:
-        """Collect message reference ID.
+        """Collect message reference ID with optional attribute qualification.
+
+        Stores attribute-qualified references ("msg.attr") when the reference
+        targets a specific attribute, or unqualified ("msg") for base message
+        references. This enables attribute-granular cycle detection.
 
         MessageReference contains only Identifier children (leaf nodes with
         just name: str). No nested references are possible, so generic_visit()
         is unnecessary and would waste cycles traversing leaf nodes.
         """
-        self.message_refs.add(node.id.name)
+        if node.attribute is not None:
+            self.message_refs.add(f"{node.id.name}.{node.attribute.name}")
+        else:
+            self.message_refs.add(node.id.name)
         return node
 
     def visit_TermReference(self, node: TermReference) -> TermReference:
@@ -471,7 +478,10 @@ class ReferenceExtractor(ASTVisitor[MessageReference | TermReference]):
         TermReference, VariableReference). Must traverse children to find all
         nested references.
         """
-        self.term_refs.add(node.id.name)
+        if node.attribute is not None:
+            self.term_refs.add(f"{node.id.name}.{node.attribute.name}")
+        else:
+            self.term_refs.add(node.id.name)
         with self._depth_guard:
             self.generic_visit(node)
         return node
@@ -481,14 +491,17 @@ def extract_references(entry: Message | Term) -> tuple[frozenset[str], frozenset
     """Extract message and term references from an AST entry.
 
     Traverses the entry's value pattern and all attribute patterns to collect
-    all referenced message and term IDs.
+    all referenced message and term IDs. References include attribute
+    qualification: "msg.attr" for attribute references, "msg" for base
+    message references.
 
     Args:
         entry: Message or Term AST node to analyze
 
     Returns:
         Tuple of (message_refs, term_refs) as frozen sets of IDs.
-        - message_refs: Set of referenced message IDs (e.g., {"welcome", "goodbye"})
+        - message_refs: Set of referenced message IDs, possibly attribute-qualified
+          (e.g., {"welcome", "msg.tooltip"})
         - term_refs: Set of referenced term IDs (e.g., {"brand", "app-name"})
 
     Example:
@@ -510,6 +523,37 @@ def extract_references(entry: Message | Term) -> tuple[frozenset[str], frozenset
         extractor.visit(attr.value)
 
     return frozenset(extractor.message_refs), frozenset(extractor.term_refs)
+
+
+def extract_references_by_attribute(
+    entry: Message | Term,
+) -> dict[str | None, tuple[frozenset[str], frozenset[str]]]:
+    """Extract references per source attribute for attribute-granular cycle detection.
+
+    Returns a mapping from source attribute name (None for value pattern) to
+    the (message_refs, term_refs) found in that attribute's pattern.
+
+    Args:
+        entry: Message or Term AST node to analyze
+
+    Returns:
+        Dict mapping attribute name (or None for value) to (message_refs, term_refs).
+    """
+    result: dict[str | None, tuple[frozenset[str], frozenset[str]]] = {}
+
+    # Extract from value pattern
+    if entry.value is not None:
+        extractor = ReferenceExtractor()
+        extractor.visit(entry.value)
+        result[None] = (frozenset(extractor.message_refs), frozenset(extractor.term_refs))
+
+    # Extract from each attribute pattern separately
+    for attr in entry.attributes:
+        extractor = ReferenceExtractor()
+        extractor.visit(attr.value)
+        result[attr.id.name] = (frozenset(extractor.message_refs), frozenset(extractor.term_refs))
+
+    return result
 
 
 # ==============================================================================

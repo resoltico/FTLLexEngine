@@ -161,33 +161,23 @@ class TestValidatorErrorPaths:
     @given(ftl_select_expressions())
     @settings(max_examples=100)
     def test_validator_catches_or_allows_no_default_variant(self, select_expr):
-        """ERROR PATH: No default variant handling.
+        """ERROR PATH: No default variant raises ValueError at construction.
 
-        Targets lines 197→201: Default variant validation.
+        SelectExpression.__post_init__ now enforces exactly one default variant.
         """
+        import pytest  # noqa: PLC0415
+
         # Remove all defaults
         variants_no_default = tuple(
             Variant(key=v.key, value=v.value, default=False) for v in select_expr.variants
         )
 
-        # Build select with no default
         from ftllexengine.syntax.ast import SelectExpression  # noqa: PLC0415
 
-        select_no_default = SelectExpression(
-            selector=select_expr.selector, variants=variants_no_default
-        )
-
-        message = Message(
-            id=Identifier(name="test"),
-            value=Pattern(elements=(Placeable(expression=select_no_default),)),
-            attributes=(),
-        )
-        resource = Resource(entries=(message,))
-
-        validator = SemanticValidator()
-        result = validator.validate(resource)
-        # Validator might catch this or not depending on implementation
-        assert isinstance(result, ValidationResult)
+        with pytest.raises(ValueError, match="exactly one default variant"):
+            SelectExpression(
+                selector=select_expr.selector, variants=variants_no_default
+            )
 
     @given(ftl_resources())
     @settings(max_examples=100)

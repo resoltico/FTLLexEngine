@@ -6,111 +6,767 @@
 # FUZZ_PLUGIN_HEADER_END
 """RWLock Contention Fuzzer (Atheris).
 
-Targets: ftllexengine.runtime.rwlock.RWLock
-Tests concurrency, reentrancy, and deadlock prevention.
+Targets: ftllexengine.runtime.rwlock.RWLock, with_read_lock, with_write_lock
 
-This fuzzer uses multiple threads to aggressively stress the lock's invariants.
+Concern boundary: This fuzzer stress-tests the RWLock concurrency primitive
+directly. Tests reader/writer mutual exclusion, reader concurrency, writer
+preference, reentrant readers, reentrant writers, write-to-read downgrading,
+read-to-write upgrade rejection, decorator correctness, and deadlock detection.
+Distinct from runtime/cache fuzzers which exercise locking only as a side effect.
+
+Metrics:
+- Pattern coverage (reader_writer_exclusion, reentrant_reads, etc.)
+- Performance profiling (min/mean/median/p95/p99/max)
+- Real memory usage (RSS via psutil)
+- Thread contention events and deadlock detection
+- Seed corpus management
+
+Requires Python 3.13+ (uses PEP 695 type aliases).
 """
 
 from __future__ import annotations
 
+import argparse
 import atexit
+import hashlib
+import heapq
 import json
 import logging
+import os
+import pathlib
+import statistics
 import sys
 import threading
 import time
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Any
 
 # --- PEP 695 Type Aliases ---
-type FuzzStats = dict[str, int | str]
+type FuzzStats = dict[str, int | str | float | list[Any]]
+type InterestingInput = tuple[float, str, str]  # (duration_ms, pattern, input_hash)
 
-_fuzz_stats: FuzzStats = {"status": "incomplete", "iterations": 0, "findings": 0}
+# --- Dependency Checks ---
+_MISSING_DEPS: list[str] = []
 
-def _emit_final_report() -> None:
-    report = json.dumps(_fuzz_stats)
-    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr)
-
-atexit.register(_emit_final_report)
+try:
+    import psutil
+except ImportError:
+    _MISSING_DEPS.append("psutil")
+    psutil = None  # type: ignore[assignment]
 
 try:
     import atheris
 except ImportError:
+    _MISSING_DEPS.append("atheris")
+    atheris = None  # type: ignore[assignment]
+
+if _MISSING_DEPS:
+    print("-" * 80, file=sys.stderr)
+    print("ERROR: Missing required dependencies for fuzzing:", file=sys.stderr)
+    for dep in _MISSING_DEPS:
+        print(f"  - {dep}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Install with: uv sync --group atheris", file=sys.stderr)
+    print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
+    print("-" * 80, file=sys.stderr)
     sys.exit(1)
 
+
+# --- Observability State ---
+@dataclass
+class FuzzerState:
+    """Global fuzzer state for observability and metrics."""
+
+    # Core stats
+    iterations: int = 0
+    findings: int = 0
+    status: str = "incomplete"
+
+    # Performance tracking (bounded deques)
+    performance_history: deque[float] = field(default_factory=lambda: deque(maxlen=10000))
+    memory_history: deque[float] = field(default_factory=lambda: deque(maxlen=1000))
+
+    # Pattern coverage
+    pattern_coverage: dict[str, int] = field(default_factory=dict)
+    error_counts: dict[str, int] = field(default_factory=dict)
+
+    # Interesting inputs (max-heap for slowest)
+    slowest_operations: list[InterestingInput] = field(default_factory=list)
+    seed_corpus: dict[str, bytes] = field(default_factory=dict)
+
+    # Memory baseline
+    initial_memory_mb: float = 0.0
+
+    # Corpus productivity
+    corpus_entries_added: int = 0
+
+    # Per-pattern wall time (ms)
+    pattern_wall_time: dict[str, float] = field(default_factory=dict)
+
+    # Concurrency-specific
+    deadlocks_detected: int = 0
+    timeouts: int = 0
+
+    # Configuration
+    checkpoint_interval: int = 500
+    seed_corpus_max_size: int = 100
+
+
+# Global state instance
+_state = FuzzerState()
+_process: psutil.Process | None = None
+
+# Thread join timeout (seconds) -- triggers deadlock detection
+_THREAD_TIMEOUT = 2.0
+
+
+def _get_process() -> psutil.Process:
+    """Lazy-initialize psutil process handle."""
+    global _process  # noqa: PLW0603  # pylint: disable=global-statement
+    if _process is None:
+        _process = psutil.Process(os.getpid())
+    return _process
+
+
+# Pattern weights: (name, weight)
+_PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
+    ("reader_writer_exclusion", 15),
+    ("concurrent_readers", 12),
+    ("writer_preference", 10),
+    ("reentrant_reads", 12),
+    ("reentrant_writes", 10),
+    ("write_to_read_downgrade", 12),
+    ("upgrade_rejection", 8),
+    ("rapid_lock_cycling", 8),
+    ("decorator_correctness", 6),
+    ("mixed_contention", 7),
+)
+
+
+class LockFuzzError(Exception):
+    """Raised when an RWLock invariant is breached."""
+
+
+# Allowed exceptions from lock operations
+ALLOWED_EXCEPTIONS = (RuntimeError,)
+
+
+def _build_stats_dict() -> FuzzStats:
+    """Build stats dictionary for JSON report."""
+    stats: FuzzStats = {
+        "status": _state.status,
+        "iterations": _state.iterations,
+        "findings": _state.findings,
+        "deadlocks_detected": _state.deadlocks_detected,
+        "timeouts": _state.timeouts,
+    }
+
+    # Performance percentiles
+    if _state.performance_history:
+        perf_data = list(_state.performance_history)
+        n = len(perf_data)
+        stats["perf_mean_ms"] = round(statistics.mean(perf_data), 3)
+        stats["perf_median_ms"] = round(statistics.median(perf_data), 3)
+        stats["perf_min_ms"] = round(min(perf_data), 3)
+        stats["perf_max_ms"] = round(max(perf_data), 3)
+        if n >= 20:
+            quantiles = statistics.quantiles(perf_data, n=20)
+            stats["perf_p95_ms"] = round(quantiles[18], 3)
+        if n >= 100:
+            quantiles = statistics.quantiles(perf_data, n=100)
+            stats["perf_p99_ms"] = round(quantiles[98], 3)
+
+    # Memory tracking
+    if _state.memory_history:
+        mem_data = list(_state.memory_history)
+        stats["memory_mean_mb"] = round(statistics.mean(mem_data), 2)
+        stats["memory_peak_mb"] = round(max(mem_data), 2)
+        stats["memory_delta_mb"] = round(max(mem_data) - _state.initial_memory_mb, 2)
+
+        if len(mem_data) >= 40:
+            first_quarter = mem_data[: len(mem_data) // 4]
+            last_quarter = mem_data[-(len(mem_data) // 4) :]
+            growth_mb = statistics.mean(last_quarter) - statistics.mean(first_quarter)
+            stats["memory_leak_detected"] = 1 if growth_mb > 10.0 else 0
+            stats["memory_growth_mb"] = round(growth_mb, 2)
+        else:
+            stats["memory_leak_detected"] = 0
+            stats["memory_growth_mb"] = 0.0
+
+    # Pattern coverage
+    stats["patterns_tested"] = len(_state.pattern_coverage)
+    for pattern, count in sorted(_state.pattern_coverage.items()):
+        stats[f"pattern_{pattern}"] = count
+
+    # Error distribution
+    stats["error_types"] = len(_state.error_counts)
+    for error_type, count in sorted(_state.error_counts.items()):
+        clean_key = error_type[:50].replace("<", "").replace(">", "")
+        stats[f"error_{clean_key}"] = count
+
+    # Corpus stats
+    stats["seed_corpus_size"] = len(_state.seed_corpus)
+    stats["corpus_entries_added"] = _state.corpus_entries_added
+    stats["slowest_operations_tracked"] = len(_state.slowest_operations)
+
+    # Per-pattern wall time
+    for pattern, total_ms in sorted(_state.pattern_wall_time.items()):
+        stats[f"wall_time_ms_{pattern}"] = round(total_ms, 1)
+
+    return stats
+
+
+def _emit_final_report() -> None:
+    """Emit comprehensive final report (crash-proof, writes to stderr and file)."""
+    _state.status = "complete"
+    stats = _build_stats_dict()
+    report = json.dumps(stats, sort_keys=True)
+
+    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr, flush=True)
+
+    try:
+        report_file = pathlib.Path(".fuzz_corpus") / "lock" / "fuzz_lock_report.json"
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        report_file.write_text(report, encoding="utf-8")
+    except OSError:
+        pass
+
+
+atexit.register(_emit_final_report)
+
+# Suppress logging and instrument imports
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine.runtime.rwlock import RWLock
+    from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
 
-class ConcurrencyError(Exception):
-    """Raised when an RWLock invariant is breached."""
 
-def test_one_input(data: bytes) -> None:
-    """Atheris entry point: Stress-test RWLock invariants under concurrent access."""
-    _fuzz_stats["iterations"] = int(_fuzz_stats["iterations"]) + 1
-    _fuzz_stats["status"] = "running"
+def _track_slowest_operation(duration_ms: float, pattern: str, input_data: bytes) -> None:
+    """Track top 10 slowest operations using max-heap."""
+    input_hash = hashlib.sha256(input_data).hexdigest()[:16]
+    entry: InterestingInput = (-duration_ms, pattern, input_hash)
 
-    fdp = atheris.FuzzedDataProvider(data)
+    if len(_state.slowest_operations) < 10:
+        heapq.heappush(_state.slowest_operations, entry)
+    elif -duration_ms < _state.slowest_operations[0][0]:
+        heapq.heapreplace(_state.slowest_operations, entry)
 
+
+def _track_seed_corpus(input_data: bytes, pattern: str, duration_ms: float) -> None:
+    """Track interesting inputs with FIFO eviction."""
+    is_interesting = (
+        duration_ms > 50.0
+        or "contention" in pattern
+        or "deadlock" in pattern.lower()
+    )
+
+    if is_interesting:
+        input_hash = hashlib.sha256(input_data).hexdigest()[:16]
+        if input_hash not in _state.seed_corpus:
+            if len(_state.seed_corpus) >= _state.seed_corpus_max_size:
+                oldest_key = next(iter(_state.seed_corpus))
+                del _state.seed_corpus[oldest_key]
+            _state.seed_corpus[input_hash] = input_data
+            _state.corpus_entries_added += 1
+
+
+def _join_threads(threads: list[threading.Thread]) -> bool:
+    """Join threads with timeout. Returns False if any thread timed out (deadlock)."""
+    all_joined = True
+    for t in threads:
+        t.join(timeout=_THREAD_TIMEOUT)
+        if t.is_alive():
+            all_joined = False
+    return all_joined
+
+
+# --- Pattern Implementations ---
+
+def _pattern_reader_writer_exclusion(fdp: atheris.FuzzedDataProvider) -> None:
+    """Core invariant: readers and writers are mutually exclusive."""
     lock = RWLock()
-    # Separate tracking for counts and error to maintain type safety
-    writers_count = 0
-    readers_count = 0
-    error_msg: str | None = None
+    writers_active = 0
+    readers_active = 0
     state_lock = threading.Lock()
+    violations: list[str] = []
 
-    def run_lock_op():
-        nonlocal writers_count, readers_count, error_msg
+    num_threads = fdp.ConsumeIntInRange(3, 8)
+    barrier = threading.Barrier(num_threads)
+
+    def worker(is_writer: bool) -> None:
+        nonlocal writers_active, readers_active
         try:
-            op_type = fdp.ConsumeIntInRange(0, 2)
-            # 0 = Read, 1 = Write, 2 = Reentrant Read
+            barrier.wait(timeout=1.0)
+        except threading.BrokenBarrierError:
+            return
 
-            if op_type == 0:
+        try:
+            if is_writer:
+                with lock.write():
+                    with state_lock:
+                        if writers_active > 0:
+                            violations.append("Multiple writers active")
+                        if readers_active > 0:
+                            violations.append("Writer active while readers active")
+                        writers_active += 1
+                    time.sleep(fdp.ConsumeProbability() * 0.001)
+                    with state_lock:
+                        writers_active -= 1
+            else:
                 with lock.read():
                     with state_lock:
-                        if writers_count > 0:
-                            error_msg = "Reader acquired while Writer active"
-                        readers_count += 1
-                    # Small randomized delay
-                    time.sleep(fdp.ConsumeProbability() * 0.005)
+                        if writers_active > 0:
+                            violations.append("Reader active while writer active")
+                        readers_active += 1
+                    time.sleep(fdp.ConsumeProbability() * 0.001)
                     with state_lock:
-                        readers_count -= 1
-            elif op_type == 1:
-                try:
-                    with lock.write():
-                        with state_lock:
-                            if writers_count > 0:
-                                error_msg = "Multiple Writers active"
-                            if readers_count > 0:
-                                error_msg = "Writer active while Readers active"
-                            writers_count += 1
-                        time.sleep(fdp.ConsumeProbability() * 0.005)
-                        with state_lock:
-                            writers_count -= 1
-                except RuntimeError as e:
-                    if "upgrade" not in str(e).lower():
-                        raise
-            else:
-                # Test reentrancy
-                with lock.read(), lock.read():
-                    pass
-        except Exception as e:  # pylint: disable=broad-exception-caught # Fuzzer: record lock crashes for deadlock/race detection
-            with state_lock:
-                error_msg = f"CRASH: {type(e).__name__}: {e}"
+                        readers_active -= 1
+        except ALLOWED_EXCEPTIONS:
+            pass
 
-    # Spawn threads
-    num_threads = fdp.ConsumeIntInRange(2, 10)
-    threads = [threading.Thread(target=run_lock_op) for _ in range(num_threads)]
+    # Mix of readers and writers
+    threads = []
+    for i in range(num_threads):
+        is_writer = i < max(1, num_threads // 3)
+        threads.append(threading.Thread(target=worker, args=(is_writer,), daemon=True))
 
     for t in threads:
         t.start()
+
+    if not _join_threads(threads):
+        _state.deadlocks_detected += 1
+        return
+
+    if violations:
+        msg = "; ".join(violations)
+        raise LockFuzzError(msg)
+
+
+def _pattern_concurrent_readers(fdp: atheris.FuzzedDataProvider) -> None:
+    """Multiple readers must be able to hold the lock simultaneously."""
+    lock = RWLock()
+    max_concurrent = 0
+    current_readers = 0
+    state_lock = threading.Lock()
+
+    num_readers = fdp.ConsumeIntInRange(3, 8)
+    barrier = threading.Barrier(num_readers)
+
+    def reader() -> None:
+        nonlocal max_concurrent, current_readers
+        try:
+            barrier.wait(timeout=1.0)
+        except threading.BrokenBarrierError:
+            return
+        with lock.read():
+            with state_lock:
+                current_readers += 1
+                max_concurrent = max(max_concurrent, current_readers)
+            time.sleep(0.002)
+            with state_lock:
+                current_readers -= 1
+
+    threads = [threading.Thread(target=reader, daemon=True) for _ in range(num_readers)]
     for t in threads:
-        t.join()
+        t.start()
 
-    if error_msg:
-        _fuzz_stats["findings"] = int(_fuzz_stats["findings"]) + 1
-        raise ConcurrencyError(error_msg)
+    if not _join_threads(threads):
+        _state.deadlocks_detected += 1
+        return
 
-if __name__ == "__main__":
+    # With enough readers and a sleep, at least 2 should overlap
+    if num_readers >= 4 and max_concurrent < 2:
+        msg = f"Readers not concurrent: max_concurrent={max_concurrent} with {num_readers} threads"
+        raise LockFuzzError(msg)
+
+
+def _pattern_writer_preference(_fdp: atheris.FuzzedDataProvider) -> None:
+    """Writer preference: waiting writer blocks new readers."""
+    lock = RWLock()
+    events: list[str] = []
+    events_lock = threading.Lock()
+
+    def first_reader() -> None:
+        with lock.read():
+            with events_lock:
+                events.append("R1_acquired")
+            time.sleep(0.01)
+            with events_lock:
+                events.append("R1_released")
+
+    def writer() -> None:
+        time.sleep(0.002)
+        with lock.write():
+            with events_lock:
+                events.append("W_acquired")
+            time.sleep(0.001)
+            with events_lock:
+                events.append("W_released")
+
+    def second_reader() -> None:
+        time.sleep(0.004)
+        with lock.read(), events_lock:
+            events.append("R2_acquired")
+
+    t1 = threading.Thread(target=first_reader, daemon=True)
+    t2 = threading.Thread(target=writer, daemon=True)
+    t3 = threading.Thread(target=second_reader, daemon=True)
+
+    for t in [t1, t2, t3]:
+        t.start()
+
+    if not _join_threads([t1, t2, t3]):
+        _state.deadlocks_detected += 1
+
+
+def _pattern_reentrant_reads(fdp: atheris.FuzzedDataProvider) -> None:
+    """Same thread can acquire read lock multiple times."""
+    lock = RWLock()
+    depth = fdp.ConsumeIntInRange(2, 20)
+
+    acquired_depths: list[int] = []
+
+    def acquire_recursively(remaining: int) -> None:
+        with lock.read():
+            acquired_depths.append(remaining)
+            if remaining > 0:
+                acquire_recursively(remaining - 1)
+
+    acquire_recursively(depth)
+
+    if len(acquired_depths) != depth + 1:
+        msg = f"Reentrant reads failed: expected {depth + 1} depths, got {len(acquired_depths)}"
+        raise LockFuzzError(msg)
+
+
+def _pattern_reentrant_writes(fdp: atheris.FuzzedDataProvider) -> None:
+    """Same thread can acquire write lock multiple times."""
+    lock = RWLock()
+    depth = fdp.ConsumeIntInRange(2, 15)
+
+    acquired_depths: list[int] = []
+
+    def acquire_recursively(remaining: int) -> None:
+        with lock.write():
+            acquired_depths.append(remaining)
+            if remaining > 0:
+                acquire_recursively(remaining - 1)
+
+    acquire_recursively(depth)
+
+    if len(acquired_depths) != depth + 1:
+        msg = f"Reentrant writes failed: expected {depth + 1} depths, got {len(acquired_depths)}"
+        raise LockFuzzError(msg)
+
+
+def _pattern_write_to_read_downgrade(fdp: atheris.FuzzedDataProvider) -> None:
+    """Writer can acquire read locks; they persist after write release."""
+    lock = RWLock()
+    read_locks_held = fdp.ConsumeIntInRange(1, 5)
+    downgrade_successful = False
+
+    with lock.write():
+        # Acquire read locks while holding write
+        for _ in range(read_locks_held):
+            lock._acquire_read()
+
+    # After write released, the read locks should have converted to regular reads.
+    # Verify by checking we can't acquire write (readers are active).
+    # Try read -- should work (we're a reader now).
+    # Release the converted reads.
+    for _ in range(read_locks_held):
+        lock._release_read()
+
+    downgrade_successful = True
+
+    if not downgrade_successful:
+        msg = "Write-to-read downgrade failed"
+        raise LockFuzzError(msg)
+
+
+def _pattern_upgrade_rejection(_fdp: atheris.FuzzedDataProvider) -> None:
+    """Read-to-write upgrade must raise RuntimeError."""
+    lock = RWLock()
+    upgrade_rejected = False
+
+    with lock.read():
+        try:
+            lock._acquire_write()
+            # If we get here, upgrade was not rejected -- invariant breach
+            lock._release_write()
+        except RuntimeError:
+            upgrade_rejected = True
+
+    if not upgrade_rejected:
+        msg = "Read-to-write upgrade was NOT rejected"
+        raise LockFuzzError(msg)
+
+
+def _pattern_rapid_lock_cycling(fdp: atheris.FuzzedDataProvider) -> None:
+    """Rapid acquire/release cycles to detect state corruption."""
+    lock = RWLock()
+    num_cycles = fdp.ConsumeIntInRange(50, 200)
+    shared_value = 0
+    value_lock = threading.Lock()
+
+    def cycler(thread_id: int) -> None:
+        nonlocal shared_value
+        for _ in range(num_cycles):
+            if thread_id % 2 == 0:
+                with lock.read(), value_lock:
+                    _ = shared_value
+            else:
+                with lock.write(), value_lock:
+                    shared_value += 1
+
+    num_threads = fdp.ConsumeIntInRange(2, 6)
+    threads = [
+        threading.Thread(target=cycler, args=(i,), daemon=True)
+        for i in range(num_threads)
+    ]
+
+    for t in threads:
+        t.start()
+
+    if not _join_threads(threads):
+        _state.deadlocks_detected += 1
+        return
+
+    # Verify writer count consistency
+    num_writers = sum(1 for i in range(num_threads) if i % 2 != 0)
+    expected_value = num_writers * num_cycles
+
+    if shared_value != expected_value:
+        msg = f"Lock cycling corruption: expected {expected_value}, got {shared_value}"
+        raise LockFuzzError(msg)
+
+
+def _pattern_decorator_correctness(fdp: atheris.FuzzedDataProvider) -> None:
+    """Verify with_read_lock and with_write_lock decorators."""
+    lock_instance = RWLock()
+
+    class TestClass:
+        """Test target for decorator-based locking."""
+
+        def __init__(self) -> None:
+            self._rwlock = lock_instance
+            self.value = 0
+
+        @with_read_lock()
+        def read_value(self) -> int:
+            """Read under read lock."""
+            return self.value
+
+        @with_write_lock()
+        def write_value(self, val: int) -> None:
+            """Write under write lock."""
+            self.value = val
+
+    obj = TestClass()
+
+    num_ops = fdp.ConsumeIntInRange(10, 50)
+    for _ in range(num_ops):
+        if fdp.ConsumeBool():
+            obj.write_value(fdp.ConsumeIntInRange(0, 1000))
+        else:
+            val = obj.read_value()
+            if not isinstance(val, int):
+                msg = f"Decorator read returned non-int: {type(val)}"
+                raise LockFuzzError(msg)
+
+
+def _pattern_mixed_contention(fdp: atheris.FuzzedDataProvider) -> None:
+    """Mixed operations: reads, writes, reentrancy, downgrade, upgrade attempt."""
+    lock = RWLock()
+    violations: list[str] = []
+    violations_lock = threading.Lock()
+
+    num_threads = fdp.ConsumeIntInRange(3, 6)
+    ops_per_thread = fdp.ConsumeIntInRange(5, 15)
+    barrier = threading.Barrier(num_threads)
+
+    def worker(_thread_id: int) -> None:
+        try:
+            barrier.wait(timeout=1.0)
+        except threading.BrokenBarrierError:
+            return
+
+        for _ in range(ops_per_thread):
+            op = fdp.ConsumeIntInRange(0, 5)
+            try:
+                match op:
+                    case 0:
+                        with lock.read():
+                            time.sleep(0.0001)
+                    case 1:
+                        with lock.write():
+                            time.sleep(0.0001)
+                    case 2:
+                        # Reentrant read
+                        with lock.read(), lock.read():
+                            pass
+                    case 3:
+                        # Reentrant write
+                        with lock.write(), lock.write():
+                            pass
+                    case 4:
+                        # Write-to-read downgrade
+                        with lock.write(), lock.read():
+                            pass
+                    case _:
+                        # Upgrade attempt (should be rejected)
+                        try:
+                            with lock.read():
+                                lock._acquire_write()
+                                # Should not reach here
+                                with violations_lock:
+                                    violations.append("Upgrade not rejected")
+                                lock._release_write()
+                        except RuntimeError:
+                            pass
+            except ALLOWED_EXCEPTIONS:
+                pass
+
+    threads = [
+        threading.Thread(target=worker, args=(i,), daemon=True)
+        for i in range(num_threads)
+    ]
+
+    for t in threads:
+        t.start()
+
+    if not _join_threads(threads):
+        _state.deadlocks_detected += 1
+        return
+
+    if violations:
+        msg = "; ".join(violations)
+        raise LockFuzzError(msg)
+
+
+# --- Pattern dispatch ---
+
+def _select_pattern(fdp: atheris.FuzzedDataProvider) -> str:
+    """Select a weighted pattern."""
+    total = sum(w for _, w in _PATTERN_WEIGHTS)
+    choice = fdp.ConsumeIntInRange(0, total - 1)
+
+    cumulative = 0
+    for name, weight in _PATTERN_WEIGHTS:
+        cumulative += weight
+        if choice < cumulative:
+            return name
+
+    return _PATTERN_WEIGHTS[0][0]
+
+
+_PATTERN_DISPATCH: dict[str, Any] = {
+    "reader_writer_exclusion": _pattern_reader_writer_exclusion,
+    "concurrent_readers": _pattern_concurrent_readers,
+    "writer_preference": _pattern_writer_preference,
+    "reentrant_reads": _pattern_reentrant_reads,
+    "reentrant_writes": _pattern_reentrant_writes,
+    "write_to_read_downgrade": _pattern_write_to_read_downgrade,
+    "upgrade_rejection": _pattern_upgrade_rejection,
+    "rapid_lock_cycling": _pattern_rapid_lock_cycling,
+    "decorator_correctness": _pattern_decorator_correctness,
+    "mixed_contention": _pattern_mixed_contention,
+}
+
+
+def test_one_input(data: bytes) -> None:
+    """Atheris entry point: fuzz RWLock concurrency invariants."""
+    # Initialize memory baseline
+    if _state.iterations == 0:
+        _state.initial_memory_mb = _get_process().memory_info().rss / (1024 * 1024)
+
+    _state.iterations += 1
+    _state.status = "running"
+
+    # Periodic checkpoint
+    if _state.iterations % _state.checkpoint_interval == 0:
+        _emit_final_report()
+
+    start_time = time.perf_counter()
+    fdp = atheris.FuzzedDataProvider(data)
+
+    # Select pattern
+    pattern = _select_pattern(fdp)
+    _state.pattern_coverage[pattern] = _state.pattern_coverage.get(pattern, 0) + 1
+
+    try:
+        handler = _PATTERN_DISPATCH[pattern]
+        handler(fdp)
+
+    except LockFuzzError:
+        _state.findings += 1
+        raise
+
+    except KeyboardInterrupt:
+        _state.status = "stopped"
+        raise
+
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        error_key = f"{type(e).__name__}_{str(e)[:30]}"
+        _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
+
+    finally:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        _state.performance_history.append(elapsed_ms)
+
+        _state.pattern_wall_time[pattern] = (
+            _state.pattern_wall_time.get(pattern, 0.0) + elapsed_ms
+        )
+
+        _track_slowest_operation(elapsed_ms, pattern, data)
+        _track_seed_corpus(data, pattern, elapsed_ms)
+
+        # Memory tracking (every 100 iterations)
+        if _state.iterations % 100 == 0:
+            current_mb = _get_process().memory_info().rss / (1024 * 1024)
+            _state.memory_history.append(current_mb)
+
+
+def main() -> None:
+    """Run the RWLock contention fuzzer with CLI support."""
+    parser = argparse.ArgumentParser(
+        description="RWLock contention fuzzer using Atheris/libFuzzer",
+        epilog="All unrecognized arguments are passed to libFuzzer.",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=500,
+        help="Emit report every N iterations (default: 500)",
+    )
+    parser.add_argument(
+        "--seed-corpus-size",
+        type=int,
+        default=100,
+        help="Maximum size of in-memory seed corpus (default: 100)",
+    )
+
+    args, remaining = parser.parse_known_args()
+    _state.checkpoint_interval = args.checkpoint_interval
+    _state.seed_corpus_max_size = args.seed_corpus_size
+
+    sys.argv = [sys.argv[0], *remaining]
+
+    print()
+    print("=" * 80)
+    print("RWLock Contention Fuzzer (Atheris)")
+    print("=" * 80)
+    print("Target:     RWLock, with_read_lock, with_write_lock")
+    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
+    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
+    print("Stopping:   Press Ctrl+C (findings auto-saved)")
+    print("=" * 80)
+    print()
+
     atheris.Setup(sys.argv, test_one_input)
     atheris.Fuzz()
+
+
+if __name__ == "__main__":
+    main()

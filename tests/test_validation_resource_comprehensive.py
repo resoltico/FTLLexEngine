@@ -559,40 +559,22 @@ c2 = { c1 }
 class TestMessageWithoutValueOrAttributes:
     """Test validation of message with neither value nor attributes (line 113)."""
 
-    def test_message_without_value_or_attributes_warns(self) -> None:
-        """Test message with neither value nor attributes generates warning (line 113).
+    def test_message_without_value_or_attributes_raises_at_construction(self) -> None:
+        """Message with neither value nor attributes raises ValueError at construction.
 
-        Line 113 in _collect_entries appends a warning when:
-        - value is None AND
-        - len(attributes) == 0
-
-        Since the parser creates Junk for empty messages, we test the validation
-        function directly with a constructed Resource AST.
+        The __post_init__ validation now enforces this invariant at construction
+        time rather than deferring to the validator.
         """
-        from ftllexengine.syntax.ast import Identifier, Message, Resource
-        from ftllexengine.validation.resource import _collect_entries
+        import pytest
 
-        # Create a Message with value=None and no attributes
-        message_with_no_content = Message(
-            id=Identifier("empty_msg"),
-            value=None,  # No value
-            attributes=(),  # No attributes
-        )
+        from ftllexengine.syntax.ast import Identifier, Message
 
-        # Create Resource with this message
-        resource = Resource(entries=(message_with_no_content,))
-
-        # Call _collect_entries directly with empty LineOffsetCache for AST-only testing
-        _messages_dict, _terms_dict, warnings = _collect_entries(resource, LineOffsetCache(""))
-
-        # Should have warning about no value or attributes (line 113)
-        no_value_warnings = [
-            w for w in warnings
-            if "VALIDATION_NO_VALUE_OR_ATTRS" in w.code
-        ]
-        assert len(no_value_warnings) == 1
-        assert "neither value nor attributes" in no_value_warnings[0].message
-        assert no_value_warnings[0].context == "empty_msg"
+        with pytest.raises(ValueError, match="must have a value or at least one attribute"):
+            Message(
+                id=Identifier("empty_msg"),
+                value=None,
+                attributes=(),
+            )
 
 
 # ============================================================================

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.97.0"
+version: "0.98.0"
 domain: ERRORS
-updated: "2026-01-28"
+updated: "2026-01-30"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -748,6 +748,7 @@ class DiagnosticFormatter:
 - Return: Immutable formatter instance.
 - State: Frozen dataclass.
 - Thread: Safe.
+- Security: All formatted output passes through `_escape_control_chars()` to prevent log injection via control characters in diagnostic messages.
 - Import: `from ftllexengine.diagnostics import DiagnosticFormatter`
 
 ---

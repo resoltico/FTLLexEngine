@@ -114,12 +114,19 @@ class TestASTTransformerValidation:
         assert first_element.value == "Hello"
 
     def test_optional_scalar_field_accepts_none_when_original_is_none(self) -> None:
-        """Optional scalar fields (e.g., Message.value) accept None when original is None."""
-        # Message without value
+        """Optional scalar fields (e.g., Message.value) accept None when original has attributes."""
+        from ftllexengine.syntax.ast import Attribute  # noqa: PLC0415
+
+        # Message without value but with attribute (valid per spec)
         message = Message(
             id=Identifier(name="empty"),
             value=None,  # Optional field
-            attributes=(),
+            attributes=(
+                Attribute(
+                    id=Identifier(name="attr"),
+                    value=Pattern(elements=(TextElement(value="val"),)),
+                ),
+            ),
         )
 
         class NoOpTransformer(ASTTransformer):

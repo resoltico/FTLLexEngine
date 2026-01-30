@@ -6,6 +6,7 @@ Focuses on pattern resolution, variant matching, and fallback logic.
 
 from decimal import Decimal
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -288,55 +289,22 @@ class TestVariantNumericMatching:
 class TestFallbackVariantNoVariants:
     """Empty variant list error path (lines 645-648)."""
 
-    def test_select_expression_with_no_variants_returns_error(self) -> None:
-        """SelectExpression with empty variant list collects error."""
-        # Create select expression with empty variants
+    def test_select_expression_with_no_variants_rejected_at_construction(self) -> None:
+        """SelectExpression with empty variants is rejected by __post_init__."""
         selector = VariableReference(id=Identifier("count"))
-        select_expr = SelectExpression(selector=selector, variants=())
-        pattern = Pattern(elements=(Placeable(expression=select_expr),))
-        message = Message(
-            id=Identifier("msg"),
-            value=pattern,
-            attributes=(),
+        with pytest.raises(ValueError, match="requires at least one variant"):
+            SelectExpression(selector=selector, variants=())
+
+    def test_select_expression_without_default_rejected_at_construction(self) -> None:
+        """SelectExpression without a default variant is rejected by __post_init__."""
+        selector = VariableReference(id=Identifier("count"))
+        variant = Variant(
+            key=Identifier("one"),
+            value=Pattern(elements=(TextElement(value="one"),)),
+            default=False,
         )
-
-        resolver = FluentResolver(
-            locale="en",
-            messages={"msg": message},
-            terms={},
-            function_registry=FunctionRegistry(),
-        )
-
-        # Should collect error (resolver doesn't raise, it collects errors)
-        result, errors = resolver.resolve_message(message, {"count": 1})
-        # Should have error and fallback value
-        assert len(errors) > 0
-        assert result != ""
-
-    def test_fallback_variant_with_empty_variants_after_selector_error(self) -> None:
-        """Fallback path with empty variants after selector error."""
-        # Create select expression where selector fails AND no variants
-        selector = VariableReference(id=Identifier("missing"))
-        select_expr = SelectExpression(selector=selector, variants=())
-        pattern = Pattern(elements=(Placeable(expression=select_expr),))
-        message = Message(
-            id=Identifier("msg"),
-            value=pattern,
-            attributes=(),
-        )
-
-        resolver = FluentResolver(
-            locale="en",
-            messages={"msg": message},
-            terms={},
-            function_registry=FunctionRegistry(),
-        )
-
-        # Should collect errors (missing variable + no variants)
-        result, errors = resolver.resolve_message(message, {})  # No args, selector fails
-        # Should have errors
-        assert len(errors) > 0
-        assert result != ""
+        with pytest.raises(ValueError, match="exactly one default variant"):
+            SelectExpression(selector=selector, variants=(variant,))
 
 
 class TestSelectExpressionFallbackPaths:
@@ -378,8 +346,8 @@ class TestSelectExpressionFallbackPaths:
         assert "default variant" in result
         assert len(errors) > 0  # Should have error for missing variable
 
-    def test_selector_error_uses_first_variant_when_no_default(self) -> None:
-        """When selector fails and no default, uses first variant."""
+    def test_selector_error_uses_default_variant_fallback(self) -> None:
+        """When selector fails, default variant is used as fallback."""
         selector = VariableReference(id=Identifier("missing"))
         variants = (
             Variant(
@@ -389,11 +357,10 @@ class TestSelectExpressionFallbackPaths:
             ),
             Variant(
                 key=Identifier("second"),
-                value=Pattern(elements=(TextElement(value="second variant"),)),
-                default=False,
+                value=Pattern(elements=(TextElement(value="default variant"),)),
+                default=True,
             ),
         )
-        # Note: This violates spec (must have default), but tests fallback path
         select_expr = SelectExpression(selector=selector, variants=variants)
         pattern = Pattern(elements=(Placeable(expression=select_expr),))
         message = Message(
@@ -410,7 +377,7 @@ class TestSelectExpressionFallbackPaths:
         )
 
         result, _errors = resolver.resolve_message(message, {})
-        assert "first variant" in result
+        assert "default variant" in result
 
 
 class TestNumericVariantEdgeCases:
@@ -558,8 +525,8 @@ msg = Value: { NUMBER($value, minimumFractionDigits: "invalid") }
 
         # Should have an error
         assert len(errors) > 0
-        # Result should contain fallback (the original value)
-        assert "42" in result
+        # Result should contain fallback value (either raw value or function error)
+        assert "42" in result or "{!NUMBER}" in result
 
 
 class TestResolverTermNamedArguments:

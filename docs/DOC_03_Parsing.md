@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.97.0"
+version: "0.98.0"
 domain: PARSING
-updated: "2026-01-28"
+updated: "2026-01-30"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
@@ -369,6 +369,8 @@ def parse_date(
 - Thread: Safe.
 - Dependency: Requires Babel for CLDR data.
 - Preprocessing: Era strings stripped (English defaults + localized from Babel CLDR). Timezone pattern tokens stripped from format. Leading/trailing whitespace normalized after pattern conversion.
+- Styles: Tries "short", "medium", "long", and "full" CLDR date patterns.
+- Safety: Uses `hasattr` fallback for Babel format object attribute access.
 
 ---
 
@@ -398,6 +400,8 @@ def parse_datetime(
 - Thread: Safe.
 - Dependency: Requires Babel for CLDR data.
 - Preprocessing: Era strings stripped (English defaults + localized from Babel CLDR). Timezone pattern tokens stripped from format. Leading/trailing whitespace normalized after pattern conversion.
+- Styles: Tries "short", "medium", "long", and "full" CLDR datetime patterns.
+- Safety: Uses `hasattr` fallback for Babel format object attribute access.
 
 ---
 
@@ -428,7 +432,7 @@ def parse_currency(
 - State: None.
 - Thread: Safe.
 - Dependency: Requires Babel for CLDR data.
-- Validation: ISO 4217 codes validated against CLDR data.
+- Validation: ISO 4217 codes validated against CLDR data. Non-ASCII uppercase letters rejected (ASCII A-Z only).
 - Ambiguous: Yen sign (`¥`) resolves to CNY for `zh_*` locales, JPY otherwise.
 - Ambiguous: Pound sign (`£`) resolves to EGP for `ar_*` locales, GBP otherwise.
 - Resolution: With `infer_from_locale=True`, ambiguous symbols use locale-aware defaults.
@@ -586,7 +590,7 @@ ISO_CURRENCY_CODE_LENGTH: int = 3
 | Value | 3 |
 | Location | `ftllexengine.parsing.currency` |
 
-- Purpose: ISO 4217 currency codes are exactly 3 uppercase ASCII letters.
+- Purpose: ISO 4217 currency codes are exactly 3 uppercase ASCII letters (A-Z only; non-ASCII uppercase rejected).
 - Usage: Validation of currency code format in parsing functions.
 
 ---

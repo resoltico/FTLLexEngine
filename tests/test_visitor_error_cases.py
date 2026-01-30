@@ -244,11 +244,16 @@ class TestGenericVisitBranchCoverage:
 
     def test_generic_visit_skips_none_values(self) -> None:
         """Generic visit skips None field values (branch coverage for line 207)."""
-        # Message with value=None and comment=None
+        # Message with value=None but with attribute (valid per spec), and comment=None
         msg = Message(
             id=Identifier(name="test"),
             value=None,
-            attributes=(),
+            attributes=(
+                Attribute(
+                    id=Identifier(name="attr"),
+                    value=Pattern(elements=(TextElement(value="val"),)),
+                ),
+            ),
             comment=None,
         )
 

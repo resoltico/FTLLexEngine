@@ -625,18 +625,18 @@ class TestRWLockStateConsistency:
     def test_active_writer_consistency(self) -> None:
         """_active_writer maintains consistency across operations."""
         lock = RWLock()
-        current_thread = threading.current_thread()
+        current_thread_id = threading.get_ident()
 
         assert lock._active_writer is None
 
         lock._acquire_write()
-        assert lock._active_writer == current_thread
+        assert lock._active_writer == current_thread_id
 
         lock._acquire_write()  # Reentrant
-        assert lock._active_writer == current_thread
+        assert lock._active_writer == current_thread_id
 
         lock._release_write()  # Release reentrant
-        assert lock._active_writer == current_thread
+        assert lock._active_writer == current_thread_id
 
         lock._release_write()  # Release outer
         assert lock._active_writer is None

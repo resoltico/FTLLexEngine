@@ -52,66 +52,42 @@ class TestValidateSelectExpression:
     """Test _validate_select_expression (lines 61-72)."""
 
     def test_no_default_variant_raises_error(self) -> None:
-        """COVERAGE: Lines 63-65 - No default variant."""
-        # SelectExpression with no default variant
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="count")),
-            variants=(
-                Variant(
-                    key=Identifier(name="one"),
-                    value=Pattern(elements=(TextElement(value="One"),)),
-                    default=False,
+        """SelectExpression with no default variant raises ValueError at construction."""
+        with pytest.raises(ValueError, match="exactly one default variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="count")),
+                variants=(
+                    Variant(
+                        key=Identifier(name="one"),
+                        value=Pattern(elements=(TextElement(value="One"),)),
+                        default=False,
+                    ),
+                    Variant(
+                        key=Identifier(name="other"),
+                        value=Pattern(elements=(TextElement(value="Other"),)),
+                        default=False,
+                    ),
                 ),
-                Variant(
-                    key=Identifier(name="other"),
-                    value=Pattern(elements=(TextElement(value="Other"),)),
-                    default=False,
-                ),
-            ),
-        )
-
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-        resource = Resource(entries=(message,))
-
-        with pytest.raises(SerializationValidationError) as exc_info:
-            serialize(resource, validate=True)
-
-        assert "no default variant" in str(exc_info.value).lower()
+            )
 
     def test_multiple_default_variants_raises_error(self) -> None:
-        """COVERAGE: Lines 67-72 - Multiple default variants."""
-        # SelectExpression with multiple default variants
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="count")),
-            variants=(
-                Variant(
-                    key=Identifier(name="one"),
-                    value=Pattern(elements=(TextElement(value="One"),)),
-                    default=True,  # First default
+        """SelectExpression with multiple default variants raises ValueError at construction."""
+        with pytest.raises(ValueError, match="exactly one default variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="count")),
+                variants=(
+                    Variant(
+                        key=Identifier(name="one"),
+                        value=Pattern(elements=(TextElement(value="One"),)),
+                        default=True,
+                    ),
+                    Variant(
+                        key=Identifier(name="other"),
+                        value=Pattern(elements=(TextElement(value="Other"),)),
+                        default=True,
+                    ),
                 ),
-                Variant(
-                    key=Identifier(name="other"),
-                    value=Pattern(elements=(TextElement(value="Other"),)),
-                    default=True,  # Second default - invalid!
-                ),
-            ),
-        )
-
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-        resource = Resource(entries=(message,))
-
-        with pytest.raises(SerializationValidationError) as exc_info:
-            serialize(resource, validate=True)
-
-        assert "2 default variants" in str(exc_info.value)
+            )
 
 
 class TestValidatePattern:

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.97.0"
+version: "0.98.0"
 domain: TYPES
-updated: "2026-01-28"
+updated: "2026-01-30"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -60,6 +60,7 @@ class Message:
 ### Constraints
 - Return: Immutable message node.
 - State: Frozen dataclass.
+- Validation: `__post_init__` validates that value or attributes is non-empty. Raises `ValueError` if both value is None and attributes is empty.
 
 ---
 
@@ -91,6 +92,7 @@ class Term:
 ### Constraints
 - Return: Immutable term node.
 - State: Frozen dataclass.
+- Validation: `__post_init__` validates that value is a Pattern instance. Raises `TypeError` on invalid value type.
 
 ---
 
@@ -268,6 +270,7 @@ class SelectExpression:
 ### Constraints
 - Return: Immutable select expression.
 - State: Frozen dataclass.
+- Validation: `__post_init__` validates that variants is non-empty and exactly one default variant exists. Raises `ValueError` on constraint violation.
 
 ---
 

@@ -200,9 +200,12 @@ class TestUnknownExpressionFallback:
             FunctionReference,
             Identifier,
             MessageReference,
+            Pattern,
             SelectExpression,
             TermReference,
+            TextElement,
             VariableReference,
+            Variant,
         )
 
         resolver = FluentResolver(
@@ -231,13 +234,22 @@ class TestUnknownExpressionFallback:
         assert fallback == "{!FUNC}"
 
         # SelectExpression with unknown selector type falls back to {???}
-        select_expr_unknown = SelectExpression(selector=Mock(), variants=())
+        _dummy_variant = Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="x"),)),
+            default=True,
+        )
+        select_expr_unknown = SelectExpression(
+            selector=Mock(), variants=(_dummy_variant,)
+        )
         fallback = resolver._get_fallback_for_placeable(select_expr_unknown)
         assert fallback == "{{???} -> ...}"
 
         # SelectExpression with VariableReference selector shows variable name
         var_selector = VariableReference(id=Identifier(name="count"))
-        select_expr_var = SelectExpression(selector=var_selector, variants=())
+        select_expr_var = SelectExpression(
+            selector=var_selector, variants=(_dummy_variant,)
+        )
         fallback = resolver._get_fallback_for_placeable(select_expr_var)
         assert fallback == "{{$count} -> ...}"
 

@@ -50,32 +50,20 @@ class TestValidatorTermWithoutValue:
     """Test term validation requirements."""
 
     def test_term_without_value_is_invalid(self) -> None:
-        """Term without value violates Fluent spec.
+        """Term without value raises ValueError at construction.
 
-        This tests lines 188-194 in validator.py.
-        Note: The parser might not actually create a term without a value,
-        so this tests the defensive check.
+        The __post_init__ validation now enforces the Fluent spec invariant
+        that terms must always have a value pattern.
         """
-        # The FTL spec requires terms to have values, so the parser
-        # should enforce this. This test verifies the validator's
-        # defensive check exists, even if the parser prevents this case.
+        import pytest  # noqa: PLC0415
 
-        # Manually construct a term without value (parser won't create this)
-        term = Term(
-            id=Identifier(name="test"),
-            value=None,  # type: ignore[arg-type]  # Invalid: terms must have values
-            attributes=(),
-            span=Span(start=0, end=10),
-        )
-
-        resource = Resource(entries=(term,))
-        validator = SemanticValidator()
-        result = validator.validate(resource)
-
-        # Should detect missing term value
-        assert not result.is_valid
-        errors = [a for a in result.annotations if "TERM_NO_VALUE" in a.code]
-        assert len(errors) > 0
+        with pytest.raises(ValueError, match="Term must have a value pattern"):
+            Term(
+                id=Identifier(name="test"),
+                value=None,  # type: ignore[arg-type]  # Invalid: terms must have values
+                attributes=(),
+                span=Span(start=0, end=10),
+            )
 
 
 class TestValidatorPlaceableNesting:
@@ -145,32 +133,17 @@ class TestValidatorSelectExpressionEdgeCases:
     """Test select expression validation edge cases."""
 
     def test_select_expression_without_variants(self) -> None:
-        """Select expression must have at least one variant.
+        """SelectExpression with no variants raises ValueError at construction.
 
-        This tests lines 376-377 in validator.py.
-        Note: The parser likely prevents this, but the validator checks defensively.
+        The __post_init__ validation now enforces this invariant at construction time.
         """
-        # Manually construct a select expression without variants
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="count")),
-            variants=(),  # Empty - invalid
-        )
+        import pytest  # noqa: PLC0415
 
-        pattern = Pattern(elements=(Placeable(expression=select),))
-        message = Message(
-            id=Identifier(name="msg"),
-            value=pattern,
-            attributes=(),
-        )
-
-        resource = Resource(entries=(message,))
-        validator = SemanticValidator()
-        result = validator.validate(resource)
-
-        # Should detect missing variants
-        assert not result.is_valid
-        errors = [a for a in result.annotations if "NO_VARIANTS" in a.code]
-        assert len(errors) > 0
+        with pytest.raises(ValueError, match="at least one variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="count")),
+                variants=(),
+            )
 
 
 class TestValidatorDecimalNormalization:

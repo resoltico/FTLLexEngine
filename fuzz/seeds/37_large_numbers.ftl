@@ -1,4 +1,0 @@
-# 37_large_numbers.ftl - Very large numeric literals
-big-int = { 123456789012345678901234567890 }
-negative-big = { -999999999999999999999999999999 }
-zero-decimal = { 0.000000000000000000000000000001 }

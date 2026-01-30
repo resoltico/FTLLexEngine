@@ -234,8 +234,8 @@ class DiagnosticFormatter:
         message = getattr(annotation, "message", str(annotation))
         arguments = getattr(annotation, "arguments", None)
 
-        # Sanitize message if needed
-        message = self._maybe_sanitize(message)
+        # Sanitize and escape message to prevent log injection
+        message = self._escape_control_chars(self._maybe_sanitize(message))
 
         # Include arguments tuple if present
         if arguments:
@@ -263,27 +263,30 @@ class DiagnosticFormatter:
         else:
             severity_str = severity
 
-        parts = [f"{severity_str}[{diagnostic.code.name}]: {diagnostic.message}"]
+        # Escape control characters in all user-influenced fields to prevent
+        # log injection (fake diagnostic lines via embedded newlines)
+        message = self._escape_control_chars(diagnostic.message)
+        parts = [f"{severity_str}[{diagnostic.code.name}]: {message}"]
 
         if diagnostic.span:
             parts.append(f"  --> line {diagnostic.span.line}, column {diagnostic.span.column}")
         elif diagnostic.ftl_location:
-            parts.append(f"  --> {diagnostic.ftl_location}")
+            parts.append(f"  --> {self._escape_control_chars(diagnostic.ftl_location)}")
 
         if diagnostic.function_name:
-            parts.append(f"  = function: {diagnostic.function_name}")
+            parts.append(f"  = function: {self._escape_control_chars(diagnostic.function_name)}")
 
         if diagnostic.argument_name:
-            parts.append(f"  = argument: {diagnostic.argument_name}")
+            parts.append(f"  = argument: {self._escape_control_chars(diagnostic.argument_name)}")
 
         if diagnostic.expected_type:
-            parts.append(f"  = expected: {diagnostic.expected_type}")
+            parts.append(f"  = expected: {self._escape_control_chars(diagnostic.expected_type)}")
 
         if diagnostic.received_type:
-            parts.append(f"  = received: {diagnostic.received_type}")
+            parts.append(f"  = received: {self._escape_control_chars(diagnostic.received_type)}")
 
         if diagnostic.hint:
-            hint = self._maybe_sanitize(diagnostic.hint)
+            hint = self._escape_control_chars(self._maybe_sanitize(diagnostic.hint))
             parts.append(f"  = help: {hint}")
 
         if diagnostic.help_url:
@@ -297,7 +300,7 @@ class DiagnosticFormatter:
         Example output:
             MESSAGE_NOT_FOUND: Message 'hello' not found
         """
-        message = self._maybe_sanitize(diagnostic.message)
+        message = self._escape_control_chars(self._maybe_sanitize(diagnostic.message))
         return f"{diagnostic.code.name}: {message}"
 
     def _format_json(self, diagnostic: Diagnostic) -> str:
@@ -344,6 +347,22 @@ class DiagnosticFormatter:
             data["help_url"] = diagnostic.help_url
 
         return json.dumps(data, ensure_ascii=False)
+
+    @staticmethod
+    def _escape_control_chars(text: str) -> str:
+        """Escape control characters to prevent log injection.
+
+        Newlines, carriage returns, and tabs in diagnostic fields can inject
+        fake diagnostic lines into structured text output. This escapes them
+        to their visible escape-sequence representations.
+
+        Args:
+            text: Text to escape
+
+        Returns:
+            Text with control characters replaced by escape sequences
+        """
+        return text.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
 
     def _maybe_sanitize(self, text: str) -> str:
         """Truncate text if sanitization is enabled.

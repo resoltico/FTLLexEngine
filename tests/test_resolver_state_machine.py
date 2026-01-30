@@ -704,32 +704,12 @@ class TestResolverErrorPaths:
             assert isinstance(result, str), f"_format_value({value}) should return string"
 
     def test_select_expression_no_variants(self):
-        """Line 237: Select expression with no variants error."""
-        # Create select expression with empty variants
-        select_expr = SelectExpression(
-            selector=NumberLiteral(value=1, raw="1"),
-            variants=(),  # Empty!
-        )
-
-        message = Message(
-            id=Identifier(name="test"),
-            value=Pattern(elements=(Placeable(expression=select_expr),)),
-            attributes=(),
-            comment=None,
-        )
-
-        resolver = FluentResolver(
-            locale="en_US",
-            messages={"test": message},
-            terms={},
-            function_registry=create_default_registry(),
-            use_isolating=False,
-        )
-
-        # Should produce error for select with no variants
-        result, errors = resolver.resolve_message(message, args={})
-        assert len(errors) > 0  # Should have error for select with no variants
-        assert "{???}" in result  # Fallback value
+        """SelectExpression with no variants raises ValueError at construction."""
+        with pytest.raises(ValueError, match="at least one variant"):
+            SelectExpression(
+                selector=NumberLiteral(value=1, raw="1"),
+                variants=(),
+            )
 
 
 if __name__ == "__main__":

@@ -998,6 +998,9 @@ def parse_select_expression(
         # Within variant_list, allow blank (spaces and newlines)
         cursor = skip_blank(cursor)
 
+        if cursor.is_eof:
+            break
+
         # Check for end of select }
         if cursor.current == "}":
             break

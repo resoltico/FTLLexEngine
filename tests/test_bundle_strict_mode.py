@@ -311,19 +311,19 @@ class TestStrictModeWithCaching:
         assert stats is not None
         assert stats["hits"] >= 1
 
-    def test_errors_not_cached_in_strict_mode(self) -> None:
-        """Errors don't get cached (we raise before caching)."""
+    def test_errors_cached_before_strict_raise(self) -> None:
+        """Errors are cached before strict mode raises, enabling cache hits on retry."""
         bundle = FluentBundle("en", strict=True, enable_cache=True)
         bundle.add_resource("msg = { $name }")
 
-        # This should raise, not cache
+        # First call: resolves with error, caches result, then raises
         with pytest.raises(FormattingIntegrityError):
             bundle.format_pattern("msg", {})
 
-        # Cache should be empty (error was not cached)
+        # Cache should contain the error result (cache-before-raise pattern)
         stats = bundle.get_cache_stats()
         assert stats is not None
-        assert stats["size"] == 0
+        assert stats["size"] == 1
 
 
 class TestStrictModeCachePropagation:

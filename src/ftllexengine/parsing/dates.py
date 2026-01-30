@@ -50,8 +50,8 @@ __all__ = ["clear_date_caches", "parse_date", "parse_datetime"]
 
 # CLDR date format styles used for parsing.
 # Both date and datetime use the same styles for consistency.
-_DATE_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long")
-_DATETIME_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long")
+_DATE_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long", "full")
+_DATETIME_PARSE_STYLES: tuple[str, ...] = ("short", "medium", "long", "full")
 
 # Default separator between date and time components (fallback only).
 # Used when locale-specific dateTimeFormat pattern extraction fails.
@@ -326,7 +326,9 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         # Try CLDR format styles
         for style in _DATE_PARSE_STYLES:
             try:
-                babel_pattern = locale.date_formats[style].pattern
+                fmt = locale.date_formats[style]
+                # Babel returns DateTimePattern (with .pattern) or plain str
+                babel_pattern = fmt.pattern if hasattr(fmt, "pattern") else str(fmt)
                 strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
                 patterns.append((strptime_pattern, has_era))
             except (AttributeError, KeyError):
@@ -435,7 +437,9 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         # Try CLDR format styles for datetime
         for style in _DATETIME_PARSE_STYLES:
             try:
-                babel_pattern = locale.datetime_formats[style].pattern
+                fmt = locale.datetime_formats[style]
+                # Babel returns DateTimePattern (with .pattern) or plain str
+                babel_pattern = fmt.pattern if hasattr(fmt, "pattern") else str(fmt)
                 strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
                 patterns.append((strptime_pattern, has_era))
             except (AttributeError, KeyError):

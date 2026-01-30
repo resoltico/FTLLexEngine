@@ -377,12 +377,18 @@ def analyze_seed(path: Path, parser: FluentParserV1) -> SeedAnalysis:
                 content_hash=content_hash,
             )
 
-        # Check for empty resources
+        # Comment-only files are valid FTL (test parser comment handling)
         if message_count == 0 and term_count == 0:
+            features = extract_features(resource)
+            has_comments = any(isinstance(e, Comment) for e in resource.entries)
             return SeedAnalysis(
                 path=path,
-                valid=False,
-                error="No messages or terms found",
+                valid=has_comments or junk_count > 0,
+                error=None if (has_comments or junk_count > 0) else "No entries found",
+                features=features,
+                message_count=message_count,
+                term_count=term_count,
+                junk_count=junk_count,
                 content_hash=content_hash,
             )
 
@@ -407,21 +413,33 @@ def analyze_seed(path: Path, parser: FluentParserV1) -> SeedAnalysis:
 
 
 def check_corpus_health(seeds_dir: Path) -> CorpusHealth:
-    """Check health of the entire seed corpus."""
+    """Check health of the entire seed corpus.
+
+    Scans per-target subdirectories (integrity/, oom/, cache/, etc.)
+    for .ftl seed files. Binary seeds (.bin) are counted but not
+    analyzed for grammar features.
+    """
     health = CorpusHealth()
     parser = FluentParserV1()
 
-    # Find all seed files
-    seed_files = sorted(seeds_dir.glob("*.ftl"))
-    health.total_seeds = len(seed_files)
+    # Scan per-target subdirectories for .ftl files
+    seed_files = sorted(seeds_dir.glob("**/*.ftl"))
+    bin_count = len(sorted(seeds_dir.glob("**/*.bin")))
+    health.total_seeds = len(seed_files) + bin_count
 
     if health.total_seeds == 0:
         health.issues.append("No seed files found in corpus")
         health.features_missing = set(GRAMMAR_FEATURES)
         return health
 
+    if bin_count > 0:
+        health.issues.append(
+            f"{bin_count} binary seed(s) found (counted but not analyzed for grammar features)"
+        )
+
     # Analyze each seed
-    hash_to_path: dict[str, Path] = {}
+    # Dedup within each target directory (cross-dir dups are intentional)
+    dir_hash_to_path: dict[Path, dict[str, Path]] = {}
 
     for seed_file in seed_files:
         analysis = analyze_seed(seed_file, parser)
@@ -431,12 +449,16 @@ def check_corpus_health(seeds_dir: Path) -> CorpusHealth:
             health.valid_seeds += 1
             health.features_covered.update(analysis.features)
 
-            # Check for duplicates
-            if analysis.content_hash in hash_to_path:
+            # Check for duplicates within the same directory
+            parent = seed_file.parent
+            if parent not in dir_hash_to_path:
+                dir_hash_to_path[parent] = {}
+            hash_map = dir_hash_to_path[parent]
+            if analysis.content_hash in hash_map:
                 health.duplicate_seeds += 1
-                health.duplicates.append((hash_to_path[analysis.content_hash], seed_file))
+                health.duplicates.append((hash_map[analysis.content_hash], seed_file))
             else:
-                hash_to_path[analysis.content_hash] = seed_file
+                hash_map[analysis.content_hash] = seed_file
         else:
             health.invalid_seeds += 1
             health.issues.append(f"{seed_file.name}: {analysis.error}")
@@ -463,7 +485,41 @@ def check_corpus_health(seeds_dir: Path) -> CorpusHealth:
     return health
 
 
-def print_human_report(health: CorpusHealth) -> None:
+def _print_per_target_breakdown(health: CorpusHealth, seeds_dir: Path) -> None:
+    """Print per-target seed counts from analyses."""
+    # .ftl counts from analyses
+    ftl_counts: Counter[str] = Counter()
+    for analysis in health.analyses:
+        parts = analysis.path.parts
+        for i, part in enumerate(parts):
+            if part == "seeds" and i + 1 < len(parts) - 1:
+                ftl_counts[parts[i + 1]] += 1
+                break
+        else:
+            ftl_counts["root"] += 1
+
+    # .bin counts from filesystem
+    bin_counts: Counter[str] = Counter()
+    for bin_file in sorted(seeds_dir.glob("**/*.bin")):
+        rel = bin_file.relative_to(seeds_dir)
+        if len(rel.parts) > 1:
+            bin_counts[rel.parts[0]] += 1
+        else:
+            bin_counts["root"] += 1
+
+    all_targets = sorted(set(ftl_counts) | set(bin_counts))
+    if all_targets:
+        print("Per-target seed counts:")
+        print(f"  {'target':<15} {'ftl':>5} {'bin':>5} {'total':>6}")
+        print(f"  {'-' * 33}")
+        for target in all_targets:
+            ftl = ftl_counts[target]
+            bn = bin_counts[target]
+            print(f"  {target:<15} {ftl:>5} {bn:>5} {ftl + bn:>6}")
+        print()
+
+
+def print_human_report(health: CorpusHealth, seeds_dir: Path) -> None:
     """Print human-readable health report."""
     print()
     print("=" * 60)
@@ -477,6 +533,8 @@ def print_human_report(health: CorpusHealth) -> None:
     print(f"Invalid seeds:   {health.invalid_seeds}")
     print(f"Duplicates:      {health.duplicate_seeds}")
     print()
+
+    _print_per_target_breakdown(health, seeds_dir)
 
     # Coverage
     print(f"Grammar Feature Coverage: {health.coverage_percent:.1f}%")
@@ -623,7 +681,7 @@ def main() -> None:
     elif args.json:
         print_json_report(health)
     else:
-        print_human_report(health)
+        print_human_report(health, SEEDS_DIR)
 
     # Exit code based on health
     if health.invalid_seeds > 0:

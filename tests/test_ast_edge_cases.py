@@ -9,6 +9,8 @@ This file systematically targets ALL remaining uncovered lines across:
 - parser.py (29 lines)
 """
 
+import pytest
+
 from ftllexengine import FluentBundle, parse_ftl
 from ftllexengine.syntax.ast import (
     CallArguments,
@@ -32,24 +34,14 @@ class TestValidatorLine214:
     """Test validator.py line 214: Term without value."""
 
     def test_term_without_value_via_manual_ast(self) -> None:
-        """Manually create Term with None value to hit line 214."""
-        # Create Resource with a Term that has no value
-        from ftllexengine.syntax.ast import Resource
+        """Term with None value is rejected at construction time by __post_init__."""
 
-        term = Term(
-            id=Identifier(name="empty-term"),
-            value=None,  # type: ignore[arg-type]  # Invalid: term must have value
-            attributes=(),
-            comment=None,
-            span=(0, 0),  # type: ignore[arg-type]
-        )
-
-        resource = Resource(entries=(term,))
-        validator = SemanticValidator()
-        result = validator.validate(resource)
-
-        # Should have validation error for term without value
-        assert not result.is_valid or len(result.annotations) > 0
+        with pytest.raises(ValueError, match="Term must have a value pattern"):
+            Term(
+                id=Identifier(name="empty-term"),
+                value=None,  # type: ignore[arg-type]
+                attributes=(),
+            )
 
 
 class TestValidatorLine282:
@@ -114,29 +106,13 @@ class TestValidatorLines364_365:
     """Test validator.py lines 364-365: Select expression with no variants."""
 
     def test_select_expression_no_variants(self) -> None:
-        """Manually create SelectExpression with zero variants to hit lines 364-365."""
-        # Invalid: select must have at least one variant
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="count")),
-            variants=(),  # No variants - invalid!
-        )
+        """SelectExpression with zero variants is rejected at construction by __post_init__."""
 
-        msg = Message(
-            id=Identifier(name="test"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-            comment=None,
-            span=(0, 0),  # type: ignore[arg-type]
-        )
-
-        from ftllexengine.syntax.ast import Resource
-        resource = Resource(entries=(msg,))
-
-        validator = SemanticValidator()
-        result = validator.validate(resource)
-
-        # Should detect error E0006: select must have at least one variant
-        assert len(result.annotations) > 0 or not result.is_valid
+        with pytest.raises(ValueError, match="SelectExpression requires at least one variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="count")),
+                variants=(),
+            )
 
 
 class TestVisitorLine382:

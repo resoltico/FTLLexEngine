@@ -27,6 +27,7 @@ from .message import (
     VariableInfo,
     clear_introspection_cache,
     extract_references,
+    extract_references_by_attribute,
     extract_variables,
     introspect_message,
 )
@@ -57,6 +58,7 @@ __all__ = [
     # Message introspection functions
     "clear_introspection_cache",
     "extract_references",
+    "extract_references_by_attribute",
     "extract_variables",
     "introspect_message",
     # ISO introspection exceptions

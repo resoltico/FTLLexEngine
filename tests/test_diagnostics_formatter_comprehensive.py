@@ -9,7 +9,7 @@ Python 3.13+.
 import json
 from unittest.mock import Mock
 
-from hypothesis import assume, given
+from hypothesis import given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode, SourceSpan
@@ -799,13 +799,16 @@ def test_sanitize_property_length(message: str, sanitize: bool, max_length: int)
 
     if sanitize and len(message) > max_length:
         # Message portion should be truncated to max_length + "..."
-        # Format is "CODE: message", so extract message part
+        # Format is "CODE: message", so extract message part.
+        # Control character escaping (\n -> \\n) may expand the truncated text,
+        # so the bound is 2*max_length + 3 (worst case: all chars are control chars).
         msg_part = result.split(": ", 1)[1]
-        assert len(msg_part) <= max_length + 3
+        assert len(msg_part) <= 2 * max_length + 3
         assert msg_part.endswith("...")
     else:
-        # No sanitization, full message should appear
-        assert message in result
+        # No sanitization, full message should appear (with control chars escaped)
+        escaped_message = DiagnosticFormatter._escape_control_chars(message)
+        assert escaped_message in result
 
 
 @given(
@@ -829,7 +832,8 @@ def test_format_property_all_codes(
     result = formatter.format(diagnostic)
 
     assert code.name in result
-    assert message in result
+    escaped_message = DiagnosticFormatter._escape_control_chars(message)
+    assert escaped_message in result
     assert severity in result
 
 
@@ -838,9 +842,11 @@ def test_format_property_all_codes(
     message=st.text(min_size=1, max_size=100),
 )
 def test_format_property_all_formats(format_type: OutputFormat, message: str) -> None:
-    """Property: All output formats produce non-empty results."""
-    assume("\n" not in message)  # Avoid multiline complexity in hypothesis
+    """Property: All output formats produce non-empty results.
 
+    Verifies that control characters in messages are properly escaped
+    in text formats (RUST, SIMPLE) and handled by json.dumps in JSON.
+    """
     formatter = DiagnosticFormatter(output_format=format_type)
     diagnostic = Diagnostic(
         code=DiagnosticCode.MESSAGE_NOT_FOUND,
@@ -850,9 +856,11 @@ def test_format_property_all_formats(format_type: OutputFormat, message: str) ->
     result = formatter.format(diagnostic)
 
     assert len(result) > 0
-    # For JSON format, message may be escaped, so parse and check
     if format_type == OutputFormat.JSON:
+        # JSON format: json.dumps handles escaping; parse and verify
         data = json.loads(result)
         assert data["message"] == message or data["message"] == message[:50]
     else:
-        assert message in result or message[:50] in result  # May be truncated in sanitized mode
+        # Text formats: control chars are escaped (e.g., \n -> \\n)
+        escaped_message = DiagnosticFormatter._escape_control_chars(message)
+        assert escaped_message in result or escaped_message[:50] in result

@@ -1166,7 +1166,10 @@ class FluentBundle:
                 message_id, args, attribute, self._locale, self._use_isolating
             )
             if cached_entry is not None:
-                return cached_entry.to_tuple()
+                result, errors_tuple = cached_entry.to_tuple()
+                if errors_tuple and self._strict:
+                    self._raise_strict_error(message_id, result, errors_tuple)
+                return (result, errors_tuple)
 
         # Validate message_id is non-empty string
         if not message_id or not isinstance(message_id, str):
@@ -1256,18 +1259,20 @@ class FluentBundle:
             )
             for err in errors_tuple:
                 logger.debug("  - %s: %s", type(err).__name__, err)
-            # Strict mode: raise instead of returning fallback-containing result
-            if self._strict:
-                self._raise_strict_error(message_id, result, errors_tuple)
         else:
             logger.debug("Resolved message '%s': %s", message_id, result[:50])
 
-        # Cache successful resolution (even if there are non-critical errors)
-        # Note: In strict mode, we won't reach here if there are errors
+        # Cache resolution result (including errors) BEFORE strict mode check.
+        # This ensures repeated calls for the same erroneous message in strict mode
+        # hit the cache instead of triggering expensive re-resolution each time.
         if self._cache is not None:
             self._cache.put(
                 message_id, args, attribute, self._locale, self._use_isolating, result, errors_tuple
             )
+
+        # Strict mode: raise after caching so subsequent calls can use cached result
+        if errors_tuple and self._strict:
+            self._raise_strict_error(message_id, result, errors_tuple)
 
         return (result, errors_tuple)
 

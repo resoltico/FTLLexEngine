@@ -131,9 +131,10 @@ class TestGetDatePatternsExceptions:
 
         _get_date_patterns.cache_clear()
 
-        # Create a mock locale that raises AttributeError for pattern
+        # Create a mock locale where format objects lack .pattern attribute.
+        # The code falls back to str(fmt) when hasattr(fmt, "pattern") is False.
         mock_format = MagicMock()
-        del mock_format.pattern  # Remove pattern attribute to cause AttributeError
+        del mock_format.pattern  # Remove pattern attribute to trigger str() fallback
 
         with patch.object(Locale, "parse") as mock_parse:
             mock_locale = MagicMock()
@@ -141,15 +142,15 @@ class TestGetDatePatternsExceptions:
                 "short": mock_format,
                 "medium": mock_format,
                 "long": mock_format,
+                "full": mock_format,
             }
             mock_parse.return_value = mock_locale
 
-            # Clear cache and call with a unique key to avoid cached results
             _get_date_patterns.cache_clear()
             patterns = _get_date_patterns("mock-locale-attr-err")
 
-        # Should return empty tuple since all patterns failed
-        assert patterns == ()
+        # Should return patterns using str(fmt) fallback (non-empty)
+        assert len(patterns) > 0
 
 
 # ============================================================================
@@ -384,8 +385,9 @@ class TestGetDatetimePatternsExceptions:
             _get_date_patterns.cache_clear()
             patterns = _get_datetime_patterns("mock-locale-datetime-attr-err-v3")
 
-        # Should return empty tuple since all patterns failed
-        assert patterns == ()
+        # With hasattr fallback, str(fmt) is used when .pattern raises.
+        # Non-empty results expected since str() succeeds on mock objects.
+        assert len(patterns) > 0
 
     def test_get_datetime_patterns_key_error_via_missing_key(self) -> None:
         """Test lines 359-360: KeyError when accessing datetime_formats style."""

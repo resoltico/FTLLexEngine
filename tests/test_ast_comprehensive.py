@@ -139,7 +139,7 @@ class TestResourceDataclass:
 
         with pytest.raises((AttributeError, TypeError)):
             resource.entries = (  # type: ignore[misc]
-                Message(id=Identifier(name="x"), value=None, attributes=()),
+                Message(id=Identifier(name="x"), value=Pattern(elements=()), attributes=()),
             )
 
     def test_resource_empty_entries(self) -> None:
@@ -149,8 +149,8 @@ class TestResourceDataclass:
 
     def test_resource_with_entries(self) -> None:
         """Verify Resource can hold multiple entries."""
-        msg1 = Message(id=Identifier(name="msg1"), value=None, attributes=())
-        msg2 = Message(id=Identifier(name="msg2"), value=None, attributes=())
+        msg1 = Message(id=Identifier(name="msg1"), value=Pattern(elements=()), attributes=())
+        msg2 = Message(id=Identifier(name="msg2"), value=Pattern(elements=()), attributes=())
         resource = Resource(entries=(msg1, msg2))
         assert len(resource.entries) == 2
         assert resource.entries[0] is msg1
@@ -162,7 +162,7 @@ class TestMessageDataclass:
 
     def test_message_frozen(self) -> None:
         """Property: Message instances are immutable (frozen)."""
-        msg = Message(id=Identifier(name="test"), value=None, attributes=())
+        msg = Message(id=Identifier(name="test"), value=Pattern(elements=()), attributes=())
 
         with pytest.raises((AttributeError, TypeError)):
             msg.id = Identifier(name="changed")  # type: ignore[misc]
@@ -170,16 +170,16 @@ class TestMessageDataclass:
     @given(st.text(min_size=1))
     def test_message_construction_minimal(self, name: str) -> None:
         """Property: Message can be constructed with minimal fields."""
-        msg = Message(id=Identifier(name=name), value=None, attributes=())
+        msg = Message(id=Identifier(name=name), value=Pattern(elements=()), attributes=())
         assert msg.id.name == name
-        assert msg.value is None
+        assert msg.value == Pattern(elements=())
         assert msg.attributes == ()
         assert msg.comment is None
         assert msg.span is None
 
     def test_message_guard_true(self) -> None:
         """Verify Message.guard returns True for Message instances."""
-        msg = Message(id=Identifier(name="test"), value=None, attributes=())
+        msg = Message(id=Identifier(name="test"), value=Pattern(elements=()), attributes=())
         assert Message.guard(msg) is True
 
     def test_message_guard_false(self) -> None:
@@ -229,7 +229,7 @@ class TestTermDataclass:
 
     def test_term_guard_false(self) -> None:
         """Verify Term.guard returns False for non-Term objects."""
-        msg = Message(id=Identifier(name="test"), value=None, attributes=())
+        msg = Message(id=Identifier(name="test"), value=Pattern(elements=()), attributes=())
         assert Term.guard(msg) is False
 
 
@@ -282,7 +282,7 @@ class TestCommentDataclass:
 
     def test_comment_guard_false(self) -> None:
         """Verify Comment.guard returns False for non-Comment objects."""
-        msg = Message(id=Identifier(name="test"), value=None, attributes=())
+        msg = Message(id=Identifier(name="test"), value=Pattern(elements=()), attributes=())
         assert Comment.guard(msg) is False
 
 
@@ -320,7 +320,7 @@ class TestJunkDataclass:
 
     def test_junk_guard_false(self) -> None:
         """Verify Junk.guard returns False for non-Junk objects."""
-        msg = Message(id=Identifier(name="test"), value=None, attributes=())
+        msg = Message(id=Identifier(name="test"), value=Pattern(elements=()), attributes=())
         assert Junk.guard(msg) is False
 
 
@@ -408,7 +408,12 @@ class TestSelectExpressionDataclass:
     def test_select_expression_frozen(self) -> None:
         """Property: SelectExpression instances are immutable (frozen)."""
         selector = VariableReference(id=Identifier(name="count"))
-        select = SelectExpression(selector=selector, variants=())
+        default_variant = Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="items"),)),
+            default=True,
+        )
+        select = SelectExpression(selector=selector, variants=(default_variant,))
 
         with pytest.raises((AttributeError, TypeError)):
             select.selector = VariableReference(id=Identifier(name="other"))  # type: ignore[misc]
@@ -417,9 +422,9 @@ class TestSelectExpressionDataclass:
         """Verify SelectExpression can be constructed with variants."""
         selector = VariableReference(id=Identifier(name="count"))
         variant = Variant(
-            key=Identifier(name="one"),
-            value=Pattern(elements=(TextElement(value="1 item"),)),
-            default=False,
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="items"),)),
+            default=True,
         )
         select = SelectExpression(selector=selector, variants=(variant,))
         assert select.selector is selector
@@ -428,7 +433,12 @@ class TestSelectExpressionDataclass:
     def test_select_expression_guard_true(self) -> None:
         """Verify SelectExpression.guard returns True for SelectExpression instances."""
         selector = VariableReference(id=Identifier(name="x"))
-        select = SelectExpression(selector=selector, variants=())
+        default_variant = Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=()),
+            default=True,
+        )
+        select = SelectExpression(selector=selector, variants=(default_variant,))
         assert SelectExpression.guard(select) is True
 
     def test_select_expression_guard_false(self) -> None:
