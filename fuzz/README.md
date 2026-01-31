@@ -2,7 +2,7 @@
 afad: "3.2"
 version: "0.97.0"
 domain: fuzzing
-updated: "2026-01-29"
+updated: "2026-01-31"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -16,14 +16,18 @@ route:
 
 | Fuzzer | Target Module(s) | Patterns | Seeds | Concern |
 |:-------|:-----------------|:---------|:------|:--------|
-| `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 12 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
+| `fuzz_bridge.py` | `runtime.function_bridge` | 14 | 18 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
+| `fuzz_builtins.py` | `runtime.functions`, `runtime.function_bridge` | 13 | 20 (.bin) | Built-in functions and FunctionRegistry |
+| `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 13 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
 | `fuzz_currency.py` | `parsing.currency` | 16 | 65 (.txt) | Currency symbol extraction |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 7 | 15 (.bin) | Fiscal calendar arithmetic |
 | `fuzz_integrity.py` | `validation`, `runtime.bundle`, `integrity` | 23 | 68 (.ftl) + 2 (.bin) | Semantic validation, cross-resource |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
 | `fuzz_lock.py` | `runtime.rwlock` | 10 | 18 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `parsing.numbers` | 19 | 70 (.txt) | Locale-aware numeric parsing |
+| `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
+| `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) | Parser-serializer convergence |
 | `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+5 | 61 (.bin) | Full runtime stack, strict mode |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 12 (.ftl) | Grammar-aware AST construction |
 
@@ -31,18 +35,78 @@ route:
 
 | Source Module | Fuzzers Covering It |
 |:--------------|:--------------------|
-| `diagnostics.errors` | runtime, oom, numbers, currency, cache, integrity |
+| `diagnostics.errors` | runtime, oom, numbers, currency, cache, integrity, builtins |
 | `integrity` | runtime, cache, integrity |
 | `introspection.iso` | iso |
 | `parsing.currency` | currency |
 | `parsing.fiscal` | fiscal |
 | `parsing.numbers` | numbers |
+| `runtime.function_bridge` | bridge, builtins |
+| `runtime.functions` | builtins |
 | `runtime.bundle` | runtime, cache, integrity |
 | `runtime.cache` | runtime, cache |
+| `runtime.plural_rules` | plural |
 | `runtime.rwlock` | lock |
-| `syntax.parser` | oom, structured |
-| `syntax.serializer` | structured |
+| `syntax.parser` | oom, roundtrip, structured |
+| `syntax.serializer` | roundtrip, structured |
 | `validation` | integrity |
+
+## `fuzz_bridge`
+
+Target: `runtime.function_bridge` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `fluent_function` decorator, freeze/copy isolation, dict-like interface.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `fluent_number_contracts` | 12 | str, __contains__, __len__, repr, frozen, precision=None |
+| `camel_case_conversion` | 10 | Known snake->camelCase pairs, fuzzed input returns str |
+| `signature_immutability` | 5 | FunctionSignature frozen, param_mapping tuple, ftl_name, fuzzed lookup |
+| `register_basic` | 10 | len(registry) matches registration count |
+| `register_signatures` | 12 | Positional-only, *args, **kwargs, many params, lambda, overwrite |
+| `param_mapping_custom` | 8 | Custom param_map overrides auto-generated mapping |
+| `call_dispatch` | 12 | call() returns result or raises for unknown function |
+| `dict_interface` | 8 | __contains__, __iter__, list_functions, get_python_name, get_callable |
+| `freeze_copy_lifecycle` | 8 | Freeze prevents registration, copy is independent+unfrozen, idempotent |
+| `fluent_function_decorator` | 8 | Bare, parenthesized, inject_locale=True attribute, registry integration |
+| `error_wrapping` | 7 | TypeError/ValueError wrapped as FrozenFluentError |
+| `locale_injection` | 10 | should_inject_locale flag, FluentBundle locale protocol |
+| `evil_objects` | 5 | Evil __str__, __hash__, recursive list, huge str, None |
+| `raw_bytes` | 3 | Malformed input stability |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OverflowError`, `ArithmeticError`, `FrozenFluentError`, `RecursionError`, `RuntimeError` -- invalid inputs, frozen registry mutations, and adversarial object interactions.
+
+---
+
+## `fuzz_builtins`
+
+Target: `runtime.functions` (NUMBER, DATETIME, CURRENCY), `runtime.function_bridge` (FunctionRegistry, FluentNumber, parameter mapping, locale injection, freeze/copy).
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `number_basic` | 12 | Result is FluentNumber, fraction/grouping variation |
+| `number_precision` | 15 | CLDR v operand non-negative, min_frac consistency |
+| `number_edges` | 8 | NaN, Inf, -0.0, huge, tiny stability |
+| `datetime_styles` | 10 | Non-empty string result, all style combos |
+| `datetime_edges` | 8 | Epoch, Y2K, max timestamp, timezone offsets |
+| `currency_codes` | 12 | FluentNumber result, valid/fuzzed ISO codes |
+| `currency_precision` | 10 | Currency-specific decimals (JPY=0, BHD=3) |
+| `custom_pattern` | 8 | Custom Babel patterns for all 3 functions |
+| `registry_lifecycle` | 8 | Freeze, copy isolation, introspection, builtins present |
+| `parameter_mapping` | 7 | camelCase FTL args -> snake_case via registry.call() |
+| `locale_injection` | 5 | All builtins require locale, fuzzed locale fallback |
+| `error_paths` | 5 | Negative/huge fraction digits, empty/invalid currency |
+| `raw_bytes` | 3 | Malformed input stability |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OverflowError`, `InvalidOperation`, `OSError`, `ArithmeticError`, `FrozenFluentError` -- invalid inputs and Babel formatting limitations.
+
+---
 
 ## `fuzz_cache`
 
@@ -64,6 +128,7 @@ Target: `runtime.cache.IntegrityCache` -- cache invalidation, key collision, wri
 | `hotspot` | 6 | Repeated access cache hits |
 | `raw_bytes` | 12 | Malformed input stability |
 | `capacity_stress` | 6 | Eviction under capacity pressure |
+| `deep_args` | 10 | Deeply nested/unhashable args stress `_make_hashable` |
 
 ### Allowed Exceptions
 
@@ -245,6 +310,31 @@ Target: `parsing.numbers.parse_number`, `parse_decimal` -- locale-aware numeric 
 
 ---
 
+## `fuzz_plural`
+
+Target: `runtime.plural_rules.select_plural_category` -- CLDR plural category selection across locales, number types, and precision-aware v-operand handling.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `category_validity` | 15 | Result in {zero, one, two, few, many, other} |
+| `precision_sensitivity` | 15 | Precision changes v operand, both results valid |
+| `locale_coverage` | 12 | High-leverage locales with boundary numbers |
+| `locale_fallback` | 8 | Invalid/unknown locales fall back gracefully |
+| `determinism` | 12 | Same inputs always return same category |
+| `number_type_variety` | 10 | int, float, Decimal all produce valid categories |
+| `boundary_numbers` | 12 | CLDR boundary values (0, 1, 2, 5, 11, 21, 100) |
+| `cache_consistency` | 8 | LRU-cached locale returns consistent results |
+| `extreme_inputs` | 5 | Huge, negative, NaN, Inf, high precision |
+| `raw_bytes` | 3 | Malformed input stability |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OverflowError`, `InvalidOperation` -- invalid numbers and arithmetic edge cases.
+
+---
+
 ## `fuzz_oom`
 
 Target: `syntax.parser.FluentParserV1` -- small inputs producing massive ASTs ("Billion Laughs" style DoS).
@@ -276,6 +366,34 @@ Target: `syntax.parser.FluentParserV1` -- small inputs producing massive ASTs ("
 
 ---
 
+## `fuzz_roundtrip`
+
+Target: `syntax.parser.FluentParserV1`, `syntax.serializer.serialize` -- parser-serializer convergence property S(P(S(P(x)))) == S(P(x)) across all grammar productions.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `simple_message` | 10 | Basic id = value roundtrips |
+| `variable_placeable` | 12 | { $var } placeables survive roundtrip |
+| `term_reference` | 8 | -term definitions and { -term } references |
+| `message_reference` | 8 | { other-msg } cross-references |
+| `select_expression` | 15 | Plural/string selector with variants |
+| `attributes` | 10 | .attr = value on messages |
+| `comments` | 5 | #, ##, ### comment types |
+| `function_call` | 8 | NUMBER, DATETIME, CURRENCY with args |
+| `multiline_pattern` | 7 | Continuation line values |
+| `mixed_resource` | 12 | Multiple entry types combined |
+| `deep_nesting` | 5 | String literals, nested variable refs |
+| `raw_unicode` | 5 | Random Unicode junk-free convergence |
+| `convergence_stress` | 5 | Multi-pass S2 == S3 stabilization |
+
+### Allowed Exceptions
+
+`ValueError`, `RecursionError`, `MemoryError`, `UnicodeDecodeError`, `UnicodeEncodeError` -- parser/serializer resource limits and encoding edge cases.
+
+---
+
 ## `fuzz_runtime`
 
 Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, caching, concurrency, security.
@@ -298,7 +416,7 @@ Security sub-patterns:
 | `security_recursion` | 30 | Deep placeables, cyclic refs, self-ref terms |
 | `security_memory` | 25 | Large values, many variants/attributes |
 | `security_cache_poison` | 20 | inf/nan/None/list as args |
-| `security_function_inject` | 15 | Custom function registration |
+| `security_function_inject` | 15 | Custom function registration + recursive cross-context calls |
 | `security_locale_explosion` | 10 | Very long / control char locales |
 
 ### Allowed Exceptions

@@ -15,6 +15,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import typing
+
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.core.identifier_validation import is_valid_identifier
@@ -582,6 +584,11 @@ class FluentSerializer(ASTVisitor):
         if self._pattern_needs_separate_line(pattern):
             output.append("\n" + _CONT_INDENT)
 
+        # Track whether next text content will appear at a continuation line start.
+        # When _pattern_needs_separate_line triggers, the first element lands on
+        # a continuation line after "\n    ".
+        at_line_start = self._pattern_needs_separate_line(pattern)
+
         for element in pattern.elements:
             if isinstance(element, TextElement):
                 # Per Fluent spec: no escape sequences in TextElements
@@ -598,56 +605,90 @@ class FluentSerializer(ASTVisitor):
                 if "\n" in text:
                     text = text.replace("\n", "\n    ")
 
-                if "{" in text or "}" in text:
-                    # Split and emit braces as StringLiteral Placeables
-                    self._serialize_text_with_braces(text, output)
-                else:
-                    # No special characters - emit directly
-                    output.append(text)
+                # Emit text, handling all special characters:
+                # - Literal braces -> StringLiteral placeables
+                # - Line-initial '[', '*', '.' -> StringLiteral placeables
+                self._serialize_text_element(text, at_line_start, output)
+
+                # Update line-start tracking: text ending with newline (+indent)
+                # means the next element will be at a continuation line start.
+                at_line_start = text.endswith("\n    ")
             elif isinstance(element, Placeable):
                 output.append("{ ")
                 with depth_guard:
                     self._serialize_expression(element.expression, output, depth_guard)
                 output.append(" }")
+                # Placeables emit " }" which is not a newline, so next element
+                # is not at a continuation line start.
+                at_line_start = False
 
-    def _serialize_text_with_braces(self, text: str, output: list[str]) -> None:
-        """Serialize text containing literal braces per Fluent spec.
+    # Characters that are syntactically significant at the start of a continuation
+    # line in FTL: '[' (variant key), '*' (default variant), '.' (attribute).
+    _LINE_START_SYNTAX_CHARS: frozenset[str] = frozenset(".[*")
 
-        Converts literal { and } characters to Placeable(StringLiteral) form.
-        Example: "a{b}c" becomes: a{"{"}b{"}"}c
+    # Precomputed StringLiteral placeable forms for special characters.
+    _CHAR_PLACEABLE: typing.ClassVar[dict[str, str]] = {
+        "{": '{ "{" }',
+        "}": '{ "}" }',
+        "[": '{ "[" }',
+        "*": '{ "*" }',
+        ".": '{ "." }',
+    }
+
+    @staticmethod
+    def _serialize_text_element(
+        text: str, at_line_start: bool, output: list[str],
+    ) -> None:
+        """Emit TextElement content, wrapping special characters as StringLiteral placeables.
+
+        Handles two categories of characters that cannot appear literally:
+        1. Braces: '{' and '}' at any position (per Fluent spec, must be StringLiterals)
+        2. Line-start syntax: '[', '*', '.' at the first position of a continuation
+           line (parsed as variant/attribute syntax, not text)
+
+        Emits directly to the output list to avoid intermediate string allocation.
         """
-        # C-level str.find() outperforms Python-level character iteration.
-        # Scans for next brace, emits text run, then emits brace placeholder.
+        syntax = FluentSerializer._LINE_START_SYNTAX_CHARS
+        placeable = FluentSerializer._CHAR_PLACEABLE
         pos = 0
         length = len(text)
+        # at_line_start tracks whether position `pos` is at a continuation line start
+        line_start = at_line_start
 
         while pos < length:
-            # Find next brace (whichever comes first)
-            open_pos = text.find("{", pos)
-            close_pos = text.find("}", pos)
+            ch = text[pos]
 
-            # Determine which brace is next (or neither)
-            if open_pos == -1 and close_pos == -1:
-                # No more braces - emit remaining text
-                output.append(text[pos:])
-                break
-            if open_pos == -1:
-                next_brace_pos = close_pos
-                brace_placeholder = '{ "}" }'
-            elif close_pos == -1 or open_pos < close_pos:
-                next_brace_pos = open_pos
-                brace_placeholder = '{ "{" }'
-            else:
-                next_brace_pos = close_pos
-                brace_placeholder = '{ "}" }'
+            # Check if this character needs wrapping
+            if ch in ("{", "}") or (line_start and ch in syntax):
+                output.append(placeable[ch])
+                pos += 1
+                line_start = False
+                continue
 
-            # Emit text before brace (if any)
-            if next_brace_pos > pos:
-                output.append(text[pos:next_brace_pos])
+            # Scan ahead for the next character that needs special handling.
+            # Track newline+indent boundaries to update line_start state.
+            run_start = pos
+            pos += 1
+            line_start = False
 
-            # Emit brace as StringLiteral Placeable
-            output.append(brace_placeholder)
-            pos = next_brace_pos + 1
+            while pos < length:
+                ch = text[pos]
+                if ch in ("{", "}"):
+                    break
+                # Detect continuation line boundary: "\n    " (newline + 4 spaces)
+                if ch == "\n" and pos + 4 < length and text[pos + 1 : pos + 5] == "    ":
+                    # Include the newline+indent in this text run
+                    pos += 5
+                    line_start = True
+                    # If next char after indent is syntax-significant, break to wrap it
+                    if pos < length and text[pos] in syntax:
+                        break
+                    continue
+                pos += 1
+                line_start = False
+
+            # Emit the plain text run
+            output.append(text[run_start:pos])
 
     def _serialize_expression(  # noqa: PLR0912  # Branches required by Expression union type
         self, expr: Expression, output: list[str], depth_guard: DepthGuard

@@ -507,6 +507,168 @@ class TestFormatNumber:
 
 
 # ============================================================================
+# Number Formatting Validation Tests
+# ============================================================================
+
+
+class TestFormatNumberDigitValidation:
+    """Test format_number() digit parameter validation (lines 378-388)."""
+
+    def test_minimum_fraction_digits_negative_raises(self) -> None:
+        """format_number() raises ValueError when minimum_fraction_digits < 0."""
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"minimum_fraction_digits must be 0-100"):
+            ctx.format_number(123.45, minimum_fraction_digits=-1)
+
+    def test_minimum_fraction_digits_exceeds_max_raises(self) -> None:
+        """format_number() raises ValueError when minimum_fraction_digits > MAX_FORMAT_DIGITS."""
+        from ftllexengine.constants import MAX_FORMAT_DIGITS  # noqa: PLC0415
+
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"minimum_fraction_digits must be 0-100"):
+            ctx.format_number(123.45, minimum_fraction_digits=MAX_FORMAT_DIGITS + 1)
+
+    def test_maximum_fraction_digits_negative_raises(self) -> None:
+        """format_number() raises ValueError when maximum_fraction_digits < 0."""
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"maximum_fraction_digits must be 0-100"):
+            ctx.format_number(123.45, maximum_fraction_digits=-1)
+
+    def test_maximum_fraction_digits_exceeds_max_raises(self) -> None:
+        """format_number() raises ValueError when maximum_fraction_digits > MAX_FORMAT_DIGITS."""
+        from ftllexengine.constants import MAX_FORMAT_DIGITS  # noqa: PLC0415
+
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"maximum_fraction_digits must be 0-100"):
+            ctx.format_number(123.45, maximum_fraction_digits=MAX_FORMAT_DIGITS + 1)
+
+    @given(minimum=st.integers(max_value=-1))
+    @example(minimum=-1)
+    @example(minimum=-100)
+    def test_minimum_fraction_digits_negative_property(self, minimum: int) -> None:
+        """format_number() raises ValueError for any negative minimum_fraction_digits.
+
+        Property: For all n < 0, format_number(x, minimum_fraction_digits=n) raises ValueError.
+        """
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"minimum_fraction_digits"):
+            ctx.format_number(123.45, minimum_fraction_digits=minimum)
+
+    @given(maximum=st.integers(max_value=-1))
+    @example(maximum=-1)
+    @example(maximum=-50)
+    def test_maximum_fraction_digits_negative_property(self, maximum: int) -> None:
+        """format_number() raises ValueError for any negative maximum_fraction_digits.
+
+        Property: For all n < 0, format_number(x, maximum_fraction_digits=n) raises ValueError.
+        """
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"maximum_fraction_digits"):
+            ctx.format_number(123.45, maximum_fraction_digits=maximum)
+
+    @given(minimum=st.integers(min_value=101, max_value=10000))
+    @example(minimum=101)
+    @example(minimum=1000)
+    def test_minimum_fraction_digits_exceeds_max_property(self, minimum: int) -> None:
+        """format_number() raises ValueError for minimum_fraction_digits > MAX_FORMAT_DIGITS.
+
+        Property: For all n > 100, format_number(x, minimum_fraction_digits=n) raises ValueError.
+        """
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"minimum_fraction_digits"):
+            ctx.format_number(123.45, minimum_fraction_digits=minimum)
+
+    @given(maximum=st.integers(min_value=101, max_value=10000))
+    @example(maximum=101)
+    @example(maximum=500)
+    def test_maximum_fraction_digits_exceeds_max_property(self, maximum: int) -> None:
+        """format_number() raises ValueError for maximum_fraction_digits > MAX_FORMAT_DIGITS.
+
+        Property: For all n > 100, format_number(x, maximum_fraction_digits=n) raises ValueError.
+        """
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(ValueError, match=r"maximum_fraction_digits"):
+            ctx.format_number(123.45, maximum_fraction_digits=maximum)
+
+
+class TestFormatNumberSpecialValues:
+    """Test format_number() with special float values (line 435->439)."""
+
+    def test_format_number_positive_infinity(self) -> None:
+        """format_number() handles positive infinity without quantization."""
+        ctx = LocaleContext.create("en-US")
+        result = ctx.format_number(float("inf"))
+
+        # Should format infinity (Babel handles special values)
+        assert isinstance(result, str)
+        # Common representations: "∞", "inf", "infinity"
+        assert len(result) > 0
+
+    def test_format_number_negative_infinity(self) -> None:
+        """format_number() handles negative infinity without quantization."""
+        ctx = LocaleContext.create("en-US")
+        result = ctx.format_number(float("-inf"))
+
+        # Should format negative infinity
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_number_nan(self) -> None:
+        """format_number() handles NaN without quantization."""
+        ctx = LocaleContext.create("en-US")
+        result = ctx.format_number(float("nan"))
+
+        # Should format NaN (Babel handles special values)
+        assert isinstance(result, str)
+        # Common representations: "NaN", "nan"
+        assert len(result) > 0
+
+    @given(
+        special_value=st.sampled_from(
+            [float("inf"), float("-inf"), float("nan")]
+        )
+    )
+    @example(special_value=float("inf"))
+    @example(special_value=float("-inf"))
+    @example(special_value=float("nan"))
+    def test_format_number_special_values_property(self, special_value: float) -> None:
+        """format_number() handles all special float values without crashing.
+
+        Property: For all special values v in {inf, -inf, nan},
+        format_number(v) returns a non-empty string without raising exception.
+        """
+        ctx = LocaleContext.create("en-US")
+        result = ctx.format_number(special_value)
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_number_infinity_with_grouping(self) -> None:
+        """format_number() handles infinity with use_grouping parameter."""
+        ctx = LocaleContext.create("en-US")
+        result = ctx.format_number(float("inf"), use_grouping=False)
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_number_nan_with_custom_pattern(self) -> None:
+        """format_number() handles NaN with custom pattern."""
+        ctx = LocaleContext.create("en-US")
+        result = ctx.format_number(float("nan"), pattern="#,##0.00")
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+
+# ============================================================================
 # DateTime Formatting Tests
 # ============================================================================
 

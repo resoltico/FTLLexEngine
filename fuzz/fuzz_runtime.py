@@ -806,7 +806,7 @@ def _perform_security_fuzzing(fdp: atheris.FuzzedDataProvider) -> str:
             _test_cache_poisoning(fdp)
             return "security_cache_poison"
         case 3:
-            _test_function_injection()
+            _test_function_injection(fdp)
             return "security_function_inject"
         case _:
             _test_locale_explosion(fdp)
@@ -889,17 +889,45 @@ def _test_cache_poisoning(fdp: atheris.FuzzedDataProvider) -> None:
         pass
 
 
-def _test_function_injection() -> None:
-    """Test function injection attack."""
+def _test_function_injection(fdp: atheris.FuzzedDataProvider) -> None:
+    """Test function injection and recursive custom function attacks.
+
+    Two sub-patterns:
+    0 - No-op custom function (baseline injection)
+    1 - Recursive custom function that calls back into bundle.format_pattern(),
+        testing GlobalDepthGuard cross-context recursion protection
+    """
+    attack_variant = fdp.ConsumeIntInRange(0, 1)
     try:
         bundle = FluentBundle("en", strict=False)
 
-        def dangerous_func(*_args: Any, **_kwargs: Any) -> str:
-            return "safe_output"
+        if attack_variant == 0:
+            # Baseline: no-op custom function
+            def noop_func(*_args: Any, **_kwargs: Any) -> str:
+                return "safe_output"
 
-        bundle.add_function("INJECT", dangerous_func)
-        bundle.add_resource("msg = { INJECT() }\n")
-        bundle.format_pattern("msg", {})
+            bundle.add_function("INJECT", noop_func)
+            bundle.add_resource("msg = { INJECT() }\n")
+            bundle.format_pattern("msg", {})
+        else:
+            # Recursive: custom function calls back into format_pattern,
+            # exercising GlobalDepthGuard across function boundaries
+            call_depth = fdp.ConsumeIntInRange(1, 10)
+            counter = {"n": 0}
+
+            def recursive_func(*_args: Any, **_kwargs: Any) -> str:
+                counter["n"] += 1
+                if counter["n"] < call_depth:
+                    result, _ = bundle.format_pattern("recurse", {})
+                    return str(result)
+                return "base"
+
+            bundle.add_function("RECURSE_FN", recursive_func)
+            bundle.add_resource(
+                "recurse = { RECURSE_FN() }\n"
+                "msg = { RECURSE_FN() }\n"
+            )
+            bundle.format_pattern("msg", {})
 
     except Exception:  # pylint: disable=broad-exception-caught
         pass

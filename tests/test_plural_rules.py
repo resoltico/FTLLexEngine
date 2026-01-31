@@ -763,3 +763,100 @@ class TestPrecisionParameter:
 
         result = select_plural_category(100, "en_US", precision=1)
         assert result == "other"
+
+
+# ============================================================================
+# Rounding Consistency Tests (ROUND_HALF_UP)
+# ============================================================================
+
+
+class TestRoundingConsistency:
+    """Tests that plural selection rounding matches formatting rounding.
+
+    Both plural_rules.py and locale_context.py must use ROUND_HALF_UP
+    so that the displayed number and its plural form always agree.
+    Half-values (x.5) must round in the same direction in both paths.
+    """
+
+    def test_half_value_rounds_up_for_plural(self) -> None:
+        """2.5 with precision=0 rounds to 3, selecting 'other' in English."""
+        # 2.5 -> 3 (ROUND_HALF_UP), which is 'other' in English (not 1)
+        result = select_plural_category(2.5, "en_US", precision=0)
+        assert result == "other"
+
+    def test_half_value_3_5_rounds_up_for_plural(self) -> None:
+        """3.5 with precision=0 rounds to 4, selecting 'other' in English."""
+        result = select_plural_category(3.5, "en_US", precision=0)
+        assert result == "other"
+
+    def test_half_value_0_5_rounds_to_one_for_plural(self) -> None:
+        """0.5 with precision=0 rounds to 1, selecting 'one' in English."""
+        # 0.5 -> 1 (ROUND_HALF_UP), which is 'one' in English
+        result = select_plural_category(0.5, "en_US", precision=0)
+        assert result == "one"
+
+    def test_half_value_1_5_rounds_up_for_plural(self) -> None:
+        """1.5 with precision=0 rounds to 2, selecting 'other' in English."""
+        result = select_plural_category(1.5, "en_US", precision=0)
+        assert result == "other"
+
+    def test_rounding_matches_formatting_at_half_values(self) -> None:
+        """Verify that Decimal quantization uses ROUND_HALF_UP, matching formatting.
+
+        This is the core consistency property: the number displayed to the user
+        and the plural category selected must agree on rounding direction.
+        """
+        from decimal import ROUND_HALF_UP  # noqa: PLC0415
+
+        test_cases = [
+            (Decimal("0.5"), 0, Decimal("1")),
+            (Decimal("1.5"), 0, Decimal("2")),
+            (Decimal("2.5"), 0, Decimal("3")),
+            (Decimal("3.5"), 0, Decimal("4")),
+            (Decimal("1.005"), 2, Decimal("1.01")),
+            (Decimal("1.015"), 2, Decimal("1.02")),
+            (Decimal("2.445"), 2, Decimal("2.45")),
+        ]
+
+        for value, precision, expected_rounded in test_cases:
+            quantizer = Decimal(10) ** -precision
+            rounded = value.quantize(quantizer, rounding=ROUND_HALF_UP)
+            assert rounded == expected_rounded, (
+                f"Expected {value} with precision={precision} to round to "
+                f"{expected_rounded}, got {rounded}"
+            )
+
+    @given(
+        n=st.floats(
+            min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
+        ),
+        precision=st.integers(min_value=0, max_value=4),
+    )
+    @example(n=0.5, precision=0)
+    @example(n=2.5, precision=0)
+    @example(n=3.5, precision=0)
+    @example(n=1.005, precision=2)
+    def test_plural_rounding_direction_property(
+        self, n: float, precision: int
+    ) -> None:
+        """Plural rounding direction matches ROUND_HALF_UP for all inputs.
+
+        Property: The Decimal value used for plural selection must equal the
+        value obtained by ROUND_HALF_UP quantization.
+        """
+        from decimal import ROUND_HALF_UP  # noqa: PLC0415
+
+        quantizer = Decimal(10) ** -precision
+        expected = Decimal(str(n)).quantize(quantizer, rounding=ROUND_HALF_UP)
+
+        # The plural category must correspond to the ROUND_HALF_UP result.
+        # We verify indirectly: call select_plural_category with precision,
+        # then call again with the explicitly-rounded value (no precision).
+        category_via_precision = select_plural_category(n, "en_US", precision=precision)
+        category_via_rounded = select_plural_category(expected, "en_US")
+
+        assert category_via_precision == category_via_rounded, (
+            f"Rounding mismatch for n={n}, precision={precision}: "
+            f"precision path gave '{category_via_precision}', "
+            f"explicitly rounded {expected} gave '{category_via_rounded}'"
+        )

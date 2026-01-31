@@ -1317,20 +1317,32 @@ class _UnexpectedTestError(Exception):
     """Custom exception for testing defensive error handling.
 
     Defined at module level to avoid scoping issues with pytest.raises.
-    This exception type doesn't contain "locale" or "unknown" in its message,
-    triggering the defensive re-raise path in Babel wrapper functions.
+    Used to verify that non-UnknownLocaleError exceptions propagate correctly.
     """
 
     def __str__(self) -> str:
         return "Something went wrong - internal processing error"
 
 
+class _LocaleWordTestError(Exception):
+    """Exception whose message contains 'locale' but is NOT UnknownLocaleError.
+
+    Tests type-based exception matching: this must propagate even though the
+    message contains the word 'locale'. The old substring-based matching would
+    have incorrectly suppressed this.
+    """
+
+    def __str__(self) -> str:
+        return "Failed to process locale configuration data"
+
+
 class TestDefensiveExceptionPropagation:
     """Tests for defensive exception re-raising in Babel wrappers.
 
-    Lines 196 and 217 in iso.py implement defensive exception handling that
-    re-raises unexpected exceptions while catching Babel-specific errors.
-    These tests verify that logic bugs and unexpected exceptions propagate.
+    iso.py catches babel.core.UnknownLocaleError by type (isinstance check)
+    and re-raises all other exceptions. These tests verify that logic bugs
+    and unexpected exceptions propagate, including those whose messages
+    contain 'locale' or 'unknown' but are not UnknownLocaleError.
     """
 
     def test_currency_name_reraises_unexpected_exception(self) -> None:
@@ -1388,3 +1400,62 @@ class TestDefensiveExceptionPropagation:
                 exception_raised = True
 
             assert exception_raised, "Expected _UnexpectedTestError to be raised"
+
+    def test_territories_reraises_non_unknown_locale_error_with_locale_word(
+        self,
+    ) -> None:
+        """Non-UnknownLocaleError with 'locale' in message propagates.
+
+        Verifies type-based matching: exceptions whose message contains
+        'locale' propagate if not babel.core.UnknownLocaleError.
+        """
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+            _get_babel_territories,
+        )
+
+        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+            raise _LocaleWordTestError
+
+        with (
+            patch("babel.Locale.parse", side_effect=mock_locale_parse),
+            pytest.raises(_LocaleWordTestError),
+        ):
+            _get_babel_territories("en")
+
+    def test_currency_name_reraises_non_unknown_locale_error_with_locale_word(
+        self,
+    ) -> None:
+        """Non-UnknownLocaleError with 'locale' in message propagates.
+
+        Verifies type-based matching replaces fragile substring matching.
+        """
+        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+            raise _LocaleWordTestError
+
+        with (
+            patch("babel.Locale.parse", side_effect=mock_locale_parse),
+            pytest.raises(_LocaleWordTestError),
+        ):
+            _get_babel_currency_name("USD", "en")
+
+    def test_currency_symbol_reraises_non_unknown_locale_error_with_locale_word(
+        self,
+    ) -> None:
+        """Non-UnknownLocaleError with 'locale' in message propagates.
+
+        Verifies type-based matching replaces fragile substring matching.
+        """
+        def mock_symbol(
+            code: str,  # noqa: ARG001
+            locale: str | object = None,  # noqa: ARG001
+        ) -> str:
+            raise _LocaleWordTestError
+
+        with (
+            patch(
+                "babel.numbers.get_currency_symbol",
+                side_effect=mock_symbol,
+            ),
+            pytest.raises(_LocaleWordTestError),
+        ):
+            _get_babel_currency_symbol("USD", "en")

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.98.0"
+version: "0.99.0"
 domain: RUNTIME
-updated: "2026-01-30"
+updated: "2026-01-31"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -486,22 +486,30 @@ def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_
 
 ## `select_plural_category`
 
+Function that selects the CLDR plural category for a number using Babel's CLDR data.
+
 ### Signature
 ```python
-def select_plural_category(n: int | float | Decimal, locale: str) -> str:
+def select_plural_category(
+    n: int | float | Decimal,
+    locale: str,
+    precision: int | None = None,
+) -> str:
 ```
 
 ### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `n` | `int \| float \| Decimal` | Y | Number to categorize. |
-| `locale` | `str` | Y | BCP 47 locale code. |
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
+| `n` | `int \| float \| Decimal` | Y | Number to categorize |
+| `locale` | `str` | Y | BCP-47 or POSIX locale code |
+| `precision` | `int \| None` | N | Fraction digits for CLDR v operand |
 
 ### Constraints
-- Return: CLDR plural category (zero, one, two, few, many, other).
-- Raises: Never. Returns "one" or "other" on invalid locale.
-- State: None.
+- Return: CLDR plural category (`"zero"`, `"one"`, `"two"`, `"few"`, `"many"`, `"other"`).
+- Raises: `BabelImportError` if Babel not installed. Returns `"other"` on invalid locale.
+- State: Read-only.
 - Thread: Safe.
+- Rounding: Uses `ROUND_HALF_UP` when `precision` is set, matching `format_number()` rounding.
 
 ---
 

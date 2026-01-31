@@ -224,9 +224,13 @@ def _collect_entries(
                     seen_message_attr_ids.add(attr.id.name)
 
                 # Check for messages without values (only attributes)
-                if value is None and len(attributes) == 0:
-                    line, column = _get_entry_position(entry, line_cache)
-                    warnings.append(
+                # NOTE: This check is unreachable due to defense-in-depth:
+                # 1. Parser validates in validate_message_content() and creates Junk instead
+                # 2. Message.__post_init__() raises ValueError if value=None and no attributes
+                # Kept as defensive programming for external AST construction scenarios.
+                if value is None and len(attributes) == 0:  # pragma: no cover
+                    line, column = _get_entry_position(entry, line_cache)  # pragma: no cover
+                    warnings.append(  # pragma: no cover
                         ValidationWarning(
                             code=DiagnosticCode.VALIDATION_NO_VALUE_OR_ATTRS.name,
                             message=f"Message '{msg_id.name}' has neither value nor attributes",

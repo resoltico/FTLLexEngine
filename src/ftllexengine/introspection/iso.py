@@ -151,11 +151,14 @@ def _get_babel_territories(locale_str: str) -> dict[str, str]:
     except (ValueError, LookupError, KeyError, AttributeError):
         # Standard library exceptions from invalid data
         return {}
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        # Babel's UnknownLocaleError inherits from Exception (not LookupError).
-        # Catch it here to avoid propagating Babel-specific exceptions.
-        # We only suppress if it looks like a locale/data error.
-        if "locale" in str(exc).lower() or "unknown" in str(exc).lower():
+    except Exception as exc:
+        # Babel's UnknownLocaleError inherits directly from Exception
+        # (not LookupError). Import and check by type for precision.
+        try:
+            from babel.core import UnknownLocaleError  # noqa: PLC0415
+        except ImportError:
+            raise exc from exc  # Babel unavailable; propagate original error
+        if isinstance(exc, UnknownLocaleError):
             return {}
         raise  # Re-raise unexpected errors (logic bugs)
 
@@ -188,11 +191,14 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
         # KeyError/AttributeError for missing data. Logic bugs (NameError,
         # TypeError) propagate to fail fast in financial-grade contexts.
         return None
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        # Babel's UnknownLocaleError inherits from Exception (not LookupError).
-        # Catch it here to avoid propagating Babel-specific exceptions.
-        # We only suppress if it looks like a locale/data error.
-        if "locale" in str(exc).lower() or "unknown" in str(exc).lower():
+    except Exception as exc:
+        # Babel's UnknownLocaleError inherits directly from Exception
+        # (not LookupError). Import and check by type for precision.
+        try:
+            from babel.core import UnknownLocaleError  # noqa: PLC0415
+        except ImportError:
+            raise exc from exc  # Babel unavailable; propagate original error
+        if isinstance(exc, UnknownLocaleError):
             return None
         raise  # Re-raise unexpected errors (logic bugs)
 
@@ -209,11 +215,14 @@ def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
         # Babel raises ValueError/LookupError for invalid locales,
         # KeyError/AttributeError for unknown codes. Logic bugs propagate.
         return code
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        # Babel's UnknownLocaleError inherits from Exception (not LookupError).
-        # Catch it here to avoid propagating Babel-specific exceptions.
-        # We only suppress if it looks like a locale/data error.
-        if "locale" in str(exc).lower() or "unknown" in str(exc).lower():
+    except Exception as exc:
+        # Babel's UnknownLocaleError inherits directly from Exception
+        # (not LookupError). Import and check by type for precision.
+        try:
+            from babel.core import UnknownLocaleError  # noqa: PLC0415
+        except ImportError:
+            raise exc from exc  # Babel unavailable; propagate original error
+        if isinstance(exc, UnknownLocaleError):
             return code
         raise  # Re-raise unexpected errors (logic bugs)
 

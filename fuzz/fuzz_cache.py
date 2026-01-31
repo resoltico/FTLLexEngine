@@ -46,7 +46,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -265,6 +265,68 @@ _ATTR_NAMES: Sequence[str] = (
 )
 
 
+def _generate_deep_args(
+    fdp: atheris.FuzzedDataProvider,
+) -> dict[str, object]:
+    """Generate deeply nested / unhashable args to stress _make_hashable().
+
+    Produces args with nested dicts, lists, mixed types, and edge-case
+    values that exercise every branch of the cache key conversion logic.
+    """
+    args: dict[str, object] = {}
+    num_keys = fdp.ConsumeIntInRange(1, 8)
+
+    for i in range(num_keys):
+        if fdp.remaining_bytes() < 2:
+            args[f"var{i}"] = i
+            continue
+
+        val_type = fdp.ConsumeIntInRange(0, 8)
+        match val_type:
+            case 0:
+                # Nested dict (2-4 levels deep)
+                depth = fdp.ConsumeIntInRange(2, 4)
+                inner: object = fdp.ConsumeUnicodeNoSurrogates(5)
+                for _ in range(depth):
+                    inner = {"k": inner}
+                args[f"var{i}"] = inner
+            case 1:
+                # List of mixed types
+                args[f"var{i}"] = [
+                    fdp.ConsumeInt(2),
+                    fdp.ConsumeUnicodeNoSurrogates(3),
+                    fdp.ConsumeBool(),
+                ]
+            case 2:
+                # Nested list of lists
+                args[f"var{i}"] = [[1, 2], [3, [4, 5]]]
+            case 3:
+                # Float edge cases (-0.0, inf, nan)
+                args[f"var{i}"] = fdp.PickValueInList(
+                    [0.0, -0.0, float("inf"), float("-inf"), float("nan")]
+                )
+            case 4:
+                # Boolean (hash collision with int: hash(True)==hash(1))
+                args[f"var{i}"] = fdp.ConsumeBool()
+            case 5:
+                # Dict with tuple-like keys stress
+                args[f"var{i}"] = {
+                    "a": [1, {"b": 2}],
+                    "c": fdp.ConsumeUnicodeNoSurrogates(3),
+                }
+            case 6:
+                # Empty containers
+                args[f"var{i}"] = fdp.PickValueInList([[], {}, ""])
+            case 7:
+                # Set (unhashable in dicts by default)
+                args[f"var{i}"] = {1, 2, 3}
+            case _:
+                # Large nested structure
+                args[f"var{i}"] = {"l": list(range(20)), "d": {"x": {"y": "z"}}}
+
+    return args
+
+
 def _generate_locale(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate locale: 90% valid, 10% fuzzed."""
     if fdp.ConsumeIntInRange(0, 9) < 9:
@@ -277,12 +339,12 @@ def _generate_ftl_resource(  # noqa: PLR0911, PLR0912
 ) -> tuple[str, str]:
     """Generate FTL resource for cache stress testing.
 
-    12 strategies targeting distinct cache behaviors.
+    13 strategies targeting distinct cache behaviors.
 
     Returns:
         (pattern_name, ftl_source)
     """
-    weights = [10, 8, 8, 8, 8, 6, 6, 6, 6, 6, 12, 6]  # 12 strategies
+    weights = [10, 8, 8, 8, 8, 6, 6, 6, 6, 6, 12, 6, 10]  # 13 strategies
     total_weight = sum(weights)
     choice = fdp.ConsumeIntInRange(0, total_weight - 1)
 
@@ -368,6 +430,12 @@ def _generate_ftl_resource(  # noqa: PLR0911, PLR0912
             ftl = "\n".join(f"msg{i} = v{i}" for i in range(n)) + "\n"
             return ("capacity_stress", ftl)
 
+        case 12:  # Deep/unhashable args (stress _make_hashable)
+            n = fdp.ConsumeIntInRange(3, 8)
+            placeables = " ".join(f"{{ $var{i} }}" for i in range(n))
+            ftl = f"msg0 = {placeables}\n"
+            return ("deep_args", ftl)
+
         case _:
             return ("fallback", "msg0 = fallback\n")
 
@@ -406,7 +474,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     - Performance: Tracks timing per iteration
     - Memory: Tracks RSS via psutil (every 100 iterations)
     - Cache: Hit/miss ratios, write conflicts, corruption events
-    - Patterns: Coverage of 12 FTL generation strategies
+    - Patterns: Coverage of 13 FTL generation strategies
     - Corpus: Interesting inputs (slow/circular/raw/capacity)
     """
     # Initialize memory baseline on first iteration
@@ -433,11 +501,16 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     # Generate locale
     locale = _generate_locale(fdp)
 
-    # Generate FTL resource (12 strategies with weighted selection)
+    # Generate FTL resource (13 strategies with weighted selection)
     pattern_name, ftl = _generate_ftl_resource(fdp)
     _state.pattern_coverage[pattern_name] = (
         _state.pattern_coverage.get(pattern_name, 0) + 1
     )
+
+    # Pre-generate deep args for _make_hashable stress (fdp not thread-safe)
+    deep_args: dict[str, object] | None = None
+    if pattern_name == "deep_args":
+        deep_args = _generate_deep_args(fdp)
 
     # Create bundle with cache
     try:
@@ -511,10 +584,16 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
                 var_val = str(op["var_val"])
                 attribute = op.get("attribute")
 
+                # Use deep args when testing _make_hashable, else simple args
+                fmt_args: Any = (
+                    deep_args
+                    if deep_args is not None
+                    else {"var0": var_val, "var1": var_val, "var2": var_val,
+                          "count": 1, "var": var_val}
+                )
                 bundle.format_pattern(
                     msg_id,
-                    {"var0": var_val, "var1": var_val, "var2": var_val,
-                     "count": 1, "var": var_val},
+                    cast(dict[str, Any], fmt_args),
                     attribute=attribute,
                 )
 

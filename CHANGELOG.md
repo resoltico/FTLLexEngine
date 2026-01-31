@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-01-31
+
+### Breaking Changes
+
+- **Plural Rounding Mode Consistency** (LOGIC-PLURAL-ROUND-001):
+  - Previous: `select_plural_category()` used `ROUND_HALF_EVEN` (banker's rounding) for quantization while `format_number()` used `ROUND_HALF_UP`, causing plural category and displayed number to disagree at half-values (e.g., 2.5 formatted as "3" but plural category selected for "2")
+  - Fix: Changed `select_plural_category()` to use `ROUND_HALF_UP`, matching the formatting rounding mode
+  - Location: `runtime/plural_rules.py` `select_plural_category()`
+  - Impact: Values exactly at the half-point (e.g., 2.5, 3.5) may now select a different plural category. The displayed number and plural form always agree
+
+### Fixed
+
+- **ISO Introspection Exception Handling Precision** (LOGIC-EXCEPTION-SUPPRESSION-001):
+  - Previous: Babel wrapper functions in `introspection/iso.py` used fragile substring matching (`"locale" in str(exc).lower()`) to catch `UnknownLocaleError`, which could suppress unrelated exceptions whose messages happen to contain "locale" or "unknown"
+  - Fix: Replaced substring matching with type-based `isinstance(exc, UnknownLocaleError)` check. Non-locale exceptions now propagate correctly regardless of message content
+  - Location: `introspection/iso.py` `_get_babel_territories()`, `_get_babel_currency_name()`, `_get_babel_currency_symbol()`
+  - Impact: Logic bugs and unexpected exceptions with "locale" in their message are no longer silently suppressed
+
+- **Serializer Continuation Line Syntax Collision** (BUG-SER-LINESTART-SYNTAX-001):
+  - Previous: `serialize()` placed `[`, `*`, or `.` at the start of continuation lines in multiline patterns, causing re-parse to interpret them as variant key, default variant, or attribute syntax instead of text content
+  - Issue: Roundtrip convergence violation `S(P(S(P(x)))) != S(P(x))` -- serialized output re-parsed with Junk entries
+  - Fix: Unified `_serialize_text_element()` method detects syntactically significant characters at continuation line boundaries and wraps them as StringLiteral placeables (`{ "[" }`, `{ "*" }`, `{ "." }`)
+  - Location: `syntax/serializer.py` `FluentSerializer._serialize_text_element()`
+  - Impact: All valid ASTs now produce serialized output that re-parses identically
+
 ## [0.98.0] - 2026-01-30
 
 ### Breaking Changes
@@ -3101,6 +3126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.99.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.99.0
 [0.98.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.98.0
 [0.97.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.97.0
 [0.96.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.96.0

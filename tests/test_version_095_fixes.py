@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import inspect
 import threading
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 from hypothesis import given, settings
@@ -223,29 +223,29 @@ class TestMessageAttributeInArguments:
 
 
 class TestPluralRoundingMode:
-    """Plural rule uses explicit ROUND_HALF_EVEN."""
+    """Plural rule uses explicit ROUND_HALF_UP, matching formatting rounding."""
 
     @pytest.fixture(autouse=True)
     def _skip_without_babel(self) -> None:
         pytest.importorskip("babel")
 
     def test_rounding_mode_is_explicit(self) -> None:
-        """Verify quantize call uses ROUND_HALF_EVEN."""
+        """Verify quantize call uses ROUND_HALF_UP (matches formatting)."""
         from ftllexengine.runtime import plural_rules  # noqa: PLC0415
 
         source = inspect.getsource(plural_rules.select_plural_category)
-        assert "ROUND_HALF_EVEN" in source
+        assert "ROUND_HALF_UP" in source
 
-    def test_bankers_rounding_applied(self) -> None:
-        """Banker's rounding: 0.5 rounds to even."""
-        # 2.5 should round to 2 (even), not 3
+    def test_half_up_rounding_applied(self) -> None:
+        """ROUND_HALF_UP: 0.5 always rounds away from zero."""
+        # 2.5 rounds to 3 (half-up)
         d = Decimal("2.5")
-        result = d.quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)
-        assert result == Decimal("2")
+        result = d.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        assert result == Decimal("3")
 
-        # 3.5 should round to 4 (even)
+        # 3.5 rounds to 4 (half-up)
         d = Decimal("3.5")
-        result = d.quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)
+        result = d.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         assert result == Decimal("4")
 
 
