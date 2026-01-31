@@ -17,24 +17,27 @@ route:
 | Fuzzer | Target Module(s) | Patterns | Seeds | Concern |
 |:-------|:-----------------|:---------|:------|:--------|
 | `fuzz_bridge.py` | `runtime.function_bridge` | 14 | 18 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
+| `fuzz_graph.py` | `analysis.graph` | 12 | 12 (.bin) | Dependency graph cycle detection, canonicalization |
 | `fuzz_builtins.py` | `runtime.functions`, `runtime.function_bridge` | 13 | 20 (.bin) | Built-in functions and FunctionRegistry |
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 13 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
 | `fuzz_currency.py` | `parsing.currency` | 16 | 65 (.txt) | Currency symbol extraction |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 7 | 15 (.bin) | Fiscal calendar arithmetic |
 | `fuzz_integrity.py` | `validation`, `runtime.bundle`, `integrity` | 23 | 68 (.ftl) + 2 (.bin) | Semantic validation, cross-resource |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
-| `fuzz_lock.py` | `runtime.rwlock` | 10 | 18 (.bin) | RWLock concurrency primitives |
+| `fuzz_lock.py` | `runtime.rwlock` | 13 | 24 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `parsing.numbers` | 19 | 70 (.txt) | Locale-aware numeric parsing |
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) | Parser-serializer convergence |
 | `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+5 | 61 (.bin) | Full runtime stack, strict mode |
+| `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 12 | 12 (.bin) | Variable scoping, term isolation, depth guards |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 12 (.ftl) | Grammar-aware AST construction |
 
 ## Module Coverage Matrix
 
 | Source Module | Fuzzers Covering It |
 |:--------------|:--------------------|
+| `analysis.graph` | graph |
 | `diagnostics.errors` | runtime, oom, numbers, currency, cache, integrity, builtins |
 | `integrity` | runtime, cache, integrity |
 | `introspection.iso` | iso |
@@ -43,7 +46,8 @@ route:
 | `parsing.numbers` | numbers |
 | `runtime.function_bridge` | bridge, builtins |
 | `runtime.functions` | builtins |
-| `runtime.bundle` | runtime, cache, integrity |
+| `runtime.bundle` | runtime, cache, integrity, scope |
+| `runtime.resolver` | scope |
 | `runtime.cache` | runtime, cache |
 | `runtime.plural_rules` | plural |
 | `runtime.rwlock` | lock |
@@ -133,6 +137,33 @@ Target: `runtime.cache.IntegrityCache` -- cache invalidation, key collision, wri
 ### Allowed Exceptions
 
 `CacheCorruptionError`, `WriteConflictError`, `DataIntegrityError`, `FrozenFluentError` -- cache integrity violations are expected findings; `FrozenFluentError` from depth guards.
+
+---
+
+## `fuzz_graph`
+
+Target: `analysis.graph` -- `canonicalize_cycle`, `make_cycle_key`, `detect_cycles`, `build_dependency_graph`. Validates cycle detection correctness, canonicalization invariants, and dependency graph construction with namespace prefixing.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `canonicalize_idempotence` | 12 | Double canonicalization is identity, closing element preserved |
+| `canonicalize_direction` | 10 | A->B->C and A->C->B produce distinct canonical forms |
+| `make_cycle_key_consistency` | 8 | Key matches joined canonical form, rotation-invariant (unique nodes) |
+| `canonicalize_edge_cases` | 6 | Empty, single, two-element sequences handled correctly |
+| `detect_self_loops` | 10 | Self-referencing node detected as cycle of length 2 |
+| `detect_simple_cycles` | 12 | Known N-node ring detected, all nodes present |
+| `detect_dag_no_cycles` | 10 | Acyclic graphs return empty cycle list |
+| `detect_disconnected` | 8 | Independent components each detect their own cycles |
+| `detect_dense_mesh` | 8 | Complete graph cycle detection stability |
+| `detect_deep_chain` | 8 | Long chain (up to 200 nodes) with back-edge cycle detection |
+| `build_dependency_graph` | 10 | Namespace prefixing, key/value structure, msg_deps unprefixed |
+| `adversarial_graph` | 5 | Unicode node IDs, empty strings, whitespace-only identifiers |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `RecursionError` -- invalid inputs and graph construction edge cases.
 
 ---
 
@@ -253,26 +284,31 @@ Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookup
 
 ## `fuzz_lock`
 
-Target: `runtime.rwlock.RWLock`, `with_read_lock`, `with_write_lock` -- reader/writer exclusion, reentrancy, downgrading, deadlock detection.
+Target: `runtime.rwlock.RWLock`, `with_read_lock`, `with_write_lock` -- reader/writer exclusion, reentrancy, downgrading, timeout, deadlock detection.
 
 ### Patterns
 
+Ordered cheapest-first: libFuzzer's `ConsumeIntInRange` skews toward small values, so cheap single-threaded patterns are placed first to absorb the natural over-selection bias.
+
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `reader_writer_exclusion` | 15 | No concurrent reader+writer, no multi-writer |
-| `concurrent_readers` | 12 | Multiple readers hold lock simultaneously |
-| `writer_preference` | 10 | Waiting writer blocks new readers |
-| `reentrant_reads` | 12 | Same thread acquires read lock N times |
-| `reentrant_writes` | 10 | Same thread acquires write lock N times |
-| `write_to_read_downgrade` | 12 | Writer acquires reads, persist after write release |
+| `reentrant_reads` | 5 | Same thread acquires read lock N times |
+| `reentrant_writes` | 5 | Same thread acquires write lock N times |
 | `upgrade_rejection` | 8 | Read-to-write upgrade raises RuntimeError |
-| `rapid_lock_cycling` | 8 | Shared counter correct after rapid cycles |
 | `decorator_correctness` | 6 | with_read_lock/with_write_lock return values |
+| `write_to_read_downgrade` | 10 | Writer acquires reads, persist after write release |
+| `rapid_lock_cycling` | 8 | Shared counter correct after rapid cycles |
+| `cross_thread_handoff` | 6 | Rapid write handoff between threads, no lost entries |
+| `concurrent_readers` | 12 | Multiple readers hold lock simultaneously |
+| `timeout_acquisition` | 8 | TimeoutError raised, lock usable after timeout |
+| `reader_writer_exclusion` | 15 | No concurrent reader+writer, no multi-writer |
+| `writer_preference` | 10 | Waiting writer blocks new readers (fuzz-controlled timing) |
+| `reader_starvation` | 6 | Continuous readers cannot starve waiting writer |
 | `mixed_contention` | 7 | All operations interleaved across threads |
 
 ### Allowed Exceptions
 
-`RuntimeError` -- expected from upgrade rejection and lock protocol violations.
+`RuntimeError`, `TimeoutError` -- expected from upgrade rejection, lock protocol violations, and timeout-based acquisition.
 
 ---
 
@@ -422,6 +458,33 @@ Security sub-patterns:
 ### Allowed Exceptions
 
 `CacheCorruptionError`, `FormattingIntegrityError`, `WriteConflictError`, `FrozenFluentError`, `RecursionError`, `MemoryError` -- integrity violations are findings; depth guards and resource limits are safety mechanisms.
+
+---
+
+## `fuzz_scope`
+
+Target: `runtime.resolver` (via `FluentBundle`) -- variable scoping, term argument isolation, message reference scope inheritance, ResolutionContext push/pop, GlobalDepthGuard cross-context depth tracking, select expression scope, bidi isolation marks.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `term_arg_isolation` | 12 | Terms see ONLY explicit args, not caller's scope |
+| `variable_shadowing` | 12 | External $var preserved around term call |
+| `message_ref_scope` | 10 | Referenced messages share caller's args |
+| `select_scope` | 10 | Selector and variant bodies share message scope |
+| `attribute_scope` | 8 | Attribute patterns share message scope |
+| `bidi_isolation` | 8 | FSI/PDI wrap values, don't alter content |
+| `function_arg_scope` | 8 | Function args evaluated in calling scope |
+| `nested_term_scope` | 8 | Nested terms maintain independent scopes |
+| `scope_chain` | 8 | Message ref chains share args (depth 2-4) |
+| `cross_message_isolation` | 6 | Independent messages don't pollute each other |
+| `depth_guard_boundary` | 5 | Self-ref, mutual recursion, deep chains hit limits |
+| `adversarial_scope` | 5 | Scope leaks, missing vars, empty values, fuzzed IDs |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OverflowError`, `FrozenFluentError`, `RecursionError`, `RuntimeError` -- invalid inputs, depth guard enforcement, and resolution errors.
 
 ---
 

@@ -7,6 +7,7 @@ This module provides a readers-writer lock that allows:
 - Reentrant reader locks (same thread can acquire read lock multiple times)
 - Reentrant writer locks (same thread can acquire write lock multiple times)
 - Write-to-read lock downgrading (writer can acquire read locks)
+- Optional timeout for lock acquisition (raises TimeoutError)
 - Proper deadlock avoidance
 
 Architecture:
@@ -33,6 +34,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from functools import wraps
@@ -126,11 +128,20 @@ class RWLock:
         self._writer_held_reads: int = 0
 
     @contextmanager
-    def read(self) -> Generator[None]:
+    def read(self, timeout: float | None = None) -> Generator[None]:
         """Acquire read lock (shared access).
 
         Multiple threads can hold read locks concurrently.
         Reentrant: same thread can acquire read lock multiple times.
+
+        Args:
+            timeout: Maximum seconds to wait for lock acquisition.
+                None (default) waits indefinitely. Non-negative float
+                specifies deadline; 0.0 is a non-blocking attempt.
+
+        Raises:
+            TimeoutError: If lock cannot be acquired within timeout.
+            ValueError: If timeout is negative.
 
         Yields:
             None
@@ -139,23 +150,33 @@ class RWLock:
             >>> with lock.read():
             ...     # Safe to read data
             ...     pass
+            >>> with lock.read(timeout=1.0):
+            ...     # Acquired within 1 second or TimeoutError raised
+            ...     pass
         """
-        self._acquire_read()
+        self._acquire_read(timeout)
         try:
             yield
         finally:
             self._release_read()
 
     @contextmanager
-    def write(self) -> Generator[None]:
+    def write(self, timeout: float | None = None) -> Generator[None]:
         """Acquire write lock (exclusive access).
 
         Only one thread can hold write lock at a time.
         Blocks until all readers release their locks.
         Reentrant: same thread can acquire write lock multiple times.
 
+        Args:
+            timeout: Maximum seconds to wait for lock acquisition.
+                None (default) waits indefinitely. Non-negative float
+                specifies deadline; 0.0 is a non-blocking attempt.
+
         Raises:
             RuntimeError: If thread attempts read-to-write lock upgrade.
+            TimeoutError: If lock cannot be acquired within timeout.
+            ValueError: If timeout is negative.
 
         Yields:
             None
@@ -164,14 +185,17 @@ class RWLock:
             >>> with lock.write():
             ...     # Exclusive access to modify data
             ...     pass
+            >>> with lock.write(timeout=2.0):
+            ...     # Acquired within 2 seconds or TimeoutError raised
+            ...     pass
         """
-        self._acquire_write()
+        self._acquire_write(timeout)
         try:
             yield
         finally:
             self._release_write()
 
-    def _acquire_read(self) -> None:
+    def _acquire_read(self, timeout: float | None = None) -> None:
         """Acquire read lock (internal implementation).
 
         Blocks if:
@@ -180,7 +204,18 @@ class RWLock:
 
         Allows reentrant acquisition by same thread.
         Allows lock downgrading (write lock holder can acquire read locks).
+
+        Args:
+            timeout: Maximum seconds to wait. None waits indefinitely.
+
+        Raises:
+            TimeoutError: If lock cannot be acquired within timeout.
+            ValueError: If timeout is negative.
         """
+        if timeout is not None and timeout < 0:
+            msg = f"Timeout must be non-negative, got {timeout}"
+            raise ValueError(msg)
+
         current_thread_id = threading.get_ident()
 
         with self._condition:
@@ -196,9 +231,21 @@ class RWLock:
                 self._writer_held_reads += 1
                 return
 
+            # Compute deadline for timeout-aware waiting
+            deadline = (
+                time.monotonic() + timeout if timeout is not None else None
+            )
+
             # Wait while writer is active OR writers are waiting (writer preference)
             while self._active_writer is not None or self._waiting_writers > 0:
-                self._condition.wait()
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        msg = "Timed out waiting for read lock"
+                        raise TimeoutError(msg)
+                    self._condition.wait(timeout=remaining)
+                else:
+                    self._condition.wait()
 
             # Acquire read lock
             self._active_readers += 1
@@ -235,16 +282,25 @@ class RWLock:
                 if self._active_readers == 0:
                     self._condition.notify_all()
 
-    def _acquire_write(self) -> None:
+    def _acquire_write(self, timeout: float | None = None) -> None:
         """Acquire write lock (internal implementation).
 
         Blocks until all readers release their locks.
         Only one writer can be active at a time.
         Reentrant: same thread can acquire write lock multiple times.
 
+        Args:
+            timeout: Maximum seconds to wait. None waits indefinitely.
+
         Raises:
             RuntimeError: If thread attempts read-to-write lock upgrade.
+            TimeoutError: If lock cannot be acquired within timeout.
+            ValueError: If timeout is negative.
         """
+        if timeout is not None and timeout < 0:
+            msg = f"Timeout must be non-negative, got {timeout}"
+            raise ValueError(msg)
+
         current_thread_id = threading.get_ident()
 
         with self._condition:
@@ -261,19 +317,32 @@ class RWLock:
                 self._writer_reentry_count += 1
                 return
 
+            # Compute deadline for timeout-aware waiting
+            deadline = (
+                time.monotonic() + timeout if timeout is not None else None
+            )
+
             # Increment waiting writers count (for reader blocking)
             self._waiting_writers += 1
 
             try:
                 # Wait until no readers and no active writer
                 while self._active_readers > 0 or self._active_writer is not None:
-                    self._condition.wait()
+                    if deadline is not None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            msg = "Timed out waiting for write lock"
+                            raise TimeoutError(msg)
+                        self._condition.wait(timeout=remaining)
+                    else:
+                        self._condition.wait()
 
                 # Acquire write lock
                 self._active_writer = current_thread_id
 
             finally:
                 # Decrement waiting writers count
+                # Runs on both success and TimeoutError, keeping counter consistent
                 self._waiting_writers -= 1
 
     def _release_write(self) -> None:
@@ -313,11 +382,13 @@ class RWLock:
 
 def with_read_lock[T](
     lock_attr: str = "_rwlock",
+    timeout: float | None = None,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator to acquire read lock for method execution.
 
     Args:
         lock_attr: Name of RWLock attribute on class instance (default: "_rwlock")
+        timeout: Maximum seconds to wait for lock. None waits indefinitely.
 
     Returns:
         Decorated method that acquires read lock before execution
@@ -337,7 +408,7 @@ def with_read_lock[T](
         @wraps(func)
         def wrapper(self: object, *args: object, **kwargs: object) -> T:
             lock: RWLock = getattr(self, lock_attr)
-            with lock.read():
+            with lock.read(timeout=timeout):
                 return func(self, *args, **kwargs)
 
         return wrapper
@@ -347,11 +418,13 @@ def with_read_lock[T](
 
 def with_write_lock[T](
     lock_attr: str = "_rwlock",
+    timeout: float | None = None,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator to acquire write lock for method execution.
 
     Args:
         lock_attr: Name of RWLock attribute on class instance (default: "_rwlock")
+        timeout: Maximum seconds to wait for lock. None waits indefinitely.
 
     Returns:
         Decorated method that acquires write lock before execution
@@ -371,7 +444,7 @@ def with_write_lock[T](
         @wraps(func)
         def wrapper(self: object, *args: object, **kwargs: object) -> T:
             lock: RWLock = getattr(self, lock_attr)
-            with lock.write():
+            with lock.write(timeout=timeout):
                 return func(self, *args, **kwargs)
 
         return wrapper

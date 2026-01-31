@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-01-31
+
+### Added
+
+- **RWLock Timeout Support** (FEAT-RWLOCK-TIMEOUT-001):
+  - `RWLock.read()` and `RWLock.write()` accept optional `timeout: float | None` parameter
+  - `None` (default) preserves existing indefinite-wait behavior (fully backward compatible)
+  - `0.0` enables non-blocking try-acquire pattern
+  - Positive float specifies maximum seconds to wait before raising `TimeoutError`
+  - Negative values raise `ValueError` immediately
+  - Reentrant and lock-downgrading acquisitions never block, so timeout is irrelevant in those paths
+  - Write timeout correctly decrements `_waiting_writers` counter via `try/finally`, preventing reader starvation from abandoned write attempts
+  - `with_read_lock()` and `with_write_lock()` decorators accept `timeout` parameter
+  - Location: `runtime/rwlock.py`
+  - Impact: Enables bounded-wait lock acquisition for production resilience (slow writes no longer block all readers indefinitely)
+
 ## [0.99.0] - 2026-01-31
 
 ### Breaking Changes
@@ -3126,6 +3142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.100.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.100.0
 [0.99.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.99.0
 [0.98.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.98.0
 [0.97.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.97.0

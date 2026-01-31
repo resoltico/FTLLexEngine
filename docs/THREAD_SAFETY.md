@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.100.0"
 domain: architecture
 updated: "2026-01-31"
 route:
-  keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary]
-  questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?"]
+  keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
+  questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
 ---
 
 # Thread Safety Reference
@@ -62,6 +62,20 @@ A thread holding the write lock can acquire read locks without blocking. When th
 Calling write operations (`add_resource()`, `add_function()`) from within format operations raises `RuntimeError`. This includes calls from custom functions invoked during formatting. The RWLock does not support read-to-write lock upgrading (deadlock prevention).
 
 If you need lazy-loading patterns, load resources before formatting or use a separate bundle instance.
+
+**Timeout Support**:
+`RWLock.read()` and `RWLock.write()` accept an optional `timeout` parameter (seconds). `None` (default) waits indefinitely. `0.0` attempts non-blocking acquisition. Positive float sets a deadline. Raises `TimeoutError` on expiry. Reentrant and downgrading acquisitions never wait, so timeout is irrelevant in those paths. On write timeout, the internal `_waiting_writers` counter is correctly decremented (via `try/finally`), preventing reader starvation from abandoned writes.
+
+```python
+lock = RWLock()
+try:
+    with lock.write(timeout=5.0):
+        # Acquired within 5 seconds
+        ...
+except TimeoutError:
+    # Lock contention exceeded deadline
+    ...
+```
 
 ---
 

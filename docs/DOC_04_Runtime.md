@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.100.0"
 domain: RUNTIME
 updated: "2026-01-31"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
 ---
 
 # Runtime Reference
@@ -1009,8 +1009,8 @@ Readers-writer lock with writer preference for high-concurrency FluentBundle acc
 ```python
 class RWLock:
     def __init__(self) -> None: ...
-    def read(self) -> Generator[None, None, None]: ...
-    def write(self) -> Generator[None, None, None]: ...
+    def read(self, timeout: float | None = None) -> Generator[None, None, None]: ...
+    def write(self, timeout: float | None = None) -> Generator[None, None, None]: ...
 ```
 
 ### Constraints
@@ -1018,11 +1018,13 @@ class RWLock:
 - State: Tracks active readers, active writer (as `int` thread identity), waiting writers, reader thread counts, writer reentry count, writer-held reads.
 - Thread: Safe for all operations. Reentrant for both readers and writers (same thread can reacquire locks multiple times).
 - Purpose: Allows multiple concurrent readers OR single exclusive writer.
+- Timeout: Optional `timeout` parameter on `read()` and `write()`. `None` (default) waits indefinitely; `0.0` is non-blocking; positive float is deadline in seconds. Raises `TimeoutError` on expiry, `ValueError` if negative.
 - Writer Preference: Writers are prioritized when waiting to prevent reader starvation.
 - Lock Downgrading: Write-to-read downgrade supported. A thread holding the write lock can acquire read locks without blocking. When the write lock is released, held read locks convert to regular reader locks.
 - Upgrade Limitation: Read-to-write lock upgrades are prohibited. Thread holding read lock cannot acquire write lock (raises RuntimeError).
 - Usage: FluentBundle uses RWLock internally for concurrent format operations.
 - Import: `from ftllexengine.runtime.rwlock import RWLock`
+- Version: Added timeout support in v0.100.0.
 
 ---
 
@@ -1033,15 +1035,21 @@ Context manager acquiring read lock for shared access.
 ### Signature
 ```python
 @contextmanager
-def read(self) -> Generator[None, None, None]:
+def read(self, timeout: float | None = None) -> Generator[None, None, None]:
 ```
+
+### Parameters
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
+| `timeout` | `float \| None` | N | Max seconds to wait. `None` = indefinite, `0.0` = non-blocking |
 
 ### Constraints
 - Return: Context manager yielding None.
 - State: Increments active readers count. Reentrant for same thread.
 - Thread: Safe. Multiple threads can hold read locks concurrently.
 - Blocks: When writer is active or writers are waiting (writer preference).
-- Usage: `with lock.read(): # read data`
+- Raises: `TimeoutError` if lock not acquired within timeout. `ValueError` if timeout negative.
+- Usage: `with lock.read(): # read data` or `with lock.read(timeout=1.0): # bounded wait`
 
 ---
 
@@ -1052,16 +1060,21 @@ Context manager acquiring write lock for exclusive access.
 ### Signature
 ```python
 @contextmanager
-def write(self) -> Generator[None, None, None]:
+def write(self, timeout: float | None = None) -> Generator[None, None, None]:
 ```
+
+### Parameters
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
+| `timeout` | `float \| None` | N | Max seconds to wait. `None` = indefinite, `0.0` = non-blocking |
 
 ### Constraints
 - Return: Context manager yielding None.
 - State: Sets active writer. Blocks all other readers and writers. Reentrant (same thread can acquire multiple times).
 - Thread: Safe. Only one thread can hold write lock at a time.
 - Blocks: Until all readers release their locks.
-- Raises: `RuntimeError` if thread attempts read-to-write lock upgrade.
-- Usage: `with lock.write(): # modify data`
+- Raises: `RuntimeError` if thread attempts read-to-write lock upgrade. `TimeoutError` if lock not acquired within timeout. `ValueError` if timeout negative.
+- Usage: `with lock.write(): # modify data` or `with lock.write(timeout=2.0): # bounded wait`
 
 ---
 
