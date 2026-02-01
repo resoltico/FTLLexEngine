@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: PARSING
 updated: "2026-01-31"
 route:
@@ -303,7 +303,7 @@ def enter_nesting(self) -> ParseContext:
 def parse_number(
     value: str,
     locale_code: str,
-) -> tuple[float | None, tuple[FluentParseError, ...]]:
+) -> tuple[float | None, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -328,7 +328,7 @@ def parse_number(
 def parse_decimal(
     value: str,
     locale_code: str,
-) -> tuple[Decimal | None, tuple[FluentParseError, ...]]:
+) -> tuple[Decimal | None, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -353,7 +353,7 @@ def parse_decimal(
 def parse_date(
     value: str,
     locale_code: str,
-) -> tuple[date | None, tuple[FluentParseError, ...]]:
+) -> tuple[date | None, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -383,7 +383,7 @@ def parse_datetime(
     locale_code: str,
     *,
     tzinfo: timezone | None = None,
-) -> tuple[datetime | None, tuple[FluentParseError, ...]]:
+) -> tuple[datetime | None, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -415,7 +415,7 @@ def parse_currency(
     *,
     default_currency: str | None = None,
     infer_from_locale: bool = False,
-) -> tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]:
+) -> tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters

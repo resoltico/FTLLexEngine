@@ -36,7 +36,12 @@ __all__ = ["create_default_registry", "get_shared_registry"]
 logger = logging.getLogger(__name__)
 
 
-def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
+def _compute_visible_precision(
+    formatted: str,
+    decimal_symbol: str,
+    *,
+    max_fraction_digits: int | None = None,
+) -> int:
     """Count visible fraction digits in formatted number string.
 
     CLDR plural rules use the 'v' operand which represents the count of visible
@@ -48,13 +53,22 @@ def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
     literal text (e.g., currency names, custom pattern suffixes) follow the
     fractional digits.
 
+    When max_fraction_digits is provided (from Babel pattern metadata), the
+    count is capped at that value. This prevents literal digit suffixes in
+    custom Babel patterns (e.g., ICU single-quote syntax ``0.0'5'``) from
+    being counted as actual fraction digits.
+
     Args:
         formatted: Locale-formatted number string (e.g., "1,234.56" or "1.234,56")
         decimal_symbol: Locale-specific decimal separator (e.g., "." or ",")
+        max_fraction_digits: Upper bound from pattern metadata (keyword-only).
+            When provided, precision is capped at this value. This handles
+            patterns with literal digit suffixes (e.g., ``0.0'5'`` produces
+            "1.25" for input 1.2 but has frac_prec=(1,1), so precision=1).
 
     Returns:
         Number of leading consecutive digits after the decimal separator,
-        or 0 if no decimal part.
+        capped by max_fraction_digits if provided, or 0 if no decimal part.
 
     Examples:
         >>> _compute_visible_precision("1,234.56", ".")
@@ -67,6 +81,8 @@ def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
         2
         >>> _compute_visible_precision("100.00 Dollars 123", ".")
         2
+        >>> _compute_visible_precision("1.25", ".", max_fraction_digits=1)
+        1
     """
     if decimal_symbol not in formatted:
         return 0
@@ -85,6 +101,15 @@ def _compute_visible_precision(formatted: str, decimal_symbol: str) -> int:
             count += 1
         else:
             break
+
+    # Cap at pattern-defined maximum fraction digits when available.
+    # Prevents literal digit suffixes (ICU single-quote syntax) from
+    # inflating the CLDR v operand. Example: pattern "0.0'5'" has
+    # frac_prec=(1,1) but produces "1.25" for 1.2 - the "5" is a
+    # literal suffix, not a fraction digit of the source number.
+    if max_fraction_digits is not None and count > max_fraction_digits:
+        count = max_fraction_digits
+
     return count
 
 
@@ -150,7 +175,7 @@ def number_format(
         - number_format(1.00, min=2, max=2) -> "1.00" with precision=2
     """
     # Lazy import for parser-only installations
-    from babel.numbers import get_decimal_symbol  # noqa: PLC0415
+    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415
 
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
@@ -167,7 +192,25 @@ def number_format(
     # This is critical for correct plural category matching in select expressions.
     # The precision must reflect the ACTUAL formatted output, not the minimum parameter.
     decimal_symbol = get_decimal_symbol(ctx.babel_locale)
-    precision = _compute_visible_precision(formatted, decimal_symbol)
+
+    # When a custom pattern is provided, extract max fraction digits from pattern
+    # metadata to cap precision. This prevents literal digit suffixes (ICU
+    # single-quote syntax like "0.0'5'") from inflating the v operand.
+    max_frac: int | None = None
+    if pattern is not None:
+        try:
+            parsed = parse_pattern(pattern)
+            # frac_prec is (min_frac, max_frac) tuple
+            max_frac = parsed.frac_prec[1]
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Malformed pattern: fall back to uncapped counting.
+            # Babel format_number already handled the pattern successfully,
+            # so parse_pattern failure is unexpected but not fatal.
+            pass
+
+    precision = _compute_visible_precision(
+        formatted, decimal_symbol, max_fraction_digits=max_frac
+    )
 
     return FluentNumber(value=value, formatted=formatted, precision=precision)
 
@@ -305,7 +348,7 @@ def currency_format(
         decimal places.
     """
     # Lazy import for parser-only installations
-    from babel.numbers import get_decimal_symbol  # noqa: PLC0415
+    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415
 
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
@@ -321,7 +364,20 @@ def currency_format(
     # This is critical for correct plural category matching in select expressions.
     # The precision must reflect the ACTUAL formatted output, not ISO 4217 defaults.
     decimal_symbol = get_decimal_symbol(ctx.babel_locale)
-    precision = _compute_visible_precision(formatted, decimal_symbol)
+
+    # When a custom pattern is provided, extract max fraction digits from pattern
+    # metadata to cap precision. Same rationale as number_format().
+    max_frac: int | None = None
+    if pattern is not None:
+        try:
+            parsed = parse_pattern(pattern)
+            max_frac = parsed.frac_prec[1]
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+
+    precision = _compute_visible_precision(
+        formatted, decimal_symbol, max_fraction_digits=max_frac
+    )
 
     return FluentNumber(value=value, formatted=formatted, precision=precision)
 

@@ -115,8 +115,9 @@ class TestFluentValueCollectionsRuntime:
         # List argument should work at runtime
         result, errors = bundle.format_pattern("msg", {"items": [1, 2, 3]})
 
-        # The list is converted to string representation
-        assert "[1, 2, 3]" in result
+        # Collections produce type-name placeholders (not str() expansion)
+        # to prevent exponential expansion of deeply nested/shared structures
+        assert "[list]" in result
         assert errors == ()
 
     def test_bundle_accepts_dict_argument(self) -> None:
@@ -126,8 +127,8 @@ class TestFluentValueCollectionsRuntime:
 
         result, errors = bundle.format_pattern("msg", {"data": {"key": "value"}})
 
-        # The dict is converted to string representation
-        assert "key" in result or "value" in result
+        # Collections produce type-name placeholders (not str() expansion)
+        assert "[dict]" in result
         assert errors == ()
 
     def test_bundle_accepts_nested_collections(self) -> None:

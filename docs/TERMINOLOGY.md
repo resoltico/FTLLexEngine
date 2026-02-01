@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: terminology
 updated: "2026-01-31"
 route:
@@ -259,7 +259,7 @@ Some methods use "resource" in their name - context determines meaning:
 
 | Term | Definition | Usage |
 |------|------------|-------|
-| **Errors tuple** | Immutable tuple of FluentError instances | `errors: tuple[FluentError, ...]` |
+| **Errors tuple** | Immutable tuple of FrozenFluentError instances | `errors: tuple[FrozenFluentError, ...]` |
 | **Fallback** | Default value when error occurs | "Returns readable fallback" |
 | **Graceful degradation** | Continues with fallback instead of crashing | "Never raises, always degrades gracefully" |
 | **Junk entry** | Unparseable FTL syntax | `Junk` AST node type |

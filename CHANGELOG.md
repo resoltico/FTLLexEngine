@@ -13,6 +13,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-02-01
+
+### Breaking Changes
+
+- **FluentBundle rejects non-FunctionRegistry `functions` parameter** (SEC-BUNDLE-DICT-FUNCTIONS-001):
+  - `FluentBundle(locale, functions=some_dict)` now raises `TypeError` at construction time
+  - Previously, a `dict` was silently accepted (it has `.copy()`) but caused opaque `AttributeError` during `format_pattern()` when `should_inject_locale()` was called on the dict
+  - Pass `FunctionRegistry()` or `create_default_registry()` instead
+
+### Added
+
+- **Expansion budget for resolver DoS prevention** (SEC-RESOLVER-EXPANSION-BUDGET-001):
+  - New `max_expansion_size` parameter on `FluentBundle` and `FluentResolver` (default: 1,000,000 characters)
+  - Prevents Billion Laughs attacks where small FTL input expands exponentially via nested message references (e.g., `m0={m1}{m1}, m1={m2}{m2}, ...`)
+  - Tracked via `ResolutionContext._total_chars`; halts resolution with `EXPANSION_BUDGET_EXCEEDED` diagnostic when exceeded
+  - New `DEFAULT_MAX_EXPANSION_SIZE` constant in `constants.py`
+  - New `DiagnosticCode.EXPANSION_BUDGET_EXCEEDED` (2015)
+
+### Fixed
+
+- **Visible precision inflated by ICU literal digit suffixes** (BUG-PRECISION-LITERAL-SUFFIX-001):
+  - `_compute_visible_precision()` now accepts `max_fraction_digits` keyword to cap the counted fraction digits
+  - `number_format()` and `currency_format()` parse custom Babel patterns to extract `frac_prec[1]` and pass it as the cap
+  - Prevents ICU single-quote literal digit suffixes (e.g., `0.0'5'`) from inflating the CLDR v operand used for plural category selection
+
+- **NaN/Infinity crash in plural category selection** (BUG-PLURAL-NAN-CRASH-001):
+  - `select_plural_category()` now returns `"other"` for `float('nan')`, `float('inf')`, `Decimal('NaN')`, and `Decimal('Infinity')`
+  - Previously raised `ValueError: cannot convert float NaN to integer` from Babel's `plural_rule()`
+  - Per Fluent spec, resolution must never fail catastrophically
+
+- **Cache `_make_hashable` DAG expansion DoS** (SEC-CACHE-DAG-EXPANSION-001):
+  - `IntegrityCache._make_hashable()` now tracks total nodes visited via a budget counter (limit: 10,000 nodes)
+  - Prevents exponential expansion when hashing DAG structures with shared references (e.g., `l=[l,l]` repeated 25 times = 2^25 nodes)
+  - Raises `TypeError` on budget exhaustion, caught by `_make_key` for graceful cache bypass
+
+- **Fallback depth default reduced from MAX_DEPTH to 10**:
+  - `_get_fallback_for_placeable()` default `depth` parameter changed from `MAX_DEPTH` (100) to 10
+  - Fallback generation is simple string construction that never legitimately requires 100 levels of recursion
+
+- **Reference cycles in ASTVisitor and resolver cause memory accumulation** (MEM-REFCYCLE-001):
+  - `ASTVisitor._instance_dispatch_cache` stored bound methods that referenced `self`, creating `self -> dict -> bound_method -> self` cycles; removed in favor of class-level method name dispatch with `getattr` per call
+  - `FluentResolver.resolve_message()` returned `FrozenFluentError` objects with `__traceback__` referencing resolver frames, creating `error -> traceback -> frame -> locals -> bundle -> errors` cycles; tracebacks now cleared at the resolver boundary via `_clear_tracebacks()`
+  - Combined effect: zero gc-collectable objects per resolution cycle; eliminates multi-GB RSS growth under tight-loop usage (e.g., fuzzing 17K+ iterations)
+
+- **Collection values in placeables cause exponential `str()` expansion** (SEC-RESOLVER-DAG-STR-001):
+  - `_format_value()` now returns type-name placeholders (`[list]`, `[dict]`, etc.) for `Sequence` and `Mapping` values instead of calling `str()`
+  - Previously, a DAG structure passed as a variable argument (e.g., `l=[l,l]` repeated 30 times) caused `str()` to expand 2^30 nodes, consuming multi-GB memory and tens of seconds of CPU
+  - Collections are valid `FluentValue` types for passing to custom functions, but are not meaningful in placeable display context
+  - `_make_hashable()` node budget already protected the cache path; this closes the resolver path
+
 ## [0.100.0] - 2026-01-31
 
 ### Added
@@ -3142,6 +3192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.101.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.101.0
 [0.100.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.100.0
 [0.99.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.99.0
 [0.98.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.98.0

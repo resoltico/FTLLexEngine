@@ -23,6 +23,7 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from ftllexengine.constants import (
+    DEFAULT_MAX_EXPANSION_SIZE,
     FALLBACK_FUNCTION_ERROR,
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
@@ -33,6 +34,7 @@ from ftllexengine.constants import (
 from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.core.depth_guard import DepthGuard, depth_clamp
 from ftllexengine.diagnostics import (
+    DiagnosticCode,
     ErrorCategory,
     ErrorTemplate,
     FrozenFluentError,
@@ -68,6 +70,20 @@ logger = logging.getLogger(__name__)
 # Used to prevent RTL/LTR text interference when interpolating values.
 UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
+
+
+def _clear_tracebacks(errors: list[FrozenFluentError]) -> tuple[FrozenFluentError, ...]:
+    """Clear __traceback__ on caught exceptions to break reference cycles.
+
+    FrozenFluentError objects raised inside the resolver retain __traceback__
+    references to the frame in which they were raised. Those frames hold local
+    variables (including the bundle and its AST), creating cycles that only the
+    gc cycle collector can reclaim. Clearing tracebacks at the resolver boundary
+    allows CPython's refcount to free them immediately.
+    """
+    for err in errors:
+        err.__traceback__ = None
+    return tuple(errors)
 
 # ContextVar State (Architectural Decision):
 # Global resolution depth tracking via contextvars prevents custom functions from
@@ -163,6 +179,8 @@ class ResolutionContext:
         _seen: Set for O(1) membership checking (internal)
         max_depth: Maximum resolution depth (prevents stack overflow)
         max_expression_depth: Maximum expression nesting depth
+        max_expansion_size: Maximum total characters in resolved output (DoS prevention)
+        _total_chars: Running count of resolved characters (internal)
         _expression_guard: DepthGuard for expression depth tracking (internal)
     """
 
@@ -170,6 +188,8 @@ class ResolutionContext:
     _seen: set[str] = field(default_factory=set)
     max_depth: int = MAX_DEPTH
     max_expression_depth: int = MAX_DEPTH
+    max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE
+    _total_chars: int = 0
     _expression_guard: DepthGuard = field(init=False)
 
     def __post_init__(self) -> None:
@@ -207,6 +227,22 @@ class ResolutionContext:
         """Get the cycle path for error reporting."""
         return [*self.stack, key]
 
+    def track_expansion(self, char_count: int) -> None:
+        """Add to running expansion total and check budget.
+
+        Raises FrozenFluentError if expansion budget is exceeded. This prevents
+        Billion Laughs attacks where small FTL input expands to gigabytes via
+        nested message references (e.g., m0={m1}{m1}, m1={m2}{m2}, ...).
+        """
+        self._total_chars += char_count
+        if self._total_chars > self.max_expansion_size:
+            diag = ErrorTemplate.expansion_budget_exceeded(
+                self._total_chars, self.max_expansion_size
+            )
+            raise FrozenFluentError(
+                str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
+            )
+
     @property
     def expression_guard(self) -> DepthGuard:
         """Get the expression depth guard for context manager use.
@@ -237,6 +273,7 @@ class FluentResolver:
     """
 
     __slots__ = (
+        "_max_expansion_size",
         "_max_nesting_depth",
         "function_registry",
         "locale",
@@ -254,6 +291,7 @@ class FluentResolver:
         function_registry: FunctionRegistry,
         use_isolating: bool = True,
         max_nesting_depth: int = MAX_DEPTH,
+        max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE,
     ) -> None:
         """Initialize resolver.
 
@@ -264,6 +302,7 @@ class FluentResolver:
             function_registry: Function registry with camelCase conversion (keyword-only)
             use_isolating: Wrap interpolated values in Unicode bidi marks (keyword-only)
             max_nesting_depth: Maximum resolution depth limit (keyword-only)
+            max_expansion_size: Maximum total characters in resolved output (keyword-only)
         """
         self.locale = locale
         self.use_isolating = use_isolating
@@ -271,6 +310,7 @@ class FluentResolver:
         self.terms = terms
         self.function_registry = function_registry
         self._max_nesting_depth = depth_clamp(max_nesting_depth)
+        self._max_expansion_size = max_expansion_size
 
     def resolve_message(
         self,
@@ -327,6 +367,7 @@ class FluentResolver:
             context = ResolutionContext(
                 max_depth=self._max_nesting_depth,
                 max_expression_depth=self._max_nesting_depth,
+                max_expansion_size=self._max_expansion_size,
             )
 
         # Select pattern (value or attribute)
@@ -337,7 +378,7 @@ class FluentResolver:
                 error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
                 errors.append(error)
                 fallback = FALLBACK_MISSING_MESSAGE.format(id=f"{message.id.name}.{attribute}")
-                return (fallback, tuple(errors))
+                return (fallback, _clear_tracebacks(errors))
             pattern = attr.value
         else:
             if message.value is None:
@@ -345,7 +386,7 @@ class FluentResolver:
                 error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
                 errors.append(error)
                 fallback = FALLBACK_MISSING_MESSAGE.format(id=message.id.name)
-                return (fallback, tuple(errors))
+                return (fallback, _clear_tracebacks(errors))
             pattern = message.value
 
         # Check for circular references using explicit context
@@ -356,7 +397,7 @@ class FluentResolver:
             error = FrozenFluentError(str(diag), ErrorCategory.CYCLIC, diagnostic=diag)
             errors.append(error)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
-            return (fallback, tuple(errors))
+            return (fallback, _clear_tracebacks(errors))
 
         # Check for maximum depth (prevents stack overflow from long non-cyclic chains)
         if context.is_depth_exceeded():
@@ -364,7 +405,7 @@ class FluentResolver:
             error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             errors.append(error)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
-            return (fallback, tuple(errors))
+            return (fallback, _clear_tracebacks(errors))
 
         # Use GlobalDepthGuard to track depth across separate format_pattern() calls.
         # This prevents custom functions from bypassing depth limits by calling
@@ -374,14 +415,14 @@ class FluentResolver:
                 context.push(msg_key)
                 try:
                     result = self._resolve_pattern(pattern, args, errors, context)
-                    return (result, tuple(errors))
+                    return (result, _clear_tracebacks(errors))
                 finally:
                     context.pop()
         except FrozenFluentError as e:
             # Global depth exceeded - collect error and return fallback
             errors.append(e)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
-            return (fallback, tuple(errors))
+            return (fallback, _clear_tracebacks(errors))
 
     def _resolve_pattern(
         self,
@@ -398,8 +439,19 @@ class FluentResolver:
         parts: list[str] = []
 
         for element in pattern.elements:
+            # Check expansion budget before each element to stop early
+            if context._total_chars > context.max_expansion_size:
+                diag = ErrorTemplate.expansion_budget_exceeded(
+                    context._total_chars, context.max_expansion_size
+                )
+                errors.append(
+                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
+                )
+                break
+
             match element:
                 case TextElement():
+                    context.track_expansion(len(element.value))
                     parts.append(element.value)
                 case Placeable():
                     try:
@@ -414,6 +466,7 @@ class FluentResolver:
                                 element.expression, args, errors, context
                             )
                         formatted = self._format_value(value)
+                        context.track_expansion(len(formatted))
 
                         # Wrap in Unicode bidi isolation marks (FSI/PDI)
                         # Per Unicode TR9, prevents RTL/LTR text interference
@@ -423,6 +476,13 @@ class FluentResolver:
                             parts.append(formatted)
 
                     except FrozenFluentError as e:
+                        # Expansion budget errors must propagate to halt all resolution
+                        if (
+                            e.diagnostic is not None
+                            and e.diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
+                        ):
+                            errors.append(e)
+                            break
                         # Mozilla-aligned error handling:
                         # Collect error, show readable fallback (not {ERROR: ...})
                         errors.append(e)
@@ -979,6 +1039,7 @@ class FluentResolver:
         - bool: "true"/"false" (Fluent convention)
         - int/float: string representation
         - Decimal/datetime/date: string representation via __str__
+        - Sequence/Mapping: type name (collections are for function args, not display)
         - None: empty string
         """
         if isinstance(value, str):
@@ -990,10 +1051,16 @@ class FluentResolver:
             return str(value)
         if value is None:
             return ""
-        # Handles Decimal, datetime, date, and any other types
+        # Guard against str() on collections (Sequence/Mapping). These are valid
+        # FluentValue types for passing structured data to custom functions, but
+        # str() on deeply nested/shared structures causes exponential expansion
+        # (e.g., DAG with depth 30 → 2^30 nodes in str() output).
+        if isinstance(value, (Sequence, Mapping)):
+            return f"[{type(value).__name__}]"
+        # Handles Decimal, datetime, date, FluentNumber, and any other types
         return str(value)
 
-    def _get_fallback_for_placeable(self, expr: Expression, depth: int = MAX_DEPTH) -> str:  # noqa: PLR0911
+    def _get_fallback_for_placeable(self, expr: Expression, depth: int = 10) -> str:  # noqa: PLR0911
         """Get readable fallback for failed placeable per Fluent spec.
 
         Per Fluent specification, when a placeable fails to resolve,

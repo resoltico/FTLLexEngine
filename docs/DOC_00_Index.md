@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: INDEX
 updated: "2026-01-31"
 route:
@@ -25,9 +25,17 @@ from ftllexengine import (
     fluent_function,   # Decorator for custom functions
     clear_all_caches,  # Clear all library caches
     # Errors
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
+    FrozenFluentError,  # Immutable error type with ErrorCategory
+    ErrorCategory,      # Error classification enum
+    FrozenErrorContext,  # Context for parse/formatting errors
+    # Data Integrity
+    DataIntegrityError,
+    FormattingIntegrityError,
+    ImmutabilityViolationError,
+    SyntaxIntegrityError,
+    CacheCorruptionError,
+    WriteConflictError,
+    IntegrityContext,
     # Metadata
     __version__,
     __fluent_spec_version__,
@@ -62,8 +70,8 @@ from ftllexengine.syntax import (
 ### Errors & Validation (`from ftllexengine.diagnostics import ...`)
 ```python
 from ftllexengine.diagnostics import (
-    FluentError, FluentReferenceError,
-    FluentResolutionError, FluentCyclicReferenceError, FluentParseError,
+    FrozenFluentError, ErrorCategory, FrozenErrorContext,
+    Diagnostic, DiagnosticCode,
     ValidationResult, ValidationError, ValidationWarning, WarningSeverity,
     DiagnosticFormatter, OutputFormat,
 )
@@ -74,7 +82,8 @@ from ftllexengine.diagnostics import (
 from ftllexengine.introspection import (
     # Message introspection
     introspect_message, MessageIntrospection,
-    extract_variables, extract_references, clear_introspection_cache,
+    extract_variables, extract_references, extract_references_by_attribute,
+    clear_introspection_cache,
     VariableInfo, FunctionCallInfo, ReferenceInfo,
     # ISO introspection (requires Babel)
     TerritoryCode, CurrencyCode,  # Type aliases
@@ -98,8 +107,7 @@ from ftllexengine.enums import (
 
 ### Analysis (`from ftllexengine.analysis import ...`)
 ```python
-from ftllexengine.analysis import detect_cycles
-from ftllexengine.analysis.graph import build_dependency_graph
+from ftllexengine.analysis import detect_cycles, build_dependency_graph
 ```
 
 ### Validation (`from ftllexengine.validation import ...`)
@@ -110,14 +118,11 @@ from ftllexengine.validation import validate_resource
 ### Core Utilities (`from ftllexengine.core import ...`)
 ```python
 from ftllexengine.core import (
-    DepthGuard, DepthLimitExceededError,  # Depth limiting
-    FormattingError,                       # Formatting errors with fallback
+    DepthGuard, depth_clamp,               # Depth limiting
+    BabelImportError, require_babel,        # Babel availability checking
+    ErrorCategory, FrozenErrorContext,       # Error types (re-exports)
+    FrozenFluentError,                      # Immutable error (re-export)
 )
-```
-
-### Visitor (`from ftllexengine.syntax.visitor import ...`)
-```python
-from ftllexengine.syntax.visitor import ASTVisitor, ASTTransformer
 ```
 
 ### Runtime (`from ftllexengine.runtime import ...`)
@@ -167,7 +172,7 @@ from ftllexengine.parsing import (
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
-| FluentError, FluentReferenceError, FormattingError, BabelImportError, DepthGuard, ValidationResult, diagnostic | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
+| FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, build_dependency_graph, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
 | TerritoryInfo, CurrencyInfo, get_territory, get_currency, ISO 3166, ISO 4217 | [DOC_02_Types.md](DOC_02_Types.md) | ISO Introspection |
@@ -187,10 +192,10 @@ ftllexengine/
     message.py             # MessageIntrospection, introspect_message, extract_references
     iso.py                 # TerritoryInfo, CurrencyInfo, get_territory, get_currency (requires Babel)
   core/
-    __init__.py            # Core exports (BabelImportError, DepthGuard, FormattingError)
+    __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError)
     babel_compat.py        # BabelImportError, Babel lazy import infrastructure
-    depth_guard.py         # DepthGuard, DepthLimitExceededError
-    errors.py              # FormattingError
+    depth_guard.py         # DepthGuard, depth_clamp
+    errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
   analysis/
     __init__.py            # Analysis API exports
     graph.py               # detect_cycles, build_dependency_graph
@@ -222,7 +227,7 @@ ftllexengine/
     fiscal.py              # FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy (no Babel)
   diagnostics/
     __init__.py            # Error exports
-    errors.py              # FluentError hierarchy
+    errors.py              # FrozenFluentError, ErrorCategory, FrozenErrorContext
     codes.py               # DiagnosticCode, Diagnostic, SourceSpan
     templates.py           # ErrorTemplate
     validation.py          # ValidationResult, ValidationError, ValidationWarning
@@ -239,7 +244,7 @@ ftllexengine/
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
 | `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None` | runtime/function_bridge.py (exported from root) |
-| `ParseResult[T]` | `tuple[T \| None, tuple[FluentParseError, ...]]` | parsing/__init__.py |
+| `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |
 | `ResourceId` | `str` | localization.py |

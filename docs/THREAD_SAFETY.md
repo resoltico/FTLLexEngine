@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.100.0"
+version: "0.101.0"
 domain: architecture
 updated: "2026-01-31"
 route:
@@ -123,7 +123,7 @@ class GlobalDepthGuard:
     def __enter__(self):
         current = _global_resolution_depth.get()
         if current >= self._max_depth:
-            raise FluentResolutionError(...)
+            raise FrozenFluentError(...)  # category=RESOLUTION
         self._token = _global_resolution_depth.set(current + 1)
 ```
 

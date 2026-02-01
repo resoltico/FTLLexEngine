@@ -351,24 +351,24 @@ class TestVisitorDispatchCacheProperty:
         assert "Pattern" in ChildVisitor._class_visit_methods
         assert "Pattern" not in ParentVisitor._class_visit_methods
 
-    def test_instance_cache_is_per_instance(self) -> None:
-        """PROPERTY: Instance-level bound method cache is per-instance.
+    def test_no_instance_dispatch_cache(self) -> None:
+        """PROPERTY: Instance dispatch cache removed to prevent reference cycles.
 
-        This is necessary because bound methods are instance-specific.
-        Each instance maintains its own cache of bound method references.
+        Bound method caching was removed because it created cycles:
+        self -> cache dict -> bound method -> self. Dispatch now uses
+        class-level method name lookup + getattr on each call.
         """
 
         class TestVisitor(ASTVisitor):
             def visit_Message(self, _node: Message) -> str:  # noqa: N802
                 return "visited"
 
-        visitor1 = TestVisitor()
-        visitor2 = TestVisitor()
+        visitor = TestVisitor()
 
-        # Instance caches should be different objects
-        assert (
-            visitor1._instance_dispatch_cache is not visitor2._instance_dispatch_cache
-        ), "Instance-level cache should be per-instance"
+        # Instance dispatch cache should not exist
+        assert not hasattr(visitor, "_instance_dispatch_cache"), (
+            "Instance dispatch cache should be removed to prevent reference cycles"
+        )
 
 
 # ============================================================================

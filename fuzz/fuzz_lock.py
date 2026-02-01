@@ -793,9 +793,17 @@ def _pattern_reader_starvation(fdp: atheris.FuzzedDataProvider) -> None:
 # --- Pattern dispatch ---
 
 def _select_pattern(fdp: atheris.FuzzedDataProvider) -> str:
-    """Select a weighted pattern."""
+    """Select a weighted pattern using modulo to avoid tail bias.
+
+    ConsumeIntInRange skews toward small values with short inputs, causing
+    the last entry in a cumulative scan to absorb all overflow.  Using raw
+    bytes with modulo distributes uniformly across the weight space.
+    """
     total = sum(w for _, w in _PATTERN_WEIGHTS)
-    choice = fdp.ConsumeIntInRange(0, total - 1)
+    raw = fdp.ConsumeBytes(2)
+    if len(raw) < 2:
+        raw = b"\x00\x00"
+    choice = int.from_bytes(raw, "big") % total
 
     cumulative = 0
     for name, weight in _PATTERN_WEIGHTS:

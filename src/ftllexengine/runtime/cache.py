@@ -776,9 +776,15 @@ class IntegrityCache:
         # deque with maxlen provides automatic O(1) eviction of oldest entries
         self._audit_log.append(log_entry)
 
+    # Maximum nodes traversed during _make_hashable to prevent exponential
+    # expansion of DAG structures with shared references. A 25-level binary
+    # DAG has only 25 nodes but expands to 2^25 during tree flattening.
+    # 10,000 nodes is generous for legitimate use while blocking abuse.
+    _MAX_HASHABLE_NODES: int = 10_000
+
     @staticmethod
     def _make_hashable(  # noqa: PLR0911, PLR0912 - type dispatch requires multiple returns/branches
-        value: object, depth: int = MAX_DEPTH
+        value: object, depth: int = MAX_DEPTH, *, _counter: list[int] | None = None
     ) -> HashableValue:
         """Convert potentially unhashable value to hashable equivalent.
 
@@ -812,19 +818,39 @@ class IntegrityCache:
             TypeError when depth is exhausted, which is caught by _make_key
             and results in graceful cache bypass.
 
+        Node Budget Protection:
+            Uses a mutable counter to track total nodes visited across all
+            recursive calls. This prevents exponential expansion of DAG
+            structures where shared references are traversed independently
+            (e.g., l=[l,l] repeated 25 times creates 2^25 tree traversal
+            despite only 25 depth levels).
+
         Args:
             value: Value to convert (typically FluentValue or nested collection)
             depth: Remaining recursion depth (default: MAX_DEPTH)
+            _counter: Internal node counter for DAG expansion prevention
 
         Returns:
             Hashable equivalent of the value
 
         Raises:
-            TypeError: If depth limit exceeded or value is not a known hashable type
+            TypeError: If depth limit exceeded, node budget exceeded, or unknown type
         """
+        if _counter is None:
+            _counter = [0]
+        _counter[0] += 1
+        if _counter[0] > IntegrityCache._MAX_HASHABLE_NODES:
+            msg = "Node budget exceeded in cache key conversion (possible DAG expansion attack)"
+            raise TypeError(msg)
+
         if depth <= 0:
             msg = "Maximum nesting depth exceeded in cache key conversion"
             raise TypeError(msg)
+
+        def _recurse(v: object) -> HashableValue:
+            return IntegrityCache._make_hashable(
+                v, depth - 1, _counter=_counter
+            )
 
         match value:
             # str and None: return as-is. Must check str before Sequence (str is Sequence).
@@ -834,12 +860,12 @@ class IntegrityCache:
             case list():
                 return (
                     "__list__",
-                    tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                    tuple(_recurse(v) for v in value),
                 )
             case tuple():
                 return (
                     "__tuple__",
-                    tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                    tuple(_recurse(v) for v in value),
                 )
             case dict():
                 # Type-tag dict to distinguish from Mapping ABC (e.g., ChainMap).
@@ -849,8 +875,7 @@ class IntegrityCache:
                     "__dict__",
                     tuple(
                         sorted(
-                            (k, IntegrityCache._make_hashable(v, depth - 1))
-                            for k, v in value.items()
+                            (k, _recurse(v)) for k, v in value.items()
                         )
                     ),
                 )
@@ -859,14 +884,14 @@ class IntegrityCache:
                 # Tag distinguishes from frozenset since str(set) != str(frozenset).
                 return (
                     "__set__",
-                    frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                    frozenset(_recurse(v) for v in value),
                 )
             case frozenset():
                 # Explicit frozenset case - already hashable but tag for type distinction.
                 # str(frozenset({1})) = "frozenset({1})" vs str({1}) = "{1}"
                 return (
                     "__frozenset__",
-                    frozenset(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                    frozenset(_recurse(v) for v in value),
                 )
             # Type-tagging for collision prevention: bool MUST be checked before int
             # because bool is a subclass of int in Python. Without separate cases,
@@ -908,7 +933,7 @@ class IntegrityCache:
                 return (
                     "__fluentnumber__",
                     type(value.value).__name__,
-                    IntegrityCache._make_hashable(value.value, depth - 1),
+                    _recurse(value.value),
                     value.formatted,
                     value.precision,
                 )
@@ -932,7 +957,7 @@ class IntegrityCache:
                     # Generic Sequence (UserList, etc.) - tag distinctly from list/tuple
                     return (
                         "__seq__",
-                        tuple(IntegrityCache._make_hashable(v, depth - 1) for v in value),
+                        tuple(_recurse(v) for v in value),
                     )
                 msg = f"Unknown type in cache key: {type(value).__name__}"
                 raise TypeError(msg)

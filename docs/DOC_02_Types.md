@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: TYPES
 updated: "2026-01-31"
 route:
@@ -615,7 +615,7 @@ class ASTVisitor[T = ASTNode]:
 - State: Maintains dispatch cache and depth guard.
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `DepthLimitExceededError` when traversal exceeds max_depth.
+- Raises: `FrozenFluentError` (category=RESOLUTION) when traversal exceeds max_depth.
 - Depth: Guard in `visit()` protects all traversals (bypass-proof).
 
 ---
@@ -640,7 +640,7 @@ class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
 - State: Maintains dispatch cache and depth guard.
 - Thread: Not thread-safe (instance state).
 - Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `DepthLimitExceededError` when traversal exceeds max_depth. `TypeError` if visit method returns None for required scalar field, list for any scalar field, or a node whose type does not match the field's expected types.
+- Raises: `FrozenFluentError` (category=RESOLUTION) when traversal exceeds max_depth. `TypeError` if visit method returns None for required scalar field, list for any scalar field, or a node whose type does not match the field's expected types.
 - Depth: Guard inherited from ASTVisitor.visit() (bypass-proof).
 - Immutable: Uses `dataclasses.replace()` for node modifications.
 - Type Validation: `_transform_list` validates that each transformed node matches the field's expected types. For example, `Pattern.elements` accepts only `TextElement | Placeable`; producing a `Message` raises `TypeError` identifying the field and unexpected type.

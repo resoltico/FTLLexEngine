@@ -255,6 +255,33 @@ class ErrorTemplate:
         )
 
     @staticmethod
+    def expansion_budget_exceeded(total_chars: int, max_chars: int) -> Diagnostic:
+        """Expansion budget exceeded during resolution.
+
+        Prevents Billion Laughs attacks where small FTL input expands to
+        gigabytes via nested message references.
+
+        Args:
+            total_chars: Total characters produced so far
+            max_chars: Maximum allowed characters
+
+        Returns:
+            Diagnostic for EXPANSION_BUDGET_EXCEEDED
+        """
+        msg = (
+            f"Expansion budget exceeded: {total_chars} characters produced "
+            f"(limit: {max_chars})"
+        )
+
+        return Diagnostic(
+            code=DiagnosticCode.EXPANSION_BUDGET_EXCEEDED,
+            message=msg,
+            span=None,
+            hint="Check for exponentially expanding message references (Billion Laughs pattern)",
+            help_url=f"{ErrorTemplate._DOCS_BASE}/references.html",
+        )
+
+    @staticmethod
     def no_variants() -> Diagnostic:
         """Select expression has no variants.
 

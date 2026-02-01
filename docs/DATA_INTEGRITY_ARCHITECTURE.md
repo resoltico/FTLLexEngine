@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: "architecture"
 updated: "2026-01-31"
 route: "/docs/data-integrity"
@@ -218,6 +218,7 @@ DataIntegrityError (base - immutable after construction)
 ├── FormattingIntegrityError   - Strict mode formatting failure
 ├── ImmutabilityViolationError - Mutation attempt on frozen object
 ├── IntegrityCheckFailedError  - Generic verification failure
+├── SyntaxIntegrityError       - Strict mode syntax error during resource loading
 └── WriteConflictError         - Write-once cache violation
 ```
 
@@ -260,7 +261,7 @@ DataIntegrityError (base - immutable after construction)
 ## References
 
 - [FrozenFluentError API](DOC_05_Errors.md)
-- [ErrorCategory Enum](DOC_02_Types.md)
+- [ErrorCategory Enum](DOC_05_Errors.md)
 - [FluentBundle strict mode](DOC_01_Core.md)
 - [Thread Safety](THREAD_SAFETY.md)
 - [BLAKE2 Specification](https://www.blake2.net/)

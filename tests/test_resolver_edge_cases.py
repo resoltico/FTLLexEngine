@@ -345,13 +345,11 @@ class TestResolverIntegrationEdgeCases:
             use_isolating=False
         )
 
-        # List (FluentValue includes Sequence)
-        assert resolver._format_value([1, 2, 3]) == "[1, 2, 3]"
+        # List (FluentValue includes Sequence) - type-name placeholder
+        assert resolver._format_value([1, 2, 3]) == "[list]"
 
-        # Dict (FluentValue includes Mapping)
-        result = resolver._format_value({"key": "value"})
-        assert "key" in result
-        assert "value" in result
+        # Dict (FluentValue includes Mapping) - type-name placeholder
+        assert resolver._format_value({"key": "value"}) == "[dict]"
 
         # Custom object (not in FluentValue, so type:ignore needed)
         class CustomObj:

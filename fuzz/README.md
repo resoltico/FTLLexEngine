@@ -29,7 +29,7 @@ route:
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) | Parser-serializer convergence |
-| `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+5 | 61 (.bin) | Full runtime stack, strict mode |
+| `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 73 (.bin) | Full runtime stack, strict mode |
 | `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 12 | 12 (.bin) | Variable scoping, term isolation, depth guards |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 12 (.ftl) | Grammar-aware AST construction |
 
@@ -288,7 +288,7 @@ Target: `runtime.rwlock.RWLock`, `with_read_lock`, `with_write_lock` -- reader/w
 
 ### Patterns
 
-Ordered cheapest-first: libFuzzer's `ConsumeIntInRange` skews toward small values, so cheap single-threaded patterns are placed first to absorb the natural over-selection bias.
+Ordered cheapest-first. Pattern selection uses `ConsumeBytes(2)` with modulo to distribute uniformly across the weight space, avoiding the tail-entry overflow bias inherent in `ConsumeIntInRange` cumulative scans. Seed files use 2-byte big-endian suffixes targeting each pattern's weight range.
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
@@ -434,6 +434,8 @@ Target: `syntax.parser.FluentParserV1`, `syntax.serializer.serialize` -- parser-
 
 Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, caching, concurrency, security.
 
+Scenario and security sub-pattern selection uses deterministic weighted round-robin driven by the iteration counter, not fuzzed bytes. This prevents libFuzzer's coverage-guided mutations from skewing the scenario distribution (observed: concurrent at 52% instead of intended 10% when routing was byte-driven). All fuzzed bytes now go to FTL content and configuration generation. String and RegEx instrumentation hooks enabled for deeper coverage of message ID lookups, selector matching, and pattern-based parsing.
+
 ### Patterns
 
 | Pattern | Weight | Invariants Checked |
@@ -441,7 +443,7 @@ Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, cachi
 | `core_runtime` | 40 | Frozen error checksum, cache stability, determinism |
 | `strict_mode` | 20 | Zero errors in strict format_pattern |
 | `caching` | 15 | Cache hit determinism, corruption detection |
-| `security` | 10 | *(5 sub-patterns below)* |
+| `security` | 10 | *(8 sub-patterns below)* |
 | `concurrent` | 10 | No deadlocks, 2-thread barrier test |
 | `differential` | 5 | Same FTL, different configs, no crash divergence |
 
@@ -449,11 +451,18 @@ Security sub-patterns:
 
 | Sub-pattern | Weight | Attack Vector |
 |:------------|-------:|:--------------|
-| `security_recursion` | 30 | Deep placeables, cyclic refs, self-ref terms |
-| `security_memory` | 25 | Large values, many variants/attributes |
-| `security_cache_poison` | 20 | inf/nan/None/list as args |
-| `security_function_inject` | 15 | Custom function registration + recursive cross-context calls |
-| `security_locale_explosion` | 10 | Very long / control char locales |
+| `security_recursion` | 25 | Deep placeables, cyclic refs, self-ref terms |
+| `security_memory` | 20 | Large values, many variants/attributes |
+| `security_cache_poison` | 15 | inf/nan/None/list as args |
+| `security_function_inject` | 12 | Custom function registration + recursive cross-context calls |
+| `security_locale_explosion` | 8 | Very long / control char locales |
+| `security_expansion_budget` | 8 | Billion Laughs exponential message expansion (max_expansion_size) |
+| `security_dag_expansion` | 7 | DAG shared-reference args stress _make_hashable node budget |
+| `security_dict_functions` | 5 | Dict-as-functions constructor rejection (TypeError guard) |
+
+### Memory Management
+
+Two reference cycle sources were fixed in ftllexengine 0.101.0 (MEM-REFCYCLE-001): (1) `ASTVisitor._instance_dispatch_cache` stored bound methods referencing `self`, and (2) `FrozenFluentError.__traceback__` retained resolver frames. Both are now eliminated at source. The fuzzer still runs `gc.collect()` every 256 iterations as a defensive measure against Atheris instrumentation overhead, and defaults to `-rss_limit_mb=4096` as a safety net.
 
 ### Allowed Exceptions
 

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: custom-functions
 updated: "2026-01-31"
 route:
@@ -410,7 +410,7 @@ def make_date_range_function(bundle_locale: str) -> Callable:
         from datetime import datetime
 
         try:
-            ctx = LocaleContext(bundle_locale)
+            ctx = LocaleContext.create(bundle_locale)
             start_dt = datetime.fromisoformat(start)
             end_dt = datetime.fromisoformat(end)
 

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: parsing
 updated: "2026-01-31"
 route:
@@ -79,7 +79,7 @@ if is_valid_decimal(result):  # guards accept None, return False
 
 Parse locale-formatted number string to `float`.
 
-Returns `tuple[float, tuple[FluentParseError, ...]]`.
+Returns `tuple[float, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_number
@@ -110,7 +110,7 @@ if errors:
 
 Parse locale-formatted number string to `Decimal` (financial precision).
 
-Returns `tuple[Decimal, tuple[FluentParseError, ...]]`.
+Returns `tuple[Decimal, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from decimal import Decimal
@@ -136,7 +136,7 @@ float_vat = float_amount * 0.21  # → 21.105000000000004 - precision loss!
 
 Parse locale-formatted date string to `date` object.
 
-Returns `tuple[date | None, tuple[FluentParseError, ...]]`.
+Returns `tuple[date | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_date
@@ -178,7 +178,7 @@ result, errors = parse_date("2025-01-28", "en_US")
 
 Parse locale-formatted datetime string to `datetime` object.
 
-Returns `tuple[datetime | None, tuple[FluentParseError, ...]]`.
+Returns `tuple[datetime | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from datetime import timezone
@@ -206,7 +206,7 @@ result, errors = parse_datetime("2025-01-28 14:30", "en_US", tzinfo=timezone.utc
 
 Parse locale-formatted currency string to `(Decimal, currency_code)` tuple.
 
-Returns `tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]`.
+Returns `tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_currency

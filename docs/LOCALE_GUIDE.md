@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: locale
 updated: "2026-01-31"
 route:
@@ -140,7 +140,7 @@ result, _ = bundle.format_pattern("raw-date", {"date": now})
 
 # Locale-aware formatting
 result, _ = bundle.format_pattern("formatted-date", {"date": now})
-# → "Date: 2026. gada 12. janv. 14:30"
+# → "Date: 2026. gada 12. janv."
 ```
 
 **DATETIME() Options**:

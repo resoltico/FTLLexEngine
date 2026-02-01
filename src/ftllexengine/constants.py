@@ -34,6 +34,8 @@ __all__ = [
     "MAX_PARSE_ERRORS",
     # Format limits
     "MAX_FORMAT_DIGITS",
+    # Resolution limits
+    "DEFAULT_MAX_EXPANSION_SIZE",
     # Fallback strings
     "FALLBACK_INVALID",
     "FALLBACK_MISSING_MESSAGE",
@@ -209,6 +211,19 @@ _MAX_STRING_LITERAL_LENGTH: int = 1_000_000
 # - Largest real-world precision (cryptocurrency): ~18 digits
 # - Scientific notation: rarely exceeds 30 digits
 MAX_FORMAT_DIGITS: int = 100
+
+# ============================================================================
+# RESOLUTION LIMITS
+# ============================================================================
+
+# Maximum total characters produced during message resolution.
+# Prevents exponential expansion attacks (Billion Laughs) where a small FTL
+# resource expands to gigabytes of output via nested self-referencing messages
+# (e.g., m0={m1}{m1}, m1={m2}{m2}, ...). The resolver tracks depth but without
+# an expansion budget, 25 levels of binary fan-out produce 2^25 = 33M copies.
+# 1MB character budget is generous for legitimate use (typical messages <1KB)
+# while preventing resource exhaustion from adversarial input.
+DEFAULT_MAX_EXPANSION_SIZE: int = 1_000_000
 
 # ============================================================================
 # FALLBACK STRINGS

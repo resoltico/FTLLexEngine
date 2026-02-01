@@ -238,7 +238,9 @@ class TestASTVisitorSlots:
     def test_ast_visitor_has_slots(self) -> None:
         """ASTVisitor class has __slots__ defined."""
         assert hasattr(ASTVisitor, "__slots__")
-        assert "_instance_dispatch_cache" in ASTVisitor.__slots__
+        assert "_depth_guard" in ASTVisitor.__slots__
+        # _instance_dispatch_cache was removed to prevent reference cycles
+        assert "_instance_dispatch_cache" not in ASTVisitor.__slots__
 
     def test_ast_visitor_no_dict(self) -> None:
         """ASTVisitor instances don't have __dict__ (slots only)."""
@@ -248,12 +250,13 @@ class TestASTVisitorSlots:
         # unless a subclass adds it
         assert not hasattr(visitor, "__dict__") or len(visitor.__dict__) == 0
 
-    def test_ast_visitor_dispatch_cache_exists(self) -> None:
-        """ASTVisitor has _instance_dispatch_cache attribute."""
+    def test_ast_visitor_has_depth_guard(self) -> None:
+        """ASTVisitor has _depth_guard attribute (no instance dispatch cache)."""
         visitor = ASTVisitor()
 
-        assert hasattr(visitor, "_instance_dispatch_cache")
-        assert isinstance(visitor._instance_dispatch_cache, dict)
+        assert hasattr(visitor, "_depth_guard")
+        # Instance dispatch cache was removed to prevent reference cycles
+        assert not hasattr(visitor, "_instance_dispatch_cache")
 
     def test_ast_visitor_subclass_can_add_attributes(self) -> None:
         """Subclasses can still add their own attributes."""

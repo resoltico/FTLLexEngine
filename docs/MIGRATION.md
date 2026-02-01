@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: migration
 updated: "2026-01-31"
 route:
@@ -105,14 +105,14 @@ from fluent.runtime.errors import FluentFormatError
 
 ```python
 from ftllexengine import FluentBundle, parse_ftl
-from ftllexengine import FluentError, FluentReferenceError, FluentResolutionError
+from ftllexengine import FrozenFluentError, ErrorCategory
 ```
 
 **Changes**:
-- ✅ Top-level imports (no `ftllexengine.runtime` submodule needed)
-- ✅ All public APIs available from main package
-- ⚠️ `FluentResource` → use `parse_ftl()` instead
-- ⚠️ `FluentFormatError` → multiple specific exception types
+- Top-level imports (no `ftllexengine.runtime` submodule needed)
+- All public APIs available from main package
+- `FluentResource` replaced by `parse_ftl()`
+- `FluentFormatError` replaced by `FrozenFluentError` with `ErrorCategory` for classification
 
 ---
 
@@ -252,20 +252,19 @@ for error in errors:
 #### FTLLexEngine
 
 ```python
-from ftllexengine import FluentError
+from ftllexengine import FrozenFluentError
 
 # Direct message ID, no get_message() needed
 result, errors = bundle.format_pattern('hello', {})
 
 for error in errors:
-    if isinstance(error, FluentError):
-        print(f"Error: {error}")
+    print(f"Error ({error.category}): {error}")
 ```
 
 **Changes**:
-- ✅ **Simpler API**: Use message ID directly, no `get_message()` step
-- ✅ **Same return pattern**: Both return `(result, errors)` tuple
-- ⚠️ Different exception hierarchy (FluentError vs FluentFormatError)
+- Simpler API: Use message ID directly, no `get_message()` step
+- Same return pattern: Both return `(result, errors)` tuple
+- Single error type `FrozenFluentError` with `ErrorCategory` replaces class hierarchy
 
 ---
 
@@ -449,10 +448,10 @@ print(result)
 
 | fluent.runtime | FTLLexEngine | Notes |
 |----------------|--------------|-------|
-| `FluentFormatError` | `FluentError` (base) | Base exception (main package) |
-| N/A | `FluentReferenceError` | Missing messages/variables (main package) |
-| N/A | `FluentResolutionError` | Runtime errors (main package) |
-| N/A | `FluentCyclicReferenceError` | Circular references (`ftllexengine.diagnostics`) |
+| `FluentFormatError` | `FrozenFluentError` | Immutable error with `ErrorCategory` (main package) |
+| N/A | `ErrorCategory.REFERENCE` | Missing messages/variables |
+| N/A | `ErrorCategory.RESOLUTION` | Runtime errors |
+| N/A | `ErrorCategory.CYCLIC` | Circular references |
 
 ---
 
@@ -568,7 +567,7 @@ def format_message(bundle: FluentBundle, msg_id: str, args: Dict[str, Any]) -> s
 ### FTLLexEngine (Full mypy --strict)
 
 ```python
-from ftllexengine import FluentBundle, FluentError
+from ftllexengine import FluentBundle, FrozenFluentError
 from ftllexengine.localization import MessageId
 
 def format_message(bundle: FluentBundle, msg_id: MessageId, args: dict[str, object]) -> str:
@@ -576,7 +575,7 @@ def format_message(bundle: FluentBundle, msg_id: MessageId, args: dict[str, obje
     result, errors = bundle.format_pattern(msg_id, args)
     if errors:
         for error in errors:
-            # error is properly typed as FluentError
+            # error is properly typed as FrozenFluentError
             logger.warning(f"Translation error: {error}")
     return result
 ```
@@ -685,17 +684,18 @@ result, errors = bundle.format_pattern('hello', {})
 
 **Solution**:
 ```python
-# ❌ fluent.runtime
+# fluent.runtime
 from fluent.runtime.errors import FluentFormatError
 
-# ✅ FTLLexEngine - specific error types
-from ftllexengine import (
-    FluentError,              # Base
-    FluentReferenceError,     # Missing messages
-    FluentResolutionError,    # Runtime errors
-)
-# FluentCyclicReferenceError is in diagnostics submodule
-from ftllexengine.diagnostics import FluentCyclicReferenceError
+# FTLLexEngine - single error type with category classification
+from ftllexengine import FrozenFluentError, ErrorCategory
+
+# Classify errors by category:
+# ErrorCategory.REFERENCE   - Missing messages/variables
+# ErrorCategory.RESOLUTION  - Runtime errors
+# ErrorCategory.CYCLIC      - Circular references
+# ErrorCategory.PARSE       - Parse failures
+# ErrorCategory.FORMATTING  - Formatting failures
 ```
 
 ---
@@ -716,7 +716,7 @@ from ftllexengine.diagnostics import FluentCyclicReferenceError
 ⚠️ Constructor takes single locale, not list
 ⚠️ No FluentResource wrapper - direct string to `add_resource()`
 ⚠️ Different exception types (but same behavior)
-⚠️ Return immutable error tuples instead of mutable lists (`tuple[FluentError, ...]`)
+Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError, ...]`)
 ⚠️ Python 3.13+ required (vs 3.6+)
 
 ### What's New in FTLLexEngine

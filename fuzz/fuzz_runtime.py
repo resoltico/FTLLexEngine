@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import contextlib
+import gc
 import hashlib
 import heapq
 import json
@@ -127,7 +128,7 @@ class FuzzerState:
 
     # Configuration
     checkpoint_interval: int = 500
-    seed_corpus_max_size: int = 100
+    seed_corpus_max_size: int = 500
 
 
 # Global state instance
@@ -142,6 +143,14 @@ def _get_process() -> psutil.Process:
         _process = psutil.Process(os.getpid())
     return _process
 
+
+# --- GC Interval ---
+# Safety net: periodic gc.collect() to reclaim any residual reference cycles
+# from Atheris instrumentation overhead or CPython internals. The primary
+# cycle sources (ASTVisitor dispatch cache, resolver error tracebacks) were
+# fixed in ftllexengine 0.101.0 (MEM-REFCYCLE-001), but the fuzzer runs
+# gc.collect() as a defensive measure to bound RSS under sustained load.
+_GC_INTERVAL = 256
 
 # --- Test Configuration Constants ---
 TEST_LOCALES: Sequence[str] = (
@@ -192,21 +201,46 @@ TARGET_MESSAGE_IDS: Sequence[str] = (
 # explore resolver dispatch paths, not just random byte noise.
 
 _IDENTIFIERS: Sequence[str] = (
-    "msg", "msg2", "msg3", "ref", "tref", "attr", "func_call",
-    "num_sel", "str_sel", "nested", "chain_a", "chain_b", "chain_c", "deep",
+    "msg",
+    "msg2",
+    "msg3",
+    "ref",
+    "tref",
+    "attr",
+    "func_call",
+    "num_sel",
+    "str_sel",
+    "nested",
+    "chain_a",
+    "chain_b",
+    "chain_c",
+    "deep",
 )
 
 _TERM_IDENTIFIERS: Sequence[str] = (
-    "-brand", "-term", "-os", "-platform", "-greeting",
+    "-brand",
+    "-term",
+    "-os",
+    "-platform",
+    "-greeting",
 )
 
 _VAR_NAMES: Sequence[str] = (
-    "$var", "$name", "$count", "$amount", "$date",
-    "$var_0", "$var_1", "$var_2", "$var_3",
+    "$var",
+    "$name",
+    "$count",
+    "$amount",
+    "$date",
+    "$var_0",
+    "$var_1",
+    "$var_2",
+    "$var_3",
 )
 
 _BUILTIN_FUNCTIONS: Sequence[str] = (
-    "NUMBER", "DATETIME", "CURRENCY",
+    "NUMBER",
+    "DATETIME",
+    "CURRENCY",
 )
 
 _NUMBER_OPTS: Sequence[str] = (
@@ -238,7 +272,12 @@ _CURRENCY_OPTS: Sequence[str] = (
 )
 
 _SELECTOR_KEYS: Sequence[str] = (
-    "one", "two", "few", "many", "other", "zero",
+    "one",
+    "two",
+    "few",
+    "many",
+    "other",
+    "zero",
 )
 
 _UNICODE_TEXTS: Sequence[str] = (
@@ -247,14 +286,15 @@ _UNICODE_TEXTS: Sequence[str] = (
     "😀 🌟 🚀",
     "مرحبا عالم",
     "c\u0308a\u0308f\u0308e\u0308",
-    "\u200B\u200E\u200F",
+    "\u200b\u200e\u200f",
     "边界条件",
     "",
 )
 
 
 def _build_expression(  # noqa: PLR0911, PLR0912
-    fdp: atheris.FuzzedDataProvider, depth: int = 0,
+    fdp: atheris.FuzzedDataProvider,
+    depth: int = 0,
 ) -> str:
     """Build a random FTL expression from fuzzed bytes.
 
@@ -569,6 +609,11 @@ atexit.register(_emit_final_report)
 # --- Suppress logging and instrument imports ---
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
+# Enable string and regex comparison instrumentation for better coverage
+# of message ID lookups, selector key matching, and pattern-based parsing
+atheris.enabled_hooks.add("str")
+atheris.enabled_hooks.add("RegEx")
+
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.integrity import (
@@ -616,8 +661,7 @@ def _generate_complex_args(fdp: atheris.FuzzedDataProvider) -> ComplexArgs:
     FTL messages can resolve their variable references.
     """
     # Always provide the core variables so resolution paths are exercised
-    arg_keys = ("var", "name", "count", "amount", "date",
-                "var_0", "var_1", "var_2", "var_3")
+    arg_keys = ("var", "name", "count", "amount", "date", "var_0", "var_1", "var_2", "var_3")
 
     args: ComplexArgs = {}
     for key in arg_keys:
@@ -782,35 +826,27 @@ def _perform_security_fuzzing(fdp: atheris.FuzzedDataProvider) -> str:
     """Perform security fuzzing with attack vectors."""
     _state.security_tests += 1
 
-    # Weighted attack vector selection
-    weights = [30, 25, 20, 15, 10]  # recursion, memory, cache, function, locale
-    total = sum(weights)
-    choice = fdp.ConsumeIntInRange(0, total - 1)
+    attack = _SECURITY_SCHEDULE[_state.security_tests % len(_SECURITY_SCHEDULE)]
 
-    cumulative = 0
-    attack_choice = 0
-    for i, w in enumerate(weights):
-        cumulative += w
-        if choice < cumulative:
-            attack_choice = i
-            break
-
-    match attack_choice:
-        case 0:
+    match attack:
+        case "security_recursion":
             _test_deep_recursion(fdp)
-            return "security_recursion"
-        case 1:
+        case "security_memory":
             _test_memory_exhaustion(fdp)
-            return "security_memory"
-        case 2:
+        case "security_cache_poison":
             _test_cache_poisoning(fdp)
-            return "security_cache_poison"
-        case 3:
+        case "security_function_inject":
             _test_function_injection(fdp)
-            return "security_function_inject"
-        case _:
+        case "security_locale_explosion":
             _test_locale_explosion(fdp)
-            return "security_locale_explosion"
+        case "security_expansion_budget":
+            _test_expansion_budget(fdp)
+        case "security_dag_expansion":
+            _test_dag_expansion(fdp)
+        case "security_dict_functions":
+            _test_dict_functions(fdp)
+
+    return attack
 
 
 def _test_deep_recursion(fdp: atheris.FuzzedDataProvider) -> None:
@@ -923,10 +959,7 @@ def _test_function_injection(fdp: atheris.FuzzedDataProvider) -> None:
                 return "base"
 
             bundle.add_function("RECURSE_FN", recursive_func)
-            bundle.add_resource(
-                "recurse = { RECURSE_FN() }\n"
-                "msg = { RECURSE_FN() }\n"
-            )
+            bundle.add_resource("recurse = { RECURSE_FN() }\nmsg = { RECURSE_FN() }\n")
             bundle.format_pattern("msg", {})
 
     except Exception:  # pylint: disable=broad-exception-caught
@@ -942,6 +975,79 @@ def _test_locale_explosion(fdp: atheris.FuzzedDataProvider) -> None:
         bundle.add_resource("msg = test\n")
         bundle.format_pattern("msg", {})
     except (ValueError, TypeError):
+        pass
+
+
+def _test_expansion_budget(fdp: atheris.FuzzedDataProvider) -> None:
+    """Test Billion Laughs expansion budget (0.101.0 feature).
+
+    Constructs exponentially expanding message references:
+    m0={m1}{m1}, m1={m2}{m2}, ... so small FTL produces huge output.
+    The expansion budget (max_expansion_size) should halt resolution.
+    """
+    depth = fdp.ConsumeIntInRange(5, 20)
+    # Use both default and small budgets to exercise the guard path
+    budget = fdp.PickValueInList([100, 1000, 10000, None])
+    try:
+        kwargs: dict[str, Any] = {"strict": False}
+        if budget is not None:
+            kwargs["max_expansion_size"] = budget
+        bundle = FluentBundle("en", **kwargs)
+        parts = []
+        for i in range(depth):
+            parts.append(f"m{i} = {{ m{i + 1} }}{{ m{i + 1} }}\n")
+        parts.append(f"m{depth} = payload\n")
+        bundle.add_resource("\n".join(parts))
+        bundle.format_pattern("m0", {})
+    except (RecursionError, MemoryError, FrozenFluentError, ValueError):
+        pass
+
+
+def _test_dag_expansion(fdp: atheris.FuzzedDataProvider) -> None:
+    """Test _make_hashable DAG expansion DoS (0.101.0 fix).
+
+    Constructs deeply shared references as cache args to stress the
+    node budget in IntegrityCache._make_hashable().
+    """
+    try:
+        bundle = FluentBundle("en", enable_cache=True, strict=False)
+        bundle.add_resource("msg = Hello { $name }\n")
+
+        # Build DAG: l = [l, l] repeated N times.
+        # Cap at 20: depth 20 creates 2^20 logical nodes which is sufficient
+        # to trigger _make_hashable node budget (10,000). Higher depths cause
+        # exponential str() expansion in the resolver (2^30 = 1B nodes).
+        depth = fdp.ConsumeIntInRange(10, 20)
+        dag: list[Any] = ["leaf"]
+        for _ in range(depth):
+            dag = [dag, dag]
+
+        with contextlib.suppress(Exception):
+            bundle.format_pattern("msg", {"name": dag})  # type: ignore[arg-type]
+
+        # Lock must still be usable after DAG rejection
+        with contextlib.suppress(Exception):
+            bundle.format_pattern("msg", {"name": "safe"})
+
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+
+
+def _test_dict_functions(_fdp: atheris.FuzzedDataProvider) -> None:
+    """Test FluentBundle rejects dict as functions parameter (0.101.0 breaking change).
+
+    Passing a raw dict should raise TypeError at construction time.
+    """
+    try:
+        FluentBundle("en", functions={"NUMBER": lambda *_a, **_k: "x"})  # type: ignore[arg-type]
+        # If we get here, the guard didn't fire -- that's a finding
+        msg = "FluentBundle accepted dict as functions parameter"
+        raise RuntimeIntegrityError(msg)
+    except TypeError:
+        pass  # Expected
+    except RuntimeIntegrityError:
+        raise
+    except Exception:  # pylint: disable=broad-exception-caught
         pass
 
 
@@ -1001,9 +1107,7 @@ def _run_concurrent_test(
         with contextlib.suppress(threading.BrokenBarrierError):
             barrier.wait(timeout=1.0)
         try:
-            _execute_runtime_invariants(
-                fdp, bundle, args, strict, enable_cache, cache_write_once
-            )
+            _execute_runtime_invariants(fdp, bundle, args, strict, enable_cache, cache_write_once)
         except CacheCorruptionError:
             # Expected from corruption simulation in strict mode
             pass
@@ -1021,22 +1125,47 @@ def _run_concurrent_test(
             raise RuntimeIntegrityError(msg)
 
 
-def _generate_scenario(fdp: atheris.FuzzedDataProvider) -> str:
-    """Generate weighted test scenario."""
-    # Weights: core(40), strict(20), cache(15), security(10), concurrent(10), diff(5)
-    weights = [40, 20, 15, 10, 10, 5]
-    scenarios = ["core_runtime", "strict_mode", "caching", "security", "concurrent", "differential"]
+def _build_weighted_schedule(items: Sequence[str], weights: Sequence[int]) -> tuple[str, ...]:
+    """Pre-compute a round-robin schedule from weighted items.
 
-    total = sum(weights)
-    choice = fdp.ConsumeIntInRange(0, total - 1)
+    Returns a tuple of length sum(weights) where each item appears
+    proportional to its weight. Used by deterministic scenario routing
+    to guarantee exact weight distribution regardless of libFuzzer's
+    coverage-guided input mutations.
+    """
+    schedule: list[str] = []
+    for item, weight in zip(items, weights, strict=True):
+        schedule.extend([item] * weight)
+    return tuple(schedule)
 
-    cumulative = 0
-    for i, w in enumerate(weights):
-        cumulative += w
-        if choice < cumulative:
-            return scenarios[i]
 
-    return "core_runtime"
+# Pre-computed scenario schedule: deterministic weighted round-robin.
+# Driven by iteration counter, not fuzzed bytes, so libFuzzer's
+# coverage-guided mutations cannot skew the distribution.
+_SCENARIO_SCHEDULE: tuple[str, ...] = _build_weighted_schedule(
+    ["core_runtime", "strict_mode", "caching", "security", "concurrent", "differential"],
+    [40, 20, 15, 10, 10, 5],
+)
+
+# Pre-computed security attack schedule.
+_SECURITY_SCHEDULE: tuple[str, ...] = _build_weighted_schedule(
+    [
+        "security_recursion",
+        "security_memory",
+        "security_cache_poison",
+        "security_function_inject",
+        "security_locale_explosion",
+        "security_expansion_budget",
+        "security_dag_expansion",
+        "security_dict_functions",
+    ],
+    [25, 20, 15, 12, 8, 8, 7, 5],
+)
+
+
+def _generate_scenario() -> str:
+    """Select scenario via deterministic weighted round-robin."""
+    return _SCENARIO_SCHEDULE[_state.iterations % len(_SCENARIO_SCHEDULE)]
 
 
 def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
@@ -1055,8 +1184,8 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
 
-    # Generate scenario
-    scenario = _generate_scenario(fdp)
+    # Generate scenario (deterministic round-robin, not from fuzzed bytes)
+    scenario = _generate_scenario()
     _state.scenario_coverage[scenario] = _state.scenario_coverage.get(scenario, 0) + 1
 
     # Security fuzzing (separate path)
@@ -1103,15 +1232,11 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
 
         # Execute based on scenario
         if scenario == "concurrent":
-            _run_concurrent_test(
-                fdp, bundle, args, strict, enable_cache, cache_write_once
-            )
+            _run_concurrent_test(fdp, bundle, args, strict, enable_cache, cache_write_once)
         elif scenario == "differential":
             _perform_differential_testing(fdp, bundle, args)
         else:
-            _execute_runtime_invariants(
-                fdp, bundle, args, strict, enable_cache, cache_write_once
-            )
+            _execute_runtime_invariants(fdp, bundle, args, strict, enable_cache, cache_write_once)
 
     except CacheCorruptionError:
         if strict:
@@ -1143,6 +1268,10 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         _track_slowest_operation(elapsed_ms, scenario, data)
         _track_seed_corpus(data, scenario, elapsed_ms)
 
+        # Break reference cycles in AST/error objects to prevent RSS growth
+        if _state.iterations % _GC_INTERVAL == 0:
+            gc.collect()
+
         # Memory tracking (every 100 iterations)
         if _state.iterations % 100 == 0:
             current_mb = _get_process().memory_info().rss / (1024 * 1024)
@@ -1164,8 +1293,8 @@ def main() -> None:
     parser.add_argument(
         "--seed-corpus-size",
         type=int,
-        default=100,
-        help="Maximum size of in-memory seed corpus (default: 100)",
+        default=500,
+        help="Maximum size of in-memory seed corpus (default: 500)",
     )
     parser.add_argument(
         "--recursion-limit",
@@ -1179,6 +1308,12 @@ def main() -> None:
     _state.seed_corpus_max_size = args.seed_corpus_size
     sys.setrecursionlimit(args.recursion_limit)
 
+    # Inject -rss_limit_mb default if not already specified.
+    # AST reference cycles can accumulate between gc passes; 4096 MB provides
+    # headroom while still catching true leaks before system OOM-kill.
+    if not any(arg.startswith("-rss_limit_mb") for arg in remaining):
+        remaining.append("-rss_limit_mb=4096")
+
     sys.argv = [sys.argv[0], *remaining]
 
     print()
@@ -1189,6 +1324,8 @@ def main() -> None:
     print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
     print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
     print(f"Recursion:  {args.recursion_limit} limit")
+    print(f"GC Cycle:   Every {_GC_INTERVAL} iterations")
+    print(f"Routing:    Deterministic round-robin (cycle length: {len(_SCENARIO_SCHEDULE)})")
     print("Stopping:   Press Ctrl+C (findings auto-saved)")
     print("=" * 80)
     print()

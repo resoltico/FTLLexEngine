@@ -68,7 +68,7 @@ ftl_output = serialize_ftl(resource)
 ### Error Handling
 
 ```python
-from ftllexengine.diagnostics import FrozenFluentError, ErrorCategory
+from ftllexengine import FrozenFluentError, ErrorCategory
 
 # Robust error handling
 # Parser uses Junk nodes for syntax errors (robustness principle)
@@ -76,13 +76,15 @@ from ftllexengine.diagnostics import FrozenFluentError, ErrorCategory
 result, errors = bundle.format_pattern("msg", {"var": value})
 if errors:
     for error in errors:
-        if isinstance(error, FrozenFluentError):
-            if error.category == ErrorCategory.REFERENCE:
+        match error.category:
+            case ErrorCategory.REFERENCE:
                 logger.warning(f"Missing translation: {error}")
-            elif error.category == ErrorCategory.CYCLIC:
+            case ErrorCategory.CYCLIC:
                 logger.error(f"Cyclic reference: {error}")
-            elif error.category == ErrorCategory.RESOLUTION:
+            case ErrorCategory.RESOLUTION:
                 logger.error(f"Runtime error: {error}")
+            case _:
+                logger.error(f"Error: {error}")
 ```
 
 ### Advanced - Function Registry
@@ -197,7 +199,7 @@ Demonstrates:
 1. Removing comments from FTL source
 2. Renaming variables (refactoring)
 3. Extracting hardcoded strings to variables
-4. Removing empty messages
+4. Removing deprecated messages by prefix
 5. Chaining multiple transformations
 6. Real-world modernization workflow (camelCase → snake_case)
 

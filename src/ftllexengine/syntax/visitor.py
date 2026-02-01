@@ -15,7 +15,6 @@ Type Parameters:
 Python 3.13+.
 """
 
-from collections.abc import Callable
 from dataclasses import Field, fields, replace
 from typing import ClassVar
 
@@ -87,10 +86,16 @@ class ASTVisitor[T = ASTNode]:
         >>> print(visitor.count)
     """
 
-    __slots__ = ("_depth_guard", "_instance_dispatch_cache")
+    __slots__ = ("_depth_guard",)
 
     # Class-level dispatch table (method names only, not bound methods)
     # Built once per class definition via __init_subclass__
+    #
+    # Dispatch avoids instance-level bound-method caching to prevent reference
+    # cycles (self -> cache dict -> bound method -> self). Instead, visit()
+    # resolves methods via getattr on each call. The overhead is negligible
+    # compared to AST traversal and avoids accumulating unreachable objects
+    # that require gc cycle collection.
     _class_visit_methods: ClassVar[dict[str, str]] = {}
 
     # Class-level cache for dataclass fields per node type
@@ -123,11 +128,9 @@ class ASTVisitor[T = ASTNode]:
         # Uses same MAX_DEPTH (100) as parser, resolver, serializer for consistency.
         effective_max_depth = max_depth if max_depth is not None else MAX_DEPTH
         self._depth_guard = DepthGuard(max_depth=effective_max_depth)
-        # Instance cache for bound method references (faster than getattr each time)
-        self._instance_dispatch_cache: dict[type[ASTNode], Callable[[ASTNode], T]] = {}
 
     def visit(self, node: ASTNode) -> T:
-        """Visit a node (dispatcher with depth protection and caching).
+        """Visit a node (dispatcher with depth protection).
 
         Depth Protection:
             Every visit() call increments the depth counter. This ensures
@@ -135,9 +138,11 @@ class ASTVisitor[T = ASTNode]:
             methods call generic_visit() or visit() on children. The guard
             is in the dispatcher, not the traverser, so no bypass is possible.
 
-        Uses two-tier caching:
-        1. Class-level: method names discovered at class definition time
-        2. Instance-level: bound method references cached on first use
+        Dispatch:
+            Uses the class-level method name table built by __init_subclass__
+            to resolve visit_* methods via getattr on each call. This avoids
+            caching bound methods on the instance, which would create reference
+            cycles (self -> cache dict -> bound method -> self).
 
         Args:
             node: AST node to visit
@@ -146,30 +151,18 @@ class ASTVisitor[T = ASTNode]:
             Result of visiting the node
 
         Raises:
-            DepthLimitExceededError: If traversal depth exceeds max_depth
+            FrozenFluentError: If traversal depth exceeds max_depth (category=RESOLUTION)
         """
         # Depth guard in visit() ensures protection for ALL traversals,
         # including custom visit_* methods that call self.visit() on children
         # without going through generic_visit(). This closes the bypass vector.
         with self._depth_guard:
-            node_type = type(node)
-
-            # Check instance cache first (has bound method references)
-            if node_type in self._instance_dispatch_cache:
-                return self._instance_dispatch_cache[node_type](node)
-
             # Check class-level dispatch table for method name
-            node_type_name = node_type.__name__
-            if node_type_name in self._class_visit_methods:
-                method_name = self._class_visit_methods[node_type_name]
-                method = getattr(self, method_name)
-            else:
-                # Fall back to generic_visit
-                method = self.generic_visit
-
-            # Cache the bound method for next time
-            self._instance_dispatch_cache[node_type] = method
-            return method(node)  # type: ignore[no-any-return]  # getattr returns Any
+            node_type_name = type(node).__name__
+            method_name = self._class_visit_methods.get(node_type_name)
+            if method_name is not None:
+                return getattr(self, method_name)(node)  # type: ignore[no-any-return]
+            return self.generic_visit(node)
 
     def _get_node_fields(self, node_type: type[ASTNode]) -> tuple[Field[object], ...]:
         """Get cached dataclass fields for a node type.

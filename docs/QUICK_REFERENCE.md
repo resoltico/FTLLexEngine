@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: reference
 updated: "2026-01-31"
 route:
@@ -170,7 +170,7 @@ result, errors = bundle.format_pattern("msg", {"var": value})
 if errors:
     for error in errors:
         logger.warning(f"Translation error: {error}")
-        # error is FluentReferenceError, FluentResolutionError, etc.
+        # error is FrozenFluentError; use error.category for classification
 
 print(result)  # Always returns usable fallback
 ```
@@ -323,8 +323,8 @@ with FluentBundle("en", enable_cache=True) as bundle:
 **Key Methods**:
 ```python
 bundle.add_resource(ftl_source: str) -> tuple[Junk, ...]
-bundle.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tuple[FluentError, ...]]
-bundle.format_value(message_id, args=None) -> tuple[str, tuple[FluentError, ...]]
+bundle.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tuple[FrozenFluentError, ...]]
+bundle.format_value(message_id, args=None) -> tuple[str, tuple[FrozenFluentError, ...]]
 bundle.validate_resource(ftl_source: str) -> ValidationResult
 bundle.has_message(message_id: str) -> bool
 bundle.has_attribute(message_id: str, attribute: str) -> bool
@@ -366,7 +366,7 @@ FluentLocalization(
 **Key Methods**:
 ```python
 l10n.add_resource(locale: str, ftl_source: str) -> tuple[Junk, ...]
-l10n.format_value(message_id, args=None) -> tuple[str, tuple[FluentError, ...]]
+l10n.format_value(message_id, args=None) -> tuple[str, tuple[FrozenFluentError, ...]]
 l10n.has_message(message_id: str) -> bool
 l10n.get_bundles() -> Generator[FluentBundle]
 ```
@@ -546,11 +546,11 @@ result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
 ```
 
 **Key Functions**:
-- `parse_number(value, locale)` → `tuple[float | None, tuple[FluentParseError, ...]]`
-- `parse_decimal(value, locale)` → `tuple[Decimal | None, tuple[FluentParseError, ...]]`
-- `parse_date(value, locale)` → `tuple[date | None, tuple[FluentParseError, ...]]`
-- `parse_datetime(value, locale, tzinfo=None)` → `tuple[datetime | None, tuple[FluentParseError, ...]]`
-- `parse_currency(value, locale)` → `tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]`
+- `parse_number(value, locale)` → `tuple[float | None, tuple[FrozenFluentError, ...]]`
+- `parse_decimal(value, locale)` → `tuple[Decimal | None, tuple[FrozenFluentError, ...]]`
+- `parse_date(value, locale)` → `tuple[date | None, tuple[FrozenFluentError, ...]]`
+- `parse_datetime(value, locale, tzinfo=None)` → `tuple[datetime | None, tuple[FrozenFluentError, ...]]`
+- `parse_currency(value, locale)` → `tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]`
 
 **Implementation**: Uses Babel for number parsing, Python 3.13 stdlib (`strptime`, `fromisoformat`) with Babel CLDR patterns for date parsing.
 
@@ -653,7 +653,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 **`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | FluentNumber | None`.
 
-**`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FluentParseError, ...]]`. Import from `ftllexengine.parsing`.
+**`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FrozenFluentError, ...]]`. Import from `ftllexengine.parsing`.
 
 ---
 
@@ -775,7 +775,7 @@ bundle = FluentBundle("ar_EG")  # use_isolating=True by default
 # format_pattern() NEVER raises - always returns (result, errors) tuple
 result, errors = bundle.format_pattern("missing-message")
 # result → "{missing-message}"  # Readable fallback
-# errors → [FluentReferenceError(...)]
+# errors → (FrozenFluentError(...),)  # category=ErrorCategory.REFERENCE
 
 # Always check errors in production
 if errors:
@@ -788,17 +788,14 @@ if errors:
 
 ```python
 from ftllexengine import (
-    FluentError,              # Base exception
-    FluentReferenceError,     # Missing message/variable/term
-    FluentResolutionError,    # Runtime error during resolution
+    FrozenFluentError,        # Immutable error (returned in errors tuple)
+    ErrorCategory,            # Error classification: REFERENCE, RESOLUTION, CYCLIC, PARSE, FORMATTING
 )
 
-# Specialized exceptions from core/diagnostics modules
-from ftllexengine.diagnostics import FluentCyclicReferenceError
 from ftllexengine.core import BabelImportError  # Raised when Babel not installed
 ```
 
-**Note**: FluentError subclasses are returned in errors list, NOT raised. `BabelImportError` is raised when parsing functions are called without Babel installed.
+**Note**: `FrozenFluentError` instances are returned in the errors tuple, NOT raised. Use `error.category` to classify errors (e.g., `ErrorCategory.REFERENCE` for missing messages). `BabelImportError` is raised when parsing functions are called without Babel installed.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: type-hints
 updated: "2026-01-31"
 route:
@@ -29,7 +29,7 @@ def format_message(bundle: FluentBundle, msg_id: MessageId) -> str:
     """Format message with proper type annotations."""
     result, errors = bundle.format_pattern(msg_id)
     if errors:
-        # errors is tuple[FluentError, ...] - fully typed, immutable
+        # errors is tuple[FrozenFluentError, ...] - fully typed, immutable
         for error in errors:
             print(f"Error: {error}")
     return result
@@ -171,13 +171,8 @@ format("en_US")  # Static type checker error: expected MessageId, got LocaleCode
 ```python
 from __future__ import annotations
 
-from ftllexengine import (
-    FluentBundle,
-    FluentError,
-    MessageId,
-    LocaleCode,
-    FTLSource,
-)
+from ftllexengine import FluentBundle, FrozenFluentError
+from ftllexengine.localization import MessageId, LocaleCode, FTLSource
 import logging
 
 logger = logging.getLogger(__name__)
@@ -227,7 +222,7 @@ class MessageFormatter:
     def _log_errors(
         self,
         msg_id: MessageId,
-        errors: tuple[FluentError, ...],
+        errors: tuple[FrozenFluentError, ...],
     ) -> None:
         """Log translation errors.
 
@@ -510,37 +505,36 @@ print(f"Found variables: {sorted(all_vars)}")
 ### Pattern 1: Exhaustive Error Handling
 
 ```python
-from ftllexengine import (
-    FluentError,
-    FluentReferenceError,
-    FluentResolutionError,
-    FluentCyclicReferenceError,
-)
+from ftllexengine import FrozenFluentError, ErrorCategory
 
 
-def handle_errors(errors: tuple[FluentError, ...]) -> None:
+def handle_errors(errors: tuple[FrozenFluentError, ...]) -> None:
     """Handle translation errors with exhaustive matching.
 
     Args:
         errors: Tuple of errors from formatting (immutable)
     """
     for error in errors:
-        match error:
-            case FluentReferenceError():
+        match error.category:
+            case ErrorCategory.REFERENCE:
                 # Missing message, variable, or term
                 print(f"Reference error: {error}")
 
-            case FluentResolutionError():
+            case ErrorCategory.RESOLUTION:
                 # Runtime error during function execution
                 print(f"Resolution error: {error}")
 
-            case FluentCyclicReferenceError():
+            case ErrorCategory.CYCLIC:
                 # Circular dependency detected
                 print(f"Circular reference: {error}")
 
-            case FluentError():
-                # Catch-all for future error types
-                print(f"Unknown error: {error}")
+            case ErrorCategory.PARSE:
+                # Bi-directional parsing failure
+                print(f"Parse error: {error}")
+
+            case ErrorCategory.FORMATTING:
+                # Locale-aware formatting failure
+                print(f"Formatting error: {error}")
 ```
 
 ---
@@ -551,18 +545,18 @@ def handle_errors(errors: tuple[FluentError, ...]) -> None:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from ftllexengine import FluentError, FluentReferenceError
+from ftllexengine import FrozenFluentError, ErrorCategory
 
 
 @dataclass(frozen=True, slots=True)
 class ErrorReport:
     """Type-safe error categorization."""
 
-    critical: tuple[FluentError, ...]
-    warnings: tuple[FluentError, ...]
+    critical: tuple[FrozenFluentError, ...]
+    warnings: tuple[FrozenFluentError, ...]
 
     @classmethod
-    def from_errors(cls, errors: tuple[FluentError, ...]) -> ErrorReport:
+    def from_errors(cls, errors: tuple[FrozenFluentError, ...]) -> ErrorReport:
         """Categorize errors by severity.
 
         Args:
@@ -571,11 +565,11 @@ class ErrorReport:
         Returns:
             Categorized error report
         """
-        critical_list: list[FluentError] = []
-        warnings_list: list[FluentError] = []
+        critical_list: list[FrozenFluentError] = []
+        warnings_list: list[FrozenFluentError] = []
 
         for error in errors:
-            if isinstance(error, FluentReferenceError):
+            if error.category in (ErrorCategory.REFERENCE, ErrorCategory.CYCLIC):
                 critical_list.append(error)
             else:
                 warnings_list.append(error)

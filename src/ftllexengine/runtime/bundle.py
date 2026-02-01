@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, NoReturn
 from ftllexengine.constants import (
     DEFAULT_CACHE_SIZE,
     DEFAULT_MAX_ENTRY_SIZE,
+    DEFAULT_MAX_EXPANSION_SIZE,
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
     MAX_DEPTH,
@@ -127,6 +128,7 @@ class FluentBundle:
         "_cache_write_once",
         "_function_registry",
         "_locale",
+        "_max_expansion_size",
         "_max_nesting_depth",
         "_max_source_size",
         "_messages",
@@ -192,6 +194,7 @@ class FluentBundle:
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        max_expansion_size: int | None = None,
         strict: bool = False,
     ) -> None:
         """Initialize bundle for locale.
@@ -225,6 +228,8 @@ class FluentBundle:
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } } structures.
+            max_expansion_size: Maximum total characters produced during resolution (default: 1,000,000).
+                               Prevents Billion Laughs attacks via exponentially expanding message references.
             strict: Enable strict mode for financial applications (default: False).
                    When True, format_pattern raises FormattingIntegrityError on ANY error
                    instead of returning fallback values. Use for monetary/critical data
@@ -277,6 +282,9 @@ class FluentBundle:
         self._max_source_size = max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
         requested_depth = max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
         self._max_nesting_depth = depth_clamp(requested_depth)
+        self._max_expansion_size = (
+            max_expansion_size if max_expansion_size is not None else DEFAULT_MAX_EXPANSION_SIZE
+        )
         self._parser = FluentParserV1(
             max_source_size=self._max_source_size,
             max_nesting_depth=self._max_nesting_depth,
@@ -291,6 +299,16 @@ class FluentBundle:
         # Using the shared registry avoids re-registering built-in functions for each bundle.
         # Copy is deferred until add_function() is called (copy-on-write pattern).
         if functions is not None:
+            # Type validation at API boundary: reject non-FunctionRegistry objects early.
+            # dict, OrderedDict, and other Mapping types have .copy() but lack the
+            # FunctionRegistry interface (should_inject_locale, call, etc.), causing
+            # opaque AttributeErrors during format_pattern() if not caught here.
+            if not isinstance(functions, FunctionRegistry):
+                msg = (  # type: ignore[unreachable]
+                    f"functions must be FunctionRegistry, not {type(functions).__name__}. "
+                    "Use create_default_registry() or FunctionRegistry() to create one."
+                )
+                raise TypeError(msg)
             # User provided a registry - copy it for isolation
             self._function_registry = functions.copy()
             self._owns_registry = True
@@ -588,6 +606,15 @@ class FluentBundle:
         """
         return self._max_nesting_depth
 
+    @property
+    def max_expansion_size(self) -> int:
+        """Maximum total characters produced during resolution (read-only).
+
+        Returns:
+            int: Maximum expansion budget for DoS prevention
+        """
+        return self._max_expansion_size
+
     @classmethod
     def for_system_locale(
         cls,
@@ -603,6 +630,7 @@ class FluentBundle:
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        max_expansion_size: int | None = None,
         strict: bool = False,
     ) -> FluentBundle:
         """Factory method to create a FluentBundle using the system locale.
@@ -651,6 +679,7 @@ class FluentBundle:
             functions=functions,
             max_source_size=max_source_size,
             max_nesting_depth=max_nesting_depth,
+            max_expansion_size=max_expansion_size,
             strict=strict,
         )
 
@@ -1243,6 +1272,7 @@ class FluentBundle:
             function_registry=self._function_registry,
             use_isolating=self._use_isolating,
             max_nesting_depth=self._max_nesting_depth,
+            max_expansion_size=self._max_expansion_size,
         )
 
         # Resolve message (resolver handles all errors internally including cycles)

@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: ERRORS
 updated: "2026-01-31"
 route:
@@ -298,26 +298,6 @@ class BabelImportError(ImportError):
 - Behavior: Provides installation instructions in error message.
 - Raised by: `parse_number()`, `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`.
 - Import: `from ftllexengine.core import BabelImportError`
-
----
-
-## `DepthLimitExceededError`
-
-### Signature
-```python
-class DepthLimitExceededError(Exception):
-    def __init__(self, message: str) -> None: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: Maximum expression/nesting depth exceeded.
-- Cause: Adversarial input, malformed AST, or deep Placeable nesting.
-- Behavior: Raised immediately when limit exceeded.
-- Import: `from ftllexengine.core.depth_guard import DepthLimitExceededError`
 
 ---
 

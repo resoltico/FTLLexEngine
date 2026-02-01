@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.100.0"
+version: "0.101.0"
 domain: RUNTIME
 updated: "2026-01-31"
 route:
@@ -70,7 +70,7 @@ def number_format(
 
 ### Constraints
 - Return: `FluentNumber` with formatted string, original numeric value, and precision metadata.
-- Raises: `FormattingError` on formatting failure (invalid pattern, Babel error).
+- Raises: Never. Invalid locales fall back to en_US with a logged warning.
 - State: None.
 - Thread: Safe.
 - Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
@@ -104,7 +104,7 @@ def datetime_format(
 
 ### Constraints
 - Return: Formatted datetime string.
-- Raises: `FormattingError` on invalid input (invalid ISO string, Babel failure).
+- Raises: Never. Invalid locales fall back to en_US; invalid ISO strings return best-effort formatted output.
 - State: None.
 - Thread: Safe.
 
@@ -135,7 +135,7 @@ def currency_format(
 
 ### Constraints
 - Return: `FluentNumber` with formatted currency string and computed precision. Enables CURRENCY results as selectors in plural/select expressions.
-- Raises: `FormattingError` on formatting failure (invalid currency code, Babel error).
+- Raises: Never. Invalid locales fall back to en_US with a logged warning.
 - State: None.
 - Thread: Safe.
 
@@ -255,8 +255,8 @@ def call(
 
 ### Constraints
 - Return: Function result as FluentValue.
-- Raises: FluentReferenceError if function not found.
-- Raises: FluentResolutionError if function execution fails.
+- Raises: `FrozenFluentError` (category=REFERENCE) if function not found.
+- Raises: `FrozenFluentError` (category=RESOLUTION) if function execution fails.
 - State: Read-only access to registry.
 - Thread: Safe for calls.
 
@@ -596,12 +596,15 @@ class ResolutionContext:
     _seen: set[str] = field(default_factory=set)
     max_depth: int = MAX_DEPTH
     max_expression_depth: int = MAX_DEPTH
+    max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE
+    _total_chars: int = 0
     _expression_guard: DepthGuard = field(init=False)
 
     def __post_init__(self) -> None: ...
     def push(self, key: str) -> None: ...
     def pop(self) -> str: ...
     def contains(self, key: str) -> bool: ...
+    def track_expansion(self, char_count: int) -> None: ...
     @property
     def expression_guard(self) -> DepthGuard: ...
     @property
@@ -619,14 +622,17 @@ class ResolutionContext:
 | `_seen` | `set[str]` | O(1) membership check set. |
 | `max_depth` | `int` | Maximum resolution depth (default: MAX_DEPTH=100). |
 | `max_expression_depth` | `int` | Maximum expression depth (default: MAX_DEPTH=100). |
+| `max_expansion_size` | `int` | Maximum total output characters (default: 1M). Prevents Billion Laughs. |
+| `_total_chars` | `int` | Running character count (internal). |
 | `_expression_guard` | `DepthGuard` | Internal depth guard (init=False). |
 
 ### Constraints
 - Thread: Safe (explicit parameter passing, no global state).
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
 - Complexity: contains() is O(1) via _seen set.
+- Expansion: track_expansion() raises EXPANSION_BUDGET_EXCEEDED when _total_chars exceeds max_expansion_size.
 - Import: `from ftllexengine.runtime import ResolutionContext`
-- Constants: `MAX_DEPTH` from `ftllexengine.constants`
+- Constants: `MAX_DEPTH`, `DEFAULT_MAX_EXPANSION_SIZE` from `ftllexengine.constants`
 
 ---
 
@@ -696,7 +702,7 @@ def expression_guard(self) -> DepthGuard:
 ### Constraints
 - Return: DepthGuard for expression depth tracking.
 - Usage: Use as context manager (`with context.expression_guard:`).
-- Raises: DepthLimitExceededError when depth limit exceeded.
+- Raises: `FrozenFluentError` (category=RESOLUTION) when depth limit exceeded.
 - State: Read-only property returning internal DepthGuard.
 
 ---
@@ -793,7 +799,7 @@ class FluentResolver:
         attribute: str | None = None,
         *,
         context: ResolutionContext | None = None,
-    ) -> tuple[str, tuple[FluentError, ...]]: ...
+    ) -> tuple[str, tuple[FrozenFluentError, ...]]: ...
 ```
 
 ### Parameters
@@ -825,7 +831,7 @@ def resolve_message(
     attribute: str | None = None,
     *,
     context: ResolutionContext | None = None,
-) -> tuple[str, tuple[FluentError, ...]]:
+) -> tuple[str, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -862,6 +868,24 @@ DEFAULT_CACHE_SIZE: int = 1000
 - Purpose: Default maximum cache entries for FluentBundle format results.
 - Usage: Referenced by `FluentBundle.__init__`, `create()`, `for_system_locale()`.
 - Import: `from ftllexengine.constants import DEFAULT_CACHE_SIZE`
+
+---
+
+### `DEFAULT_MAX_EXPANSION_SIZE`
+
+```python
+DEFAULT_MAX_EXPANSION_SIZE: int = 1_000_000
+```
+
+| Attribute | Value |
+|:----------|:------|
+| Type | `int` |
+| Value | 1,000,000 |
+| Location | `ftllexengine.constants` |
+
+- Purpose: Maximum total characters produced during message resolution. Prevents Billion Laughs attacks.
+- Usage: Referenced by `ResolutionContext`, `FluentResolver`, `FluentBundle`.
+- Import: `from ftllexengine.constants import DEFAULT_MAX_EXPANSION_SIZE`
 
 ---
 
@@ -967,7 +991,7 @@ class DepthGuard:
 ### Constraints
 - Thread: Safe (explicit instance state, reentrant).
 - Usage: Context manager or manual increment/decrement.
-- Raises: DepthLimitExceededError when depth limit exceeded.
+- Raises: `FrozenFluentError` (category=RESOLUTION) when depth limit exceeded.
 - Behavior: `__enter__` validates limit BEFORE incrementing; prevents state corruption on exception.
 - Import: `from ftllexengine.core.depth_guard import DepthGuard`
 
@@ -996,7 +1020,7 @@ class GlobalDepthGuard:
 - Thread: Safe (uses `contextvars.ContextVar` for async-safe per-task state).
 - Purpose: Prevents depth limit bypass via custom function callbacks.
 - Security: Custom functions calling `bundle.format_pattern()` cannot bypass limits.
-- Raises: `FluentResolutionError` when global depth limit exceeded.
+- Raises: `FrozenFluentError` (category=RESOLUTION) when global depth limit exceeded.
 - Internal: Used automatically by `FluentResolver.resolve_message()`.
 
 ---

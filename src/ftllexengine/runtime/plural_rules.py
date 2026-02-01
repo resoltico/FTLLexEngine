@@ -14,6 +14,7 @@ Python 3.13+.
 Reference: https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
 """
 
+import math
 from decimal import ROUND_HALF_UP, Decimal
 
 __all__ = ["select_plural_category"]
@@ -103,6 +104,16 @@ def select_plural_category(
         except (UnknownLocaleError, ValueError):
             # Should not happen, but ultimate fallback
             return "other"
+
+    # NaN guard: NaN values cannot be categorized by CLDR plural rules.
+    # Babel's plural_rule() raises ValueError ("cannot convert ... NaN to integer")
+    # for both float('nan') and Decimal('NaN'). Per Fluent spec, resolution must
+    # never fail catastrophically. Return "other" (safest category) for NaN.
+    # Infinity is similarly non-categorizable by CLDR rules.
+    if isinstance(n, float) and (math.isnan(n) or math.isinf(n)):
+        return "other"
+    if isinstance(n, Decimal) and (n.is_nan() or n.is_infinite()):
+        return "other"
 
     # Get plural rule from Babel CLDR data
     # Babel always provides plural_form for valid locales

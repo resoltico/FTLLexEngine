@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.99.0"
+version: "0.101.0"
 domain: CORE
 updated: "2026-01-31"
 route:
@@ -33,6 +33,7 @@ class FluentBundle:
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
+        max_expansion_size: int | None = None,
         strict: bool = False,
     ) -> None: ...
 ```
@@ -49,9 +50,10 @@ class FluentBundle:
 | `cache_max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
 | `cache_max_entry_weight` | `int` | N | Maximum memory weight for cached results. |
 | `cache_max_errors_per_entry` | `int` | N | Maximum errors per cache entry. |
-| `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
+| `functions` | `FunctionRegistry \| None` | N | Custom function registry (must be `FunctionRegistry`, not `dict`). |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
+| `max_expansion_size` | `int \| None` | N | Maximum total characters produced during resolution (default: 1M). Prevents Billion Laughs DoS. |
 | `strict` | `bool` | N | Fail-fast mode: raises FormattingIntegrityError on ANY error. |
 
 ### Constraints
@@ -85,6 +87,7 @@ def for_system_locale(
     functions: FunctionRegistry | None = None,
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
+    max_expansion_size: int | None = None,
     strict: bool = False,
 ) -> FluentBundle:
 ```
@@ -100,9 +103,10 @@ def for_system_locale(
 | `cache_max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
 | `cache_max_entry_weight` | `int` | N | Maximum memory weight for cached results. |
 | `cache_max_errors_per_entry` | `int` | N | Maximum errors per cache entry. |
-| `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
+| `functions` | `FunctionRegistry \| None` | N | Custom function registry (must be `FunctionRegistry`, not `dict`). |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
+| `max_expansion_size` | `int \| None` | N | Maximum total characters during resolution (default: 1M). |
 | `strict` | `bool` | N | Enable strict mode (fail-fast on errors). |
 
 ### Constraints
@@ -196,7 +200,7 @@ def format_pattern(
     args: Mapping[str, FluentValue] | None = None,
     *,
     attribute: str | None = None,
-) -> tuple[str, tuple[FluentError, ...]]:
+) -> tuple[str, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -223,7 +227,7 @@ def format_value(
     self,
     message_id: str,
     args: Mapping[str, FluentValue] | None = None
-) -> tuple[str, tuple[FluentError, ...]]:
+) -> tuple[str, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -726,7 +730,7 @@ def format_value(
     self,
     message_id: MessageId,
     args: Mapping[str, FluentValue] | None = None
-) -> tuple[str, tuple[FluentError, ...]]:
+) -> tuple[str, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters
@@ -753,7 +757,7 @@ def format_pattern(
     args: Mapping[str, FluentValue] | None = None,
     *,
     attribute: str | None = None,
-) -> tuple[str, tuple[FluentError, ...]]:
+) -> tuple[str, tuple[FrozenFluentError, ...]]:
 ```
 
 ### Parameters

@@ -9,7 +9,7 @@ FTL files programmatically:
 - Remove all comments (documentation cleanup)
 - Rename variables (refactoring)
 - Extract hardcoded strings to variables
-- Remove unused attributes
+- Remove deprecated messages by prefix
 
 Leverages Python 3.13+ features:
 - Pattern matching in ASTTransformer
@@ -73,15 +73,15 @@ class RenameVariablesTransformer(ASTTransformer):
 class ExtractVariablesTransformer(ASTTransformer):
     """Extract hardcoded text into variables.
 
-    This transformer detects TextElement nodes containing specific
-    patterns and converts them to VariableReferences.
+    This transformer detects TextElement nodes whose value exactly matches
+    a target string and converts them to VariableReferences.
     """
 
     def __init__(self, text_to_var: dict[str, str]) -> None:
         """Initialize with text extraction rules.
 
         Args:
-            text_to_var: Dictionary of text -> variable_name
+            text_to_var: Dictionary of exact_text -> variable_name
         """
         super().__init__()
         self.text_to_var = text_to_var
@@ -90,25 +90,35 @@ class ExtractVariablesTransformer(ASTTransformer):
         """Convert matching text to variable reference.
 
         Visitor pattern: visit_* methods follow stdlib ast.NodeVisitor convention.
+        Only exact matches are replaced to avoid corrupting surrounding text.
         """
+        stripped = node.value.strip()
         for text, var_name in self.text_to_var.items():
-            if text in node.value:
-                # Replace text with variable
+            if stripped == text:
                 return Placeable(
                     expression=VariableReference(id=Identifier(name=var_name))
                 )
         return node
 
 
-class RemoveEmptyMessagesTransformer(ASTTransformer):
-    """Remove messages with no value and no attributes."""
+class RemoveDeprecatedMessagesTransformer(ASTTransformer):
+    """Remove messages whose ID starts with a given prefix."""
+
+    def __init__(self, prefix: str) -> None:
+        """Initialize with prefix to match for removal.
+
+        Args:
+            prefix: Message IDs starting with this prefix are removed.
+        """
+        super().__init__()
+        self.prefix = prefix
 
     def visit_Message(self, node: Message) -> Message | None:  # pylint: disable=invalid-name
-        """Remove message if it has no value and no attributes.
+        """Remove message if its ID starts with the deprecated prefix.
 
         Visitor pattern: visit_* methods follow stdlib ast.NodeVisitor convention.
         """
-        if not node.value and not node.attributes:
+        if node.id.name.startswith(self.prefix):
             return None  # Remove this message
         return node
 
@@ -125,7 +135,7 @@ if __name__ == "__main__":
 # This is a resource comment
 ## Group comment
 hello = Hello, World!
-    # This is a message comment
+# This is a standalone comment
 goodbye = Goodbye!
 """
 
@@ -168,41 +178,42 @@ farewell = Goodbye, { $userName }!
     print("=" * 60)
 
     ftl_hardcoded = """
-welcome = Hello, World!
-about = This is World!
+app-title = Acme Corp
+welcome = Hello from Acme Corp
 """
 
     print("BEFORE:")
     print(ftl_hardcoded)
 
     resource = parse_ftl(ftl_hardcoded)
-    extract_transformer = ExtractVariablesTransformer({"World": "app_name"})
+    extract_transformer = ExtractVariablesTransformer({"Acme Corp": "company_name"})
     extracted_resource = extract_transformer.transform(resource)
     assert isinstance(extracted_resource, Resource), f"Expected Resource, got {type(extracted_resource)}"
 
-    print("\nAFTER (note: 'World' → { $app_name }):")
+    print("\nAFTER (exact match 'Acme Corp' → { $company_name }):")
     print(serialize_ftl(extracted_resource))
 
-    # Example 4: Remove empty messages
+    # Example 4: Remove deprecated messages
     print("\n" + "=" * 60)
-    print("Example 4: Remove Empty Messages")
+    print("Example 4: Remove Deprecated Messages")
     print("=" * 60)
 
-    ftl_with_empty = """
+    ftl_with_deprecated = """
 hello = Hello!
-empty-message =
-another = Goodbye!
+deprecated-old-greeting = Hi there!
+welcome = Welcome!
+deprecated-legacy-farewell = See you!
 """
 
     print("BEFORE:")
-    print(ftl_with_empty)
+    print(ftl_with_deprecated)
 
-    resource = parse_ftl(ftl_with_empty)
-    remove_empty_transformer = RemoveEmptyMessagesTransformer()
-    filtered_resource = remove_empty_transformer.transform(resource)
+    resource = parse_ftl(ftl_with_deprecated)
+    remove_deprecated = RemoveDeprecatedMessagesTransformer("deprecated-")
+    filtered_resource = remove_deprecated.transform(resource)
     assert isinstance(filtered_resource, Resource), f"Expected Resource, got {type(filtered_resource)}"
 
-    print("\nAFTER (empty-message removed):")
+    print("\nAFTER (messages with 'deprecated-' prefix removed):")
     print(serialize_ftl(filtered_resource))
 
     # Example 5: Chain multiple transformers
@@ -215,8 +226,7 @@ another = Goodbye!
 ## Legacy code
 
 user-greeting = Hello, { $userName }!
-    # Needs refactoring
-
+# Needs refactoring
 admin-greeting = Hello, { $userName }!
 """
 
