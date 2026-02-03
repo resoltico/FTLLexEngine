@@ -18,8 +18,10 @@ cycle detection, and error recovery.
 
 Metrics:
 - Scenario coverage (strict mode, caching, integrity, security, concurrent)
+- Weight skew detection (actual vs intended distribution)
 - Performance profiling (min/mean/median/p95/p99/max)
 - Real memory usage (RSS via psutil)
+- Corpus retention rate and eviction tracking
 - Error distribution and contract violations
 - Seed corpus management
 
@@ -32,82 +34,58 @@ import argparse
 import atexit
 import contextlib
 import gc
-import hashlib
-import heapq
-import json
 import logging
-import os
 import pathlib
-import statistics
 import sys
 import threading
 import time
-from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# --- Dependency Checks with Clear Errors ---
-_MISSING_DEPS: list[str] = []
+# --- Dependency Checks ---
+_psutil_mod: Any = None
+_atheris_mod: Any = None
 
-try:
-    import psutil
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import psutil as _psutil_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("psutil")
-    psutil = None  # type: ignore[assignment]
+    pass
 
-try:
-    import atheris
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import atheris as _atheris_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("atheris")
-    atheris = None  # type: ignore[assignment]
+    pass
 
-if _MISSING_DEPS:
-    print("-" * 80, file=sys.stderr)
-    print("ERROR: Missing required dependencies for fuzzing:", file=sys.stderr)
-    for dep in _MISSING_DEPS:
-        print(f"  - {dep}", file=sys.stderr)
-    print("", file=sys.stderr)
-    print("Install with: uv sync --group atheris", file=sys.stderr)
-    print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
-    print("-" * 80, file=sys.stderr)
-    sys.exit(1)
+from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
+    GC_INTERVAL,
+    BaseFuzzerState,
+    build_base_stats_dict,
+    build_weighted_schedule,
+    check_dependencies,
+    emit_final_report,
+    get_process,
+    record_iteration_metrics,
+    record_memory,
+)
 
-# --- PEP 695 Type Aliases ---
-type FuzzStats = dict[str, int | str | float | list[Any]]
+check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
+
+import atheris  # noqa: E402  # pylint: disable=C0412,C0413
+
+# --- PEP 695 Type Alias ---
 type ComplexArgs = dict[str, Any]
-type InterestingInput = tuple[float, str, str]  # (duration_ms, scenario, input_hash)
 
 
-# --- Observability State (Dataclass for organization) ---
+# --- Domain Metrics ---
+
 @dataclass
-class FuzzerState:
-    """Global fuzzer state for observability and metrics."""
+class RuntimeMetrics:
+    """Domain-specific metrics for runtime fuzzer."""
 
-    # Core stats
-    iterations: int = 0
-    findings: int = 0
-    status: str = "incomplete"
-
-    # Performance tracking (bounded deques)
-    performance_history: deque[float] = field(default_factory=lambda: deque(maxlen=10000))
-    memory_history: deque[float] = field(default_factory=lambda: deque(maxlen=1000))
-
-    # Scenario coverage
-    scenario_coverage: dict[str, int] = field(default_factory=dict)
-    error_counts: dict[str, int] = field(default_factory=dict)
-
-    # Interesting inputs (max-heap for slowest, in-memory corpus)
-    slowest_operations: list[InterestingInput] = field(default_factory=list)
-    seed_corpus: dict[str, bytes] = field(default_factory=dict)
-
-    # Memory baseline
-    initial_memory_mb: float = 0.0
-
-    # Runtime-specific metrics
     strict_mode_tests: int = 0
     cache_operations: int = 0
     integrity_checks: int = 0
@@ -120,37 +98,12 @@ class FuzzerState:
     cache_stability_checks: int = 0
     corruption_simulations: int = 0
 
-    # Corpus productivity
-    corpus_entries_added: int = 0
 
-    # Per-scenario wall time (ms)
-    scenario_wall_time: dict[str, float] = field(default_factory=dict)
+# --- Global State ---
 
-    # Configuration
-    checkpoint_interval: int = 500
-    seed_corpus_max_size: int = 500
+_state = BaseFuzzerState(seed_corpus_max_size=500)
+_domain = RuntimeMetrics()
 
-
-# Global state instance
-_state = FuzzerState()
-_process: psutil.Process | None = None
-
-
-def _get_process() -> psutil.Process:
-    """Lazy-initialize psutil process handle."""
-    global _process  # noqa: PLW0603  # pylint: disable=global-statement
-    if _process is None:
-        _process = psutil.Process(os.getpid())
-    return _process
-
-
-# --- GC Interval ---
-# Safety net: periodic gc.collect() to reclaim any residual reference cycles
-# from Atheris instrumentation overhead or CPython internals. The primary
-# cycle sources (ASTVisitor dispatch cache, resolver error tracebacks) were
-# fixed in ftllexengine 0.101.0 (MEM-REFCYCLE-001), but the fuzzer runs
-# gc.collect() as a defensive measure to bound RSS under sustained load.
-_GC_INTERVAL = 256
 
 # --- Test Configuration Constants ---
 TEST_LOCALES: Sequence[str] = (
@@ -197,8 +150,6 @@ TARGET_MESSAGE_IDS: Sequence[str] = (
 )
 
 # --- Grammar-Aware FTL Construction ---
-# Maps fuzzed bytes to structurally diverse FTL so libFuzzer mutations
-# explore resolver dispatch paths, not just random byte noise.
 
 _IDENTIFIERS: Sequence[str] = (
     "msg",
@@ -290,6 +241,105 @@ _UNICODE_TEXTS: Sequence[str] = (
     "边界条件",
     "",
 )
+
+
+# Scenario weights: (name, weight)
+_SCENARIO_WEIGHTS: tuple[tuple[str, int], ...] = (
+    ("core_runtime", 40),
+    ("strict_mode", 20),
+    ("caching", 15),
+    ("security", 10),
+    ("concurrent", 10),
+    ("differential", 5),
+)
+
+_SCENARIO_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
+    [name for name, _ in _SCENARIO_WEIGHTS],
+    [weight for _, weight in _SCENARIO_WEIGHTS],
+)
+
+# Register intended weights for skew detection
+_state.pattern_intended_weights = {name: float(weight) for name, weight in _SCENARIO_WEIGHTS}
+
+# Security attack sub-schedule
+_SECURITY_WEIGHTS: tuple[tuple[str, int], ...] = (
+    ("security_recursion", 25),
+    ("security_memory", 20),
+    ("security_cache_poison", 15),
+    ("security_function_inject", 12),
+    ("security_locale_explosion", 8),
+    ("security_expansion_budget", 8),
+    ("security_dag_expansion", 7),
+    ("security_dict_functions", 5),
+)
+
+_SECURITY_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
+    [name for name, _ in _SECURITY_WEIGHTS],
+    [weight for _, weight in _SECURITY_WEIGHTS],
+)
+
+
+class RuntimeIntegrityError(Exception):
+    """Raised when a runtime invariant is breached."""
+
+
+# --- Reporting ---
+
+_REPORT_DIR = pathlib.Path(".fuzz_corpus") / "runtime"
+
+
+def _build_stats_dict() -> dict[str, Any]:
+    """Build complete stats dictionary including domain metrics."""
+    stats = build_base_stats_dict(
+        _state,
+        coverage_key="scenarios_tested",
+        coverage_prefix="scenario_",
+    )
+
+    # Domain-specific metrics
+    stats["strict_mode_tests"] = _domain.strict_mode_tests
+    stats["cache_operations"] = _domain.cache_operations
+    stats["integrity_checks"] = _domain.integrity_checks
+    stats["security_tests"] = _domain.security_tests
+    stats["concurrent_tests"] = _domain.concurrent_tests
+    stats["differential_tests"] = _domain.differential_tests
+
+    # Contract validation metrics
+    stats["frozen_error_verifications"] = _domain.frozen_error_verifications
+    stats["cache_stability_checks"] = _domain.cache_stability_checks
+    stats["corruption_simulations"] = _domain.corruption_simulations
+
+    return stats
+
+
+def _emit_report() -> None:
+    """Emit comprehensive final report (crash-proof)."""
+    stats = _build_stats_dict()
+    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_runtime_report.json")
+
+
+atexit.register(_emit_report)
+
+# --- Suppress logging and instrument imports ---
+logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
+
+# Enable string and regex comparison instrumentation for better coverage
+# of message ID lookups, selector key matching, and pattern-based parsing
+atheris.enabled_hooks.add("str")
+atheris.enabled_hooks.add("RegEx")
+
+with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine.diagnostics.errors import FrozenFluentError
+    from ftllexengine.integrity import (
+        CacheCorruptionError,
+        FormattingIntegrityError,
+        WriteConflictError,
+    )
+    from ftllexengine.runtime.bundle import FluentBundle
+    from ftllexengine.runtime.cache import IntegrityCacheEntry
+
+
+# --- Grammar-Aware FTL Construction ---
 
 
 def _build_expression(  # noqa: PLR0911, PLR0912
@@ -507,153 +557,6 @@ def _build_ftl_resource(fdp: atheris.FuzzedDataProvider) -> str:
     return "\n".join(parts)
 
 
-def _build_stats_dict() -> FuzzStats:
-    """Build stats dictionary for JSON report."""
-    stats: FuzzStats = {
-        "status": _state.status,
-        "iterations": _state.iterations,
-        "findings": _state.findings,
-    }
-
-    # Performance percentiles
-    if _state.performance_history:
-        perf_data = list(_state.performance_history)
-        n = len(perf_data)
-        stats["perf_mean_ms"] = round(statistics.mean(perf_data), 3)
-        stats["perf_median_ms"] = round(statistics.median(perf_data), 3)
-        stats["perf_min_ms"] = round(min(perf_data), 3)
-        stats["perf_max_ms"] = round(max(perf_data), 3)
-        if n >= 20:
-            quantiles = statistics.quantiles(perf_data, n=20)
-            stats["perf_p95_ms"] = round(quantiles[18], 3)
-        if n >= 100:
-            quantiles = statistics.quantiles(perf_data, n=100)
-            stats["perf_p99_ms"] = round(quantiles[98], 3)
-
-    # Memory tracking
-    if _state.memory_history:
-        mem_data = list(_state.memory_history)
-        stats["memory_mean_mb"] = round(statistics.mean(mem_data), 2)
-        stats["memory_peak_mb"] = round(max(mem_data), 2)
-        stats["memory_delta_mb"] = round(max(mem_data) - _state.initial_memory_mb, 2)
-
-        # Memory leak detection (quartile comparison)
-        if len(mem_data) >= 40:
-            first_quarter = mem_data[: len(mem_data) // 4]
-            last_quarter = mem_data[-(len(mem_data) // 4) :]
-            first_avg = statistics.mean(first_quarter)
-            last_avg = statistics.mean(last_quarter)
-            growth_mb = last_avg - first_avg
-            stats["memory_leak_detected"] = 1 if growth_mb > 10.0 else 0
-            stats["memory_growth_mb"] = round(growth_mb, 2)
-        else:
-            stats["memory_leak_detected"] = 0
-            stats["memory_growth_mb"] = 0.0
-
-    # Scenario coverage
-    stats["scenarios_tested"] = len(_state.scenario_coverage)
-    for scenario, count in sorted(_state.scenario_coverage.items()):
-        stats[f"scenario_{scenario}"] = count
-
-    # Error distribution (clean keys)
-    stats["error_types"] = len(_state.error_counts)
-    for error_type, count in sorted(_state.error_counts.items()):
-        clean_key = error_type[:50].replace("<", "").replace(">", "")
-        stats[f"error_{clean_key}"] = count
-
-    # Runtime-specific metrics
-    stats["strict_mode_tests"] = _state.strict_mode_tests
-    stats["cache_operations"] = _state.cache_operations
-    stats["integrity_checks"] = _state.integrity_checks
-    stats["security_tests"] = _state.security_tests
-    stats["concurrent_tests"] = _state.concurrent_tests
-    stats["differential_tests"] = _state.differential_tests
-
-    # Contract validation metrics
-    stats["frozen_error_verifications"] = _state.frozen_error_verifications
-    stats["cache_stability_checks"] = _state.cache_stability_checks
-    stats["corruption_simulations"] = _state.corruption_simulations
-
-    # Corpus stats
-    stats["seed_corpus_size"] = len(_state.seed_corpus)
-    stats["corpus_entries_added"] = _state.corpus_entries_added
-    stats["slowest_operations_tracked"] = len(_state.slowest_operations)
-
-    # Per-scenario wall time
-    for scenario, total_ms in sorted(_state.scenario_wall_time.items()):
-        stats[f"wall_time_ms_{scenario}"] = round(total_ms, 1)
-
-    return stats
-
-
-def _emit_final_report() -> None:
-    """Emit comprehensive final report (crash-proof, writes to stderr and file)."""
-    _state.status = "complete"
-    stats = _build_stats_dict()
-    report = json.dumps(stats, sort_keys=True)
-
-    # Emit to stderr for capture
-    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr, flush=True)
-
-    # Write to file for shell script parsing (best-effort)
-    try:
-        report_file = pathlib.Path(".fuzz_corpus") / "runtime" / "fuzz_runtime_report.json"
-        report_file.parent.mkdir(parents=True, exist_ok=True)
-        report_file.write_text(report, encoding="utf-8")
-    except OSError:
-        pass
-
-
-atexit.register(_emit_final_report)
-
-# --- Suppress logging and instrument imports ---
-logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
-
-# Enable string and regex comparison instrumentation for better coverage
-# of message ID lookups, selector key matching, and pattern-based parsing
-atheris.enabled_hooks.add("str")
-atheris.enabled_hooks.add("RegEx")
-
-with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine.diagnostics.errors import FrozenFluentError
-    from ftllexengine.integrity import (
-        CacheCorruptionError,
-        FormattingIntegrityError,
-        WriteConflictError,
-    )
-    from ftllexengine.runtime.bundle import FluentBundle
-    from ftllexengine.runtime.cache import IntegrityCacheEntry
-
-
-class RuntimeIntegrityError(Exception):
-    """Raised when a runtime invariant is breached."""
-
-
-def _track_slowest_operation(duration_ms: float, scenario: str, input_data: bytes) -> None:
-    """Track top 10 slowest operations using max-heap."""
-    input_hash = hashlib.sha256(input_data).hexdigest()[:16]
-    entry: InterestingInput = (-duration_ms, scenario, input_hash)
-
-    if len(_state.slowest_operations) < 10:
-        heapq.heappush(_state.slowest_operations, entry)
-    elif -duration_ms < _state.slowest_operations[0][0]:
-        heapq.heapreplace(_state.slowest_operations, entry)
-
-
-def _track_seed_corpus(input_data: bytes, scenario: str, duration_ms: float) -> None:
-    """Track interesting inputs with FIFO eviction."""
-    is_interesting = duration_ms > 50.0 or "security" in scenario or "integrity" in scenario
-
-    if is_interesting:
-        input_hash = hashlib.sha256(input_data).hexdigest()[:16]
-        if input_hash not in _state.seed_corpus:
-            if len(_state.seed_corpus) >= _state.seed_corpus_max_size:
-                oldest_key = next(iter(_state.seed_corpus))
-                del _state.seed_corpus[oldest_key]
-            _state.seed_corpus[input_hash] = input_data
-            _state.corpus_entries_added += 1
-
-
 def _generate_complex_args(fdp: atheris.FuzzedDataProvider) -> ComplexArgs:
     """Generate fuzzed arguments matching grammar variable names.
 
@@ -745,22 +648,22 @@ def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915
 
             # INVARIANT: Strict Mode Integrity
             if strict and len(err1) > 0:
-                _state.strict_mode_tests += 1
+                _domain.strict_mode_tests += 1
                 msg = f"Strict mode breach: {len(err1)} errors for '{msg_id}'."
                 raise RuntimeIntegrityError(msg)
 
             # INVARIANT: Frozen Error Integrity
             for e in err1:
-                _state.frozen_error_verifications += 1
+                _domain.frozen_error_verifications += 1
                 if not e.verify_integrity():
                     msg = "FrozenFluentError checksum verification failed."
                     raise RuntimeIntegrityError(msg)
 
             # INVARIANT: Cache Stability
             if enable_cache and bundle._cache is not None:
-                _state.cache_operations += 1
+                _domain.cache_operations += 1
                 res2, err2 = bundle.format_pattern(msg_id, args, attribute=attribute)
-                _state.cache_stability_checks += 1
+                _domain.cache_stability_checks += 1
 
                 if res1 != res2 or len(err1) != len(err2):
                     msg = f"Cache stability breach: non-deterministic result for '{msg_id}'."
@@ -768,7 +671,7 @@ def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915
 
                 # Corruption simulation (5% chance)
                 if fdp.ConsumeProbability() < 0.05:
-                    _state.corruption_simulations += 1
+                    _domain.corruption_simulations += 1
                     _simulate_corruption(bundle)
                     try:
                         bundle.format_pattern(msg_id, args, attribute=attribute)
@@ -783,7 +686,7 @@ def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915
                             raise RuntimeIntegrityError(msg) from e
 
         except FormattingIntegrityError as e:
-            _state.integrity_checks += 1
+            _domain.integrity_checks += 1
             if not strict:
                 msg = "Non-strict bundle raised FormattingIntegrityError."
                 raise RuntimeIntegrityError(msg) from e
@@ -824,9 +727,10 @@ def _simulate_corruption(bundle: FluentBundle) -> None:
 
 def _perform_security_fuzzing(fdp: atheris.FuzzedDataProvider) -> str:
     """Perform security fuzzing with attack vectors."""
-    _state.security_tests += 1
+    _domain.security_tests += 1
 
-    attack = _SECURITY_SCHEDULE[_state.security_tests % len(_SECURITY_SCHEDULE)]
+    attack_idx = fdp.ConsumeIntInRange(0, len(_SECURITY_SCHEDULE) - 1)
+    attack = _SECURITY_SCHEDULE[attack_idx]
 
     match attack:
         case "security_recursion":
@@ -979,7 +883,7 @@ def _test_locale_explosion(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _test_expansion_budget(fdp: atheris.FuzzedDataProvider) -> None:
-    """Test Billion Laughs expansion budget (0.101.0 feature).
+    """Test Billion Laughs expansion budget.
 
     Constructs exponentially expanding message references:
     m0={m1}{m1}, m1={m2}{m2}, ... so small FTL produces huge output.
@@ -1004,7 +908,7 @@ def _test_expansion_budget(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _test_dag_expansion(fdp: atheris.FuzzedDataProvider) -> None:
-    """Test _make_hashable DAG expansion DoS (0.101.0 fix).
+    """Test _make_hashable DAG expansion DoS.
 
     Constructs deeply shared references as cache args to stress the
     node budget in IntegrityCache._make_hashable().
@@ -1034,7 +938,7 @@ def _test_dag_expansion(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _test_dict_functions(_fdp: atheris.FuzzedDataProvider) -> None:
-    """Test FluentBundle rejects dict as functions parameter (0.101.0 breaking change).
+    """Test FluentBundle rejects dict as functions parameter.
 
     Passing a raw dict should raise TypeError at construction time.
     """
@@ -1057,7 +961,7 @@ def _perform_differential_testing(
     args: ComplexArgs,
 ) -> None:
     """Differential testing: same FTL, different configs must not crash differently."""
-    _state.differential_tests += 1
+    _domain.differential_tests += 1
 
     alt_locale = fdp.PickValueInList(["en-US", "de-DE", "ar-EG", "ja-JP", "C", ""])
     alt_strict = not bundle.strict if fdp.ConsumeBool() else bundle.strict
@@ -1099,7 +1003,7 @@ def _run_concurrent_test(
     cache_write_once: bool,
 ) -> None:
     """Run concurrent execution test."""
-    _state.concurrent_tests += 1
+    _domain.concurrent_tests += 1
 
     barrier = threading.Barrier(2)
 
@@ -1125,77 +1029,36 @@ def _run_concurrent_test(
             raise RuntimeIntegrityError(msg)
 
 
-def _build_weighted_schedule(items: Sequence[str], weights: Sequence[int]) -> tuple[str, ...]:
-    """Pre-compute a round-robin schedule from weighted items.
-
-    Returns a tuple of length sum(weights) where each item appears
-    proportional to its weight. Used by deterministic scenario routing
-    to guarantee exact weight distribution regardless of libFuzzer's
-    coverage-guided input mutations.
-    """
-    schedule: list[str] = []
-    for item, weight in zip(items, weights, strict=True):
-        schedule.extend([item] * weight)
-    return tuple(schedule)
-
-
-# Pre-computed scenario schedule: deterministic weighted round-robin.
-# Driven by iteration counter, not fuzzed bytes, so libFuzzer's
-# coverage-guided mutations cannot skew the distribution.
-_SCENARIO_SCHEDULE: tuple[str, ...] = _build_weighted_schedule(
-    ["core_runtime", "strict_mode", "caching", "security", "concurrent", "differential"],
-    [40, 20, 15, 10, 10, 5],
-)
-
-# Pre-computed security attack schedule.
-_SECURITY_SCHEDULE: tuple[str, ...] = _build_weighted_schedule(
-    [
-        "security_recursion",
-        "security_memory",
-        "security_cache_poison",
-        "security_function_inject",
-        "security_locale_explosion",
-        "security_expansion_budget",
-        "security_dag_expansion",
-        "security_dict_functions",
-    ],
-    [25, 20, 15, 12, 8, 8, 7, 5],
-)
-
-
-def _generate_scenario() -> str:
-    """Select scenario via deterministic weighted round-robin."""
-    return _SCENARIO_SCHEDULE[_state.iterations % len(_SCENARIO_SCHEDULE)]
-
-
 def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     """Atheris entry point: Test runtime invariants and contracts."""
     # Initialize memory baseline
     if _state.iterations == 0:
-        _state.initial_memory_mb = _get_process().memory_info().rss / (1024 * 1024)
+        _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
 
     _state.iterations += 1
     _state.status = "running"
 
     # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_final_report()
+        _emit_report()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
 
-    # Generate scenario (deterministic round-robin, not from fuzzed bytes)
-    scenario = _generate_scenario()
-    _state.scenario_coverage[scenario] = _state.scenario_coverage.get(scenario, 0) + 1
+    # Generate scenario from fuzzed bytes (crash-file reproducible)
+    if fdp.remaining_bytes() < 2:
+        return
+    idx = fdp.ConsumeIntInRange(0, len(_SCENARIO_SCHEDULE) - 1)
+    scenario = _SCENARIO_SCHEDULE[idx]
+    _state.pattern_coverage[scenario] = _state.pattern_coverage.get(scenario, 0) + 1
 
     # Security fuzzing (separate path)
     if scenario == "security":
         security_scenario = _perform_security_fuzzing(fdp)
-        _state.scenario_coverage[security_scenario] = (
-            _state.scenario_coverage.get(security_scenario, 0) + 1
+        _state.pattern_coverage[security_scenario] = (
+            _state.pattern_coverage.get(security_scenario, 0) + 1
         )
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        _state.performance_history.append(elapsed_ms)
+        record_iteration_metrics(_state, scenario, start_time, data, is_interesting=True)
         return
 
     # Configuration
@@ -1228,7 +1091,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         args = _generate_complex_args(fdp)
 
         if strict:
-            _state.strict_mode_tests += 1
+            _domain.strict_mode_tests += 1
 
         # Execute based on scenario
         if scenario == "concurrent":
@@ -1257,25 +1120,18 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
 
     finally:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        _state.performance_history.append(elapsed_ms)
-
-        # Per-scenario wall time accumulation
-        _state.scenario_wall_time[scenario] = (
-            _state.scenario_wall_time.get(scenario, 0.0) + elapsed_ms
+        is_interesting = "security" in scenario or "integrity" in scenario or (
+            (time.perf_counter() - start_time) * 1000 > 50.0
         )
-
-        _track_slowest_operation(elapsed_ms, scenario, data)
-        _track_seed_corpus(data, scenario, elapsed_ms)
+        record_iteration_metrics(_state, scenario, start_time, data, is_interesting=is_interesting)
 
         # Break reference cycles in AST/error objects to prevent RSS growth
-        if _state.iterations % _GC_INTERVAL == 0:
+        if _state.iterations % GC_INTERVAL == 0:
             gc.collect()
 
         # Memory tracking (every 100 iterations)
         if _state.iterations % 100 == 0:
-            current_mb = _get_process().memory_info().rss / (1024 * 1024)
-            _state.memory_history.append(current_mb)
+            record_memory(_state)
 
 
 def main() -> None:
@@ -1324,8 +1180,8 @@ def main() -> None:
     print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
     print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
     print(f"Recursion:  {args.recursion_limit} limit")
-    print(f"GC Cycle:   Every {_GC_INTERVAL} iterations")
-    print(f"Routing:    Deterministic round-robin (cycle length: {len(_SCENARIO_SCHEDULE)})")
+    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
+    print(f"Routing:    FDP-based weighted selection (schedule length: {len(_SCENARIO_SCHEDULE)})")
     print("Stopping:   Press Ctrl+C (findings auto-saved)")
     print("=" * 80)
     print()

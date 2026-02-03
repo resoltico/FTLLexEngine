@@ -28,15 +28,16 @@
 #   ./scripts/fuzz_atheris.sh [TARGET] [OPTIONS]
 #
 # Commands:
-#   --list          List captured crashes
+#   --list          List captured crashes and finding artifacts
 #   --corpus        Run corpus health check
 #   --minimize TARGET FILE   Minimize a crash input using specified target
+#   --replay [TARGET DIR]    Replay finding artifacts (no Atheris required)
 #   --help          Show this help
 #
 # Options:
 #   --workers N     Number of parallel workers (default: 4)
 #   --time N        Time limit in seconds
-#   --clean         Clean corpus before running
+#   --clean TARGET  Clean corpus for a specific target
 #   --verbose       Enable verbose output
 #   --quiet         Suppress non-essential output
 #   --dry-run       Show what would run without executing
@@ -306,14 +307,15 @@ EOF
     cat << EOF
 
 COMMANDS:
-    --list              List all crashes in corpus
+    --list              List all crashes and finding artifacts
     --corpus            Run corpus health check (fuzz_corpus_health.py)
     --minimize TARGET FILE   Minimize a crash input using the specified target
+    --replay TARGET [DIR]    Replay finding artifacts without Atheris
+    --clean TARGET           Clean corpus for a specific target
 
 OPTIONS:
     --workers N         Number of workers (default: 4)
     --time N            Max time in seconds
-    --clean             Clean corpus before run
     --verbose           Enable verbose output
     --quiet             Suppress non-essential output
     --dry-run           Show what would run without executing
@@ -323,35 +325,84 @@ EXAMPLES:
     ./scripts/fuzz_atheris.sh currency --time 60
     ./scripts/fuzz_atheris.sh stability --workers 8
     ./scripts/fuzz_atheris.sh --minimize currency .fuzz_corpus/crash_abc123
+    ./scripts/fuzz_atheris.sh --replay structured
+    ./scripts/fuzz_atheris.sh --replay structured .fuzz_corpus/structured/findings/
+    ./scripts/fuzz_atheris.sh --clean roundtrip
 EOF
 }
 
 run_list() {
-    echo -e "${BOLD}Atheris Crashes (.fuzz_corpus)${NC}"
     local corpus_dir="$PROJECT_ROOT/.fuzz_corpus"
 
-    if [[ -d "$corpus_dir" ]]; then
-        local crashes=()
-        while IFS= read -r -d '' file; do
-            crashes+=("$file")
-        done < <(find "$corpus_dir" -name "crash_*" -type f -print0 2>/dev/null | head -z -n 50)
-
-        local count="${#crashes[@]}"
-        if [[ $count -gt 0 ]]; then
-             echo "Found $count crash(es):"
-             for crash in "${crashes[@]:0:10}"; do
-                 echo "  $crash"
-             done
-             if [[ $count -gt 10 ]]; then
-                 echo "  ... and $((count - 10)) more"
-             fi
-             echo ""
-             echo "Inspect: xxd ${crashes[0]} | head -20"
-        else
-             echo "No crashes found."
-        fi
-    else
+    if [[ ! -d "$corpus_dir" ]]; then
         echo "No corpus directory found."
+        return 0
+    fi
+
+    # Section 1: Raw libFuzzer crash files
+    echo -e "${BOLD}Crashes (raw libFuzzer artifacts)${NC}"
+    local crashes=()
+    while IFS= read -r -d '' file; do
+        crashes+=("$file")
+    done < <(find "$corpus_dir" -name "crash_*" -type f -print0 2>/dev/null | head -z -n 50)
+
+    local count="${#crashes[@]}"
+    if [[ $count -gt 0 ]]; then
+         echo "Found $count crash(es):"
+         for crash in "${crashes[@]:0:10}"; do
+             echo "  $crash"
+         done
+         if [[ $count -gt 10 ]]; then
+             echo "  ... and $((count - 10)) more"
+         fi
+         echo ""
+         echo "Inspect: xxd ${crashes[0]} | head -20"
+    else
+         echo "  No crashes found."
+    fi
+    echo ""
+
+    # Section 2: Finding artifacts (human-readable, actionable)
+    echo -e "${BOLD}Findings (actionable artifacts)${NC}"
+    local finding_dirs=()
+    while IFS= read -r -d '' dir; do
+        finding_dirs+=("$dir")
+    done < <(find "$corpus_dir" -type d -name "findings" -print0 2>/dev/null)
+
+    local total_findings=0
+    for fdir in "${finding_dirs[@]}"; do
+        local meta_files=()
+        while IFS= read -r -d '' mf; do
+            meta_files+=("$mf")
+        done < <(find "$fdir" -name "*_meta.json" -type f -print0 2>/dev/null | sort -z)
+
+        if [[ ${#meta_files[@]} -gt 0 ]]; then
+            echo "  ${fdir}:"
+            for meta_file in "${meta_files[@]:0:10}"; do
+                total_findings=$((total_findings + 1))
+                local basename
+                basename=$(basename "$meta_file")
+                if command -v jq &>/dev/null; then
+                    local pattern diff_offset source_len
+                    pattern=$(jq -r '.pattern // "unknown"' "$meta_file" 2>/dev/null)
+                    diff_offset=$(jq -r '.diff_offset // "?"' "$meta_file" 2>/dev/null)
+                    source_len=$(jq -r '.source_len // "?"' "$meta_file" 2>/dev/null)
+                    echo "    $basename  pattern=$pattern  source=${source_len}chars  diff@byte${diff_offset}"
+                else
+                    echo "    $basename"
+                fi
+            done
+            if [[ ${#meta_files[@]} -gt 10 ]]; then
+                echo "    ... and $((${#meta_files[@]} - 10)) more"
+            fi
+        fi
+    done
+
+    if [[ $total_findings -eq 0 ]]; then
+        echo "  No finding artifacts found."
+    else
+        echo ""
+        echo "Replay: ./scripts/fuzz_atheris.sh --replay <target> <findings_dir>"
     fi
 }
 
@@ -527,7 +578,19 @@ run_fuzz_target() {
     uv run --group atheris python "$target_script" "${fuzz_args[@]}" || exit_code=$?
 
     # Parse and display report from file
+    local report_exit=0
     if ! parse_and_display_report "$target_key"; then
+        report_exit=1
+
+        # Auto-replay finding artifacts to check if they reproduce without Atheris
+        local findings_dir="$corpus_dir/findings"
+        local replay_script="$PROJECT_ROOT/fuzz/replay_finding.py"
+        if [[ -d "$findings_dir" ]] && [[ -f "$replay_script" ]]; then
+            echo ""
+            echo -e "${BOLD}Auto-replaying findings without Atheris instrumentation...${NC}"
+            uv run python "$replay_script" "$findings_dir" || true
+        fi
+
         log_error "Fuzzer detected API contract violations"
         exit 1
     fi
@@ -536,6 +599,42 @@ run_fuzz_target() {
     if [[ $exit_code -ne 0 ]]; then
         exit $exit_code
     fi
+}
+
+run_replay() {
+    local target_key="$1"
+    local findings_dir="${2:-}"
+
+    # Default findings directory based on target
+    if [[ -z "$findings_dir" ]]; then
+        findings_dir="$PROJECT_ROOT/.fuzz_corpus/$target_key/findings"
+    fi
+
+    if [[ ! -d "$findings_dir" ]]; then
+        log_error "Findings directory not found: $findings_dir"
+        echo "Run the fuzzer first, or specify a findings directory."
+        exit 1
+    fi
+
+    local replay_script="$PROJECT_ROOT/fuzz/replay_finding.py"
+    if [[ ! -f "$replay_script" ]]; then
+        log_error "Replay script not found: $replay_script"
+        exit 1
+    fi
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "[DRY-RUN] Would replay findings from $findings_dir"
+        return 0
+    fi
+
+    echo -e "${BOLD}Replaying Finding Artifacts${NC}"
+    echo "Target:     $target_key"
+    echo "Directory:  $findings_dir"
+    echo "Runner:     Main project venv (NOT .venv-atheris)"
+    echo ""
+
+    # Run replay in the main project venv (no Atheris instrumentation)
+    uv run python "$replay_script" "$findings_dir"
 }
 
 run_minimize() {
@@ -611,16 +710,33 @@ TARGET=""
 MODE="fuzz"
 MINIMIZE_TARGET=""
 MINIMIZE_FILE=""
+REPLAY_TARGET=""
+REPLAY_DIR=""
 
 # Strict Argument Parser
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --list|--corpus|--clean)
+        --list|--corpus)
             if [[ "$MODE" != "fuzz" && "$MODE" != "${1#--}" ]]; then
                 log_error "Conflicting modes selected: $MODE vs ${1#--}"
                 exit 1
             fi
             MODE="${1#--}"
+            shift
+            ;;
+        --clean)
+            MODE="clean"
+            # --clean requires a TARGET (either already parsed or as next arg)
+            if [[ -z "$TARGET" ]]; then
+                if [[ $# -lt 2 ]] || [[ "$2" == --* ]]; then
+                    log_error "--clean requires a TARGET argument"
+                    echo "Usage: ./scripts/fuzz_atheris.sh TARGET --clean"
+                    echo "       ./scripts/fuzz_atheris.sh --clean TARGET"
+                    exit 1
+                fi
+                TARGET="$2"
+                shift
+            fi
             shift
             ;;
         --minimize)
@@ -635,6 +751,23 @@ while [[ $# -gt 0 ]]; do
             MINIMIZE_TARGET="$2"
             MINIMIZE_FILE="$3"
             shift 3
+            ;;
+        --replay)
+            MODE="replay"
+            # --replay requires TARGET, optional DIR
+            if [[ $# -lt 2 ]]; then
+                log_error "--replay requires at least a TARGET argument"
+                echo "Usage: ./scripts/fuzz_atheris.sh --replay TARGET [DIR]"
+                echo "Example: ./scripts/fuzz_atheris.sh --replay structured"
+                exit 1
+            fi
+            REPLAY_TARGET="$2"
+            shift 2
+            # Optional directory argument
+            if [[ $# -gt 0 ]] && [[ ! "$1" == --* ]]; then
+                REPLAY_DIR="$1"
+                shift
+            fi
             ;;
         --workers)
             WORKERS="$2"
@@ -695,10 +828,18 @@ case "$MODE" in
     minimize)
         run_minimize "$MINIMIZE_TARGET" "$MINIMIZE_FILE"
         ;;
+    replay)
+        run_replay "$REPLAY_TARGET" "$REPLAY_DIR"
+        ;;
     clean)
-        echo -e "${BOLD}Cleaning corpus...${NC}"
-        rm -rf "$PROJECT_ROOT/.fuzz_corpus"
-        echo "Done."
+        CLEAN_DIR="$PROJECT_ROOT/.fuzz_corpus/$TARGET"
+        if [[ ! -d "$CLEAN_DIR" ]]; then
+            echo -e "${YELLOW}[WARN]${NC} No corpus directory found for target '$TARGET': $CLEAN_DIR"
+            exit 0
+        fi
+        echo -e "${BOLD}Cleaning corpus for target '$TARGET'...${NC}"
+        rm -rf "$CLEAN_DIR"
+        echo "Done. Removed: $CLEAN_DIR"
         ;;
     fuzz)
         if [[ -z "$TARGET" ]]; then

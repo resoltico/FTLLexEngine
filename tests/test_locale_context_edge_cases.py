@@ -213,8 +213,12 @@ class TestCacheDoubleCheckPattern:
         LocaleContext.clear_cache()
 
         cache_key = normalize_locale("en-RACE-TEST")
+        from ftllexengine.runtime.locale_context import _FACTORY_TOKEN  # noqa: PLC0415
+
         pre_inserted_ctx = LocaleContext(
-            locale_code="en-RACE-TEST", _babel_locale=Locale.parse("en_US")
+            locale_code="en-RACE-TEST",
+            _babel_locale=Locale.parse("en_US"),
+            _factory_token=_FACTORY_TOKEN,
         )
 
         original_parse = Locale.parse

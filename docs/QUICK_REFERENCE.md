@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: reference
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, cache_write_once, cache_enable_audit]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -299,13 +299,21 @@ result, errors = bundle.format_pattern("msg", {"name": "Anna"})
 ```python
 FluentBundle(
     locale: str,
+    /,
     *,
     use_isolating: bool = True,
     enable_cache: bool = False,
     cache_size: int = 1000,
+    cache_write_once: bool = False,
+    cache_enable_audit: bool = False,
+    cache_max_audit_entries: int = 10000,
+    cache_max_entry_weight: int = 10000,
+    cache_max_errors_per_entry: int = 50,
     functions: FunctionRegistry | None = None,
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
+    max_expansion_size: int | None = None,
+    strict: bool = False,
 )
 ```
 
@@ -334,6 +342,9 @@ bundle.get_all_message_variables() -> dict[str, frozenset[str]]
 bundle.introspect_message(message_id: str) -> MessageIntrospection
 bundle.introspect_term(term_id: str) -> MessageIntrospection
 bundle.add_function(name: str, func: Callable) -> None
+bundle.clear_cache() -> None
+bundle.get_cache_stats() -> dict[str, Any]
+bundle.get_babel_locale() -> str
 ```
 
 **Properties**:
@@ -341,8 +352,17 @@ bundle.add_function(name: str, func: Callable) -> None
 bundle.locale -> str  # Read-only
 bundle.use_isolating -> bool  # Read-only
 bundle.cache_enabled -> bool  # Read-only
+bundle.cache_size -> int  # Read-only
+bundle.cache_write_once -> bool  # Read-only
+bundle.cache_enable_audit -> bool  # Read-only
+bundle.cache_max_audit_entries -> int  # Read-only
+bundle.cache_max_entry_weight -> int  # Read-only
+bundle.cache_max_errors_per_entry -> int  # Read-only
+bundle.cache_usage -> int  # Read-only
 bundle.max_source_size -> int  # Read-only
 bundle.max_nesting_depth -> int  # Read-only
+bundle.max_expansion_size -> int  # Read-only
+bundle.strict -> bool  # Read-only
 ```
 
 ---
@@ -360,20 +380,31 @@ FluentLocalization(
     enable_cache: bool = False,
     cache_size: int = 1000,
     on_fallback: Callable[[FallbackInfo], None] | None = None,
+    strict: bool = False,
 )
 ```
 
 **Key Methods**:
 ```python
 l10n.add_resource(locale: str, ftl_source: str) -> tuple[Junk, ...]
+l10n.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tuple[FrozenFluentError, ...]]
 l10n.format_value(message_id, args=None) -> tuple[str, tuple[FrozenFluentError, ...]]
+l10n.validate_resource(ftl_source: str) -> ValidationResult
 l10n.has_message(message_id: str) -> bool
+l10n.introspect_message(message_id: str) -> MessageIntrospection
+l10n.add_function(name: str, func: Callable) -> None
+l10n.clear_cache() -> None
+l10n.get_cache_stats() -> dict[str, Any]
+l10n.get_load_summary() -> dict[str, Any]
 l10n.get_bundles() -> Generator[FluentBundle]
+l10n.get_babel_locale() -> str
 ```
 
 **Properties**:
 ```python
 l10n.locales -> tuple[str, ...]  # Read-only
+l10n.cache_enabled -> bool  # Read-only
+l10n.cache_size -> int  # Read-only
 ```
 
 **Caching**: Enable `enable_cache=True` for 50x speedup on repeated format calls.
@@ -605,22 +636,25 @@ print(info.get_function_names())
 ### Function Introspection
 
 ```python
+# Access the function registry (read-only property)
+registry = bundle.function_registry
+
 # List all available functions
-functions = bundle._function_registry.list_functions()
+functions = registry.list_functions()
 print(functions)  # ["NUMBER", "DATETIME", "CURRENCY"]
 
 # Check if function exists
-if "CURRENCY" in bundle._function_registry:
+if "CURRENCY" in registry:
     print("CURRENCY available")
 
 # Get function metadata
-info = bundle._function_registry.get_function_info("NUMBER")
+info = registry.get_function_info("NUMBER")
 print(f"Python name: {info.python_name}")
 print(f"Parameters: {info.param_mapping}")
 
 # Iterate over all functions
-for func_name in bundle._function_registry:
-    info = bundle._function_registry.get_function_info(func_name)
+for func_name in registry:
+    info = registry.get_function_info(func_name)
     print(f"{func_name}: {info.python_name}")
 ```
 
@@ -769,10 +803,11 @@ bundle = FluentBundle("ar_EG")  # use_isolating=True by default
 - Unit tests (exact assertions)
 - LTR-only applications (verifiable constraint)
 
-### Errors Never Raise Exceptions
+### Errors Never Raise Exceptions (Non-Strict Mode)
 
 ```python
-# format_pattern() NEVER raises - always returns (result, errors) tuple
+# In non-strict mode (default), format_pattern() returns (result, errors) tuple
+# In strict mode (strict=True), format_pattern() raises FormattingIntegrityError on ANY error
 result, errors = bundle.format_pattern("missing-message")
 # result → "{missing-message}"  # Readable fallback
 # errors → (FrozenFluentError(...),)  # category=ErrorCategory.REFERENCE

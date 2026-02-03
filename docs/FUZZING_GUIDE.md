@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: fuzzing
-updated: "2026-01-31"
+updated: "2026-02-02"
 route:
   keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, iso, fiscal, introspection]
   questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "how to fuzz ISO introspection?", "how to fuzz fiscal calendar?"]
@@ -94,8 +94,10 @@ All fuzzing operations are now split into two specialized scripts:
 | `./scripts/fuzz_hypofuzz.sh --list` | List captured failures (Hypothesis) | — | Quick | 3.13, 3.14 |
 | | | | | |
 | `./scripts/fuzz_atheris.sh TARGET` | Native fuzzing modes | Dynamically discovered `fuzz/fuzz_TARGET.py` | Until Ctrl+C | 3.11-3.13 |
-| `./scripts/fuzz_atheris.sh --list` | List captured crashes (Atheris) | — | Quick | 3.11-3.13 |
+| `./scripts/fuzz_atheris.sh --list` | List captured crashes and finding artifacts | — | Quick | 3.11-3.13 |
 | `./scripts/fuzz_atheris.sh --corpus` | Check seed corpus health | — | Quick | 3.11-3.13 |
+| `./scripts/fuzz_atheris.sh --replay TARGET` | Replay finding artifacts without Atheris | — | Quick | 3.11-3.13 |
+| `./scripts/fuzz_atheris.sh --clean TARGET` | Clean corpus for a specific target | — | Quick | 3.11-3.13 |
 
 Common options:
 
@@ -624,6 +626,7 @@ This means `--deep` mode includes:
 
 **Corpus Files:**
 - `.fuzz_corpus/crash_*` - Crash artifacts
+- `.fuzz_corpus/<target>/findings/` - Finding artifacts (source.ftl, s1.ftl, s2.ftl, meta.json)
 - `fuzz/seeds/` - Grammar seeds for structured fuzzing
 
 ### Marker Usage Guidelines
@@ -676,12 +679,14 @@ tests/
 
 fuzz/
   seeds/                   <- Seed corpus (git tracked)
-  stability.py             <- Atheris crash detector (byte-level chaos)
-  structured.py            <- Atheris crash detector (grammar-aware)
-  perf.py                  <- Atheris performance detector
-  runtime.py               <- Atheris runtime stack fuzzer
-  iso.py                   <- Atheris ISO 3166/4217 introspection fuzzer
-  fiscal.py                <- Atheris fiscal calendar arithmetic fuzzer
+  fuzz_stability.py        <- Atheris crash detector (byte-level chaos)
+  fuzz_structured.py       <- Atheris grammar-aware fuzzer (with finding artifacts)
+  fuzz_roundtrip.py        <- Atheris parser-serializer convergence (with finding artifacts)
+  fuzz_perf.py             <- Atheris performance detector
+  fuzz_runtime.py          <- Atheris runtime stack fuzzer
+  fuzz_iso.py              <- Atheris ISO 3166/4217 introspection fuzzer
+  fuzz_fiscal.py           <- Atheris fiscal calendar arithmetic fuzzer
+  replay_finding.py        <- Replay finding artifacts without Atheris
 
 .hypothesis/               <- Hypothesis data (git ignored)
   examples/                <- Coverage database
@@ -811,7 +816,9 @@ If your default Python is 3.14, switch to 3.13 for native fuzzing:
 | Fiscal fuzzing | `./scripts/fuzz_atheris.sh fiscal` |
 | List failures (Hypothesis) | `./scripts/fuzz_hypofuzz.sh --list` |
 | List crashes (Atheris) | `./scripts/fuzz_atheris.sh --list` |
-| Clean all artifacts | `./scripts/fuzz_hypofuzz.sh --clean && ./scripts/fuzz_atheris.sh --clean` |
+| Replay findings | `./scripts/fuzz_atheris.sh --replay TARGET` |
+| Clean Atheris corpus | `./scripts/fuzz_atheris.sh --clean TARGET` |
+| Clean Hypothesis data | `./scripts/fuzz_hypofuzz.sh --clean` |
 | Check corpus | `./scripts/fuzz_atheris.sh --corpus` |
 | Replay failures | `uv run pytest tests/ -x -v` |
 

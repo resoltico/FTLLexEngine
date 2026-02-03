@@ -37,7 +37,7 @@ def demonstrate_basic_introspection() -> None:
     bundle = FluentBundle("en_US", use_isolating=False)
 
     # Access the function registry
-    registry = bundle._function_registry  # pylint: disable=protected-access
+    registry = bundle.function_registry
 
     print("\n[OPERATION] List all registered functions")
     functions = registry.list_functions()
@@ -68,7 +68,7 @@ def demonstrate_function_metadata() -> None:
     print("=" * 70)
 
     bundle = FluentBundle("en_US", use_isolating=False)
-    registry = bundle._function_registry  # pylint: disable=protected-access
+    registry = bundle.function_registry
 
     print("\n[OPERATION] Get NUMBER function metadata")
     info = registry.get_function_info("NUMBER")
@@ -115,7 +115,7 @@ def demonstrate_custom_function_introspection() -> None:
     bundle.add_function("VAT_CALCULATION", VAT_CALCULATION)
     bundle.add_function("FORMAT_PERCENTAGE", FORMAT_PERCENTAGE)
 
-    registry = bundle._function_registry  # pylint: disable=protected-access
+    registry = bundle.function_registry
 
     print("\n[OPERATION] List all functions (built-in + custom)")
     print(f"Total functions: {len(registry)}")
@@ -153,7 +153,7 @@ def demonstrate_validation_workflow() -> None:
     print("=" * 70)
 
     bundle = FluentBundle("lv_LV", use_isolating=False)
-    registry = bundle._function_registry  # pylint: disable=protected-access
+    registry = bundle.function_registry
 
     print("\n[VALIDATION] Ensure required financial functions are present")
 
@@ -200,7 +200,7 @@ def demonstrate_auto_documentation() -> None:
 
     bundle.add_function("IBAN_FORMAT", IBAN_FORMAT)
 
-    registry = bundle._function_registry  # pylint: disable=protected-access
+    registry = bundle.function_registry
 
     print("\n[DOCUMENTATION] Function Reference (Auto-Generated)")
     print("-" * 70)
@@ -241,7 +241,7 @@ def demonstrate_safe_function_use() -> None:
     print("=" * 70)
 
     bundle = FluentBundle("en_US", use_isolating=False)
-    registry = bundle._function_registry  # pylint: disable=protected-access
+    registry = bundle.function_registry
 
     print("\n[PATTERN] Check function exists before using in FTL")
 

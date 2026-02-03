@@ -80,7 +80,8 @@ FTLLexEngine uses `TypeIs` for runtime type narrowing:
 
 ```python
 from typing import TypeIs
-from ftllexengine import Message, Term, parse_ftl
+from ftllexengine import parse_ftl
+from ftllexengine.syntax.ast import Message, Term
 
 # Using built-in type guards (static methods)
 ftl_source = "hello = World"
@@ -104,7 +105,8 @@ for entry in resource.entries:
 Python 3.10+ pattern matching + FTLLexEngine types:
 
 ```python
-from ftllexengine import parse_ftl, Message, Term, Comment, Junk
+from ftllexengine import parse_ftl
+from ftllexengine.syntax.ast import Message, Term, Comment, Junk
 
 resource = parse_ftl(ftl_source)
 
@@ -264,9 +266,8 @@ from __future__ import annotations
 from collections.abc import Generator
 from typing import Protocol
 
-from ftllexengine import (
-    FluentBundle,
-    FluentLocalization,
+from ftllexengine import FluentBundle, FluentLocalization
+from ftllexengine.localization import (
     LocaleCode,
     MessageId,
     ResourceId,
@@ -443,14 +444,9 @@ result, _ = bundle.format_pattern("price", {"amount": 99.95})
 ```python
 from __future__ import annotations
 
-from ftllexengine import (
-    ASTVisitor,
-    Message,
-    Term,
-    VariableReference,
-    FunctionReference,
-    parse_ftl,
-)
+from ftllexengine import parse_ftl
+from ftllexengine.syntax.ast import Message, Term, VariableReference, FunctionReference
+from ftllexengine.syntax.visitor import ASTVisitor
 
 
 class VariableCollector(ASTVisitor):
@@ -722,7 +718,8 @@ def create_bundle(locale: str):
 ### DO: Use Type Guards for AST
 
 ```python
-from ftllexengine import parse_ftl, Message
+from ftllexengine import parse_ftl
+from ftllexengine.syntax.ast import Message
 
 resource = parse_ftl(ftl_source)
 
@@ -774,7 +771,8 @@ bundle = FluentBundle(locale_codes[0])
 ### Error: "Item 'None' of 'Optional[...]' has no attribute"
 
 ```python
-from ftllexengine import parse_ftl, Message
+from ftllexengine import parse_ftl
+from ftllexengine.syntax.ast import Message
 
 resource = parse_ftl(ftl_source)
 msg = resource.entries[0]

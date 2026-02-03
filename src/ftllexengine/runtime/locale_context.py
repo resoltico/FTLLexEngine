@@ -58,6 +58,10 @@ __all__ = ["LocaleContext"]
 
 logger = logging.getLogger(__name__)
 
+# Sentinel for factory method authorization.
+# Only create() and create_or_raise() pass this token to __init__.
+_FACTORY_TOKEN = object()
+
 
 @dataclass(frozen=True, slots=True)
 class LocaleContext:
@@ -67,7 +71,7 @@ class LocaleContext:
     without mutating global state. Each FluentBundle owns its LocaleContext.
 
     Use LocaleContext.create() factory to construct instances with proper validation.
-    Direct construction via __init__ is not recommended (bypasses validation).
+    Direct construction via __init__ raises TypeError (enforced by sentinel guard).
 
     Cache Management:
         LocaleContext uses an internal LRU cache for instance reuse. Use class
@@ -111,6 +115,16 @@ class LocaleContext:
     locale_code: str
     _babel_locale: Locale
     is_fallback: bool = False
+    _factory_token: object = None
+
+    def __post_init__(self) -> None:
+        """Validate construction came from factory method."""
+        if self._factory_token is not _FACTORY_TOKEN:
+            msg = (
+                "Use LocaleContext.create() or LocaleContext.create_or_raise() "
+                "instead of direct construction"
+            )
+            raise TypeError(msg)
 
     @classmethod
     def clear_cache(cls) -> None:
@@ -261,7 +275,12 @@ class LocaleContext:
             used_fallback = True
 
         # Store with normalized cache_key, but preserve original locale_code for debugging
-        ctx = cls(locale_code=locale_code, _babel_locale=babel_locale, is_fallback=used_fallback)
+        ctx = cls(
+            locale_code=locale_code,
+            _babel_locale=babel_locale,
+            is_fallback=used_fallback,
+            _factory_token=_FACTORY_TOKEN,
+        )
 
         # Add to cache with lock (double-check pattern for thread safety)
         with cls._cache_lock:
@@ -312,7 +331,11 @@ class LocaleContext:
         try:
             normalized = normalize_locale(locale_code)
             babel_locale = Locale.parse(normalized)
-            return cls(locale_code=locale_code, _babel_locale=babel_locale)
+            return cls(
+                locale_code=locale_code,
+                _babel_locale=babel_locale,
+                _factory_token=_FACTORY_TOKEN,
+            )
         except UnknownLocaleError as e:
             msg = f"Unknown locale identifier '{locale_code}': {e}"
             raise ValueError(msg) from None

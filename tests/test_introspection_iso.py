@@ -512,16 +512,18 @@ class TestBabelImportError:
 
     def test_exception_message(self) -> None:
         """BabelImportError has informative installation message."""
-        exc = BabelImportError()
+        exc = BabelImportError("ISO introspection")
         message = str(exc)
-        assert "Babel is required" in message
+        assert "Babel" in message
         assert "pip install ftllexengine[babel]" in message
+        assert "ISO introspection" in message
 
     def test_exception_can_be_raised_and_caught(self) -> None:
         """BabelImportError can be raised and caught."""
+        feature = "test feature"
         with pytest.raises(BabelImportError) as exc_info:
-            raise BabelImportError
-        assert "Babel is required" in str(exc_info.value)
+            raise BabelImportError(feature)
+        assert "Babel" in str(exc_info.value)
 
 
 class TestEdgeCases:

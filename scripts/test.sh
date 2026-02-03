@@ -205,6 +205,12 @@ COVERAGE_PCT=$(grep 'TOTAL' "$LOG_FILE" | tail -1 | awk '{print $NF}' | tr -d '%
 [[ -z "$TESTS_SKIPPED" ]] && TESTS_SKIPPED=0
 [[ -z "$COVERAGE_PCT" ]] && COVERAGE_PCT=0
 
+# Extract fuzz vs non-fuzz skip breakdown (emitted by conftest.py)
+SKIPPED_FUZZ=$(grep -o '\[SKIP-BREAKDOWN\] fuzz=[0-9]* other=[0-9]*' "$LOG_FILE" | grep -o 'fuzz=[0-9]*' | cut -d= -f2 || echo "0")
+SKIPPED_OTHER=$(grep -o '\[SKIP-BREAKDOWN\] fuzz=[0-9]* other=[0-9]*' "$LOG_FILE" | grep -o 'other=[0-9]*' | cut -d= -f2 || echo "0")
+[[ -z "$SKIPPED_FUZZ" ]] && SKIPPED_FUZZ=0
+[[ -z "$SKIPPED_OTHER" ]] && SKIPPED_OTHER=0
+
 # Extract Failed Test IDs (for Debug Suggestion)
 # Pattern: "FAILED tests/test_module.py::test_case - ..."
 # We look for lines starting with FAILED (standard pytest without -p no:terminal might differ, but with -p no:terminal it's clean)
@@ -223,6 +229,9 @@ log_group_end
 
 if [[ $EXIT_CODE -eq 0 ]]; then
     log_pass "All tests passed in $TARGET_VENV ($DURATION sec)."
+    if [[ "$SKIPPED_OTHER" -gt 0 ]]; then
+        log_warn "Non-fuzz skipped tests detected: $SKIPPED_OTHER (investigate these — only fuzz tests should be skipped)"
+    fi
 else
     # On failure (if not verbose), we must now Dump the log for the agent
     log_group_start "Failure Details"
@@ -250,6 +259,8 @@ printf "\"duration_sec\":\"%s\"," "$DURATION"
 printf "\"tests_passed\":\"%s\"," "$TESTS_PASSED"
 printf "\"tests_failed\":\"%s\"," "$TESTS_FAILED"
 printf "\"tests_skipped\":\"%s\"," "$TESTS_SKIPPED"
+printf "\"skipped_fuzz\":\"%s\"," "$SKIPPED_FUZZ"
+printf "\"skipped_other\":\"%s\"," "$SKIPPED_OTHER"
 printf "\"coverage_pct\":\"%s\"," "$COVERAGE_PCT"
 printf "\"hypothesis_fail\":\"%s\"," "$HYPOTHESIS_FAILURE"
 # Failed Tests Array

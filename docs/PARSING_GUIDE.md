@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: parsing
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [parsing, parse_number, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
   questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
@@ -79,7 +79,7 @@ if is_valid_decimal(result):  # guards accept None, return False
 
 Parse locale-formatted number string to `float`.
 
-Returns `tuple[float, tuple[FrozenFluentError, ...]]`.
+Returns `tuple[float | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_number
@@ -101,7 +101,7 @@ result, errors = parse_number("1.234,5", "de_DE")
 result, errors = parse_number("invalid", "en_US")
 if errors:
     print(f"Parse error: {errors[0]}")
-    # result is 0.0 (default fallback)
+    # result is None on parse failure
 ```
 
 **When to use**: Display values, UI elements, non-financial data
@@ -110,7 +110,7 @@ if errors:
 
 Parse locale-formatted number string to `Decimal` (financial precision).
 
-Returns `tuple[Decimal, tuple[FrozenFluentError, ...]]`.
+Returns `tuple[Decimal | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from decimal import Decimal
@@ -261,11 +261,11 @@ if errors:
 ```python
 # CORRECT - Same locale
 locale = "lv_LV"
-formatted = bundle.format_value("price", {"amount": 1234.56})
+formatted, _ = bundle.format_value("price", {"amount": 1234.56})
 result, errors = parse_decimal(formatted, locale)  # Same locale!
 
 # WRONG - Different locales break roundtrip
-formatted = bundle.format_value("price", {"amount": 1234.56})  # lv_LV
+formatted, _ = bundle.format_value("price", {"amount": 1234.56})  # lv_LV
 result, errors = parse_decimal(formatted, "en_US")  # Wrong locale!
 # Result: errors will contain parse error
 ```
@@ -529,7 +529,7 @@ from ftllexengine import FluentBundle
 
 # Formatting: FTLLexEngine
 bundle = FluentBundle("lv_LV")
-formatted = bundle.format_value("price", {"amount": 1234.56})
+formatted, _ = bundle.format_value("price", {"amount": 1234.56})
 
 # Parsing: Babel directly
 user_input = "1 234,56"
@@ -545,7 +545,7 @@ from ftllexengine.parsing.guards import is_valid_decimal
 
 # Formatting: FTLLexEngine
 bundle = FluentBundle("lv_LV")
-formatted = bundle.format_value("price", {"amount": 1234.56})
+formatted, _ = bundle.format_value("price", {"amount": 1234.56})
 
 # Parsing: FTLLexEngine (consistent API)
 user_input = "1 234,56"

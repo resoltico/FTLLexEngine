@@ -764,11 +764,10 @@ class FiscalCalendar:
     def fiscal_quarter(self, d: date) -> int: ...
     def fiscal_month(self, d: date) -> int: ...
     def fiscal_period(self, d: date) -> FiscalPeriod: ...
-    def fiscal_year_start(self, fiscal_year: int) -> date: ...
-    def fiscal_year_end(self, fiscal_year: int) -> date: ...
-    def quarter_start(self, fiscal_year: int, quarter: int) -> date: ...
-    def quarter_end(self, fiscal_year: int, quarter: int) -> date: ...
-    def date_range(self, d: date) -> tuple[date, date]: ...
+    def fiscal_year_start_date(self, fiscal_year: int) -> date: ...
+    def fiscal_year_end_date(self, fiscal_year: int) -> date: ...
+    def quarter_start_date(self, fiscal_year: int, quarter: int) -> date: ...
+    def quarter_end_date(self, fiscal_year: int, quarter: int) -> date: ...
 ```
 
 ### Parameters
@@ -868,11 +867,11 @@ def fiscal_period(self, d: date) -> FiscalPeriod:
 
 ---
 
-## `FiscalCalendar.fiscal_year_start`
+## `FiscalCalendar.fiscal_year_start_date`
 
 ### Signature
 ```python
-def fiscal_year_start(self, fiscal_year: int) -> date:
+def fiscal_year_start_date(self, fiscal_year: int) -> date:
 ```
 
 ### Parameters
@@ -886,11 +885,11 @@ def fiscal_year_start(self, fiscal_year: int) -> date:
 
 ---
 
-## `FiscalCalendar.fiscal_year_end`
+## `FiscalCalendar.fiscal_year_end_date`
 
 ### Signature
 ```python
-def fiscal_year_end(self, fiscal_year: int) -> date:
+def fiscal_year_end_date(self, fiscal_year: int) -> date:
 ```
 
 ### Parameters
@@ -904,11 +903,11 @@ def fiscal_year_end(self, fiscal_year: int) -> date:
 
 ---
 
-## `FiscalCalendar.quarter_start`
+## `FiscalCalendar.quarter_start_date`
 
 ### Signature
 ```python
-def quarter_start(self, fiscal_year: int, quarter: int) -> date:
+def quarter_start_date(self, fiscal_year: int, quarter: int) -> date:
 ```
 
 ### Parameters
@@ -924,11 +923,11 @@ def quarter_start(self, fiscal_year: int, quarter: int) -> date:
 
 ---
 
-## `FiscalCalendar.quarter_end`
+## `FiscalCalendar.quarter_end_date`
 
 ### Signature
 ```python
-def quarter_end(self, fiscal_year: int, quarter: int) -> date:
+def quarter_end_date(self, fiscal_year: int, quarter: int) -> date:
 ```
 
 ### Parameters
@@ -940,24 +939,6 @@ def quarter_end(self, fiscal_year: int, quarter: int) -> date:
 ### Constraints
 - Return: Last day of the fiscal quarter.
 - Raises: `ValueError` if quarter not 1-4.
-- State: Read-only.
-
----
-
-## `FiscalCalendar.date_range`
-
-### Signature
-```python
-def date_range(self, d: date) -> tuple[date, date]:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `d` | `date` | Y | Date within target fiscal year |
-
-### Constraints
-- Return: Tuple of (fiscal_year_start, fiscal_year_end).
 - State: Read-only.
 
 ---

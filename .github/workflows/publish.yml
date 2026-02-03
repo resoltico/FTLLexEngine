@@ -30,7 +30,7 @@ jobs:
             git status
             exit 1
           fi
-          echo "✓ Working tree is clean"
+          echo "Working tree is clean"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -53,7 +53,7 @@ jobs:
           fi
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
-          echo "✓ Detected package: $PACKAGE_NAME"
+          echo "Detected package: $PACKAGE_NAME"
 
       - name: Validate version tag (Release only)
         if: github.event_name == 'release'
@@ -77,12 +77,12 @@ jobs:
             echo "::error::Tag $TAG_VERSION doesn't match package version $PACKAGE_VERSION"
             exit 1
           fi
-          echo "✓ Version validation passed"
+          echo "Version validation passed"
 
       - name: Install dependencies
         run: |
           uv sync --all-groups --locked
-          echo "✓ Locked environment synchronized"
+          echo "Locked environment synchronized"
 
       - name: Validate runtime version matches tag
         if: github.event_name == 'release'
@@ -104,7 +104,7 @@ jobs:
             echo "::error::Update __version__ in src/${PACKAGE}/__init__.py"
             exit 1
           fi
-          echo "✓ Runtime version validation passed"
+          echo "Runtime version validation passed"
 
       - name: Run Quality Checks (Lint & Test)
         run: |
@@ -167,7 +167,7 @@ jobs:
           fi
           set -o pipefail
 
-          echo "✓ Package integrity verified"
+          echo "Package integrity verified"
 
       - name: Debug Artifacts
         if: matrix.python-version == '3.13'
@@ -226,7 +226,7 @@ jobs:
             exit 1
           fi
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "✓ Detected package: $PACKAGE_NAME"
+          echo "Detected package: $PACKAGE_NAME"
 
       - name: Extract version
         id: version
@@ -234,7 +234,7 @@ jobs:
           set -euo pipefail
           VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "✓ Version: $VERSION"
+          echo "Version: $VERSION"
 
       - name: Wait for TestPyPI CDN propagation
         run: |
@@ -283,13 +283,13 @@ jobs:
             echo "::error::Version mismatch: $INSTALLED_VERSION != $EXPECTED_VERSION"
             exit 1
           fi
-          echo "✓ Version verification passed"
+          echo "Version verification passed"
 
       - name: Smoke test
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          python -c "import ${PACKAGE}; print(f'✓ Successfully imported ${PACKAGE}')"
+          python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE}')"
 
   publish:
     needs: build
@@ -335,7 +335,7 @@ jobs:
             exit 1
           fi
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "✓ Detected package: $PACKAGE_NAME"
+          echo "Detected package: $PACKAGE_NAME"
 
       - name: Wait for PyPI CDN propagation
         run: |
@@ -357,7 +357,7 @@ jobs:
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${TAG_VERSION}..."
             pip cache purge || true
             if pip install --no-cache-dir "${PACKAGE}==${TAG_VERSION}"; then
-              echo "✓ Successfully installed ${PACKAGE}==${TAG_VERSION}"
+              echo "Successfully installed ${PACKAGE}==${TAG_VERSION}"
               break
             fi
 
@@ -385,13 +385,13 @@ jobs:
             echo "::error::Version mismatch: $INSTALLED_VERSION != $TAG_VERSION"
             exit 1
           fi
-          echo "✓ Version verification passed"
+          echo "Version verification passed"
 
       - name: Smoke test
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          python -c "import ${PACKAGE}; print(f'✓ Successfully imported ${PACKAGE}')"
+          python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE}')"
 
   verify-python-requirement:
     name: Verify Python 3.13+ Requirement
@@ -411,7 +411,7 @@ jobs:
             exit 1
           fi
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "✓ Detected package: $PACKAGE_NAME"
+          echo "Detected package: $PACKAGE_NAME"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -431,4 +431,4 @@ jobs:
             exit 1
           fi
 
-          echo "✓ Installation correctly blocked on Python 3.12"
+          echo "Installation correctly blocked on Python 3.12"

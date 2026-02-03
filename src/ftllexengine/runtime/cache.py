@@ -681,7 +681,7 @@ class IntegrityCache:
             # Note: sequence NOT reset (monotonic for audit trail)
             # Note: audit log NOT cleared (historical record)
 
-    def get_stats(self) -> dict[str, int | float]:
+    def get_stats(self) -> dict[str, int | float | bool]:
         """Get cache statistics.
 
         Thread-safe. Returns current metrics including integrity stats.

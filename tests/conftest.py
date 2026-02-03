@@ -138,9 +138,29 @@ def pytest_collection_modifyitems(
             return
 
     # Skip fuzz-marked tests in normal test runs
+    # Standardized reason prefix: "FUZZ:" enables reliable skip categorization
     skip_fuzz = pytest.mark.skip(
-        reason="Fuzzing test - run with: ./scripts/run-property-tests.sh or pytest -m fuzz"
+        reason="FUZZ: run with ./scripts/run-property-tests.sh or pytest -m fuzz"
     )
+    fuzz_skip_count = 0
     for item in items:
         if "fuzz" in item.keywords:
             item.add_marker(skip_fuzz)
+            fuzz_skip_count += 1
+
+    # Store count on config for terminal summary hook
+    config._fuzz_skip_count = fuzz_skip_count  # type: ignore[attr-defined]
+
+
+def pytest_terminal_summary(
+    terminalreporter: pytest.TerminalReporter,
+    exitstatus: int,  # noqa: ARG001
+    config: pytest.Config,
+) -> None:
+    """Emit structured fuzz-skip count for test runner parsing."""
+    fuzz_count: int = getattr(config, "_fuzz_skip_count", 0)
+    total_skipped = len(terminalreporter.stats.get("skipped", []))
+    other_count = total_skipped - fuzz_count
+    terminalreporter.write_line(
+        f"[SKIP-BREAKDOWN] fuzz={fuzz_count} other={other_count}"
+    )

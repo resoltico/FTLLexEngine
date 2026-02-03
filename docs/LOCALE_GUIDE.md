@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: locale
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [locale, NUMBER, DATETIME, CURRENCY, formatting, BCP-47, locale normalization, str vs NUMBER]
   questions: ["why isn't my number formatted?", "how does locale formatting work?", "NUMBER vs raw variable?", "how to format numbers with locale?", "how to format currency?"]
@@ -47,6 +47,8 @@ The Fluent specification intentionally separates:
 
 **Reference**: [Project Fluent Guide - Variables](https://projectfluent.org/fluent/guide/variables.html)
 
+**Note**: Examples use `use_isolating=False` for readable output. Default bundles wrap interpolated values in Unicode bidi isolation marks (U+2068/U+2069), which are invisible but present in the string. Never disable bidi isolation in production applications that support RTL languages.
+
 ---
 
 ## NUMBER() Function
@@ -56,7 +58,7 @@ Formats numeric values with locale-appropriate separators and decimal points.
 ```python
 from ftllexengine import FluentBundle
 
-bundle = FluentBundle("de_DE")
+bundle = FluentBundle("de_DE", use_isolating=False)
 bundle.add_resource("""
 raw-count = Count: { $count }
 formatted-count = Count: { NUMBER($count) }
@@ -95,7 +97,7 @@ custom = { NUMBER($value, minimumFractionDigits: 2, maximumFractionDigits: 4) }
 Formats monetary values with currency symbol and locale-appropriate formatting.
 
 ```python
-bundle = FluentBundle("de_DE")
+bundle = FluentBundle("de_DE", use_isolating=False)
 bundle.add_resource("""
 price = { CURRENCY($amount, currency: "EUR") }
 price-code = { CURRENCY($amount, currency: "EUR", currencyDisplay: "code") }
@@ -126,7 +128,7 @@ Formats date/datetime values with locale-appropriate patterns.
 from datetime import datetime
 from ftllexengine import FluentBundle
 
-bundle = FluentBundle("lv_LV")
+bundle = FluentBundle("lv_LV", use_isolating=False)
 bundle.add_resource("""
 raw-date = Date: { $date }
 formatted-date = Date: { DATETIME($date) }

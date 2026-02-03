@@ -102,8 +102,12 @@ def is_indented_continuation(cursor: Cursor) -> bool:
     while not next_cursor.is_eof and next_cursor.current == " ":
         next_cursor = next_cursor.advance()
 
-    # If line starts with special chars, it's not a pattern continuation
-    return not (not next_cursor.is_eof and next_cursor.current in ("[", "*", "."))
+    # If line starts with special chars, it's not a pattern continuation.
+    # '}' is excluded because bare '}' at line start is always a select/placeable
+    # closing brace, never text content (literal '}' is serialized as {"}"}).
+    return not (
+        not next_cursor.is_eof and next_cursor.current in ("[", "*", ".", "}")
+    )
 
 
 def skip_multiline_pattern_start(cursor: Cursor) -> tuple[Cursor, int]:

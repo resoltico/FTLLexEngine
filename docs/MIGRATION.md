@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: migration
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [migration, fluent.runtime, upgrade, breaking changes, mozilla fluent, python fluent]
   questions: ["how to migrate from fluent.runtime?", "how to upgrade to ftllexengine?"]
@@ -131,8 +131,8 @@ bundle = FluentBundle('en-US', use_isolating=True)
 ```
 
 **Changes**:
-- ⚠️ **Single locale string** instead of list: `'en-US'` not `['en-US']`
-- ✅ `use_isolating` parameter works identically
+- [WARN]**Single locale string** instead of list: `'en-US'` not `['en-US']`
+- [OK]`use_isolating` parameter works identically
 
 **Migration**:
 ```python
@@ -179,9 +179,9 @@ bundle.add_resource("""hello = Hello, World!""")
 ```
 
 **Changes**:
-- ✅ **No FluentResource wrapper needed** - pass string directly to `add_resource()`
-- ✅ Simpler API with one less step
-- ℹ️ `parse_ftl()` is for AST introspection only - `add_resource()` accepts strings
+- [OK]**No FluentResource wrapper needed** - pass string directly to `add_resource()`
+- [OK]Simpler API with one less step
+- [NOTE]`parse_ftl()` is for AST introspection only - `add_resource()` accepts strings
 
 **Migration**:
 ```python
@@ -211,14 +211,14 @@ result, errors = bundle.format_pattern(msg.value, {})
 # Direct message ID - no get_message() step needed
 result, errors = bundle.format_pattern('hello', {})
 
-# Or format_value() - identical behavior
+# Or format_value() - same but without attribute= keyword argument
 result, errors = bundle.format_value('hello', {})
 ```
 
 **Changes**:
-- ✅ **Simpler API**: Direct message ID, no `get_message()` step needed
-- ✅ **Same return pattern**: Both return `(result, errors)` tuple
-- ✅ **Cleaner code**: One call instead of two
+- [OK]**Simpler API**: Direct message ID, no `get_message()` step needed
+- [OK]**Same return pattern**: Both return `(result, errors)` tuple
+- [OK]**Cleaner code**: One call instead of two
 
 **Migration**:
 ```python
@@ -289,8 +289,8 @@ result, errors = bundle.format_pattern('login-button', attribute='tooltip')
 ```
 
 **Changes**:
-- ✅ **Much simpler**: Use `attribute` parameter instead of `get_message().attributes[...]`
-- ✅ **No manual attribute lookup**: Bundle handles it
+- [OK]**Much simpler**: Use `attribute` parameter instead of `get_message().attributes[...]`
+- [OK]**No manual attribute lookup**: Bundle handles it
 
 ---
 
@@ -315,8 +315,8 @@ bundle.add_function('NUMBER', NUMBER)
 ```
 
 **Changes**:
-- ✅ **Identical API**: Works the same way
-- ✅ Function names should be UPPERCASE (convention in both)
+- [OK]**Identical API**: Works the same way
+- [OK]Function names should be UPPERCASE (convention in both)
 
 ---
 
@@ -350,11 +350,11 @@ result, errors = l10n.format_value('hello')
 **Note**: `PathResourceLoader` is in `ftllexengine.localization`, not the main package.
 
 **Changes**:
-- ✅ **Similar API**: Both have FluentLocalization for multi-locale
-- ⚠️ **CRITICAL Return difference**:
+- [OK]**Similar API**: Both have FluentLocalization for multi-locale
+- [WARN]**CRITICAL Return difference**:
   - fluent.runtime: Returns just string: `result = l10n.format_value('hello')`
   - FTLLexEngine: Returns tuple: `result, errors = l10n.format_value('hello')` (errors is immutable tuple)
-- ✅ **PathResourceLoader**: Similar to FluentResourceLoader
+- [OK]**PathResourceLoader**: Similar to FluentResourceLoader
 
 ---
 
@@ -438,7 +438,7 @@ print(result)
 | `bundle.add_resource(FluentResource)` | `bundle.add_resource(str)` | Direct string, no wrapper |
 | `bundle.get_message(id).value` then `format_pattern()` | `bundle.format_pattern(id, args)` | Direct formatting - no intermediate Message object needed |
 | `bundle.has_message(id)` | `bundle.has_message(id)` | Identical |
-| N/A | `bundle.format_value(id, args)` | Alias for format_pattern |
+| N/A | `bundle.format_value(id, args)` | Like format_pattern but without attribute= support |
 | N/A | `bundle.get_message_ids()` | List all messages |
 | N/A | `bundle.get_message_variables(id)` | Get required variables |
 | N/A | `bundle.introspect_message(id)` | Full message metadata |
@@ -581,9 +581,9 @@ def format_message(bundle: FluentBundle, msg_id: MessageId, args: dict[str, obje
 ```
 
 **Improvements**:
-- ✅ Full type safety with `mypy --strict`
-- ✅ Type aliases for clarity (`MessageId`)
-- ✅ Modern Python 3.13 dict syntax (`dict[str, object]` vs `Dict[str, Any]`)
+- [OK]Full type safety with `mypy --strict`
+- [OK]Type aliases for clarity (`MessageId`)
+- [OK]Modern Python 3.13 dict syntax (`dict[str, object]` vs `Dict[str, Any]`)
 
 ---
 
@@ -633,10 +633,10 @@ def test_message_formatting():
 
 **Solution**:
 ```python
-# ❌ fluent.runtime syntax
+# [OLD]fluent.runtime syntax
 bundle = FluentBundle(['en-US'])
 
-# ✅ FTLLexEngine syntax
+# [NEW]FTLLexEngine syntax
 bundle = FluentBundle('en-US')
 ```
 
@@ -648,10 +648,10 @@ bundle = FluentBundle('en-US')
 
 **Solution**:
 ```python
-# ❌ fluent.runtime
+# [OLD]fluent.runtime
 from fluent.runtime import FluentResource  # Old library had wrapper class
 
-# ✅ FTLLexEngine - no wrapper needed
+# [NEW]FTLLexEngine - no wrapper needed
 bundle.add_resource(ftl_source)  # Direct string
 
 # Or if you need AST manipulation
@@ -668,11 +668,11 @@ resource_ast = parse_ftl(ftl_source)
 
 **Solution**:
 ```python
-# ❌ fluent.runtime - requires get_message step
+# [OLD]fluent.runtime - requires get_message step
 msg = bundle.get_message('hello')
 result, errors = bundle.format_pattern(msg.value, {})
 
-# ✅ FTLLexEngine - direct message ID
+# [NEW]FTLLexEngine - direct message ID
 result, errors = bundle.format_pattern('hello', {})
 ```
 
@@ -704,32 +704,32 @@ from ftllexengine import FrozenFluentError, ErrorCategory
 
 ### What Works Identically
 
-✅ Custom functions
-✅ Built-in NUMBER and DATETIME functions
-✅ Select expressions and plural rules
-✅ Terms and message references
-✅ Unicode bidi isolation
-✅ Error handling philosophy (graceful degradation)
+[OK]Custom functions
+[OK]Built-in NUMBER and DATETIME functions
+[OK]Select expressions and plural rules
+[OK]Terms and message references
+[OK]Unicode bidi isolation
+[OK]Error handling philosophy (graceful degradation)
 
 ### What's Different
 
-⚠️ Constructor takes single locale, not list
-⚠️ No FluentResource wrapper - direct string to `add_resource()`
-⚠️ Different exception types (but same behavior)
+[WARN]Constructor takes single locale, not list
+[WARN]No FluentResource wrapper - direct string to `add_resource()`
+[WARN]Different exception types (but same behavior)
 Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError, ...]`)
-⚠️ Python 3.13+ required (vs 3.6+)
+[WARN]Python 3.13+ required (vs 3.6+)
 
 ### What's New in FTLLexEngine
 
-✨ `FluentLocalization` for multi-locale
-✨ `PathResourceLoader` for file systems
-✨ `validate_resource()` for pre-flight validation
-✨ `introspect_message()` for metadata
-✨ `get_message_variables()` for variable discovery
-✨ `get_message_ids()` for listing messages
-✨ Full `mypy --strict` type safety
-✨ Python 3.13 modern features
-✨ **Bi-directional parsing** (not in fluent.runtime):
+[NEW]`FluentLocalization` for multi-locale
+[NEW]`PathResourceLoader` for file systems
+[NEW]`validate_resource()` for pre-flight validation
+[NEW]`introspect_message()` for metadata
+[NEW]`get_message_variables()` for variable discovery
+[NEW]`get_message_ids()` for listing messages
+[NEW]Full `mypy --strict` type safety
+[NEW]Python 3.13 modern features
+[NEW]**Bi-directional parsing** (not in fluent.runtime):
   - `parse_number()`, `parse_decimal()` - locale-aware number parsing
   - `parse_date()`, `parse_datetime()` - locale-aware date parsing
   - `parse_currency()` - currency parsing with symbol detection

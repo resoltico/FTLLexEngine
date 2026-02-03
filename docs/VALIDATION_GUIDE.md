@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: validation
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [validation, validate_resource, SemanticValidator, duplicate, cycle detection, FTL validation]
   questions: ["how to validate FTL?", "what validation checks exist?", "where is duplicate detection?", "how to detect cycles?"]
@@ -50,20 +50,16 @@ This separation follows single-responsibility principle: each validator handles 
 ## Quick Start
 
 ```python
-from ftllexengine import parse_ftl
 from ftllexengine.validation import validate_resource
 
-# Parse FTL content
 source = """
 hello = Hello, { $name }!
 -brand = FTLLexEngine
 welcome = Welcome to { -brand }
 """
 
-resource = parse_ftl(source)
-
 # Validate
-result = validate_resource(resource)
+result = validate_resource(source)
 
 if result.is_valid:
     print("Validation passed")
@@ -87,8 +83,7 @@ Converts `Junk` entries (unparseable content) to structured errors.
 ```python
 # FTL with syntax error
 source = "hello = Hello { missing-close"
-resource = parse_ftl(source)
-result = validate_resource(resource)
+result = validate_resource(source)
 # Error: VALIDATION_PARSE_ERROR
 ```
 
@@ -264,20 +259,19 @@ Attempting to consolidate all checks into one validator would create a "god clas
 from ftllexengine import FluentBundle
 
 bundle = FluentBundle("en_US")
-errors = bundle.add_resource("hello = Hello")
+junk_entries = bundle.add_resource("hello = Hello")
 
-if errors:
-    for error in errors:
-        print(f"Load error: {error}")
+if junk_entries:
+    for junk in junk_entries:
+        print(f"Parse error: {junk}")
 ```
 
 For standalone validation without a bundle (CI/CD pipelines, linters):
 
 ```python
-from ftllexengine import parse_ftl
 from ftllexengine.validation import validate_resource
 
-result = validate_resource(parse_ftl(ftl_content))
+result = validate_resource(ftl_content)
 ```
 
 ---
@@ -287,13 +281,13 @@ result = validate_resource(parse_ftl(ftl_content))
 ```python
 @dataclass
 class ValidationResult:
-    errors: list[ValidationError]    # Blocking issues
-    warnings: list[ValidationWarning] # Non-blocking issues
-    annotations: list[Annotation]    # Parser annotations
+    errors: tuple[ValidationError, ...]    # Blocking issues
+    warnings: tuple[ValidationWarning, ...] # Non-blocking issues
+    annotations: tuple[Annotation, ...]    # Parser annotations
 
     @property
     def is_valid(self) -> bool:
-        return len(self.errors) == 0
+        return len(self.errors) == 0 and len(self.annotations) == 0
 ```
 
 **Error vs Warning**:

@@ -23,11 +23,28 @@ Patterns:
 - deep_nesting: Deeply nested placeables and references
 - roundtrip_verify: Parse-serialize-reparse identity check
 
+Pattern Routing:
+Pattern selection is embedded in fuzzed bytes via FuzzedDataProvider so
+that crash files are self-contained and replayable. The weighted schedule
+preserves proportional coverage distribution while allowing libFuzzer to
+reproduce findings from crash artifacts.
+
+Custom Mutator:
+Structure-aware mutation: parse valid FTL, apply AST-level mutations
+(swap variants, duplicate attributes, mutate keys, nest placeables,
+shuffle entries), serialize, then apply byte-level mutation on top.
+
+Finding Artifacts:
+When a finding is detected, the fuzzer writes human-readable artifacts to
+.fuzz_corpus/structured/findings/ containing the actual FTL source, S1, S2,
+and metadata JSON. These artifacts enable debugging without Atheris.
+
 Metrics:
 - Pattern coverage (10 patterns with weighted selection)
+- Weight skew detection (actual vs intended distribution)
 - Performance profiling (min/mean/median/p95/p99/max)
 - Real memory usage (RSS via psutil)
-- Error distribution and contract violations
+- Corpus retention rate and eviction tracking
 - Seed corpus management
 
 Requires Python 3.13+ (uses PEP 695 type aliases).
@@ -38,80 +55,59 @@ from __future__ import annotations
 import argparse
 import atexit
 import contextlib
+import datetime
+import gc
 import hashlib
-import heapq
 import json
 import logging
-import os
 import pathlib
-import statistics
+import random
 import string
 import sys
 import time
-from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
-# --- Dependency Checks with Clear Errors ---
-_MISSING_DEPS: list[str] = []
+# --- Dependency Checks ---
+_psutil_mod: Any = None
+_atheris_mod: Any = None
 
-try:
-    import psutil
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import psutil as _psutil_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("psutil")
-    psutil = None  # type: ignore[assignment]
+    pass
 
-try:
-    import atheris
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import atheris as _atheris_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("atheris")
-    atheris = None  # type: ignore[assignment]
+    pass
 
-if _MISSING_DEPS:
-    print("-" * 80, file=sys.stderr)
-    print("ERROR: Missing required dependencies for fuzzing:", file=sys.stderr)
-    for dep in _MISSING_DEPS:
-        print(f"  - {dep}", file=sys.stderr)
-    print("", file=sys.stderr)
-    print("Install with: uv sync --group atheris", file=sys.stderr)
-    print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
-    print("-" * 80, file=sys.stderr)
-    sys.exit(1)
+from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
+    GC_INTERVAL,
+    BaseFuzzerState,
+    build_base_stats_dict,
+    build_weighted_schedule,
+    check_dependencies,
+    emit_final_report,
+    get_process,
+    record_iteration_metrics,
+    record_memory,
+)
 
-# --- PEP 695 Type Aliases ---
-type FuzzStats = dict[str, int | str | float | list[Any]]
-type InterestingInput = tuple[float, str, str]  # (duration_ms, pattern, input_hash)
+check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
 
+import atheris  # noqa: E402  # pylint: disable=C0412,C0413
 
-# --- Observability State ---
+# --- Domain Metrics ---
+
 @dataclass
-class FuzzerState:
-    """Global fuzzer state for observability and metrics."""
+class StructuredMetrics:
+    """Domain-specific metrics for structured fuzzer."""
 
-    # Core stats
-    iterations: int = 0
-    findings: int = 0
-    status: str = "incomplete"
-
-    # Performance tracking (bounded deques)
-    performance_history: deque[float] = field(default_factory=lambda: deque(maxlen=10000))
-    memory_history: deque[float] = field(default_factory=lambda: deque(maxlen=1000))
-
-    # Pattern coverage
-    pattern_coverage: dict[str, int] = field(default_factory=dict)
-    error_counts: dict[str, int] = field(default_factory=dict)
-
-    # Interesting inputs (max-heap for slowest, in-memory corpus)
-    slowest_operations: list[InterestingInput] = field(default_factory=list)
-    seed_corpus: dict[str, str] = field(default_factory=dict)
-
-    # Memory baseline
-    initial_memory_mb: float = 0.0
-
-    # Structured-specific metrics
     parse_successes: int = 0
     parse_junk_entries: int = 0
     roundtrip_successes: int = 0
@@ -119,28 +115,11 @@ class FuzzerState:
     corruption_tests: int = 0
     deep_nesting_tests: int = 0
 
-    # Corpus productivity
-    corpus_entries_added: int = 0
 
-    # Per-pattern wall time (ms)
-    pattern_wall_time: dict[str, float] = field(default_factory=dict)
+# --- Global State ---
 
-    # Configuration
-    checkpoint_interval: int = 500
-    seed_corpus_max_size: int = 1000
-
-
-# Global state instance
-_state = FuzzerState()
-_process: psutil.Process | None = None
-
-
-def _get_process() -> psutil.Process:
-    """Lazy-initialize psutil process handle."""
-    global _process  # noqa: PLW0603  # pylint: disable=global-statement
-    if _process is None:
-        _process = psutil.Process(os.getpid())
-    return _process
+_state = BaseFuzzerState(seed_corpus_max_size=1000)
+_domain = StructuredMetrics()
 
 
 # Exception contract
@@ -152,126 +131,163 @@ IDENTIFIER_REST = string.ascii_letters + string.digits + "-_"
 TEXT_CHARS = string.ascii_letters + string.digits + " .,!?'-"
 SPECIAL_CHARS = "\t\n\r\x00\x1f\x7f\u200b\ufeff"
 
-# Weighted patterns for scenario selection
-_PATTERNS: Sequence[str] = (
-    "simple_messages",
-    "variable_messages",
-    "term_definitions",
-    "attribute_messages",
-    "select_expressions",
-    "comment_entries",
-    "multi_entry",
-    "corrupted_input",
-    "deep_nesting",
-    "roundtrip_verify",
+# Pattern weights: (name, weight)
+_PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
+    ("simple_messages", 10),
+    ("variable_messages", 12),
+    ("term_definitions", 8),
+    ("attribute_messages", 10),
+    ("select_expressions", 15),
+    ("comment_entries", 5),
+    ("multi_entry", 15),
+    ("corrupted_input", 10),
+    ("deep_nesting", 8),
+    ("roundtrip_verify", 7),
 )
-_PATTERN_WEIGHTS: Sequence[int] = (10, 12, 8, 10, 15, 5, 15, 10, 8, 7)
+
+_PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
+    [name for name, _ in _PATTERN_WEIGHTS],
+    [weight for _, weight in _PATTERN_WEIGHTS],
+)
+
+# Register intended weights for skew detection
+_state.pattern_intended_weights = {name: float(weight) for name, weight in _PATTERN_WEIGHTS}
 
 
 class StructuredFuzzError(Exception):
     """Raised when an unexpected exception is detected during structured fuzzing."""
 
 
-def _build_stats_dict() -> FuzzStats:
-    """Build stats dictionary for JSON report."""
-    stats: FuzzStats = {
-        "status": _state.status,
-        "iterations": _state.iterations,
-        "findings": _state.findings,
-    }
+# --- Reporting ---
 
-    # Performance percentiles
-    if _state.performance_history:
-        perf_data = list(_state.performance_history)
-        n = len(perf_data)
-        stats["perf_mean_ms"] = round(statistics.mean(perf_data), 3)
-        stats["perf_median_ms"] = round(statistics.median(perf_data), 3)
-        stats["perf_min_ms"] = round(min(perf_data), 3)
-        stats["perf_max_ms"] = round(max(perf_data), 3)
-        if n >= 20:
-            quantiles = statistics.quantiles(perf_data, n=20)
-            stats["perf_p95_ms"] = round(quantiles[18], 3)
-        if n >= 100:
-            quantiles = statistics.quantiles(perf_data, n=100)
-            stats["perf_p99_ms"] = round(quantiles[98], 3)
+_REPORT_DIR = pathlib.Path(".fuzz_corpus") / "structured"
 
-    # Memory tracking
-    if _state.memory_history:
-        mem_data = list(_state.memory_history)
-        stats["memory_mean_mb"] = round(statistics.mean(mem_data), 2)
-        stats["memory_peak_mb"] = round(max(mem_data), 2)
-        stats["memory_delta_mb"] = round(max(mem_data) - _state.initial_memory_mb, 2)
 
-        if len(mem_data) >= 40:
-            first_quarter = mem_data[: len(mem_data) // 4]
-            last_quarter = mem_data[-(len(mem_data) // 4) :]
-            first_avg = statistics.mean(first_quarter)
-            last_avg = statistics.mean(last_quarter)
-            growth_mb = last_avg - first_avg
-            stats["memory_leak_detected"] = 1 if growth_mb > 10.0 else 0
-            stats["memory_growth_mb"] = round(growth_mb, 2)
-        else:
-            stats["memory_leak_detected"] = 0
-            stats["memory_growth_mb"] = 0.0
+def _build_stats_dict() -> dict[str, Any]:
+    """Build complete stats dictionary including domain metrics."""
+    stats = build_base_stats_dict(_state)
 
-    # Pattern coverage
-    stats["patterns_tested"] = len(_state.pattern_coverage)
-    for pattern, count in sorted(_state.pattern_coverage.items()):
-        stats[f"pattern_{pattern}"] = count
-
-    # Error distribution
-    stats["error_types"] = len(_state.error_counts)
-    for error_type, count in sorted(_state.error_counts.items()):
-        clean_key = error_type[:50].replace("<", "").replace(">", "")
-        stats[f"error_{clean_key}"] = count
-
-    # Structured-specific metrics
-    stats["parse_successes"] = _state.parse_successes
-    stats["parse_junk_entries"] = _state.parse_junk_entries
-    stats["roundtrip_successes"] = _state.roundtrip_successes
-    stats["roundtrip_mismatches"] = _state.roundtrip_mismatches
-    stats["corruption_tests"] = _state.corruption_tests
-    stats["deep_nesting_tests"] = _state.deep_nesting_tests
-
-    # Corpus stats
-    stats["seed_corpus_size"] = len(_state.seed_corpus)
-    stats["corpus_entries_added"] = _state.corpus_entries_added
-    stats["slowest_operations_tracked"] = len(_state.slowest_operations)
-
-    # Per-pattern wall time
-    for pattern, total_ms in sorted(_state.pattern_wall_time.items()):
-        stats[f"wall_time_ms_{pattern}"] = round(total_ms, 1)
+    # Domain-specific metrics
+    stats["parse_successes"] = _domain.parse_successes
+    stats["parse_junk_entries"] = _domain.parse_junk_entries
+    stats["roundtrip_successes"] = _domain.roundtrip_successes
+    stats["roundtrip_mismatches"] = _domain.roundtrip_mismatches
+    stats["corruption_tests"] = _domain.corruption_tests
+    stats["deep_nesting_tests"] = _domain.deep_nesting_tests
 
     return stats
 
 
-def _emit_final_report() -> None:
-    """Emit comprehensive final report (crash-proof, writes to stderr and file)."""
-    _state.status = "complete"
+def _emit_report() -> None:
+    """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
-    report = json.dumps(stats, sort_keys=True)
+    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_structured_report.json")
 
-    print(f"\n[SUMMARY-JSON-BEGIN]{report}[SUMMARY-JSON-END]", file=sys.stderr, flush=True)
 
+atexit.register(_emit_report)
+
+
+# --- Finding Artifacts ---
+
+_FINDINGS_DIR = _REPORT_DIR / "findings"
+
+
+def _write_finding_artifact(
+    *,
+    source: str,
+    s1: str,
+    s2: str,
+    pattern: str,
+    entry_count_1: int,
+    entry_count_2: int,
+) -> None:
+    """Write human-readable finding artifacts to disk for post-mortem debugging.
+
+    Artifacts are plain text files that can be inspected without Atheris and
+    used as regression test inputs. All I/O errors are suppressed to avoid
+    masking the StructuredFuzzError that triggered the write.
+    """
     try:
-        report_file = (
-            pathlib.Path(".fuzz_corpus") / "structured" / "fuzz_structured_report.json"
+        _FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        _state.finding_counter += 1
+        prefix = f"finding_{_state.finding_counter:04d}"
+
+        # Source FTL
+        (_FINDINGS_DIR / f"{prefix}_source.ftl").write_text(source, encoding="utf-8")
+
+        # Serialized outputs
+        (_FINDINGS_DIR / f"{prefix}_s1.ftl").write_text(s1, encoding="utf-8")
+        (_FINDINGS_DIR / f"{prefix}_s2.ftl").write_text(s2, encoding="utf-8")
+
+        # Compute first diff position
+        diff_pos = next(
+            (i for i, (a, b) in enumerate(zip(s1, s2, strict=False)) if a != b),
+            min(len(s1), len(s2)),
         )
-        report_file.parent.mkdir(parents=True, exist_ok=True)
-        report_file.write_text(report, encoding="utf-8")
+
+        # Metadata
+        meta = {
+            "iteration": _state.iterations,
+            "pattern": pattern,
+            "timestamp": datetime.datetime.now(tz=datetime.UTC).isoformat(),
+            "source_len": len(source),
+            "s1_len": len(s1),
+            "s2_len": len(s2),
+            "source_hash": hashlib.sha256(
+                source.encode("utf-8", errors="surrogatepass"),
+            ).hexdigest(),
+            "s1_hash": hashlib.sha256(
+                s1.encode("utf-8", errors="surrogatepass"),
+            ).hexdigest(),
+            "s2_hash": hashlib.sha256(
+                s2.encode("utf-8", errors="surrogatepass"),
+            ).hexdigest(),
+            "entries_parse1": entry_count_1,
+            "entries_parse2": entry_count_2,
+            "diff_offset": diff_pos,
+        }
+        (_FINDINGS_DIR / f"{prefix}_meta.json").write_text(
+            json.dumps(meta, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+        print(
+            f"\n[FINDING] Artifacts written to {_FINDINGS_DIR / prefix}_*.ftl",
+            file=sys.stderr,
+            flush=True,
+        )
     except OSError:
-        pass
+        pass  # Finding artifacts are best-effort; StructuredFuzzError is primary signal
 
-
-atexit.register(_emit_final_report)
 
 # --- Suppress logging and instrument imports ---
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
+# Enable string and regex comparison instrumentation for better coverage
+# of message ID lookups, pattern-based parsing, and selector key matching
+atheris.enabled_hooks.add("str")
+atheris.enabled_hooks.add("RegEx")
+
 with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine.syntax.ast import Junk
+    from ftllexengine.syntax.ast import (
+        Identifier,
+        Junk,
+        Message,
+        Placeable,
+        Resource,
+        SelectExpression,
+        StringLiteral,
+        Term,
+    )
     from ftllexengine.syntax.parser import FluentParserV1
-    from ftllexengine.syntax.serializer import FluentSerializer
+    from ftllexengine.syntax.serializer import FluentSerializer, serialize
+
+# Module-level reusable instances (criticism #7: avoid per-call allocation)
+_parser = FluentParserV1()
+_serializer = FluentSerializer()
+
+# Plural categories for AST-level mutations
+_PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
 
 # --- FTL Generators ---
@@ -393,9 +409,7 @@ def _generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
 
     num_variants = fdp.ConsumeIntInRange(2, 5) if fdp.remaining_bytes() else 2
     default_idx = (
-        fdp.ConsumeIntInRange(0, num_variants - 1)
-        if fdp.remaining_bytes()
-        else num_variants - 1
+        fdp.ConsumeIntInRange(0, num_variants - 1) if fdp.remaining_bytes() else num_variants - 1
     )
 
     variants = []
@@ -478,21 +492,115 @@ def _generate_deep_nesting(fdp: atheris.FuzzedDataProvider) -> str:
     return result
 
 
-# --- Pattern Selection ---
+# --- AST-Level Mutations ---
 
 
-def _select_pattern(fdp: atheris.FuzzedDataProvider) -> str:
-    """Select a test pattern using weighted distribution."""
-    total = sum(_PATTERN_WEIGHTS)
-    choice = fdp.ConsumeIntInRange(0, total - 1)
+def _mutate_ast(ast: Resource, seed: int) -> Resource:
+    """Apply structural mutations to AST before serialization.
 
-    cumulative = 0
-    for i, w in enumerate(_PATTERN_WEIGHTS):
-        cumulative += w
-        if choice < cumulative:
-            return _PATTERNS[i]
+    Uses seed for deterministic mutation selection so crash files
+    reproduce the exact mutation that triggered a finding.
+    All AST nodes are frozen=True, so mutations use dataclasses.replace().
+    """
+    rng = random.Random(seed)
+    entries = list(ast.entries)
+    if not entries:
+        return ast
 
-    return _PATTERNS[0]
+    mut_type = rng.randint(0, 4)
+
+    match mut_type:
+        case 0:
+            entries = _mut_swap_variants(entries, rng)
+        case 1:
+            entries = _mut_duplicate_attribute(entries, rng)
+        case 2:
+            entries = _mut_variant_keys(entries, rng)
+        case 3:
+            entries = _mut_nest_placeable(entries, rng)
+        case 4:
+            rng.shuffle(entries)
+
+    return Resource(entries=tuple(entries))
+
+
+def _mut_swap_variants(entries: list[Any], rng: random.Random) -> list[Any]:
+    """Swap variant order in a SelectExpression."""
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, (Message, Term)) or entry.value is None:
+            continue
+        for elem in entry.value.elements:
+            if isinstance(elem, Placeable) and isinstance(elem.expression, SelectExpression):
+                sel = elem.expression
+                if len(sel.variants) >= 2:
+                    variants = list(sel.variants)
+                    j = rng.randint(0, len(variants) - 2)
+                    variants[j], variants[j + 1] = variants[j + 1], variants[j]
+                    new_sel = dc_replace(sel, variants=tuple(variants))
+                    new_elem = dc_replace(elem, expression=new_sel)
+                    new_elements = tuple(
+                        new_elem if e is elem else e for e in entry.value.elements
+                    )
+                    new_pattern = dc_replace(entry.value, elements=new_elements)
+                    entries[i] = dc_replace(entry, value=new_pattern)
+                    return entries
+    return entries
+
+
+def _mut_duplicate_attribute(entries: list[Any], rng: random.Random) -> list[Any]:
+    """Duplicate an attribute with a mutated identifier."""
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, (Message, Term)) or not entry.attributes:
+            continue
+        attr = rng.choice(entry.attributes)
+        new_id = Identifier(name=attr.id.name + "x")
+        new_attr = dc_replace(attr, id=new_id)
+        entries[i] = dc_replace(entry, attributes=(*entry.attributes, new_attr))
+        return entries
+    return entries
+
+
+def _mut_variant_keys(entries: list[Any], rng: random.Random) -> list[Any]:
+    """Mutate variant keys by swapping plural categories."""
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, (Message, Term)) or entry.value is None:
+            continue
+        for elem in entry.value.elements:
+            if isinstance(elem, Placeable) and isinstance(elem.expression, SelectExpression):
+                sel = elem.expression
+                if sel.variants:
+                    variants = list(sel.variants)
+                    j = rng.randint(0, len(variants) - 1)
+                    v = variants[j]
+                    if isinstance(v.key, Identifier):
+                        new_key = Identifier(name=rng.choice(_PLURAL_CATEGORIES))
+                        variants[j] = dc_replace(v, key=new_key)
+                        new_sel = dc_replace(sel, variants=tuple(variants))
+                        new_elem = dc_replace(elem, expression=new_sel)
+                        new_elements = tuple(
+                            new_elem if e is elem else e for e in entry.value.elements
+                        )
+                        new_pattern = dc_replace(entry.value, elements=new_elements)
+                        entries[i] = dc_replace(entry, value=new_pattern)
+                        return entries
+    return entries
+
+
+def _mut_nest_placeable(entries: list[Any], _rng: random.Random) -> list[Any]:
+    """Wrap a string literal in an additional Placeable layer."""
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, (Message, Term)) or entry.value is None:
+            continue
+        for idx, elem in enumerate(entry.value.elements):
+            if isinstance(elem, Placeable) and isinstance(elem.expression, StringLiteral):
+                inner = Placeable(expression=elem.expression)
+                new_elem = dc_replace(elem, expression=inner)
+                new_elements = list(entry.value.elements)
+                new_elements[idx] = new_elem
+                new_pattern = dc_replace(entry.value, elements=tuple(new_elements))
+                entries[i] = dc_replace(entry, value=new_pattern)
+                return entries
+    return entries
 
 
 # --- Verification ---
@@ -504,33 +612,64 @@ def _verify_roundtrip(source: str, parser: FluentParserV1) -> None:
 
     # Skip roundtrip if parse produced junk
     if any(isinstance(e, Junk) for e in result.entries):
-        _state.parse_junk_entries += 1
+        _domain.parse_junk_entries += 1
         return
 
-    _state.parse_successes += 1
+    _domain.parse_successes += 1
 
-    serializer = FluentSerializer()
     try:
-        serialized = serializer.serialize(result)
+        serialized = _serializer.serialize(result)
         reparsed = parser.parse(serialized)
 
         # Entry count must match
         if len(result.entries) != len(reparsed.entries):
-            _state.roundtrip_mismatches += 1
+            _domain.roundtrip_mismatches += 1
+            _write_finding_artifact(
+                source=source,
+                s1=serialized,
+                s2="<entry count mismatch -- S2 not computed>",
+                pattern="roundtrip_verify",
+                entry_count_1=len(result.entries),
+                entry_count_2=len(reparsed.entries),
+            )
             msg = (
                 f"Round-trip entry count mismatch: "
-                f"{len(result.entries)} -> {len(reparsed.entries)}"
+                f"{len(result.entries)} -> {len(reparsed.entries)}\n"
+                f"Source ({len(source)} chars): {source[:300]!r}\n"
+                f"S1 ({len(serialized)} chars): {serialized[:300]!r}"
             )
             raise StructuredFuzzError(msg)
 
         # Convergence: serialize(reparse(serialize(parse(x)))) == serialize(parse(x))
-        reserialized = serializer.serialize(reparsed)
+        reserialized = _serializer.serialize(reparsed)
         if serialized != reserialized:
-            _state.roundtrip_mismatches += 1
-            msg = "Round-trip convergence failure: S(P(S(P(x)))) != S(P(x))"
+            _domain.roundtrip_mismatches += 1
+            diff_pos = next(
+                (
+                    i for i, (a, b)
+                    in enumerate(zip(serialized, reserialized, strict=False))
+                    if a != b
+                ),
+                min(len(serialized), len(reserialized)),
+            )
+            _write_finding_artifact(
+                source=source,
+                s1=serialized,
+                s2=reserialized,
+                pattern="roundtrip_verify",
+                entry_count_1=len(result.entries),
+                entry_count_2=len(reparsed.entries),
+            )
+            msg = (
+                f"Round-trip convergence failure: S(P(S(P(x)))) != S(P(x))\n"
+                f"Source ({len(source)} chars): {source[:300]!r}\n"
+                f"S1 ({len(serialized)} chars): {serialized[:300]!r}\n"
+                f"S2 ({len(reserialized)} chars): {reserialized[:300]!r}\n"
+                f"First diff at byte {diff_pos}"
+            )
             raise StructuredFuzzError(msg)
 
-        _state.roundtrip_successes += 1
+        _domain.roundtrip_successes += 1
 
     except ALLOWED_EXCEPTIONS:
         pass
@@ -541,56 +680,43 @@ def _parse_and_check(source: str, parser: FluentParserV1) -> None:
     result = parser.parse(source)
 
     if any(isinstance(e, Junk) for e in result.entries):
-        _state.parse_junk_entries += 1
+        _domain.parse_junk_entries += 1
     else:
-        _state.parse_successes += 1
+        _domain.parse_successes += 1
 
     # Non-trivial input should produce entries
-    if (
-        len(result.entries) == 0
-        and len(source.strip()) > 10
-        and "corruption" not in source[:50]
-    ):
+    if len(result.entries) == 0 and len(source.strip()) > 10 and "corruption" not in source[:50]:
         _state.findings += 1
         msg = f"Empty AST for non-trivial input: {source[:100]!r}"
         raise StructuredFuzzError(msg)
 
 
-# --- Seed Corpus Management ---
+# --- Custom Mutator ---
 
 
-def _track_slowest_operation(duration_ms: float, pattern: str, source: str) -> None:
-    """Track top 10 slowest operations using max-heap."""
-    input_hash = hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass"),
-    ).hexdigest()[:16]
-    entry: InterestingInput = (-duration_ms, pattern, input_hash)
+def _custom_mutator(data: bytes, max_size: int, seed: int) -> bytes:
+    """Structure-aware mutator: parse, mutate AST, serialize, byte-mutate.
 
-    if len(_state.slowest_operations) < 10:
-        heapq.heappush(_state.slowest_operations, entry)
-    elif -duration_ms < _state.slowest_operations[0][0]:
-        heapq.heapreplace(_state.slowest_operations, entry)
+    AST-level mutations (swap variants, duplicate attributes, mutate keys,
+    nest placeables, shuffle entries) are applied before serialization.
+    LibFuzzer byte-level mutation is then applied on top for fine-grained
+    exploration around structurally valid inputs.
+    """
+    try:
+        source = data.decode("utf-8", errors="replace")
+        ast = _parser.parse(source)
 
+        if ast.entries and not any(isinstance(e, Junk) for e in ast.entries):
+            mutated_ast = _mutate_ast(ast, seed)
+            serialized = serialize(mutated_ast)
+            result = serialized.encode("utf-8")
+            if len(result) <= max_size:
+                return atheris.Mutate(result, max_size)
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
 
-def _track_seed_corpus(source: str, pattern: str, duration_ms: float) -> None:
-    """Track interesting inputs with FIFO eviction."""
-    is_interesting = (
-        duration_ms > 50.0
-        or "deep_nesting" in pattern
-        or "corrupted" in pattern
-        or "roundtrip" in pattern
-    )
-
-    if is_interesting:
-        input_hash = hashlib.sha256(
-            source.encode("utf-8", errors="surrogatepass"),
-        ).hexdigest()[:16]
-        if input_hash not in _state.seed_corpus:
-            if len(_state.seed_corpus) >= _state.seed_corpus_max_size:
-                oldest_key = next(iter(_state.seed_corpus))
-                del _state.seed_corpus[oldest_key]
-            _state.seed_corpus[input_hash] = source
-            _state.corpus_entries_added += 1
+    # Fallback: standard byte-level mutation
+    return atheris.Mutate(data, max_size)
 
 
 # --- Main Entry Point ---
@@ -600,20 +726,23 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     """Atheris entry point: generate structured FTL and detect crashes."""
     # Initialize memory baseline
     if _state.iterations == 0:
-        _state.initial_memory_mb = _get_process().memory_info().rss / (1024 * 1024)
+        _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
 
     _state.iterations += 1
     _state.status = "running"
 
     # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_final_report()
+        _emit_report()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
 
-    # Select pattern
-    pattern = _select_pattern(fdp)
+    # Select pattern from fuzzed bytes so crash files are self-contained.
+    if not fdp.remaining_bytes():
+        return  # No data to consume
+    pattern_idx = fdp.ConsumeIntInRange(0, len(_PATTERN_SCHEDULE) - 1)
+    pattern = _PATTERN_SCHEDULE[pattern_idx]
     _state.pattern_coverage[pattern] = _state.pattern_coverage.get(pattern, 0) + 1
 
     parser = FluentParserV1(max_source_size=1024 * 1024, max_nesting_depth=100)
@@ -655,19 +784,19 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
                 _parse_and_check(source, parser)
 
             case "corrupted_input":
-                _state.corruption_tests += 1
+                _domain.corruption_tests += 1
                 source = _generate_ftl_resource(fdp)
                 if fdp.remaining_bytes() and len(source) > 0:
                     pos = fdp.ConsumeIntInRange(0, len(source) - 1)
                     corruption = fdp.ConsumeUnicodeNoSurrogates(
                         min(3, fdp.remaining_bytes()),
                     )
-                    source = source[:pos] + corruption + source[pos + 1:]
+                    source = source[:pos] + corruption + source[pos + 1 :]
                 with contextlib.suppress(*ALLOWED_EXCEPTIONS):
                     parser.parse(source)
 
             case "deep_nesting":
-                _state.deep_nesting_tests += 1
+                _domain.deep_nesting_tests += 1
                 source = _generate_deep_nesting(fdp)
                 with contextlib.suppress(*ALLOWED_EXCEPTIONS):
                     _parse_and_check(source, parser)
@@ -703,20 +832,21 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         raise StructuredFuzzError(msg) from e
 
     finally:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        _state.performance_history.append(elapsed_ms)
-
-        _state.pattern_wall_time[pattern] = (
-            _state.pattern_wall_time.get(pattern, 0.0) + elapsed_ms
+        is_interesting = (
+            "deep_nesting" in pattern
+            or "corrupted" in pattern
+            or "roundtrip" in pattern
+            or (time.perf_counter() - start_time) * 1000 > 50.0
         )
+        record_iteration_metrics(_state, pattern, start_time, data, is_interesting=is_interesting)
 
-        _track_slowest_operation(elapsed_ms, pattern, source)
-        _track_seed_corpus(source, pattern, elapsed_ms)
+        # Break reference cycles from Atheris instrumentation
+        if _state.iterations % GC_INTERVAL == 0:
+            gc.collect()
 
         # Memory tracking (every 100 iterations)
         if _state.iterations % 100 == 0:
-            current_mb = _get_process().memory_info().rss / (1024 * 1024)
-            _state.memory_history.append(current_mb)
+            record_memory(_state)
 
 
 def main() -> None:
@@ -742,6 +872,12 @@ def main() -> None:
     _state.checkpoint_interval = args.checkpoint_interval
     _state.seed_corpus_max_size = args.seed_corpus_size
 
+    # Inject -rss_limit_mb default if not already specified.
+    # AST allocations can accumulate between gc passes; 4096 MB provides
+    # headroom while catching true leaks before system OOM-kill.
+    if not any(arg.startswith("-rss_limit_mb") for arg in remaining):
+        remaining.append("-rss_limit_mb=4096")
+
     sys.argv = [sys.argv[0], *remaining]
 
     print()
@@ -751,11 +887,14 @@ def main() -> None:
     print("Target:     FluentParserV1, FluentSerializer (grammar-aware construction)")
     print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
     print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
+    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
+    print(f"Routing:    FDP-based weighted selection (schedule length: {len(_PATTERN_SCHEDULE)})")
+    print("Mutator:    Custom (AST mutation + byte mutation)")
     print("Stopping:   Press Ctrl+C (findings auto-saved)")
     print("=" * 80)
     print()
 
-    atheris.Setup(sys.argv, test_one_input)
+    atheris.Setup(sys.argv, test_one_input, custom_mutator=_custom_mutator)
     atheris.Fuzz()
 
 

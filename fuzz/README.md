@@ -1,8 +1,8 @@
 ---
 afad: "3.2"
-version: "0.97.0"
+version: "0.102.0"
 domain: fuzzing
-updated: "2026-01-31"
+updated: "2026-02-02"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -24,14 +24,14 @@ route:
 | `fuzz_fiscal.py` | `parsing.fiscal` | 7 | 15 (.bin) | Fiscal calendar arithmetic |
 | `fuzz_integrity.py` | `validation`, `runtime.bundle`, `integrity` | 23 | 68 (.ftl) + 2 (.bin) | Semantic validation, cross-resource |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
-| `fuzz_lock.py` | `runtime.rwlock` | 13 | 24 (.bin) | RWLock concurrency primitives |
+| `fuzz_lock.py` | `runtime.rwlock` | 17 | 32 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `parsing.numbers` | 19 | 70 (.txt) | Locale-aware numeric parsing |
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
-| `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) | Parser-serializer convergence |
+| `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) + 4 (.ftl) | Parser-serializer convergence |
 | `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 73 (.bin) | Full runtime stack, strict mode |
 | `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 12 | 12 (.bin) | Variable scoping, term isolation, depth guards |
-| `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 12 (.ftl) | Grammar-aware AST construction |
+| `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) | Grammar-aware AST construction |
 
 ## Module Coverage Matrix
 
@@ -284,23 +284,29 @@ Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookup
 
 ## `fuzz_lock`
 
-Target: `runtime.rwlock.RWLock`, `with_read_lock`, `with_write_lock` -- reader/writer exclusion, reentrancy, downgrading, timeout, deadlock detection.
+Target: `runtime.rwlock.RWLock`, `with_read_lock`, `with_write_lock` -- reader/writer exclusion, reentrancy, downgrading, timeout, deadlock detection, negative timeout rejection, release-without-acquire rejection, zero-timeout non-blocking paths.
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `LockMetrics` dataclass (deadlocks detected, timeouts, thread creation count, max concurrent threads). Weight skew detection compares actual vs intended pattern distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default. Corpus retention rate and eviction tracking enabled.
 
 ### Patterns
 
-Ordered cheapest-first. Pattern selection uses `ConsumeBytes(2)` with modulo to distribute uniformly across the weight space, avoiding the tail-entry overflow bias inherent in `ConsumeIntInRange` cumulative scans. Seed files use 2-byte big-endian suffixes targeting each pattern's weight range.
+Ordered cheapest-first. Pattern selection uses `ConsumeBytes(2)` with modulo to distribute uniformly across the weight space, avoiding the tail-entry overflow bias inherent in `ConsumeIntInRange` cumulative scans. Seed files use 2-byte big-endian headers targeting each pattern's weight range.
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `reentrant_reads` | 5 | Same thread acquires read lock N times |
 | `reentrant_writes` | 5 | Same thread acquires write lock N times |
+| `negative_timeout` | 4 | Negative timeout raises ValueError, lock still usable |
+| `release_without_acquire` | 4 | Release without acquire raises RuntimeError, lock still usable |
 | `upgrade_rejection` | 8 | Read-to-write upgrade raises RuntimeError |
 | `decorator_correctness` | 6 | with_read_lock/with_write_lock return values |
+| `zero_timeout_nonblocking` | 5 | timeout=0.0 fails immediately when lock held, sub-1ms |
 | `write_to_read_downgrade` | 10 | Writer acquires reads, persist after write release |
 | `rapid_lock_cycling` | 8 | Shared counter correct after rapid cycles |
 | `cross_thread_handoff` | 6 | Rapid write handoff between threads, no lost entries |
 | `concurrent_readers` | 12 | Multiple readers hold lock simultaneously |
 | `timeout_acquisition` | 8 | TimeoutError raised, lock usable after timeout |
+| `downgrade_then_contention` | 8 | Converted reads block writers, properly releasable |
 | `reader_writer_exclusion` | 15 | No concurrent reader+writer, no multi-writer |
 | `writer_preference` | 10 | Waiting writer blocks new readers (fuzz-controlled timing) |
 | `reader_starvation` | 6 | Continuous readers cannot starve waiting writer |
@@ -308,7 +314,7 @@ Ordered cheapest-first. Pattern selection uses `ConsumeBytes(2)` with modulo to 
 
 ### Allowed Exceptions
 
-`RuntimeError`, `TimeoutError` -- expected from upgrade rejection, lock protocol violations, and timeout-based acquisition.
+`RuntimeError`, `TimeoutError`, `ValueError` -- expected from upgrade rejection, lock protocol violations, negative timeout rejection, and timeout-based acquisition.
 
 ---
 
@@ -406,6 +412,10 @@ Target: `syntax.parser.FluentParserV1` -- small inputs producing massive ASTs ("
 
 Target: `syntax.parser.FluentParserV1`, `syntax.serializer.serialize` -- parser-serializer convergence property S(P(S(P(x)))) == S(P(x)) across all grammar productions.
 
+Pattern selection is FDP-based: the pattern index is consumed from fuzzed bytes via `FuzzedDataProvider.ConsumeIntInRange`, so crash files are self-contained and replayable without external iteration state. String and RegEx instrumentation hooks enabled for deeper coverage of identifier lookups and pattern-based parsing. Custom mutator parses valid FTL, applies AST-level mutations (swap variants, duplicate attributes, mutate variant keys, nest placeables, shuffle entries) using `dataclasses.replace()` on frozen AST nodes, serializes, then applies byte-level mutation on top. Multi-pass convergence checks (S2 == S3 == S4) verify serialization stabilizes within 3 passes. AST structural comparison (ignoring spans) catches bugs where serialization normalizes structural differences that string comparison misses. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+When a convergence failure is detected, the fuzzer writes finding artifacts (source.ftl, s1.ftl, s2.ftl, meta.json) to `.fuzz_corpus/roundtrip/findings/`. These artifacts enable post-mortem debugging without Atheris and can be replayed via `python fuzz/replay_finding.py`.
+
 ### Patterns
 
 | Pattern | Weight | Invariants Checked |
@@ -422,7 +432,7 @@ Target: `syntax.parser.FluentParserV1`, `syntax.serializer.serialize` -- parser-
 | `mixed_resource` | 12 | Multiple entry types combined |
 | `deep_nesting` | 5 | String literals, nested variable refs |
 | `raw_unicode` | 5 | Random Unicode junk-free convergence |
-| `convergence_stress` | 5 | Multi-pass S2 == S3 stabilization |
+| `convergence_stress` | 5 | Multi-pass S2 == S3 == S4 stabilization |
 
 ### Allowed Exceptions
 
@@ -434,7 +444,7 @@ Target: `syntax.parser.FluentParserV1`, `syntax.serializer.serialize` -- parser-
 
 Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, caching, concurrency, security.
 
-Scenario and security sub-pattern selection uses deterministic weighted round-robin driven by the iteration counter, not fuzzed bytes. This prevents libFuzzer's coverage-guided mutations from skewing the scenario distribution (observed: concurrent at 52% instead of intended 10% when routing was byte-driven). All fuzzed bytes now go to FTL content and configuration generation. String and RegEx instrumentation hooks enabled for deeper coverage of message ID lookups, selector matching, and pattern-based parsing.
+Scenario and security sub-pattern selection is FDP-based: the scenario index is consumed from fuzzed bytes via `FuzzedDataProvider.ConsumeIntInRange`, so crash files are self-contained and replayable without external iteration state. The weighted schedule preserves proportional coverage distribution. String and RegEx instrumentation hooks enabled for deeper coverage of message ID lookups, selector matching, and pattern-based parsing. Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `RuntimeMetrics` dataclass. Weight skew detection compares actual vs intended scenario distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
@@ -501,6 +511,10 @@ Target: `runtime.resolver` (via `FluentBundle`) -- variable scoping, term argume
 
 Target: `syntax.parser.FluentParserV1`, `syntax.serializer.FluentSerializer` -- grammar-aware AST construction and roundtrip verification.
 
+Pattern selection is FDP-based: the pattern index is consumed from fuzzed bytes via `FuzzedDataProvider.ConsumeIntInRange`, so crash files are self-contained and replayable without external iteration state. String and RegEx instrumentation hooks enabled for deeper coverage of identifier lookups and pattern-based parsing. Custom mutator parses valid FTL, applies AST-level mutations (swap variants, duplicate attributes, mutate variant keys, nest placeables, shuffle entries), serializes, then applies byte-level mutation on top. Module-level `FluentSerializer` instance reused across iterations (avoids per-call allocation). Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+When a convergence failure is detected, the fuzzer writes finding artifacts (source.ftl, s1.ftl, s2.ftl, meta.json) to `.fuzz_corpus/structured/findings/`. These artifacts enable post-mortem debugging without Atheris and can be replayed via `python fuzz/replay_finding.py`.
+
 ### Patterns
 
 | Pattern | Weight | Invariants Checked |
@@ -524,13 +538,23 @@ Target: `syntax.parser.FluentParserV1`, `syntax.serializer.FluentSerializer` -- 
 
 ## Observability Standard
 
-All fuzzers share:
+All fuzzers import shared infrastructure from `fuzz_common.py` (`BaseFuzzerState`, metrics, reporting) and compose domain-specific metrics via separate dataclasses:
 
-- `FuzzerState` dataclass with bounded deques
+- `BaseFuzzerState` dataclass with bounded deques (shared via `fuzz_common`)
+- Domain metrics: `RoundtripMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics` (per-fuzzer)
 - psutil RSS memory tracking with leak detection (quartile comparison)
 - Performance percentiles: min/mean/median/p95/p99/max
 - Per-pattern wall-time accumulation
+- Weight skew detection: actual vs intended distribution per pattern, warns when >3x deviation
+- Corpus retention rate: `corpus_evictions` / `corpus_entries_added` tracks FIFO churn
 - Crash-proof JSON report via `atexit` (stderr + `.fuzz_corpus/<target>/`)
 - argparse CLI (`--checkpoint-interval`, `--seed-corpus-size`)
 - Top-10 slowest operations (max-heap)
-- FIFO seed corpus management with configurable max size
+- FIFO seed corpus management (`dict[str, bytes]`) with configurable max size and eviction tracking
+- FDP-based weighted pattern routing (crash files self-contained and replayable)
+- `atheris.enabled_hooks` for `str` and `RegEx` comparison feedback
+- Periodic `gc.collect()` every 256 iterations
+- `-rss_limit_mb=4096` default safety net
+- Custom mutator (roundtrip, structured): AST-level mutations + byte-level mutation for structurally valid inputs
+- Finding artifact system (roundtrip, structured): source/s1/s2/meta.json written to `.fuzz_corpus/<target>/findings/`
+- `replay_finding.py`: standalone reproduction of finding artifacts without Atheris instrumentation

@@ -1165,7 +1165,7 @@ class FluentLocalization:
             for bundle in self._bundles.values():
                 bundle.clear_cache()
 
-    def get_cache_stats(self) -> dict[str, int | float] | None:
+    def get_cache_stats(self) -> dict[str, int | float | bool] | None:
         """Get aggregate cache statistics across all initialized bundles.
 
         Aggregates cache metrics from all bundles that have been created.

@@ -25,6 +25,7 @@ from ftllexengine.constants import (
     MAX_LOCALE_CACHE_SIZE,
     MAX_TERRITORY_CACHE_SIZE,
 )
+from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.locale_utils import normalize_locale
 
 if TYPE_CHECKING:
@@ -53,23 +54,7 @@ __all__ = [
     "BabelImportError",
 ]
 
-
-# ============================================================================
-# EXCEPTIONS
-# ============================================================================
-
-
-class BabelImportError(ImportError):
-    """Raised when Babel is required but not installed.
-
-    Provides installation guidance to users.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(
-            "Babel is required for ISO introspection features. "
-            "Install with: pip install ftllexengine[babel]"
-        )
+_BABEL_FEATURE = "ISO introspection"
 
 
 # ============================================================================
@@ -136,7 +121,7 @@ def _get_babel_locale(locale_str: str) -> object:
     try:
         from babel import Locale  # noqa: PLC0415
     except ImportError as e:
-        raise BabelImportError from e
+        raise BabelImportError(_BABEL_FEATURE) from e
     return Locale.parse(locale_str)
 
 
@@ -178,7 +163,7 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
         from babel import Locale  # noqa: PLC0415
         from babel.numbers import get_currency_name  # noqa: PLC0415
     except ImportError as e:
-        raise BabelImportError from e
+        raise BabelImportError(_BABEL_FEATURE) from e
     try:
         # Validate code exists in CLDR currency data before getting name
         # Babel returns input code if not found, so we check explicitly
@@ -208,7 +193,7 @@ def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
     try:
         from babel.numbers import get_currency_symbol  # noqa: PLC0415
     except ImportError as e:
-        raise BabelImportError from e
+        raise BabelImportError(_BABEL_FEATURE) from e
     try:
         return get_currency_symbol(code, locale=locale_str)
     except (ValueError, LookupError, KeyError, AttributeError):
@@ -235,7 +220,7 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
     try:
         from babel.core import get_global  # noqa: PLC0415
     except ImportError as e:
-        raise BabelImportError from e
+        raise BabelImportError(_BABEL_FEATURE) from e
     try:
         # Data format: list of (code, start_date, end_date, tender)
         # end_date=None means still active; tender=True means legal tender

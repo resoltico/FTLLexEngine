@@ -615,6 +615,24 @@ class FluentBundle:
         """
         return self._max_expansion_size
 
+    @property
+    def function_registry(self) -> FunctionRegistry:
+        """Get the function registry for this bundle (read-only).
+
+        Provides read access to the registered formatting functions without
+        requiring access to private attributes.
+
+        Returns:
+            FunctionRegistry: The function registry for this bundle
+
+        Example:
+            >>> bundle = FluentBundle("en")
+            >>> registry = bundle.function_registry
+            >>> "NUMBER" in registry
+            True
+        """
+        return self._function_registry
+
     @classmethod
     def for_system_locale(
         cls,
@@ -1569,7 +1587,7 @@ class FluentBundle:
             # Mark bundle as modified for context manager tracking
             self._modified_in_context = True
 
-    def get_cache_stats(self) -> dict[str, int | float] | None:
+    def get_cache_stats(self) -> dict[str, int | float | bool] | None:
         """Get cache statistics.
 
         Returns:

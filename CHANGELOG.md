@@ -13,6 +13,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-02-03
+
+### Added
+
+- **`FluentBundle.function_registry` read-only property** (API-BUNDLE-REGISTRY-001):
+  - Provides public access to the `FunctionRegistry` without requiring `bundle._function_registry` (SLF001 violation)
+  - Location: `runtime/bundle.py`
+
+### Fixed
+
+- **`IntegrityCache.get_stats()` return type annotation omitted `bool`** (FIX-CACHE-STATS-TYPE-001):
+  - Return type was `dict[str, int | float]` but actual returned dict includes `bool` values for `write_once`, `strict`, and `audit_enabled` keys
+  - While technically valid in Python (bool subclasses int), the annotation was misleading for static analysis and IDE tooling
+  - Updated to `dict[str, int | float | bool]` in `IntegrityCache.get_stats()`, `FluentBundle.get_cache_stats()`, and `FluentLocalization.get_cache_stats()`
+  - Location: `runtime/cache.py`, `runtime/bundle.py`, `localization.py`
+
+- **Duplicate `BabelImportError` class in `introspection/iso.py`** (FIX-BABEL-IMPORT-DUP-001):
+  - `iso.py` defined its own `BabelImportError` with a no-arg constructor, incompatible with the canonical version in `core/babel_compat.py` (which takes `feature: str`)
+  - Replaced with import from `core.babel_compat`; all call sites now pass `"ISO introspection"` as the feature name
+  - Location: `introspection/iso.py`
+
+- **`LocaleContext` allowed direct `__init__` bypassing factory validation** (FIX-LOCALE-CTX-INIT-001):
+  - `LocaleContext.__init__` was publicly callable, bypassing the `create()` factory's locale validation and cache management
+  - Added sentinel-based guard via `_factory_token` field; direct construction now raises `TypeError`
+  - Location: `runtime/locale_context.py`
+
+- **Roundtrip convergence failure on select expressions with indented closing brace** (BUG-CONTINUATION-CLOSEBRACE-001):
+  - `is_indented_continuation()` did not exclude `}` from the continuation character set, only `[`, `*`, `.`
+  - The serializer outputs `\n }` (indented closing brace) at the end of select expressions; on re-parse, this line was misidentified as a pattern continuation, injecting a phantom newline into the AST
+  - Each parse-serialize cycle added a blank continuation line (`\n    `), growing output by 5 bytes and preventing convergence: `S(P(x)) != S(P(S(P(x))))`
+  - Fix: Added `}` to the exclusion set in `is_indented_continuation()`; bare `}` at a continuation line start is always a select/placeable closing brace (literal `}` in text is serialized as `{ "}" }`)
+  - Location: `syntax/parser/whitespace.py` `is_indented_continuation()`
+  - Impact: All select expression patterns now achieve roundtrip idempotence regardless of variant content or whitespace structure
+
 ## [0.101.0] - 2026-02-01
 
 ### Breaking Changes
@@ -3192,6 +3226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.102.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.102.0
 [0.101.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.101.0
 [0.100.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.100.0
 [0.99.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.99.0

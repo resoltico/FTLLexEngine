@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: RUNTIME
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -457,7 +457,7 @@ def should_inject_locale(self, ftl_name: str) -> bool:
 - Return: True if locale should be injected for this call.
 - Logic: Checks callable's `_ftl_requires_locale` attribute set by `@fluent_function(inject_locale=True)`.
 - Thread: Safe.
-- Access: Via `bundle._function_registry.should_inject_locale(name)` or registry instance.
+- Access: Via `bundle.function_registry.should_inject_locale(name)` or registry instance.
 
 ---
 
@@ -1191,7 +1191,7 @@ class IntegrityCache:
         max_errors_per_entry: int = 50,
         *,
         write_once: bool = False,
-        strict: bool = False,
+        strict: bool = True,
         enable_audit: bool = False,
         max_audit_entries: int = 10000,
     ) -> None: ...
@@ -1231,13 +1231,24 @@ Retrieve cached format result with integrity verification.
 
 ### Signature
 ```python
-def get(self, key: CacheKey) -> IntegrityCacheEntry | None:
+def get(
+    self,
+    message_id: str,
+    args: Mapping[str, FluentValue] | None,
+    attribute: str | None,
+    locale_code: str,
+    use_isolating: bool,
+) -> IntegrityCacheEntry | None:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `key` | `CacheKey` | Y | Cache key (message_id, args_hash). |
+| `message_id` | `str` | Y | Message identifier. |
+| `args` | `Mapping[str, FluentValue] \| None` | Y | Message arguments (may contain unhashable values). |
+| `attribute` | `str \| None` | Y | Attribute name. |
+| `locale_code` | `str` | Y | Locale code. |
+| `use_isolating` | `bool` | Y | Whether Unicode isolation marks are used. |
 
 ### Constraints
 - Return: IntegrityCacheEntry if found and valid, None otherwise.
@@ -1255,7 +1266,11 @@ Store format result with integrity checksum.
 ```python
 def put(
     self,
-    key: CacheKey,
+    message_id: str,
+    args: Mapping[str, FluentValue] | None,
+    attribute: str | None,
+    locale_code: str,
+    use_isolating: bool,
     formatted: str,
     errors: tuple[FrozenFluentError, ...],
 ) -> None:
@@ -1264,7 +1279,11 @@ def put(
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `key` | `CacheKey` | Y | Cache key (message_id, args_hash). |
+| `message_id` | `str` | Y | Message identifier. |
+| `args` | `Mapping[str, FluentValue] \| None` | Y | Message arguments (may contain unhashable values). |
+| `attribute` | `str \| None` | Y | Attribute name. |
+| `locale_code` | `str` | Y | Locale code. |
+| `use_isolating` | `bool` | Y | Whether Unicode isolation marks are used. |
 | `formatted` | `str` | Y | Formatted message result. |
 | `errors` | `tuple[FrozenFluentError, ...]` | Y | Frozen errors from resolution. |
 

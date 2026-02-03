@@ -83,7 +83,7 @@ def example_1_format_never_raises() -> None:
 
     # Run the property test
     test_format_never_raises()
-    print("✓ Property verified: format_pattern() never raises exceptions\n")
+    print("Property verified: format_pattern() never raises exceptions\n")
 
 
 # ==============================================================================
@@ -145,7 +145,7 @@ def example_2_parse_serialize_roundtrip() -> None:
         assert len(resource1.entries) == len(resource2.entries)
 
     test_roundtrip_idempotent()
-    print("✓ Property verified: parse/serialize roundtrip is idempotent\n")
+    print("Property verified: parse/serialize roundtrip is idempotent\n")
 
 
 # ==============================================================================
@@ -186,7 +186,7 @@ def example_3_message_count_invariant() -> None:
         assert all(bundle.has_message(msg_id) for msg_id in message_ids)
 
     test_message_count_consistent()
-    print("✓ Property verified: message count invariant holds\n")
+    print("Property verified: message count invariant holds\n")
 
 
 # ==============================================================================
@@ -227,7 +227,7 @@ def example_4_fallback_chain_symmetry() -> None:
         assert result == f"Value from {locales[0]}"
 
     test_first_locale_wins()
-    print("✓ Property verified: fallback chain symmetry holds\n")
+    print("Property verified: fallback chain symmetry holds\n")
 
 
 # ==============================================================================
@@ -277,7 +277,7 @@ def example_5_batch_equals_individual() -> None:
         assert batch_result == individual_result
 
     test_batch_equals_individual()
-    print("✓ Property verified: batch extraction equals individual\n")
+    print("Property verified: batch extraction equals individual\n")
 
 
 # ==============================================================================
@@ -378,7 +378,7 @@ def example_6_stateful_bundle_testing() -> None:
         state_machine.add_message("goodbye", "Goodbye")
         state_machine.check_invariants()
 
-        print("✓ Stateful properties verified successfully\n")
+        print("Stateful properties verified successfully\n")
     except AssertionError as e:
         # AssertionError: Invariant violated
         # Note: Parser uses Junk nodes for syntax errors, never raises exceptions
@@ -474,7 +474,7 @@ def example_7_custom_ftl_strategies() -> None:
         assert bundle.has_message(message_id)
 
     test_valid_ftl_always_parses()
-    print("✓ Custom FTL strategies work correctly\n")
+    print("Custom FTL strategies work correctly\n")
 
 
 # ==============================================================================

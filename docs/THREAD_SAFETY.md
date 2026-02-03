@@ -48,7 +48,7 @@ bundle._locale       # str, immutable
 bundle._messages     # dict, populated once
 bundle._terms        # dict, populated once
 bundle._cache        # IntegrityCache, same instance forever
-bundle._registry     # FunctionRegistry, copied from input
+bundle._functions    # FunctionRegistry, copied from input
 ```
 
 **Not Thread-Safe**:
@@ -220,12 +220,12 @@ async def parse_ftl_async(source: str) -> Resource:
 
 ```python
 class FluentBundle:
-    def __init__(self, locale: str, registry: FunctionRegistry | None = None):
+    def __init__(self, locale: str, /, *, functions: FunctionRegistry | None = None):
         # Always copy to prevent external mutation affecting this bundle
-        if registry is not None:
-            self._registry = registry.copy()
+        if functions is not None:
+            self._functions = functions.copy()
         else:
-            self._registry = get_builtin_registry().copy()
+            self._functions = get_builtin_registry().copy()
 ```
 
 **Guarantees**:

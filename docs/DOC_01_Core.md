@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: CORE
-updated: "2026-01-31"
+updated: "2026-02-03"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -212,7 +212,7 @@ def format_pattern(
 
 ### Constraints
 - Return: Tuple of (formatted_string, errors).
-- Raises: Never. All errors collected in tuple.
+- Raises: `FormattingIntegrityError` in strict mode if ANY error occurs. In non-strict mode (default), never raises; all errors collected in tuple.
 - State: Read-only (may update cache).
 - Thread: Safe for concurrent reads.
 - Duplicate Attributes: When message has duplicate attributes with same name, last attribute wins (per Fluent spec).
@@ -238,7 +238,7 @@ def format_value(
 
 ### Constraints
 - Return: Tuple of (formatted_string, errors).
-- Raises: Never.
+- Raises: `FormattingIntegrityError` in strict mode if ANY error occurs. In non-strict mode (default), never raises.
 - State: Read-only.
 - Thread: Safe.
 
@@ -449,7 +449,7 @@ def clear_cache(self) -> None:
 
 ### Signature
 ```python
-def get_cache_stats(self) -> dict[str, int | float] | None:
+def get_cache_stats(self) -> dict[str, int | float | bool] | None:
 ```
 
 ### Parameters
@@ -457,7 +457,7 @@ def get_cache_stats(self) -> dict[str, int | float] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Dict with size/hits/misses (int) and hit_rate (float 0.0-100.0), or None if disabled.
+- Return: Dict with size/hits/misses (int), hit_rate (float 0.0-100.0), write_once/strict/audit_enabled (bool), or None if disabled.
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
@@ -638,6 +638,90 @@ def strict(self) -> bool:
 - State: Read-only property.
 - Thread: Safe.
 - Note: When True, any formatting error raises FormattingIntegrityError. Errors are cached before raising; cache hits re-raise without re-resolution.
+
+---
+
+## `FluentBundle.cache_usage`
+
+### Signature
+```python
+@property
+def cache_usage(self) -> int:
+```
+
+### Constraints
+- Return: Current number of cached format results.
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+
+---
+
+## `FluentBundle.max_expansion_size`
+
+### Signature
+```python
+@property
+def max_expansion_size(self) -> int:
+```
+
+### Constraints
+- Return: Maximum total characters produced during resolution.
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+- Default: 1000000.
+
+---
+
+## `FluentBundle.max_nesting_depth`
+
+### Signature
+```python
+@property
+def max_nesting_depth(self) -> int:
+```
+
+### Constraints
+- Return: Maximum placeable nesting depth.
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+- Default: 100.
+
+---
+
+## `FluentBundle.max_source_size`
+
+### Signature
+```python
+@property
+def max_source_size(self) -> int:
+```
+
+### Constraints
+- Return: Maximum FTL source size in characters.
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+- Default: 10485760.
+
+---
+
+## `FluentBundle.function_registry`
+
+### Signature
+```python
+@property
+def function_registry(self) -> FunctionRegistry:
+```
+
+### Constraints
+- Return: The `FunctionRegistry` for this bundle.
+- Raises: None.
+- State: Read-only property.
+- Thread: Safe.
+- Version: Added in v0.102.0.
 
 ---
 
@@ -1123,7 +1207,7 @@ def clear_cache(self) -> None:
 
 ### Signature
 ```python
-def get_cache_stats(self) -> dict[str, int | float] | None:
+def get_cache_stats(self) -> dict[str, int | float | bool] | None:
 ```
 
 ### Parameters
