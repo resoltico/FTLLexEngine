@@ -56,7 +56,7 @@ class TestFunctionSignature:
             python_name="test_func",
             ftl_name="TEST",
             param_mapping=(("minimumValue", "minimum_value"),),
-            callable=lambda x: str(x),
+            callable=str,
         )
 
         assert sig.python_name == "test_func"

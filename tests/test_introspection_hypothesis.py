@@ -10,7 +10,9 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.introspection import extract_variables, introspect_message
-from ftllexengine.syntax.ast import Message
+from ftllexengine.syntax.ast import (
+    Message,
+)
 from ftllexengine.syntax.parser import FluentParserV1
 
 # ============================================================================

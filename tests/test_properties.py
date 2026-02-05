@@ -115,7 +115,7 @@ class TestResolverProperties:
 
         # Extract message ID
         if " = " in message:
-            msg_id = message.split(" = ")[0].strip()
+            msg_id = message.split(" = ", maxsplit=1)[0].strip()
 
             # Format twice with same args
             result1 = bundle.format_pattern(msg_id, {})

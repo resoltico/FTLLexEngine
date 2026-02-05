@@ -32,6 +32,7 @@ from ftllexengine.syntax.ast import (
     Pattern,
     Placeable,
     Resource,
+    SelectExpression,
     Variant,
 )
 from ftllexengine.syntax.parser import FluentParserV1
@@ -172,7 +173,6 @@ class TestValidatorErrorPaths:
             Variant(key=v.key, value=v.value, default=False) for v in select_expr.variants
         )
 
-        from ftllexengine.syntax.ast import SelectExpression  # noqa: PLC0415
 
         with pytest.raises(ValueError, match="exactly one default variant"):
             SelectExpression(

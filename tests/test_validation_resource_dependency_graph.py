@@ -13,7 +13,7 @@ Coverage targets:
 
 from __future__ import annotations
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import (
@@ -610,7 +610,15 @@ class TestAttributeReferenceProperties:
 
         Attribute-qualified message reference "base.attr" should always
         create a "msg:base.attr" node when "base" exists.
+
+        Events emitted:
+        - id_length_base={bucket}: Length category of base identifier
+        - id_length_attr={bucket}: Length category of attribute identifier
         """
+        # Emit events for identifier length diversity
+        event(f"id_length_base={'short' if len(base_id) <= 3 else 'long'}")
+        event(f"id_length_attr={'short' if len(attr_id) <= 3 else 'long'}")
+
         base_msg = Message(
             id=Identifier(base_id),
             value=Pattern(elements=(TextElement("value"),)),
@@ -658,7 +666,15 @@ class TestAttributeReferenceProperties:
 
         Attribute-qualified term reference "-base.attr" should always
         create a "term:base.attr" node when "-base" exists.
+
+        Events emitted:
+        - term_id_length_base={bucket}: Length category of base term identifier
+        - term_id_length_attr={bucket}: Length category of attribute identifier
         """
+        # Emit events for identifier length diversity
+        event(f"term_id_length_base={'short' if len(base_id) <= 3 else 'long'}")
+        event(f"term_id_length_attr={'short' if len(attr_id) <= 3 else 'long'}")
+
         base_term = Term(
             id=Identifier(base_id),
             value=Pattern(elements=(TextElement("value"),)),

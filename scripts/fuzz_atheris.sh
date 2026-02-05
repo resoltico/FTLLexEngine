@@ -114,7 +114,7 @@ declare -a PARAM_ORDER  # Preserve discovery order for deterministic help
 
 # Dynamic Plugin Discovery
 discover_plugins() {
-    local fuzz_dir="$PROJECT_ROOT/fuzz"
+    local fuzz_dir="$PROJECT_ROOT/fuzz_atheris"
     for file in "$fuzz_dir"/fuzz_*.py; do
         if [[ -f "$file" ]]; then
             # Find the FUZZ_PLUGIN line
@@ -308,7 +308,7 @@ EOF
 
 COMMANDS:
     --list              List all crashes and finding artifacts
-    --corpus            Run corpus health check (fuzz_corpus_health.py)
+    --corpus            Run corpus health check (fuzz_atheris_corpus_health.py)
     --minimize TARGET FILE   Minimize a crash input using the specified target
     --replay TARGET [DIR]    Replay finding artifacts without Atheris
     --clean TARGET           Clean corpus for a specific target
@@ -324,15 +324,15 @@ OPTIONS:
 EXAMPLES:
     ./scripts/fuzz_atheris.sh currency --time 60
     ./scripts/fuzz_atheris.sh stability --workers 8
-    ./scripts/fuzz_atheris.sh --minimize currency .fuzz_corpus/crash_abc123
+    ./scripts/fuzz_atheris.sh --minimize currency .fuzz_atheris_corpus/crash_abc123
     ./scripts/fuzz_atheris.sh --replay structured
-    ./scripts/fuzz_atheris.sh --replay structured .fuzz_corpus/structured/findings/
+    ./scripts/fuzz_atheris.sh --replay structured .fuzz_atheris_corpus/structured/findings/
     ./scripts/fuzz_atheris.sh --clean roundtrip
 EOF
 }
 
 run_list() {
-    local corpus_dir="$PROJECT_ROOT/.fuzz_corpus"
+    local corpus_dir="$PROJECT_ROOT/.fuzz_atheris_corpus"
 
     if [[ ! -d "$corpus_dir" ]]; then
         echo "No corpus directory found."
@@ -407,7 +407,7 @@ run_list() {
 }
 
 run_corpus_health() {
-    local health_script="$PROJECT_ROOT/scripts/fuzz_corpus_health.py"
+    local health_script="$PROJECT_ROOT/scripts/fuzz_atheris_corpus_health.py"
     if [[ ! -f "$health_script" ]]; then
         log_error "Corpus health script not found: $health_script"
         exit 1
@@ -418,7 +418,7 @@ run_corpus_health() {
 
 parse_and_display_report() {
     local target_key="$1"
-    local corpus_dir="$PROJECT_ROOT/.fuzz_corpus/$target_key"
+    local corpus_dir="$PROJECT_ROOT/.fuzz_atheris_corpus/$target_key"
 
     # Try to read JSON report from file (written during fuzzing)
     local report_file="$corpus_dir/fuzz_${target_key}_report.json"
@@ -548,7 +548,7 @@ run_fuzz_target() {
     run_diagnostics
 
     # Per-target corpus directory prevents cross-contamination between fuzzers
-    local corpus_dir="$PROJECT_ROOT/.fuzz_corpus/$target_key"
+    local corpus_dir="$PROJECT_ROOT/.fuzz_atheris_corpus/$target_key"
     mkdir -p "$corpus_dir"
 
     # Build args array (proper quoting)
@@ -565,7 +565,7 @@ run_fuzz_target() {
     fuzz_args+=("$corpus_dir")
 
     # Add target-specific seed corpus (required; no fallback to generic seeds)
-    local seed_dir="$PROJECT_ROOT/fuzz/seeds/$target_key"
+    local seed_dir="$PROJECT_ROOT/fuzz_atheris/seeds/$target_key"
     if [[ -d "$seed_dir" ]]; then
         fuzz_args+=("$seed_dir")
         log_verbose "Using target-specific seeds: $seed_dir"
@@ -573,7 +573,7 @@ run_fuzz_target() {
         log_warn "No seed directory found: $seed_dir (fuzzer will start from empty corpus)"
     fi
 
-    # Run fuzzer (report will be written to .fuzz_corpus/fuzz_<target>_report.json)
+    # Run fuzzer (report will be written to .fuzz_atheris_corpus/fuzz_<target>_report.json)
     local exit_code=0
     uv run --group atheris python "$target_script" "${fuzz_args[@]}" || exit_code=$?
 
@@ -584,7 +584,7 @@ run_fuzz_target() {
 
         # Auto-replay finding artifacts to check if they reproduce without Atheris
         local findings_dir="$corpus_dir/findings"
-        local replay_script="$PROJECT_ROOT/fuzz/replay_finding.py"
+        local replay_script="$PROJECT_ROOT/fuzz_atheris/fuzz_atheris_replay_finding.py"
         if [[ -d "$findings_dir" ]] && [[ -f "$replay_script" ]]; then
             echo ""
             echo -e "${BOLD}Auto-replaying findings without Atheris instrumentation...${NC}"
@@ -607,7 +607,7 @@ run_replay() {
 
     # Default findings directory based on target
     if [[ -z "$findings_dir" ]]; then
-        findings_dir="$PROJECT_ROOT/.fuzz_corpus/$target_key/findings"
+        findings_dir="$PROJECT_ROOT/.fuzz_atheris_corpus/$target_key/findings"
     fi
 
     if [[ ! -d "$findings_dir" ]]; then
@@ -616,7 +616,7 @@ run_replay() {
         exit 1
     fi
 
-    local replay_script="$PROJECT_ROOT/fuzz/replay_finding.py"
+    local replay_script="$PROJECT_ROOT/fuzz_atheris/fuzz_atheris_replay_finding.py"
     if [[ ! -f "$replay_script" ]]; then
         log_error "Replay script not found: $replay_script"
         exit 1
@@ -745,7 +745,7 @@ while [[ $# -gt 0 ]]; do
             if [[ $# -lt 3 ]]; then
                 log_error "--minimize requires TARGET and FILE arguments"
                 echo "Usage: ./scripts/fuzz_atheris.sh --minimize TARGET FILE"
-                echo "Example: ./scripts/fuzz_atheris.sh --minimize currency .fuzz_corpus/crash_abc123"
+                echo "Example: ./scripts/fuzz_atheris.sh --minimize currency .fuzz_atheris_corpus/crash_abc123"
                 exit 1
             fi
             MINIMIZE_TARGET="$2"
@@ -832,7 +832,7 @@ case "$MODE" in
         run_replay "$REPLAY_TARGET" "$REPLAY_DIR"
         ;;
     clean)
-        CLEAN_DIR="$PROJECT_ROOT/.fuzz_corpus/$TARGET"
+        CLEAN_DIR="$PROJECT_ROOT/.fuzz_atheris_corpus/$TARGET"
         if [[ ! -d "$CLEAN_DIR" ]]; then
             echo -e "${YELLOW}[WARN]${NC} No corpus directory found for target '$TARGET': $CLEAN_DIR"
             exit 0

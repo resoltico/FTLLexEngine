@@ -59,7 +59,7 @@ htmlcov/
 .hypothesis/
 
 # Atheris/libFuzzer corpus (binary seeds, machine-specific)
-.fuzz_corpus/
+.fuzz_atheris_corpus/
 
 # Type checking
 .mypy_cache/

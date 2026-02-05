@@ -12,6 +12,7 @@ from ftllexengine.core.babel_compat import (
     BabelImportError,
     get_babel_dates,
     get_babel_numbers,
+    get_cldr_version,
     get_locale_class,
     get_unknown_locale_error,
     is_babel_available,
@@ -527,3 +528,50 @@ class TestBabelCompatModuleExports:
             from ftllexengine.core.babel_compat import (
                 get_babel_locale,  # noqa: F401
             )
+
+
+class TestGetCldrVersion:
+    """Tests for get_cldr_version() function."""
+
+    def test_returns_string(self) -> None:
+        """get_cldr_version() returns a version string."""
+        version = get_cldr_version()
+        assert isinstance(version, str)
+        assert version  # Non-empty
+
+    def test_returns_valid_version_format(self) -> None:
+        """Version string is a valid CLDR version number."""
+        version = get_cldr_version()
+        # CLDR versions are numeric (e.g., "47", "46.1")
+        # May be integer-like or contain a dot
+        assert version.replace(".", "").isdigit() or version.isdigit()
+
+    def test_idempotence(self) -> None:
+        """get_cldr_version returns consistent results."""
+        version1 = get_cldr_version()
+        version2 = get_cldr_version()
+        version3 = get_cldr_version()
+        assert version1 == version2 == version3
+
+    def test_babel_218_minimum_cldr_version(self) -> None:
+        """Babel 2.18.0+ returns CLDR 47 or higher."""
+        version = get_cldr_version()
+        # CLDR version should be at least 47 with Babel 2.18.0
+        major_version = int(version.split(".", maxsplit=1)[0])
+        assert major_version >= 47
+
+    def test_importable_from_introspection(self) -> None:
+        """get_cldr_version is available from introspection module."""
+        from ftllexengine.introspection import get_cldr_version as introspection_cldr
+
+        version = introspection_cldr()
+        assert isinstance(version, str)
+        assert version
+
+    def test_matches_babel_direct_call(self) -> None:
+        """get_cldr_version returns same value as direct Babel call."""
+        from babel.core import get_cldr_version as babel_cldr_version
+
+        wrapper_result = get_cldr_version()
+        direct_result = babel_cldr_version()
+        assert wrapper_result == direct_result

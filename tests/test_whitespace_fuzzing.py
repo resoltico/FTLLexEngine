@@ -16,7 +16,7 @@ Whitespace Bug Categories Tested:
 - Tab rejection per FTL specification
 
 This file is marked with pytest.mark.fuzz and is excluded from normal test
-runs. Run via: ./scripts/run-property-tests.sh or pytest -m fuzz
+runs. Run via: ./scripts/fuzz_hypofuzz.sh --deep or pytest -m fuzz
 """
 
 from __future__ import annotations

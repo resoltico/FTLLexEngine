@@ -97,7 +97,7 @@ Or with pip:
 pip install ftllexengine[babel]
 ```
 
-**Requirements**: Python >= 3.13 | Babel >= 2.17
+**Requirements**: Python >= 3.13 | Babel >= 2.18
 
 <details>
 <summary>Parser-only installation (no Babel dependency)</summary>

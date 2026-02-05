@@ -291,6 +291,10 @@ def test_package_not_found_hypothesis_strategy():
 
     Uses Hypothesis to ensure the fallback version is deterministic
     regardless of package name or error message.
+
+    Note: This test uses a nested @given decorator due to the complex
+    sys.modules manipulation required for each example. HypoFuzz cannot
+    discover nested @given tests, but the test runs during normal pytest.
     """
     from hypothesis import given
     from hypothesis import strategies as st

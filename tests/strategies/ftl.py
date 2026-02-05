@@ -14,18 +14,22 @@ from __future__ import annotations
 import string
 from decimal import Decimal
 
+from hypothesis import event
 from hypothesis import strategies as st
 from hypothesis.strategies import composite
 
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     Attribute,
+    CallArguments,
     Comment,
     Expression,
+    FunctionReference,
     Identifier,
     Junk,
     Message,
     MessageReference,
+    NamedArgument,
     NumberLiteral,
     Pattern,
     Placeable,
@@ -33,6 +37,7 @@ from ftllexengine.syntax.ast import (
     SelectExpression,
     StringLiteral,
     Term,
+    TermReference,
     TextElement,
     VariableReference,
     Variant,
@@ -190,6 +195,9 @@ def ftl_unicode_text(draw: st.DrawFn) -> str:
 def ftl_unicode_stress_text(draw: st.DrawFn) -> str:
     """Generate Unicode stress test cases.
 
+    Events emitted:
+    - unicode={category}: Unicode stress category (emoji, rtl, combining, etc.)
+
     Specifically targets edge cases that may cause encoding or display issues:
     - Non-BMP characters (emoji, math symbols)
     - ZWJ sequences
@@ -197,20 +205,157 @@ def ftl_unicode_stress_text(draw: st.DrawFn) -> str:
     - Combining characters
     - Rare scripts
     """
+    # Stress cases with categories for event emission
     stress_cases = [
-        "\U0001F600",  # Emoji (non-BMP)
-        "\U0001F469\u200D\U0001F4BB",  # ZWJ sequence (woman technologist)
-        "\u202Eevil\u202C",  # RTL override
-        "cafe\u0301",  # Combining accent (e as e + combining acute)
-        "\u0627\u0644\u0639\u0631\u0628\u064A\u0629",  # Arabic
-        "\u4E2D\u6587",  # Chinese
-        "\u0928\u092E\u0938\u094D\u0924\u0947",  # Hindi (Devanagari)
-        "\uFEFF",  # BOM
-        "\u200B",  # Zero-width space
-        "\u00A0",  # Non-breaking space
-        "\U0001F1FA\U0001F1F8",  # Flag emoji (regional indicators)
+        ("\U0001F600", "emoji"),  # Emoji (non-BMP)
+        ("\U0001F469\u200D\U0001F4BB", "zwj"),  # ZWJ sequence (woman technologist)
+        ("\u202Eevil\u202C", "rtl"),  # RTL override
+        ("cafe\u0301", "combining"),  # Combining accent (e as e + combining acute)
+        ("\u0627\u0644\u0639\u0631\u0628\u064A\u0629", "arabic"),  # Arabic
+        ("\u4E2D\u6587", "cjk"),  # Chinese
+        ("\u0928\u092E\u0938\u094D\u0924\u0947", "devanagari"),  # Hindi (Devanagari)
+        ("\uFEFF", "bom"),  # BOM
+        ("\u200B", "zero_width"),  # Zero-width space
+        ("\u00A0", "nbsp"),  # Non-breaking space
+        ("\U0001F1FA\U0001F1F8", "flag"),  # Flag emoji (regional indicators)
     ]
-    return draw(st.sampled_from(stress_cases))
+    text, category = draw(st.sampled_from(stress_cases))
+
+    # Emit event for HypoFuzz coverage guidance
+    event(f"unicode={category}")
+
+    return text
+
+
+# =============================================================================
+# Chaos Mode Strategies (parser stress testing)
+# =============================================================================
+
+
+@composite
+def ftl_chaos_text(draw: st.DrawFn) -> str:
+    """Generate text WITH FTL structural characters for parser stress testing.
+
+    Unlike ftl_unicode_text() which filters out {}[]*$-.#, this strategy
+    INCLUDES these characters to test parser error recovery, escape handling,
+    and edge cases where FTL syntax appears in unexpected places.
+
+    WARNING: This generates potentially invalid FTL. Use for:
+    - Parser error recovery testing
+    - Junk node generation testing
+    - Fuzzing edge cases
+
+    Do NOT use for roundtrip testing where valid FTL is required.
+    """
+    # Include FTL structural characters
+    text = draw(
+        st.text(
+            alphabet=st.characters(
+                blacklist_categories=("Cc", "Cs"),  # No control chars or surrogates
+                blacklist_characters="\n\r",  # Only filter newlines (entry separators)
+            ),
+            min_size=1,
+            max_size=50,
+        )
+    )
+    # Ensure non-whitespace content
+    if text.strip() == "":
+        text = draw(st.sampled_from(["text", "value", "test"]))
+    return text
+
+
+@composite
+def ftl_chaos_source(draw: st.DrawFn) -> str:
+    """Generate raw FTL source with chaos text for intensive parser fuzzing.
+
+    Creates FTL-like structures with potentially invalid content to stress
+    test parser error handling and recovery mechanisms.
+
+    Events emitted:
+    - strategy=chaos_{pattern}: Chaos injection pattern used (for HypoFuzz guidance)
+
+    Generates variations like:
+    - msg = { unterminated
+    - msg = value { $var } more { unclosed
+    - msg = [ bracket ] confusion
+    """
+    msg_id = draw(ftl_identifiers())
+    chaos = draw(ftl_chaos_text())
+
+    # Choose chaos injection pattern
+    pattern = draw(
+        st.sampled_from([
+            "plain",  # msg = <chaos>
+            "prefix_brace",  # msg = { <chaos>
+            "suffix_brace",  # msg = <chaos> }
+            "embedded_dollar",  # msg = text $<chaos> more
+            "bracket_noise",  # msg = [ <chaos> ]
+            "mixed",  # msg = { $x } <chaos> { more
+        ])
+    )
+
+    # Emit event for HypoFuzz coverage guidance
+    event(f"strategy=chaos_{pattern}")
+
+    match pattern:
+        case "plain":
+            return f"{msg_id} = {chaos}"
+        case "prefix_brace":
+            return f"{msg_id} = {{ {chaos}"
+        case "suffix_brace":
+            return f"{msg_id} = {chaos} }}"
+        case "embedded_dollar":
+            prefix = draw(ftl_simple_text())
+            return f"{msg_id} = {prefix} ${chaos}"
+        case "bracket_noise":
+            return f"{msg_id} = [ {chaos} ]"
+        case _:  # mixed
+            var = draw(ftl_identifiers())
+            return f"{msg_id} = {{ ${var} }} {chaos} {{ more"
+
+
+@composite
+def ftl_pathological_nesting(draw: st.DrawFn) -> str:
+    """Generate pathologically nested FTL for parser depth limit testing.
+
+    Creates deeply nested structures that approach or exceed MAX_DEPTH:
+    - Nested placeables: { { { { $x } } } }
+    - Nested selects: { $a -> [x] { $b -> [y] value } }
+
+    Events emitted:
+    - boundary={under|at|over}_max_depth: Depth boundary condition (for HypoFuzz)
+
+    Used for testing:
+    - Parser depth guards
+    - Stack overflow prevention
+    - Error recovery at depth limits
+    """
+    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+
+    msg_id = draw(ftl_identifiers())
+
+    # Choose between boundary, at-limit, and over-limit with labels
+    depth_choice = draw(
+        st.sampled_from([
+            (MAX_DEPTH - 5, "under"),  # Safely within limits
+            (MAX_DEPTH - 1, "under"),  # Just under limit
+            (MAX_DEPTH, "at"),  # At limit
+            (MAX_DEPTH + 1, "over"),  # Just over limit
+            (MAX_DEPTH + 10, "over"),  # Well over limit
+        ])
+    )
+    depth, boundary_label = depth_choice
+
+    # Emit boundary event for HypoFuzz coverage guidance
+    event(f"boundary={boundary_label}_max_depth")
+    event(f"depth={depth}")
+
+    # Generate nested braces
+    open_braces = "{ " * depth
+    close_braces = " }" * depth
+    inner_var = draw(ftl_identifiers())
+
+    return f"{msg_id} = {open_braces}${inner_var}{close_braces}"
 
 
 @composite
@@ -262,7 +407,12 @@ def ftl_comments(draw: st.DrawFn) -> str:
 
 @composite
 def ftl_numbers(draw: st.DrawFn) -> int | float:
-    """Generate valid FTL numbers."""
+    """Generate valid FTL numbers.
+
+    FTL number literals support format: -?[0-9]+(.[0-9]+)?
+    No scientific notation. Subnormal floats are excluded because
+    their string representation uses scientific notation (e.g., 1e-308).
+    """
     return draw(
         st.one_of(
             st.integers(min_value=-1000000, max_value=1000000),
@@ -271,6 +421,7 @@ def ftl_numbers(draw: st.DrawFn) -> int | float:
                 max_value=1000000.0,
                 allow_nan=False,
                 allow_infinity=False,
+                allow_subnormal=False,
             ),
         )
     )
@@ -318,11 +469,20 @@ def ftl_variable_references(draw: st.DrawFn) -> VariableReference:
 
 @composite
 def ftl_number_literals(draw: st.DrawFn) -> NumberLiteral:
-    """Generate NumberLiteral AST nodes."""
+    """Generate NumberLiteral AST nodes with valid FTL raw format.
+
+    FTL number syntax: -?[0-9]+(.[0-9]+)?
+    No scientific notation allowed. Uses fixed-point notation for Decimals.
+    """
     value = draw(ftl_numbers())
     # Convert float to Decimal for decimal numbers (financial-grade precision)
     typed_value = Decimal(str(value)) if isinstance(value, float) else value
-    return NumberLiteral(value=typed_value, raw=str(typed_value))
+
+    # Ensure raw string uses fixed-point notation (no scientific notation)
+    # str(Decimal) may use 'E' notation for very small/large values
+    raw = format(typed_value, "f") if isinstance(typed_value, Decimal) else str(typed_value)
+
+    return NumberLiteral(value=typed_value, raw=raw)
 
 
 @composite
@@ -333,12 +493,155 @@ def ftl_string_literals(draw: st.DrawFn) -> StringLiteral:
 
 
 @composite
-def ftl_placeables(draw: st.DrawFn, max_depth: int = 2) -> Placeable:
-    """Generate Placeable AST nodes with recursive nesting support.
+def ftl_named_arguments(draw: st.DrawFn) -> NamedArgument:
+    """Generate NamedArgument AST nodes for function calls.
 
-    Uses recursive strategy to generate nested expressions up to max_depth.
-    Fixes MAINT-FUZZ-AST-SHALLOW-NESTING-001 - previously only generated
-    single-level VariableReference expressions.
+    Named arguments have the form: key: value
+    Example: minimumFractionDigits: 2
+    """
+    name = draw(ftl_identifiers())
+    # Value must be an InlineExpression - use simple types to avoid recursion
+    value = draw(
+        st.one_of(
+            ftl_string_literals(),
+            ftl_number_literals(),
+            ftl_variable_references(),
+        )
+    )
+    return NamedArgument(name=Identifier(name=name), value=value)
+
+
+@composite
+def ftl_call_arguments(draw: st.DrawFn) -> CallArguments:
+    """Generate CallArguments AST nodes for function/term calls.
+
+    Call arguments consist of positional and named arguments.
+    Example: $count, minimumFractionDigits: 2
+    """
+    # Generate 0-3 positional arguments
+    num_positional = draw(st.integers(min_value=0, max_value=3))
+    positional = tuple(
+        draw(
+            st.one_of(
+                ftl_variable_references(),
+                ftl_string_literals(),
+                ftl_number_literals(),
+            )
+        )
+        for _ in range(num_positional)
+    )
+
+    # Generate 0-3 named arguments with unique names
+    num_named = draw(st.integers(min_value=0, max_value=3))
+    named_keys = draw(
+        st.lists(
+            st.sampled_from([
+                "minimumFractionDigits",
+                "maximumFractionDigits",
+                "useGrouping",
+                "style",
+                "currency",
+                "dateStyle",
+                "timeStyle",
+            ]),
+            min_size=num_named,
+            max_size=num_named,
+            unique=True,
+        )
+    )
+    named = tuple(
+        NamedArgument(
+            name=Identifier(name=key),
+            value=draw(
+                st.one_of(
+                    ftl_string_literals(),
+                    ftl_number_literals(),
+                )
+            ),
+        )
+        for key in named_keys
+    )
+
+    return CallArguments(positional=positional, named=named)
+
+
+@composite
+def ftl_function_references(draw: st.DrawFn) -> FunctionReference:
+    """Generate FunctionReference AST nodes.
+
+    Function references are UPPERCASE per Fluent convention.
+    Example: NUMBER($count, minimumFractionDigits: 2)
+    """
+    # Use realistic builtin function names
+    func_name = draw(
+        st.sampled_from([
+            "NUMBER",
+            "DATETIME",
+            "CURRENCY",
+            "PLURAL",
+            "CUSTOM",
+        ])
+    )
+    arguments = draw(ftl_call_arguments())
+    return FunctionReference(
+        id=Identifier(name=func_name),
+        arguments=arguments,
+    )
+
+
+@composite
+def ftl_term_references(draw: st.DrawFn) -> TermReference:
+    """Generate TermReference AST nodes.
+
+    Term references start with - and may have attributes and arguments.
+    Example: -brand, -brand.short, -term(case: "genitive")
+    """
+    term_id = draw(ftl_identifiers())
+    # Optionally include an attribute reference
+    has_attr = draw(st.booleans())
+    attribute = Identifier(name=draw(ftl_identifiers())) if has_attr else None
+    # Optionally include arguments (for parameterized terms)
+    has_args = draw(st.booleans())
+    arguments = draw(ftl_call_arguments()) if has_args else None
+
+    return TermReference(
+        id=Identifier(name=term_id),
+        attribute=attribute,
+        arguments=arguments,
+    )
+
+
+@composite
+def ftl_message_references(draw: st.DrawFn) -> MessageReference:
+    """Generate MessageReference AST nodes.
+
+    Message references refer to other messages, optionally with attributes.
+    Example: other-message, other-message.title
+    """
+    msg_id = draw(ftl_identifiers())
+    # Optionally include an attribute reference
+    has_attr = draw(st.booleans())
+    attribute = Identifier(name=draw(ftl_identifiers())) if has_attr else None
+
+    return MessageReference(
+        id=Identifier(name=msg_id),
+        attribute=attribute,
+    )
+
+
+@composite
+def ftl_placeables(draw: st.DrawFn, max_depth: int = 2) -> Placeable:
+    """Generate Placeable AST nodes with comprehensive expression coverage.
+
+    Generates all InlineExpression types defined in the Fluent spec:
+    - StringLiteral, NumberLiteral, VariableReference (simple)
+    - MessageReference, TermReference, FunctionReference (references)
+    - Nested Placeable (recursive)
+
+    Uses weighted probability to control explosion while ensuring coverage.
+
+    Events emitted:
+    - strategy=placeable_{choice}: Expression type generated (for HypoFuzz guidance)
 
     Args:
         draw: Hypothesis draw function
@@ -346,25 +649,55 @@ def ftl_placeables(draw: st.DrawFn, max_depth: int = 2) -> Placeable:
     """
     expression: Expression
     if max_depth <= 0:
-        # Base case: simple variable reference
-        expression = draw(ftl_variable_references())
+        # Base case: only simple leaf expressions
+        choice = draw(st.sampled_from(["variable", "string", "number"]))
+        match choice:
+            case "variable":
+                expression = draw(ftl_variable_references())
+            case "string":
+                expression = draw(ftl_string_literals())
+            case _:  # number
+                expression = draw(ftl_number_literals())
+        event(f"strategy=placeable_{choice}_leaf")
     else:
-        # Choose expression type with weighted probability
-        # More weight on simple types to avoid explosion
+        # Choose expression type with weighted probability:
+        # - Simple types (variable, string, number): 60% - common cases
+        # - References (message, term, function): 30% - complex but important
+        # - Nested/select: 10% - recursive, expensive
         choice = draw(
-            st.sampled_from(
-                ["variable", "variable", "variable", "string", "nested"]
-            )
+            st.sampled_from([
+                # Simple types (6x weight)
+                "variable", "variable", "variable",
+                "string", "string",
+                "number",
+                # Reference types (3x weight)
+                "message_ref",
+                "term_ref",
+                "function_ref",
+                # Recursive types (1x weight)
+                "nested",
+            ])
         )
 
-        if choice == "variable":
-            expression = draw(ftl_variable_references())
-        elif choice == "string":
-            expression = draw(ftl_string_literals())
-        else:
-            # Nested placeable - use the inner expression (unwrapped)
-            inner = draw(ftl_placeables(max_depth=max_depth - 1))
-            expression = inner.expression
+        match choice:
+            case "variable":
+                expression = draw(ftl_variable_references())
+            case "string":
+                expression = draw(ftl_string_literals())
+            case "number":
+                expression = draw(ftl_number_literals())
+            case "message_ref":
+                expression = draw(ftl_message_references())
+            case "term_ref":
+                expression = draw(ftl_term_references())
+            case "function_ref":
+                expression = draw(ftl_function_references())
+            case _:  # nested
+                inner = draw(ftl_placeables(max_depth=max_depth - 1))
+                expression = inner.expression
+
+        # Emit event for HypoFuzz coverage guidance
+        event(f"strategy=placeable_{choice}")
 
     return Placeable(expression=expression)
 
@@ -381,6 +714,86 @@ def ftl_deep_placeables(draw: st.DrawFn, depth: int = 5) -> Placeable:
 
     inner = draw(ftl_deep_placeables(depth=depth - 1))
     return Placeable(expression=inner.expression)
+
+
+@composite
+def ftl_reference_placeables(draw: st.DrawFn) -> Placeable:
+    """Generate placeables with reference expressions only.
+
+    Targeted strategy for fuzzing the previously-underexposed reference types:
+    - FunctionReference: { NUMBER($x) }
+    - TermReference: { -brand }
+    - MessageReference: { other-message }
+
+    Used for intensive coverage of function/term/message reference parsing
+    and resolution paths.
+    """
+    expression = draw(
+        st.one_of(
+            ftl_function_references(),
+            ftl_term_references(),
+            ftl_message_references(),
+        )
+    )
+    return Placeable(expression=expression)
+
+
+@composite
+def ftl_boundary_depth_placeables(draw: st.DrawFn) -> Placeable:
+    """Generate placeables at MAX_DEPTH boundary for limit testing.
+
+    Events emitted:
+    - boundary={under|at|over}_max_depth: Depth boundary condition
+
+    Specifically targets the boundary conditions around MAX_DEPTH:
+    - MAX_DEPTH - 1: Just under limit (should succeed)
+    - MAX_DEPTH: At limit (should succeed or fail cleanly)
+    - MAX_DEPTH + 1: Just over limit (should fail cleanly)
+
+    Used for testing:
+    - Parser depth guards
+    - Serializer depth guards
+    - Resolver depth tracking
+    """
+    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+
+    # Choose boundary point
+    boundary = draw(
+        st.sampled_from([
+            ("under", MAX_DEPTH - 1),
+            ("at", MAX_DEPTH),
+            ("over", MAX_DEPTH + 1),
+        ])
+    )
+    label, depth = boundary
+
+    # Emit boundary event for HypoFuzz coverage guidance
+    event(f"boundary={label}_max_depth")
+
+    # Generate nested placeable at chosen depth
+    return draw(ftl_deep_placeables(depth=min(depth, 150)))  # Cap at 150 for safety
+
+
+@composite
+def ftl_boundary_depth_messages(draw: st.DrawFn) -> Message:
+    """Generate Message AST nodes with boundary-depth patterns.
+
+    Creates complete Message nodes containing deeply nested structures
+    at the MAX_DEPTH boundary for integration testing.
+    """
+    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+
+    msg_id = Identifier(name=draw(ftl_identifiers()))
+
+    # Choose depth relative to MAX_DEPTH
+    depth_offset = draw(st.sampled_from([-1, 0, 1]))
+    depth = MAX_DEPTH + depth_offset
+
+    # Generate pattern with deeply nested placeable
+    deep_placeable = draw(ftl_deep_placeables(depth=min(depth, 150)))
+    pattern = Pattern(elements=(TextElement(value="Prefix "), deep_placeable))
+
+    return Message(id=msg_id, value=pattern, attributes=())
 
 
 @composite
@@ -414,6 +827,9 @@ def ftl_variants(draw: st.DrawFn) -> Variant:
 def ftl_select_expressions(draw: st.DrawFn) -> SelectExpression:
     """Generate SelectExpression AST nodes with valid variants.
 
+    Events emitted:
+    - strategy=select_variants_{n}: Number of variants generated
+
     Ensures:
     - Exactly one default variant (per Fluent spec)
     - Unique variant keys (per Fluent spec)
@@ -423,6 +839,9 @@ def ftl_select_expressions(draw: st.DrawFn) -> SelectExpression:
     # Generate 2-4 unique variant keys using st.sampled_from predefined set
     # This avoids expensive rejection-based uniqueness while ensuring valid keys
     num_variants = draw(st.integers(min_value=2, max_value=4))
+
+    # Emit event for HypoFuzz coverage guidance
+    event(f"strategy=select_variants_{num_variants}")
 
     # Use predefined unique key names (efficient, no rejection needed)
     available_keys = ["one", "two", "three", "four", "five", "other", "zero"]
@@ -448,6 +867,75 @@ def ftl_select_expressions(draw: st.DrawFn) -> SelectExpression:
     )
 
     return SelectExpression(selector=selector, variants=variants)
+
+
+@composite
+def ftl_select_expressions_with_number_keys(draw: st.DrawFn) -> SelectExpression:
+    """Generate SelectExpression with NumberLiteral variant keys.
+
+    Events emitted:
+    - strategy=select_number_keys: SelectExpression with numeric keys
+
+    Used to test serialization branch for NumberLiteral variant keys.
+    Per Fluent spec, variant keys can be either Identifier or NumberLiteral.
+    """
+    selector = draw(ftl_variable_references())
+
+    # Generate 2-4 numeric variant keys
+    num_variants = draw(st.integers(min_value=2, max_value=4))
+
+    # Emit event for HypoFuzz coverage guidance
+    event("strategy=select_number_keys")
+
+    # Generate unique numeric keys (0, 1, 2, etc.)
+    numeric_keys = [NumberLiteral(value=Decimal(str(i)), raw=str(i)) for i in range(num_variants)]
+
+    # Generate variant values
+    values = [draw(ftl_patterns()) for _ in range(num_variants)]
+
+    # Choose exactly one variant to be the default
+    default_index = draw(st.integers(min_value=0, max_value=num_variants - 1))
+
+    variants = tuple(
+        Variant(key=numeric_keys[i], value=values[i], default=i == default_index)
+        for i in range(num_variants)
+    )
+
+    return SelectExpression(selector=selector, variants=variants)
+
+
+@composite
+def ftl_function_references_no_args(draw: st.DrawFn) -> FunctionReference:
+    """Generate FunctionReference without arguments.
+
+    Events emitted:
+    - strategy=function_no_args: FunctionReference with empty arguments
+
+    Used to test serialization branch for FunctionReference without arguments.
+    While uncommon in practice, the AST structure permits CallArguments with
+    empty positional and named tuples.
+    """
+    # Use realistic builtin function names
+    func_name = draw(
+        st.sampled_from([
+            "NUMBER",
+            "DATETIME",
+            "CURRENCY",
+            "PLURAL",
+            "CUSTOM",
+        ])
+    )
+
+    # Emit event for HypoFuzz coverage guidance
+    event("strategy=function_no_args")
+
+    # Create CallArguments with no arguments
+    arguments = CallArguments(positional=(), named=())
+
+    return FunctionReference(
+        id=Identifier(name=func_name),
+        arguments=arguments,
+    )
 
 
 @composite
@@ -1307,12 +1795,18 @@ def _generate_whitespace_message_entry(draw: st.DrawFn, msg_id: str) -> str:
 def ftl_resource_with_whitespace_chaos(draw: st.DrawFn) -> str:
     """Generate FTL resource with mixed whitespace edge cases.
 
+    Events emitted:
+    - strategy=ws_chaos_entry_{type}: Entry type in whitespace chaos resource
+
     Combines multiple entry types with various whitespace edge cases
     for comprehensive cross-contamination testing.
     """
     num_entries = draw(st.integers(min_value=2, max_value=8))
     entries: list[str] = []
     seen_ids: set[str] = set()
+
+    # Track entry types for event emission
+    entry_types_used: list[str] = []
 
     for _ in range(num_entries):
         entry_type = draw(
@@ -1325,6 +1819,7 @@ def ftl_resource_with_whitespace_chaos(draw: st.DrawFn) -> str:
                 "blank_lines",
             ])
         )
+        entry_types_used.append(entry_type)
 
         match entry_type:
             case "simple":
@@ -1356,6 +1851,10 @@ def ftl_resource_with_whitespace_chaos(draw: st.DrawFn) -> str:
             case _:  # blank_lines
                 blanks = draw(blank_lines_sequence())
                 entries.append(blanks)
+
+    # Emit events for entry type diversity
+    for et in set(entry_types_used):
+        event(f"strategy=ws_chaos_entry_{et}")
 
     return "\n\n".join(entries)
 
@@ -1422,18 +1921,39 @@ def ftl_invalid_missing_value(draw: st.DrawFn) -> str:
 def ftl_invalid_ftl(draw: st.DrawFn) -> str:
     """Generate any type of invalid FTL for error path testing.
 
+    Events emitted:
+    - strategy=invalid_{type}: Type of invalid FTL generated
+
     Used for testing parser error recovery and diagnostic generation.
     """
-    return draw(
-        st.one_of(
-            ftl_invalid_select_no_default(),
-            ftl_invalid_unclosed_placeable(),
-            ftl_invalid_unterminated_string(),
-            ftl_invalid_bad_identifier_start(),
-            ftl_invalid_double_equals(),
-            ftl_invalid_missing_value(),
-        )
+    # Choose invalid type explicitly to emit event
+    invalid_type = draw(
+        st.sampled_from([
+            "no_default",
+            "unclosed_placeable",
+            "unterminated_string",
+            "bad_identifier",
+            "double_equals",
+            "missing_value",
+        ])
     )
+
+    # Emit event for HypoFuzz coverage guidance
+    event(f"strategy=invalid_{invalid_type}")
+
+    match invalid_type:
+        case "no_default":
+            return draw(ftl_invalid_select_no_default())
+        case "unclosed_placeable":
+            return draw(ftl_invalid_unclosed_placeable())
+        case "unterminated_string":
+            return draw(ftl_invalid_unterminated_string())
+        case "bad_identifier":
+            return draw(ftl_invalid_bad_identifier_start())
+        case "double_equals":
+            return draw(ftl_invalid_double_equals())
+        case _:  # missing_value
+            return draw(ftl_invalid_missing_value())
 
 
 @composite
@@ -1470,3 +1990,340 @@ def ftl_valid_with_injected_error(draw: st.DrawFn) -> tuple[str, str]:
             corrupted = valid_ftl[:mid] + "\x00" + valid_ftl[mid:]
 
     return (valid_ftl, corrupted)
+
+
+# =============================================================================
+# Circular Reference Strategies (semantic errors, syntactically valid)
+# =============================================================================
+
+
+@composite
+def ftl_circular_message_2way(draw: st.DrawFn) -> str:
+    """Generate 2-message circular reference: A -> B -> A.
+
+    Syntactically valid FTL that causes infinite loop at resolution time.
+    Tests resolver cycle detection.
+    """
+    id_a = draw(ftl_identifiers())
+    id_b = draw(ftl_identifiers())
+
+    # Ensure distinct IDs
+    while id_b == id_a:
+        id_b = draw(ftl_identifiers())
+
+    return f"{id_a} = {{ {id_b} }}\n{id_b} = {{ {id_a} }}"
+
+
+@composite
+def ftl_circular_message_3way(draw: st.DrawFn) -> str:
+    """Generate 3-message circular reference: A -> B -> C -> A.
+
+    Tests transitive cycle detection in resolver.
+    """
+    id_a = draw(ftl_identifiers())
+    id_b = draw(ftl_identifiers())
+    id_c = draw(ftl_identifiers())
+
+    # Ensure distinct IDs
+    ids = {id_a}
+    while id_b in ids:
+        id_b = draw(ftl_identifiers())
+    ids.add(id_b)
+    while id_c in ids:
+        id_c = draw(ftl_identifiers())
+
+    return f"{id_a} = {{ {id_b} }}\n{id_b} = {{ {id_c} }}\n{id_c} = {{ {id_a} }}"
+
+
+@composite
+def ftl_circular_self_reference(draw: st.DrawFn) -> str:
+    """Generate self-referencing message: A -> A.
+
+    Simplest form of circular reference.
+    """
+    msg_id = draw(ftl_identifiers())
+    return f"{msg_id} = Value {{ {msg_id} }}"
+
+
+@composite
+def ftl_circular_term_2way(draw: st.DrawFn) -> str:
+    """Generate 2-term circular reference: -A -> -B -> -A.
+
+    Tests cycle detection in term resolution.
+    """
+    id_a = draw(ftl_identifiers())
+    id_b = draw(ftl_identifiers())
+
+    while id_b == id_a:
+        id_b = draw(ftl_identifiers())
+
+    return f"-{id_a} = {{ -{id_b} }}\n-{id_b} = {{ -{id_a} }}"
+
+
+@composite
+def ftl_circular_mixed(draw: st.DrawFn) -> str:
+    """Generate circular reference mixing messages and terms.
+
+    msg -> -term -> msg creates cross-namespace cycle.
+    """
+    msg_id = draw(ftl_identifiers())
+    term_id = draw(ftl_identifiers())
+
+    return f"{msg_id} = {{ -{term_id} }}\n-{term_id} = {{ {msg_id} }}"
+
+
+@composite
+def ftl_circular_via_attribute(draw: st.DrawFn) -> str:
+    """Generate circular reference through attributes.
+
+    msg.attr -> other -> msg.attr
+    """
+    id_a = draw(ftl_identifiers())
+    id_b = draw(ftl_identifiers())
+    attr = draw(ftl_identifiers())
+
+    while id_b == id_a:
+        id_b = draw(ftl_identifiers())
+
+    return f"""{id_a} = Base
+    .{attr} = {{ {id_b} }}
+{id_b} = {{ {id_a}.{attr} }}"""
+
+
+@composite
+def ftl_circular_deep(draw: st.DrawFn) -> str:
+    """Generate circular reference with N messages in chain.
+
+    msg0 -> msg1 -> ... -> msgN -> msg0
+    """
+    chain_length = draw(st.integers(min_value=3, max_value=10))
+    ids = [f"msg{i}" for i in range(chain_length)]
+
+    lines = []
+    for i, msg_id in enumerate(ids):
+        next_id = ids[(i + 1) % chain_length]
+        lines.append(f"{msg_id} = {{ {next_id} }}")
+
+    return "\n".join(lines)
+
+
+@composite
+def ftl_circular_references(draw: st.DrawFn) -> str:
+    """Generate any type of circular reference for cycle detection testing.
+
+    Events emitted:
+    - strategy=circular_{type}: Type of circular reference generated
+
+    Combined strategy for comprehensive cycle detection fuzzing.
+    """
+    # Map circular types to their generator strategies
+    generators = {
+        "2way": ftl_circular_message_2way,
+        "3way": ftl_circular_message_3way,
+        "self": ftl_circular_self_reference,
+        "term_2way": ftl_circular_term_2way,
+        "mixed": ftl_circular_mixed,
+        "via_attr": ftl_circular_via_attribute,
+        "deep": ftl_circular_deep,
+    }
+
+    # Choose circular reference type explicitly to emit event
+    circular_type = draw(st.sampled_from(list(generators.keys())))
+
+    # Emit event for HypoFuzz coverage guidance
+    event(f"strategy=circular_{circular_type}")
+
+    return draw(generators[circular_type]())
+
+
+# =============================================================================
+# Semantically Broken Strategies (valid syntax, runtime errors)
+# =============================================================================
+
+
+@composite
+def ftl_undefined_reference(draw: st.DrawFn) -> str:
+    """Generate message referencing undefined message/term.
+
+    Syntactically valid but will fail at resolution time.
+    """
+    msg_id = draw(ftl_identifiers())
+    undefined_id = draw(ftl_identifiers())
+
+    # Ensure the undefined ID is different from the message ID
+    while undefined_id == msg_id:
+        undefined_id = draw(ftl_identifiers())
+
+    ref_type = draw(st.sampled_from(["message", "term", "attribute"]))
+
+    match ref_type:
+        case "message":
+            return f"{msg_id} = {{ {undefined_id} }}"
+        case "term":
+            return f"{msg_id} = {{ -{undefined_id} }}"
+        case _:  # attribute
+            return f"{msg_id} = {{ {undefined_id}.nonexistent }}"
+
+
+@composite
+def ftl_undefined_variable(draw: st.DrawFn) -> str:
+    """Generate message using undefined variable.
+
+    Variables are provided at format time, so this tests resolver
+    behavior when required variables are missing.
+    """
+    msg_id = draw(ftl_identifiers())
+    var_name = draw(ftl_identifiers())
+
+    return f"{msg_id} = Hello {{ ${var_name} }}!"
+
+
+@composite
+def ftl_function_arity_mismatch(draw: st.DrawFn) -> str:
+    """Generate function call with wrong number of arguments.
+
+    Tests function argument validation at resolution time.
+    """
+    msg_id = draw(ftl_identifiers())
+    func_name = draw(st.sampled_from(["NUMBER", "DATETIME", "CURRENCY"]))
+
+    # NUMBER/DATETIME require at least one positional arg
+    arity = draw(st.sampled_from(["zero_args", "too_many_args"]))
+
+    match arity:
+        case "zero_args":
+            return f"{msg_id} = {{ {func_name}() }}"
+        case _:  # too_many_args
+            vars_list = ", ".join(f"${draw(ftl_identifiers())}" for _ in range(5))
+            return f"{msg_id} = {{ {func_name}({vars_list}) }}"
+
+
+@composite
+def ftl_select_missing_variant(draw: st.DrawFn) -> str:
+    """Generate select expression where runtime selector matches no variant.
+
+    Valid syntax but may produce fallback behavior at runtime.
+    """
+    msg_id = draw(ftl_identifiers())
+    var_name = draw(ftl_identifiers())
+
+    # Define variants that won't match most runtime values
+    return f"""{msg_id} = {{ ${var_name} ->
+    [impossiblevalue1] Value 1
+    [impossiblevalue2] Value 2
+   *[other] Default
+}}"""
+
+
+@composite
+def ftl_semantically_broken(draw: st.DrawFn) -> str:
+    """Generate any semantically broken (but syntactically valid) FTL.
+
+    Events emitted:
+    - strategy=semantic_{type}: Type of semantic error generated
+
+    Combined strategy for resolver error handling testing.
+    """
+    # Choose semantic error type explicitly to emit event
+    semantic_type = draw(
+        st.sampled_from([
+            "undefined_ref",
+            "undefined_var",
+            "arity_mismatch",
+            "missing_variant",
+            "circular",
+        ])
+    )
+
+    # Emit event for HypoFuzz coverage guidance
+    event(f"strategy=semantic_{semantic_type}")
+
+    match semantic_type:
+        case "undefined_ref":
+            return draw(ftl_undefined_reference())
+        case "undefined_var":
+            return draw(ftl_undefined_variable())
+        case "arity_mismatch":
+            return draw(ftl_function_arity_mismatch())
+        case "missing_variant":
+            return draw(ftl_select_missing_variant())
+        case _:  # circular
+            return draw(ftl_circular_references())
+
+
+# =============================================================================
+# Invalid AST Construction Helpers (for validation testing)
+# =============================================================================
+
+
+def build_invalid_select_no_defaults(
+    selector: VariableReference | None = None,
+) -> SelectExpression:
+    """Build SelectExpression with NO default variants (invalid).
+
+    Bypasses __post_init__ validation to test serializer validation layer.
+    This is defense-in-depth testing: programmatically constructed ASTs
+    might bypass parser validation.
+
+    Returns:
+        SelectExpression with all variants having default=False
+    """
+    if selector is None:
+        selector = VariableReference(id=Identifier(name="count"))
+
+    variants = (
+        Variant(
+            key=Identifier(name="one"),
+            value=Pattern(elements=(TextElement(value="One"),)),
+            default=False,
+        ),
+        Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="Other"),)),
+            default=False,
+        ),
+    )
+
+    # Bypass __post_init__ validation using object.__setattr__
+    # This creates an invalid AST for testing serializer validation
+    obj = object.__new__(SelectExpression)
+    object.__setattr__(obj, "selector", selector)
+    object.__setattr__(obj, "variants", variants)
+    object.__setattr__(obj, "span", None)
+
+    return obj
+
+
+def build_invalid_select_multiple_defaults(
+    selector: VariableReference | None = None,
+) -> SelectExpression:
+    """Build SelectExpression with MULTIPLE default variants (invalid).
+
+    Bypasses __post_init__ validation to test serializer validation layer.
+
+    Returns:
+        SelectExpression with all variants having default=True
+    """
+    if selector is None:
+        selector = VariableReference(id=Identifier(name="count"))
+
+    variants = (
+        Variant(
+            key=Identifier(name="one"),
+            value=Pattern(elements=(TextElement(value="One"),)),
+            default=True,
+        ),
+        Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="Other"),)),
+            default=True,
+        ),
+    )
+
+    # Bypass __post_init__ validation using object.__setattr__
+    obj = object.__new__(SelectExpression)
+    object.__setattr__(obj, "selector", selector)
+    object.__setattr__(obj, "variants", variants)
+    object.__setattr__(obj, "span", None)
+
+    return obj

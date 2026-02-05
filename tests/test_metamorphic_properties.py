@@ -53,7 +53,7 @@ class TestParsingProperties:
         Verifies ID preservation, not just entry count.
         """
         # Extract expected ID from input (format: "id = value")
-        expected_id = ftl.split("=")[0].strip()
+        expected_id = ftl.split("=", maxsplit=1)[0].strip()
 
         parser = FluentParserV1()
         resource = parser.parse(ftl)

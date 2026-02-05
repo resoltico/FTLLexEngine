@@ -5,8 +5,10 @@ according to Fluent EBNF: VariantKey ::= "[" blank? (NumberLiteral | Identifier)
 """
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
-from ftllexengine.syntax.ast import Junk, Message, Placeable, SelectExpression
+from ftllexengine.syntax.ast import Identifier, Junk, Message, Placeable, SelectExpression
 from ftllexengine.syntax.parser import FluentParserV1
 
 
@@ -193,53 +195,53 @@ msg = { $count ->
         assert "other" in keys
 
 
-class TestVariantMarkerBlankHandlingHypothesis:
-    """Property-based tests for variant marker blank handling."""
+# =============================================================================
+# Property-Based Tests (HypoFuzz-Discoverable)
+# =============================================================================
 
-    @pytest.mark.hypothesis
-    def test_variant_keys_with_arbitrary_blank_count(self) -> None:
-        """Variant keys should parse with arbitrary number of spaces."""
-        from hypothesis import given  # noqa: PLC0415
-        from hypothesis import strategies as st  # noqa: PLC0415
 
-        @given(
-            spaces_after_open=st.integers(min_value=0, max_value=10),
-            spaces_before_close=st.integers(min_value=0, max_value=10),
-        )
-        def property_test(spaces_after_open: int, spaces_before_close: int) -> None:
-            parser = FluentParserV1()
+@pytest.mark.hypothesis
+@given(
+    spaces_after_open=st.integers(min_value=0, max_value=10),
+    spaces_before_close=st.integers(min_value=0, max_value=10),
+)
+def test_variant_keys_with_arbitrary_blank_count(
+    spaces_after_open: int, spaces_before_close: int
+) -> None:
+    """Variant keys should parse with arbitrary number of spaces.
 
-            # Create FTL with specified number of spaces
-            space_after = " " * spaces_after_open
-            space_before = " " * spaces_before_close
-            ftl = f"""
+    Property: For any valid number of spaces (0-10) before/after variant key,
+    the parser should successfully parse the variant without producing Junk.
+    """
+    parser = FluentParserV1()
+
+    # Create FTL with specified number of spaces
+    space_after = " " * spaces_after_open
+    space_before = " " * spaces_before_close
+    ftl = f"""
 msg = {{ $count ->
     [{space_after}one{space_before}] Item
    *[other] Items
 }}
 """
-            resource = parser.parse(ftl)
+    resource = parser.parse(ftl)
 
-            # Should parse successfully
-            junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
-            messages = [e for e in resource.entries if isinstance(e, Message)]
-            assert len(junk_entries) == 0
-            assert len(messages) == 1
+    # Should parse successfully
+    junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+    messages = [e for e in resource.entries if isinstance(e, Message)]
+    assert len(junk_entries) == 0
+    assert len(messages) == 1
 
-            msg = messages[0]
-            assert msg.value is not None
-            placeable = msg.value.elements[0]
-            assert isinstance(placeable, Placeable)
-            select = placeable.expression
-            assert isinstance(select, SelectExpression)
+    msg = messages[0]
+    assert msg.value is not None
+    placeable = msg.value.elements[0]
+    assert isinstance(placeable, Placeable)
+    select = placeable.expression
+    assert isinstance(select, SelectExpression)
 
-            # Verify "one" variant was parsed
-            from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
-
-            keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
-            assert "one" in keys
-
-        property_test()  # pylint: disable=no-value-for-parameter
+    # Verify "one" variant was parsed
+    keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
+    assert "one" in keys
 
 
 class TestLongIdentifierVariantKeys:

@@ -18,7 +18,9 @@ import calendar
 from datetime import date
 from typing import TYPE_CHECKING
 
+from hypothesis import event
 from hypothesis import strategies as st
+from hypothesis.strategies import composite
 
 if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy
@@ -123,3 +125,135 @@ fiscal_quarters: SearchStrategy[int] = st.integers(min_value=1, max_value=4)
 
 # Fiscal month numbers (1-12 within fiscal year)
 fiscal_months: SearchStrategy[int] = st.integers(min_value=1, max_value=12)
+
+
+# ============================================================================
+# EVENT-EMITTING STRATEGIES (for HypoFuzz guidance)
+# ============================================================================
+
+
+@composite
+def fiscal_delta_by_magnitude(draw: st.DrawFn) -> dict[str, int | str]:
+    """Generate fiscal delta with event emission for magnitude category.
+
+    Events emitted:
+    - fiscal_delta={zero|small|medium|large}: Delta magnitude category
+
+    Useful for testing overflow and edge case handling at different scales.
+    """
+    magnitude = draw(st.sampled_from(["zero", "small", "medium", "large"]))
+
+    match magnitude:
+        case "zero":
+            delta = draw(zero_delta)
+        case "small":
+            delta = {
+                "years": draw(st.integers(min_value=-2, max_value=2)),
+                "quarters": draw(st.integers(min_value=-8, max_value=8)),
+                "months": draw(st.integers(min_value=-24, max_value=24)),
+                "days": draw(st.integers(min_value=-60, max_value=60)),
+                "month_end_policy": draw(month_end_policies),
+            }
+        case "medium":
+            delta = draw(small_fiscal_deltas)
+        case _:  # large
+            delta = draw(fiscal_deltas)
+
+    event(f"fiscal_delta={magnitude}")
+    return delta
+
+
+@composite
+def date_by_boundary(draw: st.DrawFn) -> date:
+    """Generate date with event emission for boundary category.
+
+    Events emitted:
+    - date_boundary={month_end|year_end|leap_feb|quarter_end|normal}
+
+    Useful for testing date arithmetic at boundary conditions.
+    """
+    boundary = draw(
+        st.sampled_from([
+            "month_end",
+            "year_end",
+            "leap_feb",
+            "quarter_end",
+            "normal",
+        ])
+    )
+
+    match boundary:
+        case "month_end":
+            d = draw(month_end_dates)
+        case "year_end":
+            year = draw(st.integers(min_value=1900, max_value=2100))
+            d = date(year, 12, 31)
+        case "leap_feb":
+            # Leap year February dates
+            leap_year = draw(st.sampled_from([2000, 2004, 2008, 2012, 2016, 2020, 2024]))
+            day = draw(st.integers(min_value=28, max_value=29))
+            d = date(leap_year, 2, day)
+        case "quarter_end":
+            year = draw(st.integers(min_value=1900, max_value=2100))
+            quarter_end_dates = [
+                date(year, 3, 31),
+                date(year, 6, 30),
+                date(year, 9, 30),
+                date(year, 12, 31),
+            ]
+            d = draw(st.sampled_from(quarter_end_dates))
+        case _:  # normal
+            d = draw(reasonable_dates)
+
+    event(f"date_boundary={boundary}")
+    return d
+
+
+@composite
+def fiscal_calendar_by_type(draw: st.DrawFn) -> int:
+    """Generate fiscal calendar start month with event emission.
+
+    Events emitted:
+    - fiscal_calendar={calendar_year|uk_japan|australia|us_federal|other}
+
+    Useful for testing fiscal year start month handling.
+    """
+    cal_type = draw(
+        st.sampled_from([
+            "calendar_year",
+            "uk_japan",
+            "australia",
+            "us_federal",
+            "other",
+        ])
+    )
+
+    match cal_type:
+        case "calendar_year":
+            month = 1
+        case "uk_japan":
+            month = 4
+        case "australia":
+            month = 7
+        case "us_federal":
+            month = 10
+        case _:  # other
+            excluded = {1, 4, 7, 10}
+            month = draw(st.integers(min_value=2, max_value=12).filter(lambda m: m not in excluded))
+
+    event(f"fiscal_calendar={cal_type}")
+    return month
+
+
+@composite
+def month_end_policy_with_event(draw: st.DrawFn) -> str:
+    """Generate month-end policy with event emission.
+
+    Events emitted:
+    - month_end_policy={preserve|clamp|strict}
+
+    Useful for testing different month-end arithmetic behaviors.
+    """
+    policy = draw(month_end_policies)
+    event(f"month_end_policy={policy}")
+    return policy

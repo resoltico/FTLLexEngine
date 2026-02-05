@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import DiagnosticCode
@@ -121,7 +121,13 @@ class TestComputeLongestPathsDiamondPattern:
         """Property: Diamond with N intermediate nodes all converging to same leaf.
 
         Pattern: root -> {node1, node2, ..., nodeN} -> leaf
+
+        Events emitted:
+        - num_intermediate={n}: Number of intermediate nodes
         """
+        # Emit event for fuzzer guidance
+        event(f"num_intermediate={num_intermediate}")
+
         graph: dict[str, set[str]] = {
             "msg:root": {f"msg:mid{i}" for i in range(num_intermediate)},
             "msg:leaf": set(),
@@ -234,7 +240,13 @@ class TestComputeLongestPathsCycleHandling:
         """Property: N-node cycle should not cause infinite loop.
 
         Creates a cycle: 0->1->2->...->N-1->0
+
+        Events emitted:
+        - cycle_size={n}: Size of the cycle
         """
+        # Emit event for fuzzer guidance
+        event(f"cycle_size={cycle_size}")
+
         graph: dict[str, set[str]] = {}
         for i in range(cycle_size):
             next_node = (i + 1) % cycle_size
@@ -459,7 +471,14 @@ class TestValidationResourceCompleteIntegration:
         num_messages=st.integers(min_value=3, max_value=8),
     )
     def test_property_complex_dependency_graphs(self, num_messages: int) -> None:
-        """Property: Complex dependency graphs always compute without errors."""
+        """Property: Complex dependency graphs always compute without errors.
+
+        Events emitted:
+        - num_messages={n}: Number of messages in graph
+        """
+        # Emit event for fuzzer guidance
+        event(f"num_messages={num_messages}")
+
         # Create a chain with some cross-references
         messages_dict: dict[str, Message] = {}
 

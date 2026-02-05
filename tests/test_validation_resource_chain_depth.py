@@ -10,7 +10,7 @@ Uses Hypothesis for property-based testing where applicable.
 
 from __future__ import annotations
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -230,7 +230,21 @@ class TestChainPathTruncation:
     @example(chain_length=25)
     @example(chain_length=50)
     def test_long_chain_truncation_property(self, chain_length: int) -> None:
-        """Property: Chains > 10 nodes always show truncation marker."""
+        """Property: Chains > 10 nodes always show truncation marker.
+
+        Events emitted:
+        - chain_length_bucket={bucket}: Chain length category
+        """
+        # Emit event for chain length buckets
+        if chain_length <= 15:
+            event("chain_length_bucket=11-15")
+        elif chain_length <= 25:
+            event("chain_length_bucket=16-25")
+        elif chain_length <= 35:
+            event("chain_length_bucket=26-35")
+        else:
+            event("chain_length_bucket=36-50")
+
         messages_dict: dict[str, Message] = {}
 
         for i in range(chain_length):

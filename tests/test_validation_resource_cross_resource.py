@@ -11,7 +11,7 @@ Uses Hypothesis for property-based testing where applicable.
 
 from __future__ import annotations
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import DiagnosticCode, WarningSeverity
@@ -126,7 +126,14 @@ farewell = Goodbye
     @example(num_shadows=1)
     @example(num_shadows=5)
     def test_shadow_warnings_property(self, num_shadows: int) -> None:
-        """Property: Each shadowed entry produces exactly one warning."""
+        """Property: Each shadowed entry produces exactly one warning.
+
+        Events emitted:
+        - num_shadows={n}: Number of shadowed entries tested
+        """
+        # Emit event for fuzzer guidance
+        event(f"num_shadows={num_shadows}")
+
         # Create FTL with N messages
         lines = [f"msg{i} = Value {i}" for i in range(num_shadows)]
         ftl = "\n".join(lines)

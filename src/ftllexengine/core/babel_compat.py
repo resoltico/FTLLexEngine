@@ -127,6 +127,7 @@ __all__ = [
     "BabelNumbersProtocol",
     "get_babel_dates",
     "get_babel_numbers",
+    "get_cldr_version",
     "get_locale_class",
     "get_unknown_locale_error",
     "is_babel_available",
@@ -274,3 +275,25 @@ def get_babel_dates() -> BabelDatesProtocol:
     from babel import dates  # noqa: PLC0415
 
     return dates
+
+
+def get_cldr_version() -> str:
+    """Get Unicode CLDR version from Babel.
+
+    Returns the CLDR version string used by Babel for locale data.
+    Useful for debugging locale-specific formatting differences and
+    verifying deployment environments.
+
+    Returns:
+        CLDR version string (e.g., "47").
+
+    Raises:
+        BabelImportError: If Babel is not installed.
+
+    Thread Safety:
+        Thread-safe. No mutable state.
+    """
+    require_babel("get_cldr_version")
+    from babel.core import get_cldr_version as babel_get_cldr_version  # noqa: PLC0415
+
+    return babel_get_cldr_version()

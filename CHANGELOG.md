@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-02-05
+
+### Dependencies
+
+- **Babel**: Minimum version raised from 2.17.0 to 2.18.0
+  - CLDR 47 data (improved locale data accuracy)
+  - Performance improvement in number pattern matching
+  - Fixed compact currency formatting for exactly 1000
+  - Official Python 3.14 support
+
+### Added
+
+- **`get_cldr_version()` introspection function** (FEAT-CLDR-VERSION-001):
+  - Returns the CLDR version string from Babel for diagnostics
+  - Useful for debugging locale-specific formatting differences
+  - Available from `ftllexengine.introspection` and `ftllexengine.core.babel_compat`
+  - Location: `core/babel_compat.py`
+
+### Changed
+
+- **CLDR documentation URL updated to `latest`**:
+  - `plural_rules.py` docstring URL now points to `charts/latest/` instead of versioned `charts/47/`
+  - Ensures documentation remains current as CLDR versions evolve
+
 ## [0.102.0] - 2026-02-03
 
 ### Added
@@ -3226,6 +3250,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.103.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.103.0
 [0.102.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.102.0
 [0.101.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.101.0
 [0.100.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.100.0

@@ -5,6 +5,8 @@ when placeable nesting exceeds max_nesting_depth, instead of generic PARSE_JUNK.
 """
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.syntax.ast import Junk, Message
@@ -250,55 +252,54 @@ class TestNestingDepthDiagnosticEdgeCases:
         assert "msg = { { { $var } } }" in junk.content
 
 
-class TestNestingDepthDiagnosticHypothesis:
-    """Property-based tests for nesting depth diagnostic."""
+# =============================================================================
+# Property-Based Tests (HypoFuzz-Discoverable)
+# =============================================================================
 
-    @pytest.mark.hypothesis
-    def test_depth_exactly_at_limit_always_parses(self) -> None:
-        """Nesting exactly at limit should always parse successfully."""
-        from hypothesis import given  # noqa: PLC0415
-        from hypothesis import strategies as st  # noqa: PLC0415
 
-        @given(depth_limit=st.integers(min_value=1, max_value=20))
-        def property_test(depth_limit: int) -> None:
-            parser = FluentParserV1(max_nesting_depth=depth_limit)
+@pytest.mark.hypothesis
+@given(depth_limit=st.integers(min_value=1, max_value=20))
+def test_depth_exactly_at_limit_always_parses(depth_limit: int) -> None:
+    """Nesting exactly at limit should always parse successfully.
 
-            # Create nesting exactly at limit
-            nesting = "{ " * depth_limit + "$var" + " }" * depth_limit
-            ftl = f"msg = {nesting}"
+    Property: For any depth limit N (1-20), nesting exactly N levels deep
+    should parse without producing Junk.
+    """
+    parser = FluentParserV1(max_nesting_depth=depth_limit)
 
-            resource = parser.parse(ftl)
+    # Create nesting exactly at limit
+    nesting = "{ " * depth_limit + "$var" + " }" * depth_limit
+    ftl = f"msg = {nesting}"
 
-            # Should parse without junk
-            junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
-            messages = [e for e in resource.entries if isinstance(e, Message)]
-            assert len(junk_entries) == 0
-            assert len(messages) == 1
+    resource = parser.parse(ftl)
 
-        property_test()  # pylint: disable=no-value-for-parameter
+    # Should parse without junk
+    junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+    messages = [e for e in resource.entries if isinstance(e, Message)]
+    assert len(junk_entries) == 0
+    assert len(messages) == 1
 
-    @pytest.mark.hypothesis
-    def test_depth_one_over_limit_always_fails_with_diagnostic(self) -> None:
-        """Nesting one level over limit should always fail with specific diagnostic."""
-        from hypothesis import given  # noqa: PLC0415
-        from hypothesis import strategies as st  # noqa: PLC0415
 
-        @given(depth_limit=st.integers(min_value=1, max_value=20))
-        def property_test(depth_limit: int) -> None:
-            parser = FluentParserV1(max_nesting_depth=depth_limit)
+@pytest.mark.hypothesis
+@given(depth_limit=st.integers(min_value=1, max_value=20))
+def test_depth_one_over_limit_always_fails_with_diagnostic(depth_limit: int) -> None:
+    """Nesting one level over limit should always fail with specific diagnostic.
 
-            # Create nesting one over limit
-            nesting = "{ " * (depth_limit + 1) + "$var" + " }" * (depth_limit + 1)
-            ftl = f"msg = {nesting}"
+    Property: For any depth limit N (1-20), nesting N+1 levels deep
+    should produce Junk with PARSE_NESTING_DEPTH_EXCEEDED diagnostic.
+    """
+    parser = FluentParserV1(max_nesting_depth=depth_limit)
 
-            resource = parser.parse(ftl)
+    # Create nesting one over limit
+    nesting = "{ " * (depth_limit + 1) + "$var" + " }" * (depth_limit + 1)
+    ftl = f"msg = {nesting}"
 
-            # Should create junk with specific diagnostic
-            junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
-            assert len(junk_entries) == 1
-            junk = junk_entries[0]
-            annotation = junk.annotations[0]
-            assert annotation.code == DiagnosticCode.PARSE_NESTING_DEPTH_EXCEEDED.name
-            assert str(depth_limit) in annotation.message
+    resource = parser.parse(ftl)
 
-        property_test()  # pylint: disable=no-value-for-parameter
+    # Should create junk with specific diagnostic
+    junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
+    assert len(junk_entries) == 1
+    junk = junk_entries[0]
+    annotation = junk.annotations[0]
+    assert annotation.code == DiagnosticCode.PARSE_NESTING_DEPTH_EXCEEDED.name
+    assert str(depth_limit) in annotation.message

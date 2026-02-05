@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.103.0"
 domain: reference
 updated: "2026-02-03"
 route:
@@ -26,7 +26,7 @@ pip install ftllexengine
 pip install ftllexengine[babel]
 ```
 
-**Requirements**: Python 3.13+ | Babel>=2.17.0 (optional for locale formatting)
+**Requirements**: Python 3.13+ | Babel>=2.18.0 (optional for locale formatting)
 
 ---
 

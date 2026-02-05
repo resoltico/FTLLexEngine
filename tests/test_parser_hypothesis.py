@@ -6,10 +6,15 @@ Comprehensive coverage of FTL syntax elements, edge cases, and error recovery.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.syntax.ast import Message, Term
+from ftllexengine.syntax.ast import (
+    Comment,
+    Junk,
+    Message,
+    Term,
+)
 from ftllexengine.syntax.parser import FluentParserV1
 
 # ============================================================================
@@ -62,8 +67,18 @@ class TestParserRobustness:
         # Should always produce a resource
         assert resource is not None
         assert hasattr(resource, "entries")
-        # Should have at least one entry (message or junk)
-        assert len(resource.entries) >= 0
+        # Should have exactly one entry (the message)
+        assert len(resource.entries) == 1
+        # That entry should be a Message
+        assert isinstance(resource.entries[0], Message)
+
+        # Emit event for identifier characteristics (HypoFuzz guidance)
+        if "-" in identifier:
+            event("identifier=has_hyphen")
+        if "_" in identifier:
+            event("identifier=has_underscore")
+        if any(c.isdigit() for c in identifier):
+            event("identifier=has_digit")
 
     @given(
         identifier=st.text(
@@ -89,7 +104,20 @@ class TestParserRobustness:
         resource = parser.parse(source)
 
         assert resource is not None
-        assert len(resource.entries) >= 0
+        # Should have at least one entry
+        assert len(resource.entries) >= 1
+        # First entry should be a Message (possibly with junk value)
+        first_entry = resource.entries[0]
+        assert isinstance(first_entry, (Message, Junk))
+
+        # Emit events for HypoFuzz guidance
+        event(f"entry_type={type(first_entry).__name__}")
+        if len(value) > 50:
+            event("value_length=long")
+        elif len(value) > 10:
+            event("value_length=medium")
+        else:
+            event("value_length=short")
 
     @given(
         comment_text=st.text(
@@ -109,6 +137,14 @@ class TestParserRobustness:
         assert resource is not None
         assert len(resource.entries) >= 1
 
+        # Emit events for HypoFuzz guidance
+        if len(comment_text) > 50:
+            event("comment_length=long")
+        elif len(comment_text) > 10:
+            event("comment_length=medium")
+        else:
+            event("comment_length=short")
+
     @given(
         num_newlines=st.integers(min_value=0, max_value=10),
     )
@@ -121,8 +157,19 @@ class TestParserRobustness:
 
         # Should parse both messages regardless of blank lines
         assert resource is not None
-        # Could be 0-2 entries depending on junk handling
-        assert len(resource.entries) >= 0
+        # Should have at least one entry (message or junk)
+        assert len(resource.entries) >= 1
+        # Check that we have Messages and/or Junk (not empty)
+        for entry in resource.entries:
+            assert isinstance(entry, (Message, Junk, Comment))
+
+        # Emit events for HypoFuzz guidance
+        if num_newlines == 0:
+            event("blank_lines=none")
+        elif num_newlines <= 2:
+            event("blank_lines=few")
+        else:
+            event("blank_lines=many")
 
     @given(
         invalid_start=st.text(
@@ -138,9 +185,14 @@ class TestParserRobustness:
         parser = FluentParserV1()
         resource = parser.parse(source)
 
-        # Should recover and parse the valid message
+        # Should recover and parse something (message or junk)
         assert resource is not None
-        assert len(resource.entries) >= 0
+        # Parser should produce entries (even if junk)
+        assert len(resource.entries) >= 1
+
+        # Emit events for HypoFuzz guidance
+        has_junk = any(isinstance(e, Junk) for e in resource.entries)
+        event(f"recovery={'has_junk' if has_junk else 'no_junk'}")
 
 
 class TestParserInvariants:
@@ -166,6 +218,16 @@ class TestParserInvariants:
         resource = parser.parse(source)
         assert resource is not None
 
+        # Emit events for entry type distribution (HypoFuzz guidance)
+        junk_count = sum(1 for e in resource.entries if isinstance(e, Junk))
+        msg_count = sum(1 for e in resource.entries if isinstance(e, Message))
+        if junk_count > 0:
+            event(f"parse_result=has_junk_{min(junk_count, 5)}")
+        if msg_count > 0:
+            event(f"parse_result=has_messages_{min(msg_count, 5)}")
+        if len(resource.entries) == 0:
+            event("parse_result=empty")
+
     @given(
         identifier=st.text(
             alphabet=st.characters(
@@ -187,6 +249,14 @@ class TestParserInvariants:
         # Both should have same number of entries
         assert len(resource1.entries) == len(resource2.entries)
 
+        # Emit events for HypoFuzz guidance
+        if len(identifier) > 10:
+            event("identifier_length=long")
+        elif len(identifier) > 5:
+            event("identifier_length=medium")
+        else:
+            event("identifier_length=short")
+
     @given(
         whitespace=st.text(alphabet=st.sampled_from([" ", "\t"]), min_size=0, max_size=10),
     )
@@ -205,6 +275,18 @@ class TestParserInvariants:
         assert resource1 is not None
         assert resource2 is not None
 
+        # Emit events for HypoFuzz guidance
+        has_tabs = "\t" in whitespace
+        has_spaces = " " in whitespace
+        if has_tabs and has_spaces:
+            event("whitespace_type=mixed")
+        elif has_tabs:
+            event("whitespace_type=tabs")
+        elif has_spaces:
+            event("whitespace_type=spaces")
+        else:
+            event("whitespace_type=none")
+
 
 class TestParserEdgeCases:
     """Edge cases and boundary conditions."""
@@ -221,13 +303,24 @@ class TestParserEdgeCases:
 
         # Should handle any number of hashes (1-3 valid, >3 creates junk)
         assert resource is not None
-        assert len(resource.entries) >= 0
+        # Should have at least one entry (comment/message or junk)
+        assert len(resource.entries) >= 1
+
+        # Emit events for HypoFuzz guidance
+        if num_hashes == 1:
+            event("comment_type=standalone")
+        elif num_hashes == 2:
+            event("comment_type=group")
+        elif num_hashes == 3:
+            event("comment_type=resource")
+        else:
+            event("comment_type=invalid_many_hashes")
 
     @given(
         depth=st.integers(min_value=1, max_value=5),
     )
     @settings(max_examples=50)
-    def test_nested_placeables_parse(self, depth: int) -> None:  # noqa: ARG002
+    def test_nested_placeables_parse(self, depth: int) -> None:
         """Nested placeables up to reasonable depth parse."""
         # Create nested variable references (simplified test - just validates parsing)
         inner = "$var"
@@ -238,6 +331,9 @@ class TestParserEdgeCases:
 
         # Should parse (might create errors for invalid syntax)
         assert resource is not None
+
+        # Emit depth event for HypoFuzz guidance
+        event(f"depth={depth}")
 
     @given(
         num_variants=st.integers(min_value=1, max_value=10),
@@ -255,6 +351,9 @@ class TestParserEdgeCases:
         # Should parse
         assert resource is not None
 
+        # Emit variant count event for HypoFuzz guidance
+        event(f"variant_count={min(num_variants, 10)}")
+
     def test_empty_source_produces_empty_resource(self) -> None:
         """Empty source produces resource with no entries."""
         parser = FluentParserV1()
@@ -269,8 +368,7 @@ class TestParserEdgeCases:
         resource = parser.parse("   \n\t\n   \n")
 
         assert resource is not None
-        # May be 0 (empty) or contain junk entries for malformed whitespace
-        assert len(resource.entries) >= 0
+        # Whitespace-only source may produce empty resource (this is valid)
 
     @given(
         identifier=st.text(
@@ -297,7 +395,14 @@ class TestParserEdgeCases:
 
         # Should parse message with attributes
         assert resource is not None
-        assert len(resource.entries) >= 0
+        # Should have at least one entry (the message)
+        assert len(resource.entries) >= 1
+        # First entry should be a Message
+        first_entry = resource.entries[0]
+        assert isinstance(first_entry, (Message, Junk))
+
+        # Emit events for HypoFuzz guidance
+        event(f"attribute_count={min(num_attributes, 5)}")
 
 
 class TestParserRecovery:
@@ -318,7 +423,13 @@ class TestParserRecovery:
 
         # Should create junk entries and recover
         assert resource is not None
-        assert len(resource.entries) >= 0
+        # Should have at least one entry (junk from invalid lines and/or message)
+        assert len(resource.entries) >= 1
+
+        # Emit events for HypoFuzz guidance
+        event(f"error_count={min(num_errors, 5)}")
+        junk_count = sum(1 for e in resource.entries if isinstance(e, Junk))
+        event(f"junk_entries={min(junk_count, 5)}")
 
     @given(
         unicode_char=st.characters(min_codepoint=0x1F600, max_codepoint=0x1F64F),
@@ -332,6 +443,9 @@ class TestParserRecovery:
 
         # Should parse
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("unicode=emoji")
 
     def test_very_long_identifier(self) -> None:
         """Very long identifiers are handled."""
@@ -373,6 +487,13 @@ class TestVariableReferenceParsing:
         assert resource is not None
         assert len(resource.entries) > 0
 
+        # Emit events for HypoFuzz guidance
+        event("variable_position=only")
+        if len(var_name) > 10:
+            event("var_name_length=long")
+        else:
+            event("var_name_length=short")
+
     @given(var_name=variable_names, text=safe_text)
     @settings(max_examples=150)
     def test_variable_with_surrounding_text(self, var_name: str, text: str) -> None:
@@ -382,6 +503,9 @@ class TestVariableReferenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("variable_position=middle")
 
     @given(
         var1=variable_names,
@@ -396,6 +520,13 @@ class TestVariableReferenceParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("variable_count=2")
+        if var1 == var2:
+            event("variable_uniqueness=same")
+        else:
+            event("variable_uniqueness=different")
+
     @given(var_name=variable_names)
     @settings(max_examples=100)
     def test_variable_at_message_start(self, var_name: str) -> None:
@@ -405,6 +536,9 @@ class TestVariableReferenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("variable_position=start")
 
     @given(var_name=variable_names)
     @settings(max_examples=100)
@@ -416,6 +550,9 @@ class TestVariableReferenceParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("variable_position=end")
+
     @given(var_name=variable_names)
     @settings(max_examples=100)
     def test_variable_only_message(self, var_name: str) -> None:
@@ -425,6 +562,9 @@ class TestVariableReferenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("variable_position=only")
 
     @given(
         var_name=variable_names,
@@ -439,6 +579,10 @@ class TestVariableReferenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event(f"variable_count={min(count, 10)}")
+        event("variable_uniqueness=repeated")
 
 
 # ============================================================================
@@ -461,6 +605,9 @@ class TestPlaceableParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("placeable_type=string_literal")
+
     @given(number=numbers)
     @settings(max_examples=150)
     def test_placeable_with_number_literal(self, number: int) -> None:
@@ -470,6 +617,15 @@ class TestPlaceableParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("placeable_type=number_literal")
+        if number < 0:
+            event("number_sign=negative")
+        elif number == 0:
+            event("number_sign=zero")
+        else:
+            event("number_sign=positive")
 
     @given(
         msg_id=ftl_identifiers,
@@ -486,6 +642,9 @@ class TestPlaceableParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("placeable_type=message_ref")
+
     @given(
         var_name=variable_names,
         count=st.integers(min_value=1, max_value=5),
@@ -499,6 +658,9 @@ class TestPlaceableParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event(f"consecutive_placeables={min(count, 5)}")
 
     @given(
         var_name=variable_names,
@@ -514,6 +676,14 @@ class TestPlaceableParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        if len(whitespace) == 0:
+            event("internal_whitespace=none")
+        elif "\t" in whitespace:
+            event("internal_whitespace=has_tabs")
+        else:
+            event("internal_whitespace=spaces_only")
 
 
 # ============================================================================
@@ -533,6 +703,10 @@ class TestSelectExpressionParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("select_variant_count=1")
+        event("select_type=minimal")
 
     @given(
         var_name=variable_names,
@@ -554,6 +728,13 @@ class TestSelectExpressionParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("select_variant_count=3")
+        if key1 == key2:
+            event("variant_keys=duplicate")
+        else:
+            event("variant_keys=unique")
+
     @given(
         var_name=variable_names,
         count=st.integers(min_value=1, max_value=10),
@@ -568,6 +749,9 @@ class TestSelectExpressionParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event(f"select_variant_count={min(count + 1, 10)}")
+
     @given(var_name=variable_names, text=safe_text)
     @settings(max_examples=100)
     def test_select_variant_with_text(self, var_name: str, text: str) -> None:
@@ -577,6 +761,9 @@ class TestSelectExpressionParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("variant_value_type=text")
 
     @given(
         var_name=variable_names,
@@ -593,6 +780,9 @@ class TestSelectExpressionParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("variant_value_type=with_placeable")
+
     @given(var_name=variable_names, number=numbers)
     @settings(max_examples=100)
     def test_select_with_numeric_keys(self, var_name: str, number: int) -> None:
@@ -602,6 +792,15 @@ class TestSelectExpressionParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("variant_key_type=numeric")
+        if number < 0:
+            event("numeric_key_sign=negative")
+        elif number == 0:
+            event("numeric_key_sign=zero")
+        else:
+            event("numeric_key_sign=positive")
 
 
 # ============================================================================
@@ -626,6 +825,10 @@ class TestTermParsing:
             entry = resource.entries[0]
             assert isinstance(entry, (Term, Message))  # Could be either
 
+            # Emit events for HypoFuzz guidance
+            event(f"entry_type={type(entry).__name__}")
+        event("term_structure=simple")
+
     @given(term_id=ftl_identifiers, text=safe_text)
     @settings(max_examples=100)
     def test_term_with_text_value(self, term_id: str, text: str) -> None:
@@ -635,6 +838,9 @@ class TestTermParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("term_structure=with_text")
 
     @given(term_id=ftl_identifiers, var_name=variable_names)
     @settings(max_examples=100)
@@ -646,6 +852,9 @@ class TestTermParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("term_structure=with_placeable")
+
     @given(term_id=ftl_identifiers, attr_name=attribute_names)
     @settings(max_examples=100)
     def test_term_with_attribute(self, term_id: str, attr_name: str) -> None:
@@ -655,6 +864,9 @@ class TestTermParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("term_structure=with_attribute")
 
     @given(
         msg_id=ftl_identifiers,
@@ -668,6 +880,9 @@ class TestTermParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("term_ref_type=simple")
 
     @given(
         msg_id=ftl_identifiers,
@@ -689,6 +904,9 @@ class TestTermParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("term_ref_type=with_attribute")
+
 
 # ============================================================================
 # STRING LITERALS
@@ -708,6 +926,16 @@ class TestStringLiteralParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        if len(text) == 0:
+            event("string_length=empty")
+        elif len(text) <= 10:
+            event("string_length=short")
+        elif len(text) <= 50:
+            event("string_length=medium")
+        else:
+            event("string_length=long")
 
     def test_empty_string_literal(self) -> None:
         """PROPERTY: Empty string "" parses."""
@@ -733,6 +961,16 @@ class TestStringLiteralParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        if char in ('"', "\\"):
+            event("char_type=special_escape")
+        elif char.isalpha():
+            event("char_type=alpha")
+        elif char.isdigit():
+            event("char_type=digit")
+        else:
+            event("char_type=other")
+
     @given(
         unicode_char=st.characters(min_codepoint=0x0100, max_codepoint=0xFFFF),
     )
@@ -744,6 +982,15 @@ class TestStringLiteralParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        codepoint = ord(unicode_char)
+        if codepoint < 0x0800:
+            event("unicode_range=latin_extended")
+        elif codepoint < 0x3000:
+            event("unicode_range=mid_bmp")
+        else:
+            event("unicode_range=cjk_symbols")
 
 
 # ============================================================================
@@ -764,6 +1011,16 @@ class TestNumberLiteralParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        if number < 0:
+            event("integer_sign=negative")
+        elif number == 0:
+            event("integer_sign=zero")
+        else:
+            event("integer_sign=positive")
+        if abs(number) > 1000000:
+            event("integer_magnitude=large")
+
     @given(decimal=decimals)
     @settings(max_examples=150)
     def test_decimal_literal(self, decimal: float) -> None:
@@ -773,6 +1030,19 @@ class TestNumberLiteralParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        if decimal < 0:
+            event("decimal_sign=negative")
+        elif decimal == 0.0:
+            event("decimal_sign=zero")
+        else:
+            event("decimal_sign=positive")
+        # Check if it's a whole number float
+        if decimal == int(decimal):
+            event("decimal_type=whole")
+        else:
+            event("decimal_type=fractional")
 
     def test_zero_literal(self) -> None:
         """PROPERTY: Zero literal parses."""
@@ -792,6 +1062,15 @@ class TestNumberLiteralParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("integer_sign=positive")
+        if number > 100000:
+            event("integer_magnitude=large")
+        elif number > 1000:
+            event("integer_magnitude=medium")
+        else:
+            event("integer_magnitude=small")
+
     @given(number=st.integers(min_value=-1000000, max_value=-1))
     @settings(max_examples=100)
     def test_negative_integer(self, number: int) -> None:
@@ -801,6 +1080,15 @@ class TestNumberLiteralParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("integer_sign=negative")
+        if abs(number) > 100000:
+            event("integer_magnitude=large")
+        elif abs(number) > 1000:
+            event("integer_magnitude=medium")
+        else:
+            event("integer_magnitude=small")
 
 
 # ============================================================================
@@ -821,6 +1109,9 @@ class TestMessageStructure:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("message_structure=value_only")
+
     @given(
         msg_id=ftl_identifiers,
         attr_name=attribute_names,
@@ -836,6 +1127,10 @@ class TestMessageStructure:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("message_structure=value_and_attribute")
+        event("attribute_count=1")
 
     @given(
         msg_id=ftl_identifiers,
@@ -853,6 +1148,10 @@ class TestMessageStructure:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("message_structure=value_and_attributes")
+        event(f"attribute_count={min(count, 5)}")
+
     @given(msg_id=ftl_identifiers, attr_name=attribute_names)
     @settings(max_examples=100)
     def test_message_attribute_only(self, msg_id: str, attr_name: str) -> None:
@@ -862,6 +1161,9 @@ class TestMessageStructure:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("message_structure=attribute_only")
 
     @given(
         msg_id=ftl_identifiers,
@@ -877,6 +1179,9 @@ class TestMessageStructure:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("message_structure=value_with_placeable")
 
 
 # ============================================================================
@@ -897,6 +1202,9 @@ class TestCommentParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("comment_level=standalone")
+
     @given(text=safe_text)
     @settings(max_examples=100)
     def test_group_comment(self, text: str) -> None:
@@ -907,6 +1215,9 @@ class TestCommentParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("comment_level=group")
+
     @given(text=safe_text)
     @settings(max_examples=100)
     def test_resource_comment(self, text: str) -> None:
@@ -916,6 +1227,9 @@ class TestCommentParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("comment_level=resource")
 
     @given(
         text=safe_text,
@@ -931,6 +1245,9 @@ class TestCommentParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event(f"comment_lines={min(count, 5)}")
+
     @given(msg_id=ftl_identifiers, text=safe_text)
     @settings(max_examples=100)
     def test_comment_attached_to_message(self, msg_id: str, text: str) -> None:
@@ -940,6 +1257,9 @@ class TestCommentParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("comment_position=attached")
 
 
 # ============================================================================
@@ -963,6 +1283,15 @@ class TestWhitespaceHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("whitespace_position=before_equals")
+        if spaces == 0:
+            event("space_count=none")
+        elif spaces <= 3:
+            event("space_count=few")
+        else:
+            event("space_count=many")
+
     @given(
         msg_id=ftl_identifiers,
         spaces=st.integers(min_value=0, max_value=10),
@@ -976,6 +1305,15 @@ class TestWhitespaceHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("whitespace_position=after_equals")
+        if spaces == 0:
+            event("space_count=none")
+        elif spaces <= 3:
+            event("space_count=few")
+        else:
+            event("space_count=many")
+
     @given(
         msg_id=ftl_identifiers,
         indent=st.integers(min_value=4, max_value=12),
@@ -988,6 +1326,15 @@ class TestWhitespaceHandling:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("whitespace_type=indentation")
+        if indent == 4:
+            event("indent_level=minimal")
+        elif indent <= 8:
+            event("indent_level=standard")
+        else:
+            event("indent_level=deep")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1004,6 +1351,15 @@ class TestWhitespaceHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("whitespace_type=blank_lines")
+        if blank_lines == 0:
+            event("blank_line_count=none")
+        elif blank_lines == 1:
+            event("blank_line_count=single")
+        else:
+            event("blank_line_count=multiple")
+
     @given(
         msg_id=ftl_identifiers,
         trailing_spaces=st.integers(min_value=0, max_value=10),
@@ -1016,6 +1372,15 @@ class TestWhitespaceHandling:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("whitespace_position=trailing")
+        if trailing_spaces == 0:
+            event("space_count=none")
+        elif trailing_spaces <= 3:
+            event("space_count=few")
+        else:
+            event("space_count=many")
 
 
 # ============================================================================
@@ -1036,6 +1401,10 @@ class TestFunctionCallParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("function_name=NUMBER")
+        event("function_arg_type=variable")
+
     @given(var_name=variable_names)
     @settings(max_examples=150)
     def test_datetime_function_call(self, var_name: str) -> None:
@@ -1045,6 +1414,10 @@ class TestFunctionCallParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("function_name=DATETIME")
+        event("function_arg_type=variable")
 
     @given(var_name=variable_names)
     @settings(max_examples=100)
@@ -1056,6 +1429,10 @@ class TestFunctionCallParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("function_options=with_named")
+        event("option_value_type=numeric")
+
     @given(var_name=variable_names, number=numbers)
     @settings(max_examples=100)
     def test_function_with_numeric_option(self, var_name: str, number: int) -> None:
@@ -1066,6 +1443,15 @@ class TestFunctionCallParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("function_options=with_numeric")
+        if number < 0:
+            event("option_value_sign=negative")
+        elif number == 0:
+            event("option_value_sign=zero")
+        else:
+            event("option_value_sign=positive")
+
     @given(var_name=variable_names)
     @settings(max_examples=100)
     def test_function_with_string_option(self, var_name: str) -> None:
@@ -1075,6 +1461,10 @@ class TestFunctionCallParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("function_options=with_string")
+        event("option_value_type=string")
 
     @given(
         var_name=variable_names,
@@ -1090,6 +1480,10 @@ class TestFunctionCallParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("function_options=multiple")
+        event(f"option_count={min(count, 5)}")
+
     @given(func_name=ftl_identifiers, var_name=variable_names)
     @settings(max_examples=100)
     def test_custom_function_call(self, func_name: str, var_name: str) -> None:
@@ -1101,6 +1495,13 @@ class TestFunctionCallParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("function_name=CUSTOM")
+        if len(func_name) <= 5:
+            event("function_name_length=short")
+        else:
+            event("function_name_length=long")
+
     @given(number=numbers)
     @settings(max_examples=50)
     def test_function_with_number_literal_arg(self, number: int) -> None:
@@ -1110,6 +1511,15 @@ class TestFunctionCallParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("function_arg_type=literal")
+        if number < 0:
+            event("literal_sign=negative")
+        elif number == 0:
+            event("literal_sign=zero")
+        else:
+            event("literal_sign=positive")
 
     @given(var_name=variable_names)
     @settings(max_examples=50)
@@ -1121,6 +1531,9 @@ class TestFunctionCallParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("function_nesting=simple")
 
 
 # ============================================================================
@@ -1140,6 +1553,13 @@ class TestMessageReferenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("msg_ref_type=simple")
+        if msg_id1 == msg_id2:
+            event("msg_ref_self=true")
+        else:
+            event("msg_ref_self=false")
 
     @given(
         msg_id1=ftl_identifiers,
@@ -1161,6 +1581,9 @@ class TestMessageReferenceParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("msg_ref_type=with_attribute")
+
     @given(
         msg_id=ftl_identifiers,
         count=st.integers(min_value=2, max_value=5),
@@ -1177,6 +1600,10 @@ class TestMessageReferenceParsing:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("msg_ref_type=multiple")
+        event(f"msg_ref_count={min(count, 5)}")
+
     @given(msg_id1=ftl_identifiers, msg_id2=ftl_identifiers, text=safe_text)
     @settings(max_examples=100)
     def test_message_reference_with_text(
@@ -1188,6 +1615,13 @@ class TestMessageReferenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("msg_ref_type=mixed_with_text")
+        if len(text) == 0:
+            event("surrounding_text=empty")
+        else:
+            event("surrounding_text=present")
 
 
 # ============================================================================
@@ -1216,6 +1650,17 @@ class TestIdentifierValidation:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("identifier_type=with_number_suffix")
+        if number == 0:
+            event("number_suffix=zero")
+        elif number < 10:
+            event("number_suffix=single_digit")
+        elif number < 100:
+            event("number_suffix=two_digit")
+        else:
+            event("number_suffix=three_digit")
+
     @given(
         parts=st.lists(
             st.text(
@@ -1236,6 +1681,10 @@ class TestIdentifierValidation:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("identifier_type=with_hyphens")
+        event(f"identifier_parts={min(len(parts), 5)}")
 
     @given(
         parts=st.lists(
@@ -1258,6 +1707,10 @@ class TestIdentifierValidation:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("identifier_type=with_underscores")
+        event(f"identifier_parts={min(len(parts), 5)}")
+
     @given(length=st.integers(min_value=1, max_value=100))
     @settings(max_examples=50)
     def test_identifier_length_handling(self, length: int) -> None:
@@ -1268,6 +1721,17 @@ class TestIdentifierValidation:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("identifier_type=length_test")
+        if length == 1:
+            event("identifier_length=minimal")
+        elif length <= 10:
+            event("identifier_length=short")
+        elif length <= 50:
+            event("identifier_length=medium")
+        else:
+            event("identifier_length=long")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1288,6 +1752,15 @@ class TestIdentifierValidation:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("identifier_type=mixed_case")
+        if uppercase_count == 0:
+            event("case_mix=all_lower")
+        elif uppercase_count >= len(chars):
+            event("case_mix=all_upper")
+        else:
+            event("case_mix=mixed")
 
 
 # ============================================================================
@@ -1320,6 +1793,17 @@ class TestEscapeSequenceParsing:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("escape_type=unicode")
+        if codepoint < 0x0080:
+            event("codepoint_range=ascii")
+        elif codepoint < 0x0800:
+            event("codepoint_range=latin_extended")
+        elif codepoint < 0x3000:
+            event("codepoint_range=mid_bmp")
+        else:
+            event("codepoint_range=cjk_symbols")
 
     def test_escaped_quote_in_string(self) -> None:
         """PROPERTY: Escaped quotes in strings parse."""
@@ -1364,6 +1848,9 @@ class TestLineEndingHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("line_ending_type=unix")
+
     @given(msg_id=ftl_identifiers)
     @settings(max_examples=100)
     def test_windows_line_endings(self, msg_id: str) -> None:
@@ -1373,6 +1860,9 @@ class TestLineEndingHandling:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("line_ending_type=windows")
 
     @given(msg_id=ftl_identifiers)
     @settings(max_examples=100)
@@ -1384,6 +1874,9 @@ class TestLineEndingHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("line_ending_type=old_mac")
+
     @given(msg_id=ftl_identifiers)
     @settings(max_examples=50)
     def test_mixed_line_endings(self, msg_id: str) -> None:
@@ -1394,6 +1887,9 @@ class TestLineEndingHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("line_ending_type=mixed")
+
     @given(msg_id=ftl_identifiers)
     @settings(max_examples=50)
     def test_no_final_newline(self, msg_id: str) -> None:
@@ -1403,6 +1899,9 @@ class TestLineEndingHandling:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("line_ending_type=no_final")
 
 
 # ============================================================================
@@ -1424,6 +1923,9 @@ class TestUTF8BOMHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("bom_presence=with_bom")
+
     @given(msg_id=ftl_identifiers)
     @settings(max_examples=50)
     def test_source_without_bom(self, msg_id: str) -> None:
@@ -1434,6 +1936,9 @@ class TestUTF8BOMHandling:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("bom_presence=without_bom")
+
     @given(msg_id=ftl_identifiers, text=safe_text)
     @settings(max_examples=50)
     def test_bom_only_at_start(self, msg_id: str, text: str) -> None:
@@ -1443,6 +1948,13 @@ class TestUTF8BOMHandling:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("bom_presence=no_bom_with_content")
+        if len(text) == 0:
+            event("text_content=empty")
+        else:
+            event("text_content=present")
 
 
 # ============================================================================
@@ -1463,6 +1975,13 @@ class TestPatternElementBoundaries:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("boundary_type=text_placeable")
+        if len(text) == 0:
+            event("prefix_text=empty")
+        else:
+            event("prefix_text=present")
+
     @given(var_name=variable_names, text=safe_text)
     @settings(max_examples=100)
     def test_placeable_text_boundary(self, var_name: str, text: str) -> None:
@@ -1472,6 +1991,13 @@ class TestPatternElementBoundaries:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("boundary_type=placeable_text")
+        if len(text) == 0:
+            event("suffix_text=empty")
+        else:
+            event("suffix_text=present")
 
     @given(
         var1=variable_names,
@@ -1486,6 +2012,13 @@ class TestPatternElementBoundaries:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("boundary_type=placeable_placeable")
+        if var1 == var2:
+            event("adjacent_vars=same")
+        else:
+            event("adjacent_vars=different")
+
     @given(text1=safe_text, text2=safe_text)
     @settings(max_examples=50)
     def test_text_text_concatenation(self, text1: str, text2: str) -> None:
@@ -1495,6 +2028,16 @@ class TestPatternElementBoundaries:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("boundary_type=text_text")
+        total_len = len(text1) + len(text2)
+        if total_len == 0:
+            event("combined_text=empty")
+        elif total_len <= 20:
+            event("combined_text=short")
+        else:
+            event("combined_text=long")
 
 
 # ============================================================================
@@ -1517,6 +2060,10 @@ class TestMultilinePatterns:
 
         assert resource is not None
 
+        # Emit events for HypoFuzz guidance
+        event("multiline_type=text_only")
+        event(f"line_count={min(len(lines), 5)}")
+
     @given(
         msg_id=ftl_identifiers,
         var_name=variable_names,
@@ -1535,6 +2082,10 @@ class TestMultilinePatterns:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("multiline_type=with_placeables")
+        event(f"line_count={min(len(lines), 5)}")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1555,3 +2106,12 @@ class TestMultilinePatterns:
         resource = parser.parse(source)
 
         assert resource is not None
+
+        # Emit events for HypoFuzz guidance
+        event("multiline_type=consistent_indent")
+        if indent == 4:
+            event("indent_level=minimal")
+        elif indent <= 8:
+            event("indent_level=standard")
+        else:
+            event("indent_level=deep")

@@ -11,7 +11,7 @@ Babel Dependency:
 
 Python 3.13+.
 
-Reference: https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
+Reference: https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html
 """
 
 import math

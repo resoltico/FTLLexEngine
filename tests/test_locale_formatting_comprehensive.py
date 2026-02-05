@@ -130,7 +130,7 @@ class TestFluentBundleAllLocales:
     def test_bundle_creation(self, locale_code: str) -> None:
         """FluentBundle can be created for all 30 locales."""
         bundle = FluentBundle(locale_code)
-        assert bundle.locale.startswith(locale_code.split("_")[0])
+        assert bundle.locale.startswith(locale_code.split("_", maxsplit=1)[0])
 
     @pytest.mark.parametrize("locale_code", sorted(TEST_LOCALES))
     def test_bundle_number_function(self, locale_code: str) -> None:

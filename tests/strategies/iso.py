@@ -16,7 +16,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hypothesis import event
 from hypothesis import strategies as st
+from hypothesis.strategies import composite
 
 if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy
@@ -89,6 +91,98 @@ zero_decimal_currencies: SearchStrategy[str] = st.sampled_from([
 three_decimal_currencies: SearchStrategy[str] = st.sampled_from([
     "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
 ])
+
+# Two decimal currencies (standard)
+two_decimal_currencies: SearchStrategy[str] = st.sampled_from([
+    "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "INR", "BRL", "MXN", "ZAR",
+])
+
+
+@composite
+def currency_by_decimals(draw: st.DrawFn) -> str:
+    """Generate currency code with event emission for decimal category.
+
+    Events emitted:
+    - currency_decimals={0|2|3}: Decimal places category for HypoFuzz guidance
+
+    Useful for testing decimal-sensitive formatting code paths.
+    """
+    category = draw(st.sampled_from(["zero", "two", "three"]))
+
+    match category:
+        case "zero":
+            code = draw(zero_decimal_currencies)
+            event("currency_decimals=0")
+        case "two":
+            code = draw(two_decimal_currencies)
+            event("currency_decimals=2")
+        case _:  # three
+            code = draw(three_decimal_currencies)
+            event("currency_decimals=3")
+
+    return code
+
+
+@composite
+def territory_by_region(draw: st.DrawFn) -> str:
+    """Generate territory code with event emission for region category.
+
+    Events emitted:
+    - territory_region={g7|brics|baltic|middle_east|africa|pacific|small}
+
+    Useful for testing region-specific currency and locale behavior.
+    """
+    region = draw(
+        st.sampled_from([
+            "g7",
+            "brics",
+            "baltic",
+            "middle_east",
+            "africa",
+            "pacific",
+            "small",
+        ])
+    )
+
+    region_codes = {
+        "g7": ["US", "CA", "GB", "DE", "FR", "IT", "JP"],
+        "brics": ["BR", "RU", "IN", "CN", "ZA"],
+        "baltic": ["LV", "LT", "EE"],
+        "middle_east": ["KW", "BH", "OM", "JO", "IQ"],
+        "africa": ["UG", "RW", "DJ", "GN", "BI"],
+        "pacific": ["NC", "PF", "WF"],
+        "small": ["VA", "MC", "SM", "LI", "AD"],
+    }
+
+    code = draw(st.sampled_from(region_codes[region]))
+    event(f"territory_region={region}")
+
+    return code
+
+
+@composite
+def locale_by_script(draw: st.DrawFn) -> str:
+    """Generate locale code with event emission for script category.
+
+    Events emitted:
+    - locale_script={latin|cjk|cyrillic|arabic|other}
+
+    Useful for testing script-specific rendering and RTL handling.
+    """
+    script = draw(st.sampled_from(["latin", "cjk", "cyrillic", "arabic", "other"]))
+
+    script_locales = {
+        "latin": ["en", "en_US", "de", "de_DE", "fr", "fr_FR", "es", "es_ES", "it", "pt"],
+        "cjk": ["ja", "ja_JP", "zh", "zh_CN", "zh_TW", "ko", "ko_KR"],
+        "cyrillic": ["ru", "ru_RU"],
+        "arabic": ["ar", "ar_SA", "ar_EG"],
+        "other": ["lv", "lv_LV", "lt", "lt_LT", "et", "et_EE"],
+    }
+
+    locale = draw(st.sampled_from(script_locales[script]))
+    event(f"locale_script={script}")
+
+    return locale
 
 
 # ============================================================================

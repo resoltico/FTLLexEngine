@@ -16,8 +16,11 @@ This package provides two introspection domains:
 Python 3.13+.
 """
 
-# ruff: noqa: I001 - Imports grouped by domain (message, iso) for readability
+# ruff: noqa: I001 - Imports grouped by domain for readability
 # ruff: noqa: RUF022 - __all__ organized by category for readability
+
+# Babel diagnostics - first party import (always importable; function raises if no Babel)
+from ftllexengine.core.babel_compat import get_cldr_version
 
 # Message introspection - public API (always available)
 from .message import (
@@ -80,4 +83,6 @@ __all__ = [
     "is_valid_currency_code",
     # ISO cache management
     "clear_iso_cache",
+    # Babel diagnostics
+    "get_cldr_version",
 ]

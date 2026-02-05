@@ -15,7 +15,12 @@ from hypothesis import strategies as st
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.resolver import FluentResolver
-from ftllexengine.syntax.ast import Identifier, Message, Pattern, TextElement
+from ftllexengine.syntax.ast import (
+    Identifier,
+    Message,
+    Pattern,
+    TextElement,
+)
 from tests.strategies import ftl_identifiers, ftl_simple_text
 
 

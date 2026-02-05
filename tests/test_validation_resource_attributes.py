@@ -10,7 +10,7 @@ Uses Hypothesis for property-based testing where applicable.
 
 from __future__ import annotations
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import DiagnosticCode
@@ -160,7 +160,14 @@ msg = value
     @example(num_duplicates=1)
     @example(num_duplicates=3)
     def test_duplicate_attribute_property(self, num_duplicates: int) -> None:
-        """Property: Each duplicate attribute ID produces exactly one warning."""
+        """Property: Each duplicate attribute ID produces exactly one warning.
+
+        Events emitted:
+        - num_duplicates={n}: Number of duplicate attributes tested
+        """
+        # Emit event for fuzzer guidance
+        event(f"num_duplicates={num_duplicates}")
+
         # Create message with N duplicate attributes
         # Each attribute appears exactly twice (one original + one duplicate)
         lines = ["msg = value"]

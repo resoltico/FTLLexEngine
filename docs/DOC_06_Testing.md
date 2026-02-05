@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.102.0"
 domain: TESTING
-updated: "2026-01-31"
+updated: "2026-02-04"
 route:
   keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh]
   questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?"]
@@ -23,6 +23,8 @@ Testing infrastructure reference. Pytest configuration, Hypothesis profiles, mar
 | Unit | `tests/test_*.py` | `uv run scripts/test.sh` | Seconds | N/A |
 | Property | `tests/test_*_hypothesis.py` | `uv run scripts/test.sh` | Minutes | N/A |
 | Fuzzing | `tests/test_grammar_based_fuzzing.py` | `pytest -m fuzz` | 10+ min | `fuzz` |
+| Oracle | `tests/fuzz/test_bundle_oracle.py` | `pytest -m fuzz` | 10+ min | `fuzz` |
+| Depth | `tests/fuzz/test_depth_exhaustion.py` | `pytest -m fuzz` | 5+ min | `fuzz` |
 
 ### Constraints
 - Categories are mutually exclusive: No.
@@ -57,7 +59,7 @@ pytestmark = pytest.mark.fuzz
 ### Constraints
 - Location: Defined in `tests/conftest.py`.
 - Arguments: None.
-- Run: `pytest -m fuzz` or `./scripts/run-property-tests.sh`.
+- Run: `pytest -m fuzz` or `./scripts/fuzz_hypofuzz.sh --deep`.
 - Skip: `uv run scripts/test.sh` (default behavior).
 
 ---
@@ -115,7 +117,47 @@ def pytest_collection_modifyitems(
 - Return: None.
 - Location: `tests/conftest.py`.
 - Hook Type: collect.
-- Bypass conditions: `-m fuzz` in args OR `test_grammar_based_fuzzing` in args.
+- Bypass conditions: `-m fuzz` in args OR fuzz-related file patterns in args.
+
+---
+
+## `pytest_runtest_makereport`
+
+### Signature
+```python
+def pytest_runtest_makereport(
+    item: pytest.Item,
+    call: pytest.CallInfo[None]
+) -> None:
+```
+
+### Parameters
+
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `item` | `pytest.Item` | Y | Test item being reported on. |
+| `call` | `pytest.CallInfo[None]` | Y | Call information with exception details. |
+
+### Behavior
+
+| Phase | Action |
+|:------|:-------|
+| Report | Detects Hypothesis failures via "Falsifying example" in exception. |
+| Report | Generates standalone `repro_crash_<timestamp>_<hash>.py` script. |
+| Report | Writes JSON metadata to `.hypothesis/crashes/`. |
+
+### Output Files
+
+| File | Contents |
+|:-----|:---------|
+| `repro_crash_<ts>_<hash>.py` | Standalone reproduction script |
+| `crash_<ts>_<hash>.json` | Machine-readable crash metadata |
+
+### Constraints
+- Return: None.
+- Location: `tests/conftest.py`.
+- Hook Type: runtest.
+- Trigger: Only on test failures containing "Falsifying example".
 
 ---
 
@@ -199,51 +241,14 @@ uv run scripts/test.sh [--quick] [--ci] [--no-clean] [-- pytest-args]
 
 ---
 
-## `scripts/run-property-tests.sh`
+## `scripts/fuzz_hypofuzz.sh` (HypoFuzz Interface)
 
 ### Purpose
-Run property/fuzzing tests with full Hypothesis intensity.
+Entry point for HypoFuzz-based fuzzing operations.
 
 ### Invocation
 ```bash
-./scripts/run-property-tests.sh [target]
-```
-
-### Options
-
-| Option | Default | Description |
-|:-------|:--------|:------------|
-| `target` | `tests/test_grammar_based_fuzzing.py` | Test file to run |
-
-### Environment
-
-| Variable | Default | Description |
-|:---------|:--------|:------------|
-| `HYPOTHESIS_PROFILE` | `dev` | Profile selection |
-
-### Exit Codes
-
-| Code | Meaning |
-|-----:|:--------|
-| 0 | All property tests passed |
-| 1 | Property test failures |
-
-### Output
-
-| Format | Location |
-|:-------|:---------|
-| JSON summary | stdout |
-
----
-
-## `scripts/fuzz.sh` (Unified Interface)
-
-### Purpose
-Single entry point for all fuzzing operations. Recommended over individual scripts.
-
-### Invocation
-```bash
-./scripts/fuzz.sh [MODE] [OPTIONS]
+./scripts/fuzz_hypofuzz.sh [MODE] [OPTIONS]
 ```
 
 ### Modes
@@ -252,13 +257,9 @@ Single entry point for all fuzzing operations. Recommended over individual scrip
 |:-----|:------------|
 | (default) | Fast property tests (500 examples) |
 | `--deep` | Continuous HypoFuzz coverage-guided |
-| `--native` | Atheris byte-level chaos |
-| `--structured` | Atheris grammar-aware generation |
-| `--perf` | Performance/ReDoS detection |
 | `--repro FILE` | Reproduce crash file |
 | `--list` | List captured failures (with ages) |
 | `--clean` | Remove all failure artifacts |
-| `--corpus` | Check seed corpus health |
 
 ### Options
 
@@ -280,70 +281,39 @@ Single entry point for all fuzzing operations. Recommended over individual scrip
 
 ---
 
-## `scripts/fuzz-hypothesis.sh`
-
-### Purpose
-Continuous coverage-guided fuzzing with HypoFuzz.
-
-### Invocation
-```bash
-./scripts/fuzz-hypothesis.sh [workers] [--dashboard]
-```
-
-### Options
-
-| Option | Default | Description |
-|:-------|:--------|:------------|
-| `workers` | 4 | Number of parallel workers |
-| `--dashboard` | Off | Enable web dashboard at localhost:9999 |
-
-### Environment
-
-| Variable | Default | Description |
-|:---------|:--------|:------------|
-| `TMPDIR` | `/tmp` | Temp directory (avoid long paths) |
-
-### Exit Codes
-
-| Code | Meaning |
-|-----:|:--------|
-| 0 | Stopped normally (Ctrl+C) |
-| 1 | Crash detected |
-
-### Output
-
-| Format | Location |
-|:-------|:---------|
-| JSON summary | stdout |
-| Session log | `.hypothesis/fuzz.log` |
-
----
-
-## `scripts/fuzz-atheris.sh`
+## `scripts/fuzz_atheris.sh`
 
 ### Purpose
 Byte-level mutation fuzzing with Atheris/libFuzzer.
 
 ### Invocation
 ```bash
-./scripts/fuzz-atheris.sh [workers] [target] [libfuzzer-options]
+./scripts/fuzz_atheris.sh [MODE] [OPTIONS]
 ```
+
+### Modes
+
+| Mode | Description |
+|:-----|:------------|
+| (default) | Interactive target selection |
+| `--target NAME` | Run specific target |
+| `--repro FILE` | Reproduce crash file |
+| `--list` | List available targets |
 
 ### Options
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `workers` | 4 | Number of parallel workers |
-| `target` | `fuzz/stability.py` | Fuzz target file |
-| `-max_total_time=N` | Endless | Stop after N seconds |
+| `--workers N` | 4 | Number of parallel workers |
+| `--time N` | Endless | Time limit (seconds) |
 
 ### Available Targets
 
 | Target | Strategy | Use Case |
 |:-------|:---------|:---------|
-| `fuzz/stability.py` | Byte-level chaos | Crash detection, edge cases |
-| `fuzz/structured.py` | Grammar-aware generation | Deep logic bugs, better coverage |
-| `fuzz/perf.py` | Performance monitoring | Algorithmic complexity bugs |
+| `fuzz_roundtrip` | Parse-serialize roundtrip | Parser/serializer consistency |
+| `fuzz_structured` | Grammar-aware generation | Deep logic bugs |
+| `fuzz_oom` | Memory exhaustion | Resource limits |
 
 ### Environment
 
@@ -357,14 +327,14 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 |-----:|:--------|
 | 0 | Completed without crashes |
 | 1+ | Crash detected |
+| 3 | Python version incompatible |
 
 ### Output
 
 | Format | Location |
 |:-------|:---------|
-| JSON summary | stdout |
-| Session log | `.fuzz_corpus/fuzz.log` |
-| Crash files | `.fuzz_corpus/crash_*` |
+| JSON summary | stdout (`[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`) |
+| Crash files | `fuzz_atheris/corpus/crash_*` |
 
 ---
 
@@ -375,11 +345,13 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 ```
 pytest tests/
     |
-    +-- test_parser.py              [RUN]
-    +-- test_parser_hypothesis.py   [RUN]
+    +-- test_parser.py                     [RUN]
+    +-- test_parser_hypothesis.py          [RUN]
     +-- test_grammar_based_fuzzing.py
-            |
-            +-- has @pytest.mark.fuzz
+    |       +-- has @pytest.mark.fuzz
+    |       +-- conftest adds skip marker  [SKIP]
+    +-- tests/fuzz/test_bundle_oracle.py
+            +-- has pytestmark = fuzz
             +-- conftest adds skip marker  [SKIP]
 ```
 
@@ -388,18 +360,19 @@ pytest tests/
 ```
 pytest -m fuzz
     |
-    +-- test_parser.py              [SKIP - no fuzz marker]
+    +-- test_parser.py                     [SKIP - no fuzz marker]
     +-- test_grammar_based_fuzzing.py
-            |
-            +-- has @pytest.mark.fuzz      [RUN]
+    |       +-- has @pytest.mark.fuzz      [RUN]
+    +-- tests/fuzz/test_bundle_oracle.py
+            +-- has pytestmark = fuzz      [RUN]
 ```
 
 ### Specific File Bypass
 
 ```
-pytest tests/test_grammar_based_fuzzing.py
+pytest tests/fuzz/test_bundle_oracle.py
     |
-    +-- conftest detects specific file in args
+    +-- conftest detects fuzz-related file pattern
     +-- Bypass skip logic
     +-- All tests in file                  [RUN]
 ```
@@ -407,6 +380,7 @@ pytest tests/test_grammar_based_fuzzing.py
 ### Constraints
 - Logic location: `tests/conftest.py:pytest_collection_modifyitems`.
 - Bypass: Target file explicitly or use `-m fuzz`.
+- Fuzz patterns: `_fuzzing`, `test_concurrent`, `test_resolver_cycles`, and `tests/fuzz/` files.
 
 ---
 
@@ -457,8 +431,8 @@ Formula: `threshold = 100ms + (20ms * input_size_kb)`
 | Exceeds threshold | `SlowParsing` exception from Atheris target |
 
 ### Location
-- Enforced in: `fuzz/perf.py`.
-- Tested by: `./scripts/fuzz-atheris.sh <workers> fuzz/perf.py`.
+- Enforced in: `fuzz_atheris/fuzz_perf.py`.
+- Tested by: `./scripts/fuzz_atheris.sh perf`.
 
 ---
 
@@ -468,24 +442,27 @@ Formula: `threshold = 100ms + (20ms * input_size_kb)`
 |:---------|:---------|:-----------|:-----------------|
 | `.hypothesis/` | Entire Hypothesis database | Ignored | N/A |
 | `.hypothesis/examples/` | Coverage + failures mixed | Ignored | No |
-| `.hypothesis/failures/` | Extracted falsifying examples | Ignored | Yes (auto-captured) |
+| `.hypothesis/crashes/` | Portable crash reproduction files | Ignored | Yes (auto-generated) |
+| `.hypothesis/hypofuzz.log` | HypoFuzz session log | Ignored | N/A |
 | `.pytest_cache/` | Pytest cache | Ignored | N/A |
-| `.fuzz_corpus/` | Atheris corpus | Ignored | N/A |
-| `.fuzz_corpus/crash_*` | Crash artifacts | Ignored | Yes (prefix) |
+| `fuzz_atheris/corpus/` | Atheris corpus | Ignored | N/A |
+| `fuzz_atheris/corpus/crash_*` | Crash artifacts | Ignored | Yes (prefix) |
 | `coverage.xml` | Coverage report | Ignored | N/A |
 
 ### Automatic Failure Capture
 
-Fuzzing scripts automatically extract "Falsifying example:" blocks to `.hypothesis/failures/`:
+The `pytest_runtest_makereport` hook in `conftest.py` automatically generates crash files:
 
 ```bash
-./scripts/list-failures.sh  # List all captured failures
+./scripts/fuzz_hypofuzz.sh --list  # List captured failures
 ```
 
 ### Hypothesis Bug Preservation
 
-When Hypothesis finds a failing input, DON'T rely on `.hypothesis/examples/`.
-Instead, promote the failing example to an `@example()` decorator:
+When Hypothesis finds a failing input:
+
+1. **Automatic**: `pytest_runtest_makereport` hook generates `.hypothesis/crashes/repro_crash_*.py`
+2. **Manual**: Promote the failing example to an `@example()` decorator
 
 ```python
 from hypothesis import example, given
@@ -497,33 +474,36 @@ def test_parser_handles_input(text: str) -> None:
     ...
 ```
 
+**Crash reproduction:**
+```bash
+# Run auto-generated reproduction script
+uv run python .hypothesis/crashes/repro_crash_20260204_103000_a1b2c3d4.py
+
+# Or use the repro tool for JSON output
+uv run python scripts/fuzz_hypofuzz_repro.py --json test_module::test_name
+```
+
 **Rationale**: HypoFuzz stores 100k+ coverage examples in `.hypothesis/examples/`. Committing would add 100MB+ to git. Instead:
 1. Keep corpus local to each machine
-2. Promote failures to `@example()` decorators (version controlled)
-3. Each machine rebuilds its own coverage corpus
+2. Auto-capture crashes to `.hypothesis/crashes/` (portable, shareable)
+3. Promote failures to `@example()` decorators (version controlled)
+4. Each machine rebuilds its own coverage corpus
 
 ### Atheris Bug Preservation
 
-When Atheris finds a crash, use the `--repro` tool for fast reproduction:
+When Atheris finds a crash, use the replay script for reproduction:
 
 | Step | Action |
 |:-----|:-------|
-| 1 | Reproduce: `./scripts/fuzz.sh --repro .fuzz_corpus/crash_*` |
-| 2 | Get @example: `uv run python scripts/repro.py --example .fuzz_corpus/crash_*` |
-| 3 | Add `@example(...)` decorator to relevant test function |
-| 4 | Fix the bug, run tests to confirm |
-| 5 | Delete crash file after committing test |
+| 1 | Reproduce: `uv run python fuzz_atheris/fuzz_atheris_replay_finding.py fuzz_atheris/corpus/crash_*` |
+| 2 | Add `@example(...)` decorator to relevant test function |
+| 3 | Fix the bug, run tests to confirm |
+| 4 | Delete crash file after committing test |
 
-The `scripts/repro.py` tool closes the feedback loop:
-- `--repro FILE`: Full traceback reproduction
-- `--example`: Generates copy-paste `@example()` decorator
-- `--json`: Machine-readable JSON output for automation
-- Size limit: 10 MB maximum input to prevent memory exhaustion
-
-**Crash-proof reporting**: Fuzz targets now emit `[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`
+**Crash-proof reporting**: Fuzz targets emit `[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`
 on exit via atexit handler, ensuring metadata is never lost on crash.
 
-**Rationale**: `.fuzz_corpus/` is git-ignored (contains binary seeds, machine-specific).
+**Rationale**: `fuzz_atheris/corpus/` is git-ignored (contains binary seeds, machine-specific).
 Unit tests with literal inputs are permanent, readable, and version-controlled.
 
 ---
@@ -538,6 +518,9 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 | `test_*_comprehensive.py` | Unit | N/A | Thorough edge cases |
 | `test_grammar_based_fuzzing.py` | Fuzzing | `fuzz` | Excluded from normal runs |
 | `test_metamorphic_properties.py` | Property | N/A | Metamorphic self-consistency tests |
+| `tests/fuzz/test_bundle_oracle.py` | Oracle | `fuzz` | Differential testing vs ShadowBundle |
+| `tests/fuzz/test_depth_exhaustion.py` | Depth | `fuzz` | MAX_DEPTH boundary testing |
+| `tests/fuzz/shadow_bundle.py` | Support | N/A | Reference implementation (not a test) |
 
 ---
 
@@ -601,18 +584,21 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 
 | Mistake | Consequence | Correct Approach |
 |:--------|:------------|:-----------------|
-| Commit `.hypothesis/examples/` | 100MB+ git bloat from HypoFuzz corpus | Keep ignored; promote failures to `@example()` decorators |
-| Rely on `.fuzz_corpus/crash_*` | Bug lost when files cleaned up | Create unit test with crash input as literal |
-| Hardcode `@settings(max_examples=N)` | Overrides profile, CI takes forever | Omit decorator or use `@settings(max_examples=settings.get_profile("dev").max_examples)` for fuzz-only |
+| Commit `.hypothesis/` | 100MB+ git bloat from HypoFuzz corpus | Keep ignored; use `.hypothesis/crashes/` for portable repros |
+| Rely on `fuzz_atheris/corpus/crash_*` | Bug lost when files cleaned up | Create unit test with crash input as literal |
+| Hardcode `@settings(max_examples=N)` | Overrides profile, CI takes forever | Omit decorator or use profile-based settings for fuzz-only |
 | Forget `pytestmark` in new fuzz file | Tests run in normal suite, slow | Add `pytestmark = pytest.mark.fuzz` at top of file |
-| Run `pytest tests/` expecting fuzz tests | Fuzz tests silently skipped | Use `pytest -m fuzz` or `./scripts/run-property-tests.sh` |
+| Run `pytest tests/` expecting fuzz tests | Fuzz tests silently skipped | Use `pytest -m fuzz` or `./scripts/fuzz_hypofuzz.sh --deep` |
 | Set `HYPOTHESIS_PROFILE` wrong | Unexpected example counts | Valid values: `dev`, `ci`, `verbose` |
-| Long socket paths in fuzzing | `AF_UNIX path too long` error | Set `TMPDIR=/tmp` before running |
+| Long socket paths in fuzzing | `AF_UNIX path too long` error | Scripts set `TMPDIR=/tmp` automatically |
+| Ignore `.hypothesis/crashes/` | Miss portable crash reproductions | Check for auto-generated `repro_crash_*.py` scripts |
 
 ---
 
 ## See Also
 
-- [FUZZING_GUIDE.md](FUZZING_GUIDE.md): Operational guide (how-to)
-- [tests/conftest.py](../tests/conftest.py): Profile and marker configuration
-- [tests/test_grammar_based_fuzzing.py](../tests/test_grammar_based_fuzzing.py): Primary fuzzing tests
+- [FUZZING_GUIDE.md](FUZZING_GUIDE.md): Overview and comparison of fuzzing approaches
+- [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md): HypoFuzz operational guide
+- [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md): Atheris operational guide
+- [tests/conftest.py](../tests/conftest.py): Profile, marker, and crash recording configuration
+- [tests/fuzz/](../tests/fuzz/): Oracle and depth exhaustion fuzz tests

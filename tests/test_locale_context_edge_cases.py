@@ -531,3 +531,112 @@ class TestLongLocaleCodeCoverage:
         # Should use fallback
         assert ctx.is_fallback is True
         assert ctx.locale_code == long_invalid
+
+
+class TestCurrencyBoundaryValues:
+    """Regression tests for currency formatting boundary values.
+
+    These tests verify that currency formatting works correctly around
+    power-of-10 boundaries, particularly the 1000 boundary where Babel 2.17.0
+    had issues with compact currency formatting in several locales.
+    """
+
+    @pytest.mark.parametrize("value", [
+        Decimal("999"),
+        Decimal("999.99"),
+        Decimal("1000"),
+        Decimal("1000.00"),
+        Decimal("1000.01"),
+        Decimal("1001"),
+    ])
+    def test_currency_around_1000_boundary(self, value: Decimal) -> None:
+        """Currency formatting works for values around 1000 boundary."""
+        ctx = LocaleContext.create("en_US")
+        result = ctx.format_currency(value, currency="USD")
+
+        assert isinstance(result, str)
+        assert result  # Non-empty
+        # Should contain dollar sign or USD
+        assert "$" in result or "USD" in result
+
+    @pytest.mark.parametrize("locale", [
+        "en_US", "de_DE", "fr_FR", "es_ES", "ja_JP", "zh_CN",
+        "ar_SA", "ru_RU", "pt_BR", "ko_KR", "it_IT", "nl_NL",
+    ])
+    def test_currency_1000_across_locales(self, locale: str) -> None:
+        """Currency formatting for exactly 1000 works across locales."""
+        ctx = LocaleContext.create(locale)
+        result = ctx.format_currency(Decimal("1000"), currency="USD")
+
+        assert isinstance(result, str)
+        assert result  # Non-empty
+        # Result should contain some digit representation
+        assert any(c.isdigit() for c in result)
+
+    @pytest.mark.parametrize("value", [
+        Decimal("-1000"),
+        Decimal("-1000.00"),
+    ])
+    def test_negative_1000_currency(self, value: Decimal) -> None:
+        """Negative 1000 currency values format correctly."""
+        ctx = LocaleContext.create("en_US")
+        result = ctx.format_currency(value, currency="USD")
+
+        assert isinstance(result, str)
+        assert result
+        # Should contain minus or parentheses for negative
+        assert "-" in result or "(" in result
+
+    @pytest.mark.parametrize("currency", [
+        "USD", "EUR", "GBP", "JPY", "CNY", "CHF", "CAD", "AUD",
+    ])
+    def test_currency_1000_multiple_currencies(self, currency: str) -> None:
+        """Currency formatting for 1000 works with various currencies."""
+        ctx = LocaleContext.create("en_US")
+        result = ctx.format_currency(Decimal("1000"), currency=currency)
+
+        assert isinstance(result, str)
+        assert result
+        # Should contain either symbol or the currency code
+        assert any(c.isdigit() for c in result)
+
+    def test_currency_1000_all_display_modes(self) -> None:
+        """Currency formatting for 1000 works with all display modes."""
+        ctx = LocaleContext.create("en_US")
+        value = Decimal("1000")
+
+        # Symbol display
+        result_symbol = ctx.format_currency(
+            value, currency="USD", currency_display="symbol"
+        )
+        assert "$" in result_symbol
+
+        # Code display
+        result_code = ctx.format_currency(
+            value, currency="USD", currency_display="code"
+        )
+        assert "USD" in result_code
+
+        # Name display
+        result_name = ctx.format_currency(
+            value, currency="USD", currency_display="name"
+        )
+        assert "dollar" in result_name.lower()
+
+    def test_currency_integer_1000(self) -> None:
+        """Currency formatting handles int 1000 correctly."""
+        ctx = LocaleContext.create("en_US")
+        result = ctx.format_currency(1000, currency="USD")
+
+        assert isinstance(result, str)
+        assert "$" in result or "USD" in result
+        assert "1" in result
+
+    def test_currency_float_1000(self) -> None:
+        """Currency formatting handles float 1000.0 correctly."""
+        ctx = LocaleContext.create("en_US")
+        result = ctx.format_currency(1000.0, currency="USD")
+
+        assert isinstance(result, str)
+        assert "$" in result or "USD" in result
+        assert "1" in result
