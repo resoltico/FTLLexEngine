@@ -12,7 +12,7 @@ and whitespace, serialize(parse(serialize(AST))) is stable.
 
 from __future__ import annotations
 
-from hypothesis import example, given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import (
@@ -140,6 +140,8 @@ class TestSerializerStability:
         After initial serialize-parse, the result must be stable on
         subsequent serialize-parse cycles.
         """
+        event(f"indent={indent}")
+        event(f"line_count={line_count}")
         lines = [f"{'  ' * indent}line{i}" if i > 0 else "first" for i in range(line_count)]
         original = "\n".join(lines)
 

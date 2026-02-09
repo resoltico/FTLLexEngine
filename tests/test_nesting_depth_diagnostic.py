@@ -5,7 +5,7 @@ when placeable nesting exceeds max_nesting_depth, instead of generic PARSE_JUNK.
 """
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import DiagnosticCode
@@ -265,6 +265,7 @@ def test_depth_exactly_at_limit_always_parses(depth_limit: int) -> None:
     Property: For any depth limit N (1-20), nesting exactly N levels deep
     should parse without producing Junk.
     """
+    event(f"depth_limit={depth_limit}")
     parser = FluentParserV1(max_nesting_depth=depth_limit)
 
     # Create nesting exactly at limit
@@ -288,6 +289,7 @@ def test_depth_one_over_limit_always_fails_with_diagnostic(depth_limit: int) -> 
     Property: For any depth limit N (1-20), nesting N+1 levels deep
     should produce Junk with PARSE_NESTING_DEPTH_EXCEEDED diagnostic.
     """
+    event(f"depth_limit={depth_limit}")
     parser = FluentParserV1(max_nesting_depth=depth_limit)
 
     # Create nesting one over limit

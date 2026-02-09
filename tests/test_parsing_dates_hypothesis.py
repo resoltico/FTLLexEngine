@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 from babel import Locale
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.parsing import parse_date, parse_datetime
@@ -33,6 +33,8 @@ class TestParseDateHypothesis:
         self, year: int, month: int, day: int
     ) -> None:
         """ISO 8601 date format should always parse correctly (financial standard)."""
+        event(f"year={year}")
+        event(f"month={month}")
         # ISO 8601 is the international standard for dates
         iso_date = f"{year:04d}-{month:02d}-{day:02d}"
 

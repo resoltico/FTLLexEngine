@@ -447,12 +447,31 @@ parse_and_display_report() {
     iterations=$(echo "$json_report" | jq -r '.iterations // 0')
     findings=$(echo "$json_report" | jq -r '.findings // 0')
 
+    # Parse identification and timing (optional fields)
+    local fuzzer_name fuzzer_target duration throughput
+    fuzzer_name=$(echo "$json_report" | jq -r '.fuzzer_name // empty')
+    fuzzer_target=$(echo "$json_report" | jq -r '.fuzzer_target // empty')
+    duration=$(echo "$json_report" | jq -r '.campaign_duration_sec // empty')
+    throughput=$(echo "$json_report" | jq -r '.iterations_per_sec // empty')
+
     # Display summary header
     echo -e "\n${BOLD}============================================================${NC}"
     echo -e "${BOLD}Fuzzing Campaign Summary${NC}"
     echo -e "${BOLD}============================================================${NC}"
+    if [[ -n "$fuzzer_name" ]]; then
+        echo "Fuzzer:     $fuzzer_name"
+    fi
+    if [[ -n "$fuzzer_target" ]]; then
+        echo "Target:     $fuzzer_target"
+    fi
     echo "Status:     $status"
     echo "Iterations: $(printf "%'d" "$iterations")"
+    if [[ -n "$duration" ]]; then
+        echo "Duration:   ${duration}s"
+    fi
+    if [[ -n "$throughput" ]]; then
+        echo "Throughput: $(printf "%'.1f" "$throughput") iter/s"
+    fi
     echo "Findings:   $(printf "%'d" "$findings")"
 
     # Performance metrics (if available)

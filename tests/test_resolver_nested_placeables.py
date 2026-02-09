@@ -10,7 +10,7 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -289,6 +289,7 @@ class TestFormatValueComprehensive:
     )
     def test_format_value_never_raises(self, value: str | int | float | bool | None) -> None:
         """PROPERTY: _format_value never raises exceptions."""
+        event(f"value_type={type(value).__name__}")
         registry = FunctionRegistry()
         resolver = FluentResolver(
             locale="en_US",
@@ -468,6 +469,7 @@ class TestResolverFullIntegration:
     )
     def test_resolution_with_arbitrary_text(self, text: str, var_value: str) -> None:
         """PROPERTY: Resolver handles arbitrary text and variable values."""
+        event(f"text_len={len(text)}")
         from hypothesis import assume  # noqa: PLC0415
 
         # Skip text containing FTL special chars

@@ -6,7 +6,7 @@ Complements test_introspection.py with property-based testing.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.introspection import extract_variables, introspect_message
@@ -39,6 +39,7 @@ class TestVariableExtractionProperties:
     @settings(max_examples=200)
     def test_simple_variable_always_extracted(self, var_name: str) -> None:
         """PROPERTY: Simple { $var } always extracts var."""
+        event(f"var_name={var_name}")
         parser = FluentParserV1()
         ftl_source = f"msg = Hello {{ ${var_name} }}"
 
@@ -54,6 +55,7 @@ class TestVariableExtractionProperties:
     @settings(max_examples=200)
     def test_duplicate_variables_deduplicated(self, var_name: str) -> None:
         """PROPERTY: Duplicate { $var } { $var } extracts var once."""
+        event(f"var_name={var_name}")
         parser = FluentParserV1()
         ftl_source = f"msg = Hello {{ ${var_name} }} {{ ${var_name} }}"
 
@@ -74,6 +76,8 @@ class TestVariableExtractionProperties:
     @settings(max_examples=200)
     def test_multiple_variables_all_extracted(self, var1: str, var2: str) -> None:
         """PROPERTY: { $a } { $b } extracts both a and b."""
+        same = var1 == var2
+        event(f"same_vars={same}")
         parser = FluentParserV1()
         ftl_source = f"msg = Hello {{ ${var1} }} {{ ${var2} }}"
 
@@ -91,6 +95,7 @@ class TestVariableExtractionProperties:
     @settings(max_examples=100)
     def test_no_variables_returns_empty_set(self, msg_id: str) -> None:
         """PROPERTY: Message with no variables returns empty set."""
+        event(f"msg_id={msg_id}")
         parser = FluentParserV1()
         ftl_source = f"{msg_id} = Hello World"
 
@@ -106,6 +111,7 @@ class TestVariableExtractionProperties:
     @settings(max_examples=100)
     def test_variable_in_function_extracted(self, var_name: str) -> None:
         """PROPERTY: NUMBER($var) extracts var."""
+        event(f"var_name={var_name}")
         parser = FluentParserV1()
         ftl_source = f"msg = {{ NUMBER(${var_name}) }}"
 
@@ -124,6 +130,7 @@ class TestVariableExtractionProperties:
     @settings(max_examples=100)
     def test_attribute_variable_extracted(self, var_name: str, attr_name: str) -> None:
         """PROPERTY: Variables in attributes are extracted."""
+        event(f"var_name={var_name}")
         parser = FluentParserV1()
         ftl_source = f"msg = Hello\n    .{attr_name} = {{ ${var_name} }}"
 
@@ -149,6 +156,7 @@ class TestIntrospectionProperties:
     @settings(max_examples=200)
     def test_message_id_preserved(self, msg_id: str) -> None:
         """PROPERTY: introspect_message preserves message ID."""
+        event(f"msg_id={msg_id}")
         parser = FluentParserV1()
         ftl_source = f"{msg_id} = Hello"
 

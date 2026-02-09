@@ -23,7 +23,7 @@ import threading
 from datetime import UTC, datetime
 from typing import Any, Literal, get_args
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 import ftllexengine.parsing.currency as currency_module
@@ -754,6 +754,7 @@ class TestCoverageHypothesis:
     @settings(max_examples=50)
     def test_visitor_handles_arbitrary_identifiers(self, names: list[str]) -> None:
         """Visitor handles messages with various identifier names."""
+        event(f"name_count={len(names)}")
         # Build message with multiple attributes
         attrs = tuple(
             Attribute(
@@ -780,6 +781,7 @@ class TestCoverageHypothesis:
     @settings(max_examples=30)
     def test_serializer_handles_multiple_variants(self, variant_count: int) -> None:
         """Serializer handles select expressions with varying variant counts."""
+        event(f"variant_count={variant_count}")
         variants = [
             Variant(
                 key=Identifier(f"key{i}"),

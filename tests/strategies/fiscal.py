@@ -257,3 +257,116 @@ def month_end_policy_with_event(draw: st.DrawFn) -> str:
     policy = draw(month_end_policies)
     event(f"month_end_policy={policy}")
     return policy
+
+
+@composite
+def fiscal_calendar_dict(draw: st.DrawFn) -> dict[str, int | str]:
+    """Generate complete fiscal calendar configuration as dict.
+
+    D9 fix: Returns all FiscalCalendar constructor arguments as a dict,
+    ready for st.builds(FiscalCalendar, **config) when domain object is available.
+
+    Events emitted:
+    - fiscal_config={calendar_type}: Fiscal calendar configuration type
+
+    Returns dict with keys:
+    - fiscal_year_start_month: int (1-12)
+    - first_fiscal_month_name: str (for display)
+    """
+    cal_type = draw(
+        st.sampled_from([
+            "calendar_year",
+            "uk_japan",
+            "australia",
+            "us_federal",
+            "other",
+        ])
+    )
+
+    match cal_type:
+        case "calendar_year":
+            month = 1
+            month_name = "January"
+        case "uk_japan":
+            month = 4
+            month_name = "April"
+        case "australia":
+            month = 7
+            month_name = "July"
+        case "us_federal":
+            month = 10
+            month_name = "October"
+        case _:  # other
+            excluded = {1, 4, 7, 10}
+            month = draw(
+                st.integers(min_value=2, max_value=12).filter(lambda m: m not in excluded)
+            )
+            month_names = {
+                2: "February", 3: "March", 5: "May", 6: "June",
+                8: "August", 9: "September", 11: "November", 12: "December",
+            }
+            month_name = month_names[month]
+
+    event(f"fiscal_config={cal_type}")
+
+    return {
+        "fiscal_year_start_month": month,
+        "first_fiscal_month_name": month_name,
+    }
+
+
+@composite
+def fiscal_boundary_crossing_pair(draw: st.DrawFn) -> tuple[date, date]:
+    """Generate date pair that spans a fiscal year boundary.
+
+    D12 fix: Fiscal period calculations crossing year boundaries are the
+    primary source of bugs in financial date arithmetic (Q4->Q1 transitions,
+    fiscal year-end rollovers).
+
+    Events emitted:
+    - fiscal_boundary={year_end|quarter_end}: Boundary type crossed
+
+    Returns tuple of (date_before_boundary, date_after_boundary).
+    """
+    # Choose fiscal calendar type
+    fiscal_start = draw(st.sampled_from([1, 4, 7, 10]))  # Common fiscal starts
+
+    # Calculate fiscal year end month (month before start)
+    fiscal_end_month = 12 if fiscal_start == 1 else fiscal_start - 1
+
+    # Choose boundary type
+    boundary_type = draw(st.sampled_from(["year_end", "quarter_end"]))
+
+    year = draw(st.integers(min_value=1950, max_value=2050))
+
+    match boundary_type:
+        case "year_end":
+            # Last day of fiscal year -> first day of next fiscal year
+            last_day = _last_day_of_month(year, fiscal_end_month)
+            before = date(year, fiscal_end_month, last_day)
+
+            # Next fiscal year starts
+            next_month = fiscal_start
+            next_year = year if fiscal_start > fiscal_end_month else year + 1
+            after = date(next_year, next_month, 1)
+            event("fiscal_boundary=year_end")
+
+        case _:  # quarter_end
+            # End of a fiscal quarter -> start of next quarter
+            # Fiscal quarters: Q1=months 1-3, Q2=4-6, Q3=7-9, Q4=10-12 relative to start
+            quarter = draw(st.integers(min_value=1, max_value=4))
+            quarter_end_offset = quarter * 3 - 1  # 2, 5, 8, 11 (0-indexed from start)
+            quarter_end_month = ((fiscal_start - 1 + quarter_end_offset) % 12) + 1
+
+            # Adjust year if month wraps
+            adj_year = year if quarter_end_month >= fiscal_start else year + 1
+            last_day = _last_day_of_month(adj_year, quarter_end_month)
+            before = date(adj_year, quarter_end_month, last_day)
+
+            # Next month is start of next quarter
+            next_month = (quarter_end_month % 12) + 1
+            next_year = adj_year if next_month > quarter_end_month else adj_year + 1
+            after = date(next_year, next_month, 1)
+            event("fiscal_boundary=quarter_end")
+
+    return (before, after)

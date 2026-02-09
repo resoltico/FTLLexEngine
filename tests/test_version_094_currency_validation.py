@@ -11,7 +11,7 @@ import re
 from collections import ChainMap
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -86,6 +86,7 @@ class TestCurrencyDecimalConsistency:
     @settings(max_examples=20)
     def test_currency_never_exceeds_iso_decimals(self, value: float) -> None:
         """PROPERTY: Formatted currency never exceeds ISO-specified decimals."""
+        event(f"value_magnitude={int(value)}")
         ctx = LocaleContext.create("en-US")
 
         # Test with JPY (0 decimals)

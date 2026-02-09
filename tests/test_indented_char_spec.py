@@ -18,7 +18,7 @@ References:
 from __future__ import annotations
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import Junk, Message, Term, TextElement
@@ -308,6 +308,7 @@ class TestHypothesisIndentedChar:
 
         Property: indented_char excludes these characters at line start.
         """
+        event(f"first_char={first_char!r}")
         parser = FluentParserV1()
         source = f"""msg = First line
     {first_char}{rest_text}
@@ -340,6 +341,8 @@ class TestHypothesisIndentedChar:
 
         Property: indented_char only excludes [, *, . at position 0.
         """
+        event(f"position={position}")
+        event(f"special_char={special_char!r}")
         parser = FluentParserV1()
         # Put special char at given position (not start)
         padding = "x" * position

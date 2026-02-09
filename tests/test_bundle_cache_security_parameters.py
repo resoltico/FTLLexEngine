@@ -11,7 +11,8 @@ These parameters are essential for financial-grade applications requiring
 integrity verification, audit trails, and memory bounds.
 """
 
-from hypothesis import given, settings
+import pytest
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE
@@ -370,6 +371,7 @@ class TestCacheStatsIncludeNewParameters:
         assert stats["audit_enabled"] is True
 
 
+@pytest.mark.fuzz
 class TestPropertyBasedCacheParameters:
     """Property-based tests for cache parameters."""
 
@@ -401,6 +403,7 @@ class TestPropertyBasedCacheParameters:
         assert bundle.cache_max_audit_entries == cache_max_audit_entries
         assert bundle.cache_max_entry_weight == cache_max_entry_weight
         assert bundle.cache_max_errors_per_entry == cache_max_errors_per_entry
+        event(f"cache_size={cache_size}")
 
     @given(
         cache_write_once=st.booleans(),
@@ -423,3 +426,5 @@ class TestPropertyBasedCacheParameters:
         assert bundle.cache_write_once == cache_write_once
         assert bundle.cache_enable_audit == cache_enable_audit
         assert bundle.strict == strict
+        wo = "write_once" if cache_write_once else "normal"
+        event(f"mode={wo}")

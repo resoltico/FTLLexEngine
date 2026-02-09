@@ -9,7 +9,7 @@ Critical resolver functions tested:
 - Circular reference detection
 """
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -34,6 +34,7 @@ class TestPatternResolution:
     @settings(max_examples=500)
     def test_simple_text_resolution(self, msg_id: str, text_content: str) -> None:
         """Property: Simple text patterns resolve to their content."""
+        event(f"text_len={len(text_content)}")
         pattern = Pattern(elements=(TextElement(value=text_content),))
         message = Message(id=Identifier(name=msg_id), value=pattern, attributes=())
 
@@ -60,6 +61,7 @@ class TestPatternResolution:
         self, msg_id: str, parts: list[str]
     ) -> None:
         """Property: Multiple text elements are concatenated."""
+        event(f"part_count={len(parts)}")
         elements = tuple(TextElement(value=p) for p in parts)
         pattern = Pattern(elements=elements)
         message = Message(id=Identifier(name=msg_id), value=pattern, attributes=())
@@ -96,6 +98,8 @@ class TestVariableResolution:
         self, var_name: str, var_value: str | int | float
     ) -> None:
         """Property: Variable values are preserved in resolution."""
+        val_type = type(var_value).__name__
+        event(f"var_type={val_type}")
         bundle = FluentBundle("en_US", use_isolating=False)
 
         ftl_source = f"msg = {{ ${var_name} }}"
@@ -113,6 +117,7 @@ class TestVariableResolution:
     @settings(max_examples=300)
     def test_missing_variable_error_handling(self, var_name: str) -> None:
         """Property: Missing variables are handled gracefully."""
+        event(f"var_name_len={len(var_name)}")
         bundle = FluentBundle("en_US")
 
         ftl_source = f"msg = {{ ${var_name} }}"
@@ -128,6 +133,7 @@ class TestVariableResolution:
     @settings(max_examples=200)
     def test_multiple_variables_independent(self, var_count: int) -> None:
         """Property: Multiple variables resolve independently."""
+        event(f"var_count={var_count}")
         bundle = FluentBundle("en_US", use_isolating=False)
 
         var_names = [f"v{i}" for i in range(var_count)]
@@ -157,6 +163,7 @@ class TestMessageReferenceResolution:
         self, ref_msg_id: str, ref_value: str, main_msg_id: str
     ) -> None:
         """Property: Message references resolve to referenced message value."""
+        event(f"ref_value_len={len(ref_value)}")
         assume(ref_msg_id != main_msg_id)
 
         bundle = FluentBundle("en_US", use_isolating=False)

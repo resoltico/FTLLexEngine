@@ -19,7 +19,7 @@ Structure:
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -242,8 +242,10 @@ class TestCycleDetectionProperties:
         # Should not crash, should detect cycle
         result, errors = bundle.format_pattern("msg0")
 
+        event(f"cycle_len={cycle_length}")
         assert isinstance(result, str)
         assert len(errors) > 0
+        event("outcome=cycle_detected")
 
     @given(st.integers(min_value=2, max_value=10), st.integers(min_value=0, max_value=5))
     @settings(max_examples=50, deadline=None)
@@ -265,8 +267,11 @@ class TestCycleDetectionProperties:
 
         result, errors = bundle.format_pattern("msg0")
 
+        event(f"chain_len={chain_length}")
+        event(f"cycle_entry={cycle_entry}")
         assert isinstance(result, str)
         assert len(errors) > 0
+        event("outcome=partial_cycle_detected")
 
     @given(
         st.lists(
@@ -293,6 +298,7 @@ class TestCycleDetectionProperties:
 
         result, errors = bundle.format_pattern(ids[0])
 
+        event(f"chain_len={len(ids)}")
         assert isinstance(result, str)
         assert "Final value" in result
         # Should have no cycle errors
@@ -301,6 +307,7 @@ class TestCycleDetectionProperties:
             if isinstance(e, FrozenFluentError) and e.category == ErrorCategory.CYCLIC
         ]
         assert len(cyclic_errors) == 0
+        event("outcome=linear_chain_success")
 
 
 @pytest.mark.fuzz

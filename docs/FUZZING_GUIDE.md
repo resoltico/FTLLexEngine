@@ -1,10 +1,10 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.103.0"
 domain: fuzzing
-updated: "2026-02-03"
+updated: "2026-02-06"
 route:
-  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security]
+  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, metrics]
   questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "which fuzzer to use?"]
 ---
 
@@ -75,7 +75,8 @@ Fuzzing finds issues that traditional unit tests miss by exploring vast input sp
 
 ```bash
 ./scripts/fuzz_hypofuzz.sh              # Quick check
-./scripts/fuzz_hypofuzz.sh --deep       # Continuous fuzzing
+./scripts/fuzz_hypofuzz.sh --deep       # Continuous fuzzing (until Ctrl+C)
+./scripts/fuzz_hypofuzz.sh --deep --metrics  # Single-pass with metrics
 ```
 
 ### Use Atheris (libFuzzer) When:
@@ -100,7 +101,9 @@ Fuzzing finds issues that traditional unit tests miss by exploring vast input sp
 | Command | Description |
 |---------|-------------|
 | `./scripts/fuzz_hypofuzz.sh` | Quick property tests |
-| `./scripts/fuzz_hypofuzz.sh --deep` | Continuous HypoFuzz |
+| `./scripts/fuzz_hypofuzz.sh --deep` | Continuous HypoFuzz (until Ctrl+C) |
+| `./scripts/fuzz_hypofuzz.sh --deep --metrics` | Single-pass pytest with strategy metrics |
+| `./scripts/fuzz_hypofuzz.sh --preflight` | Audit test infrastructure |
 | `./scripts/fuzz_hypofuzz.sh --list` | Show reproduction info |
 | `./scripts/fuzz_hypofuzz.sh --repro TEST` | Reproduce failing test |
 | `./scripts/fuzz_hypofuzz.sh --clean` | Remove .hypothesis/ |

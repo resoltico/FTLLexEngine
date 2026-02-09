@@ -18,7 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
@@ -469,6 +469,7 @@ class TestTimeoutProperties:
         For any non-negative timeout, a timed-out write must leave the lock
         fully operational for subsequent acquisitions.
         """
+        event(f"timeout={timeout_val}")
         lock = RWLock()
         blocker_ready = threading.Event()
         blocker_release = threading.Event()
@@ -498,6 +499,7 @@ class TestTimeoutProperties:
     @settings(max_examples=20, deadline=None)
     def test_negative_timeout_always_raises_valueerror(self, timeout_val: float) -> None:
         """Property: any negative timeout raises ValueError immediately."""
+        event(f"timeout={timeout_val}")
         lock = RWLock()
 
         with pytest.raises(ValueError, match="non-negative"), lock.read(timeout=timeout_val):
@@ -514,6 +516,7 @@ class TestTimeoutProperties:
         Regardless of how many concurrent write timeouts occur, the counter
         must return to zero so readers are not permanently blocked.
         """
+        event(f"n_timeouts={n_timeouts}")
         lock = RWLock()
         blocker_ready = threading.Event()
         blocker_release = threading.Event()

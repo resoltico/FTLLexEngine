@@ -13,7 +13,7 @@ Coverage Focus:
 
 from __future__ import annotations
 
-from hypothesis import assume, example, given
+from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import (
@@ -60,6 +60,7 @@ class TestIdentifierCharacterClassification:
     @example(ch="z")
     def test_lowercase_ascii_letters_are_identifier_start(self, ch: str) -> None:
         """Lowercase ASCII letters a-z are valid identifier start characters."""
+        event(f"char={ch}")
         assert is_identifier_start(ch)
         assert is_identifier_char(ch)
 
@@ -68,6 +69,7 @@ class TestIdentifierCharacterClassification:
     @example(ch="Z")
     def test_uppercase_ascii_letters_are_identifier_start(self, ch: str) -> None:
         """Uppercase ASCII letters A-Z are valid identifier start characters."""
+        event(f"char={ch}")
         assert is_identifier_start(ch)
         assert is_identifier_char(ch)
 
@@ -78,6 +80,7 @@ class TestIdentifierCharacterClassification:
         self, ch: str
     ) -> None:
         """ASCII digits 0-9 can continue identifiers but not start them."""
+        event(f"char={ch}")
         assert not is_identifier_start(ch)
         assert is_identifier_char(ch)
 

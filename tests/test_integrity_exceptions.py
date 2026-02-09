@@ -24,7 +24,7 @@ from __future__ import annotations
 import time
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.integrity import (
@@ -77,6 +77,8 @@ class TestIntegrityContext:
     def test_minimal_construction(self, component: str, operation: str) -> None:
         """Property: IntegrityContext can be constructed with minimal fields."""
         ctx = IntegrityContext(component=component, operation=operation)
+        event(f"component_len={len(component)}")
+        event(f"operation_len={len(operation)}")
         assert ctx.component == component
         assert ctx.operation == operation
         assert ctx.key is None
@@ -88,6 +90,14 @@ class TestIntegrityContext:
     @settings(max_examples=50)
     def test_full_construction(self, context: IntegrityContext) -> None:
         """Property: IntegrityContext preserves all fields."""
+        has_key = context.key is not None
+        has_expected = context.expected is not None
+        has_actual = context.actual is not None
+        has_timestamp = context.timestamp is not None
+        event(f"key_present={has_key}")
+        event(f"expected_present={has_expected}")
+        event(f"actual_present={has_actual}")
+        event(f"timestamp_present={has_timestamp}")
         # Access all fields to verify they're stored correctly
         assert isinstance(context.component, str)
         assert isinstance(context.operation, str)
@@ -100,6 +110,7 @@ class TestIntegrityContext:
     @settings(max_examples=50)
     def test_context_is_frozen(self, context: IntegrityContext) -> None:
         """Property: IntegrityContext is immutable (frozen=True)."""
+        event(f"component_len={len(context.component)}")
         with pytest.raises((AttributeError, TypeError)):
             context.component = "modified"  # type: ignore[misc]
 
@@ -108,6 +119,7 @@ class TestIntegrityContext:
     def test_context_repr(self, context: IntegrityContext) -> None:
         """Property: IntegrityContext has valid __repr__."""
         r = repr(context)
+        event(f"repr_len={len(r)}")
         assert "IntegrityContext" in r
         assert "component=" in r
         assert "operation=" in r
@@ -126,6 +138,7 @@ class TestDataIntegrityError:
     def test_construction_without_context(self, message: str) -> None:
         """Property: DataIntegrityError can be constructed without context."""
         error = DataIntegrityError(message)
+        event(f"msg_len={len(message)}")
         assert str(error) == message
         assert error.args == (message,)
         assert error.context is None
@@ -137,6 +150,9 @@ class TestDataIntegrityError:
     ) -> None:
         """Property: DataIntegrityError preserves context."""
         error = DataIntegrityError(message, context=context)
+        has_key = context.key is not None
+        event(f"context_has_key={has_key}")
+        event(f"msg_len={len(message)}")
         assert str(error) == message
         assert error.context is context
         assert error.context.component == context.component
@@ -147,6 +163,7 @@ class TestDataIntegrityError:
     def test_immutability_after_construction(self, message: str) -> None:
         """Property: Cannot modify DataIntegrityError after construction."""
         error = DataIntegrityError(message)
+        event(f"msg_len={len(message)}")
 
         with pytest.raises(ImmutabilityViolationError, match="Cannot modify"):
             error._context = None
@@ -159,6 +176,7 @@ class TestDataIntegrityError:
     def test_delattr_always_raises(self, message: str) -> None:
         """Property: Cannot delete any attributes from DataIntegrityError."""
         error = DataIntegrityError(message)
+        event(f"msg_len={len(message)}")
 
         with pytest.raises(ImmutabilityViolationError, match="Cannot delete"):
             del error._context

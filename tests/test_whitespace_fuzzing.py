@@ -22,7 +22,7 @@ runs. Run via: ./scripts/fuzz_hypofuzz.sh --deep or pytest -m fuzz
 from __future__ import annotations
 
 import pytest
-from hypothesis import HealthCheck, assume, example, given, settings
+from hypothesis import HealthCheck, assume, event, example, given, settings
 from hypothesis import strategies as st
 
 # Mark all tests in this file as fuzzing tests (excluded from normal test runs)
@@ -104,6 +104,14 @@ class TestVariantMarkerWhitespace:
         if not key_name or not key_name[0].isalpha():
             return  # Skip invalid keys
 
+        # Emit semantic events for HypoFuzz guidance
+        has_newline = "\n" in variant_key
+        has_leading_space = variant_key.startswith(("[ ", "[\t"))
+        has_trailing_space = variant_key.endswith((" ]", "\t]"))
+        event(f"ws_type={'newline' if has_newline else 'inline'}")
+        event(f"leading_ws={has_leading_space}")
+        event(f"trailing_ws={has_trailing_space}")
+
         # Build a complete select expression with the variant key
         source = f"""msg = {{ $count ->
     *{variant_key} value
@@ -113,6 +121,7 @@ class TestVariantMarkerWhitespace:
         # Should parse without creating Junk
         assert isinstance(resource, Resource)
         assert len(resource.entries) >= 1
+        event("outcome=parsed")
 
     @given(msg_source=ftl_select_with_whitespace_variants())
     @settings(
@@ -130,6 +139,10 @@ class TestVariantMarkerWhitespace:
 
         ast1 = parser.parse(msg_source)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"entries={len(ast1.entries)}")
+        event(f"has_junk={has_junk(ast1)}")
+
         # Skip if initial parse produces Junk
         assume(not has_junk(ast1))
 
@@ -138,6 +151,7 @@ class TestVariantMarkerWhitespace:
 
         # Should maintain same message count
         assert get_message_count(ast1) == get_message_count(ast2)
+        event("outcome=roundtrip_success")
 
 
 # -----------------------------------------------------------------------------
@@ -170,11 +184,16 @@ class TestBlankLineHandling:
 
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        blank_count = pattern.split("\n")[:-1].count("") if "\n" in pattern else 0
+        event(f"blank_lines={min(blank_count, 5)}")
+
         # Should produce a valid message
         assert isinstance(resource, Resource)
         if resource.entries and isinstance(resource.entries[0], Message):
             msg = resource.entries[0]
             assert msg.value is not None
+            event("outcome=message_parsed")
             # The pattern value should not start with excessive whitespace
             # (blank lines and common indent should be stripped)
 
@@ -191,10 +210,14 @@ class TestBlankLineHandling:
         source = f"msg1 = value1\n{blanks}\nmsg2 = value2"
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"blank_seq_len={len(blanks)}")
+
         # Should parse both messages
         assert isinstance(resource, Resource)
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) >= 1  # At least one message should parse
+        event(f"message_count={len(messages)}")
 
     @given(blank=blank_line())
     @settings(max_examples=200, deadline=None)
@@ -209,6 +232,8 @@ class TestBlankLineHandling:
         source = f"msg1 = value1\n{blank}\nmsg2 = value2"
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"blank_len={len(blank)}")
         assert isinstance(resource, Resource)
 
 
@@ -240,6 +265,10 @@ class TestPlaceableWhitespace:
         source = f"msg = Hello {placeable} World"
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        has_newline = "\n" in placeable
+        event(f"placeable_ws={'newline' if has_newline else 'inline'}")
+
         assert isinstance(resource, Resource)
         assert len(resource.entries) >= 1
 
@@ -261,6 +290,12 @@ class TestPlaceableWhitespace:
 
         source = f"msg = {{{ws_before}${var_name}{ws_after}}}"
         resource = parser.parse(source)
+
+        # Emit semantic events for HypoFuzz guidance
+        before_type = "newline" if "\n" in ws_before else "space" if ws_before else "none"
+        after_type = "newline" if "\n" in ws_after else "space" if ws_after else "none"
+        event(f"ws_before={before_type}")
+        event(f"ws_after={after_type}")
 
         assert isinstance(resource, Resource)
 
@@ -288,6 +323,9 @@ class TestTabHandling:
         certain positions may create Junk.
         """
         parser = FluentParserV1()
+
+        # Emit semantic events for HypoFuzz guidance
+        event(f"tab_count={tabbed_text.count(chr(9))}")
 
         # Test tab before equals
         source1 = f"msg\t= {tabbed_text}"
@@ -321,6 +359,7 @@ class TestTabHandling:
             entry = resource.entries[0]
             # Either Junk or Message without the tab-indented content
             assert isinstance(entry, (Junk, Message))
+            event(f"entry_type={type(entry).__name__}")
 
 
 # -----------------------------------------------------------------------------
@@ -344,6 +383,12 @@ class TestMixedLineEndings:
         to a consistent format.
         """
         parser = FluentParserV1()
+
+        # Emit semantic events for HypoFuzz guidance
+        has_crlf = "\r\n" in text
+        has_cr = "\r" in text.replace("\r\n", "")
+        has_lf = "\n" in text.replace("\r\n", "")
+        event(f"endings={'mixed' if sum([has_crlf, has_cr, has_lf]) > 1 else 'single'}")
 
         # Create messages from the mixed text
         lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -382,6 +427,7 @@ class TestMixedLineEndings:
 
         # Serialized output should use LF (not CRLF)
         assert "\r\n" not in serialized
+        event("outcome=crlf_roundtrip_success")
 
 
 # -----------------------------------------------------------------------------
@@ -413,6 +459,10 @@ class TestVariableIndentation:
         source = f"msg =\n{pattern}"
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        line_count = pattern.count("\n") + 1
+        event(f"pattern_lines={min(line_count, 10)}")
+
         assert isinstance(resource, Resource)
         assert len(resource.entries) >= 1
 
@@ -441,6 +491,7 @@ class TestVariableIndentation:
         ast2 = parser.parse(serialized)
 
         assert get_message_count(ast2) == 1
+        event("outcome=indent_roundtrip_success")
 
 
 # -----------------------------------------------------------------------------
@@ -468,6 +519,10 @@ class TestTrailingWhitespace:
         source = f"msg = {text}"
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        trailing_len = len(text) - len(text.rstrip())
+        event(f"trailing_ws_len={min(trailing_len, 10)}")
+
         assert isinstance(resource, Resource)
         assert len(resource.entries) >= 1
 
@@ -492,6 +547,7 @@ class TestTrailingWhitespace:
 
         # Message count should be preserved
         assert get_message_count(ast1) == get_message_count(ast2)
+        event("outcome=trailing_ws_roundtrip_success")
 
 
 # -----------------------------------------------------------------------------
@@ -522,6 +578,10 @@ class TestWhitespaceCrossContamination:
 
         resource = parser.parse(source)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"chaos_entries={len(resource.entries)}")
+        event(f"has_junk={has_junk(resource)}")
+
         assert isinstance(resource, Resource)
         assert hasattr(resource, "entries")
 
@@ -548,6 +608,7 @@ class TestWhitespaceCrossContamination:
 
         # Entry count should be stable or decrease (Junk consolidation)
         assert len(ast2.entries) <= len(ast1.entries) + 1
+        event("outcome=chaos_roundtrip_success")
 
     @given(msg=ftl_message_with_whitespace_edge_cases())
     @settings(
@@ -573,6 +634,7 @@ class TestWhitespaceCrossContamination:
 
         # Should still have exactly one message
         assert get_message_count(ast2) == 1
+        event("outcome=edge_case_roundtrip_success")
 
 
 # -----------------------------------------------------------------------------

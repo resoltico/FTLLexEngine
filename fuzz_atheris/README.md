@@ -1,8 +1,8 @@
 ---
 afad: "3.2"
-version: "0.102.0"
+version: "0.104.0"
 domain: fuzzing
-updated: "2026-02-04"
+updated: "2026-02-06"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -16,12 +16,12 @@ route:
 
 | Fuzzer | Target Module(s) | Patterns | Seeds | Concern |
 |:-------|:-----------------|:---------|:------|:--------|
-| `fuzz_bridge.py` | `runtime.function_bridge` | 14 | 18 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
+| `fuzz_bridge.py` | `runtime.function_bridge` | 15 | 18 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
 | `fuzz_graph.py` | `analysis.graph` | 12 | 12 (.bin) | Dependency graph cycle detection, canonicalization |
 | `fuzz_builtins.py` | `runtime.functions` | 13 | 20 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
 | `fuzz_currency.py` | `parsing.currency` | 16 | 65 (.txt) | Currency symbol extraction |
-| `fuzz_fiscal.py` | `parsing.fiscal` | 7 | 15 (.bin) | Fiscal calendar arithmetic |
+| `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 18 (.bin) | Fiscal calendar arithmetic, contracts |
 | `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity` | 25 | 68 (.ftl) + 13 (.bin) | Semantic validation, strict mode, cross-resource |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
 | `fuzz_lock.py` | `runtime.rwlock` | 17 | 32 (.bin) | RWLock concurrency primitives |
@@ -30,6 +30,7 @@ route:
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) + 4 (.ftl) | Parser-serializer convergence |
 | `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 73 (.bin) | Full runtime stack, strict mode |
+| `fuzz_serializer.py` | `syntax.serializer`, `syntax.parser` | 10 | 12 (.bin) | AST-construction serializer roundtrip |
 | `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 12 | 12 (.bin) | Variable scoping, term isolation, depth guards |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) | Grammar-aware AST construction |
 
@@ -51,32 +52,56 @@ route:
 | `runtime.cache` | runtime, cache |
 | `runtime.plural_rules` | plural |
 | `runtime.rwlock` | lock |
-| `syntax.parser` | oom, roundtrip, structured |
-| `syntax.serializer` | roundtrip, structured |
+| `syntax.parser` | oom, roundtrip, serializer, structured |
+| `syntax.serializer` | roundtrip, serializer, structured |
 | `validation` | integrity |
 
 ## `fuzz_bridge`
 
-Target: `runtime.function_bridge` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `fluent_function` decorator, freeze/copy isolation, dict-like interface.
+Target: `runtime.function_bridge` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `fluent_function` decorator, freeze/copy isolation, dict-like interface, metadata API, signature validation error paths.
+
+Concern boundary: This fuzzer stress-tests the bridge machinery that connects FTL function calls to Python implementations. Distinct from fuzz_builtins which tests built-in functions (NUMBER, DATETIME, CURRENCY) through the bridge; this fuzzer tests the bridge itself: registration, dispatch, parameter conversion, lifecycle, and introspection. Tests registration error paths (inject_locale arity validation, underscore collision detection, auto-naming), metadata API (get_expected_positional_args, get_builtin_metadata, has_function), and adversarial Python objects through FluentBundle resolution.
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `BridgeMetrics` dataclass (register calls/failures, call dispatch tests/errors, FluentNumber checks, camel case tests, freeze/copy tests, locale injection tests, signature validation tests, metadata API tests, evil object tests). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
+
+15 patterns across 4 categories:
+
+**REGISTRATION (4)** - Function registration and validation:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `register_basic` | 10 | len(registry) matches registration count |
+| `register_signatures` | 12 | Positional-only, *args, **kwargs, many params, lambda, overwrite |
+| `param_mapping_custom` | 8 | Custom param_map overrides auto-generated mapping |
+| `signature_validation` | 6 | inject_locale arity TypeError, underscore collision ValueError, auto-naming |
+
+**CONTRACTS (3)** - Object immutability and type contracts:
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `fluent_number_contracts` | 12 | str, __contains__, __len__, repr, frozen, precision=None |
-| `camel_case_conversion` | 10 | Known snake->camelCase pairs, fuzzed input returns str |
 | `signature_immutability` | 5 | FunctionSignature frozen, param_mapping tuple, ftl_name, fuzzed lookup |
-| `register_basic` | 10 | len(registry) matches registration count |
-| `register_signatures` | 12 | Positional-only, *args, **kwargs, many params, lambda, overwrite |
-| `param_mapping_custom` | 8 | Custom param_map overrides auto-generated mapping |
+| `camel_case_conversion` | 10 | Known snake->camelCase pairs, fuzzed input returns str |
+
+**DISPATCH (4)** - Call dispatch and error handling:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
 | `call_dispatch` | 12 | call() returns result or raises for unknown function |
-| `dict_interface` | 8 | __contains__, __iter__, list_functions, get_python_name, get_callable |
+| `locale_injection` | 10 | should_inject_locale flag, FluentBundle locale protocol |
+| `error_wrapping` | 7 | TypeError/ValueError wrapped as FrozenFluentError |
+| `evil_objects` | 5 | Evil __str__, __hash__, recursive list/dict, huge str, None through FluentBundle |
+
+**INTROSPECTION (4)** - Registry introspection and lifecycle:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `dict_interface` | 8 | __contains__, __iter__, list_functions, get_python_name, get_callable, __repr__ |
 | `freeze_copy_lifecycle` | 8 | Freeze prevents registration, copy is independent+unfrozen, idempotent |
 | `fluent_function_decorator` | 8 | Bare, parenthesized, inject_locale=True attribute, registry integration |
-| `error_wrapping` | 7 | TypeError/ValueError wrapped as FrozenFluentError |
-| `locale_injection` | 10 | should_inject_locale flag, FluentBundle locale protocol |
-| `evil_objects` | 5 | Evil __str__, __hash__, recursive list, huge str, None |
-| `raw_bytes` | 3 | Malformed input stability |
+| `metadata_api` | 6 | get_expected_positional_args, get_builtin_metadata, has_function vs __contains__ |
 
 ### Allowed Exceptions
 
@@ -242,23 +267,49 @@ Target: `parsing.currency.parse_currency` -- tiered loading, ambiguous symbol re
 
 ## `fuzz_fiscal`
 
-Target: `parsing.fiscal` -- `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod` arithmetic and invariants.
+Target: `parsing.fiscal` -- `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod`, `MonthEndPolicy`, and 5 convenience functions (`fiscal_quarter`, `fiscal_year`, `fiscal_month`, `fiscal_year_start`, `fiscal_year_end`). Tests date arithmetic correctness, boundary conditions, month-end policy handling, algebraic properties, type validation error paths, and immutability contracts.
+
+Concern boundary: Sole owner of the `parsing.fiscal` module. No other fuzzer imports or exercises any fiscal API. Tests FiscalCalendar cross-consistency (fiscal_year/quarter/month/period agreement, quarter contiguity, year span 365/366), FiscalDelta algebraic properties (commutativity, double negation, __sub__ == __add__ + __neg__, __mul__/__rmul__ symmetry, total_months), cross-policy ValueError enforcement, MonthEndPolicy CLAMP/STRICT invariants, FiscalPeriod frozen dataclass contracts (hash, eq, ordering, repr, validation), and convenience function oracle testing against FiscalCalendar methods.
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `FiscalMetrics` dataclass (per-pattern check counts). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
+10 patterns across 4 categories:
+
+**CALENDAR (3)** - FiscalCalendar invariants and identity:
+
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `calendar_invariants` | 25 | Quarter 1-4, month 1-12, date in fiscal year |
-| `quarter_boundaries` | 15 | Quarter start/end contiguous |
-| `delta_arithmetic` | 20 | Commutativity, identity, associativity |
-| `delta_algebra` | 15 | Double negation, scalar multiplication |
-| `period_immutability` | 10 | Hashable, frozen, equality |
-| `convenience_functions` | 10 | Match FiscalCalendar methods |
-| `boundary_stress` | 5 | Extreme years, leap years |
+| `calendar_invariants` | 15 | Quarter 1-4, month 1-12, date in fiscal year, period agreement |
+| `quarter_boundaries` | 10 | Quarter start/end contiguous, span 365/366 days |
+| `calendar_identity` | 5 | Hash, equality, repr, frozen, type validation, range validation |
+
+**ARITHMETIC (4)** - FiscalDelta operations and policies:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `delta_add_subtract` | 12 | add_to returns date, subtract_from == negate().add_to(), CLAMP month-end, STRICT ValueError |
+| `delta_algebra` | 12 | Commutativity, double negation, __neg__ == negate(), total_months, __mul__/__rmul__, __sub__ |
+| `policy_cross` | 8 | with_policy preserves components, cross-policy add/sub ValueError, all policies valid |
+| `delta_validation` | 5 | Non-int fields TypeError, non-MonthEndPolicy TypeError, valid construction |
+
+**CONTRACTS (2)** - Immutability and oracle testing:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `period_contracts` | 8 | Hash, equality, ordering (__lt__/__gt__/__le__/__ge__), frozen, repr, validation |
+| `convenience_oracle` | 8 | All 5 convenience functions match FiscalCalendar methods |
+
+**STRESS (1)** - Boundary conditions:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `boundary_stress` | 5 | Extreme dates (year 1-9999), large deltas, result type assertion |
 
 ### Allowed Exceptions
 
-`ValueError`, `OverflowError`, `TypeError` -- invalid dates and arithmetic overflow.
+`ValueError`, `OverflowError`, `TypeError` -- invalid dates, arithmetic overflow, and type validation.
 
 ---
 
@@ -507,6 +558,54 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 
 ---
 
+## `fuzz_serializer`
+
+Target: `syntax.serializer.serialize`, `syntax.parser.FluentParserV1` -- AST-construction serializer roundtrip idempotence via programmatically built AST nodes.
+
+Concern boundary: This fuzzer programmatically constructs AST nodes (bypassing the parser) and feeds them to the serializer. This is the ONLY Atheris fuzzer that can produce AST states the parser would never emit -- e.g. TextElement values with leading whitespace, syntax characters in pattern-initial positions, or structurally valid but semantically unusual combinations. Addresses the blind spot where text-based fuzzers (fuzz_roundtrip, fuzz_structured) start from the parser, which normalizes inputs before the serializer sees them. Created in response to BUG-SERIALIZER-LEADING-WS-001.
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, `gen_ftl_identifier`, `gen_ftl_value`, `write_finding_artifact`, `print_fuzzer_banner`, metrics, reporting); domain-specific metrics tracked in `SerializerMetrics` dataclass (ast_construction_failures, convergence_failures, junk_on_reparse, validation_errors). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Custom mutator applies whitespace injection and syntax character insertion mutations before byte-level mutation. Finding artifacts written to `.fuzz_atheris_corpus/serializer/findings/`. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+10 patterns across 4 categories:
+
+**WHITESPACE (2)** - Leading/trailing whitespace in TextElement values:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `leading_whitespace` | 18 | Leading spaces in message and attribute values roundtrip correctly |
+| `trailing_whitespace` | 8 | Trailing spaces in values roundtrip correctly |
+
+**SYNTAX (2)** - FTL syntax characters in values:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `syntax_chars_value` | 15 | Braces, dots, hash, asterisk, brackets in values |
+| `string_literal_placeable` | 10 | StringLiteral placeables with edge-case content |
+
+**STRUCTURE (4)** - Structural edge cases:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `simple_message` | 8 | Baseline AST-constructed message roundtrip |
+| `attribute_edge_cases` | 12 | Attributes with whitespace/syntax-char values |
+| `term_edge_cases` | 8 | Terms with whitespace in values and attributes |
+| `select_expression` | 8 | AST-constructed select expressions with leading-space variant values |
+
+**COMPOSITION (2)** - Complex element combinations:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `mixed_elements` | 8 | Interleaved TextElement/Placeable with leading spaces |
+| `multiline_value` | 5 | Multi-line values with indentation edge cases |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `RecursionError`, `MemoryError`, `UnicodeDecodeError`, `UnicodeEncodeError` -- AST construction edge cases, serializer limits, and encoding boundaries.
+
+---
+
 ## `fuzz_runtime`
 
 Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, caching, concurrency, security.
@@ -608,7 +707,7 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 All fuzzers import shared infrastructure from `fuzz_common.py` (`BaseFuzzerState`, metrics, reporting) and compose domain-specific metrics via separate dataclasses:
 
 - `BaseFuzzerState` dataclass with bounded deques (shared via `fuzz_common`)
-- Domain metrics: `RoundtripMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics`, `IntegrityMetrics`, `CacheMetrics`, `BuiltinsMetrics` (per-fuzzer)
+- Domain metrics: `RoundtripMetrics`, `SerializerMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics`, `IntegrityMetrics`, `CacheMetrics`, `BuiltinsMetrics`, `BridgeMetrics`, `FiscalMetrics` (per-fuzzer)
 - psutil RSS memory tracking with leak detection (quartile comparison)
 - Performance percentiles: min/mean/median/p95/p99/max
 - Per-pattern wall-time accumulation
@@ -623,8 +722,8 @@ All fuzzers import shared infrastructure from `fuzz_common.py` (`BaseFuzzerState
 - `atheris.enabled_hooks` for `str` and `RegEx` comparison feedback
 - Periodic `gc.collect()` every 256 iterations
 - `-rss_limit_mb=4096` default safety net
-- Custom mutator (roundtrip, structured): AST-level mutations + byte-level mutation for structurally valid inputs
-- Finding artifact system (roundtrip, structured): source/s1/s2/meta.json written to `.fuzz_atheris_corpus/<target>/findings/`
+- Custom mutator (roundtrip, serializer, structured): AST-level mutations + byte-level mutation for structurally valid inputs
+- Finding artifact system (roundtrip, serializer, structured): source/s1/s2/meta.json written to `.fuzz_atheris_corpus/<target>/findings/`
 - `fuzz_atheris_replay_finding.py`: standalone reproduction of finding artifacts without Atheris instrumentation
 - Adaptive time budgets: patterns exceeding 10x their mean cost are tracked (`time_budget_skips`)
 - Performance outlier tracking: inputs exceeding 2x P99 latency are recorded with timestamps
@@ -632,3 +731,6 @@ All fuzzers import shared infrastructure from `fuzz_common.py` (`BaseFuzzerState
 - Graceful Ctrl+C handling: custom mutators catch `KeyboardInterrupt` and set status to "stopped"
 - FTL-safe text generation (structured): 90% safe ASCII, 8% Unicode, 2% inline-safe special chars
 - Consolidated `record_iteration_metrics`: single function for all fuzzers (time budgets, outlier tracking, corpus retention)
+- Common FTL generation: `gen_ftl_identifier` and `gen_ftl_value` for deterministic FDP-based identifier/value generation
+- Common finding artifacts: `write_finding_artifact` with parametric `extra_meta` for per-fuzzer metadata
+- Common banner: `print_fuzzer_banner` for consistent startup output across all fuzzers

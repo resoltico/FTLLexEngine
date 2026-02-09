@@ -21,9 +21,10 @@ Security Context:
 
 from __future__ import annotations
 
+import math
 from decimal import Decimal
 
-from hypothesis import example, given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import IntegrityCache
@@ -308,6 +309,8 @@ class TestNaNSecurityProperties:
         entry = cache.get("msg", args, None, "en", True)
 
         assert entry is not None, f"Entry for value {value!r} was not retrievable"
+        is_nan = math.isnan(value)
+        event(f"is_nan={is_nan}")
 
     @given(st.decimals(allow_nan=True))
     @settings(max_examples=100)
@@ -327,6 +330,8 @@ class TestNaNSecurityProperties:
         entry = cache.get("msg", args, None, "en", True)
 
         assert entry is not None, f"Entry for value {value!r} was not retrievable"
+        is_nan = value.is_nan() or value.is_snan()
+        event(f"is_nan={is_nan}")
 
 
 class TestNaNHashableValue:

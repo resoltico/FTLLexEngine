@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import FrozenFluentError
@@ -305,6 +305,8 @@ def test_resolver_exact_variant_non_numeric_selectors(selector_value):
     Invariant: When selector is not numeric (int/float/Decimal), it should
     never match a NumberLiteral variant key.
     """
+    sel_type = type(selector_value).__name__
+    event(f"selector_type={sel_type}")
     resolver = FluentResolver(
         locale="en",
         messages={},
@@ -342,6 +344,8 @@ def test_formatter_format_always_returns_string(format_type, message_id):
     Metamorphic Property: The output format affects structure but all formats
     produce non-empty string output for valid diagnostics.
     """
+    event(f"format_type={format_type.name}")
+    event(f"input_len={len(message_id)}")
     diagnostic = ErrorTemplate.message_not_found(message_id)
     formatter = DiagnosticFormatter(output_format=format_type)
 
@@ -367,6 +371,7 @@ def test_localization_clear_cache_idempotent(locales):
     Metamorphic Property: Calling clear_cache() multiple times produces
     the same result as calling it once.
     """
+    event(f"locale_count={len(locales)}")
     l10n = FluentLocalization(locales, enable_cache=True)
 
     # Add some data

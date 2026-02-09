@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.localization import FluentLocalization, PathResourceLoader
@@ -67,6 +67,7 @@ class TestLocalizationUniversalProperties:
     @given(locales=st.lists(locale_codes(), min_size=1, max_size=5))
     def test_initialization_preserves_locale_order(self, locales: list[str]) -> None:
         """Locale deduplication preserves first-occurrence order (universal property)."""
+        event(f"locale_count={len(locales)}")
         l10n = FluentLocalization(locales)
 
         # Deduplication uses dict.fromkeys() to preserve insertion order
@@ -82,6 +83,8 @@ class TestLocalizationUniversalProperties:
         self, locales: list[str], message_id: str, message_value: str
     ) -> None:
         """format_value never crashes (robustness property)."""
+        event(f"locale_count={len(locales)}")
+        event(f"value_len={len(message_value)}")
         l10n = FluentLocalization(locales)
 
         # Add message to first locale
@@ -102,6 +105,7 @@ class TestLocalizationUniversalProperties:
         self, locales: list[str], message_id: str
     ) -> None:
         """Earlier locale takes precedence (precedence property)."""
+        event(f"locale_count={len(locales)}")
         l10n = FluentLocalization(locales)
 
         # Add unique messages to each locale
@@ -124,6 +128,7 @@ class TestLocalizationUniversalProperties:
         self, locales: list[str], message_id: str
     ) -> None:
         """has_message() returns True iff format_value() finds message (consistency property)."""
+        event(f"locale_count={len(locales)}")
         l10n = FluentLocalization(locales)
 
         # Add message to random locale

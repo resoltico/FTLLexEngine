@@ -5,7 +5,7 @@ according to Fluent EBNF: VariantKey ::= "[" blank? (NumberLiteral | Identifier)
 """
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import Identifier, Junk, Message, Placeable, SelectExpression
@@ -213,6 +213,7 @@ def test_variant_keys_with_arbitrary_blank_count(
     Property: For any valid number of spaces (0-10) before/after variant key,
     the parser should successfully parse the variant without producing Junk.
     """
+    event(f"spaces_after={spaces_after_open}")
     parser = FluentParserV1()
 
     # Create FTL with specified number of spaces

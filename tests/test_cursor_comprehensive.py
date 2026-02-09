@@ -5,7 +5,7 @@ Tests immutable cursor infrastructure for type-safe parsing.
 """
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
@@ -24,6 +24,7 @@ class TestCursorImmutability:
     @given(st.text(), st.integers(min_value=0, max_value=1000))
     def test_cursor_construction(self, source: str, pos: int) -> None:
         """Property: Cursor can be constructed with any valid source and position."""
+        event(f"input_len={len(source)}")
         # Clamp position to valid range
         pos = min(pos, len(source))
         cursor = Cursor(source=source, pos=pos)
@@ -57,6 +58,7 @@ class TestCursorEOFProperty:
     @given(st.text(min_size=1))
     def test_is_eof_middle_of_string(self, source: str) -> None:
         """Property: is_eof is False in middle of string."""
+        event(f"input_len={len(source)}")
         mid_pos = len(source) // 2
         cursor = Cursor(source=source, pos=mid_pos)
         if mid_pos < len(source):
@@ -96,6 +98,8 @@ class TestCursorCurrentProperty:
     def test_current_returns_correct_character(self, source_pos: tuple[str, int]) -> None:
         """Property: current returns character at position if valid."""
         source, pos = source_pos
+        event(f"input_len={len(source)}")
+        event(f"offset={pos}")
         cursor = Cursor(source=source, pos=pos)
         assert cursor.current == source[pos]
 
@@ -126,10 +130,14 @@ class TestCursorPeekMethod:
     @given(st.text(min_size=2), st.integers(min_value=0, max_value=10))
     def test_peek_with_various_offsets(self, source: str, offset: int) -> None:
         """Property: peek(offset) returns correct character or None."""
+        event(f"input_len={len(source)}")
+        event(f"offset={offset}")
         cursor = Cursor(source=source, pos=0)
         result = cursor.peek(offset)
 
-        if offset < len(source):
+        in_bounds = offset < len(source)
+        event(f"valid={in_bounds}")
+        if in_bounds:
             assert result == source[offset]
         else:
             assert result is None
@@ -170,6 +178,8 @@ class TestCursorAdvanceMethod:
     )
     def test_advance_returns_new_cursor(self, source: str, pos: int, count: int) -> None:
         """Property: advance() returns new cursor, original unchanged."""
+        event(f"input_len={len(source)}")
+        event(f"offset={pos}")
         pos = min(pos, len(source))
         cursor = Cursor(source=source, pos=pos)
         new_cursor = cursor.advance(count)
@@ -205,6 +215,7 @@ class TestCursorSliceToMethod:
     @given(st.text(min_size=1))
     def test_slice_to_full_string(self, source: str) -> None:
         """Property: slice_to(len(source)) from pos=0 returns full string."""
+        event(f"input_len={len(source)}")
         cursor = Cursor(source=source, pos=0)
         text = cursor.slice_to(len(source))
         assert text == source
@@ -306,10 +317,13 @@ class TestCursorExpectMethod:
     @given(st.text(min_size=1), st.characters())
     def test_expect_various_characters(self, source: str, char: str) -> None:
         """Property: expect() behavior depends on current character."""
+        event(f"input_len={len(source)}")
         cursor = Cursor(source=source, pos=0)
         result = cursor.expect(char)
 
-        if source[0] == char:
+        matched = source[0] == char
+        event(f"valid={matched}")
+        if matched:
             assert result is not None
             assert result.pos == 1
         else:
@@ -371,6 +385,8 @@ class TestParseResultDataclass:
         self, value: str, source: str, pos: int
     ) -> None:
         """Property: ParseResult can be constructed with string values."""
+        event(f"input_len={len(source)}")
+        event(f"offset={pos}")
         pos = min(pos, len(source))
         cursor = Cursor(source=source, pos=pos)
         result: ParseResult[str] = ParseResult(value=value, cursor=cursor)
@@ -380,6 +396,7 @@ class TestParseResultDataclass:
     @given(st.integers())
     def test_parse_result_construction_int(self, value: int) -> None:
         """Property: ParseResult can be constructed with int values."""
+        event(f"value={value}")
         cursor = Cursor(source="test", pos=0)
         result: ParseResult[int] = ParseResult(value=value, cursor=cursor)
         assert result.value == value
@@ -417,6 +434,7 @@ class TestParseErrorDataclass:
     @given(st.text(), st.text())
     def test_parse_error_construction_minimal(self, message: str, source: str) -> None:
         """Property: ParseError can be constructed with message and cursor only."""
+        event(f"input_len={len(source)}")
         cursor = Cursor(source=source, pos=0)
         error = ParseError(message=message, cursor=cursor)
         assert error.message == message

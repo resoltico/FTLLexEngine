@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -84,6 +84,7 @@ class TestChecksumComputation:
         entry = IntegrityCacheEntry.create(text, (), sequence=1)
         # Each entry should validate its own checksum correctly
         assert entry.verify() is True
+        event(f"text_len={len(text)}")
 
 
 # ============================================================================
@@ -646,6 +647,7 @@ class TestContentHash:
         entry2 = IntegrityCacheEntry.create(text, (), sequence=999)
 
         assert entry1.content_hash == entry2.content_hash
+        event(f"text_len={len(text)}")
 
 
 # ============================================================================

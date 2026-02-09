@@ -15,7 +15,7 @@ Test Strategy:
 
 from __future__ import annotations
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import VariableReference
@@ -111,6 +111,7 @@ class TestParseSelectExpressionEOF:
         is_indented_continuation to return TRUE, making parse_simple_pattern
         consume them as continuation lines.
         """
+        event(f"num_newlines={num_newlines}")
         # Create variant with trailing non-indented newlines
         whitespace = "\n" * num_newlines
         source = f"*[other] value{whitespace}"
@@ -186,6 +187,7 @@ class TestParseSelectExpressionEOF:
         the EOF handling on line 1002 is robust. Spaces are excluded because
         they cause is_indented_continuation to return TRUE.
         """
+        event(f"ws_len={len(whitespace)}")
         source = f"*[other] text{whitespace}"
         cursor = Cursor(source, 0)
         selector = VariableReference(id=None)  # type: ignore[arg-type]
@@ -252,6 +254,10 @@ class TestParseSelectExpressionBranchCoverage:
         Tests that different numbers and types of variants all
         correctly handle EOF after the last variant via line 1002.
         """
+        num_keys = len(variant_keys)
+        has_default = any("*" in k for k in variant_keys)
+        event(f"num_variants={num_keys}")
+        event(f"has_default={has_default}")
         # Build select expression with variants and non-indented newlines
         variants_text = "\n".join(f"{key} text" for key in variant_keys)
         source = f"{variants_text}\n\n"

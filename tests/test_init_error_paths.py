@@ -296,7 +296,7 @@ def test_package_not_found_hypothesis_strategy():
     sys.modules manipulation required for each example. HypoFuzz cannot
     discover nested @given tests, but the test runs during normal pytest.
     """
-    from hypothesis import given
+    from hypothesis import event, given
     from hypothesis import strategies as st
 
     # Save ALL ftllexengine.* modules before manipulation
@@ -312,6 +312,8 @@ def test_package_not_found_hypothesis_strategy():
         @settings(deadline=None)
         @given(package_name=st.text(min_size=1, max_size=50))
         def property_test(package_name):
+            name_len = len(package_name)
+            event(f"input_len={name_len}")
             # Remove all ftllexengine modules for each test run
             all_ftllexengine_modules = [
                 name

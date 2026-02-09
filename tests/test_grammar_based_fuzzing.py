@@ -17,7 +17,7 @@ from __future__ import annotations
 import time
 
 import pytest
-from hypothesis import HealthCheck, assume, example, given, settings, target
+from hypothesis import HealthCheck, assume, event, example, given, settings, target
 from hypothesis import strategies as st
 from hypothesis.strategies import composite
 
@@ -34,6 +34,7 @@ from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.serializer import FluentSerializer
 from tests.strategies import (
     ftl_identifier_boundary,
+    ftl_multiline_chaos_source,
 )
 from tests.strategies import (
     ftl_identifiers_with_keywords as ftl_identifier,
@@ -361,6 +362,15 @@ class TestParserProperties:
         ast_1 = parser.parse(source)
         verify_spans(ast_1, source)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"entries={len(ast_1.entries)}")
+        for entry in ast_1.entries[:3]:
+            event(f"entry_type={type(entry).__name__}")
+        if has_junk(ast_1):
+            event("has_junk=true")
+        else:
+            event("has_junk=false")
+
         # Junk entries cannot be meaningfully round-tripped since their content
         # represents unparseable source. This assume() is necessary because:
         # 1. Junk serialization differs from original input (normalized)
@@ -377,6 +387,7 @@ class TestParserProperties:
             f"Round-trip mismatch!\nOriginal: {source}\nReserialized: {ser_1}"
         )
         assert ser_1 == ser_2
+        event("outcome=roundtrip_success")
 
     @given(ftl_resource())
     @settings(
@@ -405,8 +416,13 @@ class TestParserProperties:
         ast_3 = parser.parse(ser_2)
         ser_3 = serializer.serialize(ast_3)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"entries={len(ast_1.entries)}")
+        event(f"has_junk={has_junk(ast_1)}")
+
         # After first roundtrip, output must stabilize
         assert ser_2 == ser_3, f"Not idempotent!\nAfter 2: {ser_2}\nAfter 3: {ser_3}"
+        event("outcome=idempotent")
 
     @given(ftl_resource())
     @settings(max_examples=200, deadline=None)
@@ -427,6 +443,7 @@ class TestParserProperties:
 
         assert ser_1 == ser_2 == ser_3, "Parser is non-deterministic"
         assert normalize_ast(ast_1) == normalize_ast(ast_2) == normalize_ast(ast_3)
+        event("outcome=deterministic")
 
     @given(ftl_resource(), ftl_resource())
     @settings(
@@ -450,6 +467,10 @@ class TestParserProperties:
         keys1 = get_entry_keys(ast1)
         keys2 = get_entry_keys(ast2)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"merged_entries={len(ast_merged.entries)}")
+        event(f"source_entries={len(ast1.entries)}+{len(ast2.entries)}")
+
         # Use target for Hypothesis optimization
         target(len(keys_merged), label="merged_entries")
 
@@ -458,23 +479,35 @@ class TestParserProperties:
             f"Composability violation!\n"
             f"Keys 1: {keys1}\nKeys 2: {keys2}\nMerged: {keys_merged}"
         )
+        event("outcome=composable")
 
     @given(st.text(min_size=1, max_size=20000))
     @settings(max_examples=1000, deadline=None)
     def test_random_input_stability(self, noise: str) -> None:
         """Property: Parser never crashes, only raises ValueError on invalid input."""
         parser = FluentParserV1()
+
+        # Emit size band events for HypoFuzz guidance
+        if len(noise) <= 100:
+            event("input_size=small")
+        elif len(noise) <= 1000:
+            event("input_size=medium")
+        else:
+            event("input_size=large")
+
         try:
-            parser.parse(noise)
+            result = parser.parse(noise)
+            event("outcome=parsed")
+            event(f"entry_count={len(result.entries)}")
         except ValueError:
             # Expected for invalid input
-            pass
+            event("outcome=valueerror")
         except RecursionError:
             # Expected for deeply nested input
-            pass
+            event("outcome=recursionerror")
         except MemoryError:
             # Expected for extremely large input
-            pass
+            event("outcome=memoryerror")
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Intentional: test verifies parser exception contract (only
             # ValueError/RecursionError/MemoryError allowed on invalid input)
@@ -497,6 +530,7 @@ class TestParserProperties:
         terms = [e for e in ast.entries if isinstance(e, Term) and e.id.name == name]
         assert len(msgs) == 1, f"Expected 1 message named {name}, got {len(msgs)}"
         assert len(terms) == 1, f"Expected 1 term named {name}, got {len(terms)}"
+        event(f"entries={len(ast.entries)}")
 
     @given(ftl_resource())
     @settings(max_examples=200, deadline=None)
@@ -520,6 +554,8 @@ class TestParserProperties:
             times.append(duration)
 
         avg_time = sum(times) / len(times)
+        size = "small" if len(ftl) < 500 else "medium" if len(ftl) < 5000 else "large"
+        event(f"input_size={size}")
         assert avg_time < threshold, (
             f"Slow parsing: {avg_time:.5f}s avg (threshold: {threshold:.5f}s)"
         )
@@ -535,6 +571,8 @@ class TestBoundaryConditions:
         source = f"{identifier} = value"
         ast = parser.parse(source)
         assert isinstance(ast, Resource)
+        event(f"id_len={len(identifier)}")
+        event(f"entry_type={type(ast.entries[0]).__name__}" if ast.entries else "entry_type=none")
 
     @given(ftl_deeply_nested_expression(target_depth=15))
     def test_deep_nesting(self, source: str) -> None:
@@ -543,9 +581,10 @@ class TestBoundaryConditions:
         try:
             ast = parser.parse(source)
             assert isinstance(ast, Resource)
-        except (RecursionError, ValueError):
+            event("outcome=parsed")
+        except (RecursionError, ValueError) as exc:
             # Expected for very deep nesting
-            pass
+            event(f"outcome={type(exc).__name__}")
 
     @given(ftl_empty_pattern_message())
     def test_minimal_patterns(self, source: str) -> None:
@@ -554,6 +593,7 @@ class TestBoundaryConditions:
         ast = parser.parse(source)
         assert isinstance(ast, Resource)
         assert len(ast.entries) >= 1
+        event(f"entry_type={type(ast.entries[0]).__name__}")
 
     @given(ftl_unicode_stress())
     def test_unicode_edge_cases(self, source: str) -> None:
@@ -568,6 +608,9 @@ class TestBoundaryConditions:
         if not has_junk(ast):
             output = serializer.serialize(ast)
             assert isinstance(output, str)
+            event("outcome=serialized")
+        else:
+            event("outcome=has_junk")
 
 
 class TestErrorHandling:
@@ -581,6 +624,8 @@ class TestErrorHandling:
         result = parser.parse(text)
         assert isinstance(result, Resource)
         assert hasattr(result, "entries")
+        event(f"entries={len(result.entries)}")
+        event(f"has_junk={has_junk(result)}")
 
     @given(ftl_resource(), st.integers(min_value=0, max_value=100))
     @settings(max_examples=200, deadline=None)
@@ -597,6 +642,19 @@ class TestErrorHandling:
 
         # Should not crash, should return Resource
         assert isinstance(result, Resource)
+        event(f"truncated_len={len(truncated)}")
+        event(f"has_junk={has_junk(result)}")
+
+    @given(ftl_multiline_chaos_source())
+    @settings(max_examples=300, deadline=None)
+    def test_multiline_chaos_no_crash(self, source: str) -> None:
+        """Property: Multiline chaos input never crashes the parser."""
+        parser = FluentParserV1()
+        result = parser.parse(source)
+        assert isinstance(result, Resource)
+        entry_count = len(result.entries)
+        event(f"entries={entry_count}")
+        event(f"has_junk={has_junk(result)}")
 
 
 class TestJunkRecovery:
@@ -643,6 +701,10 @@ class TestJunkRecovery:
         junk_entries = [e for e in result.entries if isinstance(e, Junk)]
         message_entries = [e for e in result.entries if isinstance(e, Message)]
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"junk_count={len(junk_entries)}")
+        event(f"message_count={len(message_entries)}")
+
         # Should have at least one junk entry (the invalid first line)
         assert len(junk_entries) >= 1, "Expected junk entry for invalid line"
 
@@ -668,6 +730,9 @@ class TestJunkRecovery:
         result = parser.parse(source)
 
         assert isinstance(result, Resource)
+
+        # Emit semantic events for HypoFuzz guidance
+        event(f"junk_lines={num_junk_lines}")
 
         # Should find the valid message after junk
         message_entries = [e for e in result.entries if isinstance(e, Message)]
@@ -697,6 +762,7 @@ class TestJunkRecovery:
 
         assert before_id in message_ids, f"Missing before message {before_id}"
         assert after_id in message_ids, f"Missing after message {after_id}"
+        event(f"total_entries={len(result.entries)}")
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ actual fractional digit count regardless of trailing literal text.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.functions import _compute_visible_precision
@@ -138,6 +138,7 @@ class TestComputeVisiblePrecisionHypothesis:
         followed by optional non-digit suffix text. The computed precision
         must match the known fraction digit count.
         """
+        event(f"fraction_digits={fraction_digits}")
         if fraction_digits == 0:
             formatted = f"{integer_part}{suffix}"
             result = _compute_visible_precision(formatted, ".")
@@ -169,6 +170,7 @@ class TestComputeVisiblePrecisionHypothesis:
         When a non-digit character separates fraction digits from suffix
         digits, only the leading fraction digits are counted.
         """
+        event(f"suffix_len={len(digit_suffix)}")
         fraction = "0" * fraction_digits
         # Insert a space between fraction and digit suffix
         formatted = f"{integer_part}.{fraction} {digit_suffix}"

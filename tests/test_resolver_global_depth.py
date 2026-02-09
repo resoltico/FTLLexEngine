@@ -8,7 +8,7 @@ Targets uncovered branches identified by coverage analysis:
 - Fallback depth protection
 """
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import FALLBACK_INVALID
@@ -89,6 +89,7 @@ class TestPatternMultiplePlaceables:
         self, count: int, values: list[str]
     ) -> None:
         """Pattern with N placeables resolves all correctly."""
+        event(f"count={count}")
         # Ensure values list matches count
         values = values[:count]
         if len(values) < count:
@@ -256,6 +257,7 @@ class TestGetFallbackForPlaceableDepthProtection:
     @given(depth=st.integers(max_value=0))
     def test_fallback_non_positive_depth_property(self, depth: int) -> None:
         """Any non-positive depth returns FALLBACK_INVALID immediately."""
+        event(f"depth={depth}")
         resolver = FluentResolver(
             locale="en",
             messages={},

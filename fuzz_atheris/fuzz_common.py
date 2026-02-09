@@ -10,6 +10,7 @@ fuzz_atheris.sh.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import heapq
 import json
@@ -98,10 +99,17 @@ class BaseFuzzerState:
     custom metrics and compose them alongside this base state.
     """
 
+    # Fuzzer identification (for self-describing JSON reports)
+    fuzzer_name: str = ""
+    fuzzer_target: str = ""
+
     # Core stats
     iterations: int = 0
     findings: int = 0
     status: str = "incomplete"
+
+    # Campaign timing
+    campaign_start_time: float = 0.0
 
     # Performance tracking (bounded deques)
     performance_history: deque[float] = field(
@@ -482,6 +490,21 @@ def build_base_stats_dict(
         "findings": state.findings,
     }
 
+    # Fuzzer identification
+    if state.fuzzer_name:
+        stats["fuzzer_name"] = state.fuzzer_name
+    if state.fuzzer_target:
+        stats["fuzzer_target"] = state.fuzzer_target
+
+    # Campaign duration and throughput
+    if state.campaign_start_time > 0:
+        elapsed = time.time() - state.campaign_start_time
+        stats["campaign_duration_sec"] = round(elapsed, 1)
+        if elapsed > 0 and state.iterations > 0:
+            stats["iterations_per_sec"] = round(
+                state.iterations / elapsed, 1,
+            )
+
     _add_performance_stats(state, stats)
     _add_memory_stats(state, stats)
 
@@ -563,15 +586,21 @@ def emit_final_report(
     report_dir: pathlib.Path,
     report_filename: str,
 ) -> None:
-    """Emit crash-proof JSON report to stderr and file.
+    """Emit crash-proof final JSON report to stderr and file.
+
+    Sets status to "complete" for normal exit. Preserves "stopped"
+    status if the fuzzer was interrupted by Ctrl+C (set by run_fuzzer
+    or per-fuzzer KeyboardInterrupt handlers).
 
     Args:
-        state: Fuzzer state (status set to "complete")
-        stats: Pre-built stats dictionary
+        state: Fuzzer state (status finalized here)
+        stats: Pre-built stats dictionary (status patched to match)
         report_dir: Directory for the JSON report file
         report_filename: Filename for the JSON report
     """
-    state.status = "complete"
+    if state.status != "stopped":
+        state.status = "complete"
+    stats["status"] = state.status
     report = json.dumps(stats, sort_keys=True)
 
     print(
@@ -582,6 +611,246 @@ def emit_final_report(
 
     try:
         report_dir.mkdir(parents=True, exist_ok=True)
-        (report_dir / report_filename).write_text(report, encoding="utf-8")
+        (report_dir / report_filename).write_text(
+            report, encoding="utf-8",
+        )
     except OSError:
         pass
+
+
+def emit_checkpoint_report(
+    state: BaseFuzzerState,
+    stats: FuzzStats,
+    report_dir: pathlib.Path,
+    report_filename: str,
+) -> None:
+    """Emit periodic checkpoint JSON to stderr and file.
+
+    Uses [CHECKPOINT-JSON] markers to distinguish from the final
+    [SUMMARY-JSON] report emitted at process exit. Does not modify
+    state.status (checkpoints are intermediate, not terminal).
+
+    Args:
+        state: Fuzzer state (not modified)
+        stats: Pre-built stats dictionary
+        report_dir: Directory for the JSON report file
+        report_filename: Filename for the JSON report
+    """
+    _ = state  # reserved for future checkpoint-specific logic
+    report = json.dumps(stats, sort_keys=True)
+
+    print(
+        f"\n[CHECKPOINT-JSON-BEGIN]{report}[CHECKPOINT-JSON-END]",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    try:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / report_filename).write_text(
+            report, encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+# --- FTL Generation Helpers ---
+
+
+_FTL_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-"
+
+_FTL_SAFE_VALUE_CHARS = (
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    " 0123456789.,!?:;'-"
+)
+
+
+def gen_ftl_identifier(fdp: Any) -> str:
+    """Generate a valid FTL identifier: [a-zA-Z][a-zA-Z0-9_-]*.
+
+    Uses FuzzedDataProvider to consume bytes deterministically so
+    crash files remain replayable.
+    """
+    first = chr(ord("a") + fdp.ConsumeIntInRange(0, 25))
+    length = fdp.ConsumeIntInRange(0, 15)
+    chars = _FTL_ID_CHARS
+    n = len(chars) - 1
+    rest = "".join(
+        chars[fdp.ConsumeIntInRange(0, n)] for _ in range(length)
+    )
+    return first + rest
+
+
+def gen_ftl_value(fdp: Any, *, max_length: int = 40) -> str:
+    """Generate a safe FTL value (no braces, no newlines).
+
+    Uses FuzzedDataProvider to consume bytes deterministically.
+    """
+    chars = _FTL_SAFE_VALUE_CHARS
+    n = len(chars) - 1
+    length = fdp.ConsumeIntInRange(1, max_length)
+    return "".join(
+        chars[fdp.ConsumeIntInRange(0, n)] for _ in range(length)
+    )
+
+
+# --- Finding Artifacts ---
+
+
+def write_finding_artifact(
+    *,
+    findings_dir: pathlib.Path,
+    state: BaseFuzzerState,
+    source: str,
+    s1: str,
+    s2: str,
+    pattern: str,
+    extra_meta: dict[str, Any] | None = None,
+) -> None:
+    """Write human-readable finding artifacts to disk.
+
+    Writes source/s1/s2 FTL files and a metadata JSON file.
+    Increments state.finding_counter. Best-effort (OSError
+    silenced).
+    """
+    try:
+        findings_dir.mkdir(parents=True, exist_ok=True)
+        state.finding_counter += 1
+        prefix = f"finding_{state.finding_counter:04d}"
+
+        findings_dir.joinpath(f"{prefix}_source.ftl").write_text(
+            source, encoding="utf-8",
+        )
+        findings_dir.joinpath(f"{prefix}_s1.ftl").write_text(
+            s1, encoding="utf-8",
+        )
+        findings_dir.joinpath(f"{prefix}_s2.ftl").write_text(
+            s2, encoding="utf-8",
+        )
+
+        diff_pos = next(
+            (
+                i
+                for i, (a, b) in enumerate(
+                    zip(s1, s2, strict=False),
+                )
+                if a != b
+            ),
+            min(len(s1), len(s2)),
+        )
+
+        encode = "utf-8"
+        errors = "surrogatepass"
+        meta: dict[str, Any] = {
+            "iteration": state.iterations,
+            "pattern": pattern,
+            "timestamp": datetime.datetime.now(
+                tz=datetime.UTC,
+            ).isoformat(),
+            "source_len": len(source),
+            "s1_len": len(s1),
+            "s2_len": len(s2),
+            "source_hash": hashlib.sha256(
+                source.encode(encode, errors=errors),
+            ).hexdigest(),
+            "s1_hash": hashlib.sha256(
+                s1.encode(encode, errors=errors),
+            ).hexdigest(),
+            "s2_hash": hashlib.sha256(
+                s2.encode(encode, errors=errors),
+            ).hexdigest(),
+            "diff_offset": diff_pos,
+        }
+        if extra_meta:
+            meta.update(extra_meta)
+
+        findings_dir.joinpath(f"{prefix}_meta.json").write_text(
+            json.dumps(meta, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+        print(
+            f"\n[FINDING] Artifacts: {findings_dir / prefix}_*",
+            file=sys.stderr,
+            flush=True,
+        )
+    except OSError:
+        pass  # Finding artifacts are best-effort
+
+
+# --- Banner ---
+
+
+def print_fuzzer_banner(
+    *,
+    title: str,
+    target: str,
+    state: BaseFuzzerState,
+    schedule_len: int,
+    mutator: str = "Custom (AST mutation + byte mutation)",
+    extra_lines: Sequence[str] = (),
+) -> None:
+    """Print standard fuzzer startup banner."""
+    print()
+    print("=" * 80)
+    print(title)
+    print("=" * 80)
+    print(f"Target:     {target}")
+    print(f"Checkpoint: Every {state.checkpoint_interval} iterations")
+    print(f"Corpus Max: {state.seed_corpus_max_size} entries")
+    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
+    sched = f"Round-robin weighted schedule (length: {schedule_len})"
+    print(f"Routing:    {sched}")
+    print(f"Mutator:    {mutator}")
+    for line in extra_lines:
+        print(line)
+    print("Stopping:   Press Ctrl+C (findings auto-saved)")
+    print("=" * 80)
+    print()
+    state.campaign_start_time = time.time()
+
+
+def run_fuzzer(
+    state: BaseFuzzerState,
+    *,
+    test_one_input: Any,
+    custom_mutator: Any | None = None,
+) -> None:
+    """Run atheris.Fuzz() with graceful KeyboardInterrupt handling.
+
+    Wraps atheris.Setup() + atheris.Fuzz() to suppress the traceback
+    on Ctrl+C. Each fuzzer replaces its 2-line Setup/Fuzz with a
+    single run_fuzzer() call. The atexit handler (registered by each
+    fuzzer) still fires after this returns, emitting the final report.
+
+    Args:
+        state: Fuzzer state (status set to "stopped" on interrupt)
+        test_one_input: Atheris test callback
+        custom_mutator: Optional custom mutator function
+    """
+    import atheris  # noqa: PLC0415 - fuzz_common importable without atheris
+
+    setup_kwargs: dict[str, Any] = {}
+    if custom_mutator is not None:
+        setup_kwargs["custom_mutator"] = custom_mutator
+
+    # Disable libFuzzer's SIGINT handler so Python owns the signal.
+    # Without this, libFuzzer intercepts Ctrl+C after our KeyboardInterrupt
+    # handler and emits a spurious "deadly signal" + empty crash artifact.
+    if not any(a.startswith("-handle_int=") for a in sys.argv):
+        sys.argv.append("-handle_int=0")
+
+    atheris.Setup(
+        sys.argv, test_one_input, **setup_kwargs,
+    )
+
+    try:
+        atheris.Fuzz()
+    except KeyboardInterrupt:
+        state.status = "stopped"
+        print(
+            "\n[STOPPED] Fuzzer interrupted by user.",
+            file=sys.stderr,
+            flush=True,
+        )

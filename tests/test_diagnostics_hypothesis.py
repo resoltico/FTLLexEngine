@@ -10,7 +10,7 @@ Critical areas tested:
 
 from __future__ import annotations
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
@@ -49,6 +49,7 @@ class TestFrozenFluentErrorConstruction:
     @settings(max_examples=100)
     def test_error_with_string_message(self, message: str) -> None:
         """PROPERTY: FrozenFluentError can be constructed with string message."""
+        event(f"msg_len={len(message)}")
         error = FrozenFluentError(message, ErrorCategory.REFERENCE)
 
         assert str(error) == message

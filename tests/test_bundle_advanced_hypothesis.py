@@ -10,7 +10,7 @@ Critical bundle functions tested with extensive property-based strategies:
 
 import contextlib
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -31,6 +31,7 @@ class TestBundleMessageRegistry:
         self, locale: str, msg_id: str, msg_value: str
     ) -> None:
         """Property: Registered messages can be retrieved."""
+        event(f"locale={locale}")
         bundle = FluentBundle(locale)
 
         ftl_source = f"{msg_id} = {msg_value}"
@@ -49,6 +50,7 @@ class TestBundleMessageRegistry:
     @settings(max_examples=300)
     def test_unregistered_message_raises_error(self, msg_id: str) -> None:
         """Property: Accessing unregistered message raises FrozenFluentError."""
+        event(f"msg_id_len={len(msg_id)}")
         bundle = FluentBundle("en_US")
 
         nonexistent_id = f"never_registered_{msg_id}"
@@ -71,6 +73,8 @@ class TestBundleMessageRegistry:
         self, msg_id: str, value1: str, value2: str
     ) -> None:
         """Property: Later messages override earlier ones with same ID."""
+        values_equal = value1.strip() == value2.strip()
+        event(f"values_equal={values_equal}")
         bundle = FluentBundle("en_US")
 
         bundle.add_resource(f"{msg_id} = {value1}")
@@ -101,6 +105,8 @@ class TestBundleVariableInterpolation:
         self, msg_id: str, var_name: str, var_value: str | int | float
     ) -> None:
         """Property: Variable values appear in formatted output."""
+        var_type = type(var_value).__name__
+        event(f"var_type={var_type}")
         bundle = FluentBundle("en_US", use_isolating=False)
 
         ftl_source = f"{msg_id} = Value: {{ ${var_name} }}"
@@ -120,6 +126,7 @@ class TestBundleVariableInterpolation:
         self, msg_id: str, var_name: str
     ) -> None:
         """Property: Missing variables cause graceful degradation, not crash."""
+        event(f"var_name_len={len(var_name)}")
         bundle = FluentBundle("en_US")
 
         ftl_source = f"{msg_id} = Value: {{ ${var_name} }}"
@@ -128,7 +135,9 @@ class TestBundleVariableInterpolation:
         result, errors = bundle.format_pattern(msg_id, {})
 
         assert isinstance(result, str), "Must return string even on error"
-        assert len(errors) > 0, "Missing variable should generate error"
+        error_count = len(errors)
+        event(f"error_count={error_count}")
+        assert error_count > 0, "Missing variable should generate error"
 
     @given(
         msg_id=ftl_identifiers(),

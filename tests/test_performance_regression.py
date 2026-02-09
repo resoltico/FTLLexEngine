@@ -30,7 +30,7 @@ from __future__ import annotations
 import time
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -405,6 +405,8 @@ class TestPerformanceStress:
         This catches catastrophic backtracking or exponential algorithms.
         """
         ftl = "\n\n".join(messages)
+        event(f"input_len={len(ftl)}")
+        event(f"message_count={len(messages)}")
         parser = FluentParserV1()
 
         # Hypothesis will fail test if this takes > 2 seconds

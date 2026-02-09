@@ -6,7 +6,8 @@ Complements test_cache_basic.py with property-based testing.
 
 from __future__ import annotations
 
-from hypothesis import assume, given, settings
+import pytest
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import IntegrityCache
@@ -51,6 +52,7 @@ args_strategy = st.one_of(
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCacheInvariants:
     """Test fundamental cache invariants."""
 
@@ -74,6 +76,7 @@ class TestCacheInvariants:
 
         # Cache should not exceed maxsize
         assert cache.get_stats()["size"] <= maxsize
+        event(f"maxsize={maxsize}")
 
     @given(
         msg_id=message_ids,
@@ -100,6 +103,8 @@ class TestCacheInvariants:
 
         assert entry is not None
         assert entry.to_tuple() == value
+        has_args = args is not None
+        event(f"has_args={has_args}")
 
     @given(
         msg_id=message_ids,
@@ -117,6 +122,7 @@ class TestCacheInvariants:
         result = cache.get(msg_id, None, None, locale, True)
 
         assert result is None
+        event(f"locale={locale}")
 
     @given(maxsize=st.integers(min_value=1, max_value=100))
     @settings(max_examples=50)
@@ -136,6 +142,7 @@ class TestCacheInvariants:
         assert stats["size"] == 0
         assert stats["hits"] == 0
         assert stats["misses"] == 0
+        event(f"maxsize={maxsize}")
 
     @given(
         msg_id=message_ids,
@@ -161,6 +168,7 @@ class TestCacheInvariants:
 
         stats_after_hit = cache.get_stats()
         assert stats_after_hit["hits"] == initial_stats["hits"] + 1
+        event(f"locale={locale}")
 
     @given(
         msg_id=message_ids,
@@ -180,6 +188,7 @@ class TestCacheInvariants:
 
         stats_after_miss = cache.get_stats()
         assert stats_after_miss["misses"] == initial_stats["misses"] + 1
+        event(f"locale={locale}")
 
 
 # ============================================================================
@@ -187,6 +196,7 @@ class TestCacheInvariants:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestLRUEviction:
     """Test LRU (Least Recently Used) eviction behavior."""
 
@@ -211,6 +221,7 @@ class TestLRUEviction:
 
         # msg_1 should be evicted (oldest unreferenced)
         assert cache.get("msg_1", None, None, "en_US", True) is None
+        event(f"maxsize={maxsize}")
 
     @given(
         maxsize=st.integers(min_value=3, max_value=10),
@@ -245,6 +256,7 @@ class TestLRUEviction:
         # Recently accessed entries should still be in cache
         # (This tests the LRU property implicitly)
         assert cache.get_stats()["size"] <= maxsize
+        event(f"pattern_len={len(access_pattern)}")
 
 
 # ============================================================================
@@ -252,6 +264,7 @@ class TestLRUEviction:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCacheKeyHandling:
     """Test cache key construction and equality."""
 
@@ -279,6 +292,7 @@ class TestCacheKeyHandling:
 
         assert entry is not None
         assert entry.to_tuple() == value
+        event(f"locale={locale}")
 
     @given(
         msg_id=message_ids,
@@ -307,6 +321,7 @@ class TestCacheKeyHandling:
         result = cache.get(msg_id, None, None, locale2, True)
 
         assert result is None
+        event(f"locale_pair={locale1}_{locale2}")
 
     @given(
         msg_id=message_ids,
@@ -337,6 +352,8 @@ class TestCacheKeyHandling:
         result = cache.get(msg_id, None, attr2, locale, True)
 
         assert result is None
+        has_attr1 = attr1 is not None
+        event(f"has_attr={has_attr1}")
 
     @given(
         msg_id=message_ids,
@@ -365,6 +382,7 @@ class TestCacheKeyHandling:
         # Should hit cache (dict key normalized)
         assert entry is not None
         assert entry.to_tuple() == value
+        event(f"locale={locale}")
 
 
 # ============================================================================
@@ -372,6 +390,7 @@ class TestCacheKeyHandling:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCacheRobustness:
     """Test cache robustness with various input types."""
 
@@ -405,6 +424,7 @@ class TestCacheRobustness:
         except (TypeError, ValueError):
             # Some types may not be hashable - acceptable
             pass
+        event(f"arg_types={len(args)}")
 
     @given(
         msg_ids=st.lists(message_ids, min_size=1, max_size=50),
@@ -425,6 +445,7 @@ class TestCacheRobustness:
 
         # Cache should still respect maxsize
         assert cache.get_stats()["size"] <= maxsize
+        event(f"duplicates={len(msg_ids)}")
 
     @given(maxsize=st.integers(min_value=1, max_value=100))
     @settings(max_examples=50)
@@ -443,6 +464,7 @@ class TestCacheRobustness:
         assert stats["hits"] >= 0
         assert stats["misses"] >= 0
         assert stats["maxsize"] > 0
+        event(f"maxsize={maxsize}")
 
 
 # ============================================================================
@@ -450,6 +472,7 @@ class TestCacheRobustness:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCacheStatistics:
     """Test cache statistics tracking."""
 
@@ -487,6 +510,7 @@ class TestCacheStatistics:
             if actual_rate > 1.0:  # Percentage format
                 actual_rate = actual_rate / 100.0
             assert abs(actual_rate - expected_hit_rate) < 0.01
+        event(f"op_count={len(operations)}")
 
     @given(
         num_entries=st.integers(min_value=0, max_value=50),
@@ -509,3 +533,4 @@ class TestCacheStatistics:
         expected_size = min(num_entries, maxsize)
 
         assert stats["size"] == expected_size
+        event(f"entries={num_entries}")

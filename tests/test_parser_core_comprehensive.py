@@ -6,7 +6,7 @@ Tests FluentParserV1 error recovery and edge cases.
 
 from unittest.mock import patch
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import Comment, Junk, Message, Term
@@ -71,6 +71,7 @@ class TestFluentParserV1ErrorRecovery:
     @given(st.text(alphabet="#\n\r \t", min_size=1, max_size=50))
     def test_parse_hash_combinations_at_eof(self, source: str) -> None:
         """Property: Parser handles any combination of hashes and whitespace at EOF."""
+        event(f"input_len={len(source)}")
         parser = FluentParserV1()
 
         # Should not raise
@@ -78,6 +79,8 @@ class TestFluentParserV1ErrorRecovery:
 
         assert resource is not None
         assert isinstance(resource.entries, tuple)
+        has_errors = len(resource.entries) > 0
+        event(f"has_entries={has_errors}")
 
     def test_parse_comment_with_trailing_content_no_newline(self) -> None:
         """Verify parser handles comment with content but no final newline."""

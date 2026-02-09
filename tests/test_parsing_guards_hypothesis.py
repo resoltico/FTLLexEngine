@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.parsing.guards import (
@@ -61,18 +61,21 @@ class TestValidDecimalGuard:
     @settings(max_examples=200)
     def test_finite_decimal_returns_true(self, value: Decimal) -> None:
         """PROPERTY: Finite Decimal values return True."""
+        event(f"guard_result={is_valid_decimal(value)}")
         assert is_valid_decimal(value) is True
 
     @given(value=st.none())
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
         """PROPERTY: None returns False (unified API)."""
+        event(f"guard_result={is_valid_decimal(value)}")
         assert is_valid_decimal(value) is False
 
     @given(value=st.just(Decimal("NaN")))
     @settings(max_examples=50)
     def test_nan_returns_false(self, value: Decimal) -> None:
         """PROPERTY: NaN Decimal returns False."""
+        event(f"value_is_nan={value.is_nan()}")
         assert value.is_nan()
         assert is_valid_decimal(value) is False
 
@@ -80,6 +83,7 @@ class TestValidDecimalGuard:
     @settings(max_examples=50)
     def test_positive_infinity_returns_false(self, value: Decimal) -> None:
         """PROPERTY: Positive infinity Decimal returns False."""
+        event(f"value_is_infinite={value.is_infinite()}")
         assert value.is_infinite()
         assert is_valid_decimal(value) is False
 
@@ -87,6 +91,8 @@ class TestValidDecimalGuard:
     @settings(max_examples=50)
     def test_negative_infinity_returns_false(self, value: Decimal) -> None:
         """PROPERTY: Negative infinity Decimal returns False."""
+        sign = "negative" if value.is_signed() else "positive"
+        event(f"value_sign={sign}")
         assert value.is_infinite()
         assert is_valid_decimal(value) is False
 
@@ -106,18 +112,21 @@ class TestValidNumberGuard:
     @settings(max_examples=200)
     def test_finite_float_returns_true(self, value: float) -> None:
         """PROPERTY: Finite float values return True."""
+        event(f"guard_result={is_valid_number(value)}")
         assert is_valid_number(value) is True
 
     @given(value=st.none())
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
         """PROPERTY: None returns False (unified API)."""
+        event(f"guard_result={is_valid_number(value)}")
         assert is_valid_number(value) is False
 
     @given(value=st.just(float("nan")))
     @settings(max_examples=50)
     def test_nan_returns_false(self, value: float) -> None:
         """PROPERTY: NaN float returns False."""
+        event(f"guard_result={is_valid_number(value)}")
         assert is_valid_number(value) is False
 
     @given(value=st.just(float("inf")))

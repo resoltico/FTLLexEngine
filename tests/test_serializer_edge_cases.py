@@ -14,7 +14,7 @@ Comprehensive test suite targeting edge cases and full coverage:
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, example, given
+from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import (
@@ -149,6 +149,9 @@ class TestControlCharacterEscaping:
     @example(control_char=0x1F)  # Unit separator
     def test_all_control_characters_escaped_property(self, control_char: int) -> None:
         """All control characters (0x00-0x1F, 0x7F) escaped as Unicode."""
+        is_del = control_char == 0x7F
+        event(f"control_char=0x{control_char:02X}")
+        event(f"is_del={is_del}")
         char = chr(control_char)
         msg = Message(
             id=Identifier(name="test"),
@@ -244,6 +247,10 @@ class TestSerializationDepthLimitWithoutValidation:
         self, depth_over_limit: int, max_depth: int
     ) -> None:
         """Serialization depth limit enforced regardless of validation setting."""
+        total = max_depth + depth_over_limit
+        event(f"max_depth={max_depth}")
+        event(f"depth_over_limit={depth_over_limit}")
+        event(f"total_nesting={total}")
         # Build AST exceeding depth limit
         inner_expr: StringLiteral | Placeable = StringLiteral(value="x")
         for _ in range(max_depth + depth_over_limit):
@@ -355,6 +362,9 @@ class TestJunkWithLeadingWhitespace:
         self, leading_char: str, has_content: bool
     ) -> None:
         """Junk separator logic handles various leading characters correctly."""
+        is_ws = leading_char in ("\n", " ", "\t")
+        event(f"leading_char_is_whitespace={is_ws}")
+        event(f"has_content={has_content}")
         msg = Message(
             id=Identifier(name="m"),
             value=Pattern(elements=(TextElement(value="v"),)),
@@ -451,7 +461,11 @@ class TestPatternWithoutBraces:
     @example(text="Numbers 123 and symbols !@#")
     def test_brace_free_text_property(self, text: str) -> None:
         """Text without braces always serializes without brace escaping."""
+        event(f"input_len={len(text)}")
         assume(text.strip())  # Non-empty after stripping
+        # Leading whitespace gets wrapped in a StringLiteral placeable for
+        # roundtrip correctness (see _serialize_pattern); not this test's concern.
+        assume(not text[0].isspace())
 
         msg = Message(
             id=Identifier(name="test"),
@@ -532,7 +546,11 @@ class TestMultilinePatternIndentation:
     @example(lines=["First line", "Second line", "Third line"])
     def test_multiline_indentation_property(self, lines: list[str]) -> None:
         """Multiline patterns always indent continuation lines with 4 spaces."""
+        event(f"line_count={len(lines)}")
         assume(all(line.strip() for line in lines))  # Non-empty lines
+        # Leading whitespace on the first line gets wrapped in a StringLiteral
+        # placeable for roundtrip correctness; not this test's concern.
+        assume(not lines[0][0].isspace())
 
         text = "\n".join(lines)
         msg = Message(
@@ -626,6 +644,8 @@ class TestMixedPatternElements:
     @example(num_text=1, num_placeable=4)
     def test_mixed_pattern_property(self, num_text: int, num_placeable: int) -> None:
         """Patterns with varying numbers of text and placeable elements serialize correctly."""
+        event(f"num_text={num_text}")
+        event(f"num_placeable={num_placeable}")
         elements: list[TextElement | Placeable] = []
 
         # Alternate between text and placeable

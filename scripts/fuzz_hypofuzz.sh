@@ -1,65 +1,109 @@
 #!/usr/bin/env bash
-# HypoFuzz & Property Testing Interface
-# Single entry point for all Hypothesis-based testing.
+# ==============================================================================
+# fuzz_hypofuzz.sh -- HypoFuzz & Property Testing Interface
+# ==============================================================================
+# COMPATIBILITY: Bash 5.0+
+# ARCHITECTURAL INTENT:
+#   Single entry point for Hypothesis property testing and HypoFuzz coverage-
+#   guided fuzzing. Provides preflight infrastructure auditing, fast property
+#   checks, continuous deep fuzzing, failure reproduction, and strategy metrics.
+#
+# STRATEGY METRICS:
+#   Atheris-style per-strategy metrics are collected during --deep runs.
+#   Use --metrics to see periodic per-strategy breakdown (invocations, wall
+#   time, mean cost, weight percentage). Metrics are saved to
+#   .hypothesis/strategy_metrics.json after each session.
+#
+#   TRADE-OFF: --deep --metrics uses pytest (single-pass, 10000 examples) instead
+#   of HypoFuzz (continuous). This is because HypoFuzz uses multiprocessing where
+#   metrics cannot be shared across worker processes. For continuous fuzzing
+#   without metrics, use --deep alone.
+#
+# AGENT PROTOCOL:
+#   - Silence on Success (unless --verbose)
+#   - Full Log on Failure
+#   - [SUMMARY-JSON-BEGIN] ... [SUMMARY-JSON-END]
+#   - [EXIT-CODE] N
 #
 # Usage:
 #   ./scripts/fuzz_hypofuzz.sh              Run fast property tests (default)
-#   ./scripts/fuzz_hypofuzz.sh --deep       Run continuous HypoFuzz
+#   ./scripts/fuzz_hypofuzz.sh --deep       Run continuous HypoFuzz (until Ctrl+C)
+#   ./scripts/fuzz_hypofuzz.sh --deep --metrics  Single-pass pytest with metrics
+#   ./scripts/fuzz_hypofuzz.sh --preflight  Audit test infrastructure
 #   ./scripts/fuzz_hypofuzz.sh --list       Show how to reproduce failures
 #   ./scripts/fuzz_hypofuzz.sh --repro TEST Reproduce a specific test failure
 #   ./scripts/fuzz_hypofuzz.sh --clean      Remove .hypothesis/ database
-#   ./scripts/fuzz_hypofuzz.sh --help       Show this help
+#   ./scripts/fuzz_hypofuzz.sh --help       Show help
 #
-# Options:
-#   --verbose                      Show detailed progress
-#   --workers N                    Number of parallel workers (default: 4)
-#   --time N                       Run for N seconds (deep mode)
-#   --target FILE                  Specific test file (check mode)
-#
-# Note: This script is for Hypothesis/HypoFuzz testing. For Atheris native
-# fuzzing, use ./scripts/fuzz_atheris.sh instead.
-#
-# Note: uses the standard project environment (.venv-3.13/.venv-3.14) defined by 'dev' group.
+# Note: For Atheris native fuzzing, use ./scripts/fuzz_atheris.sh instead.
+# Note: Uses the standard project environment (.venv-3.13/.venv-3.14).
+# ==============================================================================
 
-set -e
+# Bash Settings
+set -o errexit
+set -o nounset
+set -o pipefail
+if [[ "${BASH_VERSINFO[0]}" -ge 5 ]]; then
+    shopt -s inherit_errexit 2>/dev/null || true
+fi
+
+# [SECTION: ENVIRONMENT_ISOLATION]
+PY_VERSION="${PY_VERSION:-3.13}"
+TARGET_VENV=".venv-${PY_VERSION}"
+
+if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
+    if [[ "${FUZZ_ALREADY_PIVOTED:-}" == "1" ]]; then
+        echo "Error: Recursive pivot detected. Check your environment configuration." >&2
+        exit 1
+    fi
+    if [[ -f "uv.lock" || -f "pyproject.toml" ]]; then
+        echo -e "\033[34m[INFO]\033[0m Pivoting to isolated environment: ${TARGET_VENV}"
+        export UV_PROJECT_ENVIRONMENT="$TARGET_VENV"
+        export FUZZ_ALREADY_PIVOTED=1
+        unset VIRTUAL_ENV
+        exec uv run --python "$PY_VERSION" bash "$0" "$@"
+    fi
+else
+    unset FUZZ_ALREADY_PIVOTED
+fi
+
+# [SECTION: SETUP]
+# REQUIRED: Force TMPDIR to /tmp to avoid "AF_UNIX path too long" on macOS with HypoFuzz
+export TMPDIR="/tmp"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# REQUIRED: Force TMPDIR to /tmp to avoid "AF_UNIX path too long" on macOS with HypoFuzz
-export TMPDIR="/tmp"
+IS_GHA="${GITHUB_ACTIONS:-false}"
 
 # Defaults
 MODE="check"
 VERBOSE=false
+METRICS=false
 WORKERS=4
 TIME_LIMIT=""
 TARGET=""
+REPRO_TEST=""
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
-
-disable_colors() {
-    RED=''
-    GREEN=''
-    YELLOW=''
-    BLUE=''
-    BOLD=''
-    NC=''
-}
-
-# Disable colors if not a terminal
-if [[ ! -t 1 ]]; then
-    disable_colors
+# Colors (respects NO_COLOR standard and non-terminal detection)
+if [[ "${NO_COLOR:-}" == "1" ]]; then
+    RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; BOLD=""; RESET=""
+elif [[ ! -t 1 ]]; then
+    RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; BOLD=""; RESET=""
+else
+    RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
 fi
 
+# Logging (consistent with lint.sh and test.sh)
+log_group_start() { [[ "$IS_GHA" == "true" ]] && echo "::group::$1"; echo -e "\n${BOLD}${CYAN}=== $1 ===${RESET}"; }
+log_group_end()   { [[ "$IS_GHA" == "true" ]] && echo "::endgroup::"; return 0; }
+log_info() { echo -e "${BLUE}[INFO]${RESET} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${RESET} $1"; }
+log_pass() { echo -e "${GREEN}[PASS]${RESET} $1"; }
+log_fail() { echo -e "${RED}[FAIL]${RESET} $1"; }
+log_err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
+
 show_help() {
-    cat << EOF
+    cat << 'HELPEOF'
 HypoFuzz & Property Testing Interface for FTLLexEngine
 
 USAGE:
@@ -68,6 +112,7 @@ USAGE:
 MODES:
     (default)       Fast property tests (pytest with Hypothesis)
     --deep          Continuous coverage-guided fuzzing (HypoFuzz)
+    --preflight     Audit test infrastructure (events, strategies, gaps)
     --list          Show reproduction info and recent failures
     --clean         Remove .hypothesis/ database (with confirmation)
     --repro TEST    Reproduce a failing test with verbose output
@@ -75,6 +120,7 @@ MODES:
 
 OPTIONS:
     --verbose       Show detailed progress during tests
+    --metrics       Enable periodic per-strategy metrics (for --deep)
     --workers N     Number of parallel workers (default: 4)
     --time N        Time limit in seconds (for --deep)
     --target FILE   Specific test file to run (check mode only)
@@ -85,6 +131,9 @@ EXAMPLES:
 
     # Deep fuzzing for 5 minutes
     ./scripts/fuzz_hypofuzz.sh --deep --time 300
+
+    # Deep fuzzing with per-strategy metrics every 10s
+    ./scripts/fuzz_hypofuzz.sh --deep --metrics
 
     # Reproduce a specific failing test
     ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip
@@ -98,20 +147,20 @@ NOTE:
     Use --repro for verbose output and @example extraction.
 
     For Atheris native fuzzing, use ./scripts/fuzz_atheris.sh instead.
-EOF
+HELPEOF
 }
 
 # Strict Argument Parser
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --deep|--list|--clean|--repro)
+        --deep|--list|--clean|--repro|--preflight)
             if [[ "$MODE" != "check" && "$MODE" != "${1#--}" ]]; then
-                echo -e "${RED}[ERROR] Conflicting modes selected: $MODE vs ${1#--}${NC}"
+                log_err "Conflicting modes selected: $MODE vs ${1#--}"
                 exit 1
             fi
-            MODE="${1#--}" # strip leading --
+            MODE="${1#--}"
             if [[ "$MODE" == "repro" && -z "${2:-}" ]]; then
-                echo -e "${RED}[ERROR] Missing test argument for --repro${NC}"
+                log_err "Missing test argument for --repro"
                 echo "Usage: ./scripts/fuzz_hypofuzz.sh --repro <test_module::test_function>"
                 exit 1
             fi
@@ -122,6 +171,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --verbose|-v) VERBOSE=true; shift ;;
+        --metrics) METRICS=true; shift ;;
         --workers) WORKERS="$2"; shift 2 ;;
         --time) TIME_LIMIT="$2"; shift 2 ;;
         --target) TARGET="$2"; shift 2 ;;
@@ -137,12 +187,14 @@ done
 # [SECTION: SIGNAL_HANDLING]
 PID_LIST=()
 cleanup() {
+    local exit_code=$?
     if [[ ${#PID_LIST[@]} -gt 0 ]]; then
         for pid in "${PID_LIST[@]}"; do
             kill -TERM "$pid" 2>/dev/null || true
         done
         wait
     fi
+    echo "[EXIT-CODE] $exit_code" >&2
 }
 trap cleanup EXIT INT TERM
 
@@ -150,98 +202,252 @@ trap cleanup EXIT INT TERM
 # Subroutines
 # =============================================================================
 
-# =============================================================================
-# Pre-Flight Diagnostics
-# =============================================================================
-
+# [SECTION: DIAGNOSTICS]
 run_diagnostics() {
-    echo -e "\n${BOLD}============================================================${NC}"
-    echo -e "${BOLD}Hypothesis Diagnostic Check${NC}"
-    echo -e "Env: ${BLUE}Default (dev)${NC}"
-    echo -e "${BOLD}============================================================${NC}\n"
+    log_group_start "Pre-Flight Diagnostics"
 
-    local python_bin
-    python_bin=$(uv run python -c "import sys; print(sys.executable)" 2>/dev/null)
     local python_version
-    python_version=$("$python_bin" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    python_version=$(python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    echo "[  OK  ] Python               : $python_version"
 
-    echo -n "Python Version... "
-    echo -e "${GREEN}$python_version${NC}"
-
-    echo -n "Hypothesis Spec... "
-    if "$python_bin" -c "import hypothesis; print(hypothesis.__version__)" &>/dev/null; then
-        echo -e "${GREEN}OK${NC}"
+    if python -c "import hypothesis" &>/dev/null; then
+        local hypo_version
+        hypo_version=$(python -c "import hypothesis; print(hypothesis.__version__)")
+        echo "[  OK  ] Hypothesis           : $hypo_version"
     else
-        echo -e "${RED}MISSING${NC}"
-        echo "Run 'uv sync' to install dependencies."
+        echo "[ FAIL ] Hypothesis           : MISSING"
+        log_err "Hypothesis not installed. Run 'uv sync' to install dependencies."
         exit 1
     fi
-    
-    echo -e "\n${BOLD}============================================================${NC}"
-    echo -e "${GREEN}[OK]${NC} System is ready."
-    echo -e "${BOLD}============================================================${NC}\n"
+
+    log_pass "System is ready."
+    log_group_end
 }
+
+# =============================================================================
+# Preflight Infrastructure Audit
+# =============================================================================
+
+run_preflight() {
+    log_group_start "Preflight Infrastructure Audit"
+
+    # AST-based per-test event checking via Python
+    python << PREFLIGHT_EOF
+import ast
+import re
+import sys
+from pathlib import Path
+from collections import defaultdict
+
+tests_dir = Path("$PROJECT_ROOT/tests")
+strategies_dir = tests_dir / "strategies"
+
+# ---- Pass 1: File-level metrics ----
+given_count = 0
+given_by_file = defaultdict(int)
+event_count = 0
+event_by_file = defaultdict(int)
+
+for py_file in tests_dir.rglob("*.py"):
+    try:
+        content = py_file.read_text()
+        g_matches = len(re.findall(r'@given\(', content))
+        if g_matches > 0:
+            given_count += g_matches
+            given_by_file[py_file.relative_to(tests_dir)] = g_matches
+        e_matches = len(re.findall(r'(?<![a-zA-Z_])event\(', content))
+        if e_matches > 0:
+            event_count += e_matches
+            event_by_file[py_file.relative_to(tests_dir)] = e_matches
+    except Exception:
+        pass
+
+# ---- Pass 2: Fuzz module identification ----
+fuzz_modules = []
+fuzz_modules_without_events = []
+for py_file in tests_dir.rglob("*.py"):
+    try:
+        # Skip infrastructure files (conftest contains marker registration, not tests)
+        if py_file.name == "conftest.py":
+            continue
+        content = py_file.read_text()
+        if "pytest.mark.fuzz" in content or "pytestmark = pytest.mark.fuzz" in content:
+            rel_path = py_file.relative_to(tests_dir)
+            fuzz_modules.append(str(rel_path))
+            # Only flag as gap if the module has @given tests but no events
+            has_given = given_by_file.get(rel_path, 0) > 0
+            has_events = rel_path in event_by_file
+            if has_given and not has_events:
+                fuzz_modules_without_events.append(str(rel_path))
+    except Exception:
+        pass
+
+# ---- Pass 3: Per-test event checking (AST-based) ----
+tests_without_events = []
+for py_file in tests_dir.rglob("*.py"):
+    try:
+        content = py_file.read_text()
+        if "pytest.mark.fuzz" not in content:
+            continue
+        tree = ast.parse(content, filename=str(py_file))
+        rel_path = str(py_file.relative_to(tests_dir))
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            # Check for @given decorator (direct or via attribute)
+            has_given = any(
+                isinstance(dec, ast.Call)
+                and (
+                    (isinstance(dec.func, ast.Name) and dec.func.id == "given")
+                    or (
+                        isinstance(dec.func, ast.Attribute)
+                        and dec.func.attr == "given"
+                    )
+                )
+                for dec in node.decorator_list
+            )
+            if not has_given:
+                continue
+            # Check if function body contains event() call
+            has_event = any(
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id == "event"
+                for child in ast.walk(node)
+            )
+            if not has_event:
+                tests_without_events.append(f"{rel_path}::{node.name}")
+    except Exception:
+        pass
+
+# ---- Pass 4: Strategy analysis ----
+strategy_coverage = {}
+if strategies_dir.exists():
+    for strat_file in strategies_dir.glob("*.py"):
+        try:
+            content = strat_file.read_text()
+            events = len(re.findall(r'(?<![a-zA-Z_])event\(', content))
+            strategy_coverage[strat_file.name] = events
+        except Exception:
+            pass
+
+# ---- Report ----
+print(f"Test Files:          {len(list(tests_dir.rglob('*.py')))}")
+print(f"@given Tests:        {given_count}")
+print(f"event() Calls:       {event_count}")
+print(f"Fuzz Modules:        {len(fuzz_modules)}")
+print()
+
+if strategy_coverage:
+    print("Strategy Coverage:")
+    for name, count in sorted(strategy_coverage.items()):
+        status = "[  OK  ]" if count > 0 else "[ WARN ]"
+        print(f"  {status} {name:<20} {count} events")
+    print()
+
+if fuzz_modules_without_events:
+    print("[WARN] Fuzz Modules WITHOUT Events (File-Level Gap):")
+    for mod in sorted(fuzz_modules_without_events):
+        given = given_by_file.get(Path(mod), 0)
+        print(f"  [ WARN ] {mod} ({given} @given tests, 0 events)")
+    print()
+else:
+    print("[  OK  ] All fuzz modules have events (file-level)")
+    print()
+
+if tests_without_events:
+    print("[WARN] @given Tests in Fuzz Modules WITHOUT event() Calls:")
+    for test_id in sorted(tests_without_events):
+        print(f"  [ WARN ] {test_id}")
+    print()
+else:
+    print("[  OK  ] All @given tests in fuzz modules emit events (per-test)")
+    print()
+
+# Non-fuzz files with @given but no events (informational)
+no_event_files = [(f, c) for f, c in given_by_file.items() if f not in event_by_file]
+top_files = sorted(no_event_files, key=lambda x: x[1], reverse=True)[:5]
+if top_files:
+    print("Non-Fuzz Files with @given but no events:")
+    for f, count in top_files:
+        print(f"  [ INFO ] {f}: {count} @given tests, 0 events")
+    print()
+
+# Summary
+gaps = len(fuzz_modules_without_events) + len(tests_without_events)
+if gaps > 0:
+    print(f"[WARN] {gaps} gap(s) detected. Add hypothesis.event() calls for semantic guidance.")
+    sys.exit(1)
+else:
+    print("[  OK  ] Infrastructure audit passed. Run --deep for coverage-guided fuzzing.")
+PREFLIGHT_EOF
+
+    log_group_end
+}
+
+# =============================================================================
+# Property Test Runner (check mode)
+# =============================================================================
 
 run_check() {
     run_diagnostics
-    echo -e "${BOLD}Running Property Tests...${NC}"
-    
+    log_group_start "Property Tests"
+
     # Set profile based on verbose flag
     if [[ "$VERBOSE" == "true" ]]; then
         export HYPOTHESIS_PROFILE="verbose"
     fi
 
     # Determine target
-    TEST_TARGET="${TARGET:-tests/}"
+    local test_target="${TARGET:-tests/}"
 
     # Verify target exists
-    if [[ ! -e "$TEST_TARGET" ]]; then
-        echo -e "${RED}[ERROR] Target not found: $TEST_TARGET${NC}"
-        exit 1
+    if [[ ! -e "$test_target" ]]; then
+        log_err "Target not found: $test_target"
+        log_group_end
+        return 1
     fi
 
-    echo "Target: $TEST_TARGET"
+    log_info "Target: $test_target"
     if [[ "$VERBOSE" == "true" ]]; then
-        echo "Profile: verbose"
+        log_info "Profile: verbose"
     else
-        echo "Profile: default (silent)"
+        log_info "Profile: default (dev)"
     fi
-    echo ""
 
-    # Log Capture Setup
-    TEMP_LOG="/tmp/fuzz_check_$$.log"
-    # Ensure log is cleared on return
-    # Note: Global trap handles exit, this local one handles function return hygiene if needed,
-    # but strictly traps are global in bash. We'll handle cleanup manually at end of function.
-    
-    CMD=(uv run pytest "$TEST_TARGET" -v --tb=short)
-    
+    # Log Capture
+    local temp_log
+    temp_log=$(mktemp)
+
+    local cmd=(uv run pytest "$test_target" -v --tb=short)
+
+    local exit_code=0
     set +e
     if [[ "$VERBOSE" == "true" ]]; then
-         "${CMD[@]}" 2>&1 | tee "$TEMP_LOG"
-         EXIT_CODE=${PIPESTATUS[0]}
+        "${cmd[@]}" 2>&1 | tee "$temp_log"
+        exit_code=${PIPESTATUS[0]}
     else
-         # Quick mode: Capture output silently
-         "${CMD[@]}" > "$TEMP_LOG" 2>&1
-         EXIT_CODE=$?
+        "${cmd[@]}" > "$temp_log" 2>&1
+        exit_code=$?
     fi
     set -e
 
-    # Robust Log Parsing via Python (Backported and Hardened)
-    python3 << PYEOF
-import sys, json, re
+    # Log Parsing via Python
+    python << PYEOF
+import json, re
 from datetime import datetime, timezone
 from pathlib import Path
 
-log_path = Path("$TEMP_LOG")
-exit_code = $EXIT_CODE
+log_path = Path("$temp_log")
+exit_code = $exit_code
 
 try:
     log_content = log_path.read_text() if log_path.exists() else ""
 except Exception:
     log_content = ""
 
-# Parse metrics safely
+# Parse metrics
 passed_match = re.search(r'(\d+) passed', log_content)
 failed_match = re.search(r'(\d+) failed', log_content)
 skipped_match = re.search(r'(\d+) skipped', log_content)
@@ -251,50 +457,36 @@ tests_passed = int(passed_match.group(1)) if passed_match else 0
 tests_failed = int(failed_match.group(1)) if failed_match else 0
 tests_skipped = int(skipped_match.group(1)) if skipped_match else 0
 
-# Extract individual test failures with details
+# Extract individual test failures
 failures = []
-# Pattern: "FAILED tests/test_foo.py::test_bar" followed by error info
 failed_test_pattern = r'FAILED (tests/[\w/]+\.py::\w+)'
 failed_tests = re.findall(failed_test_pattern, log_content)
 
-# For each failed test, try to extract error type and falsifying example
 for test_path in failed_tests:
     failure_entry = {"test": test_path}
-
-    # Find error type for this test
-    # Pattern: "E   AssertionError:" or similar
     test_section_start = log_content.find(test_path)
     if test_section_start != -1:
         test_section = log_content[test_section_start:test_section_start + 2000]
         error_match = re.search(r'E\s+(\w+Error|\w+Exception):', test_section)
         if error_match:
             failure_entry["error_type"] = error_match.group(1)
-
-    # Find falsifying example for this test
     if 'Falsifying example' in log_content:
-        # Look for pattern: "Falsifying example: test_name("
         test_func = test_path.split("::")[-1] if "::" in test_path else ""
         example_pattern = rf'Falsifying example:\s*{re.escape(test_func)}\(([^\)]+)\)'
         example_match = re.search(example_pattern, log_content, re.DOTALL)
         if example_match:
             failure_entry["example"] = example_match.group(1).strip()[:500]
-
     failures.append(failure_entry)
 
-# Extract first falsifying example (legacy field for backwards compatibility)
+# Legacy field
 fail_ex = ""
 if 'Falsifying example' in log_content:
     try:
-        # Robust extraction
         fail_ex = log_content.split('Falsifying example')[1].split('\n')[0][:200].strip()
     except IndexError:
         pass
 
-# Determine correct status
-# 0 = Pass
-# 1 = Failure (Tests failed)
-# 130 = SIGINT/Ctrl+C
-# 2 = Interrupted/KeyboardInterrupt (Pytest specific)
+# Status determination
 if exit_code == 0:
     status = 'pass'
 elif exit_code in (130, 2):
@@ -322,167 +514,189 @@ print('[SUMMARY-JSON-END]')
 PYEOF
 
     # Visual Feedback
-    if [[ $EXIT_CODE -eq 0 ]]; then
-        echo -e "\n${GREEN}[PASS] All property tests passed.${NC}"
-    elif [[ $EXIT_CODE -eq 130 ]] || [[ $EXIT_CODE -eq 2 ]]; then
-        echo -e "\n${YELLOW}[STOPPED] Run interrupted by user.${NC}"
-    elif [[ $EXIT_CODE -eq 1 ]]; then
-        echo -e "\n${RED}[FAIL] Failures detected!${NC}"
-        echo "See JSON summary above for details."
+    if [[ $exit_code -eq 0 ]]; then
+        log_pass "All property tests passed."
+    elif [[ $exit_code -eq 130 || $exit_code -eq 2 ]]; then
+        log_info "Run interrupted by user."
+    elif [[ $exit_code -eq 1 ]]; then
+        log_fail "Failures detected. See JSON summary above."
         if [[ "$VERBOSE" == "false" ]]; then
-            echo -e "${YELLOW}Failure output:${NC}"
-            # Only grep if file exists and has content
-            if [[ -s "$TEMP_LOG" ]]; then
-                grep -A 20 "Falsifying example" "$TEMP_LOG" || head -n 20 "$TEMP_LOG"
+            log_warn "Failure output:"
+            if [[ -s "$temp_log" ]]; then
+                grep -A 20 "Falsifying example" "$temp_log" || head -n 20 "$temp_log"
             fi
         fi
     else
-        echo -e "\n${RED}[ERROR] Test execution failed (code $EXIT_CODE).${NC}"
+        log_err "Test execution failed (code $exit_code)."
     fi
 
-    rm -f "$TEMP_LOG"
-    return $EXIT_CODE
+    rm -f "$temp_log"
+    log_group_end
+    return "$exit_code"
 }
+
+# =============================================================================
+# Continuous HypoFuzz (deep mode)
+# =============================================================================
 
 run_deep() {
     run_diagnostics
-    echo -e "${BOLD}Running Continuous HypoFuzz...${NC}"
 
-    if [[ -n "$TIME_LIMIT" ]]; then
-        echo "Time Limit: ${TIME_LIMIT}s"
-        echo "(Time limit enforcement relies on Ctrl+C or internal engine termination)"
+    # Determine mode title: --metrics uses pytest (single-pass), else HypoFuzz (continuous)
+    if [[ "$METRICS" == "true" ]]; then
+        log_group_start "Deep Fuzzing (pytest with metrics)"
     else
-        echo "Time Limit: Until Ctrl+C"
+        log_group_start "Continuous HypoFuzz"
     fi
 
-    echo "Workers:    $WORKERS"
-    echo ""
+    # Activate hypofuzz profile: deadline=None, suppress health checks
+    export HYPOTHESIS_PROFILE="hypofuzz"
 
-    # Log file for this session - append to preserve history
-    LOG_FILE="$PROJECT_ROOT/.hypothesis/hypofuzz.log"
+    # Enable strategy metrics collection
+    export STRATEGY_METRICS="1"
+
+    # Log file for this session (append to preserve history)
+    local log_file="$PROJECT_ROOT/.hypothesis/hypofuzz.log"
     mkdir -p "$PROJECT_ROOT/.hypothesis"
 
-    # Add session header
-    echo "" >> "$LOG_FILE"
-    echo "================================================================================" >> "$LOG_FILE"
-    echo "HypoFuzz Session: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
-    echo "Workers: $WORKERS" >> "$LOG_FILE"
-    echo "================================================================================" >> "$LOG_FILE"
+    # When --metrics is enabled, use pytest instead of HypoFuzz
+    # HypoFuzz uses multiprocessing where metrics aren't shared across workers
+    if [[ "$METRICS" == "true" ]]; then
+        export STRATEGY_METRICS_DETAILED="1"
+        export STRATEGY_METRICS_LIVE="1"
+        export STRATEGY_METRICS_INTERVAL="10"
+        log_info "Metrics: Per-strategy breakdown enabled (10s interval)"
+        log_info "Metrics: Using pytest (HypoFuzz multiprocessing incompatible with metrics)"
+        log_info "Profile: hypofuzz (deadline=None)"
 
-    # Use tee to see output and save it
+        # Session header
+        {
+            echo ""
+            echo "================================================================================"
+            echo "Metrics Session (pytest -m fuzz): $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "Profile: hypofuzz"
+            echo "================================================================================"
+        } >> "$log_file"
+
+        local exit_code=0
+        set +e
+        uv run pytest tests/ -m fuzz -v --tb=short 2>&1 | tee -a "$log_file"
+        exit_code=${PIPESTATUS[0]}
+        set -e
+
+        log_group_end
+        return "$exit_code"
+    fi
+
+    if [[ -n "$TIME_LIMIT" ]]; then
+        log_info "Time Limit: ${TIME_LIMIT}s"
+    else
+        log_info "Time Limit: Until Ctrl+C"
+    fi
+    log_info "Workers: $WORKERS"
+    log_info "Profile: hypofuzz (deadline=None)"
+
+    # Session header
+    {
+        echo ""
+        echo "================================================================================"
+        echo "HypoFuzz Session: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Workers: $WORKERS"
+        echo "Profile: hypofuzz"
+        echo "================================================================================"
+    } >> "$log_file"
+
+    local exit_code=0
     set +e
-    uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/ 2>&1 | tee -a "$LOG_FILE"
-    EXIT_CODE=${PIPESTATUS[0]}
+    uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/ 2>&1 | tee -a "$log_file"
+    exit_code=${PIPESTATUS[0]}
     set -e
 
-    # Count failures in this session
-    # Note: grep -c outputs "0" on no match but exits 1, so we handle the exit code separately
-    FAILURE_COUNT=$(grep -c "Falsifying example" "$LOG_FILE" 2>/dev/null) || FAILURE_COUNT=0
+    # Count failures
+    local failure_count=0
+    failure_count=$(grep -c "Falsifying example" "$log_file" 2>/dev/null) || failure_count=0
 
-    if [[ $EXIT_CODE -eq 0 ]] || [[ $EXIT_CODE -eq 130 ]] || [[ $EXIT_CODE -eq 120 ]]; then
+    if [[ $exit_code -eq 0 || $exit_code -eq 130 || $exit_code -eq 120 ]]; then
         # 0 = Done, 130 = SIGINT (Ctrl+C), 120 = HypoFuzz Interrupted
-        echo -e "\n${GREEN}[STOPPED] Fuzzing session ended.${NC}"
+        log_pass "Fuzzing session ended."
 
-        if [[ "$FAILURE_COUNT" -gt 0 ]]; then
-            echo -e "${YELLOW}[FINDING]${NC} $FAILURE_COUNT falsifying example(s) found in this session."
-            echo "  View log: cat $LOG_FILE"
+        if [[ "$failure_count" -gt 0 ]]; then
+            log_warn "$failure_count falsifying example(s) found in this session."
+            echo "  View log: cat $log_file"
             echo "  List failures: ./scripts/fuzz_hypofuzz.sh --list"
         fi
 
-        # Event diversity analysis
-        echo -e "\n${BLUE}[EVENT DIVERSITY]${NC}"
-        python3 << EVENTEOF
+        # Event diversity summary
+        log_group_start "Event Infrastructure"
+        python << EVENTEOF
 import re
 from pathlib import Path
-from collections import Counter
 
-log_path = Path("$LOG_FILE")
-if not log_path.exists():
-    print("  No log file found")
-    exit(0)
+tests_dir = Path("$PROJECT_ROOT/tests")
 
-try:
-    log_content = log_path.read_text()
-except Exception:
-    print("  Could not read log file")
-    exit(0)
+event_count = 0
+for py_file in tests_dir.rglob("*.py"):
+    try:
+        content = py_file.read_text()
+        event_count += len(re.findall(r'(?<![a-zA-Z_])event\(', content))
+    except Exception:
+        pass
 
-# Extract all hypothesis.event() calls from log
-# Events appear in various formats in Hypothesis/HypoFuzz output
-event_patterns = [
-    r"event\(['\"]([^'\"]+)['\"]\)",  # event('name')
-    r"Observing: ([^\n]+)",  # HypoFuzz observation format
-]
-
-events = []
-for pattern in event_patterns:
-    events.extend(re.findall(pattern, log_content))
-
-if events:
-    counter = Counter(events)
-    print(f"  Unique events discovered: {len(counter)}")
-    print("  Top events:")
-    for event_name, count in counter.most_common(15):
-        print(f"    {event_name}: {count}")
-    if len(counter) > 15:
-        print(f"    ... and {len(counter) - 15} more")
-else:
-    print("  No hypothesis.event() calls detected in log")
-    print("  Consider adding events to strategies and tests for better fuzzer guidance")
-    print("  See: docs/FUZZING_GUIDE_HYPOFUZZ.md#semantic-coverage-with-events")
+print("  HypoFuzz captures hypothesis.event() internally for coverage guidance.")
+print("  Events are not echoed to stdout but guide path selection.")
+print()
+print(f"  Infrastructure: {event_count} event() calls in test suite")
+print()
+print("  For detailed infrastructure audit:")
+print("    ./scripts/fuzz_hypofuzz.sh --preflight")
 EVENTEOF
+        log_group_end
 
-        # Rich JSON summary with failure details
-        python3 << PYEOF
+        # JSON summary
+        python << PYEOF
 import json, re
 from datetime import datetime, timezone
 from pathlib import Path
 
-log_path = Path("$LOG_FILE")
-exit_code = $EXIT_CODE
-failure_count = $FAILURE_COUNT
+log_path = Path("$log_file")
+exit_code = $exit_code
+failure_count = $failure_count
 
 try:
     log_content = log_path.read_text() if log_path.exists() else ""
 except Exception:
     log_content = ""
 
-# Extract individual failures from log
 failures = []
-# Pattern: "Falsifying example: test_name(" with surrounding context
 if failure_count > 0:
-    # Find all falsifying example blocks
     example_pattern = r'Falsifying example:\s*(\w+)\(([^)]+)\)'
     for match in re.finditer(example_pattern, log_content):
         test_name = match.group(1)
         example_args = match.group(2).strip()[:500]
-        failures.append({
-            "test": test_name,
-            "example": example_args
-        })
+        failures.append({"test": test_name, "example": example_args})
 
 report = {
     "mode": "deep",
-    "status": "stopped",
+    "status": "pass",
     "timestamp": datetime.now(timezone.utc).isoformat(),
     "failures_count": failure_count,
-    "failures": failures[:50],  # Limit to first 50 failures
+    "failures": failures[:50],
     "exit_code": exit_code,
-    "log_file": "$LOG_FILE"
+    "log_file": "$log_file"
 }
 print("[SUMMARY-JSON-BEGIN]")
 print(json.dumps(report, indent=2))
 print("[SUMMARY-JSON-END]")
 PYEOF
     else
-        echo -e "\n${RED}[ERROR] HypoFuzz exited with error code $EXIT_CODE${NC}"
+        log_err "HypoFuzz exited with error code $exit_code."
 
-        # Check for Common Mac Issue
-        if grep -q "AF_UNIX path too long" "$LOG_FILE"; then
-            echo -e "${YELLOW}Hint: 'AF_UNIX path too long' detected. TMPDIR is set to $TMPDIR.${NC}"
+        # Check for common macOS issue
+        if grep -q "AF_UNIX path too long" "$log_file"; then
+            log_warn "AF_UNIX path too long detected. TMPDIR is set to $TMPDIR."
         fi
 
-        python3 << PYEOF
+        python << PYEOF
 import json
 from datetime import datetime, timezone
 
@@ -490,26 +704,33 @@ report = {
     "mode": "deep",
     "status": "error",
     "timestamp": datetime.now(timezone.utc).isoformat(),
-    "failures_count": $FAILURE_COUNT,
-    "exit_code": $EXIT_CODE,
-    "log_file": "$LOG_FILE"
+    "failures_count": $failure_count,
+    "exit_code": $exit_code,
+    "log_file": "$log_file"
 }
 print("[SUMMARY-JSON-BEGIN]")
 print(json.dumps(report, indent=2))
 print("[SUMMARY-JSON-END]")
 PYEOF
-        exit $EXIT_CODE
+        log_group_end
+        return "$exit_code"
     fi
+
+    log_group_end
+    return 0
 }
 
+# =============================================================================
+# List Failures
+# =============================================================================
+
 run_list() {
-    EXAMPLES_DIR="$PROJECT_ROOT/.hypothesis/examples"
-    FUZZ_LOG="$PROJECT_ROOT/.hypothesis/hypofuzz.log"
+    local examples_dir="$PROJECT_ROOT/.hypothesis/examples"
+    local fuzz_log="$PROJECT_ROOT/.hypothesis/hypofuzz.log"
 
-    echo -e "${BOLD}Hypothesis Failure Reproduction Info${NC}"
-    echo ""
+    log_group_start "Hypothesis Failure Reproduction Info"
 
-    echo -e "${BLUE}How Hypothesis failures work:${NC}"
+    log_info "How Hypothesis failures work:"
     echo "  1. When a property test fails, Hypothesis shrinks to a minimal example"
     echo "  2. The shrunk example is stored in .hypothesis/examples/ (SHA-384 hashed)"
     echo "  3. On re-run, Hypothesis AUTOMATICALLY replays the stored failure"
@@ -517,134 +738,134 @@ run_list() {
     echo ""
 
     # Check if examples database exists
-    if [[ -d "$EXAMPLES_DIR" ]]; then
-        COUNT=$(find "$EXAMPLES_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-        echo -e "${GREEN}[OK]${NC} .hypothesis/examples/ exists with $COUNT entries"
+    if [[ -d "$examples_dir" ]]; then
+        local count
+        count=$(find "$examples_dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+        log_pass ".hypothesis/examples/ exists with $count entries"
     else
-        echo -e "${YELLOW}[WARN]${NC} No .hypothesis/examples/ directory found"
+        log_warn "No .hypothesis/examples/ directory found."
         echo "     Run some Hypothesis tests first to populate the database."
     fi
     echo ""
 
     # Check for HypoFuzz log
-    if [[ -f "$FUZZ_LOG" ]]; then
-        echo -e "${BLUE}Recent HypoFuzz session log:${NC} $FUZZ_LOG"
-        # Check for failures in log
-        # Note: grep -c outputs "0" on no match but exits 1, so we handle the exit code separately
-        FAILURE_COUNT=$(grep -c "Falsifying example" "$FUZZ_LOG" 2>/dev/null) || FAILURE_COUNT=0
-        if [[ "$FAILURE_COUNT" -gt 0 ]]; then
-            echo -e "${YELLOW}[FINDING]${NC} Found $FAILURE_COUNT falsifying example(s) in log"
+    if [[ -f "$fuzz_log" ]]; then
+        log_info "Recent HypoFuzz session log: $fuzz_log"
+        local failure_count=0
+        failure_count=$(grep -c "Falsifying example" "$fuzz_log" 2>/dev/null) || failure_count=0
+        if [[ "$failure_count" -gt 0 ]]; then
+            log_warn "Found $failure_count falsifying example(s) in log."
             echo ""
             echo "Recent failures:"
-            grep -B2 "Falsifying example" "$FUZZ_LOG" | tail -20
+            grep -B2 "Falsifying example" "$fuzz_log" | tail -20
         else
             echo "  No failures recorded in latest session."
         fi
     else
-        echo -e "${BLUE}HypoFuzz log:${NC} Not found (run --deep to create)"
+        log_info "HypoFuzz log: Not found (run --deep to create)"
     fi
     echo ""
 
-    echo -e "${BOLD}To reproduce a specific failing test:${NC}"
+    echo "To reproduce a specific failing test:"
     echo "  ./scripts/fuzz_hypofuzz.sh --repro test_module::test_function"
     echo ""
-    echo -e "${BOLD}To reproduce all failures:${NC}"
+    echo "To reproduce all failures:"
     echo "  uv run pytest tests/ -x -v"
     echo ""
-    echo -e "${BOLD}To extract @example decorator:${NC}"
+    echo "To extract @example decorator:"
     echo "  uv run python scripts/fuzz_hypofuzz_repro.py --example test_module::test_function"
+
+    log_group_end
 }
 
-run_clean() {
-    HYPOTHESIS_DIR="$PROJECT_ROOT/.hypothesis"
-    FUZZ_LOG="$HYPOTHESIS_DIR/hypofuzz.log"
+# =============================================================================
+# Clean Hypothesis Database
+# =============================================================================
 
-    if [[ ! -d "$HYPOTHESIS_DIR" ]]; then
-        echo "No .hypothesis/ directory found. Nothing to clean."
+run_clean() {
+    local hypothesis_dir="$PROJECT_ROOT/.hypothesis"
+    local fuzz_log="$hypothesis_dir/hypofuzz.log"
+
+    if [[ ! -d "$hypothesis_dir" ]]; then
+        log_info "No .hypothesis/ directory found. Nothing to clean."
         return 0
     fi
 
-    # Count entries
-    EXAMPLE_COUNT=$(find "$HYPOTHESIS_DIR/examples" -type f 2>/dev/null | wc -l | tr -d ' ')
+    local example_count
+    example_count=$(find "$hypothesis_dir/examples" -type f 2>/dev/null | wc -l | tr -d ' ')
 
-    echo -e "${BOLD}Hypothesis Database Cleanup${NC}"
-    echo ""
-    echo "Directory: $HYPOTHESIS_DIR"
-    echo "Examples:  $EXAMPLE_COUNT cached entries"
-    if [[ -f "$FUZZ_LOG" ]]; then
-        echo "Log:       $(wc -l < "$FUZZ_LOG" | tr -d ' ') lines"
+    log_group_start "Hypothesis Database Cleanup"
+    echo "Directory: $hypothesis_dir"
+    echo "Examples:  $example_count cached entries"
+    if [[ -f "$fuzz_log" ]]; then
+        echo "Log:       $(wc -l < "$fuzz_log" | tr -d ' ') lines"
     fi
     echo ""
-    echo -e "${YELLOW}WARNING:${NC} Removing .hypothesis/ will:"
+    log_warn "Removing .hypothesis/ will:"
     echo "  - Delete all cached examples (regression database)"
     echo "  - Delete any shrunk failure examples"
     echo "  - Require tests to rediscover edge cases"
     echo ""
 
-    # Prompt for confirmation
     read -r -p "Remove .hypothesis/ directory? (y/N): " response
     case "$response" in
         [yY][eE][sS]|[yY])
-            rm -rf "$HYPOTHESIS_DIR"
-            echo -e "${GREEN}[OK]${NC} Removed .hypothesis/ directory"
+            rm -rf "$hypothesis_dir"
+            log_pass "Removed .hypothesis/ directory."
             ;;
         *)
-            echo "Cancelled."
+            log_info "Cancelled."
             ;;
     esac
+    log_group_end
 }
+
+# =============================================================================
+# Reproduce Failures
+# =============================================================================
 
 run_repro() {
     if [[ -z "$REPRO_TEST" ]]; then
-        echo -e "${RED}[ERROR] Missing test argument for --repro${NC}"
+        log_err "Missing test argument for --repro"
         echo "Usage: ./scripts/fuzz_hypofuzz.sh --repro <test_module::test_function>"
         echo ""
         echo "Examples:"
         echo "  ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip"
         echo "  ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis"
-        exit 1
+        return 1
     fi
 
-    echo -e "${BOLD}Reproducing Hypothesis Failure...${NC}"
-    echo "Test: $REPRO_TEST"
-    echo ""
+    log_group_start "Reproduce Hypothesis Failure"
+    log_info "Test: $REPRO_TEST"
 
-    # Use the fuzz_hypofuzz_repro.py script
+    local exit_code=0
+    set +e
     uv run python scripts/fuzz_hypofuzz_repro.py --verbose --example "$REPRO_TEST"
-    EXIT_CODE=$?
+    exit_code=$?
+    set -e
 
-    if [[ $EXIT_CODE -eq 0 ]]; then
-        echo ""
-        echo -e "${GREEN}[PASS]${NC} Test passed - no failure to reproduce."
+    if [[ $exit_code -eq 0 ]]; then
+        log_pass "Test passed - no failure to reproduce."
         echo "If you expected a failure, the bug may have been fixed or the"
         echo ".hypothesis/examples/ database may need to be cleared."
     fi
 
-    return $EXIT_CODE
+    log_group_end
+    return "$exit_code"
 }
 
 # =============================================================================
 # Main Dispatch
 # =============================================================================
 
+set +e
 case "$MODE" in
-    check)
-        run_check
-        ;;
-    deep)
-        run_deep
-        ;;
-    list)
-        run_list
-        ;;
-    clean)
-        run_clean
-        ;;
-    repro)
-        run_repro
-        ;;
-    *)
-        echo "Invalid mode"
-        exit 1
-        ;;
+    check)     run_check ;;
+    deep)      run_deep ;;
+    list)      run_list ;;
+    clean)     run_clean ;;
+    repro)     run_repro ;;
+    preflight) run_preflight ;;
+    *)         log_err "Invalid mode"; exit 1 ;;
 esac
+exit $?

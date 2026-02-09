@@ -13,7 +13,7 @@ from collections import OrderedDict
 from decimal import Decimal
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 sys.path.insert(0, "src")
@@ -54,6 +54,7 @@ class TestF001PrecisionLiteralSuffix:
     @settings(max_examples=50)
     def test_result_never_exceeds_cap(self, frac_digits: int, cap: int) -> None:
         """Result never exceeds max_fraction_digits when provided."""
+        event(f"frac_digits={frac_digits}")
         formatted = "1." + "0" * frac_digits if frac_digits > 0 else "1"
         result = _compute_visible_precision(formatted, ".", max_fraction_digits=cap)
         assert result <= cap
@@ -62,6 +63,7 @@ class TestF001PrecisionLiteralSuffix:
     @settings(max_examples=50)
     def test_result_never_exceeds_actual_digits(self, frac_digits: int) -> None:
         """Result never exceeds actual fraction digit count."""
+        event(f"frac_digits={frac_digits}")
         formatted = "1." + "0" * frac_digits if frac_digits > 0 else "1"
         result = _compute_visible_precision(formatted, ".", max_fraction_digits=100)
         assert result <= frac_digits

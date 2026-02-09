@@ -24,6 +24,7 @@ Marker pattern:
 Run fuzz-marked tests: ./scripts/fuzz_hypofuzz.sh --deep or pytest -m fuzz
 """
 
+from collections.abc import Callable
 from datetime import UTC
 
 import pytest
@@ -37,7 +38,7 @@ from hypothesis import HealthCheck, Phase, Verbosity, settings
 settings.register_profile(
     "dev",
     max_examples=500,
-    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
+    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target, Phase.shrink],
     derandomize=False,
 )
 
@@ -45,7 +46,7 @@ settings.register_profile(
 settings.register_profile(
     "ci",
     max_examples=50,
-    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
+    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target, Phase.shrink],
     derandomize=True,
     print_blob=True,
 )
@@ -54,7 +55,7 @@ settings.register_profile(
 settings.register_profile(
     "verbose",
     max_examples=100,
-    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
+    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target, Phase.shrink],
     derandomize=False,
     verbosity=Verbosity.verbose,
 )
@@ -63,7 +64,7 @@ settings.register_profile(
 settings.register_profile(
     "hypofuzz",
     max_examples=10000,
-    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
+    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target, Phase.shrink],
     deadline=None,  # No per-example timeout for intensive fuzzing
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
     derandomize=False,
@@ -74,7 +75,7 @@ settings.register_profile(
     "stateful_fuzz",
     max_examples=500,
     stateful_step_count=50,
-    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.shrink],
+    phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target, Phase.shrink],
     deadline=None,
     derandomize=False,
 )
@@ -321,3 +322,328 @@ def pytest_runtest_makereport(
         "repro_script": str(crash_file),
     }
     json_file.write_text(json.dumps(crash_data, indent=2))
+
+
+# =============================================================================
+# STRATEGY METRICS COLLECTION
+# =============================================================================
+#
+# Metrics work with BOTH pytest and HypoFuzz CLI:
+# - Environment-based: Enable at import time via STRATEGY_METRICS=1
+# - atexit: Write report on process exit (works with HypoFuzz)
+# - pytest hooks: Additional integration for pytest runs
+#
+# =============================================================================
+
+# Type alias for hypothesis.event signature
+type EventFn = Callable[[str, str | int | float], None]
+
+_original_event: EventFn | None = None  # Store original hypothesis.event
+_metrics_initialized: bool = False  # Track if already initialized
+
+
+def _install_event_hook() -> None:
+    """Install a wrapper around hypothesis.event to capture metrics.
+
+    This patches hypothesis.event to also record to our metrics collector,
+    enabling automatic metrics capture without modifying strategy code.
+    """
+    global _original_event  # noqa: PLW0603  # pylint: disable=global-statement
+
+    import hypothesis
+
+    from tests.strategy_metrics import metrics_collector
+
+    if _original_event is not None:
+        return  # Already installed
+
+    _original_event = hypothesis.event
+
+    def _wrapped_event(value: str, payload: str | int | float = "") -> None:
+        """Wrapper that calls both original event and metrics collector."""
+        assert _original_event is not None  # For type narrowing
+        _original_event(value, payload)
+        # Only record the value, not payload, for metrics
+        metrics_collector.record_event(value)
+
+    hypothesis.event = _wrapped_event
+
+
+def _uninstall_event_hook() -> None:
+    """Restore original hypothesis.event function."""
+    global _original_event  # noqa: PLW0603  # pylint: disable=global-statement
+
+    if _original_event is None:
+        return
+
+    import hypothesis
+
+    hypothesis.event = _original_event  # type: ignore[assignment]
+    _original_event = None
+
+
+def _write_metrics_report() -> None:
+    """Write strategy metrics report (shared by atexit and pytest hook)."""
+    import json
+    import sys
+    from pathlib import Path
+
+    from tests.strategy_metrics import metrics_collector
+
+    # Stop live reporting if running
+    metrics_collector.stop_live_reporting()
+
+    # Restore original hypothesis.event
+    _uninstall_event_hook()
+
+    if not metrics_collector.is_enabled():
+        return
+
+    report = metrics_collector.report()
+
+    # Print final summary to console (always, so user sees metrics at end)
+    print("\n" + "=" * 70, file=sys.stderr)
+    print("[METRICS] FINAL SUMMARY", file=sys.stderr)
+    print("=" * 70, file=sys.stderr)
+    print(f"Total events:      {report.total_invocations:,}", file=sys.stderr)
+    cats_obs = len(report.observed_events)
+    cats_exp = len(report.expected_events)
+    print(f"Categories:        {cats_obs} observed / {cats_exp} expected", file=sys.stderr)
+    if report.weight_skew_detected:
+        skew_count = len(report.skew_patterns)
+        print(f"[WARN] Skew:       {skew_count} patterns", file=sys.stderr)
+    if report.coverage_gaps:
+        gap_count = len(report.coverage_gaps)
+        gap_lines = [f"  - {g}" for g in report.coverage_gaps]
+        print(f"[WARN] Gaps:       {gap_count} uncovered", file=sys.stderr)
+        print("\n".join(gap_lines), file=sys.stderr)
+    mean_ms = report.perf_mean_ms
+    p95_ms = report.perf_p95_ms
+    print(f"Performance:       mean={mean_ms:.2f}ms p95={p95_ms:.2f}ms", file=sys.stderr)
+    print("=" * 70 + "\n", file=sys.stderr)
+
+    # Write JSON report
+    metrics_dir = Path(".hypothesis")
+    metrics_dir.mkdir(exist_ok=True)
+    metrics_file = metrics_dir / "strategy_metrics.json"
+
+    report_data = report.to_dict()
+    metrics_file.write_text(json.dumps(report_data, indent=2))
+
+    # Also write a human-readable summary if there are issues
+    if report.weight_skew_detected or report.coverage_gaps:
+        summary_file = metrics_dir / "strategy_metrics_summary.txt"
+        lines = [
+            "STRATEGY METRICS SUMMARY",
+            "=" * 60,
+            f"Total invocations: {report.total_invocations}",
+            f"Event categories observed: {len(report.observed_events)}",
+            f"Event categories expected: {len(report.expected_events)}",
+            "",
+        ]
+
+        if report.weight_skew_detected:
+            lines.append("[WARN] Weight skew detected:")
+            for pattern in report.skew_patterns:
+                lines.append(f"  - {pattern}")
+            lines.append("")
+
+        if report.coverage_gaps:
+            lines.append("[WARN] Coverage gaps (unobserved events):")
+            for gap in report.coverage_gaps:
+                lines.append(f"  - {gap}")
+            lines.append("")
+
+        lines.extend([
+            "Performance:",
+            f"  Mean: {report.perf_mean_ms:.3f}ms",
+            f"  P95:  {report.perf_p95_ms:.3f}ms",
+            f"  P99:  {report.perf_p99_ms:.3f}ms",
+            f"  Max:  {report.perf_max_ms:.3f}ms",
+        ])
+
+        summary_file.write_text("\n".join(lines))
+
+
+def _init_metrics_from_env() -> None:
+    """Initialize metrics based on environment variables.
+
+    Called at module import time to support HypoFuzz CLI which bypasses
+    pytest session hooks. Uses atexit to ensure report is written.
+    """
+    global _metrics_initialized  # noqa: PLW0603  # pylint: disable=global-statement
+
+    if _metrics_initialized:
+        return
+
+    import atexit
+    import os
+
+    from tests.strategy_metrics import metrics_collector
+
+    profile = os.environ.get("HYPOTHESIS_PROFILE", "")
+    enable_metrics = (
+        os.environ.get("STRATEGY_METRICS") == "1"
+        or profile == "hypofuzz"
+    )
+
+    if not enable_metrics:
+        return
+
+    _metrics_initialized = True
+    metrics_collector.enable()
+    metrics_collector.reset()
+
+    # Patch hypothesis.event
+    _install_event_hook()
+
+    # Enable live reporting if requested
+    enable_live = (
+        os.environ.get("STRATEGY_METRICS_LIVE") == "1"
+        or profile == "hypofuzz"
+    )
+    if enable_live:
+        interval = float(os.environ.get("STRATEGY_METRICS_INTERVAL", "10"))
+        show_detailed = os.environ.get("STRATEGY_METRICS_DETAILED") == "1"
+        metrics_collector.start_live_reporting(
+            interval_seconds=interval,
+            show_per_strategy=show_detailed,
+        )
+
+    # Register atexit handler to write report (for HypoFuzz CLI)
+    atexit.register(_write_metrics_report)
+
+
+# Initialize metrics at import time (for HypoFuzz CLI support)
+_init_metrics_from_env()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Enable strategy metrics collection at session start.
+
+    Metrics are collected when:
+    - Running with -m fuzz (dedicated fuzzing)
+    - STRATEGY_METRICS=1 environment variable
+    - HYPOTHESIS_PROFILE=hypofuzz
+
+    Live reporting (console output every 30s) enabled when:
+    - STRATEGY_METRICS_LIVE=1 environment variable
+    - HYPOTHESIS_PROFILE=hypofuzz (deep fuzzing sessions)
+
+    This tracks:
+    - Strategy invocation distribution (intended vs actual weights)
+    - Performance characteristics per strategy
+    - Coverage gaps in event categories
+    """
+    import os
+
+    from tests.strategy_metrics import metrics_collector
+
+    # If already initialized from env, just check for -m fuzz
+    if _metrics_initialized:
+        # Check if pytest was invoked with -m fuzz (not detectable from env)
+        args_str = " ".join(str(a) for a in session.config.invocation_params.args)
+        if "-m fuzz" in args_str and not metrics_collector.is_enabled():
+            metrics_collector.enable()
+            metrics_collector.reset()
+            _install_event_hook()
+        return
+
+    # Enable metrics for fuzzing runs or explicit request
+    profile = os.environ.get("HYPOTHESIS_PROFILE", "")
+    enable_metrics = (
+        os.environ.get("STRATEGY_METRICS") == "1"
+        or profile == "hypofuzz"
+        or "-m fuzz" in " ".join(str(a) for a in session.config.invocation_params.args)
+    )
+
+    if enable_metrics:
+        metrics_collector.enable()
+        metrics_collector.reset()  # Fresh start for this session
+
+        # Patch hypothesis.event to also record metrics
+        _install_event_hook()
+
+        # Enable live reporting for deep fuzzing or explicit request
+        enable_live = (
+            os.environ.get("STRATEGY_METRICS_LIVE") == "1"
+            or profile == "hypofuzz"
+        )
+        if enable_live:
+            interval = float(os.environ.get("STRATEGY_METRICS_INTERVAL", "10"))
+            # Per-strategy breakdown when STRATEGY_METRICS_DETAILED=1
+            show_detailed = os.environ.get("STRATEGY_METRICS_DETAILED") == "1"
+            metrics_collector.start_live_reporting(
+                interval_seconds=interval,
+                show_per_strategy=show_detailed,
+            )
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Write strategy metrics report at session end.
+
+    Generates .hypothesis/strategy_metrics.json with:
+    - Weight distribution analysis (skew detection)
+    - Performance percentiles
+    - Coverage gap identification
+    """
+    import json
+    from pathlib import Path
+
+    from tests.strategy_metrics import metrics_collector
+
+    # Stop live reporting if running
+    metrics_collector.stop_live_reporting()
+
+    # Restore original hypothesis.event
+    _uninstall_event_hook()
+
+    if not metrics_collector.is_enabled():
+        return
+
+    report = metrics_collector.report()
+
+    # Write JSON report
+    metrics_dir = Path(".hypothesis")
+    metrics_dir.mkdir(exist_ok=True)
+    metrics_file = metrics_dir / "strategy_metrics.json"
+
+    report_data = report.to_dict()
+    report_data["session_exitstatus"] = exitstatus
+    report_data["tests_collected"] = session.testscollected
+
+    metrics_file.write_text(json.dumps(report_data, indent=2))
+
+    # Also write a human-readable summary if there are issues
+    if report.weight_skew_detected or report.coverage_gaps:
+        summary_file = metrics_dir / "strategy_metrics_summary.txt"
+        lines = [
+            "STRATEGY METRICS SUMMARY",
+            "=" * 60,
+            f"Total invocations: {report.total_invocations}",
+            f"Event categories observed: {len(report.observed_events)}",
+            f"Event categories expected: {len(report.expected_events)}",
+            "",
+        ]
+
+        if report.weight_skew_detected:
+            lines.append("[WARN] Weight skew detected:")
+            for pattern in report.skew_patterns:
+                lines.append(f"  - {pattern}")
+            lines.append("")
+
+        if report.coverage_gaps:
+            lines.append("[WARN] Coverage gaps (unobserved events):")
+            for gap in report.coverage_gaps:
+                lines.append(f"  - {gap}")
+            lines.append("")
+
+        lines.extend([
+            "Performance:",
+            f"  Mean: {report.perf_mean_ms:.3f}ms",
+            f"  P95:  {report.perf_p95_ms:.3f}ms",
+            f"  P99:  {report.perf_p99_ms:.3f}ms",
+            f"  Max:  {report.perf_max_ms:.3f}ms",
+        ])
+
+        summary_file.write_text("\n".join(lines))

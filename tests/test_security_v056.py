@@ -13,7 +13,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -405,6 +405,7 @@ class TestParserTokenLengthLimits:
     @settings(max_examples=20)
     def test_identifier_length_property(self, length: int) -> None:
         """PROPERTY: Identifiers up to max length should parse."""
+        event(f"length={length}")
         identifier = "a" * length
         cursor = Cursor(identifier, 0)
         result = parse_identifier(cursor)
@@ -415,6 +416,7 @@ class TestParserTokenLengthLimits:
     @settings(max_examples=20)
     def test_number_length_property(self, length: int) -> None:
         """PROPERTY: Numbers up to max length should parse."""
+        event(f"length={length}")
         number = "1" * length
         cursor = Cursor(number, 0)
         result = parse_number(cursor)

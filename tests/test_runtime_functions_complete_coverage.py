@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from babel.numbers import NumberPattern
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.function_bridge import FluentNumber
@@ -83,6 +83,8 @@ class TestComputeVisiblePrecisionCapping:
         self, digit_count: int, max_frac: int
     ) -> None:
         """Property: returned precision never exceeds max_fraction_digits."""
+        capped = digit_count > max_frac
+        event(f"outcome={'capped' if capped else 'within'}")
         # Create formatted string with digit_count fraction digits
         formatted = "1." + "0" * digit_count
         result = _compute_visible_precision(formatted, ".", max_fraction_digits=max_frac)
@@ -183,6 +185,7 @@ class TestNumberFormatPatternExceptionHandling:
     )
     def test_number_format_pattern_exception_property(self, value: float) -> None:
         """Property: number_format succeeds even when metadata extraction fails."""
+        event(f"value={type(value).__name__}")
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
 
         call_count = 0
@@ -296,6 +299,7 @@ class TestCurrencyFormatPatternExceptionHandling:
         self, value: float, currency: str
     ) -> None:
         """Property: currency_format succeeds even when metadata extraction fails."""
+        event(f"currency={currency}")
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
 
         call_count = 0

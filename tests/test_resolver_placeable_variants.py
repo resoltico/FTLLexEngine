@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -49,6 +49,7 @@ class TestPlaceableBranchCoverage:
     @given(value=st.text(min_size=1, max_size=50))
     def test_placeable_with_various_values(self, value: str) -> None:
         """PROPERTY: Placeable branch handles various string values."""
+        event(f"value_len={len(value)}")
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource("msg = { $x }")
 
@@ -140,6 +141,7 @@ info = { -product.version } on { -product.platform }
     )
     def test_term_attribute_property(self, attr_name: str, attr_value: str) -> None:
         """PROPERTY: Term attribute resolution works for various names."""
+        event(f"attr_name_len={len(attr_name)}")
         from hypothesis import assume  # noqa: PLC0415
 
         # Exclude FTL syntax characters

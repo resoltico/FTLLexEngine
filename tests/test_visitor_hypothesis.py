@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax import parse
@@ -138,6 +138,10 @@ class TestVisitorTraversal:
         visitor = CountingVisitor()
         visitor.visit(resource)
 
+        event(f"visit_count={visitor.count}")
+        for nt in sorted(visitor.node_types):
+            event(f"node_type={nt}")
+
         # Must visit at least: Resource, Message, Identifier, Pattern, TextElement
         assert visitor.count >= 5
         assert "Resource" in visitor.node_types
@@ -159,6 +163,9 @@ class TestVisitorTraversal:
         visitor = TypeCollectorVisitor()
         visitor.visit(resource)
 
+        type_count = len(visitor.types)
+        event(f"type_count={type_count}")
+
         # Must visit placeable and its variable reference
         assert "Placeable" in visitor.types
         assert "VariableReference" in visitor.types
@@ -179,6 +186,9 @@ class TestVisitorTraversal:
 
         visitor = TypeCollectorVisitor()
         visitor.visit(resource)
+
+        id_count = visitor.types.count("Identifier")
+        event(f"identifier_count={id_count}")
 
         assert "Term" in visitor.types
         assert "TermReference" in visitor.types
@@ -206,6 +216,9 @@ class TestVisitorTraversal:
         visitor = TypeCollectorVisitor()
         visitor.visit(resource)
 
+        variant_count = visitor.types.count("Variant")
+        event(f"variant_count={variant_count}")
+
         assert "SelectExpression" in visitor.types
         assert visitor.types.count("Variant") == 2
         assert "VariableReference" in visitor.types
@@ -230,6 +243,9 @@ class TestTransformerIdentity:
 
         transformer = IdentityTransformer()
         transformed = transformer.transform(resource)
+
+        entry_count = len(resource.entries)
+        event(f"entry_count={entry_count}")
 
         # Structure must be preserved
         assert isinstance(transformed, Resource)

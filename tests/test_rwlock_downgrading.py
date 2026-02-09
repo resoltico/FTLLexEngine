@@ -13,7 +13,7 @@ import threading
 import time
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
@@ -458,6 +458,8 @@ class TestRWLockPropertyBased:
         Property: If writer acquires N read locks, after releasing write lock,
         should be able to release exactly N read locks.
         """
+        event(f"read_count={read_count}")
+        event(f"write_reentry={write_reentry}")
         lock = RWLock()
 
         with lock.write():
@@ -494,6 +496,8 @@ class TestRWLockPropertyBased:
         Property: For any sequence of balanced acquire/release operations
         while holding write lock, state should be consistent.
         """
+        op_count = len(operations)
+        event(f"op_count={op_count}")
         lock = RWLock()
 
         # Balance the operations
@@ -535,6 +539,7 @@ class TestRWLockPropertyBased:
         Property: While holding write lock (even with downgraded reads),
         external readers cannot acquire the lock.
         """
+        event(f"num_reads={num_reads}")
         lock = RWLock()
         external_reader_blocked = True
 

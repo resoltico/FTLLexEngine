@@ -6,7 +6,8 @@ statistics across multiple FluentBundle instances within a FluentLocalization.
 
 import threading
 
-from hypothesis import given, settings
+import pytest
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentLocalization
@@ -307,6 +308,7 @@ class TestGetCacheStatsThreadSafety:
         assert not errors
 
 
+@pytest.mark.fuzz
 class TestGetCacheStatsProperty:
     """Test property-based invariants using Hypothesis."""
 
@@ -325,6 +327,7 @@ class TestGetCacheStatsProperty:
         stats = l10n.get_cache_stats()
         assert stats is not None
         assert stats["bundle_count"] <= num_locales
+        event(f"num_locales={num_locales}")
 
     @given(st.integers(min_value=100, max_value=1000))
     @settings(max_examples=10)
@@ -336,6 +339,7 @@ class TestGetCacheStatsProperty:
         stats = l10n.get_cache_stats()
         assert stats is not None
         assert stats["maxsize"] == cache_size
+        event(f"cache_size={cache_size}")
 
     @given(st.integers(min_value=1, max_value=20))
     @settings(max_examples=20)
@@ -354,3 +358,4 @@ class TestGetCacheStatsProperty:
         stats = l10n.get_cache_stats()
         assert stats is not None
         assert stats["hits"] + stats["misses"] == num_requests
+        event(f"num_requests={num_requests}")

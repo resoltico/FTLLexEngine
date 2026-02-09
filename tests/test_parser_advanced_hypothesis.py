@@ -7,7 +7,7 @@ Critical parser functions tested with extensive property-based strategies:
 - Edge case generation (Unicode, nesting, whitespace)
 """
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import Junk, Message, Resource, Term
@@ -32,6 +32,7 @@ class TestParserRoundTrip:
         ftl_source = f"{msg_id} = {msg_value}"
 
         resource1 = parser.parse(ftl_source)
+        event(f"entry_count={len(resource1.entries)}")
 
         assert len(resource1.entries) > 0, f"Parser returned no entries for: {ftl_source}"
 

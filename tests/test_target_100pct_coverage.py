@@ -14,7 +14,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from unittest.mock import patch
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.enums import CommentType
@@ -185,6 +185,7 @@ class TestRulesLine885TermReferenceFailure:
         self, term_name: str, invalid_char: str
     ) -> None:
         """Property: Term reference with invalid attribute char after dot fails."""
+        event(f"invalid_char={invalid_char!r}")
         # Construct: -termname.X where X is not a valid identifier start
         input_str = f"-{term_name}.{invalid_char}"
         cursor = Cursor(input_str, 0)

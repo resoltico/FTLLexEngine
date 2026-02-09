@@ -26,6 +26,7 @@ from ftllexengine.syntax.ast import (
     Expression,
     FunctionReference,
     Identifier,
+    InlineExpression,
     Junk,
     Message,
     MessageReference,
@@ -359,6 +360,59 @@ def ftl_pathological_nesting(draw: st.DrawFn) -> str:
 
 
 @composite
+def ftl_multiline_chaos_source(draw: st.DrawFn) -> str:
+    """Generate multi-entry chaos FTL with line breaks at invalid positions.
+
+    Events emitted:
+    - strategy=multiline_chaos_{pattern}: Chaos injection pattern (for HypoFuzz)
+
+    D7 fix: Tests parser error recovery for multiline malformed input.
+    Real-world malformed FTL often involves:
+    - Continuation lines without proper indentation
+    - Entries split across unexpected boundaries
+    - CRLF mid-token
+    - Unclosed structures spanning multiple lines
+    """
+    num_entries = draw(st.integers(min_value=2, max_value=4))
+    entries: list[str] = []
+
+    pattern = draw(
+        st.sampled_from([
+            "mid_identifier",  # Line break inside identifier
+            "mid_placeable",  # Line break inside placeable
+            "between_eq_value",  # Line break between = and value
+            "unclosed_multiline",  # Unclosed brace spanning lines
+            "bad_continuation",  # Bad indentation on continuation
+        ])
+    )
+    event(f"strategy=multiline_chaos_{pattern}")
+
+    for i in range(num_entries):
+        msg_id = f"msg{i}"
+        match pattern:
+            case "mid_identifier":
+                # Break identifier across lines (invalid)
+                entries.append(f"ms\ng{i} = value{i}")
+            case "mid_placeable":
+                # Break placeable across lines
+                entries.append(f"{msg_id} = text {{ $va\nr{i} }} more")
+            case "between_eq_value":
+                # Line break between = and value
+                entries.append(f"{msg_id} =\nvalue{i}")
+            case "unclosed_multiline":
+                # Unclosed brace spanning to next entry
+                if i < num_entries - 1:
+                    entries.append(f"{msg_id} = {{ $var{i}")
+                else:
+                    entries.append(f"{msg_id} = closed }}")
+            case _:  # bad_continuation
+                # Tab indentation (invalid per FTL spec)
+                entries.append(f"{msg_id} = first line\n\tcontinuation")
+
+    return "\n".join(entries)
+
+
+@composite
 def ftl_simple_messages(draw: st.DrawFn) -> str:
     """Generate simple FTL messages (ID = value).
 
@@ -425,6 +479,55 @@ def ftl_numbers(draw: st.DrawFn) -> int | float:
             ),
         )
     )
+
+
+@composite
+def ftl_financial_numbers(draw: st.DrawFn) -> int | float:
+    """Generate financial-scale numbers for financial application testing.
+
+    Events emitted:
+    - strategy=financial_{magnitude}: Number magnitude category (for HypoFuzz)
+    - strategy=financial_decimals_{n}: Decimal places (for ISO 4217 coverage)
+
+    D4 fix: Financial applications handle amounts in billions (GDP, fund values,
+    transaction volumes). This strategy generates numbers across the full range
+    needed for financial formatting tests.
+
+    Magnitude ranges:
+    - small: < 1,000 (retail transactions)
+    - medium: 1,000 - 1,000,000 (business transactions)
+    - large: 1M - 1B (enterprise, fund values)
+    - huge: > 1B (national accounts, GDP)
+
+    Decimal places aligned with ISO 4217:
+    - 0 decimals: JPY, KRW, VND
+    - 2 decimals: USD, EUR, GBP (standard)
+    - 3 decimals: KWD, BHD, OMR
+    - 4 decimals: CLF, UYW (accounting units)
+    """
+    magnitude = draw(st.sampled_from(["small", "medium", "large", "huge"]))
+    decimals = draw(st.sampled_from([0, 2, 3, 4]))
+
+    match magnitude:
+        case "small":
+            base = draw(st.integers(min_value=-999, max_value=999))
+        case "medium":
+            base = draw(st.integers(min_value=-999999, max_value=999999))
+        case "large":
+            base = draw(st.integers(min_value=-999999999, max_value=999999999))
+        case _:  # huge
+            base = draw(st.integers(min_value=-999999999999, max_value=999999999999))
+
+    event(f"strategy=financial_{magnitude}")
+    event(f"strategy=financial_decimals_{decimals}")
+
+    if decimals == 0:
+        return base
+
+    # Add decimal component based on ISO 4217 decimal places
+    divisor = 10 ** decimals
+    fraction = draw(st.integers(min_value=0, max_value=divisor - 1))
+    return base + fraction / divisor
 
 
 # =============================================================================
@@ -811,7 +914,21 @@ def ftl_patterns(draw: st.DrawFn) -> Pattern:
 
 @composite
 def ftl_variants(draw: st.DrawFn) -> Variant:
-    """Generate Variant AST nodes for select expressions."""
+    """Generate individual Variant AST nodes for select expressions.
+
+    WARNING: This strategy generates variants with RANDOM default flags.
+    FTL SelectExpression requires EXACTLY ONE default variant (marked with *).
+    Using this strategy directly to build SelectExpression will likely fail
+    validation in SelectExpression.__post_init__.
+
+    For valid SelectExpression generation, use ftl_select_expressions() which
+    properly manages the exactly-one-default invariant.
+
+    This strategy is intended for:
+    - Testing individual variant serialization
+    - Type guard testing
+    - Low-level AST manipulation tests
+    """
     key = draw(
         st.one_of(
             st.builds(Identifier, name=ftl_identifiers()),
@@ -828,13 +945,41 @@ def ftl_select_expressions(draw: st.DrawFn) -> SelectExpression:
     """Generate SelectExpression AST nodes with valid variants.
 
     Events emitted:
+    - strategy=select_selector_{type}: Selector expression type (for HypoFuzz)
     - strategy=select_variants_{n}: Number of variants generated
 
     Ensures:
     - Exactly one default variant (per Fluent spec)
     - Unique variant keys (per Fluent spec)
+
+    D3 fix: Selector can be any InlineExpression, not just VariableReference.
+    Per FTL spec, common patterns include NUMBER($count) for locale-aware plurals.
     """
-    selector = draw(ftl_variable_references())
+    # D3 fix: Generate diverse selector types with weighted probability
+    selector_type = draw(
+        st.sampled_from([
+            "variable", "variable", "variable", "variable",  # 40% variable
+            "number", "number",  # 20% number literal
+            "function", "function",  # 20% function (e.g., NUMBER($x))
+            "string",  # 10% string literal
+            "term_ref",  # 10% term reference
+        ])
+    )
+
+    selector: InlineExpression
+    match selector_type:
+        case "variable":
+            selector = draw(ftl_variable_references())
+        case "number":
+            selector = draw(ftl_number_literals())
+        case "function":
+            selector = draw(ftl_function_references())
+        case "string":
+            selector = draw(ftl_string_literals())
+        case _:  # term_ref
+            selector = draw(ftl_term_references())
+
+    event(f"strategy=select_selector_{selector_type}")
 
     # Generate 2-4 unique variant keys using st.sampled_from predefined set
     # This avoids expensive rejection-based uniqueness while ensuring valid keys
@@ -939,22 +1084,84 @@ def ftl_function_references_no_args(draw: st.DrawFn) -> FunctionReference:
 
 
 @composite
-def ftl_message_nodes(draw: st.DrawFn) -> Message:
+def ftl_attribute_nodes(draw: st.DrawFn) -> Attribute:
+    """Generate Attribute AST nodes for messages and terms.
+
+    Events emitted:
+    - strategy=attribute: Attribute node generated (for HypoFuzz guidance)
+
+    Attributes are key-value pairs attached to messages/terms:
+    - .title = Button Title
+    - .aria-label = Accessible label
+    - .accesskey = B
+    """
+    attr_id = Identifier(name=draw(ftl_identifiers()))
+    attr_value = draw(ftl_patterns())
+
+    event("strategy=attribute")
+    return Attribute(id=attr_id, value=attr_value)
+
+
+@composite
+def ftl_message_nodes(draw: st.DrawFn, *, include_attributes: bool = True) -> Message:
     """Generate Message AST nodes.
+
+    Events emitted:
+    - strategy=message_{with|no}_attrs: Message attribute presence (for HypoFuzz)
 
     Messages must have a value (pattern). Messages without values
     are invalid FTL and get parsed as Junk.
+
+    Args:
+        include_attributes: If True, 30% chance of generating attributes.
     """
     id_val = Identifier(name=draw(ftl_identifiers()))
     value = draw(ftl_patterns())
-    return Message(id=id_val, value=value, attributes=())
+
+    # 30% chance of attributes when enabled (D1 fix)
+    attributes: tuple[Attribute, ...] = ()
+    if include_attributes and draw(st.integers(min_value=0, max_value=9)) < 3:
+        num_attrs = draw(st.integers(min_value=1, max_value=3))
+        # Generate unique attribute names
+        attr_names = draw(
+            st.lists(ftl_identifiers(), min_size=num_attrs, max_size=num_attrs, unique=True)
+        )
+        attributes = tuple(
+            Attribute(id=Identifier(name=name), value=draw(ftl_patterns()))
+            for name in attr_names
+        )
+        event("strategy=message_with_attrs")
+    else:
+        event("strategy=message_no_attrs")
+
+    return Message(id=id_val, value=value, attributes=attributes)
 
 
 @composite
 def ftl_comment_nodes(draw: st.DrawFn) -> Comment:
-    """Generate Comment AST nodes."""
+    """Generate Comment AST nodes of all types.
+
+    Events emitted:
+    - strategy=comment_{type}: Comment type generated (for HypoFuzz guidance)
+
+    Generates all three FTL comment types per spec:
+    - COMMENT: # Single comment
+    - GROUP: ## Group comment (applies to following entries)
+    - RESOURCE: ### Resource comment (file-level)
+    """
     content = draw(ftl_simple_text())
-    return Comment(content=content, type=CommentType.COMMENT)
+    # D5 fix: Generate all comment types with weighted probability
+    comment_type = draw(
+        st.sampled_from([
+            CommentType.COMMENT,
+            CommentType.COMMENT,
+            CommentType.COMMENT,  # 60% regular
+            CommentType.GROUP,  # 20% group
+            CommentType.RESOURCE,  # 20% resource
+        ])
+    )
+    event(f"strategy=comment_{comment_type.name.lower()}")
+    return Comment(content=content, type=comment_type)
 
 
 @composite
@@ -965,43 +1172,85 @@ def ftl_junk_nodes(draw: st.DrawFn) -> Junk:
 
 
 @composite
-def ftl_term_nodes(draw: st.DrawFn) -> Term:
-    """Generate Term AST nodes."""
+def ftl_term_nodes(draw: st.DrawFn, *, include_attributes: bool = True) -> Term:
+    """Generate Term AST nodes.
+
+    Events emitted:
+    - strategy=term_{with|no}_attrs: Term attribute presence (for HypoFuzz)
+
+    Args:
+        include_attributes: If True, 30% chance of generating attributes.
+    """
     id_val = Identifier(name=draw(ftl_identifiers()))
     value = draw(ftl_patterns())
-    return Term(id=id_val, value=value, attributes=())
+
+    # 30% chance of attributes when enabled (D1 fix)
+    attributes: tuple[Attribute, ...] = ()
+    if include_attributes and draw(st.integers(min_value=0, max_value=9)) < 3:
+        num_attrs = draw(st.integers(min_value=1, max_value=3))
+        attr_names = draw(
+            st.lists(ftl_identifiers(), min_size=num_attrs, max_size=num_attrs, unique=True)
+        )
+        attributes = tuple(
+            Attribute(id=Identifier(name=name), value=draw(ftl_patterns()))
+            for name in attr_names
+        )
+        event("strategy=term_with_attrs")
+    else:
+        event("strategy=term_no_attrs")
+
+    return Term(id=id_val, value=value, attributes=attributes)
 
 
 @composite
 def ftl_resources(draw: st.DrawFn) -> Resource:
-    """Generate complete Resource AST nodes.
+    """Generate complete Resource AST nodes with messages, terms, and comments.
 
-    Generates primarily messages with occasional comments.
-    Ensures unique message IDs within a resource.
+    Events emitted:
+    - strategy=resource_entry_{type}: Entry types included (for HypoFuzz guidance)
+
+    Generates mixed entry types reflecting real FTL files:
+    - 60% messages (primary content)
+    - 20% terms (reusable snippets)
+    - 20% comments (documentation)
+
+    Ensures unique IDs within each namespace (messages vs terms are separate).
     """
     entries = draw(
         st.lists(
             st.one_of(
+                # D2 fix: Include terms in resource generation
+                ftl_message_nodes(),  # 60% messages (3x weight)
                 ftl_message_nodes(),
                 ftl_message_nodes(),
-                ftl_message_nodes(),
-                ftl_comment_nodes(),
+                ftl_term_nodes(),  # 20% terms
+                ftl_comment_nodes(),  # 20% comments
             ),
             min_size=1,
             max_size=5,
         )
     )
 
-    # Deduplicate message IDs
-    seen_ids: set[str] = set()
-    unique_entries: list[Message | Comment] = []
+    # Deduplicate IDs within each namespace (messages and terms are separate)
+    seen_message_ids: set[str] = set()
+    seen_term_ids: set[str] = set()
+    unique_entries: list[Message | Term | Comment] = []
+
     for entry in entries:
-        if isinstance(entry, Message):
-            if entry.id.name not in seen_ids:
-                seen_ids.add(entry.id.name)
+        match entry:
+            case Message(id=ident):
+                if ident.name not in seen_message_ids:
+                    seen_message_ids.add(ident.name)
+                    unique_entries.append(entry)
+                    event("strategy=resource_entry_message")
+            case Term(id=ident):
+                if ident.name not in seen_term_ids:
+                    seen_term_ids.add(ident.name)
+                    unique_entries.append(entry)
+                    event("strategy=resource_entry_term")
+            case Comment():
                 unique_entries.append(entry)
-        else:
-            unique_entries.append(entry)
+                event("strategy=resource_entry_comment")
 
     return Resource(entries=tuple(unique_entries))
 
@@ -2004,12 +2253,9 @@ def ftl_circular_message_2way(draw: st.DrawFn) -> str:
     Syntactically valid FTL that causes infinite loop at resolution time.
     Tests resolver cycle detection.
     """
-    id_a = draw(ftl_identifiers())
-    id_b = draw(ftl_identifiers())
-
-    # Ensure distinct IDs
-    while id_b == id_a:
-        id_b = draw(ftl_identifiers())
+    # D6 fix: Use st.lists(unique=True) instead of rejection loop
+    ids = draw(st.lists(ftl_identifiers(), min_size=2, max_size=2, unique=True))
+    id_a, id_b = ids
 
     return f"{id_a} = {{ {id_b} }}\n{id_b} = {{ {id_a} }}"
 
@@ -2020,17 +2266,9 @@ def ftl_circular_message_3way(draw: st.DrawFn) -> str:
 
     Tests transitive cycle detection in resolver.
     """
-    id_a = draw(ftl_identifiers())
-    id_b = draw(ftl_identifiers())
-    id_c = draw(ftl_identifiers())
-
-    # Ensure distinct IDs
-    ids = {id_a}
-    while id_b in ids:
-        id_b = draw(ftl_identifiers())
-    ids.add(id_b)
-    while id_c in ids:
-        id_c = draw(ftl_identifiers())
+    # D6 fix: Use st.lists(unique=True) instead of rejection loop
+    ids = draw(st.lists(ftl_identifiers(), min_size=3, max_size=3, unique=True))
+    id_a, id_b, id_c = ids
 
     return f"{id_a} = {{ {id_b} }}\n{id_b} = {{ {id_c} }}\n{id_c} = {{ {id_a} }}"
 
@@ -2051,11 +2289,9 @@ def ftl_circular_term_2way(draw: st.DrawFn) -> str:
 
     Tests cycle detection in term resolution.
     """
-    id_a = draw(ftl_identifiers())
-    id_b = draw(ftl_identifiers())
-
-    while id_b == id_a:
-        id_b = draw(ftl_identifiers())
+    # D6 fix: Use st.lists(unique=True) instead of rejection loop
+    ids = draw(st.lists(ftl_identifiers(), min_size=2, max_size=2, unique=True))
+    id_a, id_b = ids
 
     return f"-{id_a} = {{ -{id_b} }}\n-{id_b} = {{ -{id_a} }}"
 
@@ -2078,12 +2314,10 @@ def ftl_circular_via_attribute(draw: st.DrawFn) -> str:
 
     msg.attr -> other -> msg.attr
     """
-    id_a = draw(ftl_identifiers())
-    id_b = draw(ftl_identifiers())
+    # D6 fix: Use st.lists(unique=True) instead of rejection loop
+    ids = draw(st.lists(ftl_identifiers(), min_size=2, max_size=2, unique=True))
+    id_a, id_b = ids
     attr = draw(ftl_identifiers())
-
-    while id_b == id_a:
-        id_b = draw(ftl_identifiers())
 
     return f"""{id_a} = Base
     .{attr} = {{ {id_b} }}
@@ -2147,12 +2381,9 @@ def ftl_undefined_reference(draw: st.DrawFn) -> str:
 
     Syntactically valid but will fail at resolution time.
     """
-    msg_id = draw(ftl_identifiers())
-    undefined_id = draw(ftl_identifiers())
-
-    # Ensure the undefined ID is different from the message ID
-    while undefined_id == msg_id:
-        undefined_id = draw(ftl_identifiers())
+    # D6 fix: Use st.lists(unique=True) instead of rejection loop
+    ids = draw(st.lists(ftl_identifiers(), min_size=2, max_size=2, unique=True))
+    msg_id, undefined_id = ids
 
     ref_type = draw(st.sampled_from(["message", "term", "attribute"]))
 

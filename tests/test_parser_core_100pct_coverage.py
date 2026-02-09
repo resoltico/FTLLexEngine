@@ -4,7 +4,7 @@ Covers specific uncovered lines identified by coverage analysis.
 Focuses on _has_blank_line_between edge cases.
 """
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.parser.core import _has_blank_line_between
@@ -72,6 +72,7 @@ class TestHasBlankLineBetweenCoverage:
 
         After FTL-PARSER-001 fix, first newline triggers detection.
         """
+        event(f"input_len={len(non_blank)}")
         # Structure: \n<non_blank>\n
         source = f"\n{non_blank}\n"
         result = _has_blank_line_between(source, 0, len(source))
@@ -157,6 +158,7 @@ class TestBlankLineRegionBoundaries:
     def test_blank_line_detection_in_middle(self, prefix: str, suffix: str) -> None:
         """Property: Blank line in middle is always detected."""
         source = f"{prefix}\n\n{suffix}"
+        event(f"input_len={len(source)}")
         result = _has_blank_line_between(source, 0, len(source))
         # Should always find the \n\n blank line
         assert result is True
@@ -187,6 +189,7 @@ class TestBlankLineHypothesisProperties:
         After FTL-PARSER-001 fix, a single newline in the checked region
         indicates a blank line (only applies when multiple lines present).
         """
+        event(f"count={len(lines)}")
         source = "\n".join(lines)
         # Lines with non-whitespace chars separated by single newlines
         result = _has_blank_line_between(source, 0, len(source))
@@ -200,6 +203,7 @@ class TestBlankLineHypothesisProperties:
     @given(st.integers(min_value=2, max_value=10))
     def test_multiple_consecutive_newlines_always_blank(self, count: int) -> None:
         """Property: Multiple consecutive newlines always create blank line."""
+        event(f"count={count}")
         source = "\n" * count
         result = _has_blank_line_between(source, 0, len(source))
         # count >= 2 means at least one blank line
@@ -217,6 +221,7 @@ class TestBlankLineHypothesisProperties:
 
         After FTL-PARSER-001 fix, first newline triggers detection.
         """
+        event(f"count={len(non_blank_chars)}")
         # Interleave newlines and non-blank chars
         parts = []
         for char in non_blank_chars:

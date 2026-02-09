@@ -14,7 +14,7 @@ This test file validates:
 """
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -427,6 +427,7 @@ class TestCurrencyHypothesis:
     @settings(max_examples=100)
     def test_currency_never_crashes(self, amount: float, currency: str) -> None:
         """currency_format() never crashes for any amount/currency combination."""
+        event(f"currency={currency}")
         result = currency_format(amount, "en-US", currency=currency)
         assert isinstance(result, FluentNumber)
         assert len(result) > 0
@@ -438,6 +439,7 @@ class TestCurrencyHypothesis:
     @settings(max_examples=100)
     def test_currency_all_locales_never_crash(self, locale: str, amount: float) -> None:
         """currency_format() works for any test locale and amount."""
+        event(f"locale={locale}")
         result = currency_format(amount, locale, currency="EUR")
         assert isinstance(result, FluentNumber)
         assert len(result) > 0
@@ -448,6 +450,8 @@ class TestCurrencyHypothesis:
     @settings(max_examples=50)
     def test_currency_deterministic(self, amount: float) -> None:
         """Same input always produces same output."""
+        negative = amount < 0
+        event(f"amount_negative={negative}")
         result1 = currency_format(amount, "en-US", currency="USD")
         result2 = currency_format(amount, "en-US", currency="USD")
         assert result1 == result2

@@ -26,7 +26,7 @@ from __future__ import annotations
 import typing
 
 import pytest
-from hypothesis import HealthCheck, assume, event, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -115,7 +115,7 @@ class TestRoundtripProperties:
         - attribute_count={n}: Number of attributes
         - pattern_starts_with_space={bool}: Edge case tracking
         """
-        # Check if pattern starts with space (edge case)
+        # Track leading-space edge case for HypoFuzz coverage guidance.
         pattern_value = message.value
         starts_with_space = False
         if pattern_value and pattern_value.elements:
@@ -124,11 +124,6 @@ class TestRoundtripProperties:
                 starts_with_space = True
 
         event(f"pattern_starts_with_space={starts_with_space}")
-
-        # Skip idempotence check for edge case where pattern starts with space.
-        # Parser has special handling for leading whitespace that differs from
-        # programmatic AST construction.
-        assume(not starts_with_space)
 
         resource = Resource(entries=(message,))
 
@@ -156,7 +151,7 @@ class TestRoundtripProperties:
         - has_attributes={bool}: Whether term has attributes
         - pattern_starts_with_space={bool}: Edge case tracking
         """
-        # Check if pattern starts with space (edge case)
+        # Track leading-space edge case for HypoFuzz coverage guidance.
         pattern_value = term.value
         starts_with_space = False
         if pattern_value and pattern_value.elements:
@@ -165,9 +160,6 @@ class TestRoundtripProperties:
                 starts_with_space = True
 
         event(f"pattern_starts_with_space={starts_with_space}")
-
-        # Skip idempotence check for edge case where pattern starts with space
-        assume(not starts_with_space)
 
         resource = Resource(entries=(term,))
 

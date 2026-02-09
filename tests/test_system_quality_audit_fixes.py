@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -92,6 +92,7 @@ class TestLocaleValidationAsciiOnly:
     @settings(max_examples=50)
     def test_ascii_alphanumeric_accepted(self, locale: str) -> None:
         """PROPERTY: Pure ASCII alphanumeric strings are valid locales."""
+        event(f"locale_len={len(locale)}")
         bundle = FluentBundle(locale)
         assert bundle.locale == locale
 
@@ -368,6 +369,7 @@ class TestCacheEntrySizeLimit:
     @settings(max_examples=20)
     def test_max_entry_weight_property(self, size: int) -> None:
         """PROPERTY: max_entry_weight is correctly stored and returned."""
+        event(f"weight_size={size}")
         cache = IntegrityCache(strict=False, max_entry_weight=size)
         assert cache.max_entry_weight == size
 

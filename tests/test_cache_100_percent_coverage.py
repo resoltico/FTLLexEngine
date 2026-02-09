@@ -11,7 +11,7 @@ Target lines:
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -114,6 +114,7 @@ class TestIntegrityCacheEntryContentHash:
         # This is correct behavior for audit trail integrity
         assert entry.verify() is True
         assert entry2.verify() is True
+        event(f"error_count={error_count}")
 
     def test_cache_put_get_with_frozen_errors(self) -> None:
         """Cache operations work correctly with FrozenFluentError.content_hash."""
@@ -188,6 +189,7 @@ class TestIntegrityCacheAuditLogDisabled:
         audit_log = cache.get_audit_log()
         assert audit_log == ()
         assert len(audit_log) == 0
+        event(f"put_count={put_count}")
 
 
 class TestIntegrityCacheAuditLogEnabled:
@@ -222,6 +224,7 @@ class TestIntegrityCacheAuditLogEnabled:
         audit_log = cache.get_audit_log()
         assert isinstance(audit_log, tuple)
         assert len(audit_log) >= op_count
+        event(f"op_count={op_count}")
 
 
 class TestIntegrityCachePropertyGetters:
@@ -285,6 +288,8 @@ class TestIntegrityCachePropertyGetters:
 
         assert cache.write_once == write_once
         assert cache.strict == strict
+        wo = "write_once" if write_once else "normal"
+        event(f"mode={wo}")
 
     def test_corruption_detected_accumulates(self) -> None:
         """corruption_detected property accumulates across multiple corruptions."""

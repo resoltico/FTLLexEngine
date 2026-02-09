@@ -14,12 +14,14 @@ import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from hypothesis import assume, given, settings
+import pytest
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
 
 
+@pytest.mark.fuzz
 class TestRWLockMutualExclusionProperties:
     """Property tests for mutual exclusion guarantees."""
 
@@ -48,6 +50,7 @@ class TestRWLockMutualExclusionProperties:
         # All readers completed
         assert len(active_readers) == read_count
         assert set(active_readers) == set(range(read_count))
+        event(f"reader_count={read_count}")
 
     @given(reentry_depth=st.integers(min_value=1, max_value=10))
     @settings(max_examples=50, deadline=None)
@@ -73,6 +76,7 @@ class TestRWLockMutualExclusionProperties:
         with lock.write():
             acquired = True
         assert acquired
+        event(f"reentry_depth={reentry_depth}")
 
     @given(reentry_depth=st.integers(min_value=1, max_value=10))
     @settings(max_examples=50, deadline=None)
@@ -98,6 +102,7 @@ class TestRWLockMutualExclusionProperties:
         with lock.write():
             acquired = True
         assert acquired
+        event(f"reentry_depth={reentry_depth}")
 
     @given(
         initial_readers=st.integers(min_value=0, max_value=5),
@@ -149,8 +154,11 @@ class TestRWLockMutualExclusionProperties:
         writer_thread.join()
         for thread in reader_threads:
             thread.join()
+        total_readers = initial_readers + subsequent_readers
+        event(f"reader_count={total_readers}")
 
 
+@pytest.mark.fuzz
 class TestRWLockBalanceProperties:
     """Property tests for lock acquisition/release balance."""
 
@@ -199,6 +207,7 @@ class TestRWLockBalanceProperties:
         # Lock should be free - new writer can acquire immediately
         with lock.write():
             pass
+        event(f"op_count={len(balanced_ops)}")
 
     @given(
         operations=st.lists(
@@ -245,8 +254,10 @@ class TestRWLockBalanceProperties:
         # Lock should be free
         with lock.write():
             pass
+        event(f"op_count={len(balanced_ops)}")
 
 
+@pytest.mark.fuzz
 class TestRWLockContextManagerProperties:
     """Property tests for context manager behavior."""
 
@@ -279,6 +290,8 @@ class TestRWLockContextManagerProperties:
         # Lock should be free
         with lock.write():
             pass
+        exc_name = exception_type.__name__
+        event(f"exception={exc_name}")
 
     @given(
         exception_type=st.sampled_from([ValueError, RuntimeError, KeyError]),
@@ -309,8 +322,11 @@ class TestRWLockContextManagerProperties:
         # Lock should be free
         with lock.write():
             pass
+        exc_name = exception_type.__name__
+        event(f"exception={exc_name}")
 
 
+@pytest.mark.fuzz
 class TestRWLockDecoratorProperties:
     """Property tests for decorator functions."""
 
@@ -335,6 +351,8 @@ class TestRWLockDecoratorProperties:
 
         container = Container()
         assert container.get_value() == return_value
+        ret_type = type(return_value).__name__
+        event(f"return_type={ret_type}")
 
     @given(
         return_value=st.one_of(st.integers(), st.text(), st.booleans(), st.none()),
@@ -359,6 +377,8 @@ class TestRWLockDecoratorProperties:
 
         container = Container()
         assert container.set_value() == return_value
+        ret_type = type(return_value).__name__
+        event(f"return_type={ret_type}")
 
     @given(
         args=st.lists(st.integers(), min_size=0, max_size=5),
@@ -391,6 +411,7 @@ class TestRWLockDecoratorProperties:
         result_args, result_kwargs = container.process(*args, **kwargs)
         assert result_args == list(args)
         assert result_kwargs == kwargs
+        event(f"arg_count={len(args)}")
 
     @given(
         args=st.lists(st.integers(), min_size=0, max_size=5),
@@ -423,6 +444,7 @@ class TestRWLockDecoratorProperties:
         result_args, result_kwargs = container.process(*args, **kwargs)
         assert result_args == list(args)
         assert result_kwargs == kwargs
+        event(f"arg_count={len(args)}")
 
     @given(
         lock_attr=st.text(
@@ -456,8 +478,10 @@ class TestRWLockDecoratorProperties:
         # Bind method to instance
         result = read_method(container)
         assert result == "success"
+        event(f"lock_attr_len={len(lock_attr)}")
 
 
+@pytest.mark.fuzz
 class TestRWLockConcurrencyProperties:
     """Property tests for concurrent access patterns."""
 
@@ -497,6 +521,8 @@ class TestRWLockConcurrencyProperties:
 
         # All operations completed
         assert len(completed) == num_readers + num_writers
+        event(f"readers={num_readers}")
+        event(f"writers={num_writers}")
 
     @given(
         num_operations=st.integers(min_value=10, max_value=100),
@@ -544,8 +570,11 @@ class TestRWLockConcurrencyProperties:
                 future.result()
 
         assert counter == expected_writes
+        write_pct = int(write_probability * 100)
+        event(f"write_pct={write_pct}")
 
 
+@pytest.mark.fuzz
 class TestRWLockStateInvariantProperties:
     """Property tests for internal state invariants."""
 
@@ -584,6 +613,7 @@ class TestRWLockStateInvariantProperties:
         # All released
         assert lock._active_readers == 0
         assert len(lock._reader_threads) == 0
+        event(f"reader_count={num_readers}")
 
     @given(reentry_count=st.integers(min_value=1, max_value=10))
     @settings(max_examples=50, deadline=None)
@@ -604,3 +634,4 @@ class TestRWLockStateInvariantProperties:
             lock._release_read()
 
         assert thread_id not in lock._reader_threads
+        event(f"reentry={reentry_count}")

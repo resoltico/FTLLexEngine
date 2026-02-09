@@ -16,7 +16,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics.validation import (
@@ -111,6 +111,8 @@ class TestValidationErrorProperties:
         self, error: ValidationError
     ) -> None:
         """PROPERTY: ValidationError instances are immutable (frozen dataclass)."""
+        has_location = error.line is not None
+        event(f"has_location={has_location}")
         # Attempt to modify should raise FrozenInstanceError
         try:
             error.code = "modified"  # type: ignore[misc]
@@ -121,6 +123,8 @@ class TestValidationErrorProperties:
     @given(error=validation_error_strategy())
     def test_property_format_idempotent(self, error: ValidationError) -> None:
         """PROPERTY: format() is idempotent (same output on repeated calls)."""
+        content_len = len(error.content)
+        event(f"content_len={content_len}")
         first = error.format()
         second = error.format()
         assert first == second

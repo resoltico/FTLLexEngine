@@ -7,7 +7,7 @@ Complements test_cursor.py with property-based testing.
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.cursor import Cursor
@@ -41,6 +41,7 @@ class TestCursorImmutability:
     def test_cursor_is_immutable(self, source: str, pos: int) -> None:
         """INVARIANT: Cursor is immutable - advance() returns NEW cursor."""
         assume(pos < len(source))  # Valid position
+        event(f"text_len={len(source)}")
 
         cursor = Cursor(source, pos)
         original_pos = cursor.pos
@@ -58,6 +59,7 @@ class TestCursorImmutability:
     def test_advance_count_returns_new_cursor(self, source: str, pos: int) -> None:
         """PROPERTY: advance(count) returns new cursor, original unchanged."""
         assume(pos < len(source))
+        event(f"pos={pos}")
 
         cursor = Cursor(source, pos)
         original_pos = cursor.pos
@@ -75,6 +77,7 @@ class TestCursorImmutability:
     @settings(max_examples=100)
     def test_cursor_advance_preserves_source(self, source: str) -> None:
         """PROPERTY: advance() preserves source string."""
+        event(f"text_len={len(source)}")
         cursor = Cursor(source, 0)
 
         while not cursor.is_eof:
@@ -95,6 +98,7 @@ class TestCursorEOF:
     @settings(max_examples=200)
     def test_is_eof_true_at_end(self, source: str) -> None:
         """PROPERTY: is_eof is True when pos >= len(source)."""
+        event(f"text_len={len(source)}")
         cursor = Cursor(source, len(source))
         assert cursor.is_eof is True
 
@@ -102,6 +106,7 @@ class TestCursorEOF:
     @settings(max_examples=200)
     def test_is_eof_false_before_end(self, source: str) -> None:
         """PROPERTY: is_eof is False when pos < len(source)."""
+        event(f"text_len={len(source)}")
         cursor = Cursor(source, 0)
         assert cursor.is_eof is False
 
@@ -109,6 +114,7 @@ class TestCursorEOF:
     @settings(max_examples=100)
     def test_current_raises_eoferror_at_eof(self, source: str) -> None:
         """PROPERTY: current raises EOFError when is_eof is True."""
+        event(f"text_len={len(source)}")
         cursor = Cursor(source, len(source))
 
         if cursor.is_eof:
@@ -119,6 +125,7 @@ class TestCursorEOF:
     @settings(max_examples=100)
     def test_current_succeeds_before_eof(self, source: str) -> None:
         """PROPERTY: current succeeds when is_eof is False."""
+        event(f"text_len={len(source)}")
         cursor = Cursor(source, 0)
 
         if not cursor.is_eof:
@@ -131,6 +138,7 @@ class TestCursorEOF:
     @settings(max_examples=100)
     def test_advance_until_eof_reaches_end(self, source: str) -> None:
         """PROPERTY: Advancing through source eventually reaches EOF."""
+        event(f"text_len={len(source)}")
         cursor = Cursor(source, 0)
 
         # Advance until EOF
@@ -157,6 +165,7 @@ class TestCursorNavigation:
     def test_current_returns_char_at_position(self, source: str, pos: int) -> None:
         """PROPERTY: current returns character at pos."""
         assume(pos < len(source))
+        event(f"pos={pos}")
 
         cursor = Cursor(source, pos)
 
@@ -170,6 +179,7 @@ class TestCursorNavigation:
     @settings(max_examples=100)
     def test_advance_count_moves_by_count(self, source: str, n: int) -> None:
         """PROPERTY: advance(k) moves position by k."""
+        event(f"advance_count={n}")
         cursor = Cursor(source, 0)
         n_safe = min(n, len(source))
 

@@ -9,7 +9,7 @@ bypassed the expression_guard entirely because the guard was only applied
 to nested Placeables (`{ { x } }`), not to Placeables containing SelectExpressions.
 """
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -288,6 +288,7 @@ class TestDepthLimitPropertyBased:
     @settings(max_examples=20)
     def test_depth_under_limit_never_errors_on_depth(self, depth: int) -> None:
         """Nesting under MAX_DEPTH should never produce depth errors."""
+        event(f"depth={depth}")
         bundle = FluentBundle("en_US")
 
         # Create nesting well under limit

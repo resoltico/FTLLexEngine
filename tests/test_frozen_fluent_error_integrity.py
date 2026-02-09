@@ -14,7 +14,7 @@ property-based testing.
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, example, given, settings
+from hypothesis import assume, event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
@@ -82,6 +82,7 @@ def frozen_fluent_errors(draw: st.DrawFn) -> FrozenFluentError:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestContentHashDeterminism:
     """Content hash must be deterministic - same inputs always produce same hash."""
 
@@ -97,8 +98,10 @@ class TestContentHashDeterminism:
         error1 = FrozenFluentError(message, category)
         error2 = FrozenFluentError(message, category)
 
+        event(f"msg_len={len(message)}")
         assert error1.content_hash == error2.content_hash
         assert error1 == error2
+        event("outcome=hash_determinism_success")
 
     @given(
         message=error_messages(),
@@ -118,6 +121,10 @@ class TestContentHashDeterminism:
         error1 = FrozenFluentError(message, category, diagnostic, context)
         error2 = FrozenFluentError(message, category, diagnostic, context)
 
+        has_diag = diagnostic is not None
+        has_ctx = context is not None
+        event(f"has_diagnostic={has_diag}")
+        event(f"has_context={has_ctx}")
         assert error1.content_hash == error2.content_hash
         assert error1 == error2
 
@@ -125,9 +132,11 @@ class TestContentHashDeterminism:
     @settings(max_examples=100)
     def test_hash_is_16_bytes(self, error: FrozenFluentError) -> None:
         """Property: Content hash is always 16 bytes (BLAKE2b-128)."""
+        event(f"category={error.category.name}")
         assert len(error.content_hash) == 16
 
 
+@pytest.mark.fuzz
 class TestContentHashCollisionResistance:
     """Different inputs should produce different hashes (high probability)."""
 
@@ -146,8 +155,11 @@ class TestContentHashCollisionResistance:
         error1 = FrozenFluentError(message1, category)
         error2 = FrozenFluentError(message2, category)
 
+        event(f"msg1_len={len(message1)}")
+        event(f"msg2_len={len(message2)}")
         assert error1.content_hash != error2.content_hash
         assert error1 != error2
+        event("outcome=hash_collision_resistance")
 
     @given(
         message=error_messages(),
@@ -164,6 +176,8 @@ class TestContentHashCollisionResistance:
         error1 = FrozenFluentError(message, category1)
         error2 = FrozenFluentError(message, category2)
 
+        event(f"cat1={category1.name}")
+        event(f"cat2={category2.name}")
         assert error1.content_hash != error2.content_hash
         assert error1 != error2
 
@@ -173,6 +187,7 @@ class TestContentHashCollisionResistance:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestImmutabilityEnforcement:
     """FrozenFluentError must reject all mutations after construction."""
 
@@ -182,6 +197,8 @@ class TestImmutabilityEnforcement:
         """Property: Cannot modify message after construction."""
         with pytest.raises(ImmutabilityViolationError):
             error._message = "modified"
+        event(f"msg_len={len(error.message)}")
+        event("outcome=immutability_enforced")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -189,6 +206,7 @@ class TestImmutabilityEnforcement:
         """Property: Cannot modify category after construction."""
         with pytest.raises(ImmutabilityViolationError):
             error._category = ErrorCategory.PARSE
+        event(f"category={error.category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -196,6 +214,8 @@ class TestImmutabilityEnforcement:
         """Property: Cannot modify diagnostic after construction."""
         with pytest.raises(ImmutabilityViolationError):
             error._diagnostic = None
+        has_diag = error.diagnostic is not None
+        event(f"has_diagnostic={has_diag}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -203,6 +223,8 @@ class TestImmutabilityEnforcement:
         """Property: Cannot modify context after construction."""
         with pytest.raises(ImmutabilityViolationError):
             error._context = None
+        has_ctx = error.context is not None
+        event(f"has_context={has_ctx}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -210,6 +232,7 @@ class TestImmutabilityEnforcement:
         """Property: Cannot modify content hash after construction."""
         with pytest.raises(ImmutabilityViolationError):
             error._content_hash = b"fake"
+        event(f"category={error.category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -217,6 +240,7 @@ class TestImmutabilityEnforcement:
         """Property: Cannot delete any attributes."""
         with pytest.raises(ImmutabilityViolationError):
             del error._message
+        event(f"category={error.category.name}")
 
 
 # =============================================================================
@@ -240,6 +264,7 @@ class TestSealedTypeEnforcement:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestVerifyIntegrity:
     """verify_integrity() must correctly detect corruption."""
 
@@ -249,12 +274,15 @@ class TestVerifyIntegrity:
         self, error: FrozenFluentError
     ) -> None:
         """Property: Freshly constructed errors always pass integrity check."""
+        event(f"category={error.category.name}")
         assert error.verify_integrity() is True
+        event("outcome=integrity_check_passed")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=100)
     def test_integrity_is_idempotent(self, error: FrozenFluentError) -> None:
         """Property: verify_integrity() can be called multiple times."""
+        event(f"category={error.category.name}")
         assert error.verify_integrity() is True
         assert error.verify_integrity() is True
         assert error.verify_integrity() is True
@@ -265,6 +293,7 @@ class TestVerifyIntegrity:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestHashability:
     """FrozenFluentError must be usable in sets and as dict keys."""
 
@@ -274,6 +303,7 @@ class TestHashability:
         """Property: Errors are hashable (can use hash())."""
         h = hash(error)
         assert isinstance(h, int)
+        event(f"category={error.category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -283,6 +313,7 @@ class TestHashability:
         h2 = hash(error)
         h3 = hash(error)
         assert h1 == h2 == h3
+        event(f"category={error.category.name}")
 
     @given(
         message=error_messages(),
@@ -298,6 +329,7 @@ class TestHashability:
 
         assert error1 == error2
         assert hash(error1) == hash(error2)
+        event(f"category={category.name}")
 
     @given(
         errors=st.lists(frozen_fluent_errors(), min_size=1, max_size=20, unique=True)
@@ -309,6 +341,7 @@ class TestHashability:
         """Property: Errors can be stored in sets."""
         error_set = set(errors)
         assert len(error_set) <= len(errors)
+        event(f"set_size={len(error_set)}")
 
     @given(
         errors=st.lists(frozen_fluent_errors(), min_size=1, max_size=20, unique=True)
@@ -320,6 +353,7 @@ class TestHashability:
         """Property: Errors can be used as dict keys."""
         error_dict = {e: i for i, e in enumerate(errors)}
         assert len(error_dict) <= len(errors)
+        event(f"dict_size={len(error_dict)}")
 
 
 # =============================================================================
@@ -327,6 +361,7 @@ class TestHashability:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestEquality:
     """FrozenFluentError equality must be based on content."""
 
@@ -336,6 +371,7 @@ class TestEquality:
         """Property: Errors are equal to themselves (reflexivity)."""
         same_ref = error
         assert error == same_ref
+        event(f"category={error.category.name}")
 
     @given(
         message=error_messages(),
@@ -351,12 +387,14 @@ class TestEquality:
 
         assert error1 == error2
         assert error2 == error1
+        event(f"category={category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
     def test_error_not_equal_to_string(self, error: FrozenFluentError) -> None:
         """Property: Errors are not equal to strings."""
         assert (error == error.message) is False
+        event(f"category={error.category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -364,6 +402,7 @@ class TestEquality:
         """Property: Errors are not equal to None (tests __eq__ method)."""
         # pylint: disable=singleton-comparison
         assert (error == None) is False  # noqa: E711
+        event(f"category={error.category.name}")
 
 
 # =============================================================================
@@ -371,6 +410,7 @@ class TestEquality:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestPropertyAccess:
     """FrozenFluentError properties must be accessible."""
 
@@ -383,6 +423,7 @@ class TestPropertyAccess:
         """Property: message property returns the message."""
         error = FrozenFluentError(message, category)
         assert error.message == message
+        event(f"msg_len={len(message)}")
 
     @given(
         message=error_messages(),
@@ -393,6 +434,7 @@ class TestPropertyAccess:
         """Property: category property returns the category."""
         error = FrozenFluentError(message, category)
         assert error.category == category
+        event(f"category={category.name}")
 
     @given(
         message=error_messages(),
@@ -409,6 +451,8 @@ class TestPropertyAccess:
         """Property: diagnostic property returns the diagnostic."""
         error = FrozenFluentError(message, category, diagnostic=diagnostic)
         assert error.diagnostic == diagnostic
+        has_diag = diagnostic is not None
+        event(f"has_diagnostic={has_diag}")
 
     @given(
         message=error_messages(),
@@ -425,6 +469,8 @@ class TestPropertyAccess:
         """Property: context property returns the context."""
         error = FrozenFluentError(message, category, context=context)
         assert error.context == context
+        has_ctx = context is not None
+        event(f"has_context={has_ctx}")
 
 
 # =============================================================================
@@ -432,6 +478,7 @@ class TestPropertyAccess:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestContextConvenienceProperties:
     """FrozenFluentError convenience properties for context fields."""
 
@@ -450,6 +497,7 @@ class TestContextConvenienceProperties:
         assert error.input_value == ""
         assert error.locale_code == ""
         assert error.parse_type == ""
+        event(f"category={category.name}")
 
     @given(
         message=error_messages(),
@@ -472,6 +520,7 @@ class TestContextConvenienceProperties:
         assert error.input_value == "test_input"
         assert error.locale_code == "en_US"
         assert error.parse_type == "number"
+        event(f"category={category.name}")
 
 
 # =============================================================================
@@ -479,6 +528,7 @@ class TestContextConvenienceProperties:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestStringRepresentation:
     """FrozenFluentError must have sensible string representation."""
 
@@ -487,6 +537,7 @@ class TestStringRepresentation:
     def test_str_returns_message(self, error: FrozenFluentError) -> None:
         """Property: str() returns the error message."""
         assert str(error) == error.message
+        event(f"msg_len={len(error.message)}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -497,6 +548,7 @@ class TestStringRepresentation:
         assert "FrozenFluentError" in r
         assert "message=" in r
         assert "category=" in r
+        event(f"category={error.category.name}")
 
 
 # =============================================================================
@@ -531,6 +583,7 @@ class TestEdgeCases:
         error = FrozenFluentError(message, ErrorCategory.RESOLUTION)
         assert error.verify_integrity() is True
         assert error.message == message
+        event(f"msg_len={len(message)}")
 
     def test_all_categories_work(self) -> None:
         """All ErrorCategory values can be used."""
@@ -545,6 +598,7 @@ class TestEdgeCases:
 # =============================================================================
 
 
+@pytest.mark.fuzz
 class TestExceptionBehavior:
     """FrozenFluentError must behave like a proper exception."""
 
@@ -555,6 +609,7 @@ class TestExceptionBehavior:
         with pytest.raises(FrozenFluentError) as exc_info:
             raise error
         assert exc_info.value is error
+        event(f"category={error.category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
@@ -563,12 +618,14 @@ class TestExceptionBehavior:
         with pytest.raises(Exception) as exc_info:  # noqa: PT011
             raise error
         assert exc_info.value is error
+        event(f"category={error.category.name}")
 
     @given(error=frozen_fluent_errors())
     @settings(max_examples=50)
     def test_exception_args(self, error: FrozenFluentError) -> None:
         """Property: Exception args contain the message."""
         assert error.args == (error.message,)
+        event(f"category={error.category.name}")
 
 
 # =============================================================================
@@ -763,6 +820,7 @@ class TestCompleteBranchCoverage:
         # Message should be represented (possibly truncated in repr)
         # Category should be shown
         assert category.name in r or str(category) in r
+        event(f"category={category.name}")
 
     def test_hash_with_diagnostic_span(self) -> None:
         """Test content hash computation with Diagnostic containing SourceSpan.

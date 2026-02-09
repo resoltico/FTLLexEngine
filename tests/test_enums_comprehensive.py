@@ -4,7 +4,7 @@ Tests all enum classes for completeness, serialization, and invariants.
 
 """
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine import enums
@@ -38,6 +38,7 @@ class TestCommentTypeProperties:
     @given(st.sampled_from(CommentType))
     def test_comment_type_str_idempotent(self, comment_type: CommentType) -> None:
         """Property: str(comment_type) is idempotent."""
+        event(f"enum_type={type(comment_type).__name__}")
         first = str(comment_type)
         second = str(comment_type)
         assert first == second
@@ -76,6 +77,8 @@ class TestVariableContextProperties:
     @given(st.sampled_from(VariableContext))
     def test_variable_context_str_idempotent(self, context: VariableContext) -> None:
         """Property: str(context) is idempotent."""
+        enum_name = type(context).__name__
+        event(f"enum_type={enum_name}")
         first = str(context)
         second = str(context)
         assert first == second
@@ -112,6 +115,7 @@ class TestReferenceKindProperties:
     @given(st.sampled_from(ReferenceKind))
     def test_reference_kind_str_idempotent(self, kind: ReferenceKind) -> None:
         """Property: str(kind) is idempotent."""
+        event(f"enum_type={type(kind).__name__}")
         first = str(kind)
         second = str(kind)
         assert first == second

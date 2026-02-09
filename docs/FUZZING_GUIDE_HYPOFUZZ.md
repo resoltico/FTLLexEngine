@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.102.0"
+version: "0.103.0"
 domain: fuzzing
-updated: "2026-02-04"
+updated: "2026-02-06"
 route:
-  keywords: [fuzzing, hypothesis, hypofuzz, property-based, testing, coverage]
-  questions: ["how to run hypothesis tests?", "how to use hypofuzz?", "how to reproduce hypothesis failures?"]
+  keywords: [fuzzing, hypothesis, hypofuzz, property-based, testing, coverage, metrics]
+  questions: ["how to run hypothesis tests?", "how to use hypofuzz?", "how to reproduce hypothesis failures?", "how to see strategy metrics?"]
 ---
 
 # HypoFuzz Guide (Hypothesis Property-Based Testing)
@@ -48,11 +48,14 @@ Key difference from Atheris: Hypothesis generates **Python objects** via strateg
 | Command | Description |
 |---------|-------------|
 | `./scripts/fuzz_hypofuzz.sh` | Quick property tests (default mode) |
-| `./scripts/fuzz_hypofuzz.sh --deep` | Continuous HypoFuzz fuzzing |
+| `./scripts/fuzz_hypofuzz.sh --deep` | Continuous HypoFuzz fuzzing (until Ctrl+C) |
+| `./scripts/fuzz_hypofuzz.sh --deep --metrics` | Single-pass pytest with strategy metrics |
+| `./scripts/fuzz_hypofuzz.sh --preflight` | Audit test infrastructure (events, strategies) |
 | `./scripts/fuzz_hypofuzz.sh --list` | Show reproduction info and failures |
 | `./scripts/fuzz_hypofuzz.sh --repro TEST` | Reproduce failing test with verbose output |
 | `./scripts/fuzz_hypofuzz.sh --clean` | Remove .hypothesis/ database |
 | `./scripts/fuzz_hypofuzz.sh --verbose` | Show detailed progress |
+| `./scripts/fuzz_hypofuzz.sh --metrics` | Enable periodic per-strategy metrics |
 | `./scripts/fuzz_hypofuzz.sh --workers N` | Parallel workers (default: 4) |
 | `./scripts/fuzz_hypofuzz.sh --time N` | Time limit in seconds (--deep mode) |
 
@@ -87,6 +90,19 @@ For thorough exploration:
 ```
 
 HypoFuzz uses coverage-guided fuzzing to explore new code paths. It runs all Hypothesis tests continuously, learning which inputs increase coverage.
+
+### Deep Mode with Metrics
+
+Adding `--metrics` changes the behavior:
+
+```bash
+# Single-pass with strategy metrics (NOT continuous)
+./scripts/fuzz_hypofuzz.sh --deep --metrics
+```
+
+**Trade-off**: `--metrics` uses pytest instead of HypoFuzz because HypoFuzz's multiprocessing prevents metrics collection across workers. This runs all fuzz tests once with 10,000 examples per test (hypofuzz profile) and emits live metrics every 10 seconds.
+
+For continuous fuzzing, use `--deep` without `--metrics`.
 
 **Session Log:**
 
@@ -395,12 +411,18 @@ Use consistent event naming across the codebase:
 
 | Category | Format | Examples |
 |:---------|:-------|:---------|
-| Type diversity | `expr_type={ClassName}` | `expr_type=FunctionReference`, `expr_type=SelectExpression` |
-| Strategy choice | `strategy={choice}` | `strategy=chaos_prefix_brace`, `strategy=circular_self_ref` |
-| Boundary | `boundary={name}` | `boundary=at_max_depth`, `boundary=under_max_depth` |
-| Error path | `error={ErrorClass}` | `error=CircularReferenceError`, `error=FluentSyntaxError` |
-| Numeric category | `{metric}={value}` | `currency_decimals=3`, `depth=50`, `variant_count=10` |
-| Region/locale | `{dimension}={category}` | `territory_region=baltic`, `locale_script=cjk` |
+| Strategy choice | `strategy={variant}` | `strategy=placeable_variable`, `strategy=chaos_prefix_brace` |
+| Domain classification | `{domain}={variant}` | `currency_decimals=2`, `territory_region=europe` |
+| Boundary/depth | `boundary={name}`, `depth={n}` | `boundary=at_max_depth`, `depth=99` |
+| Unicode category | `unicode={category}` | `unicode=emoji`, `unicode=cjk` |
+| Property outcome | `outcome={result}` | `outcome=roundtrip_success`, `outcome=immutability_enforced` |
+| Test parameter | `{param}={value}` | `thread_count=20`, `cache_size=50`, `reentry_depth=3` |
+| State machine | `rule={name}`, `invariant={name}` | `rule=add_simple_message`, `invariant=cache_stats_consistent` |
+
+**Strategy events vs test events:**
+
+* **Strategy events** are emitted by strategy functions in `tests/strategies/`. They are tracked by `EXPECTED_EVENTS` in `tests/strategy_metrics.py` and drive strategy-level coverage metrics.
+* **Test events** are emitted by individual `@given` test functions and `@rule`/`@invariant` methods. They guide HypoFuzz per-test but are NOT tracked by `EXPECTED_EVENTS`.
 
 ### Writing Event-Aware Tests
 
@@ -502,6 +524,96 @@ After a `--deep` fuzzing session, the script reports event diversity:
 | `fiscal.py` | `date_by_boundary()` | `date_boundary={month_end,year_end,leap_feb,...}` |
 | `fiscal.py` | `fiscal_calendar_by_type()` | `fiscal_calendar={calendar_year,uk_japan,...}` |
 | `fiscal.py` | `month_end_policy_with_event()` | `month_end_policy={preserve,clamp,strict}` |
+
+---
+
+## Strategy Metrics
+
+The metrics system tracks per-strategy behavior during `--deep` runs, similar to Atheris fuzzer target metrics.
+
+### Enabling Metrics
+
+```bash
+# Continuous HypoFuzz (no detailed metrics, multiprocessing)
+./scripts/fuzz_hypofuzz.sh --deep
+
+# Single-pass pytest with live metrics every 10 seconds
+./scripts/fuzz_hypofuzz.sh --deep --metrics
+```
+
+**Note**: `--metrics` mode uses pytest instead of HypoFuzz because HypoFuzz's multiprocessing prevents metrics collection across workers. The trade-off is single-pass execution (10,000 examples) instead of continuous fuzzing.
+
+### What Metrics Track
+
+**Universal metrics:**
+- Total event counts across all strategies
+- Weight skew detection (intended vs actual distribution)
+- Coverage gaps (expected events not observed)
+- Performance percentiles (p95, p99, max)
+
+**Per-strategy metrics (with `--metrics`):**
+
+| Metric | Description |
+|--------|-------------|
+| `invocations` | Total event count for this strategy |
+| `wall_time_ms` | Total time spent in this strategy |
+| `mean_cost_ms` | Average time per invocation |
+| `weight_pct` | Percentage of total invocations |
+
+### Live Output Example
+
+With `--metrics`, every 10 seconds you see:
+
+```
+[METRICS] 120s | 45,678 events | 380/s | +11,234 since last
+[METRICS] Top: strategy=placeable_variable=1234, currency_decimals=2=890, ...
+
+[METRICS] Per-Strategy Breakdown:
+Strategy                       Invocations    Wall Time    Mean Cost   Weight
+------------------------------------------------------------------------------
+ftl_placeables                       1,234      456.7ms       0.370ms   15.2%
+currency_by_decimals                   890      123.4ms       0.139ms   10.9%
+fiscal_delta_by_magnitude              456       89.2ms       0.196ms    5.6%
+...
+------------------------------------------------------------------------------
+```
+
+### Output Files
+
+After each session, metrics are saved to:
+
+| File | Contents |
+|------|----------|
+| `.hypothesis/strategy_metrics.json` | Full metrics report (JSON) |
+| `.hypothesis/strategy_metrics_summary.txt` | Human-readable summary (if issues detected) |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STRATEGY_METRICS` | `0` | Enable metrics collection (`1` to enable) |
+| `STRATEGY_METRICS_LIVE` | `0` | Enable live console output (`1` to enable) |
+| `STRATEGY_METRICS_DETAILED` | `0` | Show per-strategy table (`1` to enable) |
+| `STRATEGY_METRICS_INTERVAL` | `10` | Reporting interval in seconds (with --metrics) |
+
+### Weight Skew Detection
+
+The system detects when actual strategy distribution deviates from intended weights by more than 15%. This indicates:
+
+- Strategy filtering issues
+- Biased random generation
+- Dead code paths
+
+Example skew warning:
+
+```
+[WARN] Weight skew detected:
+  - strategy=placeable_variable (intended=40.00%, actual=72.00%, deviation=32.00%)
+```
+
+### Integration with Events
+
+Strategy metrics work by intercepting `hypothesis.event()` calls. Event-emitting strategies (see Event-Enabled Strategies Reference above) automatically contribute to metrics collection without modification.
 
 ---
 

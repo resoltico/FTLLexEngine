@@ -14,7 +14,7 @@ import contextlib
 import logging
 
 import pytest
-from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -116,8 +116,10 @@ msg = {{ -term }}
 
         # Should successfully parse and validate
         result, errors = bundle.format_value("msg")
+        event(f"attr_count={attr_count}")
         assert errors == ()
         assert "Base Value" in result
+        event("outcome=term_multi_attr_valid")
 
 
 # ============================================================================
@@ -195,7 +197,9 @@ class TestSourcePathErrorLogging:
         # source_path should appear in at least one log record
         if caplog.records:
             messages = [record.message for record in caplog.records]
+            event(f"filename_len={len(filename)}")
             assert any(filename in msg for msg in messages)
+            event("outcome=source_path_in_logs")
 
 
 # ============================================================================
@@ -265,8 +269,10 @@ valid-message = Hello
                 attribute="attr",
             )
 
+            event(f"id_len={len(msg_id)}")
             assert not errors
             assert isinstance(result, str)
+            event("outcome=attr_only_message_valid")
 
 
 # ============================================================================
@@ -304,9 +310,11 @@ class TestValidationErrorHandling:
         # validate_resource should handle gracefully
         result = bundle.validate_resource(malformed_ftl)
 
+        event(f"malformed_len={len(malformed_ftl)}")
         # Should return ValidationResult (not raise exception)
         assert hasattr(result, "errors")
         assert hasattr(result, "warnings")
+        event("outcome=malformed_ftl_validated")
 
     def test_validate_empty_resource(self) -> None:
         """Validating empty resource returns no errors."""
@@ -339,10 +347,12 @@ class TestValidationErrorHandling:
         # Should always return ValidationResult, never raise
         result = bundle.validate_resource(valid_ftl)
 
+        event(f"text_len={len(valid_ftl)}")
         assert hasattr(result, "errors")
         assert hasattr(result, "warnings")
         assert isinstance(result.errors, tuple)
         assert isinstance(result.warnings, tuple)
+        event("outcome=validate_never_crashes")
 
 
 # ============================================================================
@@ -373,8 +383,10 @@ class TestFinancialBundleOperations:
 
         result, _errors = bundle.format_value("price", {"amount": amount})
 
+        event(f"currency={currency}")
         # Should always return string, even if there are errors
         assert isinstance(result, str)
+        event("outcome=currency_format_no_crash")
 
     @given(
         # Remove arbitrary max - let Hypothesis explore
@@ -400,8 +412,10 @@ items = { $count ->
 
         result, errors = bundle.format_value("items", {"count": quantity})
 
+        event(f"quantity={quantity}")
         assert isinstance(result, str)
         assert errors == ()
+        event("outcome=plural_quantity_format")
 
     @given(
         # Keep min constraints (business logic), remove arbitrary max
@@ -423,10 +437,12 @@ items = { $count ->
 
         result, _errors = bundle.format_value("vat", {"vat": vat_amount})
 
+        event(f"vat_rate={vat_rate:.2f}")
         assert isinstance(result, str)
         assert "VAT:" in result
         # Should have properly formatted number
         assert len(result) > 5
+        event("outcome=vat_calc_format")
 
 
 # ============================================================================
@@ -458,8 +474,10 @@ class TestBundleRobustness:
         assert "Message 0" in result_first
 
         result_last, errors_last = bundle.format_value(f"msg{msg_count - 1}")
+        event(f"msg_count={msg_count}")
         assert errors_last == ()
         assert f"Message {msg_count - 1}" in result_last
+        event("outcome=large_resource_handled")
 
     @given(
         locale1=locale_codes,
@@ -477,9 +495,11 @@ class TestBundleRobustness:
         result1, _ = bundle1.format_value("greeting")
         result2, _ = bundle2.format_value("greeting")
 
+        event(f"locales={locale1},{locale2}")
         # Results should be different
         assert "bundle 1" in result1
         assert "bundle 2" in result2
+        event("outcome=multi_bundle_isolation")
 
     @given(text=ftl_safe_text)
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -498,7 +518,9 @@ class TestBundleRobustness:
         try:
             bundle.add_resource(ftl)
             result, _ = bundle.format_value("msg")
+            event(f"text_len={len(text)}")
             assert isinstance(result, str)
+            event("outcome=arbitrary_text_no_crash")
         except Exception:  # pylint: disable=broad-exception-caught
             # Some text might be invalid FTL, that's OK
             pass
@@ -546,7 +568,9 @@ class TestBundleEdgeCases:
         # Should not crash, even with non-standard locale
         try:
             bundle = FluentBundle(locale)
+            event(f"locale_len={len(locale)}")
             assert bundle.locale == locale
+            event("outcome=arbitrary_locale_accepted")
         except Exception:  # pylint: disable=broad-exception-caught
             # Some locales might be rejected by Babel, that's OK
             pass
@@ -598,6 +622,9 @@ class TestResourceManagement:
             assert errors == ()
             assert f"Message {i}" in result
 
+        event(f"resource_count={msg_count}")
+        event("outcome=multi_resource_accumulated")
+
     @given(
         msg_id=ftl_identifiers,
         value1=ftl_safe_text,
@@ -618,8 +645,10 @@ class TestResourceManagement:
 
         result, _ = bundle.format_value(msg_id)
 
+        event(f"winner_len={len(value2)}")
         # Second value should win
         assert value2 in result
+        event("outcome=overlapping_msg_last_wins")
 
     @given(
         resource_count=st.integers(min_value=1, max_value=15),  # Keep practical bound
@@ -636,8 +665,10 @@ class TestResourceManagement:
         bundle.add_resource("msg = Hello")
 
         result, errors = bundle.format_value("msg")
+        event(f"empty_resource_count={resource_count}")
         assert errors == ()
         assert "Hello" in result
+        event("outcome=empty_resource_handled")
 
 
 # ============================================================================
@@ -685,8 +716,10 @@ class TestMessageFormatting:
 
         result, errors = bundle.format_pattern(msg_id, attribute=attr_name)
 
+        event(f"attr_name_len={len(attr_name)}")
         assert errors == ()
         assert attr_value in result
+        event("outcome=format_pattern_attr")
 
     @given(
         msg_id=ftl_identifiers,
@@ -701,10 +734,12 @@ class TestMessageFormatting:
 
         result, errors = bundle.format_value(msg_id)
 
+        event(f"missing_id_len={len(msg_id)}")
         # Should have errors
         assert len(errors) > 0
         # Should return fallback string
         assert isinstance(result, str)
+        event("outcome=format_missing_msg_fallback")
 
 
 # ============================================================================
@@ -731,8 +766,10 @@ class TestVariableSubstitution:
 
         result, errors = bundle.format_value(msg_id, {var_name: var_value})
 
+        event(f"int_val={var_value}")
         assert errors == ()
         assert str(var_value) in result
+        event("outcome=int_var_subst")
 
     @given(
         msg_id=ftl_identifiers,
@@ -751,8 +788,10 @@ class TestVariableSubstitution:
 
         result, errors = bundle.format_value(msg_id, {var_name: var_value})
 
+        event(f"str_val_len={len(var_value)}")
         assert errors == ()
         assert var_value in result
+        event("outcome=str_var_subst")
 
     @given(
         msg_id=ftl_identifiers,
@@ -775,10 +814,12 @@ class TestVariableSubstitution:
 
         result, errors = bundle.format_value(msg_id, args)
 
+        event(f"var_count={var_count}")
         assert errors == ()
         # All variable values should appear
         for i in range(var_count):
             assert str(i) in result
+        event("outcome=multi_var_subst")
 
     @given(
         msg_id=ftl_identifiers,
@@ -794,9 +835,11 @@ class TestVariableSubstitution:
 
         result, errors = bundle.format_value(msg_id, {})
 
+        event(f"missing_var_id_len={len(var_name)}")
         # Should have error for missing variable
         assert len(errors) > 0
         assert isinstance(result, str)
+        event("outcome=missing_var_error")
 
 
 # ============================================================================
@@ -827,9 +870,11 @@ class TestFunctionCalls:
 
         result, errors = bundle.format_value(msg_id, {var_name: number})
 
+        event(f"num={number:.2f}")
         assert errors == ()
         assert isinstance(result, str)
         assert len(result) > 0
+        event("outcome=num_func_format")
 
     @given(
         msg_id=ftl_identifiers,
@@ -853,11 +898,13 @@ class TestFunctionCalls:
 
         result, errors = bundle.format_value(msg_id, {"amt": amount})
 
+        event(f"currency={currency}")
         assert not errors
 
         # May have errors depending on currency support
         assert isinstance(result, str)
         assert len(result) > 0
+        event("outcome=currency_func_format")
 
 
 # ============================================================================
@@ -889,8 +936,10 @@ class TestTermResolution:
 
         result, errors = bundle.format_value(msg_id)
 
+        event(f"id_len={len(term_id)}")
         assert errors == ()
         assert term_value in result
+        event("outcome=term_ref_resolution")
 
     @given(
         term_id=ftl_identifiers,
@@ -915,8 +964,10 @@ class TestTermResolution:
 
         result, errors = bundle.format_value(msg_id)
 
+        event(f"attr_len={len(attr_value)}")
         assert errors == ()
         assert attr_value in result
+        event("outcome=term_attr_resolution")
 
 
 # ============================================================================
@@ -948,8 +999,10 @@ class TestMessageReferences:
 
         result, errors = bundle.format_value(msg_id2)
 
+        event(f"val_len={len(value)}")
         assert errors == ()
         assert value in result
+        event("outcome=msg_ref_resolution")
 
 
 # ============================================================================
@@ -981,6 +1034,9 @@ class TestAttributeAccess:
             assert errors == ()
             assert f"Value{i}" in result
 
+        event(f"attr_count={attr_count}")
+        event("outcome=multi_attr_accessible")
+
 
 # ============================================================================
 # LOCALE HANDLING
@@ -1011,8 +1067,10 @@ class TestLocaleHandling:
         result1, _ = bundle1.format_value(msg_id)
         result2, _ = bundle2.format_value(msg_id)
 
+        event(f"locales={locale1},{locale2}")
         assert "Locale1" in result1
         assert "Locale2" in result2
+        event("outcome=locale_independence")
 
 
 # ============================================================================
@@ -1041,7 +1099,9 @@ class TestErrorRecovery:
         # Bundle should still be usable
         bundle.add_resource("valid = Works")
         _result, errors = bundle.format_value("valid")
+        event(f"invalid_char={ord(invalid_char)}")
         assert errors == ()
+        event("outcome=syntax_error_recovery")
 
 
 # ============================================================================
@@ -1073,8 +1133,10 @@ class TestSelectExpressions:
 
         result, errors = bundle.format_value(msg_id, {var_name: count})
 
+        event(f"count={count}")
         assert errors == ()
         assert isinstance(result, str)
+        event("outcome=plural_select_valid")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1100,8 +1162,11 @@ class TestSelectExpressions:
 
         result, errors = bundle.format_value(msg_id, {"count": count})
 
+        event(f"locale={locale}")
+        event(f"count={count}")
         assert errors == ()
         assert len(result) > 0
+        event("outcome=locale_plurals_valid")
 
 
 # ============================================================================
@@ -1228,8 +1293,10 @@ class TestUnicodeEdgeCases:
 
         result, errors = bundle.format_value(msg_id)
 
+        event(f"emoji={emoji}")
         assert errors == ()
         assert emoji in result
+        event("outcome=emoji_msg_format")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1337,6 +1404,8 @@ class TestErrorMessageFormatting:
 
         # May have errors for unknown function
         assert isinstance(result, str)
+        event(f"unknown_func_len={len(unknown_func)}")
+        event("outcome=unknown_func_handled")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1355,6 +1424,8 @@ class TestErrorMessageFormatting:
         # Should have error for unknown term
         assert len(errors) > 0
         assert isinstance(result, str)
+        event(f"unknown_term_len={len(unknown_term)}")
+        event("outcome=unknown_term_handled")
 
 
 # ============================================================================
@@ -1380,8 +1451,10 @@ class TestArgumentTypeHandling:
 
         result, errors = bundle.format_value(msg_id, {var_name: bool_value})
 
+        event(f"bool_val={bool_value}")
         assert errors == ()
         assert isinstance(result, str)
+        event("outcome=bool_arg_handled")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1427,6 +1500,8 @@ class TestAttributeEdgeCases:
         # Should have error for missing attribute
         assert len(errors) > 0
         assert isinstance(result, str)
+        event(f"missing_attr_len={len(attr_name)}")
+        event("outcome=missing_attr_handled")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1509,6 +1584,8 @@ class TestValidationProperties:
 
         # Valid FTL should have no errors
         assert result.errors == ()
+        event(f"id_len={len(msg_id)}")
+        event("outcome=valid_ftl_validated")
 
     @given(
         count=st.integers(min_value=1, max_value=10),

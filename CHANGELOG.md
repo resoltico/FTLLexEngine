@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-02-09
+
+### Fixed
+
+- **Serializer roundtrip idempotence failure on patterns with leading whitespace** (BUG-SERIALIZER-LEADING-WS-001):
+  - When a pattern's first `TextElement` started with spaces (e.g., programmatically constructed `TextElement(value=' 0')`), the serializer emitted the spaces inline after `= `, producing `    .a =  0`
+  - On re-parse, the FTL parser consumed all post-`=` whitespace as syntax, yielding value `0` (space lost); re-serializing then produced `    .a = 0`, breaking idempotence: `serialize(parse(serialize(ast))) != serialize(ast)`
+  - Fix: `_serialize_pattern` now detects leading spaces in the first `TextElement` and wraps them in a `StringLiteral` placeable (`{ " " }`), consistent with how braces (`{`, `}`) and line-start syntax characters (`[`, `*`, `.`) are already wrapped when syntactically ambiguous
+  - Location: `syntax/serializer.py` `_serialize_pattern()`
+
+- **Serializer roundtrip idempotence failure on multiline patterns with whitespace-only continuation lines** (BUG-SERIALIZER-BLANK-LINE-001):
+  - Same bug class as BUG-SERIALIZER-LEADING-WS-001: syntactically ambiguous whitespace in serializer output
+  - When a `TextElement` contained embedded newlines with whitespace-only content between them (e.g., `"foo\n   \nbar"`), the serializer's `text.replace("\n", "\n    ")` created continuation lines where structural indent plus content whitespace produced a whitespace-only line
+  - The FTL parser treats whitespace-only continuation lines as blank lines and strips all whitespace during common-indent removal, losing content; re-serializing produced different output, breaking idempotence
+  - Fix: `_serialize_pattern` now splits multiline text line-by-line; whitespace-only continuation lines are wrapped in `StringLiteral` placeables (`{ "   " }`); `_pattern_needs_separate_line` refined to skip whitespace-only lines (handled by placeable wrapping, not separate-line mode)
+  - Location: `syntax/serializer.py` `_serialize_pattern()`, `_pattern_needs_separate_line()`
+
+- **Serializer roundtrip failure on continuation lines with whitespace-preceded syntax characters** (BUG-SERIALIZER-WS-SYNTAX-001):
+  - Same bug class as BUG-SERIALIZER-LEADING-WS-001 and BUG-SERIALIZER-BLANK-LINE-001: syntactically ambiguous content in serializer output
+  - When a `TextElement` contained a continuation line where content whitespace preceded a syntax character (`.`, `*`, `[`), e.g., `"hello\n           ."`, the serializer emitted the line as-is after structural indent: `               .`
+  - The FTL parser strips all leading whitespace to find the first non-whitespace character; finding `.` (or `*`, `[`), it stops reading the pattern and attempts to parse a structural construct (attribute/variant), which fails, producing `Junk`
+  - The existing fix in `_serialize_text_element` wrapped syntax characters at position 0 of a continuation line but not when preceded by content spaces on the same line
+  - Fix: `_serialize_text_element` now scans past leading spaces at continuation line starts to find the first non-whitespace character; if it is a syntax character, the spaces are emitted as text and the character is wrapped in a `StringLiteral` placeable (e.g., `           { "." }`)
+  - Found by: Atheris fuzzer (`fuzz_serializer.py`, pattern `multiline_value`)
+  - Location: `syntax/serializer.py` `_serialize_text_element()`
+
 ## [0.103.0] - 2026-02-05
 
 ### Dependencies
@@ -3250,6 +3276,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.104.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.104.0
 [0.103.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.103.0
 [0.102.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.102.0
 [0.101.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.101.0

@@ -17,7 +17,7 @@ import threading
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import IntegrityCache
@@ -180,6 +180,7 @@ class TestIdentifierAndAttributeSpans:
     @settings(max_examples=50)
     def test_identifier_span_length_matches_name(self, name: str) -> None:
         """Identifier span length equals identifier string length."""
+        event(f"name_len={len(name)}")
         parser = FluentParserV1()
         resource = parser.parse(f"{name} = value")
         if resource.entries:

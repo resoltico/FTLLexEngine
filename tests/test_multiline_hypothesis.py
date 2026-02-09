@@ -4,7 +4,7 @@ Uses property-based testing to verify invariants and edge cases in the
 multiline pattern implementation.
 """
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax import Message, Placeable, Term, TextElement
@@ -44,6 +44,7 @@ class TestMultilinePatternProperties:
     @settings(max_examples=100)
     def test_multiline_pattern_always_parses(self, msg_id, lines, indent):
         """Any valid multiline pattern should parse without errors."""
+        event(f"line_count={len(lines)}")
         # Build multiline source
         source = f"{msg_id} =\n"
         for line in lines:
@@ -70,6 +71,8 @@ class TestMultilinePatternProperties:
     @settings(max_examples=50)
     def test_varying_indentation_handled(self, msg_id, line1, line2, indent1, indent2):
         """Multiline patterns with varying indentation should parse."""
+        same_indent = indent1 == indent2
+        event(f"same_indent={same_indent}")
         source = f"{msg_id} =\n{indent1}{line1}\n{indent2}{line2}\n"
 
         parser = FluentParserV1()
@@ -92,6 +95,7 @@ class TestMultilinePatternProperties:
     @settings(max_examples=50)
     def test_single_continuation_line(self, msg_id, text, indent):
         """Single continuation line should be parsed correctly."""
+        event(f"indent_width={len(indent)}")
         source = f"{msg_id} =\n{indent}{text}\n"
 
         parser = FluentParserV1()
@@ -118,6 +122,7 @@ class TestMultilinePatternProperties:
     @settings(max_examples=50)
     def test_number_of_continuation_lines(self, msg_id, num_lines, indent):
         """Parser should handle arbitrary number of continuation lines."""
+        event(f"num_lines={num_lines}")
         source = f"{msg_id} =\n"
         for i in range(num_lines):
             source += f"{indent}Line{i}\n"
@@ -142,6 +147,8 @@ class TestMultilinePatternProperties:
     @settings(max_examples=30)
     def test_line_endings_handled(self, msg_id, text, indent, line_ending):
         """Both LF and CRLF line endings should work."""
+        ending = "CRLF" if line_ending == "\r\n" else "LF"
+        event(f"line_ending={ending}")
         source = f"{msg_id} ={line_ending}{indent}{text}{line_ending}"
 
         parser = FluentParserV1()

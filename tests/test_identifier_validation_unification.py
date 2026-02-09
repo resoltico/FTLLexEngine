@@ -18,7 +18,7 @@ Coverage:
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import parse_ftl, serialize_ftl
@@ -40,6 +40,7 @@ class TestIdentifierValidationUnification:
 
         Property: ∀ valid_id: parser_accepts(id) ∧ serializer_accepts(id)
         """
+        event(f"input_len={len(identifier)}")
         # Verify validation function agrees
         assert is_valid_identifier(identifier)
 
@@ -73,6 +74,7 @@ class TestIdentifierValidationUnification:
         Property: ∀ invalid_start_id: ¬parser_accepts(id) ∧ ¬serializer_accepts(id)
         """
         identifier = first_char + rest
+        event(f"input_len={len(identifier)}")
 
         # Verify validation function rejects
         assert not is_valid_identifier(identifier)
@@ -123,6 +125,7 @@ class TestIdentifierValidationUnification:
         Property: ∀ invalid_continuation_id: ¬parser_accepts(id) ∧ ¬serializer_accepts(id)
         """
         identifier = valid_start + invalid_continuation
+        event(f"input_len={len(identifier)}")
 
         # Verify validation function rejects
         assert not is_valid_identifier(identifier)
@@ -159,6 +162,7 @@ class TestIdentifierValidationUnification:
 
         Property: ∀ id where len(id) > 256: ¬parser_accepts(id) ∧ ¬serializer_accepts(id)
         """
+        event(f"input_len={base_length}")
         # Create identifier exceeding limit
         identifier = "a" * base_length
         assert len(identifier) > 256
@@ -224,6 +228,7 @@ class TestIdentifierValidationUnification:
 
         Boundary test: max valid length should be accepted.
         """
+        event(f"input_len={len(identifier)}")
         assert len(identifier) == 255
 
         # Verify validation function accepts
@@ -250,6 +255,7 @@ class TestIdentifierValidationUnification:
 
         Boundary test: just over max length (256) should be rejected.
         """
+        event(f"input_len={len(identifier)}")
         assert len(identifier) == 257
 
         # Verify validation function rejects

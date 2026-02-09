@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.102.0"
+version: "0.103.0"
 domain: TESTING
-updated: "2026-02-04"
+updated: "2026-02-06"
 route:
-  keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh]
-  questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?"]
+  keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh, metrics]
+  questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?", "how to see strategy metrics?"]
 ---
 
 # DOC_06_Testing
@@ -161,6 +161,61 @@ def pytest_runtest_makereport(
 
 ---
 
+## Strategy Metrics Collection
+
+### Hooks
+
+Two session hooks in `tests/conftest.py` manage strategy metrics:
+
+| Hook | Phase | Action |
+|:-----|:------|:-------|
+| `pytest_sessionstart` | Start | Enable metrics, install event hook |
+| `pytest_sessionfinish` | End | Write JSON report, stop live reporter |
+
+### Enabling Conditions
+
+Metrics are automatically enabled when any of:
+- `STRATEGY_METRICS=1` environment variable
+- `HYPOTHESIS_PROFILE=hypofuzz`
+- Running with `-m fuzz` marker
+
+### Event Interception
+
+The `_install_event_hook()` function patches `hypothesis.event()` to also record to the metrics collector:
+
+```python
+_original_event = hypothesis.event
+hypothesis.event = _wrapped_event  # Calls original + records metrics
+```
+
+This enables automatic metrics capture from all event-emitting strategies without modifying strategy code.
+
+### Output Files
+
+| File | When Generated | Contents |
+|:-----|:---------------|:---------|
+| `.hypothesis/strategy_metrics.json` | Every session | Full metrics report |
+| `.hypothesis/strategy_metrics_summary.txt` | If issues detected | Human-readable summary |
+
+### Per-Strategy Metrics
+
+With `--metrics` flag (or `STRATEGY_METRICS_DETAILED=1`), tracks per strategy:
+- `invocations`: Total event count
+- `wall_time_ms`: Total execution time
+- `mean_cost_ms`: Average time per invocation
+- `weight_pct`: Percentage of total events
+
+### Environment Variables
+
+| Variable | Default | Description |
+|:---------|:--------|:------------|
+| `STRATEGY_METRICS` | `0` | Enable collection |
+| `STRATEGY_METRICS_LIVE` | `0` | Enable live console output |
+| `STRATEGY_METRICS_DETAILED` | `0` | Show per-strategy table |
+| `STRATEGY_METRICS_INTERVAL` | `10` | Live reporting interval (seconds) |
+
+---
+
 ## Hypothesis Profiles
 
 ### Registration
@@ -178,11 +233,13 @@ settings.register_profile(
 
 ### Registered Profiles
 
-| Profile | `max_examples` | `derandomize` | `print_blob` | `verbosity` | Use Case |
-|:--------|---------------:|:--------------|:-------------|:------------|:---------|
-| `dev` | 500 | False | False | normal | Local development |
-| `ci` | 50 | True | True | normal | GitHub Actions |
-| `verbose` | 100 | False | False | verbose | Debugging |
+| Profile | `max_examples` | `derandomize` | `deadline` | Use Case |
+|:--------|---------------:|:--------------|:-----------|:---------|
+| `dev` | 500 | False | default | Local development |
+| `ci` | 50 | True | default | GitHub Actions |
+| `verbose` | 100 | False | default | Debugging |
+| `hypofuzz` | 10000 | False | None | Coverage-guided --deep runs |
+| `stateful_fuzz` | 500 | False | None | RuleBasedStateMachine tests |
 
 ### Selection Logic
 
@@ -256,7 +313,8 @@ Entry point for HypoFuzz-based fuzzing operations.
 | Mode | Description |
 |:-----|:------------|
 | (default) | Fast property tests (500 examples) |
-| `--deep` | Continuous HypoFuzz coverage-guided |
+| `--deep` | Continuous HypoFuzz (until Ctrl+C) |
+| `--preflight` | Audit test infrastructure (events, strategies) |
 | `--repro FILE` | Reproduce crash file |
 | `--list` | List captured failures (with ages) |
 | `--clean` | Remove all failure artifacts |
@@ -267,6 +325,7 @@ Entry point for HypoFuzz-based fuzzing operations.
 |:-------|:--------|:------------|
 | `--json` | Off | Output JSON for CI |
 | `--verbose` | Off | Detailed progress |
+| `--metrics` | Off | Single-pass pytest mode with per-strategy metrics (10s interval) |
 | `--workers N` | 4 | Parallel workers |
 | `--time N` | Endless | Time limit (seconds) |
 
@@ -444,6 +503,8 @@ Formula: `threshold = 100ms + (20ms * input_size_kb)`
 | `.hypothesis/examples/` | Coverage + failures mixed | Ignored | No |
 | `.hypothesis/crashes/` | Portable crash reproduction files | Ignored | Yes (auto-generated) |
 | `.hypothesis/hypofuzz.log` | HypoFuzz session log | Ignored | N/A |
+| `.hypothesis/strategy_metrics.json` | Strategy metrics report | Ignored | N/A |
+| `.hypothesis/strategy_metrics_summary.txt` | Human-readable summary | Ignored | N/A |
 | `.pytest_cache/` | Pytest cache | Ignored | N/A |
 | `fuzz_atheris/corpus/` | Atheris corpus | Ignored | N/A |
 | `fuzz_atheris/corpus/crash_*` | Crash artifacts | Ignored | Yes (prefix) |

@@ -7,7 +7,7 @@ Uses strategies from tests.strategies.iso for generating test data.
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.introspection.iso import (
@@ -24,9 +24,12 @@ from ftllexengine.introspection.iso import (
 from tests.strategies.iso import (
     all_alpha2_codes,
     all_alpha3_codes,
+    currency_by_decimals,
     currency_codes,
+    locale_by_script,
     locale_codes,
     malformed_locales,
+    territory_by_region,
     territory_codes,
     three_decimal_currencies,
     zero_decimal_currencies,
@@ -37,15 +40,18 @@ from tests.strategies.iso import (
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestTerritoryLookupProperties:
     """Property-based tests for territory lookup functions."""
 
-    @given(code=territory_codes)
+    @given(code=territory_by_region())
     def test_get_territory_returns_territory_info(self, code: str) -> None:
         """Valid territory codes always return TerritoryInfo."""
         result = get_territory(code)
+        event(f"code_len={len(code)}")
         assert result is not None
         assert isinstance(result, TerritoryInfo)
+        event("outcome=territory_lookup_success")
 
     @given(code=territory_codes)
     def test_territory_alpha2_normalized_to_uppercase(self, code: str) -> None:
@@ -54,8 +60,9 @@ class TestTerritoryLookupProperties:
         assert result is not None
         assert result.alpha2 == result.alpha2.upper()
         assert result.alpha2 == code.upper()
+        event(f"code={code}")
 
-    @given(code=territory_codes)
+    @given(code=territory_by_region())
     def test_case_insensitivity_invariant(self, code: str) -> None:
         """Lookup is case-insensitive: upper, lower, mixed all return same data."""
         upper = get_territory(code.upper())
@@ -64,14 +71,17 @@ class TestTerritoryLookupProperties:
 
         assert upper is not None
         assert upper == lower == mixed
+        event(f"code={code}")
 
-    @given(code=territory_codes, locale=locale_codes)
+    @given(code=territory_codes, locale=locale_by_script())
     def test_territory_name_is_non_empty_string(self, code: str, locale: str) -> None:
         """Territory names are always non-empty strings."""
         result = get_territory(code, locale=locale)
+        event(f"locale_len={len(locale)}")
         assert result is not None
         assert isinstance(result.name, str)
         assert len(result.name) > 0
+        event("outcome=territory_name_valid")
 
     @given(code=territory_codes)
     def test_territory_in_list_territories(self, code: str) -> None:
@@ -82,6 +92,7 @@ class TestTerritoryLookupProperties:
         # Check by alpha2 code since objects may differ by locale
         alpha2_codes = {t.alpha2 for t in territories}
         assert result.alpha2 in alpha2_codes
+        event(f"code={code}")
 
     @given(code=territory_codes)
     def test_type_guard_consistency(self, code: str) -> None:
@@ -89,6 +100,7 @@ class TestTerritoryLookupProperties:
         is_valid = is_valid_territory_code(code)
         result = get_territory(code)
         assert is_valid == (result is not None)
+        event(f"code={code}")
 
     @given(code=all_alpha2_codes)
     def test_type_guard_matches_lookup(self, code: str) -> None:
@@ -96,6 +108,7 @@ class TestTerritoryLookupProperties:
         is_valid = is_valid_territory_code(code)
         result = get_territory(code)
         assert is_valid == (result is not None)
+        event(f"code={code}")
 
 
 # ============================================================================
@@ -103,15 +116,18 @@ class TestTerritoryLookupProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCurrencyLookupProperties:
     """Property-based tests for currency lookup functions."""
 
-    @given(code=currency_codes)
+    @given(code=currency_by_decimals())
     def test_get_currency_returns_currency_info(self, code: str) -> None:
         """Valid currency codes always return CurrencyInfo."""
         result = get_currency(code)
+        event(f"code_len={len(code)}")
         assert result is not None
         assert isinstance(result, CurrencyInfo)
+        event("outcome=currency_lookup_success")
 
     @given(code=currency_codes)
     def test_currency_code_normalized_to_uppercase(self, code: str) -> None:
@@ -120,8 +136,9 @@ class TestCurrencyLookupProperties:
         assert result is not None
         assert result.code == result.code.upper()
         assert result.code == code.upper()
+        event(f"code={code}")
 
-    @given(code=currency_codes)
+    @given(code=currency_by_decimals())
     def test_case_insensitivity_invariant(self, code: str) -> None:
         """Lookup is case-insensitive."""
         upper = get_currency(code.upper())
@@ -129,8 +146,9 @@ class TestCurrencyLookupProperties:
 
         assert upper is not None
         assert upper == lower
+        event(f"code={code}")
 
-    @given(code=currency_codes, locale=locale_codes)
+    @given(code=currency_codes, locale=locale_by_script())
     def test_currency_name_is_non_empty_string(self, code: str, locale: str) -> None:
         """Currency names are always non-empty strings when available."""
         result = get_currency(code, locale=locale)
@@ -139,6 +157,7 @@ class TestCurrencyLookupProperties:
         assert result is not None  # Type narrowing for mypy
         assert isinstance(result.name, str)
         assert len(result.name) > 0
+        event(f"code={code}")
 
     @given(code=currency_codes, locale=locale_codes)
     def test_currency_symbol_is_non_empty_string(self, code: str, locale: str) -> None:
@@ -146,9 +165,11 @@ class TestCurrencyLookupProperties:
         result = get_currency(code, locale=locale)
         # Not all currencies are available in all locales (CLDR coverage varies)
         assume(result is not None)
+        event(f"locale_len={len(locale)}")
         assert result is not None  # Type narrowing for mypy
         assert isinstance(result.symbol, str)
         assert len(result.symbol) > 0
+        event("outcome=currency_symbol_valid")
 
     @given(code=currency_codes)
     def test_currency_in_list_currencies(self, code: str) -> None:
@@ -158,6 +179,7 @@ class TestCurrencyLookupProperties:
         currencies = list_currencies()
         currency_codes_set = {c.code for c in currencies}
         assert result.code in currency_codes_set
+        event(f"code={code}")
 
     @given(code=currency_codes)
     def test_type_guard_consistency(self, code: str) -> None:
@@ -165,6 +187,7 @@ class TestCurrencyLookupProperties:
         is_valid = is_valid_currency_code(code)
         result = get_currency(code)
         assert is_valid == (result is not None)
+        event(f"code={code}")
 
     @given(code=all_alpha3_codes)
     def test_type_guard_matches_lookup(self, code: str) -> None:
@@ -172,6 +195,7 @@ class TestCurrencyLookupProperties:
         is_valid = is_valid_currency_code(code)
         result = get_currency(code)
         assert is_valid == (result is not None)
+        event(f"code={code}")
 
 
 # ============================================================================
@@ -179,6 +203,7 @@ class TestCurrencyLookupProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestDecimalDigitsProperties:
     """Property-based tests for currency decimal digits."""
 
@@ -187,7 +212,9 @@ class TestDecimalDigitsProperties:
         """Decimal digits are always 0, 2, 3, or 4."""
         result = get_currency(code)
         assert result is not None
+        event(f"digits={result.decimal_digits}")
         assert result.decimal_digits in {0, 2, 3, 4}
+        event("outcome=decimal_digits_valid")
 
     @given(code=zero_decimal_currencies)
     def test_zero_decimal_currencies(self, code: str) -> None:
@@ -195,6 +222,7 @@ class TestDecimalDigitsProperties:
         result = get_currency(code)
         assert result is not None
         assert result.decimal_digits == 0
+        event(f"code={code}")
 
     @given(code=three_decimal_currencies)
     def test_three_decimal_currencies(self, code: str) -> None:
@@ -202,6 +230,7 @@ class TestDecimalDigitsProperties:
         result = get_currency(code)
         assert result is not None
         assert result.decimal_digits == 3
+        event(f"code={code}")
 
 
 # ============================================================================
@@ -209,6 +238,7 @@ class TestDecimalDigitsProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestTerritoryCurrencyProperties:
     """Property-based tests for territory-currency relationships."""
 
@@ -219,6 +249,7 @@ class TestTerritoryCurrencyProperties:
         assert isinstance(currencies, tuple)
         for currency_code in currencies:
             assert is_valid_currency_code(currency_code)
+        event(f"count={len(currencies)}")
 
     @given(code=territory_codes)
     def test_territory_currencies_matches_lookup(self, code: str) -> None:
@@ -227,6 +258,7 @@ class TestTerritoryCurrencyProperties:
         assert territory is not None
         direct_lookup = get_territory_currencies(code)
         assert territory.currencies == direct_lookup
+        event(f"code={code}")
 
     @given(code=territory_codes)
     def test_territory_currencies_case_insensitive(self, code: str) -> None:
@@ -234,6 +266,7 @@ class TestTerritoryCurrencyProperties:
         upper = get_territory_currencies(code.upper())
         lower = get_territory_currencies(code.lower())
         assert upper == lower
+        event(f"code={code}")
 
 
 # ============================================================================
@@ -241,6 +274,7 @@ class TestTerritoryCurrencyProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCacheConsistencyProperties:
     """Property-based tests for caching behavior."""
 
@@ -270,6 +304,8 @@ class TestCacheConsistencyProperties:
 
         # Same code, different locale might have different names
         assert en_result.alpha2 == locale_result.alpha2
+        event(f"locale={locale}")
+        event("outcome=locale_cache_consistent")
 
 
 # ============================================================================
@@ -277,6 +313,7 @@ class TestCacheConsistencyProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCollectionProperties:
     """Property-based tests for list functions."""
 
@@ -318,6 +355,7 @@ class TestCollectionProperties:
 
         # All locale codes should be in English set (English is most complete)
         assert locale_codes_set <= en_codes
+        event(f"locale_territories={len(locale_codes_set)}")
 
     @given(locale=locale_codes)
     @settings(deadline=None)  # First-run Babel CLDR loading causes timing variance
@@ -332,6 +370,7 @@ class TestCollectionProperties:
 
         # All locale codes should be in English set (English is most complete)
         assert locale_codes_set <= en_codes
+        event(f"locale_currencies={len(locale_codes_set)}")
 
 
 # ============================================================================
@@ -339,6 +378,7 @@ class TestCollectionProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestImmutabilityProperties:
     """Property-based tests for immutability guarantees."""
 
@@ -349,6 +389,7 @@ class TestImmutabilityProperties:
         assert result is not None
         with pytest.raises(AttributeError):
             result.alpha2 = "XX"  # type: ignore[misc]
+        event(f"code={code}")
 
     @given(code=currency_codes)
     def test_currency_info_is_frozen(self, code: str) -> None:
@@ -357,6 +398,7 @@ class TestImmutabilityProperties:
         assert result is not None
         with pytest.raises(AttributeError):
             result.code = "XXX"  # type: ignore[misc]
+        event(f"code={code}")
 
     @given(code=territory_codes)
     def test_territory_info_is_hashable(self, code: str) -> None:
@@ -370,6 +412,7 @@ class TestImmutabilityProperties:
         assert len(s) == 1
         d = {result: "value"}
         assert d[result] == "value"
+        event(f"code={code}")
 
     @given(code=currency_codes)
     def test_currency_info_is_hashable(self, code: str) -> None:
@@ -383,6 +426,7 @@ class TestImmutabilityProperties:
         assert len(s) == 1
         d = {result: "value"}
         assert d[result] == "value"
+        event(f"code={code}")
 
 
 # ============================================================================
@@ -390,6 +434,7 @@ class TestImmutabilityProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestEdgeCaseProperties:
     """Property-based tests for edge cases and invalid inputs."""
 
@@ -397,21 +442,25 @@ class TestEdgeCaseProperties:
     def test_short_strings_rejected_as_territory(self, code: str) -> None:
         """Strings shorter than 2 chars are never valid territory codes."""
         assert is_valid_territory_code(code) is False
+        event(f"code_len={len(code)}")
 
     @given(code=st.text(min_size=3, max_size=10))
     def test_long_strings_rejected_as_territory(self, code: str) -> None:
         """Strings longer than 2 chars are never valid territory codes."""
         assert is_valid_territory_code(code) is False
+        event(f"code_len={len(code)}")
 
     @given(code=st.text(max_size=2))
     def test_short_strings_rejected_as_currency(self, code: str) -> None:
         """Strings shorter than 3 chars are never valid currency codes."""
         assert is_valid_currency_code(code) is False
+        event(f"code_len={len(code)}")
 
     @given(code=st.text(min_size=4, max_size=10))
     def test_long_strings_rejected_as_currency(self, code: str) -> None:
         """Strings longer than 3 chars are never valid currency codes."""
         assert is_valid_currency_code(code) is False
+        event(f"code_len={len(code)}")
 
     @given(code=st.from_regex(r"[0-9]{2}", fullmatch=True))
     def test_numeric_strings_rejected_as_territory(self, code: str) -> None:
@@ -419,11 +468,13 @@ class TestEdgeCaseProperties:
         # Note: Some could theoretically be CLDR numeric codes, but
         # our API only supports alpha-2 codes
         assert get_territory(code) is None
+        event(f"code={code}")
 
     @given(code=st.from_regex(r"[0-9]{3}", fullmatch=True))
     def test_numeric_strings_rejected_as_currency(self, code: str) -> None:
         """Numeric-only strings are never valid currency codes."""
         assert get_currency(code) is None
+        event(f"code={code}")
 
     @given(locale=malformed_locales, code=territory_codes)
     def test_malformed_locale_territory_degrades_gracefully(
@@ -433,7 +484,9 @@ class TestEdgeCaseProperties:
         try:
             result = get_territory(code, locale=locale)
             # If no exception, result should be None or valid
+            event(f"malformed_locale={locale}")
             assert result is None or isinstance(result, TerritoryInfo)
+            event("outcome=malformed_locale_degraded")
         except Exception:  # pylint: disable=broad-exception-caught
             # Babel may raise various exceptions for malformed locales
             pass
@@ -447,9 +500,10 @@ class TestEdgeCaseProperties:
             result = get_currency(code, locale=locale)
             # If no exception, result should be None or valid
             assert result is None or isinstance(result, CurrencyInfo)
+            event(f"locale={locale}")
         except Exception:  # pylint: disable=broad-exception-caught
             # Babel may raise various exceptions for malformed locales
-            pass
+            event("outcome=exception_raised")
 
     @given(locale=malformed_locales)
     def test_malformed_locale_list_territories_degrades_gracefully(
@@ -460,9 +514,10 @@ class TestEdgeCaseProperties:
             result = list_territories(locale=locale)
             # If no exception, result should be valid frozenset
             assert isinstance(result, frozenset)
+            event(f"locale={locale}")
         except Exception:  # pylint: disable=broad-exception-caught
             # Babel may raise various exceptions for malformed locales
-            pass
+            event("outcome=exception_raised")
 
     @given(locale=malformed_locales)
     @settings(deadline=None)  # Cold-cache locale parsing has inherent variability
@@ -474,9 +529,10 @@ class TestEdgeCaseProperties:
             result = list_currencies(locale=locale)
             # If no exception, result should be valid frozenset
             assert isinstance(result, frozenset)
+            event(f"locale={locale}")
         except Exception:  # pylint: disable=broad-exception-caught
             # Babel may raise various exceptions for malformed locales
-            pass
+            event("outcome=exception_raised")
 
 
 # ============================================================================
@@ -484,6 +540,7 @@ class TestEdgeCaseProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestCachePollutionPrevention:
     """Property-based tests for cache pollution prevention.
 
@@ -614,6 +671,7 @@ class TestCachePollutionPrevention:
         # No new misses, no new entries
         assert final.misses == baseline.misses
         assert final.currsize == baseline.currsize
+        event(f"invalid_count={len(invalid_codes)}")
 
     @given(
         invalid_codes=st.lists(
@@ -655,6 +713,7 @@ class TestCachePollutionPrevention:
         # No new misses, no new entries
         assert final.misses == baseline.misses
         assert final.currsize == baseline.currsize
+        event(f"invalid_count={len(invalid_codes)}")
 
     def test_validation_uses_o1_membership_check(self) -> None:
         """Validation uses O(1) set membership, not O(n) linear search.

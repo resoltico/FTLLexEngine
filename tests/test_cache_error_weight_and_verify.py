@@ -8,7 +8,7 @@ Achieves 100% coverage for cache.py by testing:
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
@@ -102,6 +102,7 @@ class TestEstimateErrorWeightWithContext:
             + len(fallback)
         )
         assert weight == min_expected
+        event(f"context_len={len(input_val) + len(locale)}")
 
 
 # =============================================================================
@@ -443,3 +444,4 @@ class TestErrorWeightAndVerifyIntegration:
         # Weight includes at least the message and context fields
         min_weight = len(message) + len(input_val) + len(locale) + len("test") + len("fallback")
         assert weight1 >= min_weight
+        event(f"weight={weight1}")

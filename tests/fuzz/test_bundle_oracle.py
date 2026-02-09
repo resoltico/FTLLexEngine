@@ -27,7 +27,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import pytest
-from hypothesis import settings
+from hypothesis import event, settings
 from hypothesis.stateful import (
     RuleBasedStateMachine,
     initialize,
@@ -86,6 +86,9 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
         real_junk = self.real.add_resource(source)
         shadow_junk = self.shadow.add_resource(source)
 
+        event("rule=add_simple_message")
+        event(f"junk_count={len(real_junk)}")
+
         # Both should produce same number of junk entries
         assert len(real_junk) == len(shadow_junk), (
             f"Junk count mismatch: real={len(real_junk)}, shadow={len(shadow_junk)}"
@@ -96,6 +99,9 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
         if not real_junk and " = " in source:
             msg_id = source.split(" = ", maxsplit=1)[0].strip()
             self.added_messages.add(msg_id)
+            event("outcome=message_added")
+        else:
+            event("outcome=junk_added")
 
     @rule(source=ftl_terms())
     def add_term(self, source: str) -> None:
@@ -106,6 +112,8 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
         real_junk = self.real.add_resource(source)
         shadow_junk = self.shadow.add_resource(source)
 
+        event("rule=add_term")
+        event(f"junk_count={len(real_junk)}")
         assert len(real_junk) == len(shadow_junk)
 
     @rule(
@@ -119,11 +127,18 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
 
         # Only test if we've added some messages
         if not self.added_messages:
+            event("outcome=skip_format_no_msgs")
             return
+
+        event("rule=format_existing_message")
+        event(f"args_count={len(args)}")
 
         # Use a known message ID if available
         if msg_id not in self.added_messages and self.added_messages:
             msg_id = next(iter(self.added_messages))
+            event("msg_choice=existing")
+        else:
+            event("msg_choice=random")
 
         real_result = self.real.format_pattern(msg_id, args)
         shadow_result = self.shadow.format_pattern(msg_id, args)
@@ -137,6 +152,11 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
         # Focus on: same string result, similar error presence
         real_str, _real_errors = real_result
         shadow_str, _shadow_errors = shadow_result
+
+        if _real_errors:
+            event("outcome=format_with_errors")
+        else:
+            event("outcome=format_success")
 
         # Primary assertion: formatted strings should match
         # (with allowance for function placeholder differences)
@@ -199,6 +219,8 @@ class BundleLifecycleStateMachine(RuleBasedStateMachine):
         self.real.add_resource(source)
         self.shadow.add_resource(source)
         self.message_count += 1
+        event("rule=add_message")
+        event(f"count={self.message_count}")
 
     @rule()
     def format_all_messages(self) -> None:
@@ -214,6 +236,8 @@ class BundleLifecycleStateMachine(RuleBasedStateMachine):
             shadow_str, _ = shadow_result
 
             assert real_str == shadow_str, f"Mismatch for {msg_id}"
+        event("rule=format_all_messages")
+        event(f"total_formatted={len(self.shadow.get_message_ids())}")
 
     @rule()
     def reinitialize(self) -> None:
@@ -221,6 +245,7 @@ class BundleLifecycleStateMachine(RuleBasedStateMachine):
         self.real = FluentBundle("en_US")
         self.shadow = ShadowBundle(locale="en_US")
         self.message_count = 0
+        event("rule=reinitialize")
 
     @invariant()
     def message_count_consistent(self) -> None:

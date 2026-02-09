@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.parsing import parse_decimal, parse_number
@@ -36,6 +36,8 @@ class TestParseNumberHypothesis:
 
         formatted = number_format(value, "en_US")
         result, errors = parse_number(str(formatted), "en_US")
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
         assert not errors
         assert isinstance(result, float)
@@ -58,6 +60,9 @@ class TestParseNumberHypothesis:
 
         formatted = number_format(value, locale)
         parsed, errors = parse_number(str(formatted), locale)
+        event(f"locale={locale}")
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
         assert not errors
         assert parsed is not None
@@ -81,6 +86,8 @@ class TestParseNumberHypothesis:
     def test_parse_number_invalid_returns_error(self, invalid_input: str) -> None:
         """Invalid numbers return error in tuple; function never raises."""
         result, errors = parse_number(invalid_input, "en_US")
+        is_empty = len(invalid_input) == 0
+        event(f"input_empty={is_empty}")
         assert len(errors) > 0
         assert result is None
 
@@ -95,6 +102,7 @@ class TestParseNumberHypothesis:
     def test_parse_number_type_error_returns_error(self, value: object) -> None:
         """Non-string types return error in tuple; function never raises."""
         result, errors = parse_number(value, "en_US")
+        event(f"input_type={type(value).__name__}")
         assert len(errors) > 0
         assert result is None
 
@@ -116,6 +124,8 @@ class TestParseDecimalHypothesis:
 
         formatted = number_format(float(value), "en_US")
         result, errors = parse_decimal(str(formatted), "en_US")
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
         assert not errors
         assert isinstance(result, Decimal)
@@ -137,6 +147,9 @@ class TestParseDecimalHypothesis:
 
         formatted = number_format(float(value), locale, minimum_fraction_digits=2)
         parsed, errors = parse_decimal(str(formatted), locale)
+        event(f"locale={locale}")
+        has_grouping = float(value) >= 1000
+        event(f"has_grouping={has_grouping}")
 
         assert not errors
         # Decimal must preserve exact value
@@ -156,6 +169,8 @@ class TestParseDecimalHypothesis:
 
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=2)
         parsed, errors = parse_decimal(str(formatted), "en_US")
+        magnitude = "large" if abs(value) >= 1000 else "small"
+        event(f"magnitude={magnitude}")
 
         assert not errors
         assert parsed == value
@@ -175,6 +190,8 @@ class TestParseDecimalHypothesis:
 
         formatted = number_format(float(value), "en_US", minimum_fraction_digits=3)
         parsed, errors = parse_decimal(str(formatted), "en_US")
+        sub_cent = value < Decimal("0.01")
+        event(f"sub_cent={sub_cent}")
 
         assert not errors
         assert parsed == value
@@ -196,6 +213,8 @@ class TestParseDecimalHypothesis:
     def test_parse_decimal_invalid_returns_error(self, invalid_input: str) -> None:
         """Invalid decimals return error in tuple; function never raises."""
         result, errors = parse_decimal(invalid_input, "en_US")
+        is_empty = len(invalid_input) == 0
+        event(f"input_empty={is_empty}")
         assert len(errors) > 0
         assert result is None
 
@@ -218,6 +237,9 @@ class TestParseDecimalHypothesis:
             float(value), locale, use_grouping=True, minimum_fraction_digits=2
         )
         parsed, errors = parse_decimal(str(formatted), locale)
+        event(f"locale={locale}")
+        magnitude = "large" if value >= 10000 else "medium"
+        event(f"magnitude={magnitude}")
 
         assert not errors
         # Should handle grouping separators correctly

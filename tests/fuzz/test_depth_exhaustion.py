@@ -24,7 +24,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -59,6 +59,15 @@ class TestParserDepthExhaustion:
         # Cap at reasonable maximum to avoid test timeout
         depth = min(max(depth, 1), MAX_DEPTH + 10)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"depth={depth}")
+        if depth_offset < 0:
+            event("boundary=under_max")
+        elif depth_offset == 0:
+            event("boundary=at_max")
+        else:
+            event("boundary=over_max")
+
         # Build nested placeable string
         open_braces = "{ " * depth
         close_braces = " }" * depth
@@ -72,6 +81,7 @@ class TestParserDepthExhaustion:
             # If it parsed, verify we got something
             assert resource is not None
             assert len(resource.entries) > 0
+            event("outcome=parsed")
         except RecursionError:
             pytest.fail(f"RecursionError at depth {depth} (MAX_DEPTH={MAX_DEPTH})")
 
@@ -87,6 +97,15 @@ class TestParserDepthExhaustion:
             }
         }
         """
+        # Emit semantic events for HypoFuzz guidance
+        event(f"select_depth={depth}")
+        if depth <= 10:
+            event("depth_band=shallow")
+        elif depth <= 50:
+            event("depth_band=moderate")
+        else:
+            event("depth_band=deep")
+
         # Build nested select
         lines = ["msg = "]
         indent = ""
@@ -112,6 +131,7 @@ class TestParserDepthExhaustion:
         try:
             resource = parser.parse(source)
             assert resource is not None
+            event("outcome=parsed")
         except RecursionError:
             pytest.fail(f"RecursionError at select depth {depth}")
 
@@ -155,6 +175,15 @@ class TestResolverDepthExhaustion:
 
         Creates: msg0 -> msg1 -> msg2 -> ... -> msgN (terminal)
         """
+        # Emit semantic events for HypoFuzz guidance
+        event(f"chain_length={chain_length}")
+        if chain_length <= 5:
+            event("chain_band=short")
+        elif chain_length <= 20:
+            event("chain_band=medium")
+        else:
+            event("chain_band=long")
+
         lines = []
         for i in range(chain_length - 1):
             lines.append(f"msg{i} = {{ msg{i + 1} }}")
@@ -185,6 +214,13 @@ class TestResolverDepthExhaustion:
         # Cap for reasonable test time
         depth = min(depth, MAX_DEPTH + 5)
 
+        # Emit semantic events for HypoFuzz guidance
+        event(f"term_depth={depth}")
+        if depth >= MAX_DEPTH:
+            event("boundary=at_or_over_max")
+        else:
+            event("boundary=under_max")
+
         lines = []
         for i in range(depth - 1):
             lines.append(f"-term{i} = {{ -term{i + 1} }}")
@@ -204,6 +240,9 @@ class TestResolverDepthExhaustion:
             # If no errors, should contain "terminal" (the chain endpoint)
             if not errors:
                 assert "terminal" in result
+                event("outcome=resolved")
+            else:
+                event("outcome=error")
         except RecursionError:
             pytest.fail(f"RecursionError with term depth {depth}")
 
@@ -252,6 +291,15 @@ class TestSerializerDepthExhaustion:
     @settings(max_examples=30, deadline=None)
     def test_serialize_deep_placeables(self, depth: int) -> None:
         """Serializer handles deeply nested Placeable ASTs."""
+        # Emit semantic events for HypoFuzz guidance
+        event(f"serialize_depth={depth}")
+        if depth <= 20:
+            event("depth_band=shallow")
+        elif depth <= 60:
+            event("depth_band=moderate")
+        else:
+            event("depth_band=deep")
+
         # Build nested placeable AST - start with innermost Placeable
         inner: Placeable = Placeable(
             expression=VariableReference(id=Identifier(name="x"))
@@ -277,6 +325,7 @@ class TestSerializerDepthExhaustion:
             assert "$x" in result
             # Should be valid FTL (contains "=")
             assert "=" in result
+            event("outcome=serialized")
         except RecursionError:
             pytest.fail(f"Serializer RecursionError at depth {depth}")
 
@@ -311,6 +360,15 @@ class TestRoundtripDepthExhaustion:
     @settings(max_examples=20, deadline=None)
     def test_roundtrip_nested_placeables(self, depth: int) -> None:
         """Parse -> serialize roundtrip preserves nested placeables."""
+        # Emit semantic events for HypoFuzz guidance
+        event(f"roundtrip_depth={depth}")
+        if depth <= 10:
+            event("depth_band=shallow")
+        elif depth <= 30:
+            event("depth_band=moderate")
+        else:
+            event("depth_band=deep")
+
         open_braces = "{ " * depth
         close_braces = " }" * depth
         source = f"msg = {open_braces}$x{close_braces}"
@@ -323,6 +381,7 @@ class TestRoundtripDepthExhaustion:
             # Skip if parsing produced junk
             from ftllexengine.syntax.ast import Junk  # noqa: PLC0415
             if any(isinstance(e, Junk) for e in resource.entries):
+                event("outcome=junk")
                 return
 
             serialized = serialize(resource)
@@ -335,5 +394,6 @@ class TestRoundtripDepthExhaustion:
             # Re-parse should work
             resource2 = parser.parse(serialized)
             assert len(resource2.entries) == len(resource.entries)
+            event("outcome=roundtrip_success")
         except RecursionError:
             pytest.fail(f"Roundtrip RecursionError at depth {depth}")

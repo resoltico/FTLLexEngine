@@ -12,14 +12,28 @@ Usage:
     from tests.strategies.fiscal import reasonable_dates, fiscal_deltas
     from tests.strategies.iso import territory_codes, currency_codes
     from tests.strategies.ftl import ftl_message_nodes, ftl_patterns
+
+Event-Emitting Strategies (HypoFuzz-Optimized):
+    These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
+    - ftl_chaos_source, ftl_pathological_nesting, ftl_multiline_chaos_source
+    - ftl_boundary_depth_placeables, ftl_reference_placeables
+    - ftl_circular_references, ftl_semantically_broken, ftl_invalid_ftl
+    - ftl_financial_numbers, ftl_attribute_nodes
+    - fiscal_delta_by_magnitude, date_by_boundary, fiscal_calendar_by_type
+    - currency_by_decimals, territory_by_region, locale_by_script
 """
 
-# FTL syntax and AST strategies
 # Fiscal calendar strategies
 from .fiscal import (
+    date_by_boundary,
+    fiscal_boundary_crossing_pair,
+    fiscal_calendar_by_type,
+    fiscal_calendar_dict,
     fiscal_calendars,
+    fiscal_delta_by_magnitude,
     fiscal_deltas,
     month_end_policies,
+    month_end_policy_with_event,
     reasonable_dates,
 )
 from .ftl import (
@@ -39,12 +53,19 @@ from .ftl import (
     deeply_nested_message_chain,
     deeply_nested_placeables,
     deeply_nested_select,
+    ftl_attribute_nodes,
+    ftl_boundary_depth_messages,
+    ftl_boundary_depth_placeables,
     ftl_boundary_identifiers,
+    ftl_chaos_source,
+    ftl_chaos_text,
+    ftl_circular_references,
     ftl_comment_nodes,
     ftl_comments,
     ftl_deep_placeables,
     ftl_deeply_nested_selects,
     ftl_empty_pattern_messages,
+    ftl_financial_numbers,
     ftl_identifier_boundary,
     ftl_identifiers,
     ftl_identifiers_with_keywords,
@@ -59,15 +80,20 @@ from .ftl import (
     ftl_message_nodes,
     ftl_message_with_whitespace_edge_cases,
     ftl_messages_with_placeables,
+    ftl_multiline_chaos_source,
     ftl_multiline_messages,
     ftl_number_literals,
     ftl_numbers,
+    ftl_pathological_nesting,
     ftl_patterns,
     ftl_placeables,
+    ftl_reference_placeables,
     ftl_resource_with_whitespace_chaos,
     ftl_resources,
     ftl_select_expressions,
+    ftl_select_expressions_with_number_keys,
     ftl_select_with_whitespace_variants,
+    ftl_semantically_broken,
     ftl_simple_messages,
     ftl_simple_text,
     ftl_string_literals,
@@ -104,12 +130,17 @@ from .ftl import (
 from .iso import (
     all_alpha2_codes,
     all_alpha3_codes,
+    currency_by_decimals,
     currency_codes,
+    four_decimal_currencies,
     language_codes,
+    locale_by_script,
     locale_codes,
     malformed_locales,
+    territory_by_region,
     territory_codes,
     three_decimal_currencies,
+    two_decimal_currencies,
     zero_decimal_currencies,
 )
 
@@ -134,6 +165,7 @@ __all__ = [
     "ftl_terms",
     "ftl_comments",
     "ftl_numbers",
+    "ftl_financial_numbers",
     # FTL Identifier case strategies
     "snake_case_identifiers",
     "camel_case_identifiers",
@@ -142,11 +174,14 @@ __all__ = [
     "ftl_variable_references",
     "ftl_number_literals",
     "ftl_string_literals",
+    "ftl_attribute_nodes",
     "ftl_placeables",
     "ftl_deep_placeables",
+    "ftl_reference_placeables",
     "ftl_patterns",
     "ftl_variants",
     "ftl_select_expressions",
+    "ftl_select_expressions_with_number_keys",
     "ftl_message_nodes",
     "ftl_comment_nodes",
     "ftl_junk_nodes",
@@ -199,19 +234,42 @@ __all__ = [
     "ftl_invalid_missing_value",
     "ftl_invalid_ftl",
     "ftl_valid_with_injected_error",
+    # FTL HypoFuzz-optimized event-emitting strategies
+    "ftl_chaos_source",
+    "ftl_chaos_text",
+    "ftl_multiline_chaos_source",
+    "ftl_pathological_nesting",
+    "ftl_boundary_depth_placeables",
+    "ftl_boundary_depth_messages",
+    "ftl_circular_references",
+    "ftl_semantically_broken",
     # Fiscal strategies
     "fiscal_calendars",
     "fiscal_deltas",
     "month_end_policies",
     "reasonable_dates",
+    # Fiscal HypoFuzz-optimized event-emitting strategies
+    "fiscal_delta_by_magnitude",
+    "date_by_boundary",
+    "fiscal_calendar_by_type",
+    "month_end_policy_with_event",
     # ISO strategies
     "territory_codes",
     "all_alpha2_codes",
     "currency_codes",
     "all_alpha3_codes",
     "zero_decimal_currencies",
+    "two_decimal_currencies",
     "three_decimal_currencies",
+    "four_decimal_currencies",
     "locale_codes",
     "language_codes",
     "malformed_locales",
+    # ISO HypoFuzz-optimized event-emitting strategies
+    "currency_by_decimals",
+    "territory_by_region",
+    "locale_by_script",
+    # Fiscal additional strategies
+    "fiscal_calendar_dict",
+    "fiscal_boundary_crossing_pair",
 ]

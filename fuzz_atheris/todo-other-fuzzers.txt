@@ -1,0 +1,242 @@
+===========================================================================
+COMMON INFRASTRUCTURE ALIGNMENT: fuzz_common.py Changes
+===========================================================================
+Date: 2026-02-06
+Context: BUG-SERIALIZER-LEADING-WS-001 exposed a blind spot in the Atheris
+fuzzer ecosystem. All text-based fuzzers start from the parser, which
+normalizes leading whitespace before the serializer sees it. This prompted
+infrastructure improvements and a new AST-construction fuzzer.
+
+===========================================================================
+1. NEW HELPERS ADDED TO fuzz_common.py
+===========================================================================
+
+1a. gen_ftl_identifier(fdp) -> str
+    - Generates valid FTL identifiers: [a-zA-Z][a-zA-Z0-9-]*
+    - Consumes bytes from FuzzedDataProvider deterministically
+    - REPLACES: local _gen_id() / _gen_identifier() in individual fuzzers
+    - WHY: Deduplicate identical identifier generation across fuzzers
+    - WHO NEEDS IT: fuzz_roundtrip (done), fuzz_structured, fuzz_runtime,
+      any fuzzer generating FTL identifiers from FuzzedDataProvider
+
+1b. gen_ftl_value(fdp, *, max_length=40) -> str
+    - Generates safe FTL values (no braces, no newlines)
+    - Character set: alphanumeric + space + punctuation subset
+    - REPLACES: local _gen_value() / _gen_text() in individual fuzzers
+    - WHY: Deduplicate identical value generation across fuzzers
+    - WHO NEEDS IT: fuzz_roundtrip (done), fuzz_structured, fuzz_runtime
+
+1c. write_finding_artifact(*, findings_dir, state, source, s1, s2,
+                            pattern, extra_meta=None) -> None
+    - Writes finding artifacts: source.ftl, s1.ftl, s2.ftl, meta.json
+    - Computes SHA-256 hashes, diff offset, ISO timestamp
+    - extra_meta dict allows per-fuzzer metadata (e.g. failure_type)
+    - REPLACES: local _write_finding_artifact() in individual fuzzers
+    - WHY: fuzz_roundtrip and fuzz_structured had 85% identical artifact
+      writers. Common version is parametric via extra_meta.
+    - WHO NEEDS IT: fuzz_roundtrip (done), fuzz_structured, fuzz_serializer
+      (done), any fuzzer that writes convergence finding artifacts
+
+1d. print_fuzzer_banner(*, title, target, state, schedule_len,
+                         mutator=..., extra_lines=()) -> None
+    - Prints standard startup banner with consistent formatting
+    - Configurable title, target, mutator description, and extra lines
+    - REPLACES: inline banner printing in main() functions
+    - WHY: Banner printing was 95% identical across fuzzers
+    - WHO NEEDS IT: fuzz_roundtrip (done), fuzz_structured, fuzz_runtime,
+      fuzz_fiscal, fuzz_iso, fuzz_integrity, fuzz_lock, fuzz_perf,
+      fuzz_serializer (done) -- every fuzzer with a main() function
+
+===========================================================================
+2. IMPORTS REMOVED FROM fuzz_roundtrip.py (NOW IN fuzz_common.py)
+===========================================================================
+
+These imports were only needed by the local _write_finding_artifact and
+can be removed from any fuzzer that switches to write_finding_artifact:
+
+    import datetime   -> used by write_finding_artifact in fuzz_common
+    import hashlib    -> used by write_finding_artifact in fuzz_common
+    import json       -> used by write_finding_artifact in fuzz_common
+
+===========================================================================
+3. WHAT EACH FUZZER NEEDS TO DO FOR ALIGNMENT
+===========================================================================
+
+For each fuzzer file (fuzz_atheris/fuzz_*.py), check and update:
+
+STEP A: Update import block
+  - Add to fuzz_common imports:
+      gen_ftl_identifier, gen_ftl_value, write_finding_artifact,
+      print_fuzzer_banner
+  - Remove from module imports (if now unused):
+      datetime, hashlib, json (only if write_finding_artifact was local)
+
+STEP B: Replace local helpers
+  - Find and replace local _gen_id / _gen_identifier -> gen_ftl_identifier
+  - Find and replace local _gen_value / _gen_text -> gen_ftl_value
+  - Find and replace local _gen_variable -> gen_ftl_identifier
+    (variables are just identifiers with $ prefix added by caller)
+  - Delete the local function definitions after replacement
+
+STEP C: Replace finding artifact writer
+  - Find local _write_finding_artifact function
+  - Replace all call sites with:
+      write_finding_artifact(
+          findings_dir=_FINDINGS_DIR, state=_state,
+          source=source, s1=s1, s2=s2, pattern=pattern,
+          extra_meta={"failure_type": "..."},
+      )
+  - Delete the local function definition
+  - Remove datetime/hashlib/json imports if no longer used
+
+STEP D: Replace banner printing
+  - Find inline banner in main() (print("="*80), print(title), etc.)
+  - Replace with:
+      print_fuzzer_banner(
+          title="<Fuzzer Title> (Atheris)",
+          target="<target modules>",
+          state=_state,
+          schedule_len=len(_PATTERN_SCHEDULE),
+          mutator="<mutator description>",  # if non-default
+          extra_lines=(...),  # optional
+      )
+
+===========================================================================
+4. FUZZERS ALREADY ALIGNED
+===========================================================================
+
+  [DONE] fuzz_roundtrip.py - All 4 steps completed
+  [DONE] fuzz_serializer.py - Created with common infrastructure from start
+
+===========================================================================
+5. FUZZERS NEEDING ALIGNMENT
+===========================================================================
+
+Priority order (by likely duplication):
+
+  [ ] fuzz_structured.py - Has local _write_finding_artifact, _gen helpers,
+      inline banner. Highest duplication with common infrastructure.
+
+  [ ] fuzz_runtime.py - Has local _gen helpers, inline banner.
+
+  [ ] fuzz_fiscal.py - Has local _gen helpers, inline banner.
+
+  [ ] fuzz_iso.py - Has inline banner, may have local helpers.
+
+  [ ] fuzz_integrity.py - Has inline banner.
+
+  [ ] fuzz_lock.py - Has inline banner.
+
+  [ ] fuzz_perf.py - Has inline banner, may have local helpers.
+
+  [ ] fuzz_native.py - Minimal fuzzer, may only need banner alignment.
+
+  [ ] fuzz_bridge.py - Check for local helpers and banner.
+
+===========================================================================
+6. NOTES
+===========================================================================
+
+- gen_ftl_identifier uses the same character set as _gen_id in
+  fuzz_roundtrip: [a-z] first char, [a-z0-9-] rest, length 0-15.
+  If another fuzzer's _gen_id has a different character set, evaluate
+  whether to extend the common version or keep the local variant.
+
+- write_finding_artifact takes extra_meta dict for per-fuzzer metadata.
+  Each fuzzer should pass its own failure_type values.
+
+- print_fuzzer_banner prints "Stopping: Press Ctrl+C (findings auto-saved)"
+  as the last line. If a fuzzer has a custom stopping message, use
+  extra_lines to add it BEFORE the stopping line, or adjust the common
+  function if needed.
+
+- The character set _FTL_SAFE_VALUE_CHARS in fuzz_common.py is intentionally
+  conservative (no braces, no newlines). Fuzzers that need special chars
+  in values should inject them after calling gen_ftl_value, not by
+  modifying the common char set.
+
+===========================================================================
+7. ADDITIONAL ALIGNMENT: Graceful Ctrl+C, Identification, Timing
+===========================================================================
+Date: 2026-02-06
+Context: Running fuzz_roundtrip and pressing Ctrl+C revealed 5 systemic
+issues: ugly traceback, dead status write in emit_final_report, no fuzzer
+identification in JSON reports, no campaign duration/throughput, and
+confusing duplicate [SUMMARY-JSON-BEGIN] markers from checkpoints vs
+final reports.
+
+NEW HELPERS IN fuzz_common.py:
+
+7a. run_fuzzer(state, *, test_one_input, custom_mutator=None) -> None
+    - Wraps atheris.Setup() + atheris.Fuzz() with KeyboardInterrupt handler
+    - On Ctrl+C: sets state.status = "stopped", prints clean message
+    - REPLACES: bare atheris.Setup() + atheris.Fuzz() in main()
+    - WHY: Eliminates traceback noise on Ctrl+C across all fuzzers
+    - WHO NEEDS IT: every fuzzer with a main() function
+
+7b. emit_checkpoint_report(state, stats, report_dir, filename) -> None
+    - Uses [CHECKPOINT-JSON-BEGIN]...[CHECKPOINT-JSON-END] markers
+    - Separates periodic checkpoints from the final atexit report
+    - REPLACES: calling emit_final_report() for periodic checkpoints
+    - WHY: The original pattern used the same [SUMMARY-JSON-BEGIN] marker
+      for both checkpoints and final reports, making output confusing
+
+NEW FIELDS ON BaseFuzzerState:
+
+7c. fuzzer_name: str = ""
+    fuzzer_target: str = ""
+    campaign_start_time: float = 0.0
+    - fuzzer_name and fuzzer_target appear in JSON reports (self-describing)
+    - campaign_start_time auto-set by print_fuzzer_banner; enables
+      campaign_duration_sec and iterations_per_sec in JSON output
+
+WHAT EACH FUZZER NEEDS TO DO:
+
+STEP E: Set fuzzer identification (after _state = BaseFuzzerState(...))
+  - Set _state.fuzzer_name = "<short_name>"  # e.g. "fiscal", "bridge"
+  - Set _state.fuzzer_target = "<target modules>"  # e.g. "FluentBundle"
+  - Or pass as constructor kwargs:
+      _state = BaseFuzzerState(
+          ...,
+          fuzzer_name="fiscal",
+          fuzzer_target="FiscalCalendar, FiscalPolicy",
+      )
+
+STEP F: Add _emit_checkpoint() and switch periodic calls
+  - Add a _emit_checkpoint() function that calls emit_checkpoint_report()
+  - Change periodic checkpoint calls from _emit_report() to _emit_checkpoint()
+  - Keep _emit_report() for the atexit handler (uses [SUMMARY-JSON-BEGIN])
+
+STEP G: Replace atheris.Setup() + atheris.Fuzz() with run_fuzzer()
+  - In main(), replace:
+      atheris.Setup(sys.argv, test_one_input, ...)
+      atheris.Fuzz()
+  - With:
+      run_fuzzer(
+          _state,
+          test_one_input=test_one_input,
+          custom_mutator=_custom_mutator,  # if applicable
+      )
+  - Keep existing KeyboardInterrupt handlers in _custom_mutator and
+    test_one_input -- they set status early for in-flight checkpoints
+
+STEP H: Migrate to print_fuzzer_banner (if not already done)
+  - This automatically sets state.campaign_start_time = time.time()
+  - Duration and throughput appear in JSON reports with no extra work
+
+===========================================================================
+8. FUZZERS ALIGNED WITH SECTION 7
+===========================================================================
+
+  [DONE] fuzz_roundtrip.py - Steps E/F/G/H completed
+  [DONE] fuzz_serializer.py - Created with full infrastructure from start
+
+  [ ] fuzz_structured.py
+  [ ] fuzz_runtime.py
+  [ ] fuzz_fiscal.py
+  [ ] fuzz_iso.py
+  [ ] fuzz_integrity.py
+  [ ] fuzz_lock.py
+  [ ] fuzz_perf.py
+  [ ] fuzz_native.py
+  [ ] fuzz_bridge.py

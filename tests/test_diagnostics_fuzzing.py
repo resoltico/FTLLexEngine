@@ -12,7 +12,7 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
@@ -55,9 +55,11 @@ class TestErrorCodeProperties:
             severity="error",
         )
 
+        event(f"diagnostic_code={code.name}")
         assert diagnostic.code == code
         assert diagnostic.message == "Test message"
         assert diagnostic.severity in ("error", "warning")
+        event("outcome=diagnostic_created")
 
 
 # -----------------------------------------------------------------------------
@@ -74,9 +76,11 @@ class TestErrorMessageProperties:
         """Property: Reference errors format properly."""
         error = FrozenFluentError(msg, ErrorCategory.REFERENCE)
 
+        event(f"error_category={error.category.name}")
         error_str = str(error)
         assert isinstance(error_str, str)
         assert len(error_str) > 0
+        event("outcome=error_formatted")
 
     @given(st.lists(st.text(min_size=1, max_size=20), min_size=2, max_size=10))
     @settings(max_examples=50, deadline=None)
@@ -88,10 +92,14 @@ class TestErrorMessageProperties:
             diagnostic.message, ErrorCategory.CYCLIC, diagnostic=diagnostic
         )
 
+        event(f"error_category={error.category.name}")
+        event(f"path_length={len(path)}")
+
         error_str = str(error)
         assert isinstance(error_str, str)
         # Should mention cycle
         assert "cycle" in error_str.lower() or "circular" in error_str.lower()
+        event("outcome=cycle_error_formatted")
 
     @given(st.text(min_size=1, max_size=100))
     @settings(max_examples=100, deadline=None)
@@ -101,6 +109,8 @@ class TestErrorMessageProperties:
 
         error_str = str(error)
         assert isinstance(error_str, str)
+        event(f"error_category={error.category.name}")
+        event(f"detail_len={len(detail)}")
 
 
 # -----------------------------------------------------------------------------
@@ -117,9 +127,11 @@ class TestErrorTemplateProperties:
         """Property: message_not_found creates valid Diagnostic."""
         diagnostic = ErrorTemplate.message_not_found(msg_id)
 
+        event("template=message_not_found")
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.code == DiagnosticCode.MESSAGE_NOT_FOUND
         assert msg_id in diagnostic.message
+        event("outcome=template_created")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
     @settings(max_examples=50, deadline=None)
@@ -130,6 +142,7 @@ class TestErrorTemplateProperties:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.code == DiagnosticCode.TERM_NOT_FOUND
         assert term_id in diagnostic.message
+        event("template=term_not_found")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
     @settings(max_examples=50, deadline=None)
@@ -140,6 +153,7 @@ class TestErrorTemplateProperties:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.code == DiagnosticCode.VARIABLE_NOT_PROVIDED
         assert var_name in diagnostic.message
+        event("template=variable_not_provided")
 
 
 # -----------------------------------------------------------------------------
@@ -165,6 +179,9 @@ class TestDiagnosticIntegration:
             # Each error should be a proper error object
             for error in errors:
                 assert isinstance(error, FrozenFluentError)
+            event("outcome=missing_msg_error")
+        else:
+            event("outcome=msg_found")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
     @settings(max_examples=100, deadline=None)
@@ -173,11 +190,15 @@ class TestDiagnosticIntegration:
         bundle = FluentBundle("en-US")
         bundle.add_resource(f"msg = Hello {{ ${var_name} }}")
 
-        result, _ = bundle.format_pattern("msg", {})
+        result, errors = bundle.format_pattern("msg", {})
 
         # Should have error for missing variable
         assert isinstance(result, str)
-        # Missing variable should produce some indication
+        event(f"error_count={len(errors)}")
+        if errors:
+            event("outcome=missing_var_diagnostic")
+        else:
+            event("outcome=missing_var_no_diagnostic")
 
     def test_syntax_error_diagnostic(self) -> None:
         """Syntax errors in resource produce diagnostics."""
@@ -228,8 +249,10 @@ class TestDiagnosticFormatter:
         formatter = DiagnosticFormatter()
         formatted = formatter.format(diagnostic)
 
+        event(f"code={code.name}")
         assert isinstance(formatted, str)
         assert len(formatted) > 0
+        event("outcome=diagnostic_formatted")
 
     @given(st.sampled_from(["error", "warning"]))
     @settings(max_examples=10, deadline=None)
@@ -245,6 +268,7 @@ class TestDiagnosticFormatter:
         formatted = formatter.format(diagnostic)
 
         assert isinstance(formatted, str)
+        event(f"severity={severity}")
 
 
 # -----------------------------------------------------------------------------
@@ -283,6 +307,7 @@ class TestDiagnosticEdgeCases:
         error = FrozenFluentError(long_text, ErrorCategory.REFERENCE)
         error_str = str(error)
         assert isinstance(error_str, str)
+        event(f"text_len={len(long_text)}")
 
     def test_special_characters_in_error(self) -> None:
         """Special characters in error messages."""

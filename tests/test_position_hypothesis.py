@@ -18,7 +18,7 @@ Phase: 3.1 (Position Hypothesis Tests)
 import string
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.position import (
@@ -57,6 +57,7 @@ def source_and_valid_position(draw):
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestLineOffsetProperties:
     """Property tests for line_offset function.
 
@@ -70,9 +71,14 @@ class TestLineOffsetProperties:
 
         Kills: Mutations that break non-negativity invariant.
         """
-        for pos in range(len(source) + 1):  # Include EOF position
+        event(f"text_len={len(source)}")
+        newline_count = source.count("\n")
+        event(f"line_count={newline_count}")
+        for pos in range(len(source) + 1):
             result = line_offset(source, pos)
-            assert result >= 0, f"Line offset should never be negative, got {result}"
+            assert result >= 0, (
+                f"Line offset should never be negative, got {result}"
+            )
 
     @given(valid_source_text)
     @settings(max_examples=100)
@@ -81,6 +87,9 @@ class TestLineOffsetProperties:
 
         Kills: Mutations in initialization or base case.
         """
+        event(f"text_len={len(source)}")
+        has_leading_newline = source[:1] == "\n"
+        event(f"leading_newline={has_leading_newline}")
         assert line_offset(source, 0) == 0
 
     @given(st.integers(min_value=0, max_value=100))
@@ -90,6 +99,9 @@ class TestLineOffsetProperties:
 
         Kills: Arithmetic mutations (+1 → -1, +1 → +2, etc.)
         """
+        event(f"newline_count={n}")
+        boundary = "boundary" if n in (0, 1, 100) else "mid"
+        event(f"boundary={boundary}")
         source = "\n" * n
         assert line_offset(source, len(source)) == n
 
@@ -100,10 +112,12 @@ class TestLineOffsetProperties:
 
         Kills: min/max mutations, clamping logic errors.
         """
+        event(f"text_len={len(source)}")
+        expected = source.count("\n")
+        event(f"line_count={expected}")
         huge_pos = len(source) + 1000
         # Should clamp to len(source), not crash
         result = line_offset(source, huge_pos)
-        expected = source.count("\n")
         assert result == expected
 
     @given(valid_source_text)
@@ -113,17 +127,29 @@ class TestLineOffsetProperties:
 
         Kills: Error handling mutations, exception type mutations.
         """
+        event(f"text_len={len(source)}")
+        empty = len(source) == 0
+        event(f"empty_source={empty}")
         with pytest.raises(ValueError, match="Position must be >= 0"):
             line_offset(source, -1)
 
-    @given(st.text(alphabet=string.ascii_letters + "\n", min_size=1, max_size=100))
+    @given(
+        st.text(
+            alphabet=string.ascii_letters + "\n",
+            min_size=1,
+            max_size=100,
+        )
+    )
     @settings(max_examples=100)
     def test_line_offset_multiline_consistency(self, source):
         """PROPERTY: Line number matches manual count of newlines before position.
 
         Kills: count() parameter mutations, slice boundary mutations.
         """
-        for pos in range(0, min(len(source), 20), 5):  # Sample positions
+        line_count = source.count("\n")
+        event(f"line_count={line_count}")
+        event(f"text_len={len(source)}")
+        for pos in range(0, min(len(source), 20), 5):
             result = line_offset(source, pos)
             expected = source[:pos].count("\n")
             assert result == expected

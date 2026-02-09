@@ -33,7 +33,8 @@ reproduce findings from crash artifacts.
 Custom Mutator:
 Structure-aware mutation: parse valid FTL, apply AST-level mutations
 (swap variants, duplicate attributes, mutate keys, nest placeables,
-shuffle entries), serialize, then apply byte-level mutation on top.
+shuffle entries, inject leading whitespace, inject syntax characters),
+serialize, then apply byte-level mutation on top.
 
 Finding Artifacts:
 When a convergence failure is detected, the fuzzer writes human-readable
@@ -56,10 +57,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import datetime
 import gc
-import hashlib
-import json
 import logging
 import pathlib
 import random
@@ -92,11 +90,17 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
+    gen_ftl_identifier,
+    gen_ftl_value,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
+    write_finding_artifact,
 )
 
 check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
@@ -116,7 +120,11 @@ class RoundtripMetrics:
 
 # --- Global State ---
 
-_state = BaseFuzzerState(seed_corpus_max_size=100)
+_state = BaseFuzzerState(
+    seed_corpus_max_size=100,
+    fuzzer_name="roundtrip",
+    fuzzer_target="FluentParserV1, serialize",
+)
 _domain = RoundtripMetrics()
 
 
@@ -180,6 +188,17 @@ def _build_stats_dict() -> dict[str, Any]:
     return stats
 
 
+_REPORT_FILENAME = "fuzz_roundtrip_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
+
+
 def _emit_report() -> None:
     """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
@@ -187,76 +206,23 @@ def _emit_report() -> None:
     junk_ratio = stats.get("junk_ratio", 0.0)
     if isinstance(junk_ratio, float) and junk_ratio > 0.5:
         print(
-            f"[WARN] Junk ratio {junk_ratio * 100:.1f}% exceeds 50% threshold",
+            f"[WARN] Junk ratio {junk_ratio * 100:.1f}%"
+            " exceeds 50% threshold",
             file=sys.stderr,
             flush=True,
         )
 
-    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_roundtrip_report.json")
+    emit_final_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
 
 
 atexit.register(_emit_report)
 
 
-# --- Finding Artifacts ---
+# --- Finding Artifacts (delegated to fuzz_common) ---
 
 _FINDINGS_DIR = _REPORT_DIR / "findings"
-
-
-def _write_finding_artifact(
-    *,
-    source: str,
-    s1: str,
-    s2: str,
-    pattern: str,
-    failure_type: str,
-) -> None:
-    """Write human-readable finding artifacts to disk for post-mortem debugging."""
-    try:
-        _FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
-        _state.finding_counter += 1
-        prefix = f"finding_{_state.finding_counter:04d}"
-
-        (_FINDINGS_DIR / f"{prefix}_source.ftl").write_text(source, encoding="utf-8")
-        (_FINDINGS_DIR / f"{prefix}_s1.ftl").write_text(s1, encoding="utf-8")
-        (_FINDINGS_DIR / f"{prefix}_s2.ftl").write_text(s2, encoding="utf-8")
-
-        diff_pos = next(
-            (i for i, (a, b) in enumerate(zip(s1, s2, strict=False)) if a != b),
-            min(len(s1), len(s2)),
-        )
-
-        meta = {
-            "iteration": _state.iterations,
-            "pattern": pattern,
-            "failure_type": failure_type,
-            "timestamp": datetime.datetime.now(tz=datetime.UTC).isoformat(),
-            "source_len": len(source),
-            "s1_len": len(s1),
-            "s2_len": len(s2),
-            "source_hash": hashlib.sha256(
-                source.encode("utf-8", errors="surrogatepass"),
-            ).hexdigest(),
-            "s1_hash": hashlib.sha256(
-                s1.encode("utf-8", errors="surrogatepass"),
-            ).hexdigest(),
-            "s2_hash": hashlib.sha256(
-                s2.encode("utf-8", errors="surrogatepass"),
-            ).hexdigest(),
-            "diff_offset": diff_pos,
-        }
-        (_FINDINGS_DIR / f"{prefix}_meta.json").write_text(
-            json.dumps(meta, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-
-        print(
-            f"\n[FINDING] Artifacts written to {_FINDINGS_DIR / prefix}_*.ftl",
-            file=sys.stderr,
-            flush=True,
-        )
-    except OSError:
-        pass  # Finding artifacts are best-effort
 
 
 # --- Instrumentation & Parser ---
@@ -289,28 +255,8 @@ with atheris.instrument_imports(include=["ftllexengine"]):
 _parser = FluentParserV1()
 
 
-# --- FTL Generation Helpers ---
-
-
-def _gen_id(fdp: atheris.FuzzedDataProvider) -> str:
-    """Generate a valid FTL identifier: [a-zA-Z][a-zA-Z0-9_-]*."""
-    first = chr(ord("a") + fdp.ConsumeIntInRange(0, 25))
-    length = fdp.ConsumeIntInRange(0, 15)
-    chars = "abcdefghijklmnopqrstuvwxyz0123456789-"
-    rest = "".join(chars[fdp.ConsumeIntInRange(0, len(chars) - 1)] for _ in range(length))
-    return first + rest
-
-
-def _gen_value(fdp: atheris.FuzzedDataProvider) -> str:
-    """Generate a safe FTL value (no braces, no newlines)."""
-    safe_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789.,!?:;'-"
-    length = fdp.ConsumeIntInRange(1, 40)
-    return "".join(safe_chars[fdp.ConsumeIntInRange(0, len(safe_chars) - 1)] for _ in range(length))
-
-
-def _gen_variable(fdp: atheris.FuzzedDataProvider) -> str:
-    """Generate a variable name (used in placeables as $name)."""
-    return _gen_id(fdp)
+# --- FTL Generation Helpers (delegated to fuzz_common) ---
+# gen_ftl_identifier, gen_ftl_value imported from fuzz_common
 
 
 # --- AST Structural Comparison ---
@@ -376,8 +322,7 @@ def _elements_equal(e1: Any, e2: Any) -> bool:
         return False
     match e1:
         case TextElement():
-            # Normalize trailing whitespace for comparison
-            return e1.value.rstrip() == e2.value.rstrip()
+            return e1.value == e2.value
         case Placeable():
             return _expressions_equal(e1.expression, e2.expression)
         case _:
@@ -442,19 +387,82 @@ def _attrs_equal(
 _PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
 
+def _mut_inject_leading_whitespace(
+    entries: list[Any],
+    rng: random.Random,
+) -> list[Any]:
+    """Inject leading whitespace into TextElement values.
+
+    Targets the exact bug class where leading spaces in attribute/message
+    values break serializer roundtrip idempotence because the parser
+    consumes post-= whitespace as syntax.
+    """
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, (Message, Term)) or entry.value is None:
+            continue
+        elements = list(entry.value.elements)
+        for idx, elem in enumerate(elements):
+            if isinstance(elem, TextElement) and elem.value:
+                num_spaces = rng.randint(1, 5)
+                new_val = " " * num_spaces + elem.value
+                elements[idx] = dc_replace(elem, value=new_val)
+                new_pattern = dc_replace(
+                    entry.value, elements=tuple(elements),
+                )
+                entries[i] = dc_replace(entry, value=new_pattern)
+                return entries
+    return entries
+
+
+# Characters that are syntactically significant in FTL values
+_FTL_SYNTAX_CHARS = "{}.#*["
+
+
+def _mut_inject_syntax_chars(
+    entries: list[Any],
+    rng: random.Random,
+) -> list[Any]:
+    """Inject FTL syntax characters into TextElement values.
+
+    Tests serializer escaping of characters that are syntactically
+    significant in pattern positions: braces, dots, hash, asterisk,
+    brackets.
+    """
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, (Message, Term)) or entry.value is None:
+            continue
+        elements = list(entry.value.elements)
+        for idx, elem in enumerate(elements):
+            if isinstance(elem, TextElement) and elem.value:
+                ch = rng.choice(_FTL_SYNTAX_CHARS)
+                pos = rng.randint(0, len(elem.value))
+                new_val = elem.value[:pos] + ch + elem.value[pos:]
+                elements[idx] = dc_replace(elem, value=new_val)
+                new_pattern = dc_replace(
+                    entry.value, elements=tuple(elements),
+                )
+                entries[i] = dc_replace(entry, value=new_pattern)
+                return entries
+    return entries
+
+
 def _mutate_ast(ast: Resource, seed: int) -> Resource:
     """Apply structural mutations to AST before serialization.
 
     Uses seed for deterministic mutation selection so crash files
     reproduce the exact mutation that triggered a finding.
     All AST nodes are frozen=True, so mutations use dataclasses.replace().
+
+    Mutations: swap variants, duplicate attributes, mutate keys,
+    nest placeables, shuffle entries, inject leading whitespace,
+    inject syntax characters.
     """
     rng = random.Random(seed)
     entries = list(ast.entries)
     if not entries:
         return ast
 
-    mut_type = rng.randint(0, 4)
+    mut_type = rng.randint(0, 6)
 
     match mut_type:
         case 0:
@@ -467,6 +475,10 @@ def _mutate_ast(ast: Resource, seed: int) -> Resource:
             entries = _mut_nest_placeable(entries, rng)
         case 4:
             rng.shuffle(entries)
+        case 5:
+            entries = _mut_inject_leading_whitespace(entries, rng)
+        case 6:
+            entries = _mut_inject_syntax_chars(entries, rng)
 
     return Resource(entries=tuple(entries))
 
@@ -582,9 +594,10 @@ def _verify_roundtrip(source: str, pattern: str) -> None:
 
     if any(isinstance(e, Junk) for e in ast2.entries):
         _domain.convergence_failures += 1
-        _write_finding_artifact(
-            source=source, s1=s1, s2="",
-            pattern=pattern, failure_type="junk_on_reparse",
+        write_finding_artifact(
+            findings_dir=_FINDINGS_DIR, state=_state,
+            source=source, s1=s1, s2="", pattern=pattern,
+            extra_meta={"failure_type": "junk_on_reparse"},
         )
         msg = (
             f"Serialized output produced Junk on re-parse.\n"
@@ -597,9 +610,10 @@ def _verify_roundtrip(source: str, pattern: str) -> None:
 
     if s1 != s2:
         _domain.convergence_failures += 1
-        _write_finding_artifact(
-            source=source, s1=s1, s2=s2,
-            pattern=pattern, failure_type="convergence_failure",
+        write_finding_artifact(
+            findings_dir=_FINDINGS_DIR, state=_state,
+            source=source, s1=s1, s2=s2, pattern=pattern,
+            extra_meta={"failure_type": "convergence_failure"},
         )
         msg = (
             f"Convergence failure: S(P(x)) != S(P(S(P(x))))\n"
@@ -616,9 +630,10 @@ def _verify_roundtrip(source: str, pattern: str) -> None:
     ast3 = _parser.parse(s2)
     if not _ast_structurally_equal(ast2, ast3):
         _domain.convergence_failures += 1
-        _write_finding_artifact(
-            source=source, s1=s1, s2=s2,
-            pattern=pattern, failure_type="ast_structural_mismatch",
+        write_finding_artifact(
+            findings_dir=_FINDINGS_DIR, state=_state,
+            source=source, s1=s1, s2=s2, pattern=pattern,
+            extra_meta={"failure_type": "ast_structural_mismatch"},
         )
         msg = (
             f"AST structural mismatch: P(S1) != P(S2) despite S1 == S2.\n"
@@ -649,9 +664,10 @@ def _verify_multi_pass_convergence(source: str, pattern: str) -> None:
 
     if s2 != s3 or s3 != s4:
         _domain.convergence_failures += 1
-        _write_finding_artifact(
-            source=source, s1=s2, s2=s3,
-            pattern=pattern, failure_type="multi_pass_failure",
+        write_finding_artifact(
+            findings_dir=_FINDINGS_DIR, state=_state,
+            source=source, s1=s2, s2=s3, pattern=pattern,
+            extra_meta={"failure_type": "multi_pass_failure"},
         )
         msg = (
             f"Multi-pass convergence failure: S2==S3={s2 == s3}, S3==S4={s3 == s4}\n"
@@ -668,45 +684,49 @@ def _verify_multi_pass_convergence(source: str, pattern: str) -> None:
 
 def _pattern_simple_message(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Basic id = value roundtrip."""
-    source = f"{_gen_id(fdp)} = {_gen_value(fdp)}\n"
+    source = f"{gen_ftl_identifier(fdp)} = {gen_ftl_value(fdp)}\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_variable_placeable(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Messages with { $var } placeables."""
-    source = f"{_gen_id(fdp)} = {_gen_value(fdp)} {{ ${_gen_variable(fdp)} }} {_gen_value(fdp)}\n"
+    mid = gen_ftl_identifier(fdp)
+    val1 = gen_ftl_value(fdp)
+    var = gen_ftl_identifier(fdp)
+    val2 = gen_ftl_value(fdp)
+    source = f"{mid} = {val1} {{ ${var} }} {val2}\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_term_reference(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Term definitions (-term = ...) and references ({ -term })."""
-    term_id = _gen_id(fdp)
-    val = _gen_value(fdp)
-    msg_id = _gen_id(fdp)
-    msg_val = _gen_value(fdp)
+    term_id = gen_ftl_identifier(fdp)
+    val = gen_ftl_value(fdp)
+    msg_id = gen_ftl_identifier(fdp)
+    msg_val = gen_ftl_value(fdp)
     source = f"-{term_id} = {val}\n{msg_id} = {msg_val} {{ -{term_id} }}\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_message_reference(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Message cross-references ({ other-msg })."""
-    id1 = _gen_id(fdp)
-    source = f"{id1} = {_gen_value(fdp)}\n{_gen_id(fdp)} = {{ {id1} }}\n"
+    id1 = gen_ftl_identifier(fdp)
+    source = f"{id1} = {gen_ftl_value(fdp)}\n{gen_ftl_identifier(fdp)} = {{ {id1} }}\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_select_expression(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Select expressions with plural/string keys."""
-    msg_id = _gen_id(fdp)
-    selector_var = _gen_variable(fdp)
+    msg_id = gen_ftl_identifier(fdp)
+    selector_var = gen_ftl_identifier(fdp)
     num_variants = fdp.ConsumeIntInRange(1, 5)
 
     variants = []
     for i in range(num_variants):
-        key = _gen_id(fdp) if fdp.ConsumeBool() else str(i)
-        variants.append(f"    [{key}] {_gen_value(fdp)}")
+        key = gen_ftl_identifier(fdp) if fdp.ConsumeBool() else str(i)
+        variants.append(f"    [{key}] {gen_ftl_value(fdp)}")
 
-    variants.append(f"   *[other] {_gen_value(fdp)}")
+    variants.append(f"   *[other] {gen_ftl_value(fdp)}")
     variant_block = "\n".join(variants)
     source = f"{msg_id} = {{ ${selector_var} ->\n{variant_block}\n}}\n"
     _verify_roundtrip(source, pattern)
@@ -714,10 +734,10 @@ def _pattern_select_expression(fdp: atheris.FuzzedDataProvider, pattern: str) ->
 
 def _pattern_attributes(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Messages with .attr = value attributes."""
-    msg_id = _gen_id(fdp)
+    msg_id = gen_ftl_identifier(fdp)
     num_attrs = fdp.ConsumeIntInRange(1, 4)
-    attrs = [f"    .{_gen_id(fdp)} = {_gen_value(fdp)}" for _ in range(num_attrs)]
-    source = f"{msg_id} = {_gen_value(fdp)}\n" + "\n".join(attrs) + "\n"
+    attrs = [f"    .{gen_ftl_identifier(fdp)} = {gen_ftl_value(fdp)}" for _ in range(num_attrs)]
+    source = f"{msg_id} = {gen_ftl_value(fdp)}\n" + "\n".join(attrs) + "\n"
     _verify_roundtrip(source, pattern)
 
 
@@ -726,26 +746,32 @@ def _pattern_comments(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     comment_type = fdp.ConsumeIntInRange(0, 2)
     prefix = "#" * (comment_type + 1)
     separator = "\n\n" if comment_type > 0 else "\n"
-    source = f"{prefix} {_gen_value(fdp)}{separator}{_gen_id(fdp)} = {_gen_value(fdp)}\n"
+    cmt_val = gen_ftl_value(fdp)
+    msg_id = gen_ftl_identifier(fdp)
+    msg_val = gen_ftl_value(fdp)
+    source = f"{prefix} {cmt_val}{separator}{msg_id} = {msg_val}\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_function_call(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Function calls: { NUMBER($var) }, { DATETIME($d, opt: "val") }."""
     func = fdp.PickValueInList(["NUMBER", "DATETIME", "CURRENCY"])
-    var = _gen_variable(fdp)
+    var = gen_ftl_identifier(fdp)
     if fdp.ConsumeBool():
-        source = f'{_gen_id(fdp)} = {{ {func}(${var}, {_gen_id(fdp)}: "{_gen_value(fdp)}") }}\n'
+        mid = gen_ftl_identifier(fdp)
+        opt = gen_ftl_identifier(fdp)
+        oval = gen_ftl_value(fdp)
+        source = f'{mid} = {{ {func}(${var}, {opt}: "{oval}") }}\n'
     else:
-        source = f"{_gen_id(fdp)} = {{ {func}(${var}) }}\n"
+        source = f"{gen_ftl_identifier(fdp)} = {{ {func}(${var}) }}\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_multiline_pattern(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Multiline continuation values."""
-    msg_id = _gen_id(fdp)
+    msg_id = gen_ftl_identifier(fdp)
     num_lines = fdp.ConsumeIntInRange(2, 5)
-    lines = [f"{msg_id} ="] + [f"    {_gen_value(fdp)}" for _ in range(num_lines)]
+    lines = [f"{msg_id} ="] + [f"    {gen_ftl_value(fdp)}" for _ in range(num_lines)]
     source = "\n".join(lines) + "\n"
     _verify_roundtrip(source, pattern)
 
@@ -755,27 +781,31 @@ def _pattern_mixed_resource(fdp: atheris.FuzzedDataProvider, pattern: str) -> No
     entries: list[str] = []
     for _ in range(fdp.ConsumeIntInRange(2, 6)):
         entry_type = fdp.ConsumeIntInRange(0, 3)
-        eid = _gen_id(fdp)
-        val = _gen_value(fdp)
+        eid = gen_ftl_identifier(fdp)
+        val = gen_ftl_value(fdp)
         match entry_type:
             case 0:
                 entries.append(f"{eid} = {val}")
             case 1:
                 entries.append(f"-{eid} = {val}")
             case 2:
-                entries.append(f"{eid} = {val}\n    .{_gen_id(fdp)} = {_gen_value(fdp)}")
+                aid = gen_ftl_identifier(fdp)
+                aval = gen_ftl_value(fdp)
+                entries.append(
+                    f"{eid} = {val}\n    .{aid} = {aval}",
+                )
             case _:
-                entries.append(f"{eid} = {val} {{ ${_gen_variable(fdp)} }}")
+                entries.append(f"{eid} = {val} {{ ${gen_ftl_identifier(fdp)} }}")
     source = "\n".join(entries) + "\n"
     _verify_roundtrip(source, pattern)
 
 
 def _pattern_deep_nesting(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Nested placeables: string literals and variable references."""
-    msg_id = _gen_id(fdp)
-    source = f'{msg_id} = {{ "{_gen_value(fdp)}" }}\n'
+    msg_id = gen_ftl_identifier(fdp)
+    source = f'{msg_id} = {{ "{gen_ftl_value(fdp)}" }}\n'
     _verify_roundtrip(source, pattern)
-    source2 = f"{msg_id} = {{ ${_gen_variable(fdp)} }}\n"
+    source2 = f"{msg_id} = {{ ${gen_ftl_identifier(fdp)} }}\n"
     _verify_roundtrip(source2, pattern)
 
 
@@ -787,18 +817,18 @@ def _pattern_raw_unicode(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
 
 def _pattern_convergence_stress(fdp: atheris.FuzzedDataProvider, pattern: str) -> None:
     """Multi-pass convergence: verify S(P(x)) stabilizes in 4 passes."""
-    msg_id = _gen_id(fdp)
-    var = _gen_variable(fdp)
-    sel_id = _gen_id(fdp)
-    sel_var = _gen_variable(fdp)
+    msg_id = gen_ftl_identifier(fdp)
+    var = gen_ftl_identifier(fdp)
+    sel_id = gen_ftl_identifier(fdp)
+    sel_var = gen_ftl_identifier(fdp)
     entries = [
         "# Generated test message",
-        f"{msg_id} = {_gen_value(fdp)} {{ ${var} }}",
-        f"    .title = {_gen_value(fdp)}",
+        f"{msg_id} = {gen_ftl_value(fdp)} {{ ${var} }}",
+        f"    .title = {gen_ftl_value(fdp)}",
         "",
         f"{sel_id} = {{ ${sel_var} ->",
-        f"    [one] {_gen_value(fdp)}",
-        f"   *[other] {_gen_value(fdp)}",
+        f"    [one] {gen_ftl_value(fdp)}",
+        f"   *[other] {gen_ftl_value(fdp)}",
         "}",
     ]
     source = "\n".join(entries) + "\n"
@@ -831,7 +861,8 @@ def _custom_mutator(data: bytes, max_size: int, seed: int) -> bytes:
     """Structure-aware mutator: parse, mutate AST, serialize, byte-mutate.
 
     AST-level mutations (swap variants, duplicate attributes, mutate keys,
-    nest placeables, shuffle entries) are applied before serialization.
+    nest placeables, shuffle entries, inject leading whitespace, inject
+    syntax characters) are applied before serialization.
     LibFuzzer byte-level mutation is then applied on top for fine-grained
     exploration around structurally valid inputs.
 
@@ -866,7 +897,7 @@ def test_one_input(data: bytes) -> None:
     _state.status = "running"
 
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -935,22 +966,18 @@ def main() -> None:
 
     sys.argv = [sys.argv[0], *remaining]
 
-    print()
-    print("=" * 80)
-    print("Parser-Serializer Roundtrip Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     FluentParserV1, serialize")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
-    print(f"Routing:    Round-robin weighted schedule (length: {len(_PATTERN_SCHEDULE)})")
-    print("Mutator:    Custom (AST mutation + byte mutation)")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="Parser-Serializer Roundtrip Fuzzer (Atheris)",
+        target="FluentParserV1, serialize",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+    )
 
-    atheris.Setup(sys.argv, test_one_input, custom_mutator=_custom_mutator)
-    atheris.Fuzz()
+    run_fuzzer(
+        _state,
+        test_one_input=test_one_input,
+        custom_mutator=_custom_mutator,
+    )
 
 
 if __name__ == "__main__":

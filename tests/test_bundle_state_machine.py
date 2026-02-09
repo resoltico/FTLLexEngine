@@ -27,7 +27,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from hypothesis import assume, settings
+import pytest
+from hypothesis import assume, event, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, invariant, rule
 
@@ -108,6 +109,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         self._fluent_bundle.add_resource(ftl_source)
         self.known_messages[msg_id] = value
         self.operation_count += 1
+        event("rule=add_simple_message")
 
         return msg_id
 
@@ -120,6 +122,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         self.known_messages[msg_id] = f"(has ${var_name})"
         self.known_variables[msg_id] = var_name
         self.operation_count += 1
+        event("rule=add_message_with_variable")
 
         return msg_id
 
@@ -137,6 +140,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         self._fluent_bundle.add_resource(ftl_source)
         self.known_messages[msg_id] = "Main value"
         self.operation_count += 1
+        event("rule=add_message_with_attribute")
 
     @rule(msg_ids=st.lists(ftl_identifiers(), min_size=2, max_size=5, unique=True))
     def add_multiple_messages(self, msg_ids: list[str]) -> None:
@@ -148,6 +152,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         for msg_id in msg_ids:
             self.known_messages[msg_id] = f"Value for {msg_id}"
         self.operation_count += 1
+        event(f"rule=add_multiple({len(msg_ids)})")
 
     # =========================================================================
     # Rules: Format Messages
@@ -166,6 +171,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         # Should not have resolution errors for simple messages
         # (syntax errors would have been caught at add_resource)
         assert isinstance(result, str)
+        event("rule=format_known_message")
 
     @rule(msg_id=messages, arg_value=st.text(min_size=1, max_size=20))
     def format_with_args(self, msg_id: str, arg_value: str) -> None:
@@ -180,6 +186,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
         assert not errors
         assert isinstance(result, str)
+        has_var = msg_id in self.known_variables
+        event(f"rule=format_with_args(has_var={has_var})")
 
     @rule(msg_id=ftl_identifiers())
     def format_unknown_message(self, msg_id: str) -> None:
@@ -191,6 +199,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
         # Unknown message returns message ID as fallback (with error)
         assert msg_id in result
+        event("rule=format_unknown_message")
 
     # =========================================================================
     # Rules: Add Functions
@@ -206,6 +215,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
         self._fluent_bundle.add_function(func_name, custom_func)
         self.operation_count += 1
+        event("rule=add_custom_function")
 
     # =========================================================================
     # Rules: Cache Operations
@@ -221,6 +231,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         assert result1 == result2, (
             f"Non-deterministic format: {result1!r} != {result2!r}"
         )
+        event("rule=format_twice_check_cache")
 
     @rule()
     def check_cache_stats(self) -> None:
@@ -233,6 +244,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
             assert stats["misses"] >= 0
             # size should not exceed maxsize
             assert stats["size"] <= stats["maxsize"]
+        has_stats = stats is not None
+        event(f"rule=check_cache_stats({has_stats})")
 
     # =========================================================================
     # Rules: Overwrite Behavior
@@ -253,6 +266,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         result, _ = self._fluent_bundle.format_value(msg_id)
         # Note: result may have Unicode isolation chars depending on settings
         assert normalized_value in result or result == normalized_value
+        event("rule=overwrite_message")
 
     # =========================================================================
     # Invariants
@@ -262,6 +276,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
     def bundle_never_none(self) -> None:
         """Bundle reference should always be valid."""
         assert self._fluent_bundle is not None
+        event("invariant=bundle_never_none")
 
     @invariant()
     def has_message_works(self) -> None:
@@ -270,6 +285,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
             # Note: has_message may return False if message was overwritten
             # by invalid syntax, so we just check it doesn't crash
             _ = self._fluent_bundle.has_message(msg_id)
+        msg_count = len(self.known_messages)
+        event(f"invariant=has_message({msg_count})")
 
     @invariant()
     def cache_stats_consistent(self) -> None:
@@ -279,6 +296,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
             assert stats["hits"] + stats["misses"] >= 0
             assert stats["size"] >= 0
             assert stats["size"] <= stats["maxsize"]
+        event("invariant=cache_stats_consistent")
 
     @invariant()
     def format_deterministic(self) -> None:
@@ -289,6 +307,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
             result1, _ = self._fluent_bundle.format_value(msg_id)
             result2, _ = self._fluent_bundle.format_value(msg_id)
             assert result1 == result2
+        has_msgs = bool(self.known_messages)
+        event(f"invariant=format_deterministic({has_msgs})")
 
 
 # =============================================================================
@@ -298,6 +318,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
 # Configure the state machine test
 TestFluentBundleStateMachine = FluentBundleStateMachine.TestCase
+TestFluentBundleStateMachine = pytest.mark.fuzz(TestFluentBundleStateMachine)
 TestFluentBundleStateMachine.settings = settings(
     max_examples=100,
     stateful_step_count=30,

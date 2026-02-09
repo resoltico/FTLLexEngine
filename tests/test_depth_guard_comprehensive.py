@@ -7,7 +7,7 @@ Python 3.13+.
 """
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -331,6 +331,7 @@ class TestFrozenFluentErrorFromDepthGuard:
 @given(max_depth=st.integers(min_value=1, max_value=100))
 def test_property_context_manager_respects_max_depth(max_depth: int) -> None:
     """Property: Context manager enforces max_depth limit."""
+    event(f"max_depth={max_depth}")
     guard = DepthGuard(max_depth=max_depth)
 
     # Should be able to nest max_depth times
@@ -356,6 +357,8 @@ def test_property_context_manager_respects_max_depth(max_depth: int) -> None:
 )
 def test_property_manual_depth_tracking(increments: int, decrements: int) -> None:
     """Property: Manual increment/decrement tracking is accurate."""
+    event(f"increments={increments}")
+    event(f"decrements={decrements}")
     guard = DepthGuard(max_depth=200)
 
     for _ in range(increments):
@@ -372,6 +375,7 @@ def test_property_manual_depth_tracking(increments: int, decrements: int) -> Non
 @given(max_depth=st.integers(min_value=1, max_value=100))
 def test_property_reset_always_returns_to_zero(max_depth: int) -> None:
     """Property: reset() always returns depth to 0 regardless of current depth."""
+    event(f"max_depth={max_depth}")
     guard = DepthGuard(max_depth=max_depth)
 
     # Increment to arbitrary depth (not exceeding max)
@@ -385,6 +389,7 @@ def test_property_reset_always_returns_to_zero(max_depth: int) -> None:
 @given(depth=st.integers(min_value=0, max_value=100))
 def test_property_depth_property_mirrors_current_depth(depth: int) -> None:
     """Property: depth property always equals current_depth."""
+    event(f"depth={depth}")
     guard = DepthGuard(max_depth=200)
 
     guard.current_depth = depth

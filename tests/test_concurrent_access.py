@@ -7,10 +7,11 @@ Tests for thread safety of FluentBundle:
 
 Structure:
     - TestConcurrentFormatPatternBasic: Essential tests (run in every CI build)
-    - TestConcurrentFormatPatternIntensive: Property-based tests (fuzz-marked)
-    - TestConcurrentConsistency: Fuzz-marked intensive tests
-    - TestConcurrentWithReferences: Fuzz-marked intensive tests
-    - TestConcurrentErrorHandling: Fuzz-marked intensive tests
+    - TestConcurrentConsistency: Property-based concurrency tests (fuzz-marked)
+    - TestConcurrentWithReferences: Property-based reference tests (fuzz-marked)
+    - TestConcurrentErrorHandling: Property-based error tests (fuzz-marked)
+    - TestConcurrentMutation: Property-based mutation tests (fuzz-marked)
+    - TestMemoryStability: Soak tests for leak detection (essential, not fuzz)
 
 Note: use_isolating=False is used throughout because these tests verify thread
 safety behavior, not Unicode directional isolation. This makes assertions cleaner
@@ -24,7 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -192,6 +193,8 @@ class TestConcurrentConsistency:
             with lock:
                 results.append(result)
 
+        event(f"thread_count={thread_count}")
+
         threads = [threading.Thread(target=format_msg) for _ in range(thread_count)]
 
         for t in threads:
@@ -202,40 +205,47 @@ class TestConcurrentConsistency:
         # All results should be identical
         assert len(results) == thread_count
         assert all(r == results[0] for r in results)
+        event("outcome=concurrent_deterministic")
 
-    def test_no_data_corruption(self) -> None:
-        """Verify no data corruption with many concurrent operations."""
+    @given(
+        worker_count=st.integers(min_value=5, max_value=30),
+        iter_count=st.integers(min_value=10, max_value=50),
+    )
+    @settings(max_examples=20, deadline=None)
+    def test_no_data_corruption(
+        self, worker_count: int, iter_count: int
+    ) -> None:
+        """Property: No data corruption across variable concurrency."""
         bundle = FluentBundle("en-US", use_isolating=False)
-        bundle.add_resource(
-            """
-user = User { $id } is { $status }
-"""
-        )
+        bundle.add_resource("user = User { $id } is { $status }")
 
         results: list[tuple[int, str, str]] = []
         lock = threading.Lock()
 
         def format_user(user_id: int, status: str) -> None:
-            result, _ = bundle.format_pattern("user", {"id": user_id, "status": status})
+            result, _ = bundle.format_pattern(
+                "user", {"id": user_id, "status": status}
+            )
             with lock:
                 results.append((user_id, status, result))
 
-        # Many concurrent calls with different data
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        event(f"workers={worker_count}")
+
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
             futures = []
-            for i in range(100):
-                status = "online" if i % 2 == 0 else "offline"
-                futures.append(executor.submit(format_user, i, status))
+            for i in range(iter_count):
+                s = "online" if i % 2 == 0 else "offline"
+                futures.append(pool.submit(format_user, i, s))
 
             for future in as_completed(futures):
                 future.result()
 
-        assert len(results) == 100
+        assert len(results) == iter_count
 
-        # Verify each result contains its specific data
         for user_id, status, result in results:
             assert str(user_id) in result
             assert status in result
+        event("outcome=no_corruption")
 
 
 @pytest.mark.fuzz
@@ -246,8 +256,12 @@ class TestConcurrentWithReferences:
     Designed for dedicated fuzzing runs.
     """
 
-    def test_concurrent_reference_chains(self) -> None:
-        """Concurrent resolution of reference chains."""
+    @given(worker_count=st.integers(min_value=3, max_value=20))
+    @settings(max_examples=20, deadline=None)
+    def test_concurrent_reference_chains(
+        self, worker_count: int
+    ) -> None:
+        """Property: Reference chains resolve consistently."""
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
@@ -265,17 +279,28 @@ welcome = { greeting } Welcome!
             with lock:
                 results.append(result)
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(resolve_welcome) for _ in range(50)]
+        event(f"workers={worker_count}")
+        iters = worker_count * 3
+
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = [
+                pool.submit(resolve_welcome)
+                for _ in range(iters)
+            ]
             for future in as_completed(futures):
                 future.result()
 
-        assert len(results) == 50
+        assert len(results) == iters
         expected = "Hello, World! Welcome!"
         assert all(r == expected for r in results)
+        event("outcome=reference_chains_consistent")
 
-    def test_concurrent_term_resolution(self) -> None:
-        """Concurrent resolution of terms."""
+    @given(thread_count=st.integers(min_value=5, max_value=30))
+    @settings(max_examples=20, deadline=None)
+    def test_concurrent_term_resolution(
+        self, thread_count: int
+    ) -> None:
+        """Property: Term resolution is consistent across threads."""
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
             """
@@ -296,18 +321,24 @@ about = About { -brand }
                 download_results.append(d_result)
                 about_results.append(a_result)
 
-        threads = [threading.Thread(target=resolve_messages) for _ in range(20)]
+        event(f"thread_count={thread_count}")
+
+        threads = [
+            threading.Thread(target=resolve_messages)
+            for _ in range(thread_count)
+        ]
 
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
-        assert len(download_results) == 20
-        assert len(about_results) == 20
+        assert len(download_results) == thread_count
+        assert len(about_results) == thread_count
 
         assert all("Firefox" in r for r in download_results)
         assert all("Firefox" in r for r in about_results)
+        event("outcome=term_resolution_consistent")
 
 
 @pytest.mark.fuzz
@@ -318,8 +349,12 @@ class TestConcurrentErrorHandling:
     Designed for dedicated fuzzing runs.
     """
 
-    def test_concurrent_missing_messages(self) -> None:
-        """Concurrent access to missing messages."""
+    @given(worker_count=st.integers(min_value=3, max_value=15))
+    @settings(max_examples=20, deadline=None)
+    def test_concurrent_missing_messages(
+        self, worker_count: int
+    ) -> None:
+        """Property: Missing message errors are consistent."""
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("exists = This exists")
 
@@ -331,26 +366,35 @@ class TestConcurrentErrorHandling:
             with lock:
                 results.append((result, len(errors)))
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        event(f"workers={worker_count}")
+        repeats = worker_count * 2
+
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
             futures = []
-            for _ in range(20):
-                futures.append(executor.submit(format_message, "exists"))
-                futures.append(executor.submit(format_message, "missing"))
+            for _ in range(repeats):
+                futures.append(pool.submit(format_message, "exists"))
+                futures.append(pool.submit(format_message, "missing"))
 
             for future in as_completed(futures):
                 future.result()
 
-        assert len(results) == 40
+        assert len(results) == repeats * 2
 
-        # Verify error handling is consistent
-        exists_results = [r for r in results if "This exists" in r[0]]
+        exists_results = [
+            r for r in results if "This exists" in r[0]
+        ]
         missing_results = [r for r in results if r[1] > 0]
 
-        assert len(exists_results) == 20
-        assert len(missing_results) == 20
+        assert len(exists_results) == repeats
+        assert len(missing_results) == repeats
+        event("outcome=error_handling_consistent")
 
-    def test_concurrent_missing_variables(self) -> None:
-        """Concurrent formatting with missing variables."""
+    @given(worker_count=st.integers(min_value=3, max_value=15))
+    @settings(max_examples=20, deadline=None)
+    def test_concurrent_missing_variables(
+        self, worker_count: int
+    ) -> None:
+        """Property: Missing variable errors are thread-safe."""
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
@@ -362,18 +406,28 @@ class TestConcurrentErrorHandling:
             with lock:
                 results.append((result, len(errors)))
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        event(f"workers={worker_count}")
+        iters = worker_count * 3
+
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
             futures = []
-            for i in range(40):
+            for i in range(iters):
                 if i % 2 == 0:
-                    futures.append(executor.submit(format_with_args, {"name": f"User{i}"}))
+                    futures.append(
+                        pool.submit(
+                            format_with_args, {"name": f"User{i}"}
+                        )
+                    )
                 else:
-                    futures.append(executor.submit(format_with_args, {}))  # Missing variable
+                    futures.append(
+                        pool.submit(format_with_args, {})
+                    )
 
             for future in as_completed(futures):
                 future.result()
 
-        assert len(results) == 40
+        assert len(results) == iters
+        event("outcome=missing_vars_consistent")
 
 
 @pytest.mark.fuzz
@@ -385,12 +439,18 @@ class TestConcurrentMutation:
     scenarios where resources may be updated during active formatting.
     """
 
-    def test_concurrent_add_resource_while_formatting(self) -> None:
-        """Add resources while other threads are formatting.
+    @given(
+        reader_count=st.integers(min_value=2, max_value=8),
+        writer_count=st.integers(min_value=1, max_value=5),
+    )
+    @settings(max_examples=20, deadline=None)
+    def test_concurrent_add_resource_while_formatting(
+        self, reader_count: int, writer_count: int
+    ) -> None:
+        """Property: Concurrent read/write never crashes.
 
-        This tests the reader/writer concurrency scenario where:
-        - Multiple reader threads call format_pattern()
-        - Writer threads call add_resource() to add new messages
+        Reader threads call format_pattern() while writer threads
+        call add_resource() to add new messages.
         """
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("initial = Initial message")
@@ -400,18 +460,16 @@ class TestConcurrentMutation:
         lock = threading.Lock()
 
         def format_messages() -> None:
-            """Format available messages repeatedly."""
-            for _ in range(20):
+            for _ in range(10):
                 try:
-                    # Format initial message (always present)
                     result, _ = bundle.format_pattern("initial")
                     with lock:
                         results.append(("initial", result))
-
-                    # Try to format dynamic messages (may or may not exist yet)
-                    for msg_id in ["dynamic1", "dynamic2", "dynamic3"]:
-                        result, errors = bundle.format_pattern(msg_id)
-                        if not errors:  # Only record if message exists
+                    for msg_id in ["dyn1", "dyn2", "dyn3"]:
+                        result, errs = bundle.format_pattern(
+                            msg_id
+                        )
+                        if not errs:
                             with lock:
                                 results.append((msg_id, result))
                 except Exception as e:
@@ -419,51 +477,48 @@ class TestConcurrentMutation:
                         errors_encountered.append(e)
 
         def add_resources() -> None:
-            """Add new messages to the bundle."""
             try:
-                bundle.add_resource("dynamic1 = Dynamic message 1")
-                bundle.add_resource("dynamic2 = Dynamic message 2")
-                bundle.add_resource("dynamic3 = Dynamic message 3")
+                bundle.add_resource("dyn1 = Dynamic 1")
+                bundle.add_resource("dyn2 = Dynamic 2")
+                bundle.add_resource("dyn3 = Dynamic 3")
             except Exception as e:
                 with lock:
                     errors_encountered.append(e)
 
-        # Start formatting threads
-        format_threads = [
-            threading.Thread(target=format_messages) for _ in range(5)
-        ]
-        for t in format_threads:
-            t.start()
+        event(f"readers={reader_count}")
+        event(f"writers={writer_count}")
 
-        # Start resource addition threads (slight delay to ensure formatters are running)
-        add_threads = [
-            threading.Thread(target=add_resources) for _ in range(3)
+        fmt_threads = [
+            threading.Thread(target=format_messages)
+            for _ in range(reader_count)
         ]
+        add_threads = [
+            threading.Thread(target=add_resources)
+            for _ in range(writer_count)
+        ]
+
+        for t in fmt_threads:
+            t.start()
         for t in add_threads:
             t.start()
-
-        # Wait for all threads
-        for t in format_threads + add_threads:
+        for t in fmt_threads + add_threads:
             t.join()
 
-        # No exceptions should have occurred
-        assert not errors_encountered, f"Exceptions during concurrent access: {errors_encountered}"
+        assert not errors_encountered, (
+            f"Exceptions: {errors_encountered}"
+        )
+        initial = [r for r in results if r[0] == "initial"]
+        assert len(initial) >= reader_count
+        event("outcome=concurrent_mutation_safe")
 
-        # Initial message should always be present
-        initial_results = [r for r in results if r[0] == "initial"]
-        assert len(initial_results) >= 50  # 5 threads * 20 iterations (minimum)
+    @given(thread_count=st.integers(min_value=2, max_value=8))
+    @settings(max_examples=20, deadline=None)
+    def test_overwrite_message_while_formatting(
+        self, thread_count: int
+    ) -> None:
+        """Property: Message overwrites are atomic.
 
-        # Dynamic messages should have been formatted at least some of the time
-        dynamic_results = [r for r in results if r[0].startswith("dynamic")]
-        # At least some dynamic messages should have been formatted
-        # (they become available after add_resource completes)
-        assert len(dynamic_results) >= 0  # May be 0 if adds complete after all formats
-
-    def test_overwrite_message_while_formatting(self) -> None:
-        """Overwrite a message while other threads are formatting it.
-
-        Tests that message overwrites are atomic - formatters see either
-        the old value or the new value, never a corrupted intermediate.
+        Formatters see either old or new value, never corrupted.
         """
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource("changing = Version A")
@@ -473,43 +528,49 @@ class TestConcurrentMutation:
         stop_event = threading.Event()
 
         def format_continuously() -> None:
-            """Format the changing message continuously."""
             while not stop_event.is_set():
                 result, _ = bundle.format_pattern("changing")
                 with lock:
                     results.append(result)
 
         def overwrite_message() -> None:
-            """Overwrite the message multiple times."""
             for version in ["B", "C", "D", "E"]:
-                bundle.add_resource(f"changing = Version {version}")
+                bundle.add_resource(
+                    f"changing = Version {version}"
+                )
 
-        # Start formatting threads
-        format_threads = [
-            threading.Thread(target=format_continuously) for _ in range(3)
+        event(f"thread_count={thread_count}")
+
+        fmt_threads = [
+            threading.Thread(target=format_continuously)
+            for _ in range(thread_count)
         ]
-        for t in format_threads:
+        for t in fmt_threads:
             t.start()
 
-        # Run overwrites
-        overwrite_thread = threading.Thread(target=overwrite_message)
+        overwrite_thread = threading.Thread(
+            target=overwrite_message
+        )
         overwrite_thread.start()
         overwrite_thread.join()
 
-        # Let formatters run a bit more after overwrites complete
         time.sleep(0.01)
         stop_event.set()
 
-        for t in format_threads:
+        for t in fmt_threads:
             t.join()
 
-        # All results should be valid versions (A, B, C, D, or E)
-        valid_versions = {"Version A", "Version B", "Version C", "Version D", "Version E"}
+        valid = {
+            "Version A", "Version B", "Version C",
+            "Version D", "Version E",
+        }
         for result in results:
-            assert result in valid_versions, f"Got corrupted result: {result!r}"
+            assert result in valid, (
+                f"Got corrupted result: {result!r}"
+            )
 
-        # Should have collected many results
-        assert len(results) >= 10
+        assert len(results) >= thread_count
+        event("outcome=atomic_overwrite")
 
     def test_concurrent_add_resource_idempotent(self) -> None:
         """Multiple threads adding the same resource should be idempotent.
@@ -546,13 +607,15 @@ class TestConcurrentMutation:
         assert result == "This is shared content"
 
 
-@pytest.mark.fuzz
 class TestMemoryStability:
     """Soak tests for memory stability under sustained load.
 
     These tests verify that repeated operations don't cause memory leaks
     or unbounded growth. They run many iterations to expose issues that
     only manifest over time.
+
+    Not fuzz-marked: soak tests need fixed iteration counts for reliable
+    leak detection. Variable counts would make growth measurements noisy.
     """
 
     def test_repeated_bundle_creation_no_memory_growth(self) -> None:

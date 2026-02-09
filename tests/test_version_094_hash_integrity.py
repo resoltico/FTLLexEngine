@@ -13,7 +13,7 @@ from collections import ChainMap
 from decimal import Decimal
 from typing import Any
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -72,6 +72,7 @@ class TestDictChainMapCollisionPrevention:
     @settings(max_examples=20)
     def test_dict_chainmap_always_differ(self, data: dict[str, int]) -> None:
         """PROPERTY: dict and ChainMap always produce different keys."""
+        event(f"dict_size={len(data)}")
         if not data:  # Skip empty dicts
             return
         dict_key = IntegrityCache._make_hashable(dict(data))
@@ -133,6 +134,7 @@ class TestFrozensetCacheKey:
     @settings(max_examples=20)
     def test_frozenset_always_hashable(self, fs: frozenset[int]) -> None:
         """PROPERTY: Any frozenset can be converted to cache key."""
+        event(f"frozenset_size={len(fs)}")
         result = IntegrityCache._make_hashable(fs)
         # Result should be a tuple (hashable)
         assert hash(result)  # No exception

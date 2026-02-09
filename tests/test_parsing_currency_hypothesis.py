@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.parsing import parse_currency
@@ -34,6 +34,9 @@ class TestParseCurrencyHypothesis:
         self, amount: Decimal, currency_symbol: str
     ) -> None:
         """Roundtrip parsing preserves financial precision (critical for accounting)."""
+        event(f"symbol={currency_symbol}")
+        sign = "neg" if amount < 0 else "pos"
+        event(f"amount_sign={sign}")
         # Format: symbol + amount (no locale formatting for simplicity)
         currency_str = f"{currency_symbol}{amount}"
 
@@ -71,6 +74,7 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=50)
     def test_parse_currency_iso_code_format(self, currency_code: str) -> None:
         """Valid ISO 4217 currency codes should be recognized."""
+        event(f"currency_code={currency_code}")
         amount_str = f"{currency_code} 123.45"
 
         result, errors = parse_currency(amount_str, "en_US")
@@ -98,6 +102,7 @@ class TestParseCurrencyHypothesis:
         self, unknown_symbol: str
     ) -> None:
         """Unknown currency symbols should return error in tuple; function never raises."""
+        event(f"symbol_ord={ord(unknown_symbol)}")
         currency_str = f"{unknown_symbol}100.50"
 
         result, errors = parse_currency(
@@ -159,6 +164,8 @@ class TestParseCurrencyHypothesis:
         self, invalid_number: str
     ) -> None:
         """Invalid numbers should return error in tuple; function never raises."""
+        input_len = len(invalid_number)
+        event(f"invalid_number_len={input_len}")
         # Note: Babel accepts NaN/Infinity/Inf (any case) as valid Decimal values
         # Use $ with default_currency
         currency_str = f"${invalid_number}"
@@ -180,6 +187,8 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=50)
     def test_parse_currency_type_error_returns_error(self, value: object) -> None:
         """Non-string types should return error in tuple; function never raises."""
+        value_type = type(value).__name__
+        event(f"input_type={value_type}")
         result, errors = parse_currency(value, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -194,6 +203,8 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=100)
     def test_parse_currency_negative_amounts(self, amount: Decimal) -> None:
         """Negative amounts should parse correctly (debt, refunds)."""
+        magnitude = abs(amount)
+        event(f"magnitude_range={'small' if magnitude < 1 else 'large'}")
         currency_str = f"${amount}"
 
         result, errors = parse_currency(currency_str, "en_US", default_currency="USD")
@@ -216,6 +227,8 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=100)
     def test_parse_currency_fractional_amounts(self, amount: Decimal) -> None:
         """Sub-dollar amounts should preserve precision (critical for financial)."""
+        has_third_decimal = amount * 1000 % 10 != 0
+        event(f"has_third_decimal={has_third_decimal}")
         currency_str = f"${amount}"
 
         result, errors = parse_currency(currency_str, "en_US", default_currency="USD")
@@ -234,6 +247,7 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=50)
     def test_parse_currency_locale_independence(self, locale: str) -> None:
         """Currency parsing should work across locales."""
+        event(f"locale={locale}")
         # Use ISO code (universal)
         currency_str = "EUR 1234.56"
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.parsing import (
@@ -19,7 +19,12 @@ from ftllexengine.parsing import (
     MonthEndPolicy,
 )
 from tests.strategies.fiscal import (
+    date_by_boundary,
+    fiscal_boundary_crossing_pair,
+    fiscal_calendar_by_type,
     fiscal_calendars,
+    fiscal_delta_by_magnitude,
+    month_end_policy_with_event,
     reasonable_dates,
     small_fiscal_deltas,
 )
@@ -29,6 +34,7 @@ from tests.strategies.fiscal import (
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestFiscalCalendarProperties:
     """Property-based tests for FiscalCalendar."""
 
@@ -36,35 +42,42 @@ class TestFiscalCalendarProperties:
     def test_valid_start_month_accepted(self, start_month: int) -> None:
         """All months 1-12 are valid start months."""
         cal = FiscalCalendar(start_month=start_month)
+        event(f"start_month={start_month}")
         assert cal.start_month == start_month
+        event("outcome=valid_start_month")
 
     @given(start_month=st.integers(min_value=-100, max_value=0))
     def test_invalid_low_start_month_rejected(self, start_month: int) -> None:
         """Start months <= 0 are rejected."""
+        event(f"start_month={start_month}")
         with pytest.raises(ValueError, match="start_month must be 1-12"):
             FiscalCalendar(start_month=start_month)
 
     @given(start_month=st.integers(min_value=13, max_value=100))
     def test_invalid_high_start_month_rejected(self, start_month: int) -> None:
         """Start months >= 13 are rejected."""
+        event(f"start_month={start_month}")
         with pytest.raises(ValueError, match="start_month must be 1-12"):
             FiscalCalendar(start_month=start_month)
 
-    @given(start_month=fiscal_calendars, d=reasonable_dates)
+    @given(start_month=fiscal_calendar_by_type(), d=reasonable_dates)
     def test_fiscal_quarter_in_valid_range(self, start_month: int, d: date) -> None:
         """Fiscal quarter is always 1-4."""
         cal = FiscalCalendar(start_month=start_month)
         quarter = cal.fiscal_quarter(d)
+        event(f"quarter={quarter}")
         assert 1 <= quarter <= 4
+        event("outcome=fiscal_quarter_valid")
 
-    @given(start_month=fiscal_calendars, d=reasonable_dates)
+    @given(start_month=fiscal_calendar_by_type(), d=reasonable_dates)
     def test_fiscal_month_in_valid_range(self, start_month: int, d: date) -> None:
         """Fiscal month is always 1-12."""
         cal = FiscalCalendar(start_month=start_month)
         month = cal.fiscal_month(d)
         assert 1 <= month <= 12
+        event(f"month={month}")
 
-    @given(start_month=fiscal_calendars, d=reasonable_dates)
+    @given(start_month=fiscal_calendar_by_type(), d=reasonable_dates)
     def test_fiscal_quarter_matches_fiscal_month(self, start_month: int, d: date) -> None:
         """Fiscal quarter is derived from fiscal month."""
         cal = FiscalCalendar(start_month=start_month)
@@ -73,6 +86,7 @@ class TestFiscalCalendarProperties:
 
         expected_quarter = (fiscal_month - 1) // 3 + 1
         assert fiscal_quarter == expected_quarter
+        event(f"quarter={fiscal_quarter}")
 
     @given(start_month=fiscal_calendars, d=reasonable_dates)
     def test_fiscal_period_consistent(self, start_month: int, d: date) -> None:
@@ -83,6 +97,7 @@ class TestFiscalCalendarProperties:
         assert period.fiscal_year == cal.fiscal_year(d)
         assert period.quarter == cal.fiscal_quarter(d)
         assert period.month == cal.fiscal_month(d)
+        event(f"quarter={period.quarter}")
 
     @given(start_month=fiscal_calendars, fiscal_year=st.integers(min_value=1900, max_value=2100))
     def test_fiscal_year_start_before_end(self, start_month: int, fiscal_year: int) -> None:
@@ -91,6 +106,7 @@ class TestFiscalCalendarProperties:
         start = cal.fiscal_year_start_date(fiscal_year)
         end = cal.fiscal_year_end_date(fiscal_year)
         assert start < end
+        event(f"start_month={start_month}")
 
     @given(
         start_month=fiscal_calendars,
@@ -105,6 +121,7 @@ class TestFiscalCalendarProperties:
         start = cal.quarter_start_date(fiscal_year, quarter)
         end = cal.quarter_end_date(fiscal_year, quarter)
         assert start < end
+        event(f"quarter={quarter}")
 
     @given(start_month=fiscal_calendars, fiscal_year=st.integers(min_value=1900, max_value=2100))
     def test_fiscal_year_contains_365_or_366_days(
@@ -116,6 +133,7 @@ class TestFiscalCalendarProperties:
         end = cal.fiscal_year_end_date(fiscal_year)
         days = (end - start).days + 1  # Inclusive
         assert days in (365, 366)
+        event(f"days={days}")
 
 
 # ============================================================================
@@ -123,14 +141,16 @@ class TestFiscalCalendarProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestFiscalDeltaProperties:
     """Property-based tests for FiscalDelta."""
 
-    @given(d=reasonable_dates)
+    @given(d=date_by_boundary())
     def test_zero_delta_is_identity(self, d: date) -> None:
         """Zero delta returns the same date."""
         delta = FiscalDelta()
         assert delta.add_to(d) == d
+        event(f"day={d.day}")
 
     @given(d=reasonable_dates, delta_dict=small_fiscal_deltas)
     def test_negate_reverses_addition(self, d: date, delta_dict: dict[str, int]) -> None:
@@ -152,8 +172,10 @@ class TestFiscalDeltaProperties:
             # Due to month-end clamping, we may not get exact original
             # But the month difference should be zero
             month_diff = (back.year - d.year) * 12 + (back.month - d.month)
+            event(f"month_diff={month_diff}")
             # Allow for month-end clamping effects
             assert abs(month_diff) <= 1 or back == d
+            event("outcome=negate_reverse_addition")
         except (OverflowError, ValueError):
             # Date out of range - skip this example
             assume(False)
@@ -168,6 +190,7 @@ class TestFiscalDeltaProperties:
         delta = FiscalDelta(years=years, quarters=quarters, months=months)
         expected = years * 12 + quarters * 3 + months
         assert delta.total_months() == expected
+        event(f"total={expected}")
 
     @given(
         d1_years=st.integers(min_value=-10, max_value=10),
@@ -187,6 +210,7 @@ class TestFiscalDeltaProperties:
 
         assert sum1.years == sum2.years
         assert sum1.months == sum2.months
+        event(f"total={sum1.total_months()}")
 
     @given(
         factor=st.integers(min_value=-10, max_value=10),
@@ -198,6 +222,7 @@ class TestFiscalDeltaProperties:
         multiplied = delta * factor
 
         assert multiplied.months == months * factor
+        event(f"factor={factor}")
 
     @given(
         years=st.integers(min_value=-10, max_value=10),
@@ -212,6 +237,7 @@ class TestFiscalDeltaProperties:
         assert double_neg.years == delta.years
         assert double_neg.months == delta.months
         assert double_neg.days == delta.days
+        event(f"years={years}")
 
 
 # ============================================================================
@@ -219,17 +245,20 @@ class TestFiscalDeltaProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestMonthEndPolicyProperties:
     """Property-based tests for month-end policy behavior."""
 
-    @given(d=reasonable_dates, months=st.integers(min_value=-24, max_value=24))
+    @given(d=date_by_boundary(), months=st.integers(min_value=-24, max_value=24))
     def test_preserve_policy_clamps_day(self, d: date, months: int) -> None:
         """Preserve policy never produces invalid day."""
         delta = FiscalDelta(months=months, month_end_policy=MonthEndPolicy.PRESERVE)
         try:
             result = delta.add_to(d)
             # Result day should be valid for result month
+            event(f"result_day={result.day}")
             assert 1 <= result.day <= 31
+            event("outcome=preserve_policy_clamped")
         except (OverflowError, ValueError):
             # Date out of range - acceptable
             pass
@@ -241,6 +270,7 @@ class TestMonthEndPolicyProperties:
 
         # Check if d is last day of its month
         is_month_end = d.day == calendar.monthrange(d.year, d.month)[1]
+        event(f"is_month_end={is_month_end}")
 
         delta = FiscalDelta(months=months, month_end_policy=MonthEndPolicy.CLAMP)
         try:
@@ -286,12 +316,51 @@ class TestMonthEndPolicyProperties:
             # Date out of range or calculation error
             pass
 
+    @given(delta_dict=fiscal_delta_by_magnitude())
+    def test_delta_magnitude_accepted(self, delta_dict: dict[str, int | str]) -> None:
+        """FiscalDelta accepts all magnitude categories."""
+        policy_str = str(delta_dict.get("month_end_policy", "preserve"))
+        policy = MonthEndPolicy(policy_str)
+        delta = FiscalDelta(
+            years=int(delta_dict.get("years", 0)),
+            quarters=int(delta_dict.get("quarters", 0)),
+            months=int(delta_dict.get("months", 0)),
+            days=int(delta_dict.get("days", 0)),
+            month_end_policy=policy,
+        )
+        # Total months is deterministic
+        expected = (
+            int(delta_dict.get("years", 0)) * 12
+            + int(delta_dict.get("quarters", 0)) * 3
+            + int(delta_dict.get("months", 0))
+        )
+        assert delta.total_months() == expected
+
+    @given(policy=month_end_policy_with_event())
+    def test_month_end_policy_round_trips(self, policy: str) -> None:
+        """Month-end policy strings resolve to valid enum values."""
+        enum_val = MonthEndPolicy(policy)
+        assert enum_val.value == policy
+
+    @given(pair=fiscal_boundary_crossing_pair())
+    def test_boundary_crossing_dates_valid(
+        self, pair: tuple[date, date]
+    ) -> None:
+        """Fiscal boundary crossing pairs produce valid ordered dates."""
+        before, after = pair
+        assert before < after
+        # Gap should be exactly 1 day (boundary crossing)
+        gap = (after - before).days
+        event(f"boundary_gap={gap}")
+        assert gap >= 1
+
 
 # ============================================================================
 # FISCAL PERIOD PROPERTIES
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestFiscalPeriodProperties:
     """Property-based tests for FiscalPeriod."""
 
@@ -348,6 +417,7 @@ class TestFiscalPeriodProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestDateRangeProperties:
     """Property-based tests for date range calculations."""
 
@@ -398,6 +468,7 @@ class TestDateRangeProperties:
 # ============================================================================
 
 
+@pytest.mark.fuzz
 class TestImmutabilityProperties:
     """Property-based tests for immutability guarantees."""
 

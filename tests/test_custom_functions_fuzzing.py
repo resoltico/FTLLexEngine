@@ -13,7 +13,7 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -92,10 +92,14 @@ class TestFunctionRegistrationProperties:
         bundle.add_resource(f"msg = {{ {func_name}($val) }}")
         result, errors = bundle.format_pattern("msg", {"val": "hello"})
 
+        event(f"func_name_len={len(func_name)}")
         assert isinstance(result, str)
         # If function worked, should be uppercase
         if len(errors) == 0:
             assert "HELLO" in result
+            event("outcome=func_registered_success")
+        else:
+            event("outcome=func_registered_error")
 
     @given(st.sampled_from(["UPPER", "LOWER", "REVERSE", "LENGTH", "CUSTOM"]))
     @settings(max_examples=20, deadline=None)
@@ -124,6 +128,7 @@ test-length = { LENGTH($val) }
         assert "HELLO" in result_upper
         assert "olleh" in result_reverse
         assert "5" in result_length
+        event("outcome=multi_func_success")
 
 
 # -----------------------------------------------------------------------------
@@ -144,11 +149,15 @@ class TestFunctionInvocationProperties:
 
         result, errors = bundle.format_pattern("msg", {"val": value})
 
+        event(f"val_len={len(value)}")
         assert isinstance(result, str)
         # If no errors, should be uppercase
         if len(errors) == 0:
             expected = value.upper()
             assert expected in result or result == expected
+            event("outcome=string_arg_success")
+        else:
+            event("outcome=string_arg_error")
 
     @given(st.integers(min_value=-1000, max_value=1000))
     @settings(max_examples=100, deadline=None)
@@ -161,6 +170,7 @@ class TestFunctionInvocationProperties:
         result, _ = bundle.format_pattern("msg", {"val": value})
 
         assert isinstance(result, str)
+        event(f"sign={'negative' if value < 0 else 'zero' if value == 0 else 'positive'}")
 
     @given(
         st.floats(
@@ -180,6 +190,7 @@ class TestFunctionInvocationProperties:
         result, _ = bundle.format_pattern("msg", {"val": value})
 
         assert isinstance(result, str)
+        event(f"sign={'negative' if value < 0 else 'zero' if value == 0 else 'positive'}")
 
 
 # -----------------------------------------------------------------------------
@@ -201,9 +212,11 @@ class TestFunctionErrorHandlingProperties:
         # Should not raise
         result, errors = bundle.format_pattern("msg", {"val": value})
 
+        event(f"val_len={len(value)}")
         assert isinstance(result, str)
         # Should have errors indicating function failure
         assert len(errors) > 0
+        event("outcome=throwing_func_caught")
 
     @given(st.text(min_size=1, max_size=50))
     @settings(max_examples=50, deadline=None)
@@ -216,6 +229,7 @@ class TestFunctionErrorHandlingProperties:
         result, _ = bundle.format_pattern("msg", {"val": value})
 
         assert isinstance(result, str)
+        event("outcome=none_return_handled")
 
     def test_missing_function_error(self) -> None:
         """Missing function produces error, not crash."""
@@ -238,6 +252,7 @@ class TestFunctionErrorHandlingProperties:
         result, _ = bundle.format_pattern("msg", {"val": value})
 
         assert isinstance(result, str)
+        event("outcome=dict_return_handled")
 
 
 # -----------------------------------------------------------------------------
@@ -257,8 +272,10 @@ class TestBuiltinFunctionProperties:
 
         result, errors = bundle.format_pattern("num", {"n": n})
 
+        event("number_type=int")
         assert isinstance(result, str)
         assert len(errors) == 0
+        event("outcome=number_func_int_success")
 
     @given(
         st.floats(
@@ -276,7 +293,9 @@ class TestBuiltinFunctionProperties:
 
         result, _ = bundle.format_pattern("num", {"n": n})
 
+        event("number_type=float")
         assert isinstance(result, str)
+        event("outcome=number_func_float_success")
 
     @given(st.text(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=None)
@@ -289,6 +308,7 @@ class TestBuiltinFunctionProperties:
 
         assert isinstance(result, str)
         # May have errors for invalid number
+        event(f"input_len={len(s)}")
 
 
 class TestFunctionArgumentVariations:
@@ -326,3 +346,4 @@ class TestFunctionArgumentVariations:
         result, _ = bundle.format_pattern("num", args)
 
         assert isinstance(result, str)
+        event(f"extra_args={len(extra)}")

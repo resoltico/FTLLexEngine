@@ -15,7 +15,7 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 from __future__ import annotations
 
 import pytest
-from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -143,6 +143,12 @@ class TestFormatPatternProperties:
         # Should never raise
         result, errors = bundle.format_pattern(msg_id, args)
 
+        event(f"args_count={len(args)}")
+        if errors:
+            event("outcome=format_with_errors")
+        else:
+            event("outcome=format_success")
+
         # Type assertions
         assert isinstance(result, str)
         assert isinstance(errors, tuple)
@@ -165,10 +171,18 @@ class TestFormatPatternProperties:
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assume(len(messages) > 0)
 
+        event(f"msg_count={len(messages)}")
+
         for msg in messages:
             result, errors = bundle.format_pattern(msg.id.name, args)
             assert isinstance(result, str)
             assert isinstance(errors, tuple)
+            if errors:
+                # Track what kind of errors we get (cycle, missing, etc)
+                for err in errors:
+                    event(f"error_type={type(err).__name__}")
+            else:
+                event("outcome=resolved")
 
     @given(ftl_with_select(), format_arguments())
     @settings(
@@ -193,6 +207,7 @@ class TestFormatPatternProperties:
             assert isinstance(result, str)
             # Result should not contain raw selector syntax
             assert "->" not in result
+            event("outcome=select_resolved")
 
     @given(st.text(min_size=1, max_size=100))
     @settings(max_examples=200, deadline=None)
@@ -212,6 +227,9 @@ class TestFormatPatternProperties:
         # Should have errors for missing message
         if msg_id != "other":
             assert len(errors) > 0
+            event("outcome=missing_message_error")
+        else:
+            event("outcome=found_message")
 
 
 class TestErrorCollectionProperties:
@@ -229,8 +247,11 @@ class TestErrorCollectionProperties:
         assert isinstance(result, str)
         # If missing_var is not in args, should have error
         if "missing_var" not in args:
+            event("outcome=missing_var_error")
             # Result should still be usable (fallback)
             assert "Hello" in result or "missing_var" in result.lower() or len(errors) > 0
+        else:
+            event("outcome=var_found")
 
     @given(st.lists(st.sampled_from(["a", "b", "c", "d", "e"]), min_size=1, max_size=5))
     @settings(max_examples=100, deadline=None)
@@ -250,6 +271,8 @@ class TestErrorCollectionProperties:
         # Should have at least some indication of missing vars
         # (exact error count depends on implementation)
         assert isinstance(errors, tuple)
+        event(f"error_count={len(errors)}")
+        event("outcome=multiple_errors_collected")
 
 
 class TestDepthLimitProperties:
@@ -272,7 +295,14 @@ class TestDepthLimitProperties:
         bundle.add_resource(ftl)
 
         # Should not raise RecursionError
-        result, _ = bundle.format_pattern("msg0")
+        result, errors = bundle.format_pattern("msg0")
+
+        event(f"recursion_depth={depth}")
+        if errors:
+            for err in errors:
+                event(f"error_type={type(err).__name__}")
+        else:
+            event("outcome=deep_chain_resolved")
 
         assert isinstance(result, str)
         # Very deep chains may produce errors but shouldn't crash
@@ -292,6 +322,7 @@ class TestLocaleProperties:
 
         assert result == "Hello, world!"
         assert errors == ()
+        event(f"locale={locale}")
 
     @given(
         st.sampled_from(["en-US", "de-DE", "fr-FR", "lv-LV"]),
@@ -314,3 +345,5 @@ items = { $count ->
 
         assert isinstance(result, str)
         assert "item" in result.lower()
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
+        event(f"plural_branch={'one' if 'One' in result else 'other'}")

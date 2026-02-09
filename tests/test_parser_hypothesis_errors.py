@@ -6,7 +6,7 @@ to cover deep error branches and achieve near-100% parser coverage.
 Target: Remaining 29 uncovered lines in parser.py
 """
 
-from hypothesis import assume, example, given, settings
+from hypothesis import assume, event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.parser import FluentParserV1
@@ -68,6 +68,8 @@ class TestMalformedPlaceables:
         - Line 712: Number literal errors
         """
         source = f"{msg_id} = {placeable}"
+        event(f"input_len={len(source)}")
+        event(f"placeable_len={len(placeable)}")
         parser = FluentParserV1()
 
         try:
@@ -141,6 +143,8 @@ class TestMalformedFunctionCalls:
         - Line 882: Uppercase without parens
         """
         source = f"{msg_id} = {{ {func_call} }}"
+        event(f"input_len={len(source)}")
+        event(f"func_call_len={len(func_call)}")
         parser = FluentParserV1()
 
         resource = parser.parse(source)
@@ -192,6 +196,8 @@ class TestMalformedSelectExpressions:
         - Lines 994-1002: Malformed nested expressions
         """
         source = f"{msg_id} = {select}"
+        event(f"input_len={len(source)}")
+        event(f"select_len={len(select)}")
         parser = FluentParserV1()
 
         resource = parser.parse(source)
@@ -252,6 +258,7 @@ class TestMalformedTerms:
         - Line 1458: Invalid term identifier
         - Line 1470: Invalid term attribute
         """
+        event(f"input_len={len(term_def)}")
         parser = FluentParserV1()
         resource = parser.parse(term_def)
         assert resource is not None
@@ -271,6 +278,8 @@ class TestMalformedTerms:
         - Line 1493: Missing ) after term args
         """
         source = f"{msg_id} = {term_ref}"
+        event(f"input_len={len(source)}")
+        event(f"term_ref_len={len(term_ref)}")
         parser = FluentParserV1()
         resource = parser.parse(source)
         assert resource is not None

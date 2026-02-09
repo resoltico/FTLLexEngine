@@ -11,7 +11,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
@@ -124,6 +124,7 @@ class TestCacheChecksumIncludesMetadata:
         self, created_at: float, sequence: int
     ) -> None:
         """PROPERTY: Changing metadata changes checksum."""
+        event(f"offset={sequence}")
         formatted = "Property test content"
         errors: tuple[FrozenFluentError, ...] = ()
 
@@ -542,6 +543,7 @@ class TestErrorContentHashIncludesAllDiagnosticFields:
         self, start: int, end: int, line: int, column: int
     ) -> None:
         """PROPERTY: Any span field change affects content hash."""
+        event(f"offset={start}")
         span = SourceSpan(start=start, end=end, line=line, column=column)
         diag = Diagnostic(code=DiagnosticCode.MESSAGE_NOT_FOUND, message="Test", span=span)
         error = FrozenFluentError("Error", ErrorCategory.REFERENCE, diagnostic=diag)

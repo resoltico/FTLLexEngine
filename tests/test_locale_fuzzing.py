@@ -13,11 +13,12 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.plural_rules import select_plural_category
+from tests.strategies import ftl_financial_numbers
 
 # Mark all tests in this file as fuzzing tests
 pytestmark = pytest.mark.fuzz
@@ -71,10 +72,27 @@ class TestPluralRuleProperties:
     @settings(max_examples=500, deadline=None)
     def test_plural_category_valid(self, locale: str, n: int) -> None:
         """Property: Plural category is always a valid CLDR category."""
+        # Emit semantic events for HypoFuzz guidance
+        lang = locale.split("-", maxsplit=1)[0]
+        event(f"locale_lang={lang}")
+        if n == 0:
+            event("n=zero")
+        elif n == 1:
+            event("n=one")
+        elif n == 2:
+            event("n=two")
+        elif n <= 10:
+            event("n=small")
+        elif n <= 100:
+            event("n=medium")
+        else:
+            event("n=large")
+
         category = select_plural_category(n, locale)
 
         assert isinstance(category, str)
         assert category in PLURAL_CATEGORIES
+        event(f"category={category}")
 
     @given(
         st.sampled_from(COMMON_LOCALES),
@@ -87,6 +105,8 @@ class TestPluralRuleProperties:
 
         assert isinstance(category, str)
         assert category in PLURAL_CATEGORIES
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
+        event(f"category={category}")
 
     @given(st.sampled_from(COMMON_LOCALES))
     @settings(max_examples=50, deadline=None)
@@ -95,6 +115,7 @@ class TestPluralRuleProperties:
         for n in [0, 1, 2]:
             category = select_plural_category(n, locale)
             assert category in PLURAL_CATEGORIES
+            event(f"edge_{n}={category}")
 
     @given(st.integers(min_value=-1000, max_value=-1))
     @settings(max_examples=100, deadline=None)
@@ -103,6 +124,7 @@ class TestPluralRuleProperties:
         # Negative numbers typically use absolute value for plural rules
         category = select_plural_category(n, "en-US")
         assert category in PLURAL_CATEGORIES
+        event(f"category={category}")
 
 
 class TestPluralIntegrationProperties:
@@ -135,6 +157,9 @@ items = { $count ->
         assert "item" in result.lower()
         # Should not have the raw selector
         assert "->" not in result
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
+        branch = "zero" if "No" in result else "one" if "One" in result else "other"
+        event(f"plural_branch={branch}")
 
 
 # -----------------------------------------------------------------------------
@@ -160,6 +185,25 @@ class TestNumberFormattingProperties:
         assert isinstance(result, str)
         # Result should contain digits
         assert any(c.isdigit() or c in "-,." for c in result)
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
+        event(f"sign={'negative' if n < 0 else 'zero' if n == 0 else 'positive'}")
+
+    @given(
+        st.sampled_from(COMMON_LOCALES),
+        ftl_financial_numbers(),
+    )
+    @settings(max_examples=300, deadline=None)
+    def test_financial_number_formatting(
+        self, locale: str, n: int | float
+    ) -> None:
+        """Property: Financial numbers (ISO 4217 magnitudes) format correctly."""
+        bundle = FluentBundle(locale)
+        bundle.add_resource("num = { NUMBER($n) }")
+
+        result, _ = bundle.format_pattern("num", {"n": n})
+        assert isinstance(result, str)
+        assert any(c.isdigit() or c in "-,." for c in result)
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
 
     @given(
         st.sampled_from(COMMON_LOCALES),
@@ -179,6 +223,7 @@ class TestNumberFormattingProperties:
         result, _ = bundle.format_pattern("num", {"n": n})
 
         assert isinstance(result, str)
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
 
     @given(st.sampled_from(COMMON_LOCALES))
     @settings(max_examples=50, deadline=None)
@@ -199,6 +244,7 @@ class TestNumberFormattingProperties:
         for n in large_numbers:
             result, _ = bundle.format_pattern("num", {"n": n})
             assert isinstance(result, str)
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
 
 
 # -----------------------------------------------------------------------------
@@ -215,6 +261,7 @@ class TestLocaleContextProperties:
         """Property: Bundle creation works for all common locales."""
         bundle = FluentBundle(locale)
         assert bundle._locale == locale
+        event(f"locale={locale}")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz-_", min_size=2, max_size=10))
     @settings(max_examples=100, deadline=None)
@@ -228,9 +275,10 @@ class TestLocaleContextProperties:
             bundle.add_resource("msg = Hello")
             result, _ = bundle.format_pattern("msg")
             assert result == "Hello"
+            event("outcome=locale_accepted")
         except ValueError:
             # Invalid locale format is acceptable
-            pass
+            event("outcome=locale_rejected")
 
     @given(st.sampled_from(COMMON_LOCALES), st.sampled_from(COMMON_LOCALES))
     @settings(max_examples=100, deadline=None)
@@ -247,6 +295,7 @@ class TestLocaleContextProperties:
 
         assert result1 == "Bundle 1"
         assert result2 == "Bundle 2"
+        event(f"same_locale={locale1 == locale2}")
 
 
 # -----------------------------------------------------------------------------
@@ -268,6 +317,7 @@ class TestLocaleFallbackProperties:
 
         assert result == "Hello, world!"
         assert errors == ()
+        event(f"locale={locale}")
 
     @given(
         st.sampled_from(COMMON_LOCALES),
@@ -281,6 +331,8 @@ class TestLocaleFallbackProperties:
         cat2 = select_plural_category(count, locale)
 
         assert cat1 == cat2
+        event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
+        event(f"category={cat1}")
 
     def test_russian_plural_rules(self) -> None:
         """Russian has complex plural rules (one, few, many, other)."""

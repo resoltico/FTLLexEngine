@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import (
@@ -234,6 +234,7 @@ class TestASTSpanFields:
     def test_span_field_roundtrip_property(self, start_end: tuple[int, int]) -> None:
         """PROPERTY: Span values stored on AST nodes are preserved."""
         start, end = start_end
+        event(f"span_range={end - start}")
         span = Span(start=start, end=end)
         pattern = Pattern(elements=(TextElement(value="x", span=span),), span=span)
         assert pattern.span is not None

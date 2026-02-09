@@ -13,7 +13,7 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 from __future__ import annotations
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import (
@@ -32,6 +32,7 @@ from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.serializer import FluentSerializer
 from tests.helpers.ast_checks import normalize_ast
 from tests.strategies import (
+    ftl_attribute_nodes,
     ftl_comment_nodes,
     ftl_message_nodes,
     ftl_patterns,
@@ -78,7 +79,9 @@ class TestASTSerializationProperties:
 
         # First entry should be a message (not junk)
         first_entry = reparsed.entries[0]
+        event(f"message_elements={len(message.value.elements) if message.value else 0}")
         assert isinstance(first_entry, Message), f"Got {type(first_entry).__name__}: {ftl}"
+        event("outcome=message_roundtrip_success")
 
     @given(ftl_term_nodes())
     @settings(
@@ -100,6 +103,38 @@ class TestASTSerializationProperties:
         reparsed = parser.parse(ftl)
         assert len(reparsed.entries) >= 1
         assert isinstance(reparsed.entries[0], Term)
+        event("outcome=term_roundtrip_success")
+
+    @given(ftl_attribute_nodes())
+    @settings(
+        max_examples=300,
+        suppress_health_check=[HealthCheck.too_slow],
+        deadline=None,
+    )
+    def test_attribute_roundtrip(self, attr: Attribute) -> None:
+        """Property: Attributes serialize within a message."""
+        serializer = FluentSerializer()
+        parser = FluentParserV1()
+
+        # Embed attribute in a message (attributes require a parent)
+        message = Message(
+            id=Identifier(name="host"),
+            value=Pattern(elements=(TextElement(value="text"),)),
+            attributes=(attr,),
+        )
+        resource = Resource(entries=(message,))
+
+        ftl = serializer.serialize(resource)
+        assert isinstance(ftl, str)
+
+        reparsed = parser.parse(ftl)
+        assert len(reparsed.entries) >= 1
+        first = reparsed.entries[0]
+        assert isinstance(first, Message)
+        attr_count = len(first.attributes)
+        event(f"attr_count={attr_count}")
+        assert attr_count >= 1
+        event("outcome=attribute_roundtrip_success")
 
     @given(ftl_comment_nodes())
     @settings(max_examples=200, deadline=None)
@@ -117,6 +152,7 @@ class TestASTSerializationProperties:
         reparsed = parser.parse(ftl)
         assert len(reparsed.entries) >= 1
         assert isinstance(reparsed.entries[0], Comment)
+        event("outcome=comment_roundtrip_success")
 
     @given(ftl_resources())
     @settings(
@@ -143,6 +179,8 @@ class TestASTSerializationProperties:
 
         # After first roundtrip, should stabilize
         assert ftl2 == ftl3, f"Not idempotent:\nftl2: {ftl2!r}\nftl3: {ftl3!r}"
+        event(f"resource_entries={len(resource.entries)}")
+        event("outcome=resource_idempotence_success")
 
 
 class TestPatternSerializationProperties:
@@ -171,6 +209,8 @@ class TestPatternSerializationProperties:
 
         reparsed = parser.parse(ftl)
         assert len(reparsed.entries) >= 1
+        event(f"pattern_elements={len(pattern.elements)}")
+        event("outcome=pattern_serialized")
 
     @given(ftl_select_expressions())
     @settings(
@@ -197,6 +237,8 @@ class TestPatternSerializationProperties:
 
         reparsed = parser.parse(ftl)
         assert len(reparsed.entries) >= 1
+        event(f"select_variants={len(select.variants)}")
+        event("outcome=select_serialized")
 
 
 class TestAttributeSerializationProperties:
@@ -232,6 +274,7 @@ class TestAttributeSerializationProperties:
         messages = [e for e in reparsed.entries if isinstance(e, Message)]
         assert len(messages) >= 1
         assert len(messages[0].attributes) >= 1
+        event("outcome=attr_roundtrip_success")
 
 
 class TestSemanticEquivalence:
@@ -265,6 +308,8 @@ class TestSemanticEquivalence:
         orig_entries = orig_norm.get("entries", [])
         reparsed_entries = reparsed_norm.get("entries", [])
         assert len(orig_entries) == len(reparsed_entries)
+        event(f"entries={len(orig_entries)}")
+        event("outcome=semantic_preserved")
 
 
 class TestEdgeCaseSerialization:
@@ -317,3 +362,4 @@ class TestEdgeCaseSerialization:
         messages = [e for e in reparsed.entries if isinstance(e, Message)]
         assert len(messages) >= 1
         assert messages[0].id.name == name
+        event(f"id_len={len(name)}")

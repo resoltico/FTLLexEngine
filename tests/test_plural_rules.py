@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 import pytest
 from babel.core import UnknownLocaleError
-from hypothesis import assume, example, given
+from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.plural_rules import select_plural_category
@@ -140,6 +140,11 @@ class TestPluralRuleInvariants:
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
         assert result in valid_categories
 
+        n_type = type(n).__name__
+        event(f"category={result}")
+        event(f"n_type={n_type}")
+        event(f"locale={locale}")
+
     @given(n=NUMBERS, locale=LOCALE_CODES)
     @example(n=42, locale="lv_LV")
     def test_never_returns_none(self, n: int | float, locale: str) -> None:
@@ -152,6 +157,7 @@ class TestPluralRuleInvariants:
         result = select_plural_category(n, locale)
 
         assert result is not None
+        event(f"category={result}")
 
     @given(n=st.integers(min_value=0, max_value=1000), locale=LOCALE_CODES)
     @example(n=1, locale="en_US")
@@ -165,6 +171,8 @@ class TestPluralRuleInvariants:
         result2 = select_plural_category(n, locale)
 
         assert result1 == result2
+        event(f"category={result1}")
+        event(f"locale={locale}")
 
     @given(n=NUMBERS)
     @example(n=0)
@@ -180,6 +188,8 @@ class TestPluralRuleInvariants:
         result = select_plural_category(n, "xx_XX")
 
         assert result == "other"
+        n_type = type(n).__name__
+        event(f"n_type={n_type}")
 
 
 # ============================================================================
@@ -203,6 +213,7 @@ class TestEnglishPluralRules:
         result = select_plural_category(n, "en")
 
         assert result == "other"
+        event(f"n={n}")
 
     def test_one_is_one(self) -> None:
         """English: 1 is 'one'."""
@@ -225,6 +236,8 @@ class TestEnglishPluralRules:
         result = select_plural_category(n, "en")
 
         assert result == "other"
+        is_integer = n.is_integer()
+        event(f"float_is_integer={is_integer}")
 
 
 class TestLatvianPluralRules:

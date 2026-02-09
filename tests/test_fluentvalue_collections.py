@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -285,6 +285,7 @@ class TestFluentValueCollectionsHypothesis:
     @settings(max_examples=50)
     def test_integer_lists_are_cacheable(self, items: list[int]) -> None:
         """PROPERTY: Any integer list can be cached and retrieved."""
+        event(f"size={len(items)}")
         cache = IntegrityCache(strict=False)
         args = {"items": items}
 
@@ -297,6 +298,7 @@ class TestFluentValueCollectionsHypothesis:
     @settings(max_examples=50)
     def test_string_int_dicts_are_cacheable(self, data: dict[str, int]) -> None:
         """PROPERTY: Any str->int dict can be cached and retrieved."""
+        event(f"size={len(data)}")
         cache = IntegrityCache(strict=False)
         args = {"data": data}
 
@@ -318,6 +320,8 @@ class TestFluentValueCollectionsHypothesis:
     @settings(max_examples=50)
     def test_nested_structures_are_cacheable(self, structure: object) -> None:
         """PROPERTY: Arbitrarily nested structures can be cached and retrieved."""
+        is_collection = isinstance(structure, (list, dict))
+        event(f"valid={is_collection}")
         cache = IntegrityCache(strict=False)
         # Hypothesis generates complex nested structures; type cast for static analysis
         args: dict[str, FluentValue] = {"nested": structure}  # type: ignore[dict-item]

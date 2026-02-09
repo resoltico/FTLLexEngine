@@ -101,6 +101,7 @@ Targets are dynamically discovered from `fuzz_atheris/fuzz_*.py` files:
 | `integrity` | Validation | IntegrityCache hash verification |
 | `lock` | Concurrency | RWLock timeout and contention paths |
 | `roundtrip` | Convergence | Parser-serializer round-trip consistency |
+| `serializer` | AST-construction | Serializer idempotence via programmatic AST |
 
 ---
 
@@ -359,6 +360,7 @@ fuzz_atheris/
 ├── fuzz_native.py      # Stability fuzzer
 ├── fuzz_runtime.py     # Runtime fuzzer
 ├── fuzz_structured.py  # Grammar-aware fuzzer
+├── fuzz_serializer.py  # AST-construction serializer fuzzer
 ├── fuzz_perf.py        # Performance fuzzer
 ├── fuzz_iso.py         # ISO introspection fuzzer
 ├── fuzz_fiscal.py      # Fiscal calendar fuzzer

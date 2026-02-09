@@ -20,7 +20,7 @@ import threading
 from decimal import Decimal
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -84,6 +84,7 @@ class TestISO4217ASCIIValidation:
     )
     def test_non_ascii_always_rejected(self, code: str) -> None:
         """Property: Non-ASCII 3-char strings are always rejected."""
+        event(f"codepoint_start={ord(code[0])}")
         assert _is_valid_iso_4217_format(code) is False
 
 
@@ -177,6 +178,8 @@ class TestDiagnosticLogInjection:
     @given(st.text(min_size=1, max_size=50))
     def test_escape_idempotent(self, text: str) -> None:
         """Property: Escaping removes all control characters."""
+        has_ctrl = any(c in text for c in "\n\r\t")
+        event(f"has_control_chars={has_ctrl}")
         escaped = DiagnosticFormatter._escape_control_chars(text)
         assert "\n" not in escaped
         assert "\r" not in escaped
@@ -393,6 +396,7 @@ class TestASTConstructionValidation:
     @settings(max_examples=10)
     def test_select_default_count_property(self, n_non_default: int) -> None:
         """Property: SelectExpression requires exactly 1 default in any variant count."""
+        event(f"variant_count={n_non_default + 1}")
         non_defaults = tuple(
             Variant(
                 key=Identifier(name=f"v{i}"),

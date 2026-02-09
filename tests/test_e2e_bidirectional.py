@@ -32,7 +32,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import (
@@ -841,8 +841,10 @@ class TestSerializeParseRoundtrip:
         serialized = serialize_ftl(resource)
         resource2 = parse_ftl(serialized)
 
+        event(f"id_len={len(identifier)}")
         assert resource2 is not None
         assert len(resource2.entries) == len(resource.entries)
+        event("outcome=e2e_id_roundtrip_success")
 
     def test_serialize_preserves_select_expressions(self) -> None:
         """Serialize->parse preserves select expression structure."""

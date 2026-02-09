@@ -3,7 +3,8 @@
 Validates cache correctness properties under generated scenarios.
 """
 
-from hypothesis import given
+import pytest
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -22,6 +23,7 @@ def message_args(draw: st.DrawFn) -> dict[str, str | int]:
     return args
 
 
+@pytest.mark.fuzz
 class TestCacheProperties:
     """Property-based tests for cache behavior."""
 
@@ -57,6 +59,7 @@ class TestCacheProperties:
         # Cache hit and miss must return identical results
         assert result_miss == result_hit
         assert len(errors_miss) == len(errors_hit)
+        event(f"arg_count={len(args)}")
 
     @given(
         args1=message_args(),
@@ -92,6 +95,7 @@ class TestCacheProperties:
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["size"] == 2  # Two separate cache entries
+        event(f"key_count={len(args1)}")
 
     @given(
         cache_size=st.integers(min_value=1, max_value=100),
@@ -117,6 +121,8 @@ class TestCacheProperties:
         assert stats is not None
         assert stats["size"] <= cache_size
         assert stats["size"] == min(num_messages, cache_size)
+        evicted = num_messages > cache_size
+        event(f"eviction={evicted}")
 
     @given(
         num_calls=st.integers(min_value=1, max_value=100),
@@ -139,8 +145,10 @@ class TestCacheProperties:
         assert stats["hits"] + stats["misses"] == num_calls
         assert stats["hits"] == num_calls - 1  # All but first are hits
         assert stats["misses"] == 1  # Only first is miss
+        event(f"num_calls={num_calls}")
 
 
+@pytest.mark.fuzz
 class TestCacheInvalidationProperties:
     """Property-based tests for cache invalidation."""
 
@@ -170,6 +178,7 @@ class TestCacheInvalidationProperties:
             assert stats_after["size"] == 0  # Cache cleared
             assert stats_after["hits"] == 0  # Stats reset
             assert stats_after["misses"] == 0
+        event(f"num_resources={num_resources}")
 
     @given(
         num_functions=st.integers(min_value=1, max_value=10),
@@ -198,8 +207,10 @@ class TestCacheInvalidationProperties:
             stats_after = bundle.get_cache_stats()
             assert stats_after is not None
             assert stats_after["size"] == 0  # Cache cleared
+        event(f"num_functions={num_functions}")
 
 
+@pytest.mark.fuzz
 class TestCacheInternalProperties:
     """Property-based tests for cache internals."""
 
@@ -229,6 +240,7 @@ class TestCacheInternalProperties:
         assert stats is not None
         assert len(cache) == stats["size"]
         assert len(cache) <= cache_size
+        event(f"maxsize={cache_size}")
 
     @given(
         cache_size=st.integers(min_value=1, max_value=50),
@@ -259,6 +271,7 @@ class TestCacheInternalProperties:
         bundle.format_pattern("msg")
         assert cache.hits == 1
         assert cache.misses == 1
+        event(f"maxsize={cache_size}")
 
     @given(
         num_updates=st.integers(min_value=1, max_value=50),
@@ -281,6 +294,7 @@ class TestCacheInternalProperties:
         assert len(cache) == 1
         assert cache.hits == num_updates - 1
         assert cache.misses == 1
+        event(f"updates={num_updates}")
 
     @given(
         args_list=st.lists(
@@ -311,6 +325,7 @@ class TestCacheInternalProperties:
         # Cache size equals number of unique args
         unique_args = len({tuple(sorted(args.items())) for args in args_list})
         assert len(cache) == min(unique_args, 100)  # Min with cache_size
+        event(f"unique_args={unique_args}")
 
     @given(
         message_ids=st.lists(
@@ -341,6 +356,7 @@ class TestCacheInternalProperties:
 
         # Cache should have one entry per message
         assert len(cache) == min(len(message_ids), 100)
+        event(f"msg_count={len(message_ids)}")
 
     @given(
         attributes=st.lists(
@@ -372,6 +388,7 @@ class TestCacheInternalProperties:
 
         # Cache should have one entry per unique attribute
         assert len(cache) == len(seen_attrs)
+        event(f"attr_count={len(seen_attrs)}")
 
     @given(
         num_operations=st.integers(min_value=0, max_value=100),
@@ -398,8 +415,10 @@ class TestCacheInternalProperties:
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert cache.size == stats["size"]
+        event(f"entries={num_operations}")
 
 
+@pytest.mark.fuzz
 class TestCacheTypeCollisionPrevention:
     """Tests for type collision prevention in cache keys.
 
@@ -504,6 +523,7 @@ class TestCacheTypeCollisionPrevention:
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["size"] == 2
+        event(f"bool={b}")
 
     @given(st.integers(), st.floats(allow_nan=False, allow_infinity=False))
     def test_int_float_always_distinct_when_equal(self, i: int, f: float) -> None:
@@ -523,3 +543,4 @@ class TestCacheTypeCollisionPrevention:
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["size"] == 2
+        event(f"int_value={i}")

@@ -5,7 +5,7 @@ Focus on parse → serialize → parse idempotence.
 
 from __future__ import annotations
 
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import parse_ftl, serialize_ftl
@@ -47,9 +47,12 @@ class TestSerializationRoundtrip:
         entry1 = resource1.entries[0]
         entry2 = resource2.entries[0]
 
+        event(f"id_len={len(message_id)}")
+        event(f"val_len={len(value)}")
         assert isinstance(entry1, Message)
         assert isinstance(entry2, Message)
         assert entry1.id.name == entry2.id.name
+        event("outcome=simple_message_roundtrip")
 
     @given(
         # Use st.from_regex - cleaner and unconstrained
@@ -82,9 +85,12 @@ class TestSerializationRoundtrip:
         entry1 = resource1.entries[0]
         entry2 = resource2.entries[0]
 
+        event(f"id_len={len(message_id)}")
+        event(f"attr_len={len(attr_value)}")
         assert isinstance(entry1, Message)
         assert isinstance(entry2, Message)
         assert len(entry1.attributes) == len(entry2.attributes)
+        event("outcome=attr_message_roundtrip")
 
     @given(
         # Keep practical upper bound for performance
@@ -106,7 +112,9 @@ class TestSerializationRoundtrip:
         messages1 = [e for e in resource1.entries if isinstance(e, Message)]
         messages2 = [e for e in resource2.entries if isinstance(e, Message)]
 
+        event(f"msg_count={message_count}")
         assert len(messages2) == len(messages1) == message_count
+        event("outcome=multi_msg_count_preserved")
 
     @given(
         iterations=st.integers(min_value=2, max_value=5),
@@ -172,7 +180,9 @@ class TestSerializationProperties:
 
         # Serialize should never crash - it's a pure function
         result = serialize_ftl(resource)
+        event(f"ftl_len={len(ftl_text)}")
         assert isinstance(result, str)
+        event("outcome=serialize_no_crash")
 
     @given(
         message_id=st.text(
@@ -194,7 +204,9 @@ class TestSerializationProperties:
         messages2 = [e for e in resource2.entries if isinstance(e, Message)]
 
         if messages1 and messages2:
+            event(f"id_len={len(message_id)}")
             assert messages1[0].id.name == messages2[0].id.name == message_id
+            event("outcome=id_preserved")
 
     def test_empty_resource_roundtrip(self) -> None:
         """Empty resources survive roundtrip."""
@@ -250,7 +262,9 @@ class TestSerializationEdgeCases:
         messages1 = [e for e in resource1.entries if isinstance(e, Message)]
         messages2 = [e for e in resource2.entries if isinstance(e, Message)]
 
+        event(f"val_len={len(unicode_value)}")
         assert len(messages2) == len(messages1)
+        event("outcome=unicode_roundtrip")
 
     @given(
         line_count=st.integers(min_value=1, max_value=20),
@@ -329,7 +343,9 @@ class TestVariableReferenceSerialization:
         serialized = serialize_ftl(resource1)
         resource2 = parse_ftl(serialized)
 
+        event(f"id_len={len(msg_id)}")
         assert len(resource2.entries) == len(resource1.entries)
+        event("outcome=mixed_text_var_roundtrip")
 
     @given(
         msg_id=st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=10),
@@ -497,7 +513,9 @@ class TestFunctionCallSerialization:
         serialized = serialize_ftl(resource1)
         resource2 = parse_ftl(serialized)
 
+        event(f"msg_id_len={len(msg_id)}")
         assert len(resource2.entries) == len(resource1.entries)
+        event("outcome=func_opts_roundtrip")
 
     @given(
         msg_id=st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=10),

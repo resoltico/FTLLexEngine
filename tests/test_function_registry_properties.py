@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.function_bridge import FunctionRegistry
@@ -62,6 +62,7 @@ class TestIntrospectionInvariants:
     @given(names=st.lists(ftl_function_names, min_size=0, max_size=20, unique=True))
     def test_list_functions_length_matches_registrations(self, names: list[str]) -> None:
         """list_functions length matches number of registrations."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -75,6 +76,7 @@ class TestIntrospectionInvariants:
     @given(names=st.lists(ftl_function_names, min_size=0, max_size=20, unique=True))
     def test_iter_yields_same_as_list_functions(self, names: list[str]) -> None:
         """Iterating registry yields same names as list_functions."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -88,6 +90,7 @@ class TestIntrospectionInvariants:
     @given(names=st.lists(ftl_function_names, min_size=0, max_size=20, unique=True))
     def test_len_equals_list_length(self, names: list[str]) -> None:
         """len() equals length of list_functions."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -98,6 +101,7 @@ class TestIntrospectionInvariants:
     @given(names=st.lists(ftl_function_names, min_size=1, max_size=20, unique=True))
     def test_all_listed_functions_in_registry(self, names: list[str]) -> None:
         """All functions returned by list_functions are in registry."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -109,6 +113,7 @@ class TestIntrospectionInvariants:
     @given(names=st.lists(ftl_function_names, min_size=1, max_size=20, unique=True))
     def test_all_listed_functions_have_info(self, names: list[str]) -> None:
         """All listed functions have retrievable info."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -136,6 +141,8 @@ class TestContainsInvariants:
         self, registered: list[str], query: str
     ) -> None:
         """'in' operator consistent with list_functions."""
+        found = query in registered
+        event(f"query_in_registered={found}")
         registry = FunctionRegistry()
 
         for name in registered:
@@ -146,6 +153,7 @@ class TestContainsInvariants:
     @given(names=st.lists(ftl_function_names, min_size=1, max_size=20, unique=True))
     def test_all_registered_functions_in_registry(self, names: list[str]) -> None:
         """All registered functions are in registry."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -162,6 +170,8 @@ class TestContainsInvariants:
         self, registered: list[str], query: str
     ) -> None:
         """If name in registry, get_function_info returns non-None."""
+        found = query in registered
+        event(f"query_in_registered={found}")
         registry = FunctionRegistry()
 
         for name in registered:
@@ -184,6 +194,7 @@ class TestFunctionInfoInvariants:
     @given(names=st.lists(ftl_function_names, min_size=1, max_size=20, unique=True))
     def test_function_info_ftl_name_matches(self, names: list[str]) -> None:
         """FunctionSignature.ftl_name matches requested name."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -197,6 +208,7 @@ class TestFunctionInfoInvariants:
     @given(names=st.lists(ftl_function_names, min_size=1, max_size=20, unique=True))
     def test_function_info_has_callable(self, names: list[str]) -> None:
         """FunctionSignature always has callable."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -210,6 +222,7 @@ class TestFunctionInfoInvariants:
     @given(names=st.lists(ftl_function_names, min_size=1, max_size=20, unique=True))
     def test_function_info_has_param_mapping(self, names: list[str]) -> None:
         """FunctionSignature always has param_mapping dict."""
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -233,6 +246,7 @@ class TestCopyInvariants:
     @given(names=st.lists(ftl_function_names, min_size=0, max_size=20, unique=True))
     def test_copy_preserves_length(self, names: list[str]) -> None:
         """Copied registry has same length."""
+        event(f"registered_count={len(names)}")
         original = FunctionRegistry()
 
         for name in names:
@@ -245,6 +259,7 @@ class TestCopyInvariants:
     @given(names=st.lists(ftl_function_names, min_size=0, max_size=20, unique=True))
     def test_copy_preserves_function_names(self, names: list[str]) -> None:
         """Copied registry has same function names."""
+        event(f"registered_count={len(names)}")
         original = FunctionRegistry()
 
         for name in names:
@@ -260,6 +275,8 @@ class TestCopyInvariants:
     )
     def test_copy_isolation(self, original_names: list[str], new_name: str) -> None:
         """Modifying copy doesn't affect original."""
+        is_new = new_name not in original_names
+        event(f"new_name_is_novel={is_new}")
         original = FunctionRegistry()
 
         for name in original_names:
@@ -290,6 +307,7 @@ class TestOverwriteInvariants:
     )
     def test_overwrite_maintains_single_entry(self, name: str, count: int) -> None:
         """Overwriting same name maintains single entry."""
+        event(f"overwrite_count={count}")
         registry = FunctionRegistry()
 
         for _ in range(count):
@@ -305,6 +323,7 @@ class TestOverwriteInvariants:
         self, names: list[str]
     ) -> None:
         """Overwriting one function doesn't affect others."""
+        event(f"registered_count={len(names)}")
         # Pick a valid index from the generated list (middle element)
         overwrite_index = len(names) // 2
 
@@ -336,6 +355,7 @@ class TestEmptyRegistryInvariants:
     @given(query=ftl_function_names)
     def test_empty_registry_contains_nothing(self, query: str) -> None:
         """Empty registry contains no functions."""
+        event(f"query_len={len(query)}")
         registry = FunctionRegistry()
 
         assert query not in registry
@@ -343,6 +363,7 @@ class TestEmptyRegistryInvariants:
     @given(query=ftl_function_names)
     def test_empty_registry_get_info_returns_none(self, query: str) -> None:
         """Empty registry returns None for all queries."""
+        event(f"query_len={len(query)}")
         registry = FunctionRegistry()
 
         assert registry.get_function_info(query) is None
@@ -387,6 +408,7 @@ class TestStressAndEdgeCases:
     )
     def test_large_registry_performance_invariants(self, names: list[str]) -> None:
         """Large registries maintain invariants."""
+        event(f"registry_size={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:
@@ -410,6 +432,8 @@ class TestStressAndEdgeCases:
         self, register_names: list[str], query_names: list[str]
     ) -> None:
         """'in' operator never returns false positives."""
+        event(f"registered_count={len(register_names)}")
+        event(f"query_count={len(query_names)}")
         registry = FunctionRegistry()
 
         for name in register_names:
@@ -426,6 +450,8 @@ class TestStressAndEdgeCases:
     )
     def test_iteration_deterministic(self, names: list[str], iterations: int) -> None:
         """Multiple iterations yield consistent results."""
+        event(f"iterations={iterations}")
+        event(f"registered_count={len(names)}")
         registry = FunctionRegistry()
 
         for name in names:

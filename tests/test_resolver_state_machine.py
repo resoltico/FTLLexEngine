@@ -28,7 +28,7 @@ References:
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, invariant, rule
 
@@ -133,6 +133,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         )
         self.message_registry[msg_id] = message
         self.resolver.messages = self.message_registry
+        event("rule=add_simple_message")
         return msg_id
 
     @rule(
@@ -150,6 +151,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         )
         self.message_registry[msg_id] = message
         self.resolver.messages = self.message_registry
+        event("rule=add_message_with_variable")
         return msg_id
 
     @rule(target=terms, term_id=ftl_identifiers(), text=st.text(min_size=1, max_size=50))
@@ -163,6 +165,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         )
         self.term_registry[term_id] = term
         self.resolver.terms = self.term_registry
+        event("rule=add_simple_term")
         return term_id
 
     @rule(
@@ -183,6 +186,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         )
         self.message_registry[msg_id] = message
         self.resolver.messages = self.message_registry
+        event("rule=add_message_referencing_term")
         return msg_id
 
     @rule(
@@ -216,6 +220,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             # Determinism check
             assert result1 == result2, f"Resolution should be deterministic for {msg_id}"
             assert isinstance(result1, str)
+        event(f"rule=resolve_simple(vars={needs_vars})")
 
     @rule(
         msg_id=messages,
@@ -240,6 +245,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         except FrozenFluentError:
             # Expected if message references unknown variables/messages/terms
             pass
+        event("rule=resolve_message_with_args")
 
     @rule(
         msg_id=ftl_identifiers(),
@@ -268,6 +274,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         result, errors = self.resolver.resolve_message(message, args={}, attribute=attr_name)
         assert text in result
         assert errors == (), f"Unexpected errors: {errors}"
+        event("rule=add_message_with_attribute")
 
     @rule(msg_id=messages)
     def resolve_nonexistent_attribute(self, msg_id: str) -> None:
@@ -285,6 +292,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         assert isinstance(errors[0], FrozenFluentError)
         assert errors[0].category == ErrorCategory.REFERENCE
         assert "attribute" in str(errors[0]).lower()
+        event("rule=resolve_nonexistent_attribute")
 
     @rule()
     def resolve_nonexistent_term(self):
@@ -317,6 +325,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         result, errors = self.resolver.resolve_message(message, args={})
         assert isinstance(result, str)
         assert len(errors) > 0  # Should have error for nonexistent term
+        event("rule=resolve_nonexistent_term")
 
     @rule(term_id=terms)
     def resolve_term_attribute_not_found(self, term_id: str) -> None:
@@ -350,6 +359,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         result, errors = self.resolver.resolve_message(message, args={})
         assert isinstance(result, str)
         assert len(errors) > 0  # Should have error for nonexistent term attribute
+        event("rule=resolve_term_attr_not_found")
 
     @rule()
     def test_unknown_expression_type(self) -> None:
@@ -370,7 +380,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         """
         # Defensive code path - unreachable by design.
         # All Expression types in FTL AST are handled exhaustively.
-        pass  # noqa: PIE790  # pylint: disable=unnecessary-pass
+        event("rule=test_unknown_expression_type")
 
     @rule(
         msg_id1=ftl_identifiers(),
@@ -413,6 +423,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
 
         assert isinstance(result, str)
         # May or may not contain ERROR depending on execution order
+        event("rule=circular_reference_detection")
 
     @rule(
         msg_id=ftl_identifiers(),
@@ -455,6 +466,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         result, errors = self.resolver.resolve_message(message, args={"count": number})
         assert result in ["singular", "plural"]
         assert errors == (), f"Unexpected errors: {errors}"
+        event(f"rule=select_expression({result})")
 
     @rule()
     def test_message_no_value(self):
@@ -484,6 +496,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         assert errors[0].category == ErrorCategory.REFERENCE
         assert "no value" in str(errors[0]).lower()
         assert isinstance(result, str)
+        event("rule=test_message_no_value")
 
     @rule(
         msg_id=ftl_identifiers(),
@@ -521,6 +534,7 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         else:
             # Should gracefully degrade (unknown function)
             assert len(errors) > 0  # Should have error for unknown function
+        event(f"rule=function_reference({func_name})")
 
     @invariant()
     def resolver_state_consistent(self):
@@ -528,6 +542,8 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         assert self.resolver.messages == self.message_registry
         assert self.resolver.terms == self.term_registry
         assert self.resolver.locale == self.locale
+        msg_count = len(self.message_registry)
+        event(f"invariant=state_consistent({msg_count})")
 
     @invariant()
     def resolution_uses_explicit_context(self):
@@ -540,10 +556,12 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         # No global stack to check - state is passed explicitly
         # This invariant verifies the resolver is properly initialized
         assert self.resolver.locale == self.locale
+        event("invariant=explicit_context")
 
 
 # Stateful test runner
 TestFluentResolverStateMachine = FluentResolverStateMachine.TestCase
+TestFluentResolverStateMachine = pytest.mark.fuzz(TestFluentResolverStateMachine)
 
 
 class TestResolverErrorPaths:
@@ -702,6 +720,8 @@ class TestResolverErrorPaths:
         for value in test_values:
             result = resolver._format_value(value)
             assert isinstance(result, str), f"_format_value({value}) should return string"
+        val_type = type(value).__name__
+        event(f"last_value_type={val_type}")
 
     def test_select_expression_no_variants(self):
         """SelectExpression with no variants raises ValueError at construction."""

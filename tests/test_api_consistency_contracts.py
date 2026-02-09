@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, get_type_hints
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 if TYPE_CHECKING:
@@ -151,6 +151,7 @@ class TestTypeGuardNoneAcceptanceContract:
             is_valid_number,
         )
 
+        event(f"value={value}")
         assert is_valid_decimal(value) is False
         assert is_valid_number(value) is False
         assert is_valid_currency(value) is False

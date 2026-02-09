@@ -8,7 +8,7 @@ Property-based tests using Hypothesis for robust verification.
 
 from __future__ import annotations
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory
@@ -293,6 +293,7 @@ class TestFunctionExceptionHypothesis:
         self, locale: str, error_msg: str
     ) -> None:
         """Functions with locale injection always degrade gracefully on exceptions."""
+        event(f"locale={locale}")
 
         def failing_func(_value: str, _locale: str) -> str:
             raise RuntimeError(error_msg)
@@ -336,6 +337,7 @@ class TestFunctionExceptionHypothesis:
         self, locale: str, error_msg: str
     ) -> None:
         """Functions without locale injection always degrade gracefully on exceptions."""
+        event(f"locale={locale}")
 
         def failing_custom(_value: str) -> str:
             raise KeyError(error_msg)

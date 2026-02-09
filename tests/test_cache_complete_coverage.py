@@ -9,7 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -497,6 +497,7 @@ class TestIntegrityCacheProperties:
         assert cache.size == 2
 
 
+@pytest.mark.fuzz
 class TestIntegrityCacheHypothesisProperties:
     """Property-based tests for IntegrityCache using Hypothesis."""
 
@@ -525,6 +526,7 @@ class TestIntegrityCacheHypothesisProperties:
         assert cache.size == 0
         assert cache.hits == 0
         assert cache.misses == 0
+        event(f"maxsize={maxsize}")
 
     @given(st.text(min_size=0, max_size=100))
     @settings(max_examples=50)
@@ -561,3 +563,4 @@ class TestIntegrityCacheHypothesisProperties:
         entry = cache.get("msg", {"val": None}, None, "en", True)
         assert entry is not None
         assert entry.to_tuple() == ("result", ())
+        event(f"text_len={len(text)}")

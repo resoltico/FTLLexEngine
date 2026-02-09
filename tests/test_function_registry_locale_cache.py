@@ -11,7 +11,7 @@ Python 3.13+.
 """
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import IntegrityCache
@@ -81,6 +81,7 @@ class TestFunctionRegistryGetCallable:
         result = registry.get_callable(name)
 
         assert result is _identity_str
+        event(f"name_len={len(name)}")
 
 
 class TestLocaleContextCreate:

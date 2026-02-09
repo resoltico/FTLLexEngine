@@ -545,11 +545,16 @@ class FluentSerializer(ASTVisitor):
                 # Check for embedded newlines followed by whitespace within
                 # a single TextElement. This handles programmatically constructed
                 # ASTs where newlines and indented content coexist in one element.
+                # Skip whitespace-only continuation lines: those are preserved
+                # by StringLiteral placeable wrapping, not separate-line mode.
                 value = elem.value
                 idx = value.find("\n")
                 while idx != -1 and idx + 1 < len(value):
                     if value[idx + 1] == " ":
-                        return True
+                        next_nl = value.find("\n", idx + 1)
+                        line = value[idx + 1 : next_nl] if next_nl != -1 else value[idx + 1 :]
+                        if line.strip():
+                            return True
                     idx = value.find("\n", idx + 1)
                 prev_ends_newline = value.endswith("\n")
             else:
@@ -576,18 +581,52 @@ class FluentSerializer(ASTVisitor):
         ensures the parser establishes initial_common_indent from a line without
         semantic whitespace, preserving extra whitespace on continuation lines.
 
+        Leading Whitespace Preservation:
+        If the first element is a TextElement starting with spaces, those spaces
+        would be consumed as syntactic whitespace after '=' or ']' during
+        re-parse. The serializer wraps them in a StringLiteral placeable
+        to preserve content, consistent with brace and line-start wrapping.
+
+        Blank Continuation Line Preservation:
+        When a TextElement contains embedded newlines with whitespace-only content
+        between them, the continuation lines after structural indentation become
+        blank lines. The FTL parser strips all whitespace from blank continuation
+        lines during common-indent removal. The serializer wraps whitespace-only
+        continuation line content in StringLiteral placeables to preserve it.
+
         This ensures output is valid FTL that compliant parsers accept.
         """
         # Check if pattern needs separate-line serialization for roundtrip correctness.
         # This handles patterns where leading whitespace follows a newline in separate
         # TextElements (e.g., "Line 1\n" followed by "  Line 2").
-        if self._pattern_needs_separate_line(pattern):
+        needs_separate_line = self._pattern_needs_separate_line(pattern)
+        if needs_separate_line:
             output.append("\n" + _CONT_INDENT)
 
+        # Handle leading whitespace in the first TextElement.
+        # In FTL, whitespace after '=' and at the start of continuation lines
+        # is syntactic, not content. A TextElement starting with spaces at
+        # pattern start would lose its whitespace during re-parse. Wrap it
+        # in a StringLiteral placeable to preserve it, consistent with how
+        # braces and line-start syntax characters are already wrapped.
+        leading_ws_len = 0
+        if (
+            pattern.elements
+            and isinstance(pattern.elements[0], TextElement)
+            and pattern.elements[0].value
+            and pattern.elements[0].value[0] == " "
+        ):
+            first_value = pattern.elements[0].value
+            stripped = first_value.lstrip(" ")
+            leading_ws_len = len(first_value) - len(stripped)
+            output.append('{ "')
+            output.append(" " * leading_ws_len)
+            output.append('" }')
+
         # Track whether next text content will appear at a continuation line start.
-        # When _pattern_needs_separate_line triggers, the first element lands on
+        # When needs_separate_line triggers, the first element lands on
         # a continuation line after "\n    ".
-        at_line_start = self._pattern_needs_separate_line(pattern)
+        at_line_start = needs_separate_line
 
         for element in pattern.elements:
             if isinstance(element, TextElement):
@@ -595,24 +634,56 @@ class FluentSerializer(ASTVisitor):
                 # Literal braces must become Placeable(StringLiteral("{"/"}")
                 text = element.value
 
-                # Handle newlines: add 4-space structural indentation after each
-                # newline to create valid FTL continuation lines.
-                # Unconditional replacement is correct because:
-                # - Parser-produced ASTs split at newlines, so embedded newlines
-                #   only appear at element ends (no existing structural indent)
-                # - Programmatic ASTs may embed newlines with content whitespace
-                #   that must be preserved ON TOP of structural indentation
+                # Skip already-emitted leading whitespace on first element.
+                if leading_ws_len > 0:
+                    text = text[leading_ws_len:]
+                    leading_ws_len = 0
+                    if not text:
+                        # Entire element was just whitespace; placeable
+                        # already emitted above.
+                        at_line_start = False
+                        continue
+
+                # Handle newlines: add 4-space structural indentation after
+                # each newline to create valid FTL continuation lines.
+                # Whitespace-only continuation lines are wrapped in
+                # StringLiteral placeables because the FTL parser treats
+                # blank lines specially: all whitespace on blank continuation
+                # lines is stripped during common-indent removal, losing
+                # content whitespace and breaking roundtrip idempotence.
                 if "\n" in text:
-                    text = text.replace("\n", "\n    ")
-
-                # Emit text, handling all special characters:
-                # - Literal braces -> StringLiteral placeables
-                # - Line-initial '[', '*', '.' -> StringLiteral placeables
-                self._serialize_text_element(text, at_line_start, output)
-
-                # Update line-start tracking: text ending with newline (+indent)
-                # means the next element will be at a continuation line start.
-                at_line_start = text.endswith("\n    ")
+                    lines = text.split("\n")
+                    # Emit first line segment normally.
+                    self._serialize_text_element(
+                        lines[0], at_line_start, output,
+                    )
+                    for line in lines[1:]:
+                        # Structural newline + 4-space continuation indent.
+                        output.append("\n    ")
+                        if line and not line.strip():
+                            # Whitespace-only: wrap content in StringLiteral
+                            # placeable to prevent blank-line stripping.
+                            output.append("{ ")
+                            self._serialize_expression(
+                                StringLiteral(value=line),
+                                output,
+                                depth_guard,
+                            )
+                            output.append(" }")
+                        else:
+                            # Normal content or truly empty: emit text.
+                            self._serialize_text_element(
+                                line, True, output,
+                            )
+                    # Track line-start state for next element:
+                    # empty last line = text ended with \n, next at line start.
+                    at_line_start = not lines[-1]
+                else:
+                    # No newlines: emit as single text run.
+                    self._serialize_text_element(
+                        text, at_line_start, output,
+                    )
+                    at_line_start = False
             elif isinstance(element, Placeable):
                 output.append("{ ")
                 with depth_guard:
@@ -641,10 +712,14 @@ class FluentSerializer(ASTVisitor):
     ) -> None:
         """Emit TextElement content, wrapping special characters as StringLiteral placeables.
 
-        Handles two categories of characters that cannot appear literally:
+        Handles three categories of characters that cannot appear literally:
         1. Braces: '{' and '}' at any position (per Fluent spec, must be StringLiterals)
         2. Line-start syntax: '[', '*', '.' at the first position of a continuation
            line (parsed as variant/attribute syntax, not text)
+        3. Whitespace-preceded syntax: '[', '*', '.' as the first non-whitespace
+           character on a continuation line. The FTL parser strips leading whitespace
+           to detect structural markers; content spaces before these characters
+           do not prevent misinterpretation. Emit spaces as text, wrap the char.
 
         Emits directly to the output list to avoid intermediate string allocation.
         """
@@ -665,6 +740,22 @@ class FluentSerializer(ASTVisitor):
                 line_start = False
                 continue
 
+            # Syntax character preceded by whitespace at continuation line start.
+            # The FTL parser strips all leading whitespace to find the first
+            # non-whitespace character; if it is a syntax character, the parser
+            # treats the line as structural (attribute/variant), not pattern text.
+            # Emit the leading spaces as plain text, then wrap the syntax char.
+            if line_start and ch == " ":
+                scan = pos + 1
+                while scan < length and text[scan] == " ":
+                    scan += 1
+                if scan < length and text[scan] in syntax:
+                    output.append(text[pos:scan])
+                    output.append(placeable[text[scan]])
+                    pos = scan + 1
+                    line_start = False
+                    continue
+
             # Scan ahead for the next character that needs special handling.
             # Track newline+indent boundaries to update line_start state.
             run_start = pos
@@ -680,8 +771,14 @@ class FluentSerializer(ASTVisitor):
                     # Include the newline+indent in this text run
                     pos += 5
                     line_start = True
-                    # If next char after indent is syntax-significant, break to wrap it
-                    if pos < length and text[pos] in syntax:
+                    # If next char after indent is syntax-significant, break
+                    # to wrap it. Scan past leading spaces: the FTL parser
+                    # strips whitespace before checking for syntax markers.
+                    scan = pos
+                    while scan < length and text[scan] == " ":
+                        scan += 1
+                    if scan < length and text[scan] in syntax:
+                        pos = scan
                         break
                     continue
                 pos += 1

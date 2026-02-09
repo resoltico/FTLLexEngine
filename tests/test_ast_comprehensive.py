@@ -5,7 +5,7 @@ Tests all AST node classes for immutability, construction, and type guards.
 """
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.enums import CommentType
@@ -48,6 +48,8 @@ class TestSpanDataclass:
     @given(st.integers(min_value=0, max_value=1000), st.integers(min_value=0, max_value=1000))
     def test_span_valid_construction(self, start: int, end: int) -> None:
         """Property: Span accepts valid start/end values."""
+        span_len = end - start if end >= start else 0
+        event(f"span_len={span_len}")
         if end >= start:
             span = Span(start=start, end=end)
             assert span.start == start

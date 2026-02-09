@@ -5,7 +5,7 @@ Covers specific edge cases and error paths to achieve 100% coverage.
 
 from typing import cast
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import (
@@ -454,6 +454,7 @@ class TestParseVariantKeyFix:
 @example(0)
 def test_parse_variant_key_number_property(num: int) -> None:
     """Property test for numeric variant keys."""
+    event(f"num={num}")
     cursor = Cursor(str(num), 0)
     result = parse_variant_key(cursor)
     if result is not None:

@@ -11,7 +11,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -88,6 +88,7 @@ class TestParserFunctionCallDepthTracking:
     @settings(max_examples=10)
     def test_function_nesting_depth_property(self, depth: int) -> None:
         """PROPERTY: Parser handles function nesting up to configured depth."""
+        event(f"depth={depth}")
         parser = FluentParserV1(max_nesting_depth=depth)
 
         # Create nesting just at the limit

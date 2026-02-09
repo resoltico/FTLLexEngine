@@ -11,7 +11,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.analysis.graph import (
@@ -492,6 +492,7 @@ class TestDetectCyclesProperties:
     @settings(max_examples=100)
     def test_no_edges_no_cycles(self, nodes: list[str]) -> None:
         """PROPERTY: Graph with no edges has no cycles."""
+        event(f"node_count={len(nodes)}")
         deps: dict[str, set[str]] = {node: set() for node in nodes}
         cycles = detect_cycles(deps)
         assert cycles == []
@@ -502,6 +503,7 @@ class TestDetectCyclesProperties:
     @settings(max_examples=100)
     def test_linear_chain_no_cycles(self, chain: list[str]) -> None:
         """PROPERTY: Linear chain has no cycles."""
+        event(f"chain_length={len(chain)}")
         deps: dict[str, set[str]] = {}
         for i, node in enumerate(chain[:-1]):
             deps[node] = {chain[i + 1]}
@@ -516,6 +518,7 @@ class TestDetectCyclesProperties:
     @settings(max_examples=100)
     def test_ring_has_one_cycle(self, ring: list[str]) -> None:
         """PROPERTY: Ring topology has exactly one cycle."""
+        event(f"ring_size={len(ring)}")
         deps: dict[str, set[str]] = {}
         for i, node in enumerate(ring):
             next_node = ring[(i + 1) % len(ring)]
@@ -543,6 +546,7 @@ class TestCanonicalizeCycleProperties:
     @settings(max_examples=100)
     def test_canonical_starts_with_minimum(self, nodes: list[str]) -> None:
         """PROPERTY: Canonical cycle starts with lexicographically smallest."""
+        event(f"node_count={len(nodes)}")
         # Create a cycle: nodes + [nodes[0]]
         cycle = [*nodes, nodes[0]]
         canonical = canonicalize_cycle(cycle)
@@ -563,6 +567,7 @@ class TestCanonicalizeCycleProperties:
     @settings(max_examples=100)
     def test_canonical_is_idempotent(self, nodes: list[str]) -> None:
         """PROPERTY: Canonicalizing twice gives same result."""
+        event(f"node_count={len(nodes)}")
         cycle = [*nodes, nodes[0]]
         once = canonicalize_cycle(cycle)
         twice = canonicalize_cycle(once)
@@ -581,6 +586,8 @@ class TestCanonicalizeCycleProperties:
     @settings(max_examples=100)
     def test_all_rotations_same_canonical(self, nodes: list[str], rotation: int) -> None:
         """PROPERTY: All rotations of same cycle produce same canonical form."""
+        event(f"node_count={len(nodes)}")
+        event(f"rotation={rotation % len(nodes)}")
         # Rotate the cycle
         rotation = rotation % len(nodes)
         rotated_nodes = nodes[rotation:] + nodes[:rotation]

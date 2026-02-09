@@ -5,7 +5,7 @@ Targets uncovered branches and error paths using property-based testing.
 
 from __future__ import annotations
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -33,6 +33,7 @@ class TestNestingDepthControl:
     @given(st.integers(min_value=1, max_value=1000))
     def test_parser_accepts_positive_depths(self, depth: int) -> None:
         """PROPERTY: All positive depths are accepted by FluentParserV1."""
+        event(f"depth={depth}")
         # Verify parser accepts any positive depth without error
         parser = FluentParserV1(max_nesting_depth=depth)
         assert parser.max_nesting_depth == depth
@@ -108,6 +109,7 @@ msg = { $val ->
     )
     def test_variant_key_number_property(self, key: int) -> None:
         """PROPERTY: Number variant keys parse correctly."""
+        event(f"key={key}")
         bundle = FluentBundle("en_US")
         bundle.add_resource(f"""
 msg = {{ $val ->
@@ -228,6 +230,7 @@ class TestCallArgumentsEdgeCases:
     )
     def test_positional_args_property(self, values: list[int]) -> None:
         """PROPERTY: Multiple positional args parse correctly."""
+        event(f"arg_count={len(values)}")
         bundle = FluentBundle("en_US")
 
         def test_func(*args: int | str) -> str:
@@ -301,6 +304,7 @@ class TestMetamorphicProperties:
     )
     def test_number_literal_roundtrip(self, value: int) -> None:
         """METAMORPHIC: Number literals round-trip through parsing."""
+        event(f"value={value}")
         bundle = FluentBundle("en_US")
         bundle.add_resource(f"msg = {{ {value} }}")
         result, errors = bundle.format_pattern("msg")
@@ -322,6 +326,7 @@ class TestMetamorphicProperties:
     )
     def test_string_literal_roundtrip(self, text: str) -> None:
         """METAMORPHIC: String literals round-trip through parsing."""
+        event(f"text_length={len(text)}")
         bundle = FluentBundle("en_US")
         bundle.add_resource(f'msg = {{ "{text}" }}')
         result, errors = bundle.format_pattern("msg")
@@ -420,6 +425,7 @@ msg = { -value ->
 @example(5)
 def test_variant_count_property(variant_count: int) -> None:
     """PROPERTY: Select expressions handle variable number of variants."""
+    event(f"variant_count={variant_count}")
     bundle = FluentBundle("en_US")
 
     # Generate variants

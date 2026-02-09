@@ -7,7 +7,7 @@ Focuses on pattern resolution, variant matching, and fallback logic.
 from decimal import Decimal
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -100,6 +100,7 @@ class TestPlaceableResolution:
     )
     def test_placeable_resolution_property(self, var_name: str, value: str) -> None:
         """Property: Placeables always resolve variables from args."""
+        event(f"var_name_len={len(var_name)}")
         pattern = Pattern(
             elements=(
                 Placeable(expression=VariableReference(id=Identifier(var_name))),
@@ -252,6 +253,7 @@ class TestVariantNumericMatching:
     @given(number=st.integers(min_value=-100, max_value=100))
     def test_integer_exact_matching_property(self, number: int) -> None:
         """Property: Integer selectors match NumberLiteral variants exactly."""
+        event(f"number={number}")
         selector = VariableReference(id=Identifier("n"))
         variants = (
             Variant(
@@ -468,6 +470,8 @@ class TestNumericVariantEdgeCases:
     )
     def test_decimal_variant_matching_property(self, decimal_str: Decimal) -> None:
         """Property: Decimal values match exactly when variant key matches."""
+        sign = "negative" if decimal_str.is_signed() else "positive"
+        event(f"decimal_sign={sign}")
         selector = VariableReference(id=Identifier("amount"))
         str_repr = str(decimal_str)
         # NumberLiteral uses Decimal for decimal numbers

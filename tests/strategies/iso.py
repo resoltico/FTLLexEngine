@@ -88,13 +88,18 @@ zero_decimal_currencies: SearchStrategy[str] = st.sampled_from([
     "BIF", "DJF", "GNF", "KMF", "VUV", "XAF", "XOF", "XPF",
 ])
 
+two_decimal_currencies: SearchStrategy[str] = st.sampled_from([
+    "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "INR", "BRL", "MXN", "ZAR",
+])
+
 three_decimal_currencies: SearchStrategy[str] = st.sampled_from([
     "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
 ])
 
-# Two decimal currencies (standard)
-two_decimal_currencies: SearchStrategy[str] = st.sampled_from([
-    "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "INR", "BRL", "MXN", "ZAR",
+# D11 fix: Four decimal currencies (accounting units)
+four_decimal_currencies: SearchStrategy[str] = st.sampled_from([
+    "CLF",  # Unidad de Fomento (Chile)
+    "UYW",  # Unidad Previsional (Uruguay)
 ])
 
 
@@ -103,11 +108,14 @@ def currency_by_decimals(draw: st.DrawFn) -> str:
     """Generate currency code with event emission for decimal category.
 
     Events emitted:
-    - currency_decimals={0|2|3}: Decimal places category for HypoFuzz guidance
+    - currency_decimals={0|2|3|4}: Decimal places category for HypoFuzz guidance
+
+    D11 fix: Includes four-decimal currencies (CLF, UYW) for financial
+    accounting unit coverage.
 
     Useful for testing decimal-sensitive formatting code paths.
     """
-    category = draw(st.sampled_from(["zero", "two", "three"]))
+    category = draw(st.sampled_from(["zero", "two", "three", "four"]))
 
     match category:
         case "zero":
@@ -116,9 +124,12 @@ def currency_by_decimals(draw: st.DrawFn) -> str:
         case "two":
             code = draw(two_decimal_currencies)
             event("currency_decimals=2")
-        case _:  # three
+        case "three":
             code = draw(three_decimal_currencies)
             event("currency_decimals=3")
+        case _:  # four
+            code = draw(four_decimal_currencies)
+            event("currency_decimals=4")
 
     return code
 
@@ -167,6 +178,9 @@ def locale_by_script(draw: st.DrawFn) -> str:
     Events emitted:
     - locale_script={latin|cjk|cyrillic|arabic|other}
 
+    D10 fix: Cyrillic category expanded to include Ukrainian (uk), Bulgarian (bg),
+    and Serbian (sr) - major Cyrillic languages with distinct formatting rules.
+
     Useful for testing script-specific rendering and RTL handling.
     """
     script = draw(st.sampled_from(["latin", "cjk", "cyrillic", "arabic", "other"]))
@@ -174,7 +188,13 @@ def locale_by_script(draw: st.DrawFn) -> str:
     script_locales = {
         "latin": ["en", "en_US", "de", "de_DE", "fr", "fr_FR", "es", "es_ES", "it", "pt"],
         "cjk": ["ja", "ja_JP", "zh", "zh_CN", "zh_TW", "ko", "ko_KR"],
-        "cyrillic": ["ru", "ru_RU"],
+        # D10 fix: Expanded Cyrillic coverage
+        "cyrillic": [
+            "ru", "ru_RU",  # Russian
+            "uk", "uk_UA",  # Ukrainian (2nd largest Cyrillic)
+            "bg", "bg_BG",  # Bulgarian (different number formatting)
+            "sr", "sr_RS",  # Serbian (dual script: Cyrillic/Latin)
+        ],
         "arabic": ["ar", "ar_SA", "ar_EG"],
         "other": ["lv", "lv_LV", "lt", "lt_LT", "et", "et_EE"],
     }

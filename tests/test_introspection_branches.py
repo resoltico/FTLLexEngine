@@ -10,7 +10,7 @@ Covers missing branches:
 
 from __future__ import annotations
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.introspection import introspect_message
@@ -56,6 +56,7 @@ class TestTextElementBranchCoverage:
     )
     def test_text_only_message_property(self, text: str) -> None:
         """PROPERTY: Messages with only text have no extracted metadata."""
+        event(f"input_len={len(text)}")
         parser = FluentParserV1()
         safe_text = text.replace("\\", "\\\\").replace("\n", " ").strip()
         if not safe_text:

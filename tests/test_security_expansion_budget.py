@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 sys.path.insert(0, "src")
@@ -72,6 +72,7 @@ class TestBillionLaughsPrevention:
     @settings(max_examples=10)
     def test_binary_expansion_always_caught(self, depth: int) -> None:
         """Binary expansion at any depth is caught by expansion budget."""
+        event(f"depth={depth}")
         lines = [f"m{i} = {{m{i + 1}}}{{m{i + 1}}}" for i in range(depth)]
         lines.append(f"m{depth} = X")
         ftl = "\n".join(lines)
@@ -109,6 +110,7 @@ class TestDAGExpansionPrevention:
     @settings(max_examples=10)
     def test_linear_nesting_within_budget(self, depth: int) -> None:
         """Linear nesting (no sharing) stays within node budget."""
+        event(f"depth={depth}")
         value: object = 1
         for _ in range(depth):
             value = [value]

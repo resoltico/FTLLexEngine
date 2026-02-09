@@ -15,7 +15,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
@@ -118,6 +118,7 @@ class TestGlobalDepthGuard:
     @example(max_depth=5)
     def test_global_depth_guard_max_depth_property(self, max_depth: int) -> None:
         """Property: GlobalDepthGuard allows exactly max_depth levels."""
+        event(f"max_depth={max_depth}")
         guards = [GlobalDepthGuard(max_depth=max_depth) for _ in range(max_depth + 1)]
 
         # Should be able to nest up to max_depth levels
@@ -470,6 +471,7 @@ class TestFluentResolverIntegration:
     @example(max_depth=2)
     def test_depth_guard_properties(self, max_depth: int) -> None:
         """Property: Depth guard consistently enforces max_depth limit."""
+        event(f"max_depth={max_depth}")
         guards = [GlobalDepthGuard(max_depth=max_depth) for _ in range(max_depth + 2)]
 
         # Should succeed up to max_depth

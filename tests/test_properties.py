@@ -5,7 +5,7 @@ Uses Hypothesis to test properties that must always hold, regardless of input.
 
 from __future__ import annotations
 
-from hypothesis import example, given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -28,6 +28,7 @@ class TestFunctionBridgeProperties:
     def test_snake_to_camel_conversion(self, snake_case: str) -> None:
         """snake_case → camelCase produces valid camelCase."""
         camel = FunctionRegistry._to_camel_case(snake_case)
+        event(f"camel_len={len(camel)}")
         # Should be a valid identifier
         assert isinstance(camel, str)
         assert len(camel) > 0
@@ -41,6 +42,7 @@ class TestPluralRulesProperties:
     def test_latvian_plural_categories_complete(self, n: int) -> None:
         """Every number maps to a valid Latvian category."""
         category = select_plural_category(n, "lv_LV")
+        event(f"lv_category={category}")
         assert category in ["zero", "one", "other"]
 
     @given(st.integers(min_value=0, max_value=100000))
@@ -48,6 +50,7 @@ class TestPluralRulesProperties:
     def test_english_plural_categories(self, n: int) -> None:
         """English has only one/other, and one means exactly 1."""
         category = select_plural_category(n, "en_US")
+        event(f"en_category={category}")
         assert category in ["one", "other"]
         assert (category == "one") == (n == 1)
 

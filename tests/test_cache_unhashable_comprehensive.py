@@ -10,7 +10,7 @@ Lists, dicts, and sets are converted to hashable equivalents
 from typing import NoReturn
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import IntegrityCache
@@ -341,6 +341,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
         assert cache.unhashable_skips == 0
+        event(f"tuple_len={len(tuple_value)}")
 
     @given(
         st.lists(st.integers(), min_size=1, max_size=10),
@@ -356,6 +357,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         assert cached is not None
         assert cached.to_tuple() == ("formatted", ())
         assert cache.unhashable_skips == 0
+        event(f"list_len={len(list_value)}")
 
     @given(
         st.dictionaries(st.text(min_size=1, max_size=10), st.integers(), min_size=1, max_size=5),
@@ -369,6 +371,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
         assert len(cache) == 1  # Now cached
         assert cache.unhashable_skips == 0
+        event(f"dict_len={len(dict_value)}")
 
     def test_mixed_hashable_and_converted_args(self) -> None:
         """Verify cache handles mixed hashable/convertible args correctly."""
