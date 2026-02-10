@@ -56,7 +56,7 @@ from ftllexengine.parsing.guards import is_valid_decimal
 
 # Create bundle
 bundle = FluentBundle("lv_LV")
-bundle.add_resource("price = { CURRENCY($amount, currency: 'EUR') }")
+bundle.add_resource('price = { CURRENCY($amount, currency: "EUR") }')
 
 # Format for display
 formatted, _ = bundle.format_pattern("price", {"amount": 1234.56})
@@ -606,7 +606,8 @@ if errors:
     print(f"Parse error: {errors[0]}")
     print(f"Input: '{user_input}'")
     print(f"Locale: {locale}")
-    print(f"Error code: {errors[0].diagnostic_code}")
+    if errors[0].diagnostic:
+        print(f"Error code: {errors[0].diagnostic.code}")
 ```
 
 ### Roundtrip Doesn't Preserve Value
@@ -836,9 +837,9 @@ parse_date("Januar 15, 2026", "de_DE")  # German month name
 ## See Also
 
 - [LOCALE_GUIDE.md](LOCALE_GUIDE.md) - Locale formatting behavior
-- [docs/DOC_00_Index.md](docs/DOC_00_Index.md) - Complete API reference
-- [README.md](README.md) - Getting started
-- [CHANGELOG.md](CHANGELOG.md) - Version history
+- [DOC_00_Index.md](DOC_00_Index.md) - Complete API reference
+- [README.md](../README.md) - Getting started
+- [CHANGELOG.md](../CHANGELOG.md) - Version history
 - [Babel Documentation](https://babel.pocoo.org/) - Number and date formatting patterns
 
 ---

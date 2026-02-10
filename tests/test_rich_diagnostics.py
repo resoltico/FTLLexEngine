@@ -193,7 +193,7 @@ class TestFrozenFluentErrorWithDiagnostic:
             str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
         )
         assert error.diagnostic == diagnostic
-        assert "TYPE_MISMATCH" in str(error)
+        assert error.diagnostic.code.name == "TYPE_MISMATCH"
 
     def test_frozen_error_with_resolution_category(self) -> None:
         """FrozenFluentError with RESOLUTION category and rich diagnostics."""

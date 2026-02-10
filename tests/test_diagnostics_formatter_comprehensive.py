@@ -9,11 +9,14 @@ Python 3.13+.
 import json
 from unittest.mock import Mock
 
-from hypothesis import given
+import pytest
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode, SourceSpan
 from ftllexengine.diagnostics.formatter import DiagnosticFormatter, OutputFormat
+
+pytestmark = pytest.mark.fuzz
 
 
 class TestOutputFormatEnum:
@@ -797,7 +800,8 @@ def test_sanitize_property_length(message: str, sanitize: bool, max_length: int)
 
     result = formatter.format(diagnostic)
 
-    if sanitize and len(message) > max_length:
+    truncated = sanitize and len(message) > max_length
+    if truncated:
         # Message portion should be truncated to max_length + "..."
         # Format is "CODE: message", so extract message part.
         # Control character escaping (\n -> \\n) may expand the truncated text,
@@ -809,6 +813,7 @@ def test_sanitize_property_length(message: str, sanitize: bool, max_length: int)
         # No sanitization, full message should appear (with control chars escaped)
         escaped_message = DiagnosticFormatter._escape_control_chars(message)
         assert escaped_message in result
+    event(f"truncated={truncated}")
 
 
 @given(
@@ -835,6 +840,7 @@ def test_format_property_all_codes(
     escaped_message = DiagnosticFormatter._escape_control_chars(message)
     assert escaped_message in result
     assert severity in result
+    event(f"severity={severity}")
 
 
 @given(
@@ -864,3 +870,4 @@ def test_format_property_all_formats(format_type: OutputFormat, message: str) ->
         # Text formats: control chars are escaped (e.g., \n -> \\n)
         escaped_message = DiagnosticFormatter._escape_control_chars(message)
         assert escaped_message in result or escaped_message[:50] in result
+    event(f"format={format_type.value}")

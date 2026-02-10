@@ -213,7 +213,7 @@ count = { $n ->
 ### Duplicate Named Arguments
 
 ```python
-source = "msg = { NUMBER($n, style: 'decimal', style: 'percent') }"
+source = 'msg = { NUMBER($n, style: "decimal", style: "percent") }'
 # Error: VALIDATION_NAMED_ARG_DUPLICATE
 ```
 

@@ -76,15 +76,17 @@ from ftllexengine import FrozenFluentError, ErrorCategory
 result, errors = bundle.format_pattern("msg", {"var": value})
 if errors:
     for error in errors:
+        diag = error.diagnostic
+        msg = diag.message if diag else error.message
         match error.category:
             case ErrorCategory.REFERENCE:
-                logger.warning(f"Missing translation: {error}")
+                logger.warning(f"Missing translation: {msg}")
             case ErrorCategory.CYCLIC:
-                logger.error(f"Cyclic reference: {error}")
+                logger.error(f"Cyclic reference: {msg}")
             case ErrorCategory.RESOLUTION:
-                logger.error(f"Runtime error: {error}")
+                logger.error(f"Runtime error: {msg}")
             case _:
-                logger.error(f"Error: {error}")
+                logger.error(f"Error: {msg}")
 ```
 
 ### Advanced - Function Registry

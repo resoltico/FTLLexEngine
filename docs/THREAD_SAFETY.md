@@ -144,7 +144,7 @@ The introspection module uses `WeakKeyDictionary` **without locking**.
 
 **Architectural Decision**: This is an **intentional trade-off** accepting potential race conditions for better common-case performance.
 
-**Location**: `src/ftllexengine/introspection.py:59-81`
+**Location**: `src/ftllexengine/introspection/message.py:59-83`
 
 **Trade-off Analysis**:
 
@@ -225,7 +225,7 @@ class FluentBundle:
         if functions is not None:
             self._functions = functions.copy()
         else:
-            self._functions = get_builtin_registry().copy()
+            self._functions = get_shared_registry().copy()
 ```
 
 **Guarantees**:

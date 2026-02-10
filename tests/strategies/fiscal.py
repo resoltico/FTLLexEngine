@@ -260,59 +260,24 @@ def month_end_policy_with_event(draw: st.DrawFn) -> str:
 
 
 @composite
-def fiscal_calendar_dict(draw: st.DrawFn) -> dict[str, int | str]:
-    """Generate complete fiscal calendar configuration as dict.
-
-    D9 fix: Returns all FiscalCalendar constructor arguments as a dict,
-    ready for st.builds(FiscalCalendar, **config) when domain object is available.
+def fiscal_periods(
+    draw: st.DrawFn,
+) -> tuple[int, int, int]:
+    """Generate valid FiscalPeriod constructor args with events.
 
     Events emitted:
-    - fiscal_config={calendar_type}: Fiscal calendar configuration type
+    - fiscal_period_quarter={1|2|3|4}: Quarter in generated period
 
-    Returns dict with keys:
-    - fiscal_year_start_month: int (1-12)
-    - first_fiscal_month_name: str (for display)
+    Returns:
+        Tuple of (fiscal_year, quarter, month).
     """
-    cal_type = draw(
-        st.sampled_from([
-            "calendar_year",
-            "uk_japan",
-            "australia",
-            "us_federal",
-            "other",
-        ])
+    fiscal_year = draw(
+        st.integers(min_value=1900, max_value=2100)
     )
-
-    match cal_type:
-        case "calendar_year":
-            month = 1
-            month_name = "January"
-        case "uk_japan":
-            month = 4
-            month_name = "April"
-        case "australia":
-            month = 7
-            month_name = "July"
-        case "us_federal":
-            month = 10
-            month_name = "October"
-        case _:  # other
-            excluded = {1, 4, 7, 10}
-            month = draw(
-                st.integers(min_value=2, max_value=12).filter(lambda m: m not in excluded)
-            )
-            month_names = {
-                2: "February", 3: "March", 5: "May", 6: "June",
-                8: "August", 9: "September", 11: "November", 12: "December",
-            }
-            month_name = month_names[month]
-
-    event(f"fiscal_config={cal_type}")
-
-    return {
-        "fiscal_year_start_month": month,
-        "first_fiscal_month_name": month_name,
-    }
+    quarter = draw(st.integers(min_value=1, max_value=4))
+    month = draw(st.integers(min_value=1, max_value=12))
+    event(f"fiscal_period_quarter={quarter}")
+    return (fiscal_year, quarter, month)
 
 
 @composite

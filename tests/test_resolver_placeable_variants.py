@@ -14,6 +14,7 @@ from unittest.mock import Mock
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.diagnostics.errors import ErrorCategory
 from ftllexengine.runtime.bundle import FluentBundle
 
 # ============================================================================
@@ -324,7 +325,7 @@ msg = { -recursive }
 
         # Should have cyclic reference error
         assert len(errors) > 0
-        assert any("cycl" in str(e).lower() for e in errors)
+        assert any(e.category == ErrorCategory.CYCLIC for e in errors)
         # Should return fallback
         assert "{-recursive}" in result
 
@@ -345,7 +346,7 @@ msg = { -termA }
 
         # Should detect cycle
         assert len(errors) > 0
-        assert any("cycl" in str(e).lower() for e in errors)
+        assert any(e.category == ErrorCategory.CYCLIC for e in errors)
 
     def test_term_attribute_cycle(self) -> None:
         """COVERAGE: Lines 360-363 - Cycle through term attributes."""

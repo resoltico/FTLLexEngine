@@ -6,7 +6,7 @@ Tests locale-aware number parsing (float and Decimal) with error handling.
 
 from decimal import Decimal
 
-from hypothesis import assume, given
+from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -23,6 +23,8 @@ class TestParseNumberProperties:
         # Should always return a tuple
         assert isinstance(result, (float, type(None)))
         assert isinstance(errors, tuple)
+        parsed = result is not None
+        event(f"parsed={parsed}")
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_number_error_structure(self, value: str, locale_code: str) -> None:
@@ -35,6 +37,8 @@ class TestParseNumberProperties:
             assert hasattr(error.context, "input_value")
             assert hasattr(error.context, "locale_code")
             assert hasattr(error.context, "parse_type")
+        n_errors = len(errors)
+        event(f"error_count={n_errors}")
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_number_result_xor_errors(self, value: str, locale_code: str) -> None:
@@ -43,9 +47,11 @@ class TestParseNumberProperties:
         # Either result is None with errors, or result is float with no errors
         if result is None:
             assert len(errors) > 0
+            event("outcome=error_branch")
         else:
             assert isinstance(result, float)
             assert len(errors) == 0
+            event("outcome=success_branch")
 
     def test_parse_number_valid_en_us_integer(self) -> None:
         """Verify parse_number handles simple US integer."""
@@ -105,6 +111,8 @@ class TestParseNumberProperties:
         # If parsing succeeded, result should be close to original
         if result is not None:
             assert abs(result - value) < 1e-10 or (result == 0.0 and value == 0.0)
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
     @given(st.integers(min_value=-1000000, max_value=1000000))
     def test_parse_number_integers_en_us(self, value: int) -> None:
@@ -113,6 +121,8 @@ class TestParseNumberProperties:
         result, errors = parse_number(str_value, "en_US")
         assert result == float(value)
         assert errors == ()
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
     def test_parse_number_negative_number(self) -> None:
         """Verify parse_number handles negative numbers."""
@@ -137,6 +147,8 @@ class TestParseDecimalProperties:
         # Should always return a tuple
         assert isinstance(result, (Decimal, type(None)))
         assert isinstance(errors, tuple)
+        parsed = result is not None
+        event(f"parsed={parsed}")
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_decimal_error_structure(self, value: str, locale_code: str) -> None:
@@ -149,6 +161,8 @@ class TestParseDecimalProperties:
             assert hasattr(error.context, "input_value")
             assert hasattr(error.context, "locale_code")
             assert hasattr(error.context, "parse_type")
+        n_errors = len(errors)
+        event(f"error_count={n_errors}")
 
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_parse_decimal_result_xor_errors(self, value: str, locale_code: str) -> None:
@@ -157,9 +171,11 @@ class TestParseDecimalProperties:
         # Either result is None with errors, or result is Decimal with no errors
         if result is None:
             assert len(errors) > 0
+            event("outcome=error_branch")
         else:
             assert isinstance(result, Decimal)
             assert len(errors) == 0
+            event("outcome=success_branch")
 
     def test_parse_decimal_valid_en_us_integer(self) -> None:
         """Verify parse_decimal handles simple US integer."""
@@ -214,6 +230,8 @@ class TestParseDecimalProperties:
         result, errors = parse_decimal(str_value, "en_US")
         assert result == Decimal(value)
         assert errors == ()
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
     @given(
         st.decimals(
@@ -235,6 +253,8 @@ class TestParseDecimalProperties:
         # If parsing succeeded, result should equal original
         if result is not None:
             assert result == value
+        sign = "neg" if value < 0 else "non_neg"
+        event(f"value_sign={sign}")
 
     def test_parse_decimal_negative_number(self) -> None:
         """Verify parse_decimal handles negative numbers."""
@@ -396,3 +416,5 @@ class TestParseNumberEdgeCases:
         # Should fail to parse
         assert result is None
         assert len(errors) == 1
+        has_space = " " in value
+        event(f"has_space={has_space}")

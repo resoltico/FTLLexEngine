@@ -13,6 +13,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-02-10
+
+### Changed
+
+- **Serializer pattern emission refactored to classification-based dispatch** (REFACTOR-SERIALIZER-PATTERN-001):
+  - Replaced three interleaved methods (`_serialize_pattern`, `_serialize_text_element`, `_pattern_needs_separate_line`) with a unified continuation line classification model
+  - New `_LineKind` enum (`EMPTY`, `WHITESPACE_ONLY`, `SYNTAX_LEADING`, `NORMAL`) classifies each continuation line exactly once; a single `match/case` dispatch point selects the correct wrapping strategy
+  - `_classify_line()` pure function and `_escape_text()` (brace-only escaping) extracted as module-level functions, enabling independent testing and reuse
+  - `_emit_classified_line()` static method serves as the single dispatch point for all continuation line ambiguity classes
+  - All `match/case` dispatches now use `assert_never()` exhaustiveness guards (`_serialize_entry`, `_serialize_expression`, `_emit_classified_line`) to catch missing cases at type-check time when new AST variants are added
+  - `_serialize_expression` uses full structural destructuring in patterns (`StringLiteral(value=value)`, `TermReference(id=Identifier(name=name), ...)`) instead of body-level attribute access
+  - No public API changes; `serialize()` and `FluentSerializer.serialize()` semantics preserved
+  - Location: `syntax/serializer.py`
+
+### Fixed
+
+- **Serializer roundtrip idempotence failure on `SYNTAX_LEADING` continuation lines with content whitespace** (BUG-SERIALIZER-WS-SYNTAX-002):
+  - Same bug class as BUG-SERIALIZER-WS-SYNTAX-001 (fixed in 0.104.0): syntactically ambiguous whitespace in serializer output; residual case missed by the original fix and inherited by the 0.105.0 classification refactor
+  - When a continuation line had content spaces preceding a syntax character (`.`, `*`, `[`), e.g., `"dS7aQ\n      .h?Q"`, the `SYNTAX_LEADING` emission branch wrapped the syntax character in a `StringLiteral` placeable (`{ "." }`) but emitted the preceding content spaces as raw text
+  - The FTL parser computes common indent as the minimum indent across all continuation lines; structural indent (4 spaces) plus raw content spaces (e.g., 6 spaces = 10 total) became the common indent, and all 10 spaces were stripped during common-indent removal, losing the 6 content spaces
+  - Re-serializing the parsed AST produced only the 4-space structural indent before the placeable, breaking idempotence: `S(AST) != S(P(S(AST)))`
+  - Fix: `_emit_classified_line` `SYNTAX_LEADING` branch now wraps leading content spaces in a `StringLiteral` placeable (`{ "      " }{ "." }...`), matching the treatment already used by `WHITESPACE_ONLY` and leading-whitespace-after-`=`; the parser sees the spaces as expression content (opaque to indent stripping), preserving them through roundtrip
+  - Invariant enforced: all content whitespace preceding the first non-whitespace character on a continuation line must be placeable-wrapped; raw spaces are indistinguishable from structural indent
+  - Location: `syntax/serializer.py` `_emit_classified_line()`
+
+- **`Diagnostic.__str__` returns raw dataclass repr instead of human-readable message** (BUG-DIAGNOSTIC-STR-001):
+  - `Diagnostic` (frozen dataclass) had no `__str__` method; `str(diagnostic)` returned the full `repr()` with all fields including `None` values, e.g., `Diagnostic(code=<DiagnosticCode.VARIABLE_NOT_PROVIDED: 1005>, message="...", span=None, ...)`
+  - All `FrozenFluentError` construction sites use `str(diag)` as the `message` parameter, so `error.message` and `str(error)` both returned the raw repr
+  - Users calling `str(error)` in logging, error display, or exception handlers saw opaque dataclass output instead of the human-readable message
+  - Fix: Added `__str__` to `Diagnostic` returning `self.message`; `repr()` unchanged for debugging
+  - Location: `diagnostics/codes.py` `Diagnostic.__str__()`
+
 ## [0.104.0] - 2026-02-09
 
 ### Fixed
@@ -36,7 +68,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The FTL parser strips all leading whitespace to find the first non-whitespace character; finding `.` (or `*`, `[`), it stops reading the pattern and attempts to parse a structural construct (attribute/variant), which fails, producing `Junk`
   - The existing fix in `_serialize_text_element` wrapped syntax characters at position 0 of a continuation line but not when preceded by content spaces on the same line
   - Fix: `_serialize_text_element` now scans past leading spaces at continuation line starts to find the first non-whitespace character; if it is a syntax character, the spaces are emitted as text and the character is wrapped in a `StringLiteral` placeable (e.g., `           { "." }`)
-  - Found by: Atheris fuzzer (`fuzz_serializer.py`, pattern `multiline_value`)
   - Location: `syntax/serializer.py` `_serialize_text_element()`
 
 ## [0.103.0] - 2026-02-05
@@ -3276,6 +3307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.105.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.105.0
 [0.104.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.104.0
 [0.103.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.103.0
 [0.102.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.102.0

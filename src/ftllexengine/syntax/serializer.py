@@ -15,7 +15,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import typing
+from enum import Enum, auto
+from typing import assert_never
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
@@ -295,6 +296,94 @@ _ATTR_INDENT: str = "\n    "
 # This produces: "\n   *[key] value" where the `[` aligns with attribute `.`.
 _VARIANT_INDENT: str = "\n   "
 
+# Characters that are syntactically significant at the start of a continuation
+# line in FTL: '[' (variant key), '*' (default variant), '.' (attribute).
+# The FTL parser strips leading whitespace and checks the first non-whitespace
+# character against these markers. Content containing these characters at
+# structurally ambiguous positions must be wrapped in StringLiteral placeables.
+_LINE_START_SYNTAX_CHARS: frozenset[str] = frozenset(".[*")
+
+# Precomputed StringLiteral placeable forms for special characters.
+# Used by both continuation line dispatch and brace escaping.
+_CHAR_PLACEABLE: dict[str, str] = {
+    "{": '{ "{" }',
+    "}": '{ "}" }',
+    "[": '{ "[" }',
+    "*": '{ "*" }',
+    ".": '{ "." }',
+}
+
+
+class _LineKind(Enum):
+    """Classification of a continuation line's content for serialization.
+
+    The FTL parser interprets continuation lines structurally: leading
+    whitespace is syntactic indent, blank lines are stripped, and
+    characters '.', '*', '[' as the first non-whitespace trigger
+    attribute/variant parsing. Each kind maps to one unambiguous
+    emission strategy.
+    """
+
+    EMPTY = auto()
+    WHITESPACE_ONLY = auto()
+    SYNTAX_LEADING = auto()
+    NORMAL = auto()
+
+
+def _classify_line(line: str) -> tuple[_LineKind, int]:
+    """Classify a continuation line for serialization dispatch.
+
+    Returns the line kind and, for SYNTAX_LEADING, the number of
+    leading whitespace characters before the syntax character.
+    For all other kinds the second element is 0.
+
+    Pure function with no side effects.
+
+    Args:
+        line: Text content of a single continuation line (no newlines).
+
+    Returns:
+        (kind, ws_prefix_len) tuple.
+    """
+    if not line:
+        return (_LineKind.EMPTY, 0)
+
+    # Scan to first non-space character.
+    ws_len = 0
+    length = len(line)
+    while ws_len < length and line[ws_len] == " ":
+        ws_len += 1
+
+    if ws_len == length:
+        return (_LineKind.WHITESPACE_ONLY, 0)
+
+    if line[ws_len] in _LINE_START_SYNTAX_CHARS:
+        return (_LineKind.SYNTAX_LEADING, ws_len)
+
+    return (_LineKind.NORMAL, 0)
+
+
+def _escape_text(text: str, output: list[str]) -> None:
+    """Escape brace characters in text content.
+
+    Wraps { and } as StringLiteral placeables per Fluent spec.
+    Character-level escaping only; line-level concerns (whitespace
+    ambiguity, syntax chars) are handled by _emit_classified_line.
+    """
+    pos = 0
+    length = len(text)
+    while pos < length:
+        ch = text[pos]
+        if ch in ("{", "}"):
+            output.append(_CHAR_PLACEABLE[ch])
+            pos += 1
+            continue
+        run_start = pos
+        pos += 1
+        while pos < length and text[pos] not in ("{", "}"):
+            pos += 1
+        output.append(text[run_start:pos])
+
 
 class FluentSerializer(ASTVisitor):
     """Converts AST back to FTL source string.
@@ -428,6 +517,8 @@ class FluentSerializer(ASTVisitor):
                 self._serialize_comment(entry, output)
             case Junk():
                 self._serialize_junk(entry, output)
+            case _ as unreachable:  # pragma: no cover
+                assert_never(unreachable)
 
     def _serialize_message(
         self, node: Message, output: list[str], depth_guard: DepthGuard
@@ -518,97 +609,67 @@ class FluentSerializer(ASTVisitor):
     def _pattern_needs_separate_line(self, pattern: Pattern) -> bool:
         """Check if pattern needs separate-line serialization for roundtrip correctness.
 
-        Returns True in two cases:
+        Returns True when a continuation line with NORMAL content has leading
+        whitespace that would be consumed as structural indent during re-parse.
+        Two triggers:
 
         1. Cross-element: A TextElement starting with whitespace is preceded by
-           an element ending with newline. Without separate-line serialization,
-           the leading whitespace merges with structural indentation and is
-           stripped during re-parse.
+           an element ending with newline.
 
         2. Intra-element: A single TextElement contains an embedded newline
-           followed by whitespace. Programmatically constructed ASTs may have
-           this structure (parser-produced ASTs split at newlines). Without
-           separate-line serialization, the inline start causes the parser to
-           calculate common_indent from continuation lines, stripping the
-           semantic whitespace.
+           followed by whitespace on a NORMAL line (not WHITESPACE_ONLY or
+           SYNTAX_LEADING, which are handled by per-line wrapping).
 
-        By outputting on a separate line, we establish initial_common_indent
-        before any content with embedded leading whitespace, so extra whitespace
-        is preserved as extra_spaces on subsequent continuation lines.
+        Separate-line mode establishes initial_common_indent before any content
+        with embedded leading whitespace, so extra whitespace is preserved as
+        extra_spaces on subsequent continuation lines.
         """
         prev_ends_newline = False
         for elem in pattern.elements:
             if isinstance(elem, TextElement):
-                # Check if this element starts with whitespace and follows a newline
                 if prev_ends_newline and elem.value and elem.value[0] == " ":
                     return True
                 # Check for embedded newlines followed by whitespace within
-                # a single TextElement. This handles programmatically constructed
-                # ASTs where newlines and indented content coexist in one element.
-                # Skip whitespace-only continuation lines: those are preserved
-                # by StringLiteral placeable wrapping, not separate-line mode.
+                # a single TextElement. Only NORMAL lines trigger separate-line
+                # mode; WHITESPACE_ONLY and SYNTAX_LEADING are handled by
+                # per-line wrapping in _serialize_pattern.
                 value = elem.value
                 idx = value.find("\n")
                 while idx != -1 and idx + 1 < len(value):
                     if value[idx + 1] == " ":
                         next_nl = value.find("\n", idx + 1)
                         line = value[idx + 1 : next_nl] if next_nl != -1 else value[idx + 1 :]
-                        if line.strip():
+                        kind, _ = _classify_line(line)
+                        if kind is _LineKind.NORMAL:
                             return True
                     idx = value.find("\n", idx + 1)
                 prev_ends_newline = value.endswith("\n")
             else:
-                # Placeable doesn't end with newline
                 prev_ends_newline = False
         return False
 
-    def _serialize_pattern(
+    def _serialize_pattern(  # noqa: PLR0912  # Branches required by FTL pattern grammar
         self, pattern: Pattern, output: list[str], depth_guard: DepthGuard
     ) -> None:
         """Serialize Pattern elements.
 
+        Handles three concerns in strict order:
+        1. Pattern-level: separate-line mode, leading whitespace preservation
+        2. Line-level: classify each continuation line via _classify_line,
+           dispatch to the appropriate wrapping strategy via match/case
+        3. Character-level: escape braces via _escape_text
+
         Per Fluent Spec 1.0: Backslash has no escaping power in TextElements.
-        Literal braces MUST be expressed as StringLiterals within Placeables:
-        - { must be serialized as {"{"} (Placeable containing StringLiteral)
-        - } must be serialized as {"}"} (Placeable containing StringLiteral)
-
-        Multi-line patterns: Newlines in text elements are followed by
-        4-space indentation to create valid continuation lines for roundtrip.
-
-        Roundtrip Whitespace Preservation:
-        If the pattern has TextElements where leading whitespace follows a newline
-        in a preceding element, the pattern is output on a separate line. This
-        ensures the parser establishes initial_common_indent from a line without
-        semantic whitespace, preserving extra whitespace on continuation lines.
-
-        Leading Whitespace Preservation:
-        If the first element is a TextElement starting with spaces, those spaces
-        would be consumed as syntactic whitespace after '=' or ']' during
-        re-parse. The serializer wraps them in a StringLiteral placeable
-        to preserve content, consistent with brace and line-start wrapping.
-
-        Blank Continuation Line Preservation:
-        When a TextElement contains embedded newlines with whitespace-only content
-        between them, the continuation lines after structural indentation become
-        blank lines. The FTL parser strips all whitespace from blank continuation
-        lines during common-indent removal. The serializer wraps whitespace-only
-        continuation line content in StringLiteral placeables to preserve it.
-
-        This ensures output is valid FTL that compliant parsers accept.
+        Literal braces MUST be expressed as StringLiterals within Placeables.
         """
-        # Check if pattern needs separate-line serialization for roundtrip correctness.
-        # This handles patterns where leading whitespace follows a newline in separate
-        # TextElements (e.g., "Line 1\n" followed by "  Line 2").
+        # Pattern-level: determine separate-line serialization.
         needs_separate_line = self._pattern_needs_separate_line(pattern)
         if needs_separate_line:
             output.append("\n" + _CONT_INDENT)
 
-        # Handle leading whitespace in the first TextElement.
-        # In FTL, whitespace after '=' and at the start of continuation lines
-        # is syntactic, not content. A TextElement starting with spaces at
-        # pattern start would lose its whitespace during re-parse. Wrap it
-        # in a StringLiteral placeable to preserve it, consistent with how
-        # braces and line-start syntax characters are already wrapped.
+        # Pattern-level: handle leading whitespace in the first TextElement.
+        # In FTL, whitespace after '=' is syntactic. A TextElement starting
+        # with spaces at pattern start loses its whitespace during re-parse.
         leading_ws_len = 0
         if (
             pattern.elements
@@ -623,15 +684,11 @@ class FluentSerializer(ASTVisitor):
             output.append(" " * leading_ws_len)
             output.append('" }')
 
-        # Track whether next text content will appear at a continuation line start.
-        # When needs_separate_line triggers, the first element lands on
-        # a continuation line after "\n    ".
+        # Track continuation line state for text elements.
         at_line_start = needs_separate_line
 
         for element in pattern.elements:
             if isinstance(element, TextElement):
-                # Per Fluent spec: no escape sequences in TextElements
-                # Literal braces must become Placeable(StringLiteral("{"/"}")
                 text = element.value
 
                 # Skip already-emitted leading whitespace on first element.
@@ -639,153 +696,69 @@ class FluentSerializer(ASTVisitor):
                     text = text[leading_ws_len:]
                     leading_ws_len = 0
                     if not text:
-                        # Entire element was just whitespace; placeable
-                        # already emitted above.
                         at_line_start = False
                         continue
 
-                # Handle newlines: add 4-space structural indentation after
-                # each newline to create valid FTL continuation lines.
-                # Whitespace-only continuation lines are wrapped in
-                # StringLiteral placeables because the FTL parser treats
-                # blank lines specially: all whitespace on blank continuation
-                # lines is stripped during common-indent removal, losing
-                # content whitespace and breaking roundtrip idempotence.
                 if "\n" in text:
                     lines = text.split("\n")
-                    # Emit first line segment normally.
-                    self._serialize_text_element(
-                        lines[0], at_line_start, output,
-                    )
+                    # First line segment: classify if at line start,
+                    # otherwise just escape braces.
+                    if at_line_start:
+                        self._emit_classified_line(lines[0], output)
+                    else:
+                        _escape_text(lines[0], output)
+                    # Continuation lines: classify-then-dispatch.
                     for line in lines[1:]:
-                        # Structural newline + 4-space continuation indent.
                         output.append("\n    ")
-                        if line and not line.strip():
-                            # Whitespace-only: wrap content in StringLiteral
-                            # placeable to prevent blank-line stripping.
-                            output.append("{ ")
-                            self._serialize_expression(
-                                StringLiteral(value=line),
-                                output,
-                                depth_guard,
-                            )
-                            output.append(" }")
-                        else:
-                            # Normal content or truly empty: emit text.
-                            self._serialize_text_element(
-                                line, True, output,
-                            )
-                    # Track line-start state for next element:
-                    # empty last line = text ended with \n, next at line start.
+                        self._emit_classified_line(line, output)
+                    # Track state: empty last line means text ended with \n.
                     at_line_start = not lines[-1]
                 else:
-                    # No newlines: emit as single text run.
-                    self._serialize_text_element(
-                        text, at_line_start, output,
-                    )
+                    if at_line_start:
+                        self._emit_classified_line(text, output)
+                    else:
+                        _escape_text(text, output)
                     at_line_start = False
+
             elif isinstance(element, Placeable):
                 output.append("{ ")
                 with depth_guard:
                     self._serialize_expression(element.expression, output, depth_guard)
                 output.append(" }")
-                # Placeables emit " }" which is not a newline, so next element
-                # is not at a continuation line start.
                 at_line_start = False
 
-    # Characters that are syntactically significant at the start of a continuation
-    # line in FTL: '[' (variant key), '*' (default variant), '.' (attribute).
-    _LINE_START_SYNTAX_CHARS: frozenset[str] = frozenset(".[*")
-
-    # Precomputed StringLiteral placeable forms for special characters.
-    _CHAR_PLACEABLE: typing.ClassVar[dict[str, str]] = {
-        "{": '{ "{" }',
-        "}": '{ "}" }',
-        "[": '{ "[" }',
-        "*": '{ "*" }',
-        ".": '{ "." }',
-    }
-
     @staticmethod
-    def _serialize_text_element(
-        text: str, at_line_start: bool, output: list[str],
-    ) -> None:
-        """Emit TextElement content, wrapping special characters as StringLiteral placeables.
+    def _emit_classified_line(line: str, output: list[str]) -> None:
+        """Classify a line and emit with appropriate wrapping.
 
-        Handles three categories of characters that cannot appear literally:
-        1. Braces: '{' and '}' at any position (per Fluent spec, must be StringLiterals)
-        2. Line-start syntax: '[', '*', '.' at the first position of a continuation
-           line (parsed as variant/attribute syntax, not text)
-        3. Whitespace-preceded syntax: '[', '*', '.' as the first non-whitespace
-           character on a continuation line. The FTL parser strips leading whitespace
-           to detect structural markers; content spaces before these characters
-           do not prevent misinterpretation. Emit spaces as text, wrap the char.
-
-        Emits directly to the output list to avoid intermediate string allocation.
+        Single dispatch point for all continuation line ambiguity classes.
+        Each _LineKind maps to exactly one emission strategy.
         """
-        syntax = FluentSerializer._LINE_START_SYNTAX_CHARS
-        placeable = FluentSerializer._CHAR_PLACEABLE
-        pos = 0
-        length = len(text)
-        # at_line_start tracks whether position `pos` is at a continuation line start
-        line_start = at_line_start
-
-        while pos < length:
-            ch = text[pos]
-
-            # Check if this character needs wrapping
-            if ch in ("{", "}") or (line_start and ch in syntax):
-                output.append(placeable[ch])
-                pos += 1
-                line_start = False
-                continue
-
-            # Syntax character preceded by whitespace at continuation line start.
-            # The FTL parser strips all leading whitespace to find the first
-            # non-whitespace character; if it is a syntax character, the parser
-            # treats the line as structural (attribute/variant), not pattern text.
-            # Emit the leading spaces as plain text, then wrap the syntax char.
-            if line_start and ch == " ":
-                scan = pos + 1
-                while scan < length and text[scan] == " ":
-                    scan += 1
-                if scan < length and text[scan] in syntax:
-                    output.append(text[pos:scan])
-                    output.append(placeable[text[scan]])
-                    pos = scan + 1
-                    line_start = False
-                    continue
-
-            # Scan ahead for the next character that needs special handling.
-            # Track newline+indent boundaries to update line_start state.
-            run_start = pos
-            pos += 1
-            line_start = False
-
-            while pos < length:
-                ch = text[pos]
-                if ch in ("{", "}"):
-                    break
-                # Detect continuation line boundary: "\n    " (newline + 4 spaces)
-                if ch == "\n" and pos + 4 < length and text[pos + 1 : pos + 5] == "    ":
-                    # Include the newline+indent in this text run
-                    pos += 5
-                    line_start = True
-                    # If next char after indent is syntax-significant, break
-                    # to wrap it. Scan past leading spaces: the FTL parser
-                    # strips whitespace before checking for syntax markers.
-                    scan = pos
-                    while scan < length and text[scan] == " ":
-                        scan += 1
-                    if scan < length and text[scan] in syntax:
-                        pos = scan
-                        break
-                    continue
-                pos += 1
-                line_start = False
-
-            # Emit the plain text run
-            output.append(text[run_start:pos])
+        kind, ws_len = _classify_line(line)
+        match kind:
+            case _LineKind.EMPTY:
+                pass
+            case _LineKind.WHITESPACE_ONLY:
+                output.append('{ "')
+                output.append(line)
+                output.append('" }')
+            case _LineKind.SYNTAX_LEADING:
+                # Invariant: ALL content whitespace preceding the first
+                # non-whitespace character on a continuation line must be
+                # placeable-wrapped. Raw spaces here become indistinguishable
+                # from structural indent during common-indent stripping.
+                if ws_len:
+                    output.append('{ "')
+                    output.append(line[:ws_len])
+                    output.append('" }')
+                output.append(_CHAR_PLACEABLE[line[ws_len]])
+                remaining = line[ws_len + 1 :]
+                if remaining:
+                    _escape_text(remaining, output)
+            case _LineKind.NORMAL:
+                _escape_text(line, output)
+            case _ as unreachable:  # pragma: no cover
+                assert_never(unreachable)
 
     def _serialize_expression(  # noqa: PLR0912  # Branches required by Expression union type
         self, expr: Expression, output: list[str], depth_guard: DepthGuard
@@ -795,56 +768,59 @@ class FluentSerializer(ASTVisitor):
         Handles all Expression types including nested Placeables (valid per FTL spec).
         """
         match expr:
-            case StringLiteral():
-                # Escape special characters per FTL spec
+            case StringLiteral(value=value):
+                # Escape special characters per FTL spec.
                 # Uses \uHHHH for ALL control characters (< 0x20 and 0x7F)
-                # to produce robust output that works in all editors and parsers
+                # to produce robust output that works in all editors and parsers.
                 result: list[str] = []
-                for char in expr.value:
+                for char in value:
                     code = ord(char)
                     if char == "\\":
                         result.append("\\\\")
                     elif char == '"':
                         result.append('\\"')
                     elif code < 0x20 or code == 0x7F:
-                        # All control characters: NUL, BEL, BS, TAB, LF, VT, FF, CR, ESC, DEL, etc.
                         result.append(f"\\u{code:04X}")
                     else:
                         result.append(char)
                 output.append(f'"{"".join(result)}"')
 
-            case NumberLiteral():
-                output.append(expr.raw)
+            case NumberLiteral(raw=raw):
+                output.append(raw)
 
-            case VariableReference():
-                output.append(f"${expr.id.name}")
+            case VariableReference(id=Identifier(name=name)):
+                output.append(f"${name}")
 
-            case MessageReference():
-                output.append(expr.id.name)
-                if expr.attribute:
-                    output.append(f".{expr.attribute.name}")
+            case MessageReference(id=Identifier(name=name), attribute=attr):
+                output.append(name)
+                if attr:
+                    output.append(f".{attr.name}")
 
-            case TermReference():
-                output.append(f"-{expr.id.name}")
-                if expr.attribute:
-                    output.append(f".{expr.attribute.name}")
-                if expr.arguments:
-                    self._serialize_call_arguments(expr.arguments, output, depth_guard)
+            case TermReference(
+                id=Identifier(name=name), attribute=attr, arguments=args
+            ):
+                output.append(f"-{name}")
+                if attr:
+                    output.append(f".{attr.name}")
+                if args:
+                    self._serialize_call_arguments(args, output, depth_guard)
 
-            case FunctionReference():
-                output.append(expr.id.name)
-                self._serialize_call_arguments(expr.arguments, output, depth_guard)
+            case FunctionReference(id=Identifier(name=name), arguments=args):
+                output.append(name)
+                self._serialize_call_arguments(args, output, depth_guard)
 
-            case Placeable():
-                # Nested Placeable - serialize inner expression with braces
-                # Valid per FTL spec: { { $var } } is a nested placeable
+            case Placeable(expression=inner):
+                # Nested Placeable: { { $var } } is valid per FTL spec
                 output.append("{ ")
                 with depth_guard:
-                    self._serialize_expression(expr.expression, output, depth_guard)
+                    self._serialize_expression(inner, output, depth_guard)
                 output.append(" }")
 
             case SelectExpression():
                 self._serialize_select_expression(expr, output, depth_guard)
+
+            case _ as unreachable:  # pragma: no cover
+                assert_never(unreachable)
 
     def _serialize_call_arguments(
         self, args: CallArguments, output: list[str], depth_guard: DepthGuard
@@ -894,12 +870,12 @@ class FluentSerializer(ASTVisitor):
                 output.append("*")
             output.append("[")
 
-            # Variant key (Identifier or NumberLiteral) - explicit match for exhaustiveness
+            # Variant key: explicit destructuring for exhaustiveness
             match variant.key:
-                case Identifier():
-                    output.append(variant.key.name)
-                case NumberLiteral():
-                    output.append(variant.key.raw)
+                case Identifier(name=name):
+                    output.append(name)
+                case NumberLiteral(raw=raw):
+                    output.append(raw)
 
             output.append("] ")
             self._serialize_pattern(variant.value, output, depth_guard)

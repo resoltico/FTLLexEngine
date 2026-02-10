@@ -16,6 +16,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
@@ -26,76 +27,20 @@ from ftllexengine.diagnostics.validation import (
     WarningSeverity,
 )
 from ftllexengine.syntax.ast import Annotation
+from tests.strategies.diagnostics import (
+    annotation_nodes as annotation_strategy,
+)
+from tests.strategies.diagnostics import (
+    validation_errors as validation_error_strategy,
+)
+from tests.strategies.diagnostics import (
+    validation_results as validation_result_strategy,
+)
+from tests.strategies.diagnostics import (
+    validation_warnings as validation_warning_strategy,
+)
 
-# ============================================================================
-# STRATEGIES
-# ============================================================================
-
-
-@st.composite
-def validation_error_strategy(draw: st.DrawFn) -> ValidationError:
-    """Generate arbitrary ValidationError instances."""
-    code = draw(st.text(min_size=1, max_size=50))
-    message = draw(st.text(min_size=1, max_size=200))
-    content = draw(st.text(min_size=0, max_size=500))
-    line = draw(st.none() | st.integers(min_value=1, max_value=10000))
-    column = draw(st.none() | st.integers(min_value=1, max_value=1000))
-    return ValidationError(
-        code=code, message=message, content=content, line=line, column=column
-    )
-
-
-@st.composite
-def validation_warning_strategy(draw: st.DrawFn) -> ValidationWarning:
-    """Generate arbitrary ValidationWarning instances."""
-    code = draw(st.text(min_size=1, max_size=50))
-    message = draw(st.text(min_size=1, max_size=200))
-    context = draw(st.none() | st.text(min_size=0, max_size=100))
-    line = draw(st.none() | st.integers(min_value=1, max_value=10000))
-    column = draw(st.none() | st.integers(min_value=1, max_value=1000))
-    severity = draw(st.sampled_from(list(WarningSeverity)))
-    return ValidationWarning(
-        code=code,
-        message=message,
-        context=context,
-        line=line,
-        column=column,
-        severity=severity,
-    )
-
-
-@st.composite
-def annotation_strategy(draw: st.DrawFn) -> Annotation:
-    """Generate arbitrary Annotation instances."""
-    code = draw(st.text(min_size=1, max_size=50))
-    message = draw(st.text(min_size=1, max_size=200))
-    # Arguments is optional tuple of key-value pairs
-    arguments = draw(
-        st.none()
-        | st.lists(
-            st.tuples(
-                st.text(min_size=1, max_size=30), st.text(min_size=0, max_size=100)
-            ),
-            min_size=0,
-            max_size=5,
-        ).map(tuple)
-    )
-    return Annotation(code=code, message=message, arguments=arguments)
-
-
-@st.composite
-def validation_result_strategy(draw: st.DrawFn) -> ValidationResult:
-    """Generate arbitrary ValidationResult instances."""
-    errors = draw(
-        st.lists(validation_error_strategy(), min_size=0, max_size=5).map(tuple)
-    )
-    warnings = draw(
-        st.lists(validation_warning_strategy(), min_size=0, max_size=5).map(tuple)
-    )
-    annotations = draw(
-        st.lists(annotation_strategy(), min_size=0, max_size=5).map(tuple)
-    )
-    return ValidationResult(errors=errors, warnings=warnings, annotations=annotations)
+pytestmark = pytest.mark.fuzz
 
 
 # ============================================================================
@@ -134,6 +79,7 @@ class TestValidationErrorProperties:
         """PROPERTY: Formatted output contains error code."""
         formatted = error.format()
         assert error.code in formatted or f"[{error.code}]" in formatted
+        event(f"code_len={len(error.code)}")
 
     @given(error=validation_error_strategy())
     def test_property_format_sanitize_bounds_content(
@@ -143,8 +89,10 @@ class TestValidationErrorProperties:
         formatted = error.format(sanitize=True)
         # Maximum content length in DiagnosticFormatter is 100 chars
         # With truncation, output should not contain full content if content > 100
-        if len(error.content) > 100:
+        truncated = len(error.content) > 100
+        if truncated:
             assert error.content not in formatted
+        event(f"truncated={truncated}")
 
     @given(error=validation_error_strategy())
     def test_property_format_redact_removes_content(
@@ -152,9 +100,11 @@ class TestValidationErrorProperties:
     ) -> None:
         """PROPERTY: sanitize=True, redact_content=True includes redaction marker."""
         formatted = error.format(sanitize=True, redact_content=True)
+        has_content = bool(error.content)
         # Should include redaction marker when content exists
-        if error.content:
+        if has_content:
             assert "[content redacted]" in formatted or "redacted" in formatted.lower()
+        event(f"has_content={has_content}")
 
     @given(
         error=validation_error_strategy(),
@@ -168,6 +118,7 @@ class TestValidationErrorProperties:
         result = error.format(sanitize=sanitize, redact_content=redact)
         assert isinstance(result, str)
         assert len(result) > 0
+        event(f"sanitize={sanitize}, redact={redact}")
 
 
 # ============================================================================
@@ -188,6 +139,7 @@ class TestValidationWarningProperties:
             assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
         except AttributeError:
             pass  # Expected
+        event(f"severity={warning.severity.value}")
 
     @given(warning=validation_warning_strategy())
     def test_property_format_idempotent(self, warning: ValidationWarning) -> None:
@@ -195,6 +147,8 @@ class TestValidationWarningProperties:
         first = warning.format()
         second = warning.format()
         assert first == second
+        has_ctx = warning.context is not None
+        event(f"has_context={has_ctx}")
 
     @given(warning=validation_warning_strategy())
     def test_property_format_contains_code_and_message(
@@ -204,6 +158,7 @@ class TestValidationWarningProperties:
         formatted = warning.format()
         assert warning.code in formatted or f"[{warning.code}]" in formatted
         assert warning.message in formatted
+        event(f"code_len={len(warning.code)}")
 
     @given(warning=validation_warning_strategy())
     def test_property_format_includes_context_when_present(
@@ -211,9 +166,11 @@ class TestValidationWarningProperties:
     ) -> None:
         """PROPERTY: format() includes context indicator when context present."""
         formatted = warning.format()
+        has_ctx = warning.context is not None
         if warning.context:
             # Context is included, but may be escaped for special chars
             assert "context:" in formatted or "context" in formatted.lower()
+        event(f"has_context={has_ctx}")
 
     @given(warning=validation_warning_strategy())
     def test_property_format_returns_string(self, warning: ValidationWarning) -> None:
@@ -221,6 +178,7 @@ class TestValidationWarningProperties:
         result = warning.format()
         assert isinstance(result, str)
         assert len(result) > 0
+        event(f"formatted_len={len(result)}")
 
     @given(warning=validation_warning_strategy())
     def test_property_severity_is_valid_enum(
@@ -228,6 +186,7 @@ class TestValidationWarningProperties:
     ) -> None:
         """PROPERTY: severity is always a valid WarningSeverity enum value."""
         assert warning.severity in WarningSeverity
+        event(f"severity={warning.severity.value}")
 
 
 # ============================================================================
@@ -248,6 +207,8 @@ class TestValidationResultProperties:
             assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
         except AttributeError:
             pass  # Expected
+        valid = result.is_valid
+        event(f"is_valid={valid}")
 
     @given(result=validation_result_strategy())
     def test_property_error_count_matches_tuple_lengths(
@@ -256,6 +217,7 @@ class TestValidationResultProperties:
         """PROPERTY: error_count == len(errors) + len(annotations)."""
         expected = len(result.errors) + len(result.annotations)
         assert result.error_count == expected
+        event(f"error_count={result.error_count}")
 
     @given(result=validation_result_strategy())
     def test_property_warning_count_matches_warnings_length(
@@ -263,14 +225,18 @@ class TestValidationResultProperties:
     ) -> None:
         """PROPERTY: warning_count == len(warnings)."""
         assert result.warning_count == len(result.warnings)
+        event(f"warning_count={result.warning_count}")
 
     @given(result=validation_result_strategy())
     def test_property_is_valid_iff_no_errors_or_annotations(
         self, result: ValidationResult
     ) -> None:
         """PROPERTY: is_valid == (no errors AND no annotations)."""
-        expected_valid = len(result.errors) == 0 and len(result.annotations) == 0
+        expected_valid = (
+            len(result.errors) == 0 and len(result.annotations) == 0
+        )
         assert result.is_valid == expected_valid
+        event(f"is_valid={result.is_valid}")
 
     @given(result=validation_result_strategy())
     def test_property_warnings_do_not_affect_validity(
@@ -279,6 +245,8 @@ class TestValidationResultProperties:
         """PROPERTY: Warnings alone do not make result invalid."""
         if len(result.errors) == 0 and len(result.annotations) == 0:
             assert result.is_valid, "Result with only warnings should be valid"
+        has_warnings = len(result.warnings) > 0
+        event(f"has_warnings={has_warnings}")
 
     @given(
         result=validation_result_strategy(),
@@ -301,6 +269,7 @@ class TestValidationResultProperties:
         )
         assert isinstance(formatted, str)
         assert len(formatted) > 0
+        event(f"sanitize={sanitize}, redact={redact}")
 
     @given(result=validation_result_strategy())
     def test_property_format_idempotent(self, result: ValidationResult) -> None:
@@ -308,6 +277,7 @@ class TestValidationResultProperties:
         first = result.format()
         second = result.format()
         assert first == second
+        event(f"formatted_len={len(first)}")
 
 
 # ============================================================================
@@ -329,11 +299,15 @@ class TestValidationResultFactoryProperties:
         assert len(result.annotations) == 0
 
     @given(
-        errors=st.lists(validation_error_strategy(), min_size=0, max_size=3).map(tuple),
-        warnings=st.lists(validation_warning_strategy(), min_size=0, max_size=3).map(
-            tuple
-        ),
-        annotations=st.lists(annotation_strategy(), min_size=0, max_size=3).map(tuple),
+        errors=st.lists(
+            validation_error_strategy(), min_size=0, max_size=3
+        ).map(tuple),
+        warnings=st.lists(
+            validation_warning_strategy(), min_size=0, max_size=3
+        ).map(tuple),
+        annotations=st.lists(
+            annotation_strategy(), min_size=0, max_size=3
+        ).map(tuple),
     )
     def test_property_invalid_factory_preserves_inputs(
         self,
@@ -348,9 +322,14 @@ class TestValidationResultFactoryProperties:
         assert result.errors == errors
         assert result.warnings == warnings
         assert result.annotations == annotations
+        n_err = len(errors)
+        n_ann = len(annotations)
+        event(f"errors={n_err}, annotations={n_ann}")
 
     @given(
-        errors=st.lists(validation_error_strategy(), min_size=1, max_size=3).map(tuple)
+        errors=st.lists(
+            validation_error_strategy(), min_size=1, max_size=3
+        ).map(tuple),
     )
     def test_property_invalid_with_errors_is_invalid(
         self, errors: tuple[ValidationError, ...]
@@ -359,9 +338,12 @@ class TestValidationResultFactoryProperties:
         result = ValidationResult.invalid(errors=errors)
         assert not result.is_valid
         assert result.error_count > 0
+        event(f"error_count={len(errors)}")
 
     @given(
-        annotations=st.lists(annotation_strategy(), min_size=1, max_size=3).map(tuple)
+        annotations=st.lists(
+            annotation_strategy(), min_size=1, max_size=3
+        ).map(tuple),
     )
     def test_property_invalid_with_annotations_is_invalid(
         self, annotations: tuple[Annotation, ...]
@@ -370,8 +352,13 @@ class TestValidationResultFactoryProperties:
         result = ValidationResult.invalid(annotations=annotations)
         assert not result.is_valid
         assert result.error_count > 0
+        event(f"annotation_count={len(annotations)}")
 
-    @given(annotations=st.lists(annotation_strategy(), min_size=0, max_size=3).map(tuple))
+    @given(
+        annotations=st.lists(
+            annotation_strategy(), min_size=0, max_size=3
+        ).map(tuple),
+    )
     def test_property_from_annotations_preserves_annotations(
         self, annotations: tuple[Annotation, ...]
     ) -> None:
@@ -380,14 +367,20 @@ class TestValidationResultFactoryProperties:
         assert result.annotations == annotations
         assert result.errors == ()
         assert result.warnings == ()
+        event(f"annotation_count={len(annotations)}")
 
-    @given(annotations=st.lists(annotation_strategy(), min_size=1, max_size=3).map(tuple))
+    @given(
+        annotations=st.lists(
+            annotation_strategy(), min_size=1, max_size=3
+        ).map(tuple),
+    )
     def test_property_from_annotations_nonempty_is_invalid(
         self, annotations: tuple[Annotation, ...]
     ) -> None:
         """PROPERTY: from_annotations() with non-empty tuple is invalid."""
         result = ValidationResult.from_annotations(annotations)
         assert not result.is_valid
+        event(f"annotation_count={len(annotations)}")
 
     def test_property_from_annotations_empty_is_valid(self) -> None:
         """PROPERTY: from_annotations(()) produces valid result."""

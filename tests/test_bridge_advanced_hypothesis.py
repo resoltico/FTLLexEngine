@@ -10,12 +10,19 @@ Critical function_bridge functions tested:
 import random
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
-from ftllexengine.runtime.function_bridge import FunctionRegistry
+from ftllexengine.runtime.function_bridge import (
+    _FTL_REQUIRES_LOCALE_ATTR,
+    FluentNumber,
+    FunctionRegistry,
+    fluent_function,
+)
 from tests.strategies import snake_case_identifiers
+
+pytestmark = pytest.mark.fuzz
 
 
 class TestParameterNameConversion:
@@ -31,7 +38,9 @@ class TestParameterNameConversion:
 
         assert isinstance(camel, str), "Conversion must return string"
 
-        if "_" not in snake_name:
+        has_underscore = "_" in snake_name
+        event(f"has_underscore={has_underscore}")
+        if not has_underscore:
             assert camel == snake_name, "Single word should not change"
         else:
             assert "_" not in camel, "camelCase should have no underscores"
@@ -55,7 +64,9 @@ class TestParameterNameConversion:
         snake_name = "_".join(parts)
         camel_name = registry._to_camel_case(snake_name)
 
-        if len(parts) > 1:
+        part_count = len(parts)
+        event(f"part_count={part_count}")
+        if part_count > 1:
             assert "_" not in camel_name, "camelCase should have no underscores"
             assert camel_name[0].islower(), "camelCase should start lowercase"
 
@@ -71,6 +82,7 @@ class TestParameterNameConversion:
 
         camel = registry._to_camel_case(word)
 
+        event(f"word_len={len(word)}")
         assert camel == word, "Single lowercase word should not change in camelCase"
 
 
@@ -97,6 +109,7 @@ class TestFunctionRegistration:
 
         result = registry.call(ftl_name, [], {})
         assert result == return_value, "Function call should return expected value"
+        event(f"ftl_name_len={len(ftl_name)}")
 
     @given(
         python_name=snake_case_identifiers(),
@@ -118,6 +131,7 @@ class TestFunctionRegistration:
         assert (
             registry.has_function(expected_ftl_name)
         ), f"Function not registered as {expected_ftl_name}"
+        event(f"python_name_parts={python_name.count('_') + 1}")
 
     @given(
         param_count=st.integers(min_value=1, max_value=5),
@@ -137,6 +151,7 @@ class TestFunctionRegistration:
         result = registry.call("TEST_FUNC", list(range(param_count)), {})
         assert isinstance(result, str), "Function should return string"
         assert "called with" in result, "Function should be callable with multiple params"
+        event(f"param_count={param_count}")
 
 
 class TestParameterMappingGeneration:
@@ -150,6 +165,7 @@ class TestParameterMappingGeneration:
         """Property: Auto-generated mappings cover all function parameters."""
         registry = FunctionRegistry()
 
+        event(f"param_name_count={len(param_names)}")
         for param_name in param_names:
             camel_name = registry._to_camel_case(param_name)
             assert isinstance(camel_name, str), "Mapping must produce string"
@@ -181,6 +197,7 @@ class TestFunctionCalling:
 
         assert len(received_args) == positional_count, "Positional arg count mismatch"
         assert received_args == positional_values, "Positional args not preserved"
+        event(f"positional_count={positional_count}")
 
 
 class TestErrorHandling:
@@ -201,6 +218,7 @@ class TestErrorHandling:
         with pytest.raises(FrozenFluentError) as exc_info:
             registry.call(nonexistent_name, [], {})
         assert exc_info.value.category == ErrorCategory.RESOLUTION
+        event(f"name_len={len(nonexistent_name)}")
 
     @given(
         ftl_name=st.text(
@@ -221,6 +239,7 @@ class TestErrorHandling:
         with pytest.raises(FrozenFluentError) as exc_info:
             registry.call(ftl_name, [], {})
         assert exc_info.value.category == ErrorCategory.RESOLUTION
+        event("outcome=exception_wrapped")
 
 
 class TestRegistryQueries:
@@ -246,6 +265,7 @@ class TestRegistryQueries:
 
         retrieved_name = registry.get_python_name(ftl_name)
         assert retrieved_name == python_name, "Python name mismatch"
+        event(f"python_name_parts={python_name.count('_') + 1}")
 
     @given(
         func_count=st.integers(min_value=1, max_value=10),
@@ -266,6 +286,7 @@ class TestRegistryQueries:
 
         for name in ftl_names:
             assert registry.has_function(name), f"Function {name} not found"
+        event(f"func_count={func_count}")
 
 
 class TestConversionEdgeCases:
@@ -283,6 +304,7 @@ class TestConversionEdgeCases:
         camel = registry._to_camel_case(snake_name)
 
         assert isinstance(camel, str), "Conversion must handle multiple underscores"
+        event(f"underscore_count={empty_parts}")
 
 
 class TestMetamorphicProperties:
@@ -329,3 +351,226 @@ class TestMetamorphicProperties:
         result2 = dict(received_kwargs)
 
         assert result1 == result2, "Argument order should not affect result"
+        event(f"kwarg_count={len(param_names)}")
+
+
+class TestFluentFunctionDecoratorProperties:
+    """Properties about @fluent_function decorator behavior."""
+
+    @given(
+        return_value=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=200)
+    def test_decorator_preserves_function_behavior(
+        self, return_value: str
+    ) -> None:
+        """Property: @fluent_function preserves function return value."""
+        @fluent_function
+        def test_func(value: str) -> str:
+            return value
+
+        result = test_func(return_value)
+        assert result == return_value
+        event("outcome=behavior_preserved")
+
+    @given(
+        return_value=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=200)
+    def test_decorator_with_inject_locale(
+        self, return_value: str
+    ) -> None:
+        """Property: inject_locale=True sets locale attribute."""
+        @fluent_function(inject_locale=True)
+        def test_func(value: str, locale_code: str) -> str:
+            return f"{value}:{locale_code}"
+
+        has_attr = getattr(test_func, _FTL_REQUIRES_LOCALE_ATTR, False)
+        assert has_attr is True
+        result = test_func(return_value, "en_US")
+        assert return_value in result
+        event("outcome=locale_attr_set")
+
+    @given(
+        return_value=st.text(min_size=1, max_size=50),
+    )
+    @settings(max_examples=200)
+    def test_decorator_without_inject_locale(
+        self, return_value: str
+    ) -> None:
+        """Property: Default decorator does not set locale attribute."""
+        @fluent_function
+        def test_func(value: str) -> str:
+            return value
+
+        has_attr = getattr(test_func, _FTL_REQUIRES_LOCALE_ATTR, False)
+        assert has_attr is not True
+        result = test_func(return_value)
+        assert result == return_value
+        event("outcome=no_locale_attr")
+
+
+class TestFreezeCopyMetamorphicProperties:
+    """Metamorphic properties for freeze/copy operations."""
+
+    @given(
+        func_count=st.integers(min_value=1, max_value=10),
+    )
+    @settings(max_examples=200)
+    def test_freeze_prevents_registration(
+        self, func_count: int
+    ) -> None:
+        """Property: Frozen registry rejects new registrations."""
+        registry = FunctionRegistry()
+
+        for i in range(func_count):
+            def f() -> str:
+                return "ok"
+            registry.register(f, ftl_name=f"FUNC{i}")
+
+        registry.freeze()
+        assert registry.frozen
+
+        def new_func() -> str:
+            return "new"
+
+        with pytest.raises(TypeError, match="frozen"):
+            registry.register(new_func, ftl_name="NEW")
+        event(f"func_count={func_count}")
+
+    @given(
+        func_count=st.integers(min_value=1, max_value=10),
+    )
+    @settings(max_examples=200)
+    def test_copy_of_frozen_is_mutable(
+        self, func_count: int
+    ) -> None:
+        """Property: Copy of frozen registry is mutable."""
+        registry = FunctionRegistry()
+
+        for i in range(func_count):
+            def f() -> str:
+                return "ok"
+            registry.register(f, ftl_name=f"FUNC{i}")
+
+        registry.freeze()
+        copied = registry.copy()
+
+        assert not copied.frozen
+        assert len(copied) == func_count
+
+        def extra() -> str:
+            return "extra"
+        copied.register(extra, ftl_name="EXTRA")
+        assert len(copied) == func_count + 1
+        assert len(registry) == func_count
+        event(f"func_count={func_count}")
+        event("outcome=copy_mutable")
+
+    @given(
+        func_count=st.integers(min_value=0, max_value=10),
+    )
+    @settings(max_examples=200)
+    def test_copy_preserves_all_functions(
+        self, func_count: int
+    ) -> None:
+        """Property: Copy contains all original functions."""
+        registry = FunctionRegistry()
+        names = [f"FUNC{i}" for i in range(func_count)]
+
+        for name in names:
+            def f() -> str:
+                return "ok"
+            registry.register(f, ftl_name=name)
+
+        copied = registry.copy()
+
+        for name in names:
+            assert name in copied
+            assert copied.has_function(name)
+        assert len(copied) == len(registry)
+        event(f"func_count={func_count}")
+
+
+class TestFluentNumberProperties:
+    """Properties about FluentNumber frozen dataclass."""
+
+    @given(
+        value=st.integers(min_value=-999999, max_value=999999),
+        formatted=st.text(min_size=1, max_size=30),
+        precision=st.integers(min_value=0, max_value=6)
+        | st.none(),
+    )
+    @settings(max_examples=300)
+    def test_fluent_number_str_returns_formatted(
+        self,
+        value: int,
+        formatted: str,
+        precision: int | None,
+    ) -> None:
+        """Property: str(FluentNumber) returns formatted string."""
+        fn = FluentNumber(
+            value=value,
+            formatted=formatted,
+            precision=precision,
+        )
+        assert str(fn) == formatted
+        has_prec = precision is not None
+        event(f"has_precision={has_prec}")
+
+    @given(
+        value=st.integers(min_value=-999999, max_value=999999),
+        formatted=st.text(min_size=1, max_size=30),
+    )
+    @settings(max_examples=200)
+    def test_fluent_number_len_matches_formatted(
+        self, value: int, formatted: str
+    ) -> None:
+        """Property: len(FluentNumber) equals len(formatted)."""
+        fn = FluentNumber(
+            value=value, formatted=formatted, precision=0
+        )
+        assert len(fn) == len(formatted)
+        event(f"formatted_len={len(formatted)}")
+
+    @given(
+        value=st.integers(min_value=-999999, max_value=999999),
+        formatted=st.text(min_size=1, max_size=30),
+        needle=st.text(min_size=1, max_size=5),
+    )
+    @settings(max_examples=200)
+    def test_fluent_number_contains_matches_formatted(
+        self, value: int, formatted: str, needle: str
+    ) -> None:
+        """Property: 'x in FluentNumber' matches 'x in formatted'."""
+        fn = FluentNumber(
+            value=value, formatted=formatted, precision=0
+        )
+        assert (needle in fn) == (needle in formatted)
+        found = needle in fn
+        event(f"found={found}")
+
+    @given(
+        value=st.integers(min_value=-999999, max_value=999999),
+        formatted=st.text(min_size=1, max_size=30),
+        precision=st.integers(min_value=0, max_value=6)
+        | st.none(),
+    )
+    @settings(max_examples=200)
+    def test_fluent_number_immutable(
+        self,
+        value: int,
+        formatted: str,
+        precision: int | None,
+    ) -> None:
+        """Property: FluentNumber is frozen (immutable)."""
+        fn = FluentNumber(
+            value=value,
+            formatted=formatted,
+            precision=precision,
+        )
+        with pytest.raises(AttributeError):
+            fn.value = 0  # type: ignore[misc]
+        with pytest.raises(AttributeError):
+            fn.formatted = "x"  # type: ignore[misc]
+        event("outcome=immutable_enforced")

@@ -362,7 +362,9 @@ greet-formal = { GREETING($name, formal: "true") }
     lv_bundle.add_resource('greet = { GREETING($name, formal: "false") }')
     result, errors = lv_bundle.format_pattern("greet", {"name": "Anna"})
     if errors:
-        print(f"Errors: {errors}")
+        for error in errors:
+            diag = error.diagnostic
+            print(f"Error: {diag.message if diag else error.message}")
     print(f"Latvian informal: {result}")
     # Output: Latvian informal: Sveiki, Anna!
 

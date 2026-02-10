@@ -243,3 +243,89 @@ malformed_locales: SearchStrategy[str] = st.one_of(
     st.just("xxx_YYY"),
     st.from_regex(r"[a-z]{1,8}_[A-Z]{3,}", fullmatch=True),  # Invalid territory length
 )
+
+
+# ============================================================================
+# LOCALE-FORMATTED NUMBER STRATEGIES
+# ============================================================================
+
+# Locales with distinct number formatting conventions
+_NUMBER_FORMAT_LOCALES = [
+    "en_US",  # 1,234.56
+    "de_DE",  # 1.234,56
+    "fr_FR",  # 1 234,56
+    "lv_LV",  # 1 234,56
+    "pl_PL",  # 1 234,56
+    "ja_JP",  # 1,234.56
+]
+
+
+@composite
+def locale_formatted_numbers(
+    draw: st.DrawFn,
+) -> tuple[float, str, str]:
+    """Generate locale-formatted number strings with source values.
+
+    Events emitted:
+    - locale_number_locale={locale}: Formatting locale used
+    - locale_number_sign={neg|non_neg}: Sign of value
+
+    Returns:
+        Tuple of (original_value, formatted_string, locale).
+    """
+    from ftllexengine.runtime.functions import (  # noqa: PLC0415
+        number_format,
+    )
+
+    value = draw(st.floats(
+        min_value=-999999.99,
+        max_value=999999.99,
+        allow_nan=False,
+        allow_infinity=False,
+    ))
+    locale = draw(st.sampled_from(_NUMBER_FORMAT_LOCALES))
+    formatted = str(number_format(value, locale))
+
+    sign = "neg" if value < 0 else "non_neg"
+    event(f"locale_number_locale={locale}")
+    event(f"locale_number_sign={sign}")
+
+    return (value, formatted, locale)
+
+
+@composite
+def locale_formatted_decimals(
+    draw: st.DrawFn,
+) -> tuple[str, str, str]:
+    """Generate locale-formatted decimal strings with source values.
+
+    Events emitted:
+    - locale_decimal_locale={locale}: Formatting locale used
+    - locale_decimal_magnitude={large|small}: Value magnitude
+
+    Returns:
+        Tuple of (decimal_str, formatted_string, locale).
+    """
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ftllexengine.runtime.functions import (  # noqa: PLC0415
+        number_format,
+    )
+
+    value = draw(st.decimals(
+        min_value=Decimal("0.01"),
+        max_value=Decimal("999999.99"),
+        places=2,
+    ))
+    locale = draw(st.sampled_from(_NUMBER_FORMAT_LOCALES))
+    formatted = str(number_format(
+        float(value),
+        locale,
+        minimum_fraction_digits=2,
+    ))
+
+    mag = "large" if value >= 1000 else "small"
+    event(f"locale_decimal_locale={locale}")
+    event(f"locale_decimal_magnitude={mag}")
+
+    return (str(value), formatted, locale)

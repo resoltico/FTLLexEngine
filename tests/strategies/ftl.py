@@ -19,6 +19,7 @@ from hypothesis import strategies as st
 from hypothesis.strategies import composite
 
 from ftllexengine.enums import CommentType
+from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.syntax.ast import (
     Attribute,
     CallArguments,
@@ -537,18 +538,113 @@ def ftl_financial_numbers(draw: st.DrawFn) -> int | float:
 
 @composite
 def snake_case_identifiers(draw: st.DrawFn) -> str:
-    """Generate snake_case identifiers."""
+    """Generate snake_case identifiers.
+
+    Events emitted:
+    - bridge_id_parts={n}: Number of identifier parts
+    """
     parts = draw(st.lists(st.sampled_from(IDENTIFIER_PARTS), min_size=1, max_size=3))
+    event(f"bridge_id_parts={len(parts)}")
     return "_".join(parts)
 
 
 @composite
 def camel_case_identifiers(draw: st.DrawFn) -> str:
-    """Generate camelCase identifiers."""
+    """Generate camelCase identifiers.
+
+    Events emitted:
+    - bridge_id_parts={n}: Number of identifier parts
+    """
     parts = draw(st.lists(st.sampled_from(IDENTIFIER_PARTS), min_size=1, max_size=3))
+    event(f"bridge_id_parts={len(parts)}")
     if not parts:
         return "value"
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+# =============================================================================
+# Function Bridge Strategies
+# =============================================================================
+
+
+@composite
+def ftl_function_names(draw: st.DrawFn) -> str:
+    """Generate valid FTL function names (UPPERCASE identifiers).
+
+    Events emitted:
+    - bridge_fname_len={n}: Length category of generated name
+    """
+    name = draw(
+        st.text(
+            alphabet=st.characters(
+                whitelist_categories=("Lu",),  # type: ignore[arg-type]
+                min_codepoint=65,
+                max_codepoint=90,
+            ),
+            min_size=1,
+            max_size=20,
+        ).filter(lambda s: s.isidentifier())
+    )
+    length = "short" if len(name) <= 5 else "long"
+    event(f"bridge_fname_len={length}")
+    return name
+
+
+@composite
+def fluent_numbers(draw: st.DrawFn) -> FluentNumber:
+    """Generate FluentNumber instances with diverse value/format combos.
+
+    Events emitted:
+    - bridge_fnum_type={type}: Value type (int, float, decimal)
+    - bridge_fnum_precision={n}: Precision category (none, 0, low, high)
+    """
+    value_type = draw(st.sampled_from(["int", "float", "decimal"]))
+    event(f"bridge_fnum_type={value_type}")
+
+    value: int | float | Decimal
+    if value_type == "int":
+        value = draw(st.integers(min_value=-999999, max_value=999999))
+        formatted = str(value)
+        precision = 0
+    elif value_type == "float":
+        value = draw(
+            st.floats(
+                min_value=-999999.0,
+                max_value=999999.0,
+                allow_nan=False,
+                allow_infinity=False,
+            )
+        )
+        places = draw(st.integers(min_value=0, max_value=6))
+        formatted = f"{value:.{places}f}"
+        precision = places
+    else:
+        places = draw(st.integers(min_value=0, max_value=6))
+        int_part = draw(
+            st.integers(min_value=-999999, max_value=999999)
+        )
+        if places > 0:
+            frac = draw(
+                st.integers(min_value=0, max_value=10**places - 1)
+            )
+            frac_str = str(frac).zfill(places)
+            value = Decimal(f"{int_part}.{frac_str}")
+            formatted = str(value)
+        else:
+            value = Decimal(int_part)
+            formatted = str(value)
+        precision = places
+
+    prec_cat = "none" if precision is None else (
+        "0" if precision == 0 else (
+            "low" if precision <= 2 else "high"
+        )
+    )
+    event(f"bridge_fnum_precision={prec_cat}")
+
+    return FluentNumber(
+        value=value, formatted=formatted, precision=precision
+    )
 
 
 # =============================================================================
@@ -811,7 +907,12 @@ def ftl_deep_placeables(draw: st.DrawFn, depth: int = 5) -> Placeable:
 
     Creates chains of nested placeables up to the specified depth.
     Used for testing parser/serializer depth guards.
+
+    Events emitted:
+    - strategy=deep_placeable_depth={n}: Current nesting depth
     """
+    event(f"strategy=deep_placeable_depth={depth}")
+
     if depth <= 1:
         return Placeable(expression=draw(ftl_variable_references()))
 

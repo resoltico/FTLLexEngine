@@ -189,7 +189,8 @@ class TestValidationChainDepth:
         _, errors = bundle.format_value(f"msg-{chain_length - 1}")
         depth_errors = [
             e for e in errors
-            if "MAX_DEPTH_EXCEEDED" in str(e)
+            if e.diagnostic is not None
+            and e.diagnostic.code.name == "MAX_DEPTH_EXCEEDED"
         ]
         assert len(depth_errors) > 0
 
@@ -404,7 +405,11 @@ class TestAuditFixesIntegration:
         bundle = FluentBundle("en")
         bundle.add_resource(ftl_source)
         _, errors = bundle.format_value(f"msg-{chain_length - 1}")
-        has_depth_error = any("MAX_DEPTH_EXCEEDED" in str(e) for e in errors)
+        has_depth_error = any(
+            e.diagnostic is not None
+            and e.diagnostic.code.name == "MAX_DEPTH_EXCEEDED"
+            for e in errors
+        )
         assert has_depth_error
 
     def test_locale_validation_before_resource_loading(self) -> None:

@@ -363,6 +363,7 @@ bundle.max_source_size -> int  # Read-only
 bundle.max_nesting_depth -> int  # Read-only
 bundle.max_expansion_size -> int  # Read-only
 bundle.strict -> bool  # Read-only
+bundle.function_registry -> FunctionRegistry  # Read-only
 ```
 
 ---
@@ -395,7 +396,7 @@ l10n.introspect_message(message_id: str) -> MessageIntrospection
 l10n.add_function(name: str, func: Callable) -> None
 l10n.clear_cache() -> None
 l10n.get_cache_stats() -> dict[str, Any]
-l10n.get_load_summary() -> dict[str, Any]
+l10n.get_load_summary() -> LoadSummary
 l10n.get_bundles() -> Generator[FluentBundle]
 l10n.get_babel_locale() -> str
 ```
@@ -685,7 +686,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
     return bundle
 ```
 
-**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | FluentNumber | None`.
+**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | FluentNumber | None | Sequence[FluentValue] | Mapping[str, FluentValue]`.
 
 **`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FrozenFluentError, ...]]`. Import from `ftllexengine.parsing`.
 

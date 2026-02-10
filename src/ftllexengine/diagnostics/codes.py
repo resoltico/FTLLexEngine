@@ -194,6 +194,10 @@ class Diagnostic:
     severity: Literal["error", "warning"] = "error"
     resolution_path: tuple[str, ...] | None = None
 
+    def __str__(self) -> str:
+        """Return human-readable error description."""
+        return self.message
+
     def format_error(self) -> str:
         """Format diagnostic like Rust compiler.
 

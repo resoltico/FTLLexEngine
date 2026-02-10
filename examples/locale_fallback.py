@@ -22,8 +22,9 @@ Note on Error Handling:
     In production code, ALWAYS check the errors list and log translation issues:
 
     result, errors = l10n.format_value('msg')
-    if errors:
-        logger.warning(f"Translation errors: {errors}")
+    for error in errors:
+        diag = error.diagnostic
+        logger.warning(diag.message if diag else error.message)
 
 Python 3.13+.
 """

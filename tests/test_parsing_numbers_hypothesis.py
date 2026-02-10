@@ -12,10 +12,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from hypothesis import event, given, settings
+import pytest
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.parsing import parse_decimal, parse_number
+
+pytestmark = pytest.mark.fuzz
 
 
 class TestParseNumberHypothesis:
@@ -275,6 +278,9 @@ class TestParsingMetamorphicProperties:
         assert not errors2
         # Both paths should yield same numeric value
         assert parsed1 == parsed2 == value
+        has_grouping = float(value) >= 1000
+        event(f"has_grouping={has_grouping}")
+        event("outcome=order_independent")
 
     @given(
         value=st.decimals(
@@ -300,6 +306,7 @@ class TestParsingMetamorphicProperties:
         assert not errors3
         # All results identical
         assert parsed1 == parsed2 == parsed3 == value
+        event("outcome=idempotent")
 
     @given(
         value=st.decimals(
@@ -327,6 +334,7 @@ class TestParsingMetamorphicProperties:
         assert not errors2
         # Should stabilize
         assert parsed1 == parsed2
+        event("outcome=format_parse_stable")
 
     @given(
         value=st.decimals(
@@ -340,6 +348,7 @@ class TestParsingMetamorphicProperties:
         result, errors = parse_decimal("0.00", "en_US")
         assert not errors
         assert result == Decimal("0.00")
+        event("outcome=zero_parsed")
 
     @given(
         value=st.decimals(
@@ -360,6 +369,8 @@ class TestParsingMetamorphicProperties:
         assert parsed is not None
         # Large numbers must not lose precision
         assert abs(parsed - value) < Decimal("0.01")
+        magnitude = "billions" if value >= 1_000_000_000 else "sub_billion"
+        event(f"magnitude={magnitude}")
 
     @given(
         thousands_sep=st.sampled_from([",", ".", " ", "'"]),
@@ -396,3 +407,218 @@ class TestParsingMetamorphicProperties:
 
             assert not errors
             assert parsed == value
+            event(f"locale={locale}")
+        else:
+            event("locale=unmapped")
+
+
+# ============================================================================
+# ERROR CONTEXT IMMUTABILITY PROPERTIES
+# ============================================================================
+
+
+class TestErrorContextImmutabilityProperties:
+    """Property: Error contexts from parse functions are frozen."""
+
+    @given(
+        value=st.text(
+            alphabet=st.characters(
+                whitelist_categories=["L"],
+            ),
+            min_size=1,
+            max_size=20,
+        ).filter(
+            lambda x: x.upper()
+            not in ("NAN", "INFINITY", "INF")
+        ),
+    )
+    @settings(max_examples=100)
+    def test_parse_number_error_context_frozen(
+        self, value: str
+    ) -> None:
+        """Error contexts from parse_number are immutable."""
+        from ftllexengine.integrity import (
+            ImmutabilityViolationError,
+        )
+
+        result, errors = parse_number(value, "en_US")
+        assume(result is None and len(errors) > 0)
+
+        error = errors[0]
+        assert error.verify_integrity()
+        with pytest.raises(ImmutabilityViolationError):
+            error._message = "tampered"
+        event("outcome=number_error_frozen")
+
+    @given(
+        value=st.text(
+            alphabet=st.characters(
+                whitelist_categories=["L"],
+            ),
+            min_size=1,
+            max_size=20,
+        ).filter(
+            lambda x: x.upper()
+            not in ("NAN", "INFINITY", "INF")
+        ),
+    )
+    @settings(max_examples=100)
+    def test_parse_decimal_error_context_frozen(
+        self, value: str
+    ) -> None:
+        """Error contexts from parse_decimal are immutable."""
+        from ftllexengine.integrity import (
+            ImmutabilityViolationError,
+        )
+
+        result, errors = parse_decimal(value, "en_US")
+        assume(result is None and len(errors) > 0)
+
+        error = errors[0]
+        assert error.verify_integrity()
+        with pytest.raises(ImmutabilityViolationError):
+            error._message = "tampered"
+        event("outcome=decimal_error_frozen")
+
+
+# ============================================================================
+# CROSS-FUNCTION ORACLE PROPERTIES
+# ============================================================================
+
+
+class TestCrossFunctionOracleProperties:
+    """Property: parse_number and parse_decimal agree on success/failure."""
+
+    @given(
+        value=st.text(min_size=1, max_size=50),
+        locale=st.sampled_from(
+            ["en_US", "de_DE", "fr_FR", "lv_LV"]
+        ),
+    )
+    @settings(max_examples=200)
+    def test_number_decimal_agree_on_parsability(
+        self, value: str, locale: str
+    ) -> None:
+        """If parse_number succeeds, parse_decimal should too."""
+        num_result, num_errors = parse_number(value, locale)
+        dec_result, dec_errors = parse_decimal(value, locale)
+
+        event(f"locale={locale}")
+
+        if num_result is not None and not num_errors:
+            # parse_number succeeded; parse_decimal should too
+            assert dec_result is not None
+            assert not dec_errors
+            event("outcome=both_succeed")
+        elif dec_result is not None and not dec_errors:
+            # parse_decimal succeeded; parse_number may also
+            # (Decimal -> float is always possible)
+            event("outcome=decimal_only")
+        else:
+            event("outcome=both_fail")
+
+    @given(
+        value=st.decimals(
+            min_value=Decimal("0.01"),
+            max_value=Decimal("99999.99"),
+            places=2,
+        ),
+        locale=st.sampled_from(
+            ["en_US", "de_DE", "fr_FR", "lv_LV"]
+        ),
+    )
+    @settings(max_examples=200)
+    def test_number_decimal_value_agreement(
+        self, value: Decimal, locale: str
+    ) -> None:
+        """Parsed float and Decimal agree on numeric value."""
+        from ftllexengine.runtime.functions import (
+            number_format,
+        )
+
+        formatted = str(number_format(
+            float(value),
+            locale,
+            minimum_fraction_digits=2,
+        ))
+        num_result, num_errors = parse_number(
+            formatted, locale
+        )
+        dec_result, dec_errors = parse_decimal(
+            formatted, locale
+        )
+
+        assert not num_errors
+        assert not dec_errors
+        assert num_result is not None
+        assert dec_result is not None
+        # float and Decimal should agree within precision
+        diff = abs(Decimal(str(num_result)) - dec_result)
+        assert diff < Decimal("0.01")
+        event(f"locale={locale}")
+        event("outcome=values_agree")
+
+
+# ============================================================================
+# INVALID LOCALE ERROR CONTEXT PROPERTIES
+# ============================================================================
+
+
+class TestInvalidLocaleErrorContextProperties:
+    """Property: Invalid locale produces correct error context."""
+
+    @given(
+        value=st.text(min_size=1, max_size=20),
+        locale=st.one_of(
+            st.just("xx_INVALID"),
+            st.just("zzz_YYY"),
+            st.from_regex(
+                r"[a-z]{1,3}_[A-Z]{3,5}",
+                fullmatch=True,
+            ),
+        ),
+    )
+    @settings(max_examples=100)
+    def test_parse_number_locale_error_context(
+        self, value: str, locale: str
+    ) -> None:
+        """Invalid locale returns error with correct context."""
+        result, errors = parse_number(value, locale)
+        assert result is None
+        assert len(errors) >= 1
+
+        error = errors[0]
+        assert error.context is not None
+        assert error.context.locale_code == locale
+        assert error.context.input_value == value
+        assert error.context.parse_type == "number"
+        event(f"locale={locale}")
+        event("outcome=locale_context_correct")
+
+    @given(
+        value=st.text(min_size=1, max_size=20),
+        locale=st.one_of(
+            st.just("xx_INVALID"),
+            st.just("zzz_YYY"),
+            st.from_regex(
+                r"[a-z]{1,3}_[A-Z]{3,5}",
+                fullmatch=True,
+            ),
+        ),
+    )
+    @settings(max_examples=100)
+    def test_parse_decimal_locale_error_context(
+        self, value: str, locale: str
+    ) -> None:
+        """Invalid locale returns error with correct context."""
+        result, errors = parse_decimal(value, locale)
+        assert result is None
+        assert len(errors) >= 1
+
+        error = errors[0]
+        assert error.context is not None
+        assert error.context.locale_code == locale
+        assert error.context.input_value == value
+        assert error.context.parse_type == "decimal"
+        event(f"locale={locale}")
+        event("outcome=locale_context_correct")

@@ -282,8 +282,8 @@ Some methods use "resource" in their name - context determines meaning:
 
 | Term | Definition | Examples |
 |------|------------|----------|
-| **Built-in function** | Provided by FTLLexEngine | NUMBER, DATETIME |
-| **Custom function** | User-defined function | CURRENCY, PHONE |
+| **Built-in function** | Provided by FTLLexEngine | NUMBER, DATETIME, CURRENCY |
+| **Custom function** | User-defined function | FILESIZE, PHONE |
 | **Function name** | UPPERCASE identifier | "NUMBER", "CURRENCY" |
 | **Function parameter** | Named argument to function | minimumFractionDigits, currencyCode |
 | **camelCase** | FTL parameter convention | minimumFractionDigits |
@@ -438,6 +438,6 @@ Complete alphabetical reference:
 ---
 
 **See Also**:
-- [README.md](README.md) - Project overview
+- [README.md](../README.md) - Project overview
 - [DOC_00_Index.md](DOC_00_Index.md) - Complete API reference
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Quick examples

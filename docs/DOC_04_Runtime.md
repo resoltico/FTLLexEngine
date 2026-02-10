@@ -525,8 +525,19 @@ def select_plural_category(
 
 ## Custom Function Protocol
 
-### Signature
+### Signature (without locale injection)
 ```python
+def CUSTOM_FUNCTION(
+    positional_arg: FluentValue,
+    /,
+    *,
+    keyword_arg: str = "default",
+) -> FluentValue:
+```
+
+### Signature (with locale injection via `@fluent_function(inject_locale=True)`)
+```python
+@fluent_function(inject_locale=True)
 def CUSTOM_FUNCTION(
     positional_arg: FluentValue,
     locale_code: str,
@@ -540,7 +551,7 @@ def CUSTOM_FUNCTION(
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | First positional | `FluentValue` | Y | Primary input value. |
-| `locale_code` | `str` | Y | Locale code (positional-only). |
+| `locale_code` | `str` | Opt | Locale code (positional-only). Only present when `@fluent_function(inject_locale=True)` is applied. |
 | Keyword args | `FluentValue` | N | Named options. |
 
 ### Constraints
@@ -548,6 +559,7 @@ def CUSTOM_FUNCTION(
 - Raises: Should not raise. Return fallback on error.
 - State: Should be stateless.
 - Thread: Should be safe.
+- Locale: `locale_code` is NOT automatically injected. Use `@fluent_function(inject_locale=True)` to opt in. Without it, the function receives only the FTL positional arg and keyword args.
 
 ---
 

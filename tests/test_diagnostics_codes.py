@@ -22,7 +22,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import given
+import pytest
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics.codes import (
@@ -32,70 +33,17 @@ from ftllexengine.diagnostics.codes import (
     FrozenErrorContext,
     SourceSpan,
 )
+from tests.strategies.diagnostics import (
+    diagnostics as diagnostic_strategy,
+)
+from tests.strategies.diagnostics import (
+    frozen_error_contexts as frozen_error_context_strategy,
+)
+from tests.strategies.diagnostics import (
+    source_spans as source_span_strategy,
+)
 
-# ============================================================================
-# HYPOTHESIS STRATEGIES
-# ============================================================================
-
-
-@st.composite
-def source_span_strategy(draw: st.DrawFn) -> SourceSpan:
-    """Generate arbitrary SourceSpan instances."""
-    start = draw(st.integers(min_value=0, max_value=100000))
-    end = draw(st.integers(min_value=start, max_value=start + 10000))
-    line = draw(st.integers(min_value=1, max_value=10000))
-    column = draw(st.integers(min_value=1, max_value=1000))
-    return SourceSpan(start=start, end=end, line=line, column=column)
-
-
-@st.composite
-def frozen_error_context_strategy(draw: st.DrawFn) -> FrozenErrorContext:
-    """Generate arbitrary FrozenErrorContext instances."""
-    input_value = draw(st.text(min_size=0, max_size=100))
-    locale_code = draw(st.text(min_size=0, max_size=20))
-    parse_type = draw(st.text(min_size=0, max_size=20))
-    fallback_value = draw(st.text(min_size=0, max_size=100))
-    return FrozenErrorContext(
-        input_value=input_value,
-        locale_code=locale_code,
-        parse_type=parse_type,
-        fallback_value=fallback_value,
-    )
-
-
-@st.composite
-def diagnostic_strategy(draw: st.DrawFn) -> Diagnostic:
-    """Generate arbitrary Diagnostic instances with all possible field combinations."""
-    code = draw(st.sampled_from(list(DiagnosticCode)))
-    message = draw(st.text(min_size=1, max_size=200))
-    span = draw(st.none() | source_span_strategy())
-    hint = draw(st.none() | st.text(min_size=1, max_size=100))
-    help_url = draw(st.none() | st.text(min_size=1, max_size=100))
-    function_name = draw(st.none() | st.text(min_size=1, max_size=50))
-    argument_name = draw(st.none() | st.text(min_size=1, max_size=50))
-    expected_type = draw(st.none() | st.text(min_size=1, max_size=50))
-    received_type = draw(st.none() | st.text(min_size=1, max_size=50))
-    ftl_location = draw(st.none() | st.text(min_size=1, max_size=100))
-    severity = draw(st.sampled_from(["error", "warning"]))
-    resolution_path = draw(
-        st.none()
-        | st.lists(st.text(min_size=1, max_size=30), min_size=1, max_size=10).map(tuple)
-    )
-
-    return Diagnostic(
-        code=code,
-        message=message,
-        span=span,
-        hint=hint,
-        help_url=help_url,
-        function_name=function_name,
-        argument_name=argument_name,
-        expected_type=expected_type,
-        received_type=received_type,
-        ftl_location=ftl_location,
-        severity=severity,  # type: ignore[arg-type]
-        resolution_path=resolution_path,
-    )
+pytestmark = pytest.mark.fuzz
 
 
 # ============================================================================
@@ -130,6 +78,7 @@ class TestErrorCategoryEnum:
         """PROPERTY: All ErrorCategory values are strings."""
         assert isinstance(category.value, str)
         assert len(category.value) > 0
+        event(f"category={category.value}")
 
 
 # ============================================================================
@@ -157,6 +106,7 @@ class TestFrozenErrorContextDataclass:
             raise AssertionError(msg)
         except AttributeError:
             pass
+        event("outcome=frozen_enforced")
 
     @given(context=frozen_error_context_strategy())
     def test_frozen_error_context_preserves_fields(
@@ -168,6 +118,8 @@ class TestFrozenErrorContextDataclass:
         assert isinstance(context.locale_code, str)
         assert isinstance(context.parse_type, str)
         assert isinstance(context.fallback_value, str)
+        has_input = len(context.input_value) > 0
+        event(f"has_input={has_input}")
 
     @given(
         input_value=st.text(max_size=100),
@@ -193,6 +145,8 @@ class TestFrozenErrorContextDataclass:
         assert context.locale_code == locale_code
         assert context.parse_type == parse_type
         assert context.fallback_value == fallback_value
+        has_parse_type = len(parse_type) > 0
+        event(f"has_parse_type={has_parse_type}")
 
 
 # ============================================================================
@@ -213,6 +167,7 @@ class TestDiagnosticCodeEnum:
         """PROPERTY: All DiagnosticCode values are integers."""
         assert isinstance(code.value, int)
         assert code.value > 0
+        event(f"code_name={code.name}")
 
     def test_reference_error_codes_in_range(self) -> None:
         """Reference error codes are in 1000-1999 range."""
@@ -324,6 +279,7 @@ class TestSourceSpanDataclass:
             raise AssertionError(msg)
         except AttributeError:
             pass
+        event("outcome=frozen_enforced")
 
     @given(span=source_span_strategy())
     def test_source_span_preserves_fields(self, span: SourceSpan) -> None:
@@ -336,6 +292,8 @@ class TestSourceSpanDataclass:
         assert span.end >= span.start
         assert span.line >= 1
         assert span.column >= 1
+        zero_length = span.start == span.end
+        event(f"zero_length={zero_length}")
 
     @given(
         start=st.integers(min_value=0, max_value=10000),
@@ -353,6 +311,7 @@ class TestSourceSpanDataclass:
         assert span.end == end
         assert span.line == line
         assert span.column == column
+        event(f"span_length={length}")
 
 
 # ============================================================================
@@ -372,6 +331,7 @@ class TestDiagnosticDataclass:
             raise AssertionError(msg)
         except AttributeError:
             pass
+        event("outcome=frozen_enforced")
 
     @given(diagnostic=diagnostic_strategy())
     def test_diagnostic_preserves_code_and_message(
@@ -381,6 +341,7 @@ class TestDiagnosticDataclass:
         assert isinstance(diagnostic.code, DiagnosticCode)
         assert isinstance(diagnostic.message, str)
         assert len(diagnostic.message) > 0
+        event(f"code={diagnostic.code.name}")
 
     @given(diagnostic=diagnostic_strategy())
     def test_diagnostic_format_error_is_idempotent(
@@ -390,6 +351,7 @@ class TestDiagnosticDataclass:
         first = diagnostic.format_error()
         second = diagnostic.format_error()
         assert first == second
+        event(f"severity={diagnostic.severity}")
 
     @given(diagnostic=diagnostic_strategy())
     def test_diagnostic_format_error_contains_code(
@@ -398,6 +360,8 @@ class TestDiagnosticDataclass:
         """PROPERTY: Formatted diagnostic contains error code name."""
         formatted = diagnostic.format_error()
         assert diagnostic.code.name in formatted
+        has_span = diagnostic.span is not None
+        event(f"has_span={has_span}")
 
     @given(diagnostic=diagnostic_strategy())
     def test_diagnostic_format_error_contains_message(
@@ -406,6 +370,8 @@ class TestDiagnosticDataclass:
         """PROPERTY: Formatted diagnostic contains error message."""
         formatted = diagnostic.format_error()
         assert diagnostic.message in formatted
+        has_hint = diagnostic.hint is not None
+        event(f"has_hint={has_hint}")
 
     @given(diagnostic=diagnostic_strategy())
     def test_diagnostic_format_error_nonempty(self, diagnostic: Diagnostic) -> None:
@@ -413,6 +379,7 @@ class TestDiagnosticDataclass:
         formatted = diagnostic.format_error()
         assert isinstance(formatted, str)
         assert len(formatted) > 0
+        event(f"formatted_len={len(formatted)}")
 
     @given(
         code=st.sampled_from(list(DiagnosticCode)),
@@ -429,6 +396,7 @@ class TestDiagnosticDataclass:
         assert diagnostic.hint is None
         assert diagnostic.help_url is None
         assert diagnostic.severity == "error"
+        event(f"code={code.name}")
 
 
 # ============================================================================

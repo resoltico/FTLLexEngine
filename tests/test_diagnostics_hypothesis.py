@@ -10,6 +10,7 @@ Critical areas tested:
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
@@ -20,6 +21,8 @@ from ftllexengine.diagnostics import (
     FrozenFluentError,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode, SourceSpan
+
+pytestmark = pytest.mark.fuzz
 
 # ============================================================================
 # HYPOTHESIS STRATEGIES
@@ -63,6 +66,7 @@ class TestFrozenFluentErrorConstruction:
 
         # Message must be retrievable
         assert message in str(error)
+        event(f"msg_len={len(message)}")
 
     @given(
         msg_id=identifiers,
@@ -91,6 +95,7 @@ class TestFrozenFluentErrorConstruction:
         assert error.diagnostic is not None
         assert error.diagnostic.code == DiagnosticCode.MESSAGE_NOT_FOUND
         assert msg_id in str(error)
+        event(f"id_len={len(msg_id)}")
 
 
 # ============================================================================
@@ -109,6 +114,7 @@ class TestErrorCategorization:
 
         assert error.category == ErrorCategory.REFERENCE
         assert isinstance(error, Exception)
+        event("category=reference")
 
     @given(message=error_messages)
     @settings(max_examples=50)
@@ -118,6 +124,7 @@ class TestErrorCategorization:
 
         assert error.category == ErrorCategory.RESOLUTION
         assert isinstance(error, Exception)
+        event("category=resolution")
 
     @given(message=error_messages)
     @settings(max_examples=50)
@@ -127,6 +134,7 @@ class TestErrorCategorization:
 
         assert error.category == ErrorCategory.CYCLIC
         assert isinstance(error, Exception)
+        event("category=cyclic")
 
     @given(message=error_messages)
     @settings(max_examples=50)
@@ -136,6 +144,7 @@ class TestErrorCategorization:
 
         assert error.category == ErrorCategory.PARSE
         assert isinstance(error, Exception)
+        event("category=parse")
 
     @given(message=error_messages)
     @settings(max_examples=50)
@@ -145,6 +154,7 @@ class TestErrorCategorization:
 
         assert error.category == ErrorCategory.FORMATTING
         assert isinstance(error, Exception)
+        event("category=formatting")
 
 
 # ============================================================================
@@ -179,6 +189,7 @@ class TestDiagnosticConstruction:
         assert diagnostic.span is not None
         assert diagnostic.span.line == line
         assert diagnostic.span.column == col
+        event(f"msg_len={len(message)}")
 
     @given(
         message=error_messages,
@@ -204,6 +215,7 @@ class TestDiagnosticConstruction:
         # Must contain location information
         assert str(line) in formatted
         assert str(col) in formatted
+        event(f"line={line}")
 
     @given(
         message=error_messages,
@@ -228,6 +240,7 @@ class TestDiagnosticConstruction:
 
         # Must contain the error message
         assert message in formatted
+        event(f"msg_len={len(message)}")
 
 
 # ============================================================================
@@ -287,6 +300,7 @@ class TestDiagnosticCodes:
             assert diagnostic.span is not None
             assert diagnostic.span.line == line
             assert diagnostic.span.column == col
+        event(f"id_len={len(msg_id)}")
 
 
 # ============================================================================
@@ -306,6 +320,7 @@ class TestErrorTemplate:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.code == DiagnosticCode.MESSAGE_NOT_FOUND
         assert msg_id in diagnostic.message
+        event("template=message_not_found")
 
     @given(term_id=identifiers)
     @settings(max_examples=100)
@@ -316,6 +331,7 @@ class TestErrorTemplate:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.code == DiagnosticCode.TERM_NOT_FOUND
         assert term_id in diagnostic.message
+        event("template=term_not_found")
 
     @given(var_name=identifiers)
     @settings(max_examples=100)
@@ -326,6 +342,7 @@ class TestErrorTemplate:
         assert isinstance(diagnostic, Diagnostic)
         assert diagnostic.code == DiagnosticCode.VARIABLE_NOT_PROVIDED
         assert var_name in diagnostic.message
+        event("template=variable_not_provided")
 
     @given(path=st.lists(identifiers, min_size=2, max_size=5))
     @settings(max_examples=100)
@@ -338,6 +355,7 @@ class TestErrorTemplate:
         # All identifiers in path should appear in message
         for identifier in path:
             assert identifier in diagnostic.message
+        event(f"path_len={len(path)}")
 
 
 # ============================================================================
@@ -362,6 +380,7 @@ class TestErrorMessageConsistency:
 
         for diagnostic in diagnostics:
             assert msg_id in diagnostic.message.lower()
+        event(f"id_len={len(msg_id)}")
 
     @given(path=st.lists(identifiers, min_size=2, max_size=3))
     @settings(max_examples=50)
@@ -376,6 +395,7 @@ class TestErrorMessageConsistency:
         assert any(
             word in msg_lower for word in ["cycle", "cyclic", "circular"]
         )
+        event(f"path_len={len(path)}")
 
     @given(
         msg_id1=identifiers,
@@ -399,6 +419,7 @@ class TestErrorMessageConsistency:
         # Both messages should follow same format (contain identifier)
         assert msg_id1 in diag1.message
         assert msg_id2 in diag2.message
+        event("outcome=format_consistent")
 
 
 # ============================================================================
@@ -438,6 +459,7 @@ class TestErrorRecovery:
         formatted = str(error)
         assert str(line) in formatted
         assert str(col) in formatted
+        event(f"id_len={len(msg_id)}")
 
     @given(messages=st.lists(error_messages, min_size=1, max_size=10))
     @settings(max_examples=50)
@@ -454,6 +476,7 @@ class TestErrorRecovery:
 
         for error, original_msg in zip(errors, messages, strict=True):
             assert original_msg in str(error)
+        event(f"error_count={len(errors)}")
 
 
 # ============================================================================
@@ -479,6 +502,7 @@ class TestExceptionBehavior:
 
         assert caught
         assert caught_message == message
+        event("outcome=caught")
 
     @given(message=error_messages)
     @settings(max_examples=50)
@@ -500,6 +524,7 @@ class TestExceptionBehavior:
                 caught = True
 
             assert caught
+        event(f"categories_tested={len(categories)}")
 
     @given(msg_id=identifiers)
     @settings(max_examples=50)
@@ -511,6 +536,7 @@ class TestExceptionBehavior:
         error = FrozenFluentError(cycle_msg, ErrorCategory.CYCLIC)
 
         assert error.category == ErrorCategory.CYCLIC
+        event("category=cyclic")
 
 
 # ============================================================================
@@ -544,6 +570,7 @@ class TestDiagnosticFormatting:
 
         assert formatted
         assert len(formatted) > 0
+        event(f"formatted_len={len(formatted)}")
 
     @given(
         message=error_messages,
@@ -572,3 +599,4 @@ class TestDiagnosticFormatting:
         assert message in formatted
         assert str(line) in formatted
         assert str(col) in formatted
+        event(f"msg_len={len(message)}")

@@ -253,7 +253,9 @@ def demonstrate_safe_function_use() -> None:
         if not errors:
             print(f"Result: {result}")
         else:
-            print(f"Errors: {errors}")
+            for error in errors:
+                diag = error.diagnostic
+                print(f"Error: {diag.message if diag else error.message}")
     else:
         print("[ERROR] CURRENCY function not available!")
         print("Fallback: using plain number formatting")

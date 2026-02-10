@@ -382,7 +382,8 @@ class TestResolverErrorPaths:
         assert isinstance(errors[0], FrozenFluentError)
         assert errors[0].category == ErrorCategory.REFERENCE
         # Error contains diagnostic code
-        assert "VARIABLE_NOT_PROVIDED" in str(errors[0])
+        assert errors[0].diagnostic is not None
+        assert errors[0].diagnostic.code.name == "VARIABLE_NOT_PROVIDED"
         # Result shows default variant value (selector resilience: fallback on failure)
         assert result == "Default"
 

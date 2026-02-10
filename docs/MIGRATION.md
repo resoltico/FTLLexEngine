@@ -25,7 +25,7 @@ FTLLexEngine requires Python 3.13 or later. If your project uses Python 3.12 or 
 
 1. **Python 3.13+ Modern Features**:
    - PEP 695 `type` keyword aliases
-   - PEP 727 `TypeIs` type guards
+   - PEP 742 `TypeIs` type guards
    - Pattern matching for cleaner code
    - Frozen dataclasses with slots
 
@@ -774,8 +774,8 @@ Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError
 
 ## Getting Help
 
-- **FTLLexEngine Documentation**: [docs/DOC_00_Index.md](docs/DOC_00_Index.md)
-- **Examples**: [examples/](examples/)
+- **FTLLexEngine Documentation**: [DOC_00_Index.md](DOC_00_Index.md)
+- **Examples**: [examples/](../examples/)
 - **Quick Reference**: [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 - **Issues**: https://github.com/resoltico/ftllexengine/issues
 

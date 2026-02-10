@@ -329,7 +329,7 @@ with ThreadPoolExecutor(max_workers=100) as executor:
         executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "lb"),
     ]
     confirmations = [f.result() for f in futures]
-    # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]
+    # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]
 ```
 
 `FluentBundle` is thread-safe by design:

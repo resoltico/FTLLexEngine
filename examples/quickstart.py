@@ -204,7 +204,10 @@ result, errors = error_bundle.format_pattern("welcome", {"name": "Alice"})
 if errors:
     print("[ERROR] Translation errors for 'welcome':")
     for error in errors:
-        print(f"  - {type(error).__name__}: {error}")
+        if error.diagnostic:
+            print(f"  {error.diagnostic.format_error()}")
+        else:
+            print(f"  {error.category.name}: {error.message}")
 else:
     print(f"[OK] {result}")
 
@@ -213,7 +216,10 @@ result, errors = error_bundle.format_pattern("missing-var")
 if errors:
     print("\n[WARN] Translation errors for 'missing-var':")
     for error in errors:
-        print(f"  - {type(error).__name__}: {error}")
+        if error.diagnostic:
+            print(f"  {error.diagnostic.format_error()}")
+        else:
+            print(f"  {error.category.name}: {error.message}")
 print(f"Result with fallback: {result}")
 
 # Circular reference example
@@ -221,7 +227,10 @@ result, errors = error_bundle.format_pattern("circular-a")
 if errors:
     print("\n[ERROR] Translation errors for 'circular-a':")
     for error in errors:
-        print(f"  - {type(error).__name__}: {error}")
+        if error.diagnostic:
+            print(f"  {error.diagnostic.format_error()}")
+        else:
+            print(f"  {error.category.name}: {error.message}")
 print(f"Result with fallback: {result}")
 
 # Example 9: Factory Methods

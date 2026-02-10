@@ -78,7 +78,7 @@ result, _ = bundle.format_pattern("formatted-count", {"count": 1234567})
 ```python
 bundle.add_resource("""
 decimal = { NUMBER($value, minimumFractionDigits: 2) }
-no-grouping = { NUMBER($value, useGrouping: false) }
+no-grouping = { NUMBER($value, useGrouping: 0) }
 custom = { NUMBER($value, minimumFractionDigits: 2, maximumFractionDigits: 4) }
 """)
 ```
@@ -87,7 +87,7 @@ custom = { NUMBER($value, minimumFractionDigits: 2, maximumFractionDigits: 4) }
 |:-------|:-------|:-------|
 | `minimumFractionDigits` | integer | Minimum decimal places |
 | `maximumFractionDigits` | integer | Maximum decimal places |
-| `useGrouping` | boolean | Thousands separators (default: true) |
+| `useGrouping` | `0` or `1` | Thousands separators (default: enabled). FTL named args accept NumberLiteral, not booleans. |
 | `pattern` | string | Custom Babel number pattern |
 
 ---
@@ -265,7 +265,7 @@ bundle.add_resource("date = { $date }")
 # Output: "2026-01-12 14:30:00"
 
 # After
-bundle.add_resource("date = { DATETIME($date, dateStyle: 'long') }")
+bundle.add_resource('date = { DATETIME($date, dateStyle: "long") }')
 # Output: "January 12, 2026" (for en_US)
 ```
 

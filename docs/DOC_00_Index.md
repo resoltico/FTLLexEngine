@@ -35,6 +35,7 @@ from ftllexengine import (
     SyntaxIntegrityError,
     CacheCorruptionError,
     WriteConflictError,
+    IntegrityCheckFailedError,
     IntegrityContext,
     # Metadata
     __version__,
@@ -93,6 +94,7 @@ from ftllexengine.introspection import (
     is_valid_territory_code, is_valid_currency_code,  # Type guards
     clear_iso_cache,  # Cache management
     BabelImportError,  # Exception
+    get_cldr_version,  # Babel/CLDR diagnostics
 )
 ```
 
@@ -243,7 +245,7 @@ ftllexengine/
 
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
-| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None` | runtime/function_bridge.py (exported from root) |
+| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/function_bridge.py (exported from root) |
 | `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |

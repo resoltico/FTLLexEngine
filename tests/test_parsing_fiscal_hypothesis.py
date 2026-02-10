@@ -24,6 +24,7 @@ from tests.strategies.fiscal import (
     fiscal_calendar_by_type,
     fiscal_calendars,
     fiscal_delta_by_magnitude,
+    fiscal_periods,
     month_end_policy_with_event,
     reasonable_dates,
     small_fiscal_deltas,
@@ -290,36 +291,50 @@ class TestMonthEndPolicyProperties:
         months_to_add=st.integers(min_value=-24, max_value=24),
     )
     def test_strict_policy_succeeds_for_valid_days(
-        self, year: int, month: int, day: int, months_to_add: int
+        self,
+        year: int,
+        month: int,
+        day: int,
+        months_to_add: int,
     ) -> None:
         """Strict policy succeeds when day fits in target month."""
         import calendar
 
         d = date(year, month, day)
-        delta = FiscalDelta(months=months_to_add, month_end_policy=MonthEndPolicy.STRICT)
+        delta = FiscalDelta(
+            months=months_to_add,
+            month_end_policy=MonthEndPolicy.STRICT,
+        )
+
+        event(f"day={day}")
 
         try:
-            # Calculate target month to determine if day will fit
-            total_months = year * 12 + month - 1 + months_to_add
+            total_months = (
+                year * 12 + month - 1 + months_to_add
+            )
             target_year = total_months // 12
             target_month = total_months % 12 + 1
-            max_day_in_target = calendar.monthrange(target_year, target_month)[1]
+            max_day = calendar.monthrange(
+                target_year, target_month
+            )[1]
 
-            # Only test when we know the day will fit
-            assume(day <= max_day_in_target)
-            assume(months_to_add != 0)  # Skip zero delta
+            assume(day <= max_day)
+            assume(months_to_add != 0)
 
             result = delta.add_to(d)
-            # If we got here, the day was valid and should be preserved
             assert result.day == day
+            event("outcome=strict_day_preserved")
         except (ValueError, OverflowError):
-            # Date out of range or calculation error
-            pass
+            event("outcome=strict_out_of_range")
 
     @given(delta_dict=fiscal_delta_by_magnitude())
-    def test_delta_magnitude_accepted(self, delta_dict: dict[str, int | str]) -> None:
+    def test_delta_magnitude_accepted(
+        self, delta_dict: dict[str, int | str]
+    ) -> None:
         """FiscalDelta accepts all magnitude categories."""
-        policy_str = str(delta_dict.get("month_end_policy", "preserve"))
+        policy_str = str(
+            delta_dict.get("month_end_policy", "preserve")
+        )
         policy = MonthEndPolicy(policy_str)
         delta = FiscalDelta(
             years=int(delta_dict.get("years", 0)),
@@ -335,12 +350,18 @@ class TestMonthEndPolicyProperties:
             + int(delta_dict.get("months", 0))
         )
         assert delta.total_months() == expected
+        event(f"policy={policy.value}")
+        event("outcome=magnitude_accepted")
 
     @given(policy=month_end_policy_with_event())
-    def test_month_end_policy_round_trips(self, policy: str) -> None:
+    def test_month_end_policy_round_trips(
+        self, policy: str
+    ) -> None:
         """Month-end policy strings resolve to valid enum values."""
         enum_val = MonthEndPolicy(policy)
         assert enum_val.value == policy
+        event(f"policy={policy}")
+        event("outcome=policy_round_trip")
 
     @given(pair=fiscal_boundary_crossing_pair())
     def test_boundary_crossing_dates_valid(
@@ -369,47 +390,83 @@ class TestFiscalPeriodProperties:
         quarter=st.integers(min_value=1, max_value=4),
         month=st.integers(min_value=1, max_value=12),
     )
-    def test_valid_period_accepted(self, fiscal_year: int, quarter: int, month: int) -> None:
+    def test_valid_period_accepted(
+        self, fiscal_year: int, quarter: int, month: int
+    ) -> None:
         """Valid period values are accepted."""
-        period = FiscalPeriod(fiscal_year=fiscal_year, quarter=quarter, month=month)
+        period = FiscalPeriod(
+            fiscal_year=fiscal_year,
+            quarter=quarter,
+            month=month,
+        )
         assert period.fiscal_year == fiscal_year
         assert period.quarter == quarter
         assert period.month == month
+        event(f"quarter={quarter}")
+        event("outcome=period_accepted")
 
     @given(
         fiscal_year=st.integers(min_value=1900, max_value=2100),
         quarter=st.integers(min_value=-10, max_value=0) | st.integers(min_value=5, max_value=15),
         month=st.integers(min_value=1, max_value=12),
     )
-    def test_invalid_quarter_rejected(self, fiscal_year: int, quarter: int, month: int) -> None:
+    def test_invalid_quarter_rejected(
+        self, fiscal_year: int, quarter: int, month: int
+    ) -> None:
         """Invalid quarter values are rejected."""
-        with pytest.raises(ValueError, match="Quarter must be 1-4"):
-            FiscalPeriod(fiscal_year=fiscal_year, quarter=quarter, month=month)
+        event(f"quarter={quarter}")
+        with pytest.raises(
+            ValueError, match="Quarter must be 1-4"
+        ):
+            FiscalPeriod(
+                fiscal_year=fiscal_year,
+                quarter=quarter,
+                month=month,
+            )
+        event("outcome=invalid_quarter_rejected")
 
     @given(
         fiscal_year=st.integers(min_value=1900, max_value=2100),
         quarter=st.integers(min_value=1, max_value=4),
         month=st.integers(min_value=-10, max_value=0) | st.integers(min_value=13, max_value=25),
     )
-    def test_invalid_month_rejected(self, fiscal_year: int, quarter: int, month: int) -> None:
+    def test_invalid_month_rejected(
+        self, fiscal_year: int, quarter: int, month: int
+    ) -> None:
         """Invalid month values are rejected."""
-        with pytest.raises(ValueError, match="Month must be 1-12"):
-            FiscalPeriod(fiscal_year=fiscal_year, quarter=quarter, month=month)
+        event(f"month={month}")
+        with pytest.raises(
+            ValueError, match="Month must be 1-12"
+        ):
+            FiscalPeriod(
+                fiscal_year=fiscal_year,
+                quarter=quarter,
+                month=month,
+            )
+        event("outcome=invalid_month_rejected")
 
     @given(
         fy1=st.integers(min_value=1900, max_value=2100),
         fy2=st.integers(min_value=1900, max_value=2100),
     )
-    def test_period_ordering_by_year(self, fy1: int, fy2: int) -> None:
+    def test_period_ordering_by_year(
+        self, fy1: int, fy2: int
+    ) -> None:
         """Periods are ordered by fiscal year first."""
         assume(fy1 != fy2)
-        p1 = FiscalPeriod(fiscal_year=fy1, quarter=4, month=12)
-        p2 = FiscalPeriod(fiscal_year=fy2, quarter=1, month=1)
+        p1 = FiscalPeriod(
+            fiscal_year=fy1, quarter=4, month=12
+        )
+        p2 = FiscalPeriod(
+            fiscal_year=fy2, quarter=1, month=1
+        )
 
         if fy1 < fy2:
             assert p1 < p2
+            event("outcome=p1_lt_p2")
         else:
             assert p1 > p2
+            event("outcome=p1_gt_p2")
 
 
 # ============================================================================
@@ -433,6 +490,8 @@ class TestDateRangeProperties:
         start = cal.fiscal_year_start_date(fiscal_year)
         end = cal.fiscal_year_end_date(fiscal_year)
 
+        event(f"start_month={start_month}")
+
         # Check start date
         assert cal.fiscal_year(start) == fiscal_year
 
@@ -440,8 +499,11 @@ class TestDateRangeProperties:
         assert cal.fiscal_year(end) == fiscal_year
 
         # Check midpoint
-        mid = date.fromordinal((start.toordinal() + end.toordinal()) // 2)
+        mid = date.fromordinal(
+            (start.toordinal() + end.toordinal()) // 2
+        )
         assert cal.fiscal_year(mid) == fiscal_year
+        event("outcome=fy_containment_verified")
 
     @given(
         start_month=fiscal_calendars,
@@ -456,11 +518,14 @@ class TestDateRangeProperties:
         start = cal.quarter_start_date(fiscal_year, quarter)
         end = cal.quarter_end_date(fiscal_year, quarter)
 
+        event(f"quarter={quarter}")
+
         # Check start date
         assert cal.fiscal_quarter(start) == quarter
 
         # Check end date
         assert cal.fiscal_quarter(end) == quarter
+        event("outcome=quarter_containment_verified")
 
 
 # ============================================================================
@@ -473,39 +538,328 @@ class TestImmutabilityProperties:
     """Property-based tests for immutability guarantees."""
 
     @given(start_month=fiscal_calendars)
-    def test_fiscal_calendar_immutable(self, start_month: int) -> None:
+    def test_fiscal_calendar_immutable(
+        self, start_month: int
+    ) -> None:
         """FiscalCalendar cannot be mutated."""
         cal = FiscalCalendar(start_month=start_month)
+        event(f"start_month={start_month}")
         with pytest.raises(AttributeError):
             cal.start_month = 7  # type: ignore[misc]
+        event("outcome=calendar_immutable")
 
     @given(
         years=st.integers(min_value=-10, max_value=10),
         months=st.integers(min_value=-10, max_value=10),
     )
-    def test_fiscal_delta_immutable(self, years: int, months: int) -> None:
+    def test_fiscal_delta_immutable(
+        self, years: int, months: int
+    ) -> None:
         """FiscalDelta cannot be mutated."""
         delta = FiscalDelta(years=years, months=months)
+        event(f"years={years}")
         with pytest.raises(AttributeError):
             delta.years = 0  # type: ignore[misc]
+        event("outcome=delta_immutable")
 
     @given(start_month=fiscal_calendars)
-    def test_fiscal_calendar_hashable(self, start_month: int) -> None:
+    def test_fiscal_calendar_hashable(
+        self, start_month: int
+    ) -> None:
         """FiscalCalendar is hashable."""
         cal = FiscalCalendar(start_month=start_month)
         h = hash(cal)
         assert isinstance(h, int)
         s = {cal}
         assert len(s) == 1
+        event(f"start_month={start_month}")
+        event("outcome=calendar_hashable")
 
     @given(
         years=st.integers(min_value=-10, max_value=10),
         months=st.integers(min_value=-10, max_value=10),
     )
-    def test_fiscal_delta_hashable(self, years: int, months: int) -> None:
+    def test_fiscal_delta_hashable(
+        self, years: int, months: int
+    ) -> None:
         """FiscalDelta is hashable."""
         delta = FiscalDelta(years=years, months=months)
         h = hash(delta)
         assert isinstance(h, int)
         s = {delta}
         assert len(s) == 1
+        event(f"years={years}")
+        event("outcome=delta_hashable")
+
+
+# ============================================================================
+# OPERATOR ALGEBRA PROPERTIES
+# ============================================================================
+
+
+@pytest.mark.fuzz
+class TestOperatorAlgebraProperties:
+    """Property-based tests for FiscalDelta operator algebra.
+
+    Verifies algebraic identities that must hold for all inputs:
+    subtract_from oracle, subtraction identity, scalar commutativity,
+    with_policy preservation, and cross-policy rejection.
+    """
+
+    @given(
+        d=date_by_boundary(),
+        years=st.integers(min_value=-5, max_value=5),
+        months=st.integers(min_value=-12, max_value=12),
+        days=st.integers(min_value=-30, max_value=30),
+    )
+    def test_subtract_from_equals_negate_add(
+        self,
+        d: date,
+        years: int,
+        months: int,
+        days: int,
+    ) -> None:
+        """Property: subtract_from(d) == negate().add_to(d).
+
+        Oracle: subtract_from is defined as negate().add_to().
+        """
+        delta = FiscalDelta(
+            years=years, months=months, days=days
+        )
+        event(f"years={years}")
+
+        try:
+            result_sub = delta.subtract_from(d)
+            result_neg = delta.negate().add_to(d)
+            assert result_sub == result_neg
+            event("outcome=subtract_from_oracle_match")
+        except (OverflowError, ValueError):
+            event("outcome=subtract_from_out_of_range")
+
+    @given(
+        years=st.integers(min_value=-10, max_value=10),
+        quarters=st.integers(min_value=-10, max_value=10),
+        months=st.integers(min_value=-10, max_value=10),
+        days=st.integers(min_value=-100, max_value=100),
+        policy=month_end_policy_with_event(),
+    )
+    def test_with_policy_preserves_duration(
+        self,
+        years: int,
+        quarters: int,
+        months: int,
+        days: int,
+        policy: str,
+    ) -> None:
+        """Property: with_policy changes only policy, not duration."""
+        delta = FiscalDelta(
+            years=years,
+            quarters=quarters,
+            months=months,
+            days=days,
+        )
+        target = MonthEndPolicy(policy)
+        new_delta = delta.with_policy(target)
+
+        assert new_delta.years == years
+        assert new_delta.quarters == quarters
+        assert new_delta.months == months
+        assert new_delta.days == days
+        assert new_delta.month_end_policy == target
+        event(f"policy={policy}")
+        event("outcome=with_policy_preserved")
+
+    @given(
+        y1=st.integers(min_value=-5, max_value=5),
+        m1=st.integers(min_value=-12, max_value=12),
+        d1=st.integers(min_value=-30, max_value=30),
+        y2=st.integers(min_value=-5, max_value=5),
+        m2=st.integers(min_value=-12, max_value=12),
+        d2=st.integers(min_value=-30, max_value=30),
+    )
+    def test_sub_equals_add_negation(
+        self,
+        y1: int,
+        m1: int,
+        d1: int,
+        y2: int,
+        m2: int,
+        d2: int,
+    ) -> None:
+        """Property: d1 - d2 == d1 + (-d2).
+
+        Algebraic identity for subtraction.
+        """
+        delta1 = FiscalDelta(years=y1, months=m1, days=d1)
+        delta2 = FiscalDelta(years=y2, months=m2, days=d2)
+
+        result_sub = delta1 - delta2
+        result_add_neg = delta1 + (-delta2)
+
+        assert result_sub.years == result_add_neg.years
+        assert result_sub.months == result_add_neg.months
+        assert result_sub.days == result_add_neg.days
+        event(f"total={result_sub.total_months()}")
+        event("outcome=sub_identity_verified")
+
+    @given(
+        factor=st.integers(min_value=-10, max_value=10),
+        years=st.integers(min_value=-5, max_value=5),
+        months=st.integers(min_value=-12, max_value=12),
+        days=st.integers(min_value=-30, max_value=30),
+    )
+    def test_rmul_commutative_with_mul(
+        self,
+        factor: int,
+        years: int,
+        months: int,
+        days: int,
+    ) -> None:
+        """Property: factor * delta == delta * factor."""
+        delta = FiscalDelta(
+            years=years, months=months, days=days
+        )
+
+        result_mul = delta * factor
+        result_rmul = factor * delta
+
+        assert result_mul.years == result_rmul.years
+        assert result_mul.months == result_rmul.months
+        assert result_mul.days == result_rmul.days
+        event(f"factor={factor}")
+        event("outcome=rmul_commutative")
+
+    @given(
+        p1=st.sampled_from(list(MonthEndPolicy)),
+        p2=st.sampled_from(list(MonthEndPolicy)),
+    )
+    def test_cross_policy_add_rejected(
+        self, p1: MonthEndPolicy, p2: MonthEndPolicy
+    ) -> None:
+        """Property: Adding deltas with different policies raises."""
+        assume(p1 != p2)
+        d1 = FiscalDelta(months=1, month_end_policy=p1)
+        d2 = FiscalDelta(months=2, month_end_policy=p2)
+
+        with pytest.raises(ValueError, match="different"):
+            _ = d1 + d2
+        event(f"p1={p1.value}")
+        event(f"p2={p2.value}")
+        event("outcome=cross_policy_rejected")
+
+    @given(
+        d=date_by_boundary(),
+        months=st.integers(min_value=-24, max_value=24),
+        policy=month_end_policy_with_event(),
+    )
+    def test_policy_driven_arithmetic_valid(
+        self,
+        d: date,
+        months: int,
+        policy: str,
+    ) -> None:
+        """Property: All policies produce valid dates or raise.
+
+        Exercises month_end_policy_with_event() in actual
+        date arithmetic rather than just enum roundtrip.
+        """
+        delta = FiscalDelta(
+            months=months,
+            month_end_policy=MonthEndPolicy(policy),
+        )
+        event(f"policy={policy}")
+
+        try:
+            result = delta.add_to(d)
+            assert isinstance(result, date)
+            assert 1 <= result.day <= 31
+            event("outcome=policy_arithmetic_valid")
+        except (ValueError, OverflowError):
+            event("outcome=policy_arithmetic_error")
+
+
+# ============================================================================
+# FISCAL PERIOD STRATEGY PROPERTIES
+# ============================================================================
+
+
+@pytest.mark.fuzz
+class TestFiscalPeriodStrategyProperties:
+    """Property tests using fiscal_periods() composite strategy."""
+
+    @given(period_args=fiscal_periods())
+    def test_period_from_strategy_valid(
+        self, period_args: tuple[int, int, int]
+    ) -> None:
+        """Property: fiscal_periods() always produces valid args."""
+        fy, quarter, month = period_args
+        period = FiscalPeriod(
+            fiscal_year=fy, quarter=quarter, month=month
+        )
+        assert period.fiscal_year == fy
+        assert period.quarter == quarter
+        assert period.month == month
+        event(f"quarter={quarter}")
+        event("outcome=strategy_period_valid")
+
+    @given(
+        p1=fiscal_periods(),
+        p2=fiscal_periods(),
+    )
+    def test_period_equality_reflexive(
+        self,
+        p1: tuple[int, int, int],
+        p2: tuple[int, int, int],
+    ) -> None:
+        """Property: Equal args produce equal periods."""
+        period1 = FiscalPeriod(*p1)
+        period2 = FiscalPeriod(*p2)
+        if p1 == p2:
+            assert period1 == period2
+            event("outcome=periods_equal")
+        else:
+            assert period1 != period2 or p1 == p2
+            event("outcome=periods_differ")
+
+
+# ============================================================================
+# BOUNDARY CROSSING QUARTER ADJACENCY
+# ============================================================================
+
+
+@pytest.mark.fuzz
+class TestBoundaryCrossingQuarterAdjacency:
+    """Property tests for fiscal boundary quarter adjacency.
+
+    Verifies that date pairs from fiscal_boundary_crossing_pair()
+    land in adjacent fiscal quarters or adjacent fiscal years,
+    not just that before < after.
+    """
+
+    @given(pair=fiscal_boundary_crossing_pair())
+    def test_boundary_dates_in_adjacent_periods(
+        self, pair: tuple[date, date]
+    ) -> None:
+        """Property: Boundary pairs are in adjacent fiscal periods.
+
+        For common fiscal starts, the before/after dates should
+        be in consecutive fiscal months (month difference == 1).
+        """
+        before, after = pair
+        # Use calendar year for adjacency check
+        cal = FiscalCalendar(start_month=1)
+
+        before_month = (
+            (cal.fiscal_year(before) - 1) * 12
+            + cal.fiscal_month(before)
+        )
+        after_month = (
+            (cal.fiscal_year(after) - 1) * 12
+            + cal.fiscal_month(after)
+        )
+        gap_months = after_month - before_month
+
+        # Boundary crossings should be 0 or 1 months apart
+        assert 0 <= gap_months <= 1
+        event(f"gap_months={gap_months}")
+        event("outcome=boundary_adjacency_verified")

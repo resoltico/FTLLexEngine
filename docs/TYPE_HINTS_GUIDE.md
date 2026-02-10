@@ -74,7 +74,7 @@ def load_translations(locale: LocaleCode, source: FTLSource) -> None:
 
 ---
 
-### 2. PEP 727: TypeIs for Type Guards
+### 2. PEP 742: TypeIs for Type Guards
 
 FTLLexEngine uses `TypeIs` for runtime type narrowing:
 
@@ -152,13 +152,14 @@ ftl_source: FTLSource = "hello = Hello!"
 
 **Type Hierarchy**:
 ```python
-# At runtime, all are str
-MessageId == str    # True
-LocaleCode == str   # True
-ResourceId == str   # True
-FTLSource == str    # True
+# PEP 695 type aliases are TypeAliasType objects
+type(MessageId)              # <class 'typing.TypeAliasType'>
+MessageId.__value__ == str   # True (underlying type is str)
 
-# But type checkers treat them distinctly for better errors
+# Values are plain str at runtime
+isinstance("hello", str)     # True - MessageId values are str instances
+
+# Type checkers treat the aliases distinctly for better errors
 def format(msg_id: MessageId) -> str: ...
 format("en_US")  # Static type checker error: expected MessageId, got LocaleCode
                  # (At runtime both are str, so this executes fine)

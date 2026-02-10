@@ -794,11 +794,10 @@ class TestFileSizeHypothesis:
         """FILESIZE with precision must never crash."""
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_function("FILESIZE", FILESIZE)
-        bundle.add_resource('size = { FILESIZE($bytes, precision: $prec) }')
+        bundle.add_resource(f"size = {{ FILESIZE($bytes, precision: {precision}) }}")
 
         result, errors = bundle.format_pattern("size", {
             "bytes": bytes_count,
-            "prec": precision
         })
         assert isinstance(result, str)
         assert len(result) > 0
@@ -987,7 +986,7 @@ class TestFileSizeHypothesis:
 
 **For More Examples**:
 - See [examples/custom_functions.py](../examples/custom_functions.py) for complete working code
-- See [tests/test_custom_functions.py](../tests/test_custom_functions.py) for test patterns
+- See [tests/test_custom_functions_fuzzing.py](../tests/test_custom_functions_fuzzing.py) for test patterns
 
 **Questions?**
 - Open an issue: https://github.com/resoltico/ftllexengine/issues

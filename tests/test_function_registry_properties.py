@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.function_bridge import FunctionRegistry
+
+pytestmark = pytest.mark.fuzz
 
 # ============================================================================
 # HYPOTHESIS STRATEGIES

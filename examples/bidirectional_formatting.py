@@ -110,7 +110,8 @@ def example_form_validation() -> None:
         # Returns tuple (result, errors)
         amount, errors = parse_decimal(user_input, "de_DE")
         if errors:
-            print(f"  Error: {errors[0]}")
+            diag = errors[0].diagnostic
+            print(f"  Error: {diag.message if diag else errors[0].message}")
             continue
 
         print(f"  Parsed: {amount}")
@@ -151,7 +152,8 @@ def example_currency_parsing() -> None:
         # Returns tuple (result, errors)
         result, errors = parse_currency(user_input, locale)
         if errors:
-            print(f"  Error: {errors[0]}")
+            diag = errors[0].diagnostic
+            print(f"  Error: {diag.message if diag else errors[0].message}")
             continue
 
         if result is not None:
@@ -192,7 +194,8 @@ def example_date_parsing() -> None:
     if not errors:
         print(f"  Parsed (M/d/yy): {us_date}  # January 2, 2025")
     else:
-        print(f"  US format error: {errors[0]}")
+        diag = errors[0].diagnostic
+        print(f"  US format error: {diag.message if diag else errors[0].message}")
 
     # European format uses dots: dd.MM.yy (2-digit year per CLDR)
     eu_string = "02.01.25"
@@ -201,7 +204,8 @@ def example_date_parsing() -> None:
     if not errors:
         print(f"  Parsed (dd.MM.yy): {eu_date}  # January 2, 2025")
     else:
-        print(f"  EU format error: {errors[0]}")
+        diag = errors[0].diagnostic
+        print(f"  EU format error: {diag.message if diag else errors[0].message}")
 
     # ISO 8601 (unambiguous, works for any locale)
     iso_string = "2025-01-02"
@@ -210,7 +214,8 @@ def example_date_parsing() -> None:
     if not errors:
         print(f"  Always unambiguous: {iso_date}  # January 2, 2025")
     else:
-        print(f"  ISO format error: {errors[0]}")
+        diag = errors[0].diagnostic
+        print(f"  ISO format error: {diag.message if diag else errors[0].message}")
 
     print("\nNote: CLDR patterns are locale-specific. Use ISO 8601 for interchange.")
 
@@ -235,7 +240,9 @@ def example_roundtrip_validation() -> None:
         # Returns tuple (result, errors)
         result, errors = parse_currency(formatted1, locale)
         if errors:
-            print(f"Locale: {locale} - Parse failed: {errors[0]}")
+            diag = errors[0].diagnostic
+            msg = diag.message if diag else errors[0].message
+            print(f"Locale: {locale} - Parse failed: {msg}")
             continue
 
         if result is not None:

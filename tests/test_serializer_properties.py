@@ -30,6 +30,7 @@ from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     CallArguments,
     Comment,
@@ -44,6 +45,7 @@ from ftllexengine.syntax.ast import (
     SelectExpression,
     StringLiteral,
     Term,
+    TermReference,
     TextElement,
     VariableReference,
 )
@@ -52,6 +54,9 @@ from ftllexengine.syntax.serializer import (
     FluentSerializer,
     SerializationDepthError,
     SerializationValidationError,
+    _classify_line,
+    _escape_text,
+    _LineKind,  # Private import for property tests
     serialize,
 )
 from tests.strategies.ftl import (
@@ -716,6 +721,781 @@ class TestSpecialCharacterHandling:
 
         # Should contain structural indentation after newline
         assert "Line 1\n    Line 2" in serialized
+
+
+# =============================================================================
+# _classify_line Property Tests
+# =============================================================================
+
+
+# Characters syntactically significant at continuation line start in FTL
+_SYNTAX_CHARS = ".[*"
+
+
+class TestClassifyLineProperties:
+    """Property-based tests for _classify_line pure function.
+
+    Properties verified:
+    - EMPTY iff empty string
+    - WHITESPACE_ONLY iff all spaces and non-empty
+    - SYNTAX_LEADING iff first non-ws char is in {., *, [}
+    - ws_len is always non-negative
+    - Classification is exhaustive (always one of 4 kinds)
+    """
+
+    @given(line=st.text(
+        alphabet=st.characters(
+            codec="utf-8", categories=("L", "N", "P", "S", "Z")
+        ),
+        min_size=0,
+        max_size=80,
+    ))
+    def test_output_is_valid_kind(self, line: str) -> None:
+        """_classify_line always returns a valid _LineKind."""
+        kind, ws_len = _classify_line(line)
+        kind_name = kind.name
+        event(f"kind={kind_name}")
+        assert isinstance(kind, _LineKind)
+        assert ws_len >= 0
+
+    @given(line=st.text(
+        alphabet=st.characters(
+            codec="utf-8", categories=("L", "N", "P", "S", "Z")
+        ),
+        min_size=0,
+        max_size=80,
+    ))
+    def test_empty_iff_empty_string(self, line: str) -> None:
+        """EMPTY kind iff input is the empty string."""
+        kind, _ = _classify_line(line)
+        is_empty = kind is _LineKind.EMPTY
+        event(f"empty={is_empty}")
+        assert is_empty == (line == "")
+
+    @given(n=st.integers(min_value=1, max_value=20))
+    def test_whitespace_only_for_space_strings(self, n: int) -> None:
+        """Strings of only spaces classify as WHITESPACE_ONLY."""
+        line = " " * n
+        kind, ws_len = _classify_line(line)
+        event(f"spaces={n}")
+        assert kind is _LineKind.WHITESPACE_ONLY
+        assert ws_len == 0
+
+    @given(
+        ws=st.integers(min_value=0, max_value=10),
+        syntax_char=st.sampled_from(list(_SYNTAX_CHARS)),
+        suffix=st.text(min_size=0, max_size=20),
+    )
+    def test_syntax_leading_classification(
+        self, ws: int, syntax_char: str, suffix: str
+    ) -> None:
+        """Lines starting with (optional ws + syntax char) are SYNTAX_LEADING."""
+        line = " " * ws + syntax_char + suffix
+        kind, ws_len = _classify_line(line)
+        event(f"syntax_char={syntax_char}")
+        event(f"ws_prefix={ws}")
+        assert kind is _LineKind.SYNTAX_LEADING
+        assert ws_len == ws
+
+    @given(
+        ws=st.integers(min_value=0, max_value=10),
+        first_char=st.characters(
+            codec="utf-8",
+            categories=("L", "N"),
+        ),
+        suffix=st.text(min_size=0, max_size=20),
+    )
+    def test_normal_for_non_syntax_first_char(
+        self, ws: int, first_char: str, suffix: str
+    ) -> None:
+        """Lines where first non-ws char is not syntax are NORMAL."""
+        line = " " * ws + first_char + suffix
+        kind, _ = _classify_line(line)
+        event(f"kind={kind.name}")
+        assert kind is _LineKind.NORMAL
+
+
+# =============================================================================
+# _escape_text Property Tests
+# =============================================================================
+
+
+class TestEscapeTextProperties:
+    """Property-based tests for _escape_text brace escaping.
+
+    Properties verified:
+    - Content preserved: unescaping the result recovers the original
+    - No raw braces in non-placeable positions
+    """
+
+    @given(text=st.text(min_size=0, max_size=100))
+    def test_content_roundtrip(self, text: str) -> None:
+        """Unescaping placeable wrappers recovers original text."""
+        output: list[str] = []
+        _escape_text(text, output)
+        result = "".join(output)
+        has_braces = "{" in text or "}" in text
+        event(f"has_braces={has_braces}")
+        event(f"length={len(text)}")
+        # Reverse the escaping
+        recovered = result.replace('{ "{" }', "{").replace('{ "}" }', "}")
+        assert recovered == text
+
+    @given(text=st.text(
+        alphabet=st.characters(
+            codec="utf-8",
+            exclude_characters="{}",
+        ),
+        min_size=0,
+        max_size=100,
+    ))
+    def test_no_transformation_without_braces(self, text: str) -> None:
+        """Text without braces passes through unchanged."""
+        output: list[str] = []
+        _escape_text(text, output)
+        result = "".join(output)
+        event(f"length={len(text)}")
+        assert result == text
+
+
+# =============================================================================
+# Call Argument Depth Properties (Depth Guard in Arguments)
+# =============================================================================
+
+
+class TestCallArgumentDepthProperties:
+    """Test depth guard enforcement within call arguments.
+
+    Serializer wraps each positional and named argument expression
+    in depth_guard. Nested term/function calls must respect limits.
+    """
+
+    @given(depth=st.integers(min_value=1, max_value=8))
+    def test_nested_call_arguments_serialize(
+        self, depth: int
+    ) -> None:
+        """PROPERTY: Nested call arguments within limits serialize.
+
+        Events emitted:
+        - call_arg_depth={n}: Nesting depth of call arguments
+        - outcome=nested_args_ok: Serialization succeeded
+        """
+        event(f"call_arg_depth={depth}")
+
+        # Build: NUMBER(-t0(-t1(-t2(...$x...))))
+        inner: VariableReference | TermReference
+        inner = VariableReference(id=Identifier(name="x"))
+        for i in range(depth):
+            inner = TermReference(
+                id=Identifier(name=f"t{i}"),
+                arguments=CallArguments(
+                    positional=(inner,), named=()
+                ),
+            )
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(inner,), named=()
+            ),
+        )
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(Placeable(expression=func),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        event("outcome=nested_args_ok")
+        assert "-t0(" in result
+        assert "$x" in result
+
+    def test_deep_call_args_exceed_depth_limit(self) -> None:
+        """Deeply nested call arguments exceed depth limit."""
+        inner: VariableReference | TermReference
+        inner = VariableReference(id=Identifier(name="x"))
+        for i in range(20):
+            inner = TermReference(
+                id=Identifier(name=f"t{i}"),
+                arguments=CallArguments(
+                    positional=(inner,), named=()
+                ),
+            )
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(inner,), named=()
+            ),
+        )
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(Placeable(expression=func),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        with pytest.raises(SerializationDepthError):
+            serialize(resource, validate=True, max_depth=10)
+
+    @given(
+        depth=st.integers(min_value=1, max_value=5),
+        named_val=st.sampled_from(["decimal", "percent"]),
+    )
+    def test_named_args_in_nested_calls(
+        self, depth: int, named_val: str
+    ) -> None:
+        """PROPERTY: Named arguments in nested calls serialize.
+
+        Events emitted:
+        - call_arg_depth={n}: Nesting depth
+        - has_named_arg=True: Named argument present
+        """
+        event(f"call_arg_depth={depth}")
+        event("has_named_arg=True")
+
+        inner: VariableReference | TermReference
+        inner = VariableReference(id=Identifier(name="x"))
+        for i in range(depth):
+            named = NamedArgument(
+                name=Identifier(name="style"),
+                value=StringLiteral(value=named_val),
+            )
+            inner = TermReference(
+                id=Identifier(name=f"t{i}"),
+                arguments=CallArguments(
+                    positional=(inner,), named=(named,)
+                ),
+            )
+        func = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(inner,), named=()
+            ),
+        )
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(Placeable(expression=func),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        assert f'style: "{named_val}"' in result
+
+
+# =============================================================================
+# Control Character StringLiteral Properties
+# =============================================================================
+
+
+class TestControlCharStringLiteralProperties:
+    """Test StringLiteral escaping for all control characters.
+
+    Serializer uses \\uHHHH for chars < 0x20 and 0x7F. Verify
+    this encoding for the full control character range.
+    """
+
+    @given(
+        code=st.integers(min_value=0, max_value=0x1F),
+    )
+    def test_c0_control_chars_escaped(self, code: int) -> None:
+        """PROPERTY: C0 control chars (0x00-0x1F) use \\uHHHH.
+
+        Events emitted:
+        - control_char_code={n}: Character code point
+        - outcome=control_char_escaped: Escape verified
+        """
+        event(f"control_char_code={code}")
+
+        char = chr(code)
+        lit = StringLiteral(value=f"a{char}b")
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(Placeable(expression=lit),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        expected_escape = f"\\u{code:04X}"
+        assert expected_escape in result
+        event("outcome=control_char_escaped")
+
+    def test_del_char_escaped(self) -> None:
+        """DEL character (0x7F) uses \\u007F encoding."""
+        lit = StringLiteral(value="a\x7Fb")
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(Placeable(expression=lit),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        assert "\\u007F" in result
+
+    @given(
+        code=st.sampled_from(
+            [0x00, 0x01, 0x08, 0x09, 0x0A, 0x0C, 0x0D,
+             0x1B, 0x1F, 0x7F]
+        ),
+    )
+    def test_control_char_roundtrip(self, code: int) -> None:
+        """PROPERTY: Control chars roundtrip through parse/serialize.
+
+        Events emitted:
+        - control_char_code={n}: Character code point
+        - outcome=control_roundtrip_ok: Roundtrip succeeded
+        """
+        event(f"control_char_code={code}")
+
+        char = chr(code)
+        lit = StringLiteral(value=f"x{char}y")
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(Placeable(expression=lit),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        serialized = serialize(resource, validate=True)
+        parser = FluentParserV1()
+        reparsed = parser.parse(serialized)
+        assert len(reparsed.entries) == 1
+        assert not any(
+            isinstance(e, Junk) for e in reparsed.entries
+        )
+        event("outcome=control_roundtrip_ok")
+
+
+# =============================================================================
+# Entry Sequencing Properties (Junk/Comment/Message ordering)
+# =============================================================================
+
+
+class TestEntrySequencingProperties:
+    """Test blank-line insertion logic for mixed entry sequences.
+
+    Serializer handles spacing between entries: extra blank lines
+    for adjacent comments of same type, Junk with leading
+    whitespace, Message/Term compact separation.
+    """
+
+    @given(
+        data=st.data(),
+        count=st.integers(min_value=2, max_value=5),
+    )
+    @settings(
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    def test_mixed_entry_sequences_parseable(
+        self, data: st.DataObject, count: int
+    ) -> None:
+        """PROPERTY: Mixed entry sequences serialize to parseable FTL.
+
+        Events emitted:
+        - entry_count={n}: Number of entries
+        - has_junk={bool}: Whether Junk entries present
+        - has_comment={bool}: Whether Comment entries present
+        - outcome=sequence_parseable: Output parses without error
+        """
+        event(f"entry_count={count}")
+
+        entries: list[Message | Term | Comment | Junk] = []
+        seen_ids: set[str] = set()
+        has_junk = False
+        has_comment = False
+
+        for i in range(count):
+            choice = data.draw(
+                st.sampled_from(
+                    ["message", "term", "comment", "junk"]
+                )
+            )
+            if choice == "message":
+                name = f"msg{i}"
+                if name not in seen_ids:
+                    seen_ids.add(name)
+                    entries.append(
+                        Message(
+                            id=Identifier(name=name),
+                            value=Pattern(
+                                elements=(
+                                    TextElement(value="val"),
+                                )
+                            ),
+                            attributes=(),
+                        )
+                    )
+            elif choice == "term":
+                name = f"term{i}"
+                if name not in seen_ids:
+                    seen_ids.add(name)
+                    entries.append(
+                        Term(
+                            id=Identifier(name=name),
+                            value=Pattern(
+                                elements=(
+                                    TextElement(value="val"),
+                                )
+                            ),
+                            attributes=(),
+                        )
+                    )
+            elif choice == "comment":
+                has_comment = True
+                ctype = data.draw(
+                    st.sampled_from([
+                        CommentType.COMMENT,
+                        CommentType.GROUP,
+                        CommentType.RESOURCE,
+                    ])
+                )
+                entries.append(
+                    Comment(
+                        content=f"comment {i}",
+                        type=ctype,
+                    )
+                )
+            else:
+                has_junk = True
+                entries.append(
+                    Junk(content=f"junk line {i}\n")
+                )
+
+        event(f"has_junk={has_junk}")
+        event(f"has_comment={has_comment}")
+
+        if not entries:
+            return
+
+        resource = Resource(entries=tuple(entries))
+        result = serialize(resource, validate=False)
+
+        parser = FluentParserV1()
+        reparsed = parser.parse(result)
+        assert len(reparsed.entries) > 0
+        event("outcome=sequence_parseable")
+
+    @given(
+        junk_count=st.integers(min_value=1, max_value=3),
+        msg_count=st.integers(min_value=1, max_value=3),
+    )
+    def test_junk_between_messages(
+        self, junk_count: int, msg_count: int
+    ) -> None:
+        """PROPERTY: Junk interleaved with Messages serializes.
+
+        Events emitted:
+        - junk_count={n}: Number of Junk entries
+        - msg_count={n}: Number of Message entries
+        - outcome=junk_interleaved_ok: Serialization succeeded
+        """
+        event(f"junk_count={junk_count}")
+        event(f"msg_count={msg_count}")
+
+        entries: list[Message | Junk] = []
+        for i in range(msg_count):
+            entries.append(
+                Message(
+                    id=Identifier(name=f"m{i}"),
+                    value=Pattern(
+                        elements=(TextElement(value="v"),)
+                    ),
+                    attributes=(),
+                )
+            )
+            if i < junk_count:
+                entries.append(
+                    Junk(content=f"bad syntax {i}\n")
+                )
+
+        resource = Resource(entries=tuple(entries))
+        result = serialize(resource, validate=False)
+        assert isinstance(result, str)
+        assert len(result) > 0
+        event("outcome=junk_interleaved_ok")
+
+    def test_adjacent_same_type_comments_separated(
+        self,
+    ) -> None:
+        """Adjacent same-type comments get extra blank line."""
+        entries = (
+            Comment(content="first", type=CommentType.COMMENT),
+            Comment(content="second", type=CommentType.COMMENT),
+        )
+        resource = Resource(entries=entries)
+        result = serialize(resource, validate=False)
+        # Double newline separates same-type comments
+        assert "\n\n" in result
+
+
+# =============================================================================
+# SYNTAX_LEADING Roundtrip Properties (Full Path)
+# =============================================================================
+
+
+class TestSyntaxLeadingRoundtripProperties:
+    """Test full serialize-parse-serialize for syntax-leading lines.
+
+    Continuation lines starting with . * [ need wrapping as
+    StringLiteral placeables to prevent parser misinterpretation.
+    """
+
+    _parser = FluentParserV1()
+
+    @given(
+        syntax_char=st.sampled_from([".", "*", "["]),
+        ws=st.integers(min_value=0, max_value=6),
+        suffix=st.text(
+            alphabet=st.characters(
+                codec="utf-8",
+                categories=("L", "N"),
+            ),
+            min_size=0,
+            max_size=20,
+        ),
+    )
+    def test_syntax_leading_roundtrip(
+        self, syntax_char: str, ws: int, suffix: str
+    ) -> None:
+        """PROPERTY: Syntax-leading continuation lines roundtrip.
+
+        Events emitted:
+        - syntax_char={char}: Which syntax character
+        - ws_prefix={n}: Leading whitespace before syntax char
+        - has_suffix={bool}: Whether trailing text follows
+        - line_kind=SYNTAX_LEADING: Confirm classification
+        """
+        event(f"syntax_char={syntax_char}")
+        event(f"ws_prefix={ws}")
+        has_suffix = len(suffix) > 0
+        event(f"has_suffix={has_suffix}")
+
+        line = " " * ws + syntax_char + suffix
+        kind, _ = _classify_line(line)
+        event(f"line_kind={kind.name}")
+
+        text_val = f"line1\n{line}"
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(TextElement(value=text_val),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+
+        # Must contain the syntax char wrapped as placeable
+        escaped = f'{{ "{syntax_char}" }}'
+        assert escaped in result
+
+        # Parse: no Junk entries
+        reparsed = self._parser.parse(result)
+        assert not any(
+            isinstance(e, Junk)
+            for e in reparsed.entries
+        )
+
+    @given(
+        syntax_char=st.sampled_from([".", "*", "["]),
+    )
+    def test_syntax_char_only_roundtrip(
+        self, syntax_char: str
+    ) -> None:
+        """PROPERTY: Line with only syntax char roundtrips.
+
+        Events emitted:
+        - syntax_char={char}: Which syntax character
+        - line_kind=SYNTAX_LEADING: Classification
+        - has_suffix=False: No trailing text
+        """
+        event(f"syntax_char={syntax_char}")
+        event("has_suffix=False")
+
+        kind, _ = _classify_line(syntax_char)
+        event(f"line_kind={kind.name}")
+
+        text_val = f"first line\n{syntax_char}"
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(TextElement(value=text_val),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        escaped = f'{{ "{syntax_char}" }}'
+        assert escaped in result
+
+        reparsed = self._parser.parse(result)
+        assert not any(
+            isinstance(e, Junk)
+            for e in reparsed.entries
+        )
+
+    @given(
+        n_spaces=st.integers(min_value=1, max_value=10),
+    )
+    def test_whitespace_only_continuation_roundtrip(
+        self, n_spaces: int
+    ) -> None:
+        """PROPERTY: Whitespace-only continuation lines roundtrip.
+
+        Events emitted:
+        - spaces={n}: Number of spaces
+        - line_kind=WHITESPACE_ONLY: Classification
+        """
+        event(f"spaces={n_spaces}")
+
+        ws_line = " " * n_spaces
+        kind, _ = _classify_line(ws_line)
+        event(f"line_kind={kind.name}")
+
+        text_val = f"first line\n{ws_line}\nthird line"
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(TextElement(value=text_val),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        result = serialize(resource, validate=True)
+        # Whitespace-only wrapped as placeable
+        assert f'{{ "{ws_line}" }}' in result
+
+        reparsed = self._parser.parse(result)
+        assert not any(
+            isinstance(e, Junk)
+            for e in reparsed.entries
+        )
+
+
+# =============================================================================
+# Separate-Line Trigger Discrimination
+# =============================================================================
+
+
+class TestSeparateLineTriggerProperties:
+    """Test separate-line mode trigger discrimination.
+
+    Two distinct triggers exist:
+    1. Cross-element: TextElement starts with space after
+       element ending with newline.
+    2. Intra-element: Single TextElement has embedded newline
+       followed by space on a NORMAL line.
+    """
+
+    @given(
+        n_spaces=st.integers(min_value=1, max_value=8),
+    )
+    def test_cross_element_trigger(
+        self, n_spaces: int
+    ) -> None:
+        """PROPERTY: Cross-element whitespace triggers separate-line.
+
+        Events emitted:
+        - trigger=cross_element: Trigger type
+        - leading_spaces={n}: Number of leading spaces
+        """
+        event("trigger=cross_element")
+        event(f"leading_spaces={n_spaces}")
+
+        # Element 1 ends with newline, element 2 starts with
+        # spaces — triggers separate-line mode.
+        elems = (
+            TextElement(value="line one\n"),
+            TextElement(value=" " * n_spaces + "line two"),
+        )
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(elements=elems),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+        result = serialize(resource, validate=True)
+        # Separate-line: pattern on new line after =
+        assert "test = \n    " in result
+
+    @given(
+        n_spaces=st.integers(min_value=1, max_value=8),
+    )
+    def test_intra_element_trigger(
+        self, n_spaces: int
+    ) -> None:
+        """PROPERTY: Intra-element whitespace triggers separate-line.
+
+        Events emitted:
+        - trigger=intra_element: Trigger type
+        - leading_spaces={n}: Number of leading spaces
+        """
+        event("trigger=intra_element")
+        event(f"leading_spaces={n_spaces}")
+
+        # Single element with embedded \n + spaces + NORMAL char
+        text_val = f"line one\n{' ' * n_spaces}line two"
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(TextElement(value=text_val),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+        result = serialize(resource, validate=True)
+        # Separate-line: pattern on new line after =
+        assert "test = \n    " in result
+
+    @given(
+        syntax_char=st.sampled_from([".", "*", "["]),
+        n_spaces=st.integers(min_value=1, max_value=6),
+    )
+    def test_syntax_leading_does_not_trigger_separate_line(
+        self, syntax_char: str, n_spaces: int
+    ) -> None:
+        """PROPERTY: SYNTAX_LEADING lines DON'T trigger separate-line.
+
+        Events emitted:
+        - trigger=syntax_not_separate: Negative case
+        - syntax_char={char}: Which syntax char
+        """
+        event("trigger=syntax_not_separate")
+        event(f"syntax_char={syntax_char}")
+
+        # Embedded \n + spaces + syntax char => SYNTAX_LEADING,
+        # which is handled by per-line wrapping, NOT separate-line.
+        line = " " * n_spaces + syntax_char + "rest"
+        text_val = f"line one\n{line}"
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(TextElement(value=text_val),)
+            ),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+        result = serialize(resource, validate=True)
+        # Should NOT use separate-line mode
+        assert result.startswith("test = ")
+        assert not result.startswith("test = \n")
 
 
 # =============================================================================

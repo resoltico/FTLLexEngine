@@ -6,12 +6,14 @@ across multiple test modules. Strategies are organized by domain:
 - ftl: FTL syntax, AST nodes, and parser-related strategies
 - fiscal: FiscalCalendar, FiscalDelta, and date strategies
 - iso: Territory codes, currency codes, and locale strategies
+- diagnostics: Diagnostic codes, errors, validation, and formatter strategies
 
 Usage:
     from tests.strategies import ftl_identifiers, territory_codes
     from tests.strategies.fiscal import reasonable_dates, fiscal_deltas
     from tests.strategies.iso import territory_codes, currency_codes
     from tests.strategies.ftl import ftl_message_nodes, ftl_patterns
+    from tests.strategies.diagnostics import diagnostics, source_spans
 
 Event-Emitting Strategies (HypoFuzz-Optimized):
     These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
@@ -21,17 +23,33 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - ftl_financial_numbers, ftl_attribute_nodes
     - fiscal_delta_by_magnitude, date_by_boundary, fiscal_calendar_by_type
     - currency_by_decimals, territory_by_region, locale_by_script
+    - source_spans, frozen_error_contexts, diagnostics, diagnostic_codes
+    - error_categories, validation_errors, validation_warnings
+    - validation_results
 """
+
+# Diagnostics strategies
+from .diagnostics import (
+    annotation_nodes,
+    diagnostic_codes,
+    diagnostics,
+    error_categories,
+    frozen_error_contexts,
+    source_spans,
+    validation_errors,
+    validation_results,
+    validation_warnings,
+)
 
 # Fiscal calendar strategies
 from .fiscal import (
     date_by_boundary,
     fiscal_boundary_crossing_pair,
     fiscal_calendar_by_type,
-    fiscal_calendar_dict,
     fiscal_calendars,
     fiscal_delta_by_magnitude,
     fiscal_deltas,
+    fiscal_periods,
     month_end_policies,
     month_end_policy_with_event,
     reasonable_dates,
@@ -53,6 +71,7 @@ from .ftl import (
     deeply_nested_message_chain,
     deeply_nested_placeables,
     deeply_nested_select,
+    fluent_numbers,
     ftl_attribute_nodes,
     ftl_boundary_depth_messages,
     ftl_boundary_depth_placeables,
@@ -66,6 +85,7 @@ from .ftl import (
     ftl_deeply_nested_selects,
     ftl_empty_pattern_messages,
     ftl_financial_numbers,
+    ftl_function_names,
     ftl_identifier_boundary,
     ftl_identifiers,
     ftl_identifiers_with_keywords,
@@ -136,6 +156,8 @@ from .iso import (
     language_codes,
     locale_by_script,
     locale_codes,
+    locale_formatted_decimals,
+    locale_formatted_numbers,
     malformed_locales,
     territory_by_region,
     territory_codes,
@@ -234,6 +256,9 @@ __all__ = [
     "ftl_invalid_missing_value",
     "ftl_invalid_ftl",
     "ftl_valid_with_injected_error",
+    # Function bridge strategies
+    "ftl_function_names",
+    "fluent_numbers",
     # FTL HypoFuzz-optimized event-emitting strategies
     "ftl_chaos_source",
     "ftl_chaos_text",
@@ -269,7 +294,21 @@ __all__ = [
     "currency_by_decimals",
     "territory_by_region",
     "locale_by_script",
+    # Locale-formatted number strategies
+    "locale_formatted_numbers",
+    "locale_formatted_decimals",
     # Fiscal additional strategies
-    "fiscal_calendar_dict",
+    "fiscal_periods",
     "fiscal_boundary_crossing_pair",
+    # Diagnostics strategies
+    "source_spans",
+    "frozen_error_contexts",
+    "error_categories",
+    "diagnostic_codes",
+    "diagnostics",
+    "annotation_nodes",
+    # Diagnostics HypoFuzz-optimized event-emitting strategies
+    "validation_errors",
+    "validation_warnings",
+    "validation_results",
 ]
