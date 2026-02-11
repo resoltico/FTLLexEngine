@@ -373,6 +373,20 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 | `fuzz_roundtrip` | Parse-serialize roundtrip | Parser/serializer consistency |
 | `fuzz_structured` | Grammar-aware generation | Deep logic bugs |
 | `fuzz_oom` | Memory exhaustion | Resource limits |
+| `fuzz_serializer` | Serializer edge cases | Whitespace/escaping correctness |
+| `fuzz_runtime` | Bundle format operations | Runtime resolution bugs |
+| `fuzz_builtins` | Built-in functions | NUMBER/DATETIME/CURRENCY edge cases |
+| `fuzz_numbers` | Number formatting | Locale-aware number handling |
+| `fuzz_currency` | Currency parsing | Symbol detection, ambiguity |
+| `fuzz_fiscal` | Fiscal calendar | Date arithmetic correctness |
+| `fuzz_plural` | Plural rules | CLDR plural category selection |
+| `fuzz_iso` | ISO introspection | Territory/currency lookups |
+| `fuzz_integrity` | Data integrity | Cache, error immutability |
+| `fuzz_cache` | IntegrityCache | Checksum, write-once, eviction |
+| `fuzz_bridge` | Function bridge | Custom function invocation |
+| `fuzz_graph` | Dependency graph | Cycle detection, chain analysis |
+| `fuzz_lock` | RWLock | Concurrency, timeout behavior |
+| `fuzz_scope` | Scope resolution | Variable/term scoping |
 
 ### Environment
 
@@ -393,7 +407,7 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 | Format | Location |
 |:-------|:---------|
 | JSON summary | stdout (`[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`) |
-| Crash files | `fuzz_atheris/corpus/crash_*` |
+| Crash files | `.fuzz_atheris_corpus/<target>/crash_*` |
 
 ---
 
@@ -506,8 +520,9 @@ Formula: `threshold = 100ms + (20ms * input_size_kb)`
 | `.hypothesis/strategy_metrics.json` | Strategy metrics report | Ignored | N/A |
 | `.hypothesis/strategy_metrics_summary.txt` | Human-readable summary | Ignored | N/A |
 | `.pytest_cache/` | Pytest cache | Ignored | N/A |
-| `fuzz_atheris/corpus/` | Atheris corpus | Ignored | N/A |
-| `fuzz_atheris/corpus/crash_*` | Crash artifacts | Ignored | Yes (prefix) |
+| `.fuzz_atheris_corpus/` | Atheris working corpus | Ignored | N/A |
+| `.fuzz_atheris_corpus/*/crash_*` | Crash artifacts | Ignored | Yes (prefix) |
+| `fuzz_atheris/seeds/` | Atheris seed corpus | Tracked | N/A |
 | `coverage.xml` | Coverage report | Ignored | N/A |
 
 ### Automatic Failure Capture
@@ -556,7 +571,7 @@ When Atheris finds a crash, use the replay script for reproduction:
 
 | Step | Action |
 |:-----|:-------|
-| 1 | Reproduce: `uv run python fuzz_atheris/fuzz_atheris_replay_finding.py fuzz_atheris/corpus/crash_*` |
+| 1 | Reproduce: `uv run python fuzz_atheris/fuzz_atheris_replay_finding.py .fuzz_atheris_corpus/<target>/crash_*` |
 | 2 | Add `@example(...)` decorator to relevant test function |
 | 3 | Fix the bug, run tests to confirm |
 | 4 | Delete crash file after committing test |
@@ -564,7 +579,7 @@ When Atheris finds a crash, use the replay script for reproduction:
 **Crash-proof reporting**: Fuzz targets emit `[SUMMARY-JSON-BEGIN]...[SUMMARY-JSON-END]`
 on exit via atexit handler, ensuring metadata is never lost on crash.
 
-**Rationale**: `fuzz_atheris/corpus/` is git-ignored (contains binary seeds, machine-specific).
+**Rationale**: `.fuzz_atheris_corpus/` is git-ignored (contains binary seeds, machine-specific).
 Unit tests with literal inputs are permanent, readable, and version-controlled.
 
 ---
@@ -646,7 +661,7 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 | Mistake | Consequence | Correct Approach |
 |:--------|:------------|:-----------------|
 | Commit `.hypothesis/` | 100MB+ git bloat from HypoFuzz corpus | Keep ignored; use `.hypothesis/crashes/` for portable repros |
-| Rely on `fuzz_atheris/corpus/crash_*` | Bug lost when files cleaned up | Create unit test with crash input as literal |
+| Rely on `.fuzz_atheris_corpus/*/crash_*` | Bug lost when files cleaned up | Create unit test with crash input as literal |
 | Hardcode `@settings(max_examples=N)` | Overrides profile, CI takes forever | Omit decorator or use profile-based settings for fuzz-only |
 | Forget `pytestmark` in new fuzz file | Tests run in normal suite, slow | Add `pytestmark = pytest.mark.fuzz` at top of file |
 | Run `pytest tests/` expecting fuzz tests | Fuzz tests silently skipped | Use `pytest -m fuzz` or `./scripts/fuzz_hypofuzz.sh --deep` |

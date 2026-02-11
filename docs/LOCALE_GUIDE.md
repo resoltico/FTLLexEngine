@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: locale
-updated: "2026-02-03"
+updated: "2026-02-10"
 route:
   keywords: [locale, NUMBER, DATETIME, CURRENCY, formatting, BCP-47, locale normalization, str vs NUMBER]
   questions: ["why isn't my number formatted?", "how does locale formatting work?", "NUMBER vs raw variable?", "how to format numbers with locale?", "how to format currency?"]
@@ -104,11 +104,13 @@ price-code = { CURRENCY($amount, currency: "EUR", currencyDisplay: "code") }
 """)
 
 result, _ = bundle.format_pattern("price", {"amount": 1234.56})
-# → "1.234,56 €"
+# → "1.234,56\xa0€"  (NBSP U+00A0 before symbol, per CLDR)
 
 result, _ = bundle.format_pattern("price-code", {"amount": 1234.56})
 # → "1.234,56 EUR"
 ```
+
+**Non-Breaking Spaces**: CLDR uses non-breaking space (U+00A0) as the grouping separator in many locales (lv_LV, fr_FR, etc.) and between the amount and currency symbol (de_DE, etc.). This is intentional per the Unicode CLDR standard -- it prevents line breaks between amounts and symbols. When comparing formatted output in tests, use `"\xa0"` or `"\u00a0"` instead of regular space.
 
 **CURRENCY() Options**:
 

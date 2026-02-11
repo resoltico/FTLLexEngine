@@ -177,7 +177,7 @@ result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "kolu
 # "500 Säcke kolumbianische Bohnen"
 
 result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
-# "Gesamt: 187.500,00 €"
+# "Gesamt: 187.500,00\xa0€"  (CLDR uses non-breaking space U+00A0 before symbol)
 ```
 
 Japanese for your Tokyo buyer:

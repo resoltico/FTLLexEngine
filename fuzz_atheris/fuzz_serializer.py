@@ -85,6 +85,7 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
     write_finding_artifact,
 )
@@ -108,7 +109,11 @@ class SerializerMetrics:
 
 # --- Global State ---
 
-_state = BaseFuzzerState(seed_corpus_max_size=100)
+_state = BaseFuzzerState(
+    seed_corpus_max_size=100,
+    fuzzer_name="serializer",
+    fuzzer_target="serialize (AST-constructed), FluentParserV1",
+)
 _domain = SerializerMetrics()
 
 
@@ -190,7 +195,9 @@ _FINDINGS_DIR = _REPORT_DIR / "findings"
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 atheris.enabled_hooks.add("str")
-atheris.enabled_hooks.add("RegEx")
+# RegEx hook omitted: serializer fuzzer constructs ASTs programmatically,
+# no regex in the hot path. The hook triggers spurious Atheris errors on
+# transitively imported stdlib regex patterns (e.g., email.charset).
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.syntax.ast import (
@@ -846,10 +853,11 @@ def main() -> None:
         ),
     )
 
-    atheris.Setup(
-        sys.argv, test_one_input, custom_mutator=_custom_mutator,
+    run_fuzzer(
+        _state,
+        test_one_input=test_one_input,
+        custom_mutator=_custom_mutator,
     )
-    atheris.Fuzz()
 
 
 if __name__ == "__main__":

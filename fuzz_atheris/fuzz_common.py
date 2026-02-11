@@ -55,13 +55,20 @@ OUTLIER_THRESHOLD_FACTOR = 2.0
 # --- Process Handle (lazy singleton) ---
 
 _process: psutil.Process | None = None
+_process_pid: int = 0
 
 
 def get_process() -> psutil.Process:
-    """Lazy-initialize psutil process handle."""
-    global _process  # noqa: PLW0603  # pylint: disable=global-statement
-    if _process is None:
-        _process = psutil.Process(os.getpid())
+    """Lazy-initialize psutil process handle.
+
+    Detects PID mismatch after fork() and re-initializes to avoid
+    monitoring the parent process from a child worker.
+    """
+    global _process, _process_pid  # noqa: PLW0603  # pylint: disable=global-statement
+    current_pid = os.getpid()
+    if _process is None or _process_pid != current_pid:
+        _process = psutil.Process(current_pid)
+        _process_pid = current_pid
     return _process
 
 
@@ -154,6 +161,10 @@ class BaseFuzzerState:
     pattern_mean_cost: dict[str, float] = field(default_factory=dict)
     pattern_iteration_count: dict[str, int] = field(default_factory=dict)
     time_budget_skips: int = 0
+
+    # Running performance extremes (not bounded by deque eviction)
+    perf_all_time_max_ms: float = 0.0
+    perf_all_time_min_ms: float = float("inf")
 
     # Performance outlier tracking (bounded list)
     performance_outliers: list[PerformanceOutlier] = field(default_factory=list)
@@ -398,6 +409,10 @@ def record_iteration_metrics(
     state.performance_history.append(elapsed_ms)
     state.pattern_wall_time[pattern] = state.pattern_wall_time.get(pattern, 0.0) + elapsed_ms
 
+    # Running extremes survive deque eviction
+    state.perf_all_time_max_ms = max(state.perf_all_time_max_ms, elapsed_ms)
+    state.perf_all_time_min_ms = min(state.perf_all_time_min_ms, elapsed_ms)
+
     input_hash = hash_input(input_data)
     track_slowest_operation(state, elapsed_ms, pattern, input_hash)
     track_seed_corpus(state, input_hash, input_data, pattern=pattern, is_interesting=is_interesting)
@@ -411,7 +426,12 @@ def record_iteration_metrics(
 
 
 def _add_performance_stats(state: BaseFuzzerState, stats: FuzzStats) -> None:
-    """Add performance percentile stats to the stats dictionary."""
+    """Add performance percentile stats to the stats dictionary.
+
+    Mean/median/percentiles are computed from the bounded deque (recent
+    window). Min/max use running extremes that survive deque eviction,
+    so they reflect the true all-time campaign extremes.
+    """
     if not state.performance_history:
         return
 
@@ -419,8 +439,8 @@ def _add_performance_stats(state: BaseFuzzerState, stats: FuzzStats) -> None:
     n = len(perf_data)
     stats["perf_mean_ms"] = round(statistics.mean(perf_data), 3)
     stats["perf_median_ms"] = round(statistics.median(perf_data), 3)
-    stats["perf_min_ms"] = round(min(perf_data), 3)
-    stats["perf_max_ms"] = round(max(perf_data), 3)
+    stats["perf_min_ms"] = round(state.perf_all_time_min_ms, 3)
+    stats["perf_max_ms"] = round(state.perf_all_time_max_ms, 3)
     if n >= 20:
         stats["perf_p95_ms"] = round(statistics.quantiles(perf_data, n=20)[18], 3)
     if n >= 100:
@@ -428,14 +448,22 @@ def _add_performance_stats(state: BaseFuzzerState, stats: FuzzStats) -> None:
 
 
 def _add_memory_stats(state: BaseFuzzerState, stats: FuzzStats) -> None:
-    """Add memory tracking stats to the stats dictionary."""
+    """Add memory tracking stats to the stats dictionary.
+
+    memory_delta_mb uses min(observed) as baseline instead of
+    initial_memory_mb because Atheris instrumentation inflates RSS at
+    import time.  Steady-state RSS settles lower once the fuzzing loop
+    begins, so initial_memory_mb would produce a negative delta.
+    """
     if not state.memory_history:
         return
 
     mem_data = list(state.memory_history)
+    mem_min = min(mem_data)
+    mem_max = max(mem_data)
     stats["memory_mean_mb"] = round(statistics.mean(mem_data), 2)
-    stats["memory_peak_mb"] = round(max(mem_data), 2)
-    stats["memory_delta_mb"] = round(max(mem_data) - state.initial_memory_mb, 2)
+    stats["memory_peak_mb"] = round(mem_max, 2)
+    stats["memory_delta_mb"] = round(mem_max - mem_min, 2)
 
     if len(mem_data) >= 40:
         first_quarter = mem_data[: len(mem_data) // 4]
@@ -527,7 +555,7 @@ def build_base_stats_dict(
     stats["corpus_evictions"] = state.corpus_evictions
     stats["corpus_retention_rate"] = round(
         len(state.seed_corpus) / max(1, state.corpus_entries_added),
-        4,
+        8,
     )
     stats["slowest_operations_tracked"] = len(state.slowest_operations)
 
@@ -712,12 +740,14 @@ def write_finding_artifact(
 
     Writes source/s1/s2 FTL files and a metadata JSON file.
     Increments state.finding_counter. Best-effort (OSError
-    silenced).
+    silenced). Includes PID in filename prefix to prevent
+    collisions when libFuzzer runs multiple forked workers.
     """
     try:
         findings_dir.mkdir(parents=True, exist_ok=True)
         state.finding_counter += 1
-        prefix = f"finding_{state.finding_counter:04d}"
+        pid = os.getpid()
+        prefix = f"finding_p{pid}_{state.finding_counter:04d}"
 
         findings_dir.joinpath(f"{prefix}_source.ftl").write_text(
             source, encoding="utf-8",
@@ -811,6 +841,20 @@ def print_fuzzer_banner(
     state.campaign_start_time = time.time()
 
 
+def _is_multi_worker() -> bool:
+    """Detect if libFuzzer will spawn multiple worker processes.
+
+    Checks sys.argv for -workers=N where N > 1.
+    """
+    for arg in sys.argv:
+        if arg.startswith("-workers="):
+            try:
+                return int(arg.split("=", 1)[1]) > 1
+            except ValueError:
+                return False
+    return False
+
+
 def run_fuzzer(
     state: BaseFuzzerState,
     *,
@@ -823,6 +867,13 @@ def run_fuzzer(
     on Ctrl+C. Each fuzzer replaces its 2-line Setup/Fuzz with a
     single run_fuzzer() call. The atexit handler (registered by each
     fuzzer) still fires after this returns, emitting the final report.
+
+    Worker model: libFuzzer -workers=N uses fork() to spawn N child
+    processes. Each worker gets an independent copy of ``state``, so
+    metrics (iterations, findings, pattern_coverage, performance
+    history) are per-worker and never aggregated. The JSON report
+    file is written by whichever worker exits last, overwriting
+    earlier reports. For reliable metrics, use -workers=1 (default).
 
     Args:
         state: Fuzzer state (status set to "stopped" on interrupt)
@@ -838,7 +889,11 @@ def run_fuzzer(
     # Disable libFuzzer's SIGINT handler so Python owns the signal.
     # Without this, libFuzzer intercepts Ctrl+C after our KeyboardInterrupt
     # handler and emits a spurious "deadly signal" + empty crash artifact.
-    if not any(a.startswith("-handle_int=") for a in sys.argv):
+    # Only safe in single-worker mode; multi-worker needs libFuzzer's signal
+    # handling to manage worker lifecycle (propagate SIGINT to children).
+    if not _is_multi_worker() and not any(
+        a.startswith("-handle_int=") for a in sys.argv
+    ):
         sys.argv.append("-handle_int=0")
 
     atheris.Setup(

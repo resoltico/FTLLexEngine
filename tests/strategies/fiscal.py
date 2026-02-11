@@ -142,10 +142,20 @@ def fiscal_delta_by_magnitude(draw: st.DrawFn) -> dict[str, int | str]:
     Useful for testing overflow and edge case handling at different scales.
     """
     magnitude = draw(st.sampled_from(["zero", "small", "medium", "large"]))
+    delta: dict[str, int | str]
 
     match magnitude:
         case "zero":
-            delta = draw(zero_delta)
+            # Inline zero values instead of st.just() to add
+            # variation via month_end_policy draw -- st.just()
+            # is deterministic so Hypothesis skips it after 1
+            delta = {
+                "years": 0,
+                "quarters": 0,
+                "months": 0,
+                "days": 0,
+                "month_end_policy": draw(month_end_policies),
+            }
         case "small":
             delta = {
                 "years": draw(st.integers(min_value=-2, max_value=2)),
@@ -294,43 +304,74 @@ def fiscal_boundary_crossing_pair(draw: st.DrawFn) -> tuple[date, date]:
     Returns tuple of (date_before_boundary, date_after_boundary).
     """
     # Choose fiscal calendar type
-    fiscal_start = draw(st.sampled_from([1, 4, 7, 10]))  # Common fiscal starts
+    fiscal_start = draw(
+        st.sampled_from([1, 4, 7, 10])
+    )
 
     # Calculate fiscal year end month (month before start)
-    fiscal_end_month = 12 if fiscal_start == 1 else fiscal_start - 1
+    fiscal_end_month = (
+        12 if fiscal_start == 1 else fiscal_start - 1
+    )
+
+    # Draw quarter unconditionally so both branches consume
+    # the same number of draws -- prevents Hypothesis from
+    # over-exploring the branch with more randomness
+    quarter = draw(st.integers(min_value=1, max_value=4))
 
     # Choose boundary type
-    boundary_type = draw(st.sampled_from(["year_end", "quarter_end"]))
+    boundary_type = draw(
+        st.sampled_from(["year_end", "quarter_end"])
+    )
 
     year = draw(st.integers(min_value=1950, max_value=2050))
 
     match boundary_type:
         case "year_end":
-            # Last day of fiscal year -> first day of next fiscal year
-            last_day = _last_day_of_month(year, fiscal_end_month)
+            # Last day of fiscal year -> first day of next
+            last_day = _last_day_of_month(
+                year, fiscal_end_month
+            )
             before = date(year, fiscal_end_month, last_day)
 
             # Next fiscal year starts
             next_month = fiscal_start
-            next_year = year if fiscal_start > fiscal_end_month else year + 1
+            next_year = (
+                year
+                if fiscal_start > fiscal_end_month
+                else year + 1
+            )
             after = date(next_year, next_month, 1)
             event("fiscal_boundary=year_end")
 
         case _:  # quarter_end
             # End of a fiscal quarter -> start of next quarter
-            # Fiscal quarters: Q1=months 1-3, Q2=4-6, Q3=7-9, Q4=10-12 relative to start
-            quarter = draw(st.integers(min_value=1, max_value=4))
-            quarter_end_offset = quarter * 3 - 1  # 2, 5, 8, 11 (0-indexed from start)
-            quarter_end_month = ((fiscal_start - 1 + quarter_end_offset) % 12) + 1
+            # Q1=months 1-3, Q2=4-6, Q3=7-9, Q4=10-12
+            # relative to fiscal start
+            quarter_end_offset = quarter * 3 - 1
+            quarter_end_month = (
+                (fiscal_start - 1 + quarter_end_offset) % 12
+            ) + 1
 
             # Adjust year if month wraps
-            adj_year = year if quarter_end_month >= fiscal_start else year + 1
-            last_day = _last_day_of_month(adj_year, quarter_end_month)
-            before = date(adj_year, quarter_end_month, last_day)
+            adj_year = (
+                year
+                if quarter_end_month >= fiscal_start
+                else year + 1
+            )
+            last_day = _last_day_of_month(
+                adj_year, quarter_end_month
+            )
+            before = date(
+                adj_year, quarter_end_month, last_day
+            )
 
             # Next month is start of next quarter
             next_month = (quarter_end_month % 12) + 1
-            next_year = adj_year if next_month > quarter_end_month else adj_year + 1
+            next_year = (
+                adj_year
+                if next_month > quarter_end_month
+                else adj_year + 1
+            )
             after = date(next_year, next_month, 1)
             event("fiscal_boundary=quarter_end")
 

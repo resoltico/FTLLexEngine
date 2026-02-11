@@ -573,7 +573,7 @@ class TestInvalidLocaleErrorContextProperties:
             st.just("xx_INVALID"),
             st.just("zzz_YYY"),
             st.from_regex(
-                r"[a-z]{1,3}_[A-Z]{3,5}",
+                r"[qxz]{2}_[A-Z]{2}",
                 fullmatch=True,
             ),
         ),
@@ -601,7 +601,7 @@ class TestInvalidLocaleErrorContextProperties:
             st.just("xx_INVALID"),
             st.just("zzz_YYY"),
             st.from_regex(
-                r"[a-z]{1,3}_[A-Z]{3,5}",
+                r"[qxz]{2}_[A-Z]{2}",
                 fullmatch=True,
             ),
         ),

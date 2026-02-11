@@ -501,14 +501,14 @@ class FluentLocalization:
     Example - Disk-based resources:
         >>> loader = PathResourceLoader("locales/{locale}")
         >>> l10n = FluentLocalization(['lv', 'en'], ['ui.ftl'], loader)
-        >>> result = l10n.format_value('welcome', {'name': 'Anna'})
+        >>> result, errors = l10n.format_value('welcome', {'name': 'Anna'})
         # Tries 'lv' first, falls back to 'en' if message not found
 
     Example - Direct resource provision:
         >>> l10n = FluentLocalization(['lv', 'en'])
         >>> l10n.add_resource('lv', 'welcome = Sveiki, { $name }!')
         >>> l10n.add_resource('en', 'welcome = Hello, { $name }!')
-        >>> result = l10n.format_value('welcome', {'name': 'Anna'})
+        >>> result, errors = l10n.format_value('welcome', {'name': 'Anna'})
         # Returns: ('Sveiki, Anna!', ())
 
     Attributes:

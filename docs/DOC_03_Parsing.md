@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: PARSING
-updated: "2026-01-31"
+updated: "2026-02-10"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
@@ -726,19 +726,19 @@ Immutable fiscal period identifier for year, quarter, or month.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, order=True)
 class FiscalPeriod:
     fiscal_year: int
-    quarter: int = 1
-    month: int = 1
+    quarter: int
+    month: int
 ```
 
 ### Parameters
 | Name | Type | Req | Semantics |
 |:-----|:-----|:----|:----------|
 | `fiscal_year` | `int` | Y | Fiscal year number |
-| `quarter` | `int` | N | Fiscal quarter 1-4 (default: 1) |
-| `month` | `int` | N | Fiscal month 1-12 (default: 1) |
+| `quarter` | `int` | Y | Fiscal quarter 1-4 |
+| `month` | `int` | Y | Fiscal month 1-12 |
 
 ### Constraints
 - Return: Immutable period identifier.

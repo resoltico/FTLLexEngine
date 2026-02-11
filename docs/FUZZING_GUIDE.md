@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.103.0"
+version: "0.104.0"
 domain: fuzzing
-updated: "2026-02-06"
+updated: "2026-02-10"
 route:
-  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, metrics]
-  questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "which fuzzer to use?"]
+  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, metrics, workers]
+  questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "which fuzzer to use?", "how do workers affect metrics?"]
 ---
 
 # Fuzzing Guide
@@ -127,10 +127,34 @@ Fuzzing finds issues that traditional unit tests miss by exploring vast input sp
 | Input type | Python objects | Raw bytes |
 | Grammar awareness | Yes (via strategies) | No (mutations) |
 | Storage | `.hypothesis/examples/` | `.fuzz_atheris_corpus/` |
-| Filename format | SHA-384 hashes | `crash_*`, `finding_*` |
+| Filename format | SHA-384 hashes | `crash_*`, `finding_p{PID}_*` |
 | Reproduction | Automatic pytest replay | Manual via repro script |
 | Corpus | Implicit (coverage DB) | Explicit (seeds/) |
+| Workers | Multiprocessing (metrics need single-worker) | fork() (metrics need `--workers 1`) |
 | Best for | Logic bugs | Crashes, security |
+
+---
+
+## Parallelism and Metrics
+
+Both fuzzing systems use multiprocessing, which fragments in-process
+metrics across worker processes. Each system handles this differently:
+
+| System | Worker Model | Metrics Constraint |
+|--------|-------------|-------------------|
+| HypoFuzz | Python `multiprocessing` | `--metrics` forces single-process pytest |
+| Atheris | libFuzzer `fork()` | `--workers 1` (default) for reliable metrics |
+
+**Root cause:** Both systems accumulate metrics (iterations, coverage,
+performance history) in process-local state. Forked/spawned workers each
+get independent copies. There is no cross-process aggregation.
+
+**Recommendation:** Use single-worker mode for metrics-sensitive runs
+(debugging, performance analysis, weight skew detection). Use
+multi-worker mode only for throughput-oriented crash detection.
+
+See [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md) for details on
+Atheris worker behavior under `fork()`.
 
 ---
 

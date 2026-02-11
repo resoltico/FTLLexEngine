@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.104.0"
 domain: fuzzing
-updated: "2026-02-03"
+updated: "2026-02-10"
 route:
-  keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus]
-  questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?"]
+  keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus, workers, metrics]
+  questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?", "how do atheris workers work?", "why are metrics wrong with multiple workers?"]
 ---
 
 # Atheris Guide (Native Fuzzing with libFuzzer)
@@ -81,7 +81,7 @@ Should list all available fuzzing targets.
 | `./scripts/fuzz_atheris.sh --corpus` | Check seed corpus health |
 | `./scripts/fuzz_atheris.sh --replay TARGET` | Replay findings without Atheris |
 | `./scripts/fuzz_atheris.sh --clean TARGET` | Clean corpus for target |
-| `./scripts/fuzz_atheris.sh --workers N` | Parallel workers |
+| `./scripts/fuzz_atheris.sh --workers N` | Parallel workers (default: 1; see Workers section) |
 | `./scripts/fuzz_atheris.sh --time N` | Time limit in seconds |
 
 ---
@@ -187,11 +187,10 @@ Structured fuzzing saves finding details to `.fuzz_atheris_corpus/<target>/findi
 
 ```
 .fuzz_atheris_corpus/structured/findings/
-├── finding_001/
-│   ├── source.ftl      # Original FTL
-│   ├── s1.ftl          # Serialized once
-│   ├── s2.ftl          # Serialized twice
-│   └── meta.json       # Finding metadata
+├── finding_p12345_0001_source.ftl   # Original FTL (PID-prefixed)
+├── finding_p12345_0001_s1.ftl       # Serialized once
+├── finding_p12345_0001_s2.ftl       # Serialized twice
+└── finding_p12345_0001_meta.json    # Finding metadata
 ```
 
 ---
@@ -348,6 +347,61 @@ Perf fuzzing detects ReDoS and algorithmic complexity issues.
 
 ---
 
+## Workers and Metrics
+
+### Single-Worker Mode (Default)
+
+The default `--workers 1` runs Atheris in a single process. All metrics
+(iterations, findings, pattern coverage, performance history, memory
+tracking, weight skew detection) are collected in-process and written to
+the JSON report file at exit. This mode provides reliable, complete metrics.
+
+```bash
+# Reliable metrics (default)
+./scripts/fuzz_atheris.sh roundtrip --time 300
+```
+
+### Multi-Worker Mode
+
+`--workers N` (N > 1) uses libFuzzer's `fork()`-based parallelism. Each
+worker is a forked child process with its own copy of all state:
+
+| Concern | Behavior Under fork() |
+|---------|----------------------|
+| `BaseFuzzerState` | Independent copy per worker; never aggregated |
+| JSON report file | All workers write to the same path; last writer wins |
+| Finding artifacts | PID-prefixed filenames prevent collisions |
+| `atexit` handlers | Fire in each worker independently |
+| Performance history | Per-worker only |
+| Pattern coverage | Per-worker shard, not global distribution |
+
+**When to use multi-worker mode:**
+
+- Maximum throughput for crash detection (findings are raw crash files,
+  not dependent on metrics)
+- You do not need accurate aggregate metrics
+- Corpus evolution (libFuzzer shares corpus via filesystem, not memory)
+
+```bash
+# Throughput-oriented crash detection (metrics unreliable)
+./scripts/fuzz_atheris.sh native --workers 4 --time 600
+```
+
+**Metrics limitation:** This is the same class of problem that
+HypoFuzz encounters with multiprocessing. HypoFuzz solves it by
+falling back to single-process pytest when `--metrics` is enabled.
+For Atheris, the solution is simpler: use `--workers 1` (the default)
+when you need reliable metrics, and `--workers N` only for throughput.
+
+### Signal Handling
+
+In single-worker mode, the script disables libFuzzer's SIGINT handler
+(`-handle_int=0`) so Python owns Ctrl+C and can run `atexit` handlers
+cleanly. In multi-worker mode, libFuzzer's SIGINT handler is preserved
+because the parent process needs it to propagate shutdown to children.
+
+---
+
 ## Architecture
 
 ### Directory Structure
@@ -380,7 +434,7 @@ Atheris wraps libFuzzer, providing:
 - **Corpus management**: Automatic minimization and evolution
 - **Coverage tracking**: Inline 8-bit counters
 - **Crash isolation**: Precise reproduction via crash files
-- **Parallel fuzzing**: Multi-worker support
+- **Parallel fuzzing**: fork()-based workers (metrics per-worker only; see Workers section)
 
 ---
 

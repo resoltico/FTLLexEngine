@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: CORE
-updated: "2026-02-03"
+updated: "2026-02-10"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -779,7 +779,7 @@ class FluentLocalization:
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty, invalid locale format, or resource_ids without loader. Locale codes must match `[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*` (BCP 47 subset).
 - State: Lazy bundle initialization. Bundles created on first access. Locale format validated eagerly at construction.
-- Thread: Safe (RWLock).
+- Thread: Safe (RLock-protected).
 - Fallback: `on_fallback` invoked when message resolved from non-primary locale.
 - Strict: When True, all underlying FluentBundle instances use strict mode.
 
@@ -802,7 +802,7 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk,
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
 - Raises: `ValueError` if locale not in fallback chain or contains leading/trailing whitespace.
 - State: Mutates target bundle.
-- Thread: Safe (RWLock).
+- Thread: Safe (RLock-protected).
 
 ---
 
@@ -825,9 +825,9 @@ def format_value(
 
 ### Constraints
 - Return: Tuple of (formatted_string, errors).
-- Raises: Never.
+- Raises: `FormattingIntegrityError` when strict mode enabled on underlying bundles.
 - State: Read-only.
-- Thread: Safe.
+- Thread: Safe (RLock-protected).
 
 ---
 
@@ -853,9 +853,9 @@ def format_pattern(
 
 ### Constraints
 - Return: Tuple of (formatted_string, errors).
-- Raises: Never.
+- Raises: `FormattingIntegrityError` when strict mode enabled on underlying bundles.
 - State: Read-only.
-- Thread: Safe.
+- Thread: Safe (RLock-protected).
 
 ---
 
@@ -896,7 +896,7 @@ def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
 - Return: None.
 - Raises: None.
 - State: Stores function for existing and future bundles.
-- Thread: Safe (RWLock).
+- Thread: Safe (RLock-protected).
 - Behavior: Preserves lazy bundle initialization. Functions are stored and applied when bundles are first accessed.
 
 ---

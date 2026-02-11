@@ -1238,6 +1238,87 @@ class TestPatternEmissionEdgeCases:
         reparsed = self._parser.parse(result)
         assert not any(isinstance(e, Junk) for e in reparsed.entries)
 
+    def _roundtrip_convergence(self, source: str) -> None:
+        """Verify S(P(x)) == S(P(S(P(x)))) for an FTL source string."""
+        parsed = self._parser.parse(source)
+        s1 = serialize(parsed)
+        reparsed = self._parser.parse(s1)
+        s2 = serialize(reparsed)
+        assert s1 == s2, f"Convergence failure:\nS1: {s1!r}\nS2: {s2!r}"
+
+    def test_cross_element_ws_only_no_separate_line_promoted(self) -> None:
+        """WHITESPACE_ONLY cross-element does not trigger separate-line mode.
+
+        Promoted from Atheris roundtrip fuzzer finding: convergence failure
+        S(P(x)) != S(P(S(P(x)))) when a whitespace-only TextElement followed
+        a newline-ending TextElement. The cross-element check triggered
+        separate-line mode; the serializer wrapped the spaces in a Placeable;
+        on re-parse the Placeable was opaque to the cross-element check,
+        so separate-line mode did not trigger, producing different output.
+        """
+        self._roundtrip_convergence("aaaaa =\n    h\n           \n")
+
+    def test_cross_element_ws_only_direct_ast(self) -> None:
+        """Cross-element WHITESPACE_ONLY: inline mode, content wrapped."""
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(
+                    TextElement(value="h\n"),
+                    TextElement(value="       "),
+                )
+            ),
+            attributes=(),
+        )
+        result = serialize(Resource(entries=(msg,)))
+        # Should NOT use separate-line mode (WHITESPACE_ONLY handled by wrapping)
+        assert result.startswith("test = h")
+        assert '{ "       " }' in result
+        reparsed = self._parser.parse(result)
+        assert not any(isinstance(e, Junk) for e in reparsed.entries)
+        s2 = serialize(reparsed)
+        assert result == s2
+
+    def test_cross_element_syntax_leading_no_separate_line(self) -> None:
+        """Cross-element SYNTAX_LEADING: inline mode, content wrapped."""
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(
+                    TextElement(value="h\n"),
+                    TextElement(value="   .dotcontent"),
+                )
+            ),
+            attributes=(),
+        )
+        result = serialize(Resource(entries=(msg,)))
+        # Should NOT use separate-line mode (SYNTAX_LEADING handled by wrapping)
+        assert result.startswith("test = h")
+        assert '{ "   " }' in result
+        assert '{ "." }' in result
+        reparsed = self._parser.parse(result)
+        assert not any(isinstance(e, Junk) for e in reparsed.entries)
+        s2 = serialize(reparsed)
+        assert result == s2
+
+    def test_cross_element_normal_still_triggers_separate_line(self) -> None:
+        """Cross-element NORMAL: separate-line mode correctly activates."""
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(
+                elements=(
+                    TextElement(value="h\n"),
+                    TextElement(value="  normal text"),
+                )
+            ),
+            attributes=(),
+        )
+        result = serialize(Resource(entries=(msg,)))
+        # NORMAL with leading whitespace needs separate-line mode
+        assert result.startswith("test = \n    ")
+        reparsed = self._parser.parse(result)
+        assert not any(isinstance(e, Junk) for e in reparsed.entries)
+
     def test_number_literal_variant_key(self) -> None:
         """SelectExpression with NumberLiteral variant key (line 871->874)."""
         sel = SelectExpression(

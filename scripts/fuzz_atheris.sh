@@ -35,7 +35,7 @@
 #   --help          Show this help
 #
 # Options:
-#   --workers N     Number of parallel workers (default: 4)
+#   --workers N     Number of parallel workers (default: 1; >1 fragments metrics)
 #   --time N        Time limit in seconds
 #   --clean TARGET  Clean corpus for a specific target
 #   --verbose       Enable verbose output
@@ -314,7 +314,7 @@ COMMANDS:
     --clean TARGET           Clean corpus for a specific target
 
 OPTIONS:
-    --workers N         Number of workers (default: 4)
+    --workers N         Number of workers (default: 1; >1 fragments metrics)
     --time N            Max time in seconds
     --verbose           Enable verbose output
     --quiet             Suppress non-essential output
@@ -551,6 +551,11 @@ run_fuzz_target() {
     echo -e "${BOLD}Starting Fuzzing Campaign${NC}"
     echo "Target:  $target_key ($target_script)"
     echo "Workers: $WORKERS"
+    if [[ "$WORKERS" -gt 1 ]]; then
+        log_warn "Workers > 1: libFuzzer uses fork(). Each worker has independent state."
+        log_warn "JSON report reflects the LAST-EXITING worker only, not aggregate stats."
+        log_warn "For reliable metrics, use --workers 1 (the default)."
+    fi
     if [[ -n "$TIME_LIMIT" ]]; then
         echo "Time:    ${TIME_LIMIT}s"
     else
@@ -723,7 +728,7 @@ run_minimize() {
 # =============================================================================
 
 # Defaults
-WORKERS=4
+WORKERS=1
 TIME_LIMIT=""
 TARGET=""
 MODE="fuzz"
@@ -789,10 +794,26 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
         --workers)
+            if [[ $# -lt 2 ]] || [[ "$2" == --* ]]; then
+                log_error "--workers requires a positive integer argument"
+                exit 1
+            fi
+            if ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+                log_error "--workers must be a positive integer, got: $2"
+                exit 1
+            fi
             WORKERS="$2"
             shift 2
             ;;
         --time)
+            if [[ $# -lt 2 ]] || [[ "$2" == --* ]]; then
+                log_error "--time requires a positive integer argument (seconds)"
+                exit 1
+            fi
+            if ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+                log_error "--time must be a positive integer (seconds), got: $2"
+                exit 1
+            fi
             TIME_LIMIT="$2"
             shift 2
             ;;
@@ -830,7 +851,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 # [SECTION: SIGNAL_HANDLING]
-# Note: PID tracking not needed for single-process uv run
 cleanup() {
     # Cleanup on exit if needed (e.g., remove temp files)
     :

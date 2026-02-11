@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.103.0"
+version: "0.104.0"
 domain: fuzzing
-updated: "2026-02-06"
+updated: "2026-02-10"
 route:
-  keywords: [fuzzing, hypothesis, hypofuzz, property-based, testing, coverage, metrics]
-  questions: ["how to run hypothesis tests?", "how to use hypofuzz?", "how to reproduce hypothesis failures?", "how to see strategy metrics?"]
+  keywords: [fuzzing, hypothesis, hypofuzz, property-based, testing, coverage, metrics, workers]
+  questions: ["how to run hypothesis tests?", "how to use hypofuzz?", "how to reproduce hypothesis failures?", "how to see strategy metrics?", "why does --metrics use pytest instead of hypofuzz?"]
 ---
 
 # HypoFuzz Guide (Hypothesis Property-Based Testing)
@@ -56,7 +56,7 @@ Key difference from Atheris: Hypothesis generates **Python objects** via strateg
 | `./scripts/fuzz_hypofuzz.sh --clean` | Remove .hypothesis/ database |
 | `./scripts/fuzz_hypofuzz.sh --verbose` | Show detailed progress |
 | `./scripts/fuzz_hypofuzz.sh --metrics` | Enable periodic per-strategy metrics |
-| `./scripts/fuzz_hypofuzz.sh --workers N` | Parallel workers (default: 4) |
+| `./scripts/fuzz_hypofuzz.sh --workers N` | Parallel workers (default: 4; see Workers section) |
 | `./scripts/fuzz_hypofuzz.sh --time N` | Time limit in seconds (--deep mode) |
 
 ---
@@ -330,6 +330,55 @@ Falsifying example: test_roundtrip(
 ```
 
 Use `--repro` with `--verbose` for full output.
+
+---
+
+## Workers and Metrics
+
+### Multi-Worker Mode (Default for --deep)
+
+HypoFuzz uses Python `multiprocessing` to run N worker processes in
+parallel (default: `--workers 4`). Each worker is a separate Python
+process with its own memory space. This provides high throughput for
+continuous coverage-guided fuzzing.
+
+However, the strategy metrics collector (`tests/strategy_metrics.py`)
+runs in-process and cannot aggregate events across worker boundaries.
+Each worker accumulates its own event counts independently, and there
+is no cross-process shared state.
+
+### --metrics Forces Single-Process Mode
+
+When `--metrics` is enabled, the script bypasses HypoFuzz entirely
+and runs `pytest -m fuzz` in a single process. This ensures all
+`hypothesis.event()` calls are captured by the same metrics collector:
+
+```bash
+# Continuous fuzzing (multi-worker, no detailed metrics)
+./scripts/fuzz_hypofuzz.sh --deep
+
+# Single-pass with reliable metrics (single-process pytest)
+./scripts/fuzz_hypofuzz.sh --deep --metrics
+```
+
+**Trade-off**: `--metrics` mode runs a finite pass (10,000 examples
+per test via the `hypofuzz` profile) instead of continuous fuzzing.
+Use `--deep` for throughput and `--deep --metrics` for diagnostics.
+
+### Comparison with Atheris
+
+Both fuzzing systems face the same fundamental constraint: metrics
+collected in process-local state cannot be shared across forked or
+spawned workers. Each system handles it differently:
+
+| Aspect | HypoFuzz | Atheris |
+|--------|----------|---------|
+| Worker model | Python `multiprocessing` | libFuzzer `fork()` |
+| Default workers | 4 (throughput-oriented) | 1 (metrics-reliable) |
+| Metrics mode | `--metrics` forces single-process pytest | `--workers 1` (default) |
+| Multi-worker metrics | Not collected (bypassed) | Per-worker only, last writer wins |
+
+See [FUZZING_GUIDE.md](FUZZING_GUIDE.md) for the cross-system overview.
 
 ---
 

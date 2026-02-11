@@ -347,6 +347,11 @@ def _install_event_hook() -> None:
 
     This patches hypothesis.event to also record to our metrics collector,
     enabling automatic metrics capture without modifying strategy code.
+
+    IMPORTANT: Must be called at conftest import time (before test modules
+    import ``from hypothesis import event``). If installed later (e.g. in
+    pytest_sessionstart), test modules already hold references to the
+    original function and the wrapper is never invoked.
     """
     global _original_event  # noqa: PLW0603  # pylint: disable=global-statement
 
@@ -363,8 +368,9 @@ def _install_event_hook() -> None:
         """Wrapper that calls both original event and metrics collector."""
         assert _original_event is not None  # For type narrowing
         _original_event(value, payload)
-        # Only record the value, not payload, for metrics
-        metrics_collector.record_event(value)
+        # Only record when metrics collection is active
+        if metrics_collector.is_enabled():
+            metrics_collector.record_event(value)
 
     hypothesis.event = _wrapped_event
 
@@ -470,11 +476,23 @@ def _init_metrics_from_env() -> None:
 
     Called at module import time to support HypoFuzz CLI which bypasses
     pytest session hooks. Uses atexit to ensure report is written.
+
+    The event hook is ALWAYS installed here (before test modules import
+    ``from hypothesis import event``) so that late enablement via
+    ``pytest_sessionstart`` (e.g. ``-m fuzz``) still captures events.
+    The wrapper is a no-op when metrics collection is disabled.
     """
     global _metrics_initialized  # noqa: PLW0603  # pylint: disable=global-statement
 
     if _metrics_initialized:
         return
+
+    _metrics_initialized = True
+
+    # Always install the event hook early. Test modules bind
+    # ``from hypothesis import event`` at import time; if we wait
+    # until pytest_sessionstart the wrapper is never called.
+    _install_event_hook()
 
     import atexit
     import os
@@ -490,12 +508,8 @@ def _init_metrics_from_env() -> None:
     if not enable_metrics:
         return
 
-    _metrics_initialized = True
     metrics_collector.enable()
     metrics_collector.reset()
-
-    # Patch hypothesis.event
-    _install_event_hook()
 
     # Enable live reporting if requested
     enable_live = (
@@ -539,40 +553,47 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
     from tests.strategy_metrics import metrics_collector
 
-    # If already initialized from env, just check for -m fuzz
+    # Hook is always installed at conftest import time by
+    # _init_metrics_from_env(). Here we only need to enable the
+    # collector for runs that weren't detectable from env vars
+    # (e.g. pytest -m fuzz without STRATEGY_METRICS=1).
     if _metrics_initialized:
-        # Check if pytest was invoked with -m fuzz (not detectable from env)
-        args_str = " ".join(str(a) for a in session.config.invocation_params.args)
+        args_str = " ".join(
+            str(a) for a in session.config.invocation_params.args
+        )
         if "-m fuzz" in args_str and not metrics_collector.is_enabled():
             metrics_collector.enable()
             metrics_collector.reset()
-            _install_event_hook()
         return
 
-    # Enable metrics for fuzzing runs or explicit request
+    # Defensive: _init_metrics_from_env() should have run at import
+    # time, but handle the edge case where it didn't.
+    _install_event_hook()
+
     profile = os.environ.get("HYPOTHESIS_PROFILE", "")
     enable_metrics = (
         os.environ.get("STRATEGY_METRICS") == "1"
         or profile == "hypofuzz"
-        or "-m fuzz" in " ".join(str(a) for a in session.config.invocation_params.args)
+        or "-m fuzz" in " ".join(
+            str(a) for a in session.config.invocation_params.args
+        )
     )
 
     if enable_metrics:
         metrics_collector.enable()
-        metrics_collector.reset()  # Fresh start for this session
+        metrics_collector.reset()
 
-        # Patch hypothesis.event to also record metrics
-        _install_event_hook()
-
-        # Enable live reporting for deep fuzzing or explicit request
         enable_live = (
             os.environ.get("STRATEGY_METRICS_LIVE") == "1"
             or profile == "hypofuzz"
         )
         if enable_live:
-            interval = float(os.environ.get("STRATEGY_METRICS_INTERVAL", "10"))
-            # Per-strategy breakdown when STRATEGY_METRICS_DETAILED=1
-            show_detailed = os.environ.get("STRATEGY_METRICS_DETAILED") == "1"
+            interval = float(
+                os.environ.get("STRATEGY_METRICS_INTERVAL", "10")
+            )
+            show_detailed = (
+                os.environ.get("STRATEGY_METRICS_DETAILED") == "1"
+            )
             metrics_collector.start_live_reporting(
                 interval_seconds=interval,
                 show_per_strategy=show_detailed,

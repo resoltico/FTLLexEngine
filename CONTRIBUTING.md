@@ -51,7 +51,8 @@ All validation scripts are **self-isolating**. They automatically "pivot" into t
 | `scripts/lint.sh` | Quality checks (ruff, mypy, pylint) | `./scripts/lint.sh` |
 | `scripts/test.sh` | Test suite with coverage | `./scripts/test.sh` |
 | `scripts/check-atheris.sh` | Atheris/LLVM health check | `./scripts/check-atheris.sh` |
-| `scripts/fuzz.sh` | Unified fuzzing interface | `./scripts/fuzz.sh` |
+| `scripts/fuzz_hypofuzz.sh` | Hypothesis/HypoFuzz fuzzing | `./scripts/fuzz_hypofuzz.sh` |
+| `scripts/fuzz_atheris.sh` | Atheris/libFuzzer fuzzing | `./scripts/fuzz_atheris.sh` |
 | `scripts/benchmark.sh` | Performance benchmarks | `uv run scripts/benchmark.sh` |
 | `scripts/release.sh` | Release automation | `uv run scripts/release.sh` |
 
@@ -114,7 +115,7 @@ All logic must be verified via deterministic unit tests and non-deterministic pr
 
 ### Property-Based Testing (Hypothesis)
 If you see `HYPOTHESIS DETECTED A LOGIC FLAW`, an edge case has been found.
-1. The failing input is saved to `.hypothesis/failures`.
+1. The failing input is saved to `.hypothesis/examples/`.
 2. Review the `Falsifying example:` output.
 3. Fix the bug and re-run `./scripts/test.sh`.
 

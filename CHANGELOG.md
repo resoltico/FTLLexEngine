@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-02-11
+
+### Fixed
+
+- **Serializer separate-line mode decision unstable across roundtrips** (BUG-SERIALIZER-MODE-INSTABILITY-001):
+  - Different bug category from 0.104.0/0.105.0 emission bugs: this is a **decision-layer** convergence failure, not an emission-layer wrapping gap
+  - `_pattern_needs_separate_line` cross-element check triggered separate-line mode for ANY `TextElement` starting with a space after a newline-ending element, including `WHITESPACE_ONLY` and `SYNTAX_LEADING` content that per-line wrapping already handles
+  - The serializer wrapped the ambiguous content in a `StringLiteral` placeable (correct), but this transformed the `TextElement` into a `Placeable` node in the re-parsed AST; the cross-element check does not inspect `Placeable` nodes, so separate-line mode did not trigger on re-serialization, producing different output: `S(P(x)) != S(P(S(P(x))))`
+  - Example: source `aaaaa =\n    h\n           \n` (whitespace-only continuation line) parsed and serialized to S1 in separate-line mode; S1 parsed to an AST with a `Placeable` instead of `TextElement`, serialized to S2 in inline mode; S1 != S2
+  - Root cause: the intra-element check (added in 0.105.0 refactor) correctly used `_classify_line` and only triggered for `NORMAL` lines; the cross-element check (predating the refactor) did not classify, triggering unconditionally; the two checks were inconsistent
+  - Fix: cross-element check now classifies the first line of the `TextElement` via `_classify_line` and only triggers separate-line mode for `NORMAL` content, matching the intra-element check; `WHITESPACE_ONLY` and `SYNTAX_LEADING` content goes through per-line wrapping in `_emit_classified_line` without mode change
+  - Invariant enforced: separate-line mode activates only for `NORMAL` lines with leading whitespace (the one case where per-line wrapping cannot help, because the parser absorbs content whitespace as structural indent); all other line kinds are handled by `_emit_classified_line` without requiring a mode change
+  - Location: `syntax/serializer.py` `_pattern_needs_separate_line()`
+
 ## [0.105.0] - 2026-02-10
 
 ### Changed
@@ -3307,6 +3321,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.106.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.106.0
 [0.105.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.105.0
 [0.104.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.104.0
 [0.103.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.103.0

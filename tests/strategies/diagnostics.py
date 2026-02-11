@@ -42,22 +42,34 @@ from ftllexengine.syntax.ast import Annotation
 def source_spans(draw: st.DrawFn) -> SourceSpan:
     """Generate arbitrary SourceSpan instances.
 
+    Bucket-first: draws size category then generates matching span,
+    ensuring uniform distribution across categories.
+
     Events emitted:
     - diag_span_size={zero|small|medium|large}: Span size classification
     """
+    label = draw(
+        st.sampled_from(["zero", "small", "medium", "large"])
+    )
     start = draw(st.integers(min_value=0, max_value=100000))
-    end = draw(st.integers(min_value=start, max_value=start + 10000))
+    match label:
+        case "zero":
+            end = start
+        case "small":
+            offset = draw(st.integers(min_value=1, max_value=99))
+            end = start + offset
+        case "medium":
+            offset = draw(
+                st.integers(min_value=100, max_value=999)
+            )
+            end = start + offset
+        case _:  # large
+            offset = draw(
+                st.integers(min_value=1000, max_value=10000)
+            )
+            end = start + offset
     line = draw(st.integers(min_value=1, max_value=10000))
     column = draw(st.integers(min_value=1, max_value=1000))
-    span_size = end - start
-    if span_size == 0:
-        label = "zero"
-    elif span_size < 100:
-        label = "small"
-    elif span_size < 1000:
-        label = "medium"
-    else:
-        label = "large"
     event(f"diag_span_size={label}")
     return SourceSpan(start=start, end=end, line=line, column=column)
 
@@ -66,22 +78,53 @@ def source_spans(draw: st.DrawFn) -> SourceSpan:
 def frozen_error_contexts(draw: st.DrawFn) -> FrozenErrorContext:
     """Generate arbitrary FrozenErrorContext instances.
 
+    Bucket-first: draws field population category then generates
+    matching fields, ensuring uniform distribution.
+
     Events emitted:
     - diag_ctx_fields={none|partial|all}: How many fields are non-empty
     """
-    input_value = draw(st.text(min_size=0, max_size=100))
-    locale_code = draw(st.text(min_size=0, max_size=20))
-    parse_type = draw(st.text(min_size=0, max_size=20))
-    fallback_value = draw(st.text(min_size=0, max_size=100))
-    non_empty = sum(
-        1 for v in (input_value, locale_code, parse_type, fallback_value) if v
-    )
-    if non_empty == 0:
-        label = "none"
-    elif non_empty == 4:
-        label = "all"
-    else:
-        label = "partial"
+    label = draw(st.sampled_from(["none", "partial", "all"]))
+    match label:
+        case "none":
+            input_value = ""
+            locale_code = ""
+            parse_type = ""
+            fallback_value = ""
+        case "all":
+            input_value = draw(st.text(min_size=1, max_size=100))
+            locale_code = draw(st.text(min_size=1, max_size=20))
+            parse_type = draw(st.text(min_size=1, max_size=20))
+            fallback_value = draw(
+                st.text(min_size=1, max_size=100)
+            )
+        case _:  # partial: 1-3 non-empty fields
+            # Draw which fields are non-empty (1-3 of 4)
+            flags = draw(
+                st.lists(
+                    st.booleans(), min_size=4, max_size=4
+                ).filter(lambda b: 0 < sum(b) < 4)
+            )
+            input_value = (
+                draw(st.text(min_size=1, max_size=100))
+                if flags[0]
+                else ""
+            )
+            locale_code = (
+                draw(st.text(min_size=1, max_size=20))
+                if flags[1]
+                else ""
+            )
+            parse_type = (
+                draw(st.text(min_size=1, max_size=20))
+                if flags[2]
+                else ""
+            )
+            fallback_value = (
+                draw(st.text(min_size=1, max_size=100))
+                if flags[3]
+                else ""
+            )
     event(f"diag_ctx_fields={label}")
     return FrozenErrorContext(
         input_value=input_value,
@@ -253,21 +296,37 @@ def annotation_nodes(draw: st.DrawFn) -> Annotation:
 def validation_results(draw: st.DrawFn) -> ValidationResult:
     """Generate arbitrary ValidationResult instances.
 
+    Bucket-first: draws validity category then generates matching
+    data, ensuring 50/50 valid/invalid distribution.
+
     Events emitted:
-    - diag_vresult_valid={true|false}: Whether result is valid
+    - diag_vresult_valid={True|False}: Whether result is valid
     """
-    errors = draw(
-        st.lists(validation_errors(), min_size=0, max_size=5).map(tuple)
-    )
+    make_valid = draw(st.booleans())
     warnings = draw(
-        st.lists(validation_warnings(), min_size=0, max_size=5).map(tuple)
+        st.lists(
+            validation_warnings(), min_size=0, max_size=5
+        ).map(tuple)
     )
-    annots = draw(
-        st.lists(annotation_nodes(), min_size=0, max_size=5).map(tuple)
-    )
+    if make_valid:
+        errors: tuple[ValidationError, ...] = ()
+        annots: tuple[Annotation, ...] = ()
+    else:
+        errors = draw(
+            st.lists(
+                validation_errors(), min_size=0, max_size=5
+            ).map(tuple)
+        )
+        annots = draw(
+            st.lists(
+                annotation_nodes(), min_size=0, max_size=5
+            ).map(tuple)
+        )
+        # Ensure at least one error or annotation for invalid
+        if not errors and not annots:
+            errors = (draw(validation_errors()),)
     result = ValidationResult(
         errors=errors, warnings=warnings, annotations=annots
     )
-    is_valid = result.is_valid
-    event(f"diag_vresult_valid={is_valid}")
+    event(f"diag_vresult_valid={result.is_valid}")
     return result

@@ -614,21 +614,33 @@ class FluentSerializer(ASTVisitor):
         Two triggers:
 
         1. Cross-element: A TextElement starting with whitespace is preceded by
-           an element ending with newline.
+           an element ending with newline, AND its first line classifies as
+           NORMAL. WHITESPACE_ONLY and SYNTAX_LEADING lines are handled by
+           per-line wrapping in _emit_classified_line and do not need
+           separate-line mode.
 
         2. Intra-element: A single TextElement contains an embedded newline
            followed by whitespace on a NORMAL line (not WHITESPACE_ONLY or
            SYNTAX_LEADING, which are handled by per-line wrapping).
 
-        Separate-line mode establishes initial_common_indent before any content
-        with embedded leading whitespace, so extra whitespace is preserved as
-        extra_spaces on subsequent continuation lines.
+        Both triggers use _classify_line to determine if separate-line mode is
+        actually needed.  Per-line wrapping converts TextElements into Placeables,
+        changing the AST structure on re-parse; triggering separate-line mode for
+        content that wrapping already handles makes the mode decision unstable
+        across roundtrips.
         """
         prev_ends_newline = False
         for elem in pattern.elements:
             if isinstance(elem, TextElement):
                 if prev_ends_newline and elem.value and elem.value[0] == " ":
-                    return True
+                    first_nl = elem.value.find("\n")
+                    first_line = (
+                        elem.value[:first_nl] if first_nl != -1
+                        else elem.value
+                    )
+                    kind, _ = _classify_line(first_line)
+                    if kind is _LineKind.NORMAL:
+                        return True
                 # Check for embedded newlines followed by whitespace within
                 # a single TextElement. Only NORMAL lines trigger separate-line
                 # mode; WHITESPACE_ONLY and SYNTAX_LEADING are handled by

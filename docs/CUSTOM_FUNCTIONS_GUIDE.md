@@ -131,7 +131,7 @@ file-size = { FILESIZE($bytes, precision: 2) }
 phone = { PHONE($number, format_style: "international") }
 ```
 
-**Python implementation must use keyword-only arguments** after the first parameter:
+**Python implementation should use keyword-only arguments** after the first parameter (recommended for clarity):
 
 ```python
 # CORRECT - Uses * to enforce keyword-only args

@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.103.0"
 domain: reference
-updated: "2026-02-03"
+updated: "2026-02-10"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, cache_write_once, cache_enable_audit]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -525,11 +525,11 @@ iso-date = { DATETIME($timestamp, pattern: "yyyy-MM-dd") }
 # Symbol display (default)
 price = { CURRENCY($amount, currency: "USD") }
 # en_US → "$1,234.56"
-# lv_LV → "1 234,56 $"
+# lv_LV → "1\xa0234,56\xa0$"  (CLDR uses NBSP U+00A0)
 
 # Code display
 price-code = { CURRENCY($amount, currency: "EUR", currencyDisplay: "code") }
-# → "EUR 1,234.56"
+# en_US → "EUR1,234.56"
 
 # Name display
 price-name = { CURRENCY($amount, currency: "EUR", currencyDisplay: "name") }

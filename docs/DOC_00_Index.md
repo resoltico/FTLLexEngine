@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: INDEX
-updated: "2026-01-31"
+updated: "2026-02-10"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -188,6 +188,8 @@ ftllexengine/
   __init__.py              # Public API exports
   constants.py             # MAX_DEPTH, MAX_PARSE_ERRORS, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
   enums.py                 # CommentType, VariableContext, ReferenceKind
+  integrity.py             # DataIntegrityError hierarchy, IntegrityContext
+  locale_utils.py          # Locale normalization and validation utilities
   localization.py          # FluentLocalization, PathResourceLoader
   introspection/
     __init__.py            # Introspection API exports (message + ISO)
@@ -198,6 +200,7 @@ ftllexengine/
     babel_compat.py        # BabelImportError, Babel lazy import infrastructure
     depth_guard.py         # DepthGuard, depth_clamp
     errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
+    identifier_validation.py  # FTL identifier validation utilities
   analysis/
     __init__.py            # Analysis API exports
     graph.py               # detect_cycles, build_dependency_graph
@@ -205,6 +208,9 @@ ftllexengine/
     __init__.py            # AST exports, parse(), serialize()
     ast.py                 # AST node definitions
     cursor.py              # Cursor, ParseError, ParseResult
+    position.py            # Source position tracking
+    validation_helpers.py  # Shared validation helper functions
+    validator.py           # SemanticValidator (AST node-level validation)
     visitor.py             # ASTVisitor, ASTTransformer
     serializer.py          # FluentSerializer
     parser/
@@ -216,10 +222,14 @@ ftllexengine/
   runtime/
     __init__.py            # Runtime exports
     bundle.py              # FluentBundle
-    resolver.py            # FluentResolver, ResolutionContext
-    functions.py           # Built-in functions, create_default_registry, get_shared_registry
+    cache.py               # IntegrityCache, IntegrityCacheEntry
     function_bridge.py     # FunctionRegistry, fluent_function
+    function_metadata.py   # Function metadata helpers (requires_locale_injection, etc.)
+    functions.py           # Built-in functions, create_default_registry, get_shared_registry
+    locale_context.py      # Locale context for runtime formatting
     plural_rules.py        # select_plural_category
+    resolver.py            # FluentResolver, ResolutionContext
+    rwlock.py              # RWLock (readers-writer lock)
   parsing/
     __init__.py            # Parsing API exports
     numbers.py             # parse_number, parse_decimal

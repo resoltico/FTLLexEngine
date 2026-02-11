@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: ERRORS
-updated: "2026-01-31"
+updated: "2026-02-10"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -18,7 +18,7 @@ Error categorization enum replacing the exception class hierarchy.
 
 ### Signature
 ```python
-class ErrorCategory(StrEnum):
+class ErrorCategory(Enum):
     REFERENCE = "reference"
     RESOLUTION = "resolution"
     CYCLIC = "cyclic"
@@ -36,7 +36,7 @@ class ErrorCategory(StrEnum):
 | `FORMATTING` | Locale-aware formatting failure. |
 
 ### Constraints
-- StrEnum: Members ARE strings. `str(ErrorCategory.REFERENCE) == "reference"`
+- Enum: Members have string values. Access via `.value`: `ErrorCategory.REFERENCE.value == "reference"`
 - Usage: Check category instead of using isinstance() on subclasses.
 - Import: `from ftllexengine.diagnostics import ErrorCategory`
 
@@ -360,6 +360,8 @@ class ValidationResult:
     def valid() -> ValidationResult: ...
     @staticmethod
     def invalid(...) -> ValidationResult: ...
+    @staticmethod
+    def from_annotations(annotations: tuple[Annotation, ...]) -> ValidationResult: ...
 ```
 
 ### Parameters
@@ -557,6 +559,8 @@ class DiagnosticCode(Enum):
     FUNCTION_ARITY_MISMATCH = 2011
     TERM_POSITIONAL_ARGS_IGNORED = 2012
     PLURAL_SUPPORT_UNAVAILABLE = 2013
+    FORMATTING_FAILED = 2014
+    EXPANSION_BUDGET_EXCEEDED = 2015
 
     # Syntax errors (3000-3999)
     UNEXPECTED_EOF = 3001
@@ -594,6 +598,7 @@ class DiagnosticCode(Enum):
     VALIDATION_CHAIN_DEPTH_EXCEEDED = 5106
     VALIDATION_DUPLICATE_ATTRIBUTE = 5107
     VALIDATION_SHADOW_WARNING = 5108
+    VALIDATION_TERM_POSITIONAL_ARGS = 5109
 ```
 
 ### Parameters

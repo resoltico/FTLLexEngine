@@ -3,40 +3,15 @@
 # fuzz_hypofuzz.sh -- HypoFuzz & Property Testing Interface
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+
-# ARCHITECTURAL INTENT:
-#   Single entry point for Hypothesis property testing and HypoFuzz coverage-
-#   guided fuzzing. Provides preflight infrastructure auditing, fast property
-#   checks, continuous deep fuzzing, failure reproduction, and strategy metrics.
 #
-# STRATEGY METRICS:
-#   Atheris-style per-strategy metrics are collected during --deep runs.
-#   Use --metrics to see periodic per-strategy breakdown (invocations, wall
-#   time, mean cost, weight percentage). Metrics are saved to
-#   .hypothesis/strategy_metrics.json after each session.
-#
-#   TRADE-OFF: --deep --metrics uses pytest (single-pass, 10000 examples) instead
-#   of HypoFuzz (continuous). This is because HypoFuzz uses multiprocessing where
-#   metrics cannot be shared across worker processes. For continuous fuzzing
-#   without metrics, use --deep alone.
+# Single entry point for Hypothesis property testing and HypoFuzz coverage-
+# guided fuzzing. Run --help for usage, modes, and profile details.
 #
 # AGENT PROTOCOL:
 #   - Silence on Success (unless --verbose)
 #   - Full Log on Failure
 #   - [SUMMARY-JSON-BEGIN] ... [SUMMARY-JSON-END]
 #   - [EXIT-CODE] N
-#
-# Usage:
-#   ./scripts/fuzz_hypofuzz.sh              Run fast property tests (default)
-#   ./scripts/fuzz_hypofuzz.sh --deep       Run continuous HypoFuzz (until Ctrl+C)
-#   ./scripts/fuzz_hypofuzz.sh --deep --metrics  Single-pass pytest with metrics
-#   ./scripts/fuzz_hypofuzz.sh --preflight  Audit test infrastructure
-#   ./scripts/fuzz_hypofuzz.sh --list       Show how to reproduce failures
-#   ./scripts/fuzz_hypofuzz.sh --repro TEST Reproduce a specific test failure
-#   ./scripts/fuzz_hypofuzz.sh --clean      Remove .hypothesis/ database
-#   ./scripts/fuzz_hypofuzz.sh --help       Show help
-#
-# Note: For Atheris native fuzzing, use ./scripts/fuzz_atheris.sh instead.
-# Note: Uses the standard project environment (.venv-3.13/.venv-3.14).
 # ==============================================================================
 
 # Bash Settings
@@ -124,6 +99,26 @@ OPTIONS:
     --workers N     Number of parallel workers (default: 4)
     --time N        Time limit in seconds (for --deep)
     --target FILE   Specific test file to run (check mode only)
+
+HYPOTHESIS PROFILES:
+    Each mode uses a different Hypothesis profile controlling iteration
+    counts and timeouts. Profiles are defined in tests/conftest.py.
+
+    Mode             Profile      Examples/test  Deadline  Notes
+    ---------------  -----------  -------------  --------  -------------------
+    (default)        dev          500            200ms     Fuzz tests skipped
+    --deep           hypofuzz     continuous     None      HypoFuzz fuzzer
+    --deep --metrics hypofuzz     10,000         None      Pytest with -m fuzz
+
+    The default mode runs ALL tests but skips @pytest.mark.fuzz tests.
+    This is why it completes quickly. Use --deep for intensive fuzzing.
+
+    --deep --metrics uses pytest (single-pass) instead of HypoFuzz
+    (continuous) because HypoFuzz multiprocessing prevents metrics
+    collection across worker processes. Results are saved to
+    .hypothesis/strategy_metrics.json. A human-readable summary is
+    written to .hypothesis/strategy_metrics_summary.txt when weight
+    skew or coverage gaps are detected.
 
 EXAMPLES:
     # Quick check before committing (recommended)

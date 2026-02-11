@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.101.0"
 domain: RUNTIME
-updated: "2026-02-03"
+updated: "2026-02-10"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -422,11 +422,11 @@ def is_builtin_with_locale_requirement(func: object) -> bool:
 
 ---
 
-## `get_expected_positional_args`
+## `FunctionRegistry.get_expected_positional_args`
 
 ### Signature
 ```python
-def get_expected_positional_args(ftl_name: str) -> int | None:
+def get_expected_positional_args(self, ftl_name: str) -> int | None:
 ```
 
 ### Parameters
@@ -435,9 +435,9 @@ def get_expected_positional_args(ftl_name: str) -> int | None:
 | `ftl_name` | `str` | Y | FTL function name (e.g., "NUMBER"). |
 
 ### Constraints
-- Return: Expected positional arg count, or None if not built-in.
+- Return: Expected positional arg count from `BUILTIN_FUNCTIONS` metadata, or None if not built-in.
 - Thread: Safe.
-- Import: `from ftllexengine.runtime.function_metadata import get_expected_positional_args`
+- Access: Via `bundle.function_registry.get_expected_positional_args(name)` or registry instance.
 
 ---
 
@@ -573,6 +573,8 @@ def validate_resource(
     parser: FluentParserV1 | None = None,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
+    known_msg_deps: dict[str, set[str]] | None = None,
+    known_term_deps: dict[str, set[str]] | None = None,
 ) -> ValidationResult:
 ```
 
@@ -583,6 +585,8 @@ def validate_resource(
 | `parser` | `FluentParserV1 \| None` | N | Parser instance (creates default if not provided). |
 | `known_messages` | `frozenset[str] \| None` | N | Message IDs from other resources (cross-resource validation). |
 | `known_terms` | `frozenset[str] \| None` | N | Term IDs from other resources (cross-resource validation). |
+| `known_msg_deps` | `dict[str, set[str]] \| None` | N | Dependency graph for known messages (prefixed: "msg:name", "term:name"). |
+| `known_term_deps` | `dict[str, set[str]] \| None` | N | Dependency graph for known terms (prefixed: "msg:name", "term:name"). |
 
 ### Constraints
 - Return: ValidationResult with errors, warnings, and semantic annotations.
@@ -1397,5 +1401,69 @@ def verify(self) -> bool:
 - Return: True if checksum matches recomputed value AND all errors verify, False otherwise.
 - Thread: Safe (read-only).
 - Recursive: Verifies each FrozenFluentError's integrity if verify_integrity() method available.
+
+---
+
+## `WriteLogEntry`
+
+Immutable audit log entry for cache operations.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class WriteLogEntry:
+    operation: str
+    key_hash: str
+    timestamp: float
+    sequence: int
+    checksum_hex: str
+```
+
+### Parameters
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `operation` | `str` | Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION). |
+| `key_hash` | `str` | BLAKE2b hash of cache key (privacy-preserving). |
+| `timestamp` | `float` | Monotonic timestamp of operation. |
+| `sequence` | `int` | Cache entry sequence number (for PUT operations). |
+| `checksum_hex` | `str` | Hex representation of entry checksum (for tracing). |
+
+### Constraints
+- Immutable: Frozen dataclass with slots.
+- Purpose: Post-mortem analysis and debugging when audit logging enabled.
+- Import: `from ftllexengine.runtime.cache import WriteLogEntry`
+
+---
+
+## `IntegrityCache.get_audit_log`
+
+Get audit log entries.
+
+### Signature
+```python
+def get_audit_log(self) -> tuple[WriteLogEntry, ...]:
+```
+
+### Constraints
+- Return: Tuple of WriteLogEntry instances (empty if audit disabled).
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `IntegrityCache.clear`
+
+Clear all cached entries and reset statistics.
+
+### Signature
+```python
+def clear(self) -> None:
+```
+
+### Constraints
+- Return: None.
+- State: Clears cache and resets hit/miss/skip counters. Sequence number NOT reset (monotonic for audit trail). Audit log NOT cleared (historical record).
+- Thread: Safe.
+- Usage: Called automatically by FluentBundle on `add_resource()` or `add_function()`.
 
 ---

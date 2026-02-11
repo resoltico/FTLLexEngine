@@ -60,6 +60,7 @@ import gc
 import hashlib
 import json
 import logging
+import os
 import pathlib
 import random
 import string
@@ -222,12 +223,15 @@ def _write_finding_artifact(
 
     Artifacts are plain text files that can be inspected without Atheris and
     used as regression test inputs. All I/O errors are suppressed to avoid
-    masking the StructuredFuzzError that triggered the write.
+    masking the StructuredFuzzError that triggered the write. Includes PID
+    in filename prefix to prevent collisions when libFuzzer runs multiple
+    forked workers.
     """
     try:
         _FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
         _state.finding_counter += 1
-        prefix = f"finding_{_state.finding_counter:04d}"
+        pid = os.getpid()
+        prefix = f"finding_p{pid}_{_state.finding_counter:04d}"
 
         # Source FTL
         (_FINDINGS_DIR / f"{prefix}_source.ftl").write_text(source, encoding="utf-8")

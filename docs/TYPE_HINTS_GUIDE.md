@@ -159,10 +159,10 @@ MessageId.__value__ == str   # True (underlying type is str)
 # Values are plain str at runtime
 isinstance("hello", str)     # True - MessageId values are str instances
 
-# Type checkers treat the aliases distinctly for better errors
+# Type aliases are transparent: both resolve to str
+# They serve as documentation aids, not enforcement mechanisms
 def format(msg_id: MessageId) -> str: ...
-format("en_US")  # Static type checker error: expected MessageId, got LocaleCode
-                 # (At runtime both are str, so this executes fine)
+format("en_US")  # Accepted by type checkers (MessageId is just str)
 ```
 
 ---
@@ -593,14 +593,12 @@ class ErrorReport:
 ```python
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from dataclasses import dataclass
 from ftllexengine import FluentBundle
 from ftllexengine.localization import MessageId
 
-T = TypeVar("T")
 
-
-class TypedBundle(Generic[T]):
+class TypedBundle[T]:
     """Type-safe wrapper for FluentBundle with custom context.
 
     This pattern allows attaching typed metadata to bundles.

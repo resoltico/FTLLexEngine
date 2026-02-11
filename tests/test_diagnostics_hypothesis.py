@@ -450,15 +450,10 @@ class TestErrorRecovery:
             span=span,
         )
 
-        # Create error from diagnostic
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
-        )
-
-        # Should be able to extract location from formatted error
-        formatted = str(error)
-        assert str(line) in formatted
-        assert str(col) in formatted
+        # format_error() includes span location; __str__ returns only message
+        formatted = diagnostic.format_error()
+        assert f"line {line}" in formatted
+        assert f"column {col}" in formatted
         event(f"id_len={len(msg_id)}")
 
     @given(messages=st.lists(error_messages, min_size=1, max_size=10))
