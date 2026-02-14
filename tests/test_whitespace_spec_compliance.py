@@ -17,7 +17,7 @@ References:
 from __future__ import annotations
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import Junk, Message
@@ -233,6 +233,8 @@ class TestHypothesisWhitespaceProperties:
         source = f"{identifier} = {value}"
         resource = parser.parse(source)
 
+        event("outcome=parsed")
+
         # Should produce valid message (not Junk)
         assert len(resource.entries) >= 1
         if not any("\t" in str(e) for e in resource.entries):
@@ -264,6 +266,8 @@ class TestHypothesisWhitespaceProperties:
             source = f"{identifier} = Val\tue"
 
         resource = parser.parse(source)
+
+        event(f"outcome={tab_position}")
 
         # Parser should handle tab gracefully (either Junk or parsed)
         assert len(resource.entries) >= 1

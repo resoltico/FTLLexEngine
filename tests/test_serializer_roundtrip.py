@@ -10,7 +10,7 @@ This validates both the parser and serializer simultaneously, ensuring:
 
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax import parse, serialize
@@ -699,23 +699,24 @@ def test_roundtrip_mixed_spacing_preserved():
 
 @given(ftl_message_nodes())
 @settings(max_examples=30)
-def test_roundtrip_property_messages(message):
+def test_roundtrip_property_messages(message: Message) -> None:
     """Property: All generated messages round-trip successfully."""
     resource = Resource(entries=(message,))
 
     serialized = serialize(resource)
     reparsed = parse(serialized)
 
-    # Should have at least one message
     messages = [e for e in reparsed.entries if isinstance(e, Message)]
     assert len(messages) >= 1
-    # ID should match
     assert messages[0].id.name == message.id.name
+    has_attrs = len(message.attributes) > 0
+    event(f"has_attributes={has_attrs}")
+    event("outcome=message_roundtrip")
 
 
 @given(ftl_patterns())
 @settings(max_examples=30)
-def test_roundtrip_property_patterns(pattern):
+def test_roundtrip_property_patterns(pattern: Pattern) -> None:
     """Property: All generated patterns round-trip in messages."""
     msg = Message(
         id=Identifier(name="test"), value=pattern, attributes=()
@@ -725,13 +726,16 @@ def test_roundtrip_property_patterns(pattern):
     serialized = serialize(resource)
     reparsed = parse(serialized)
 
-    # Should parse without error
     assert len(reparsed.entries) >= 1
+    event(f"element_count={len(pattern.elements)}")
+    event("outcome=pattern_roundtrip")
 
 
 @given(ftl_select_expressions())
 @settings(max_examples=20)
-def test_roundtrip_property_select_expressions(select_expr):
+def test_roundtrip_property_select_expressions(
+    select_expr: SelectExpression,
+) -> None:
     """Property: All generated select expressions round-trip."""
     msg = Message(
         id=Identifier(name="test"),
@@ -743,66 +747,65 @@ def test_roundtrip_property_select_expressions(select_expr):
     serialized = serialize(resource)
     reparsed = parse(serialized)
 
-    # Should parse without error
     assert len(reparsed.entries) >= 1
+    event(f"variant_count={len(select_expr.variants)}")
+    event("outcome=select_roundtrip")
 
 
 @given(ftl_comments())
 @settings(max_examples=30)
 def test_roundtrip_property_comments(comment_str: str) -> None:
-    """Property: All generated comments serialize correctly.
-
-    NOTE: Parser does not support standalone comments yet, so we only test
-    that serialization produces valid FTL syntax (doesn't crash).
-    """
-    # Parse comment string to extract type and content
-    # Format: "# content", "## content", or "### content"
+    """Property: All generated comments serialize correctly."""
     if comment_str.startswith("### "):
         comment_type = CommentType.RESOURCE
-        content = comment_str[4:]  # Skip "### "
+        content = comment_str[4:]
     elif comment_str.startswith("## "):
         comment_type = CommentType.GROUP
-        content = comment_str[3:]  # Skip "## "
+        content = comment_str[3:]
     else:
         comment_type = CommentType.COMMENT
-        content = comment_str[2:]  # Skip "# "
+        content = comment_str[2:]
 
     comment_node = Comment(content=content, type=comment_type)
     resource = Resource(entries=(comment_node,))
 
-    # Serializer should not crash
     serialized = serialize(resource)
     assert isinstance(serialized, str)
-    assert serialized.startswith("#")  # Comment prefix
+    assert serialized.startswith("#")
 
-    # Parser limitation: Comments are ignored during parsing
-    _ = parse(serialized)  # Should not crash
+    _ = parse(serialized)
+    event(f"comment_type={comment_type.name}")
+    event("outcome=comment_roundtrip")
 
 
 @given(ftl_resources())
 @settings(max_examples=20)
-def test_roundtrip_property_complete_resources(resource):
-    """Property: All generated resources round-trip successfully.
-
-    This is the ultimate roundtrip test: random AST → serialize → parse → AST
-    """
+def test_roundtrip_property_complete_resources(
+    resource: Resource,
+) -> None:
+    """Property: All generated resources round-trip successfully."""
     serialized = serialize(resource)
     reparsed = parse(serialized)
 
-    # Should have same number or more entries (due to whitespace handling)
-    # At minimum, all messages should survive roundtrip
-    original_messages = [e for e in resource.entries if isinstance(e, Message)]
-    reparsed_messages = [e for e in reparsed.entries if isinstance(e, Message)]
+    original_messages = [
+        e for e in resource.entries if isinstance(e, Message)
+    ]
+    reparsed_messages = [
+        e for e in reparsed.entries if isinstance(e, Message)
+    ]
 
-    # All original message IDs should be present in reparsed
     original_ids = {msg.id.name for msg in original_messages}
     reparsed_ids = {msg.id.name for msg in reparsed_messages}
     assert original_ids.issubset(reparsed_ids)
+    event(f"entry_count={len(resource.entries)}")
+    event("outcome=resource_roundtrip")
 
 
 @given(ftl_variable_references())
 @settings(max_examples=30)
-def test_roundtrip_property_variable_references(var_ref):
+def test_roundtrip_property_variable_references(
+    var_ref: VariableReference,
+) -> None:
     """Property: Variable references round-trip in placeables."""
     msg = Message(
         id=Identifier(name="test"),
@@ -815,6 +818,8 @@ def test_roundtrip_property_variable_references(var_ref):
     reparsed = parse(serialized)
 
     assert len(reparsed.entries) >= 1
+    event(f"var_name={var_ref.id.name}")
+    event("outcome=varref_roundtrip")
 
 
 # ============================================================================
@@ -824,26 +829,26 @@ def test_roundtrip_property_variable_references(var_ref):
 
 @given(ftl_resources())
 @settings(max_examples=30)
-def test_serializer_produces_valid_ftl(resource):
+def test_serializer_produces_valid_ftl(resource: Resource) -> None:
     """Property: Serialized output always produces parseable FTL."""
     serialized = serialize(resource)
 
-    # Should be a string
     assert isinstance(serialized, str)
 
-    # Should parse without raising exception
     result = parse(serialized)
     assert isinstance(result, Resource)
+    event(f"entry_count={len(resource.entries)}")
+    event("outcome=valid_ftl")
 
 
 @given(ftl_message_nodes())
 @settings(max_examples=30)
-def test_serializer_deterministic(message):
+def test_serializer_deterministic(message: Message) -> None:
     """Property: Same AST always produces same serialized output."""
     resource = Resource(entries=(message,))
 
     serialized1 = serialize(resource)
     serialized2 = serialize(resource)
 
-    # Should be identical
     assert serialized1 == serialized2
+    event("outcome=deterministic")

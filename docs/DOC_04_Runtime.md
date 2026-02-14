@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: RUNTIME
 updated: "2026-02-10"
 route:
@@ -39,7 +39,7 @@ class FluentNumber:
 - Usage: Returned by `number_format()` and `currency_format()`. Preserves numeric identity and precision metadata for select expressions.
 - Str: `str(fluent_number)` returns `formatted` for display.
 - Plural: Precision affects CLDR plural category selection. For example, "1.00" with precision=2 selects "other" category (v=2), not "one" (v=0).
-- Import: `from ftllexengine.runtime.function_bridge import FluentNumber`
+- Import: `from ftllexengine.runtime.value_types import FluentNumber`
 
 ---
 

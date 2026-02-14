@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: architecture
 updated: "2026-01-31"
 route:
@@ -21,7 +21,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 
 | Component | Thread-Safe | Async-Safe | Notes |
 |:----------|:------------|:-----------|:------|
-| `FluentBundle` | Yes (reads) | Yes | Immutable after construction |
+| `FluentBundle` | Yes (all ops) | Yes | RWLock-protected reads and writes |
 | `FluentParserV1` | Yes | Yes | Stateless parsing |
 | `IntegrityCache` | Yes | Yes | RLock-protected |
 | `FunctionRegistry` | Copy-on-write | Copy-on-write | Copied on bundle init |
@@ -32,28 +32,19 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 
 ## FluentBundle Thread Safety
 
-`FluentBundle` is **safe for concurrent reads** from multiple threads.
+`FluentBundle` is **fully thread-safe** for all operations via internal RWLock.
 
 **Guarantees**:
-- All public properties are immutable after construction
+- All read operations (`format_pattern()`, `has_message()`, introspection) acquire read lock (concurrent)
+- All write operations (`add_resource()`, `add_function()`) acquire write lock (exclusive)
 - `format_pattern()` creates isolated `ResolutionContext` per call
 - `IntegrityCache` uses `RLock` for internal synchronization
 - `FunctionRegistry` is copied on initialization (copy-on-write)
 - Batch operations (`get_all_message_variables()`) acquire single read lock for atomic snapshot
 
-**Immutable References**:
-```python
-# These references never change after __init__:
-bundle._locale       # str, immutable
-bundle._messages     # dict, populated once
-bundle._terms        # dict, populated once
-bundle._cache        # IntegrityCache, same instance forever
-bundle._functions    # FunctionRegistry, copied from input
-```
-
-**Not Thread-Safe**:
-- `add_resource()` - Mutates internal state; serialize calls externally
-- `add_function()` - Mutates registry; complete before concurrent reads
+**Write Operations**:
+- `add_resource()` - Parses outside lock (stateless parser), acquires write lock for registration only
+- `add_function()` - Acquires write lock for registry mutation
 
 **Write-to-Read Downgrading**:
 A thread holding the write lock can acquire read locks without blocking. When the write lock is released, held read locks convert to regular reader locks. This enables write-then-read validation patterns.

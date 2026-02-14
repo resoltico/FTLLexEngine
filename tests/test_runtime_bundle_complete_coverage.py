@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
@@ -91,6 +91,8 @@ class TestLocaleValidationDoSPrevention:
     def test_property_any_locale_exceeding_limit_rejected(self, locale: str) -> None:
         """Property: Any locale exceeding hard limit is rejected."""
         assume(len(locale) > MAX_LOCALE_LENGTH_HARD_LIMIT)
+        overshoot = len(locale) - MAX_LOCALE_LENGTH_HARD_LIMIT
+        event(f"boundary={'near' if overshoot <= 10 else 'far'}_limit")
 
         with pytest.raises(ValueError, match=r"Locale code exceeds maximum length"):
             FluentBundle(locale)
@@ -168,6 +170,7 @@ class TestTermOverwritingWarning:
     ) -> None:
         """Property: Overwriting any term produces warning (log check omitted)."""
         assume(all(tid.isidentifier() for tid in term_ids))
+        event(f"term_count={len(term_ids)}")
 
         bundle = FluentBundle("en")
 
@@ -395,6 +398,7 @@ class TestInvalidArgsTypeValidation:
         # Filter out None (which is valid) and actual Mappings
         assume(invalid_args is not None)
         assume(not hasattr(invalid_args, "items"))
+        event(f"args_type={type(invalid_args).__name__}")
 
         bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Test")
@@ -461,6 +465,7 @@ class TestInvalidAttributeTypeValidation:
     ) -> None:
         """Property: Any non-string attribute produces error without crashing."""
         assume(not isinstance(invalid_attr, str))
+        event(f"attr_type={type(invalid_attr).__name__}")
 
         bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Test")
@@ -506,6 +511,8 @@ class TestPropertyAccessEdgeCases:
     @given(st.integers(min_value=1, max_value=10000))
     def test_property_cache_size_reflects_initialization(self, size: int) -> None:
         """Property: cache_size always reflects initialization parameter."""
+        scale = "small" if size <= 100 else "large"
+        event(f"boundary={scale}_cache")
         bundle = FluentBundle("en", cache_size=size)
         assert bundle.cache_size == size
 
@@ -525,7 +532,8 @@ class TestErrorHandlingRoundtrip:
         self, msg_id: str
     ) -> None:
         """Property: Invalid args produces consistent error across strict/non-strict."""
-        # FTL identifiers: ASCII letters, digits, underscores, hyphens (start with letter)
+        has_special = any(c in msg_id for c in "-_")
+        event(f"id_chars={'special' if has_special else 'alpha'}")
 
         bundle_strict = FluentBundle("en", strict=True)
         bundle_normal = FluentBundle("en", strict=False)

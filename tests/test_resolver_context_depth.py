@@ -6,7 +6,8 @@ Python 3.13+.
 """
 
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax import NumberLiteral, Pattern, SelectExpression, TextElement, Variant
 
 

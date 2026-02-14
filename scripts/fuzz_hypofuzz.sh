@@ -362,7 +362,7 @@ else:
 
 # Non-fuzz files with @given but no events (informational)
 no_event_files = [(f, c) for f, c in given_by_file.items() if f not in event_by_file]
-top_files = sorted(no_event_files, key=lambda x: x[1], reverse=True)[:5]
+top_files = sorted(no_event_files, key=lambda x: x[1], reverse=True)
 if top_files:
     print("Non-Fuzz Files with @given but no events:")
     for f, count in top_files:
@@ -454,8 +454,8 @@ tests_skipped = int(skipped_match.group(1)) if skipped_match else 0
 
 # Extract individual test failures
 failures = []
-failed_test_pattern = r'FAILED (tests/[\w/]+\.py::\w+)'
-failed_tests = re.findall(failed_test_pattern, log_content)
+failed_test_pattern = r'FAILED (tests/.+?)(?: - |$)'
+failed_tests = sorted(list(set(re.findall(failed_test_pattern, log_content))))
 
 for test_path in failed_tests:
     failure_entry = {"test": test_path}

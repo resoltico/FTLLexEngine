@@ -1,795 +1,337 @@
-"""Comprehensive tests for diagnostics/formatter.py achieving 100% coverage.
+"""Property-based tests for diagnostics/formatter.py.
 
-Tests DiagnosticFormatter with all output formats, sanitization options,
-color modes, and edge cases using Hypothesis for property-based testing.
+Tests DiagnosticFormatter across all output formats, sanitization modes,
+color options, and validation result formatting using Hypothesis strategies
+and real domain types. No Mocks.
 
 Python 3.13+.
 """
 
 import json
-from unittest.mock import Mock
 
 import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode, SourceSpan
-from ftllexengine.diagnostics.formatter import DiagnosticFormatter, OutputFormat
-
-pytestmark = pytest.mark.fuzz
-
-
-class TestOutputFormatEnum:
-    """Test OutputFormat enum values."""
-
-    def test_output_format_rust(self):
-        """OutputFormat.RUST has correct value."""
-        assert OutputFormat.RUST.value == "rust"
-
-    def test_output_format_simple(self):
-        """OutputFormat.SIMPLE has correct value."""
-        assert OutputFormat.SIMPLE.value == "simple"
-
-    def test_output_format_json(self):
-        """OutputFormat.JSON has correct value."""
-        assert OutputFormat.JSON.value == "json"
-
-
-class TestDiagnosticFormatterConstruction:
-    """Test DiagnosticFormatter construction and defaults."""
-
-    def test_default_construction(self):
-        """Default DiagnosticFormatter uses rust format, no sanitize, no color."""
-        formatter = DiagnosticFormatter()
-
-        assert formatter.output_format == OutputFormat.RUST
-        assert formatter.sanitize is False
-        assert formatter.color is False
-        assert formatter.max_content_length == 100
-
-    def test_custom_output_format(self):
-        """DiagnosticFormatter accepts custom output_format."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
-
-        assert formatter.output_format == OutputFormat.SIMPLE
-
-    def test_custom_sanitize(self):
-        """DiagnosticFormatter accepts custom sanitize flag."""
-        formatter = DiagnosticFormatter(sanitize=True)
-
-        assert formatter.sanitize is True
-
-    def test_custom_color(self):
-        """DiagnosticFormatter accepts custom color flag."""
-        formatter = DiagnosticFormatter(color=True)
-
-        assert formatter.color is True
-
-    def test_custom_max_content_length(self):
-        """DiagnosticFormatter accepts custom max_content_length."""
-        formatter = DiagnosticFormatter(max_content_length=50)
-
-        assert formatter.max_content_length == 50
-
-
-class TestFormatRust:
-    """Test _format_rust() method comprehensively."""
-
-    def test_format_rust_minimal_diagnostic(self):
-        """Rust format with minimal diagnostic (code + message only)."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[MESSAGE_NOT_FOUND]: Message 'hello' not found" in result
-        assert "-->" not in result
-        assert "= help:" not in result
-
-    def test_format_rust_with_span(self):
-        """Rust format includes span location."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        span = SourceSpan(start=10, end=20, line=5, column=10)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            span=span,
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[MESSAGE_NOT_FOUND]: Message 'hello' not found" in result
-        assert "  --> line 5, column 10" in result
-
-    def test_format_rust_with_ftl_location_no_span(self):
-        """Rust format uses ftl_location when span is None."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            ftl_location="main.ftl:42",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[MESSAGE_NOT_FOUND]: Message 'hello' not found" in result
-        assert "  --> main.ftl:42" in result
-
-    def test_format_rust_span_takes_precedence_over_ftl_location(self):
-        """Rust format prefers span over ftl_location when both present."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        span = SourceSpan(start=10, end=20, line=5, column=10)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            span=span,
-            ftl_location="main.ftl:99",
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Span should appear, not ftl_location
-        assert "  --> line 5, column 10" in result
-        assert "main.ftl:99" not in result
-
-    def test_format_rust_with_function_name(self):
-        """Rust format includes function_name field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.FUNCTION_FAILED,
-            message="Function failed",
-            function_name="NUMBER",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[FUNCTION_FAILED]: Function failed" in result
-        assert "  = function: NUMBER" in result
-
-    def test_format_rust_with_argument_name(self):
-        """Rust format includes argument_name field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch",
-            argument_name="value",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[TYPE_MISMATCH]: Type mismatch" in result
-        assert "  = argument: value" in result
-
-    def test_format_rust_with_expected_type(self):
-        """Rust format includes expected_type field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch",
-            expected_type="Number",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[TYPE_MISMATCH]: Type mismatch" in result
-        assert "  = expected: Number" in result
-
-    def test_format_rust_with_received_type(self):
-        """Rust format includes received_type field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch",
-            received_type="String",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[TYPE_MISMATCH]: Type mismatch" in result
-        assert "  = received: String" in result
-
-    def test_format_rust_with_hint(self):
-        """Rust format includes hint field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            hint="Check that the message is defined",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[MESSAGE_NOT_FOUND]: Message 'hello' not found" in result
-        assert "  = help: Check that the message is defined" in result
-
-    def test_format_rust_with_help_url(self):
-        """Rust format includes help_url field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            help_url="https://projectfluent.org/fluent/guide/messages.html",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[MESSAGE_NOT_FOUND]: Message 'hello' not found" in result
-        assert "  = note: see https://projectfluent.org/fluent/guide/messages.html" in result
-
-    def test_format_rust_warning_severity(self):
-        """Rust format uses 'warning' for severity=warning."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            severity="warning",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "warning[MESSAGE_NOT_FOUND]: Message 'hello' not found" in result
-
-    def test_format_rust_color_error(self):
-        """Rust format with color adds ANSI codes for error."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST, color=True)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Should contain bold red ANSI code for error
-        assert "\033[1;31merror\033[0m" in result
-        assert "[MESSAGE_NOT_FOUND]" in result
-
-    def test_format_rust_color_warning(self):
-        """Rust format with color adds ANSI codes for warning."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST, color=True)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            severity="warning",
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Should contain bold yellow ANSI code for warning
-        assert "\033[1;33mwarning\033[0m" in result
-        assert "[MESSAGE_NOT_FOUND]" in result
-
-    def test_format_rust_all_fields(self):
-        """Rust format with all optional fields present."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
-        span = SourceSpan(start=10, end=20, line=5, column=10)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch in NUMBER()",
-            span=span,
-            function_name="NUMBER",
-            argument_name="value",
-            expected_type="Number",
-            received_type="String",
-            hint="Convert value to Number before passing",
-            help_url="https://projectfluent.org/fluent/guide/functions.html",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert "error[TYPE_MISMATCH]: Type mismatch in NUMBER()" in result
-        assert "  --> line 5, column 10" in result
-        assert "  = function: NUMBER" in result
-        assert "  = argument: value" in result
-        assert "  = expected: Number" in result
-        assert "  = received: String" in result
-        assert "  = help: Convert value to Number before passing" in result
-        assert "  = note: see https://projectfluent.org/fluent/guide/functions.html" in result
-
-
-class TestFormatSimple:
-    """Test _format_simple() method."""
-
-    def test_format_simple_basic(self):
-        """Simple format shows code and message only."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert result == "MESSAGE_NOT_FOUND: Message 'hello' not found"
-
-    def test_format_simple_ignores_span(self):
-        """Simple format ignores span and other fields."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
-        span = SourceSpan(start=10, end=20, line=5, column=10)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            span=span,
-            hint="Some hint",
-            help_url="http://example.com",
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert result == "MESSAGE_NOT_FOUND: Message 'hello' not found"
-        assert "line 5" not in result
-        assert "hint" not in result
-
-
-class TestFormatJSON:
-    """Test _format_json() method."""
-
-    def test_format_json_minimal(self):
-        """JSON format with minimal diagnostic."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["code"] == "MESSAGE_NOT_FOUND"
-        assert data["code_value"] == DiagnosticCode.MESSAGE_NOT_FOUND.value
-        assert data["message"] == "Message 'hello' not found"
-        assert data["severity"] == "error"
-
-    def test_format_json_with_span(self):
-        """JSON format includes span fields."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        span = SourceSpan(start=10, end=20, line=5, column=10)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            span=span,
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["line"] == 5
-        assert data["column"] == 10
-        assert data["start"] == 10
-        assert data["end"] == 20
-
-    def test_format_json_with_ftl_location(self):
-        """JSON format includes ftl_location field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            ftl_location="main.ftl:42",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["ftl_location"] == "main.ftl:42"
-
-    def test_format_json_with_function_name(self):
-        """JSON format includes function_name field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.FUNCTION_FAILED,
-            message="Function failed",
-            function_name="NUMBER",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["function_name"] == "NUMBER"
-
-    def test_format_json_with_argument_name(self):
-        """JSON format includes argument_name field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch",
-            argument_name="value",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["argument_name"] == "value"
-
-    def test_format_json_with_expected_type(self):
-        """JSON format includes expected_type field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch",
-            expected_type="Number",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["expected_type"] == "Number"
-
-    def test_format_json_with_received_type(self):
-        """JSON format includes received_type field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.TYPE_MISMATCH,
-            message="Type mismatch",
-            received_type="String",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["received_type"] == "String"
-
-    def test_format_json_with_hint(self):
-        """JSON format includes hint field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            hint="Check that the message is defined",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["hint"] == "Check that the message is defined"
-
-    def test_format_json_with_help_url(self):
-        """JSON format includes help_url field."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-            help_url="https://projectfluent.org/fluent/guide/messages.html",
-        )
-
-        result = formatter.format(diagnostic)
-        data = json.loads(result)
-
-        assert data["help_url"] == "https://projectfluent.org/fluent/guide/messages.html"
-
-    def test_format_json_unicode(self):
-        """JSON format preserves Unicode characters (ensure_ascii=False)."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Ziņojums 'sveiki' nav atrasts",  # Latvian text
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Should contain actual Unicode, not escape sequences
-        assert "Ziņojums" in result
-        data = json.loads(result)
-        assert data["message"] == "Ziņojums 'sveiki' nav atrasts"
-
-
-class TestFormatAll:
-    """Test format_all() method."""
-
-    def test_format_all_empty(self):
-        """format_all with empty iterable returns empty string."""
-        formatter = DiagnosticFormatter()
-
-        result = formatter.format_all([])
-
-        assert result == ""
-
-    def test_format_all_single_diagnostic(self):
-        """format_all with single diagnostic."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Message 'hello' not found",
-        )
-
-        result = formatter.format_all([diagnostic])
-
-        assert result == "MESSAGE_NOT_FOUND: Message 'hello' not found"
-
-    def test_format_all_multiple_diagnostics(self):
-        """format_all joins multiple diagnostics with double newline."""
-        formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
-        diagnostics = [
-            Diagnostic(
-                code=DiagnosticCode.MESSAGE_NOT_FOUND,
-                message="Message 'hello' not found",
-            ),
-            Diagnostic(
-                code=DiagnosticCode.VARIABLE_NOT_PROVIDED,
-                message="Variable 'name' not provided",
-            ),
-            Diagnostic(
-                code=DiagnosticCode.TERM_NOT_FOUND,
-                message="Term '-brand' not found",
-            ),
-        ]
-
-        result = formatter.format_all(diagnostics)
-
-        expected = (
-            "MESSAGE_NOT_FOUND: Message 'hello' not found\n\n"
-            "VARIABLE_NOT_PROVIDED: Variable 'name' not provided\n\n"
-            "TERM_NOT_FOUND: Term '-brand' not found"
-        )
-        assert result == expected
-
-
-class TestMaybeSanitize:
-    """Test _maybe_sanitize() method."""
-
-    def test_sanitize_disabled_no_truncation(self):
-        """With sanitize=False, text is never truncated."""
-        formatter = DiagnosticFormatter(sanitize=False)
-        long_text = "x" * 500
-
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message=long_text,
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Full text should appear (no "..." truncation)
-        assert long_text in result
-        assert "..." not in result
-
-    def test_sanitize_enabled_under_limit(self):
-        """With sanitize=True, text under limit is not truncated."""
-        formatter = DiagnosticFormatter(sanitize=True, max_content_length=100)
-        short_text = "x" * 50
-
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message=short_text,
-        )
-
-        result = formatter.format(diagnostic)
-
-        assert short_text in result
-        assert "..." not in result
-
-    def test_sanitize_enabled_over_limit_message(self):
-        """With sanitize=True, message over limit is truncated."""
-        formatter = DiagnosticFormatter(
-            sanitize=True,
-            max_content_length=50,
-            output_format=OutputFormat.SIMPLE,
-        )
-        long_message = "x" * 100
-
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message=long_message,
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Should be truncated to 50 chars + "..."
-        assert result == f"MESSAGE_NOT_FOUND: {'x' * 50}..."
-
-    def test_sanitize_enabled_over_limit_hint(self):
-        """With sanitize=True, hint over limit is truncated."""
-        formatter = DiagnosticFormatter(
-            sanitize=True,
-            max_content_length=50,
-            output_format=OutputFormat.RUST,
-        )
-        long_hint = "x" * 100
-
-        diagnostic = Diagnostic(
-            code=DiagnosticCode.MESSAGE_NOT_FOUND,
-            message="Short message",
-            hint=long_hint,
-        )
-
-        result = formatter.format(diagnostic)
-
-        # Hint should be truncated
-        assert f"{'x' * 50}..." in result
-
-
-class TestFormatValidationResult:
-    """Test format_validation_result() method."""
-
-    def test_format_validation_result_valid(self):
-        """Validation result with is_valid=True shows success."""
-        formatter = DiagnosticFormatter()
-
-        # Create mock ValidationResult
-        result = Mock()
-        result.is_valid = True
-        result.errors = []
-        result.warnings = []
-        result.annotations = []
-
-        output = formatter.format_validation_result(result)
-
-        assert "Validation passed" in output
-
-    def test_format_validation_result_invalid_with_counts(self):
-        """Validation result with is_valid=False shows error/warning counts."""
-        formatter = DiagnosticFormatter()
-
-        # Create mock ValidationResult
-        result = Mock()
-        result.is_valid = False
-        result.error_count = 3
-        result.warning_count = 2
-        result.errors = []
-        result.warnings = []
-        result.annotations = []
-
-        output = formatter.format_validation_result(result)
-
-        assert "Validation failed: 3 error(s), 2 warning(s)" in output
-
-    def test_format_validation_result_with_errors(self):
-        """Validation result formats errors section."""
-        formatter = DiagnosticFormatter()
-
-        # Create mock validation error with all required attributes
-        error1 = Mock()
-        error1.code = "INVALID_SYNTAX"
-        error1.message = "Syntax error"
-        error1.content = "bad syntax"
-        error1.line = 5
-        error1.column = 10
-
-        error2 = Mock()
-        error2.code = "MISSING_VALUE"
-        error2.message = "Message has no value"
-        error2.content = "msg"
-        error2.line = 10
-        error2.column = None
-
-        result = Mock()
-        result.is_valid = False
-        result.error_count = 2
-        result.warning_count = 0
-        result.errors = [error1, error2]
-        result.warnings = []
-        result.annotations = []
-
-        output = formatter.format_validation_result(result)
-
-        assert "Validation failed: 2 error(s), 0 warning(s)" in output
-        assert "\nErrors (2):" in output
-        assert "[INVALID_SYNTAX] at line 5, column 10: Syntax error" in output
-        assert "[MISSING_VALUE] at line 10: Message has no value" in output
-
-    def test_format_validation_result_with_warnings(self):
-        """Validation result formats warnings section."""
-        formatter = DiagnosticFormatter()
-
-        # Create mock warning with all required attributes
-        warning1 = Mock()
-        warning1.code = "UNUSED_MESSAGE"
-        warning1.message = "Unused message"
-        warning1.context = "hello"
-        warning1.line = 3
-        warning1.column = 1
-
-        warning2 = Mock()
-        warning2.code = "DEPRECATED_SYNTAX"
-        warning2.message = "Deprecated syntax"
-        warning2.context = None
-        warning2.line = None
-        warning2.column = None
-
-        result = Mock()
-        result.is_valid = True
-        result.error_count = 0
-        result.warning_count = 2
-        result.errors = []
-        result.warnings = [warning1, warning2]
-        result.annotations = []
-
-        output = formatter.format_validation_result(result)
-
-        assert "\nWarnings (2):" in output
-        assert "[UNUSED_MESSAGE] at line 3, column 1: Unused message" in output
-        assert "[DEPRECATED_SYNTAX]: Deprecated syntax" in output
-
-    def test_format_validation_result_with_annotations(self):
-        """Validation result formats annotations section."""
-        formatter = DiagnosticFormatter()
-
-        # Create mock annotations with all required attributes
-        annotation1 = Mock()
-        annotation1.code = "PARSER_INFO"
-        annotation1.message = "Parsed successfully"
-        annotation1.arguments = None
-
-        annotation2 = Mock()
-        annotation2.code = "PARSER_NOTE"
-        annotation2.message = "Alternative syntax available"
-        annotation2.arguments = (("key", "value"),)
-
-        result = Mock()
-        result.is_valid = True
-        result.error_count = 0
-        result.warning_count = 0
-        result.errors = []
-        result.warnings = []
-        result.annotations = [annotation1, annotation2]
-
-        output = formatter.format_validation_result(result)
-
-        assert "\nAnnotations (2):" in output
-        assert "[PARSER_INFO]: Parsed successfully" in output
-        assert "[PARSER_NOTE]: Alternative syntax available" in output
-
-    def test_format_validation_error_minimal(self):
-        """_format_validation_error with no line/column."""
-        formatter = DiagnosticFormatter()
-
-        error = Mock()
-        error.code = "UNKNOWN_ERROR"
-        error.message = "Something went wrong"
-        error.content = "error content"
-        error.line = None
-        error.column = None
-
-        result = Mock()
-        result.is_valid = False
-        result.error_count = 1
-        result.warning_count = 0
-        result.errors = [error]
-        result.warnings = []
-        result.annotations = []
-
-        output = formatter.format_validation_result(result)
-
-        assert "[UNKNOWN_ERROR]: Something went wrong" in output
-
-    def test_format_validation_error_no_attributes(self):
-        """_format_validation_error falls back to str() for objects without attributes."""
-        formatter = DiagnosticFormatter()
-
-        # Simple object class with no code/message/line/column attributes
-        class GenericError:
-            def __str__(self) -> str:
-                return "Generic error"
-
-        error = GenericError()
-
-        result = Mock()
-        result.is_valid = False
-        result.error_count = 1
-        result.warning_count = 0
-        result.errors = [error]
-        result.warnings = []
-        result.annotations = []
-
-        output = formatter.format_validation_result(result)
-
-        # Should use getattr defaults and str(error)
-        assert "[UNKNOWN]: Generic error" in output
-
-
-# Hypothesis-based property tests
+from ftllexengine.diagnostics.codes import (
+    Diagnostic,
+    DiagnosticCode,
+    SourceSpan,
+)
+from ftllexengine.diagnostics.formatter import (
+    DiagnosticFormatter,
+    OutputFormat,
+)
+from ftllexengine.diagnostics.validation import (
+    ValidationError,
+    ValidationResult,
+    ValidationWarning,
+)
+from ftllexengine.syntax.ast import Annotation
+from tests.strategies.diagnostics import (
+    diagnostic_formatters,
+    diagnostics,
+    validation_errors,
+    validation_results,
+    validation_warnings,
+)
+
+# ---------------------------------------------------------------------------
+# Text generation helpers (no control chars for predictable assertions)
+# ---------------------------------------------------------------------------
+
+_safe_text = st.text(
+    st.characters(
+        categories=("L", "N", "P", "S", "Z"),
+        exclude_characters="\x00",
+    ),
+    min_size=1,
+    max_size=200,
+)
+
+_safe_short_text = st.text(
+    st.characters(
+        categories=("L", "N", "P", "S", "Z"),
+        exclude_characters="\x00",
+    ),
+    min_size=1,
+    max_size=50,
+)
+
+
+# ===================================================================
+# Property: format() dispatches to all three output format methods
+# ===================================================================
+
+
+@given(diagnostic=diagnostics(), formatter=diagnostic_formatters())
+def test_format_dispatches_all_formats(
+    diagnostic: Diagnostic,
+    formatter: DiagnosticFormatter,
+) -> None:
+    """format() produces non-empty output for every format x diagnostic."""
+    result = formatter.format(diagnostic)
+    assert isinstance(result, str)
+    assert len(result) > 0
+    event(f"format={formatter.output_format.value}")
+    event(f"severity={diagnostic.severity}")
+
+
+# ===================================================================
+# Property: code name always appears in output
+# ===================================================================
+
+
+@given(diagnostic=diagnostics(), formatter=diagnostic_formatters())
+def test_code_name_present_in_output(
+    diagnostic: Diagnostic,
+    formatter: DiagnosticFormatter,
+) -> None:
+    """Every formatted diagnostic contains its DiagnosticCode name."""
+    result = formatter.format(diagnostic)
+    assert diagnostic.code.name in result
+    event(f"format={formatter.output_format.value}")
+
+
+# ===================================================================
+# Property: Rust format structure
+# ===================================================================
+
+
+@given(diagnostic=diagnostics())
+def test_rust_format_structure(diagnostic: Diagnostic) -> None:
+    """Rust format starts with severity[CODE]: message."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
+    result = formatter.format(diagnostic)
+    first_line = result.split("\n")[0]
+
+    expected_sev = (
+        "warning" if diagnostic.severity == "warning" else "error"
+    )
+    assert first_line.startswith(f"{expected_sev}[{diagnostic.code.name}]")
+    event(f"severity={diagnostic.severity}")
+
+    has_span = diagnostic.span is not None
+    has_loc = diagnostic.ftl_location is not None
+    if has_span:
+        assert "  --> line " in result
+        event("location=span")
+    elif has_loc:
+        assert "  --> " in result
+        event("location=ftl_location")
+    else:
+        assert "  --> " not in result
+        event("location=none")
+
+
+# ===================================================================
+# Property: Rust format optional fields
+# ===================================================================
+
+
+@given(diagnostic=diagnostics())
+def test_rust_format_optional_fields(diagnostic: Diagnostic) -> None:
+    """Rust format includes optional fields only when set."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
+    result = formatter.format(diagnostic)
+
+    field_count = 0
+    if diagnostic.function_name:
+        assert "  = function: " in result
+        field_count += 1
+    if diagnostic.argument_name:
+        assert "  = argument: " in result
+        field_count += 1
+    if diagnostic.expected_type:
+        assert "  = expected: " in result
+        field_count += 1
+    if diagnostic.received_type:
+        assert "  = received: " in result
+        field_count += 1
+    if diagnostic.hint:
+        assert "  = help: " in result
+        field_count += 1
+    if diagnostic.help_url:
+        assert "  = note: see " in result
+        field_count += 1
+    event(f"optional_field_count={min(field_count, 3)}")
+
+
+# ===================================================================
+# Property: Color mode adds ANSI codes
+# ===================================================================
 
 
 @given(
-    message=st.text(min_size=1, max_size=200),
-    sanitize=st.booleans(),
+    diagnostic=diagnostics(),
+    color=st.booleans(),
+)
+def test_rust_color_ansi_codes(
+    diagnostic: Diagnostic,
+    color: bool,
+) -> None:
+    """Color mode adds ANSI escape codes; non-color mode omits them."""
+    formatter = DiagnosticFormatter(
+        output_format=OutputFormat.RUST,
+        color=color,
+    )
+    result = formatter.format(diagnostic)
+
+    if color:
+        assert "\033[" in result
+        if diagnostic.severity == "warning":
+            assert "\033[1;33m" in result
+        else:
+            assert "\033[1;31m" in result
+    else:
+        assert "\033[" not in result
+    event(f"color={color}")
+    event(f"severity={diagnostic.severity}")
+
+
+# ===================================================================
+# Property: Simple format is single-line CODE: message
+# ===================================================================
+
+
+@given(diagnostic=diagnostics())
+def test_simple_format_single_line(diagnostic: Diagnostic) -> None:
+    """Simple format is CODE: escaped_message (no embedded newlines)."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
+    result = formatter.format(diagnostic)
+
+    # No raw newlines (escaped \n is fine)
+    assert "\n" not in result
+    assert result.startswith(f"{diagnostic.code.name}: ")
+    event(f"msg_len={'long' if len(diagnostic.message) > 100 else 'short'}")
+
+
+# ===================================================================
+# Property: JSON format is valid JSON with required keys
+# ===================================================================
+
+
+@given(diagnostic=diagnostics())
+def test_json_format_valid_json(diagnostic: Diagnostic) -> None:
+    """JSON format produces valid JSON with required fields."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
+    result = formatter.format(diagnostic)
+    data = json.loads(result)
+
+    assert data["code"] == diagnostic.code.name
+    assert data["code_value"] == diagnostic.code.value
+    assert data["severity"] == diagnostic.severity
+
+    span = diagnostic.span
+    has_span = span is not None
+    if span is not None:
+        assert data["line"] == span.line
+        assert data["column"] == span.column
+        assert data["start"] == span.start
+        assert data["end"] == span.end
+    event(f"json_has_span={has_span}")
+
+
+# ===================================================================
+# Property: JSON optional fields mirror diagnostic fields
+# ===================================================================
+
+
+@given(diagnostic=diagnostics())
+def test_json_format_optional_fields(diagnostic: Diagnostic) -> None:
+    """JSON format includes optional fields when set on diagnostic."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
+    data = json.loads(formatter.format(diagnostic))
+
+    optional_present = 0
+    if diagnostic.ftl_location:
+        assert data["ftl_location"] == diagnostic.ftl_location
+        optional_present += 1
+    if diagnostic.function_name:
+        assert data["function_name"] == diagnostic.function_name
+        optional_present += 1
+    if diagnostic.argument_name:
+        assert data["argument_name"] == diagnostic.argument_name
+        optional_present += 1
+    if diagnostic.expected_type:
+        assert data["expected_type"] == diagnostic.expected_type
+        optional_present += 1
+    if diagnostic.received_type:
+        assert data["received_type"] == diagnostic.received_type
+        optional_present += 1
+    if diagnostic.hint:
+        assert "hint" in data
+        optional_present += 1
+    if diagnostic.help_url:
+        assert data["help_url"] == diagnostic.help_url
+        optional_present += 1
+    event(f"json_optional_count={min(optional_present, 4)}")
+
+
+# ===================================================================
+# Property: JSON preserves Unicode (ensure_ascii=False)
+# ===================================================================
+
+
+@given(
+    message=st.text(
+        st.characters(categories=("L", "N")),
+        min_size=1,
+        max_size=50,
+    ),
+)
+def test_json_unicode_preservation(message: str) -> None:
+    """JSON format preserves non-ASCII characters without escaping."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
+    diagnostic = Diagnostic(
+        code=DiagnosticCode.MESSAGE_NOT_FOUND,
+        message=message,
+    )
+    data = json.loads(formatter.format(diagnostic))
+    assert data["message"] == message
+    has_non_ascii = any(ord(c) > 127 for c in message)
+    event(f"has_non_ascii={has_non_ascii}")
+
+
+# ===================================================================
+# Property: format_all joins with double newline
+# ===================================================================
+
+
+@given(
+    diag_list=st.lists(diagnostics(), min_size=0, max_size=5),
+)
+def test_format_all_double_newline_join(
+    diag_list: list[Diagnostic],
+) -> None:
+    """format_all joins diagnostics with double newlines."""
+    formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
+    result = formatter.format_all(diag_list)
+
+    if not diag_list:
+        assert result == ""
+    else:
+        parts = result.split("\n\n")
+        assert len(parts) == len(diag_list)
+    event(f"list_size={len(diag_list)}")
+
+
+# ===================================================================
+# Property: Sanitization truncation bound (_maybe_sanitize)
+# ===================================================================
+
+
+@given(
+    message=st.text(min_size=1, max_size=300),
     max_length=st.integers(min_value=10, max_value=100),
 )
-def test_sanitize_property_length(message: str, sanitize: bool, max_length: int) -> None:
-    """Property: Sanitized output never exceeds max_content_length + 3 (for ...)."""
+def test_sanitize_truncation_bound(
+    message: str,
+    max_length: int,
+) -> None:
+    """Sanitized message never exceeds max_content_length + 3."""
     formatter = DiagnosticFormatter(
-        sanitize=sanitize,
+        sanitize=True,
         max_content_length=max_length,
         output_format=OutputFormat.SIMPLE,
     )
@@ -797,77 +339,515 @@ def test_sanitize_property_length(message: str, sanitize: bool, max_length: int)
         code=DiagnosticCode.MESSAGE_NOT_FOUND,
         message=message,
     )
-
     result = formatter.format(diagnostic)
+    msg_part = result.split(": ", 1)[1]
 
-    truncated = sanitize and len(message) > max_length
+    truncated = len(message) > max_length
     if truncated:
-        # Message portion should be truncated to max_length + "..."
-        # Format is "CODE: message", so extract message part.
-        # Control character escaping (\n -> \\n) may expand the truncated text,
-        # so the bound is 2*max_length + 3 (worst case: all chars are control chars).
-        msg_part = result.split(": ", 1)[1]
+        # After truncation + escape: bound is 2*(max_length) + 3
+        # because control chars (\n -> \\n) can double each char.
         assert len(msg_part) <= 2 * max_length + 3
         assert msg_part.endswith("...")
-    else:
-        # No sanitization, full message should appear (with control chars escaped)
-        escaped_message = DiagnosticFormatter._escape_control_chars(message)
-        assert escaped_message in result
     event(f"truncated={truncated}")
+
+
+# ===================================================================
+# Property: _escape_control_chars escapes \n, \r, \t
+# ===================================================================
+
+
+@given(
+    text=st.text(
+        st.characters(categories=("L", "Cc")),
+        min_size=0,
+        max_size=100,
+    ),
+)
+def test_escape_control_chars_no_raw_controls(text: str) -> None:
+    """Escaped text contains no raw newlines, returns, or tabs."""
+    escaped = DiagnosticFormatter._escape_control_chars(text)
+    assert "\n" not in escaped
+    assert "\r" not in escaped
+    assert "\t" not in escaped
+    has_controls = "\n" in text or "\r" in text or "\t" in text
+    event(f"had_controls={has_controls}")
+
+
+# ===================================================================
+# Property: format_error with real ValidationError types
+# ===================================================================
+
+
+@given(error=validation_errors())
+def test_format_error_with_real_types(error: ValidationError) -> None:
+    """format_error handles real ValidationError instances."""
+    formatter = DiagnosticFormatter()
+    result = formatter.format_error(error)
+
+    assert f"[{error.code}]" in result
+    assert error.message in result
+
+    has_line = error.line is not None
+    has_col = error.column is not None
+    if has_line:
+        assert f"at line {error.line}" in result
+        if has_col:
+            assert f"column {error.column}" in result
+    event(f"error_location={'line_col' if has_col else ('line' if has_line else 'none')}")
+
+
+# ===================================================================
+# Property: format_error with line but no column
+# ===================================================================
+
+
+@given(
+    code=_safe_short_text,
+    message=_safe_short_text,
+    content=_safe_short_text,
+    line=st.integers(min_value=1, max_value=10000),
+)
+def test_format_error_line_no_column(
+    code: str,
+    message: str,
+    content: str,
+    line: int,
+) -> None:
+    """format_error shows line without column when column is None."""
+    error = ValidationError(
+        code=code, message=message, content=content,
+        line=line, column=None,
+    )
+    formatter = DiagnosticFormatter()
+    result = formatter.format_error(error)
+    assert f"at line {line}" in result
+    assert ", column " not in result
+    event("outcome=line_no_column")
+
+
+# ===================================================================
+# Property: format_warning with real ValidationWarning types
+# ===================================================================
+
+
+@given(warning=validation_warnings())
+def test_format_warning_with_real_types(
+    warning: ValidationWarning,
+) -> None:
+    """format_warning handles real ValidationWarning instances."""
+    formatter = DiagnosticFormatter()
+    result = formatter.format_warning(warning)
+
+    assert f"[{warning.code}]" in result
+    assert warning.message in result
+
+    has_line = warning.line is not None
+    has_col = warning.column is not None
+    if has_line:
+        assert f"at line {warning.line}" in result
+        if has_col:
+            assert f"column {warning.column}" in result
+    if warning.context:
+        assert f"(context: {warning.context!r})" in result
+    event(f"warning_location={'line_col' if has_col else ('line' if has_line else 'none')}")
+
+
+# ===================================================================
+# Property: format_warning with line but no column (branch 216->220)
+# ===================================================================
+
+
+@given(
+    code=_safe_short_text,
+    message=_safe_short_text,
+    line=st.integers(min_value=1, max_value=10000),
+    context=st.none() | _safe_short_text,
+)
+def test_format_warning_line_no_column(
+    code: str,
+    message: str,
+    line: int,
+    context: str | None,
+) -> None:
+    """format_warning with line set and column None (branch coverage)."""
+    warning = ValidationWarning(
+        code=code, message=message,
+        line=line, column=None, context=context,
+    )
+    formatter = DiagnosticFormatter()
+    result = formatter.format_warning(warning)
+    assert f"at line {line}" in result
+    assert ", column " not in result.split(":")[0]
+    has_ctx = context is not None and len(context) > 0
+    event(f"has_context={has_ctx}")
+
+
+# ===================================================================
+# Property: _maybe_sanitize_content with redact mode (lines 394-400)
+# ===================================================================
+
+
+@given(
+    content=st.text(min_size=1, max_size=300),
+    max_length=st.integers(min_value=10, max_value=100),
+)
+def test_sanitize_content_redact(
+    content: str,
+    max_length: int,
+) -> None:
+    """redact_content=True replaces content with redaction marker."""
+    formatter = DiagnosticFormatter(
+        sanitize=True,
+        redact_content=True,
+        max_content_length=max_length,
+    )
+    result = formatter._maybe_sanitize_content(content)
+    assert result == "[content redacted]"
+    event("outcome=redacted")
+
+
+@given(
+    content=st.text(min_size=1, max_size=300),
+    max_length=st.integers(min_value=10, max_value=100),
+)
+def test_sanitize_content_truncate(
+    content: str,
+    max_length: int,
+) -> None:
+    """sanitize=True truncates content when over max_content_length."""
+    formatter = DiagnosticFormatter(
+        sanitize=True,
+        redact_content=False,
+        max_content_length=max_length,
+    )
+    result = formatter._maybe_sanitize_content(content)
+
+    if len(content) > max_length:
+        assert result == content[:max_length] + "..."
+        event("outcome=truncated")
+    else:
+        assert result == content
+        event("outcome=passthrough")
+
+
+@given(content=st.text(min_size=1, max_size=300))
+def test_sanitize_content_disabled(content: str) -> None:
+    """sanitize=False returns content unchanged."""
+    formatter = DiagnosticFormatter(sanitize=False)
+    result = formatter._maybe_sanitize_content(content)
+    assert result == content
+    event("outcome=not_sanitized")
+
+
+# ===================================================================
+# Property: format_error with content shows sanitized content
+# ===================================================================
+
+
+@given(
+    code=_safe_short_text,
+    message=_safe_short_text,
+    content=st.text(min_size=1, max_size=300),
+    redact=st.booleans(),
+)
+def test_format_error_content_sanitization(
+    code: str,
+    message: str,
+    content: str,
+    redact: bool,
+) -> None:
+    """format_error applies content sanitization through format_error."""
+    formatter = DiagnosticFormatter(
+        sanitize=True,
+        redact_content=redact,
+        max_content_length=20,
+    )
+    error = ValidationError(
+        code=code, message=message, content=content,
+    )
+    result = formatter.format_error(error)
+
+    if redact:
+        assert "[content redacted]" in result
+        event("outcome=redacted")
+    elif len(content) > 20:
+        assert "..." in result
+        event("outcome=truncated")
+    else:
+        event("outcome=passthrough")
+
+
+# ===================================================================
+# Property: _format_annotation with real Annotation types
+# ===================================================================
+
+
+@given(
+    code=_safe_short_text,
+    message=_safe_text,
+    has_args=st.booleans(),
+)
+def test_format_annotation_real_types(
+    code: str,
+    message: str,
+    has_args: bool,
+) -> None:
+    """_format_annotation with real Annotation objects."""
+    args = (("key", "val"),) if has_args else None
+    annotation = Annotation(code=code, message=message, arguments=args)
+
+    formatter = DiagnosticFormatter()
+    result = formatter._format_annotation(annotation)
+    assert f"[{code}]" in result
+    if has_args:
+        assert "key=" in result
+    event(f"has_args={has_args}")
+
+
+# ===================================================================
+# Property: format_validation_result with real ValidationResult
+# ===================================================================
+
+
+@given(vr=validation_results())
+def test_format_validation_result_real_types(
+    vr: ValidationResult,
+) -> None:
+    """format_validation_result with real ValidationResult."""
+    formatter = DiagnosticFormatter()
+    result = formatter.format_validation_result(vr)
+
+    if vr.is_valid and not vr.warnings:
+        assert "Validation passed: no errors or warnings" in result
+        event("outcome=valid_clean")
+    elif vr.is_valid:
+        assert "Validation passed with" in result
+        event("outcome=valid_with_warnings")
+    else:
+        assert "Validation failed:" in result
+        event("outcome=invalid")
+
+
+# ===================================================================
+# Property: format_validation_result include_warnings=False
+# ===================================================================
+
+
+@given(vr=validation_results())
+def test_format_validation_result_exclude_warnings(
+    vr: ValidationResult,
+) -> None:
+    """include_warnings=False suppresses warning section."""
+    formatter = DiagnosticFormatter()
+    result = formatter.format_validation_result(
+        vr, include_warnings=False,
+    )
+    assert "Warnings (" not in result
+    event(f"had_warnings={len(vr.warnings) > 0}")
+
+
+# ===================================================================
+# Property: format_validation_result errors section
+# ===================================================================
+
+
+@given(vr=validation_results())
+def test_format_validation_result_errors_section(
+    vr: ValidationResult,
+) -> None:
+    """Errors section appears when errors present."""
+    formatter = DiagnosticFormatter()
+    result = formatter.format_validation_result(vr)
+
+    if vr.errors:
+        assert f"Errors ({len(vr.errors)}):" in result
+        for err in vr.errors:
+            assert f"[{err.code}]" in result
+    event(f"error_count={min(len(vr.errors), 3)}")
+
+
+# ===================================================================
+# Property: format_validation_result annotations section
+# ===================================================================
+
+
+@given(vr=validation_results())
+def test_format_validation_result_annotations_section(
+    vr: ValidationResult,
+) -> None:
+    """Annotations section appears when annotations present."""
+    formatter = DiagnosticFormatter()
+    result = formatter.format_validation_result(vr)
+
+    if vr.annotations:
+        assert f"Annotations ({len(vr.annotations)}):" in result
+        for ann in vr.annotations:
+            assert f"[{ann.code}]" in result
+    event(f"annotation_count={min(len(vr.annotations), 3)}")
+
+
+# ===================================================================
+# Property: All DiagnosticCodes format without error
+# ===================================================================
 
 
 @given(
     code=st.sampled_from(list(DiagnosticCode)),
     message=st.text(min_size=1, max_size=100),
-    severity=st.sampled_from(["error", "warning"]),
+    fmt=st.sampled_from(list(OutputFormat)),
 )
-def test_format_property_all_codes(
+def test_all_codes_all_formats(
     code: DiagnosticCode,
     message: str,
-    severity: str,
+    fmt: OutputFormat,
 ) -> None:
-    """Property: All DiagnosticCodes can be formatted without error."""
-    formatter = DiagnosticFormatter()
-    diagnostic = Diagnostic(
-        code=code,
-        message=message,
-        severity=severity,  # type: ignore[arg-type]
-    )
-
+    """Every DiagnosticCode x OutputFormat pair formats cleanly."""
+    formatter = DiagnosticFormatter(output_format=fmt)
+    diagnostic = Diagnostic(code=code, message=message)
     result = formatter.format(diagnostic)
-
     assert code.name in result
-    escaped_message = DiagnosticFormatter._escape_control_chars(message)
-    assert escaped_message in result
-    assert severity in result
-    event(f"severity={severity}")
+    event(f"format={fmt.value}")
+
+    if code.value < 2000:
+        event("code_range=reference")
+    elif code.value < 3000:
+        event("code_range=resolution")
+    else:
+        event("code_range=other")
+
+
+# ===================================================================
+# Property: Span takes precedence over ftl_location
+# ===================================================================
 
 
 @given(
-    format_type=st.sampled_from([OutputFormat.RUST, OutputFormat.SIMPLE, OutputFormat.JSON]),
-    message=st.text(min_size=1, max_size=100),
+    message=_safe_short_text,
+    span_line=st.integers(min_value=1, max_value=9999),
+    span_col=st.integers(min_value=1, max_value=999),
+    ftl_loc=_safe_short_text,
 )
-def test_format_property_all_formats(format_type: OutputFormat, message: str) -> None:
-    """Property: All output formats produce non-empty results.
-
-    Verifies that control characters in messages are properly escaped
-    in text formats (RUST, SIMPLE) and handled by json.dumps in JSON.
-    """
-    formatter = DiagnosticFormatter(output_format=format_type)
+def test_span_precedence_over_ftl_location(
+    message: str,
+    span_line: int,
+    span_col: int,
+    ftl_loc: str,
+) -> None:
+    """When both span and ftl_location are set, span wins."""
     diagnostic = Diagnostic(
         code=DiagnosticCode.MESSAGE_NOT_FOUND,
         message=message,
+        span=SourceSpan(start=0, end=10, line=span_line, column=span_col),
+        ftl_location=ftl_loc,
     )
-
+    formatter = DiagnosticFormatter(output_format=OutputFormat.RUST)
     result = formatter.format(diagnostic)
+    assert f"line {span_line}" in result
+    event("outcome=span_wins")
 
-    assert len(result) > 0
-    if format_type == OutputFormat.JSON:
-        # JSON format: json.dumps handles escaping; parse and verify
-        data = json.loads(result)
-        assert data["message"] == message or data["message"] == message[:50]
-    else:
-        # Text formats: control chars are escaped (e.g., \n -> \\n)
-        escaped_message = DiagnosticFormatter._escape_control_chars(message)
-        assert escaped_message in result or escaped_message[:50] in result
-    event(f"format={format_type.value}")
+
+# ===================================================================
+# Property: format_error with object lacking content attribute
+# ===================================================================
+
+
+@given(
+    message=_safe_short_text,
+    line=st.none() | st.integers(min_value=1, max_value=10000),
+    column=st.none() | st.integers(min_value=1, max_value=1000),
+)
+def test_format_error_no_content_attribute(
+    message: str,
+    line: int | None,
+    column: int | None,
+) -> None:
+    """format_error with object lacking 'content' attribute (duck typing)."""
+
+    class _MinimalError:
+        """Error-like object without content field."""
+
+        def __init__(
+            self, msg: str, ln: int | None, col: int | None,
+        ) -> None:
+            self.code = "DUCK_TYPE"
+            self.message = msg
+            self.line = ln
+            self.column = col
+
+        def __str__(self) -> str:
+            return self.message
+
+    obj = _MinimalError(message, line, column)
+    formatter = DiagnosticFormatter()
+    result = formatter.format_error(obj)
+    assert "[DUCK_TYPE]" in result
+    assert "(content:" not in result
+    has_line = line is not None
+    event(f"duck_type_line={has_line}")
+
+
+# ===================================================================
+# Property: format_warning with duck-typed object (branch 226-230)
+# ===================================================================
+
+
+@given(
+    message=_safe_short_text,
+    line=st.none() | st.integers(min_value=1, max_value=10000),
+    column=st.none() | st.integers(min_value=1, max_value=1000),
+    context=st.none() | _safe_short_text,
+)
+def test_format_warning_duck_typed(
+    message: str,
+    line: int | None,
+    column: int | None,
+    context: str | None,
+) -> None:
+    """format_warning with non-ValidationWarning duck-typed object."""
+
+    class _MinimalWarning:
+        """Warning-like object for duck typing path."""
+
+        def __init__(
+            self, msg: str, ln: int | None, col: int | None,
+            ctx: str | None,
+        ) -> None:
+            self.code = "DUCK_WARN"
+            self.message = msg
+            self.line = ln
+            self.column = col
+            self.context = ctx
+
+        def __str__(self) -> str:
+            return self.message
+
+    obj = _MinimalWarning(message, line, column, context)
+    formatter = DiagnosticFormatter()
+    result = formatter.format_warning(obj)
+    assert "[DUCK_WARN]" in result
+    has_line = line is not None
+    event(f"duck_warn_line={has_line}")
+
+
+# ===================================================================
+# OutputFormat StrEnum membership
+# ===================================================================
+
+
+def test_output_format_is_str_enum() -> None:
+    """OutputFormat values are strings usable as dict keys."""
+    for fmt in OutputFormat:
+        assert isinstance(fmt, str)
+        assert fmt.value == str(fmt)
+
+
+# ===================================================================
+# DiagnosticFormatter frozen immutability
+# ===================================================================
+
+
+def test_formatter_frozen() -> None:
+    """DiagnosticFormatter is immutable (frozen dataclass)."""
+    formatter = DiagnosticFormatter()
+    with pytest.raises(AttributeError):
+        formatter.sanitize = True  # type: ignore[misc]

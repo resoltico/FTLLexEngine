@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import get_type_hints
 
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -45,6 +45,7 @@ class TestFunctionSignatureDataclass:
         self, python_name: str, ftl_name: str
     ) -> None:
         """Property: FunctionSignature can be constructed with any valid inputs."""
+        event(f"python_name_len={len(python_name)}")
 
         def dummy_func() -> str:
             return ""
@@ -130,6 +131,7 @@ class TestFunctionRegistration:
     @given(st.text(min_size=1, alphabet=st.characters(min_codepoint=65, max_codepoint=90)))
     def test_register_multiple_functions(self, ftl_name: str) -> None:
         """Property: Registry can hold multiple functions."""
+        event(f"ftl_name_len={len(ftl_name)}")
 
         def func1(value: str) -> str:
             return value
@@ -171,6 +173,8 @@ class TestParameterMappingConversion:
         assume(not snake_case.endswith("_"))
         assume("__" not in snake_case)
 
+        has_under = "multi_word" if "_" in snake_case else "single"
+        event(f"outcome={has_under}")
         camel = FunctionRegistry._to_camel_case(snake_case)
         # Verify camelCase has no underscores (unless original was single word)
         assert isinstance(camel, str)
@@ -261,6 +265,7 @@ class TestFunctionCalling:
     @given(st.text(), st.integers())
     def test_call_with_various_argument_types(self, str_arg: str, int_arg: int) -> None:
         """Property: call handles various FluentValue types."""
+        event(f"str_len={len(str_arg)}")
 
         def multi_type_func(
             value: str, str_param: str = "", int_param: int = 0
@@ -647,7 +652,7 @@ class TestFluentFunctionProtocol:
         try:
             source_file = inspect.getsourcefile(FluentFunction)
             assert source_file is not None
-            assert "function_bridge.py" in source_file
+            assert "value_types.py" in source_file
 
             # Try to get source lines (may trigger coverage of Protocol definition)
             source_lines = inspect.getsourcelines(FluentFunction)
@@ -712,3 +717,37 @@ class TestFluentFunctionProtocol:
         # but accessing it and these attributes may trigger coverage tracking
         proto_call = FluentFunction.__call__
         assert proto_call is not None
+
+
+class TestFluentNumberRepr:
+    """Test FluentNumber string representations."""
+
+    def test_fluent_number_repr_integer(self) -> None:
+        """FluentNumber.__repr__ for integers."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            FluentNumber,
+        )
+
+        fn = FluentNumber(value=42, formatted="42.00")
+        assert repr(fn) == "FluentNumber(value=42, formatted='42.00')"
+
+    def test_fluent_number_repr_decimal(self) -> None:
+        """FluentNumber.__repr__ for Decimal values."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            FluentNumber,
+        )
+
+        fn = FluentNumber(value=Decimal("123.45"), formatted="123.45")
+        assert "value=Decimal" in repr(fn)
+        assert "formatted='123.45'" in repr(fn)
+
+    def test_fluent_number_str_vs_repr(self) -> None:
+        """__str__ returns formatted, __repr__ returns debug info."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            FluentNumber,
+        )
+
+        fn = FluentNumber(value=100, formatted="100.00")
+        assert str(fn) == "100.00"
+        assert repr(fn) == "FluentNumber(value=100, formatted='100.00')"
+        assert str(fn) != repr(fn)

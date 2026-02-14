@@ -1,0 +1,1461 @@
+"""Branch coverage tests for runtime/bundle.py.
+
+Consolidated from 6 metric-named files into semantic test classes.
+Tests exercise specific code paths in FluentBundle: property accessors,
+locale validation, special methods, factory methods, resource management,
+type validation, strict mode, validation logic, cache management,
+introspection, formatting, custom functions, and thread safety.
+
+Includes property-based tests with Hypothesis for boundary exploration.
+
+Python 3.13+.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+from unittest.mock import patch
+
+import pytest
+from hypothesis import assume, event, example, given
+from hypothesis import strategies as st
+
+from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT, MAX_SOURCE_SIZE
+from ftllexengine.diagnostics import ErrorCategory, ValidationError
+from ftllexengine.integrity import FormattingIntegrityError, SyntaxIntegrityError
+from ftllexengine.runtime import FluentBundle
+from ftllexengine.runtime.function_bridge import FunctionRegistry
+from ftllexengine.runtime.functions import create_default_registry
+
+# =============================================================================
+# Property Accessors
+# =============================================================================
+
+
+class TestBundlePropertyAccessors:
+    """Test all property accessors for complete coverage."""
+
+    def test_locale_property_returns_configured_locale(self) -> None:
+        """locale property returns the configured locale code."""
+        bundle = FluentBundle("lv_LV")
+        assert bundle.locale == "lv_LV"
+
+        bundle_ar = FluentBundle("ar_EG")
+        assert bundle_ar.locale == "ar_EG"
+
+    def test_use_isolating_property_true(self) -> None:
+        """use_isolating property returns True when enabled."""
+        bundle = FluentBundle("en", use_isolating=True)
+        assert bundle.use_isolating is True
+
+    def test_use_isolating_property_false(self) -> None:
+        """use_isolating property returns False when disabled."""
+        bundle = FluentBundle("en", use_isolating=False)
+        assert bundle.use_isolating is False
+
+    def test_strict_property_returns_configured_value(self) -> None:
+        """strict property returns the strict mode boolean."""
+        assert FluentBundle("en", strict=True).strict is True
+        assert FluentBundle("en", strict=False).strict is False
+        assert FluentBundle("en").strict is False
+
+    def test_cache_enabled_property(self) -> None:
+        """cache_enabled property reflects configuration."""
+        assert FluentBundle("en", enable_cache=True).cache_enabled is True
+        assert FluentBundle("en", enable_cache=False).cache_enabled is False
+        assert FluentBundle("en").cache_enabled is False
+
+    def test_cache_size_property(self) -> None:
+        """cache_size property returns configured maximum."""
+        bundle = FluentBundle("en", enable_cache=True, cache_size=500)
+        assert bundle.cache_size == 500
+
+    def test_cache_usage_property_tracks_entries(self) -> None:
+        """cache_usage property tracks current cached entries."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg1 = Hello\nmsg2 = World")
+
+        assert bundle.cache_usage == 0
+        bundle.format_pattern("msg1")
+        assert bundle.cache_usage == 1
+        bundle.format_pattern("msg2")
+        assert bundle.cache_usage == 2
+
+    def test_cache_usage_returns_zero_when_disabled(self) -> None:
+        """cache_usage returns 0 when caching is disabled."""
+        bundle = FluentBundle("en", enable_cache=False)
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
+        assert bundle.cache_usage == 0
+
+    def test_cache_write_once_property(self) -> None:
+        """cache_write_once property returns configured boolean."""
+        on = FluentBundle("en", enable_cache=True, cache_write_once=True)
+        assert on.cache_write_once is True
+        off = FluentBundle("en", enable_cache=True, cache_write_once=False)
+        assert off.cache_write_once is False
+
+    def test_cache_enable_audit_property(self) -> None:
+        """cache_enable_audit property returns configured boolean."""
+        on = FluentBundle("en", enable_cache=True, cache_enable_audit=True)
+        assert on.cache_enable_audit is True
+        off = FluentBundle("en", enable_cache=True, cache_enable_audit=False)
+        assert off.cache_enable_audit is False
+
+    def test_cache_max_audit_entries_property(self) -> None:
+        """cache_max_audit_entries property returns configured maximum."""
+        bundle = FluentBundle(
+            "en", enable_cache=True, cache_max_audit_entries=5000
+        )
+        assert bundle.cache_max_audit_entries == 5000
+
+    def test_cache_max_entry_weight_property(self) -> None:
+        """cache_max_entry_weight property returns configured maximum."""
+        bundle = FluentBundle(
+            "en", enable_cache=True, cache_max_entry_weight=8000
+        )
+        assert bundle.cache_max_entry_weight == 8000
+
+    def test_cache_max_errors_per_entry_property(self) -> None:
+        """cache_max_errors_per_entry returns configured maximum."""
+        bundle = FluentBundle(
+            "en", enable_cache=True, cache_max_errors_per_entry=25
+        )
+        assert bundle.cache_max_errors_per_entry == 25
+
+    def test_max_source_size_property(self) -> None:
+        """max_source_size property returns configured or default value."""
+        assert FluentBundle("en", max_source_size=500_000).max_source_size == 500_000
+        assert FluentBundle("en").max_source_size == MAX_SOURCE_SIZE
+
+    def test_max_nesting_depth_property(self) -> None:
+        """max_nesting_depth property returns configured or default value."""
+        assert FluentBundle("en", max_nesting_depth=50).max_nesting_depth == 50
+        assert FluentBundle("en").max_nesting_depth == 100
+
+
+# =============================================================================
+# Locale Validation
+# =============================================================================
+
+
+class TestBundleLocaleValidation:
+    """Test locale code validation in __init__."""
+
+    def test_rejects_invalid_characters(self) -> None:
+        """Locale with special characters raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid locale code format"):
+            FluentBundle("en@invalid")
+
+    def test_rejects_spaces(self) -> None:
+        """Locale with spaces raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid locale code format"):
+            FluentBundle("en US")
+
+    def test_rejects_non_ascii(self) -> None:
+        """Locale with non-ASCII characters raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid locale code format"):
+            FluentBundle("\u00ebn_FR")
+
+    def test_accepts_hyphen_separator(self) -> None:
+        """Locale with hyphen separator accepted."""
+        assert FluentBundle("en-US").locale == "en-US"
+
+    def test_accepts_underscore_separator(self) -> None:
+        """Locale with underscore separator accepted."""
+        assert FluentBundle("en_US").locale == "en_US"
+
+    def test_exceeding_max_length_rejected(self) -> None:
+        """Locale exceeding MAX_LOCALE_LENGTH_HARD_LIMIT raises ValueError."""
+        long_locale = "a" * (MAX_LOCALE_LENGTH_HARD_LIMIT + 1)
+        with pytest.raises(ValueError, match="Locale code exceeds maximum"):
+            FluentBundle(long_locale)
+
+    def test_exceeding_max_length_shows_truncated(self) -> None:
+        """Error message includes truncated locale and actual length."""
+        long_locale = "X" * (MAX_LOCALE_LENGTH_HARD_LIMIT + 100)
+        with pytest.raises(
+            ValueError, match="Locale code exceeds maximum"
+        ) as exc_info:
+            FluentBundle(long_locale)
+        error_msg = str(exc_info.value)
+        assert long_locale[:50] in error_msg
+        assert str(len(long_locale)) in error_msg
+
+
+# =============================================================================
+# Special Methods (__repr__, __enter__, __exit__)
+# =============================================================================
+
+
+class TestBundleSpecialMethods:
+    """Test special methods for complete coverage."""
+
+    def test_repr_shows_locale_and_counts(self) -> None:
+        """__repr__ returns string with locale and message/term counts."""
+        bundle = FluentBundle("lv_LV")
+        repr_str = repr(bundle)
+        assert "FluentBundle" in repr_str
+        assert "lv_LV" in repr_str
+        assert "messages=0" in repr_str
+        assert "terms=0" in repr_str
+
+    def test_repr_reflects_counts_after_adding_resources(self) -> None:
+        """__repr__ shows accurate counts after adding resources."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg1 = Hello\nmsg2 = World\n-brand = Firefox")
+        repr_str = repr(bundle)
+        assert "messages=2" in repr_str
+        assert "terms=1" in repr_str
+
+    def test_context_manager_enter_returns_self(self) -> None:
+        """__enter__ returns the bundle instance."""
+        bundle = FluentBundle("en")
+        with bundle as ctx:
+            assert ctx is bundle
+
+    def test_context_manager_exit_clears_cache_when_modified(self) -> None:
+        """__exit__ clears cache when bundle was modified during context."""
+        bundle = FluentBundle("en", enable_cache=True)
+        with bundle:
+            bundle.add_resource("msg = Hello")
+            bundle.format_pattern("msg")
+            assert bundle.cache_usage == 1
+        assert bundle.cache_usage == 0
+
+    def test_context_manager_exit_preserves_cache_when_not_modified(self) -> None:
+        """__exit__ preserves cache for read-only contexts."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
+        assert bundle.cache_usage == 1
+
+        with bundle:
+            bundle.format_pattern("msg")
+        assert bundle.cache_usage == 1
+
+    def test_context_manager_exit_resets_modification_flag(self) -> None:
+        """__exit__ resets modification flag for next context."""
+        bundle = FluentBundle("en", enable_cache=True)
+        with bundle:
+            bundle.add_resource("msg1 = Hello")
+        assert bundle.cache_usage == 0
+
+        bundle.add_resource("msg2 = World")
+        bundle.format_pattern("msg2")
+        assert bundle.cache_usage == 1
+
+        with bundle:
+            bundle.format_pattern("msg2")
+        assert bundle.cache_usage == 1
+
+    def test_context_manager_preserves_messages_and_terms(self) -> None:
+        """Context manager exit preserves messages and terms."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Hello\n-term = Term")
+        count_before = len(bundle.get_message_ids())
+
+        with bundle:
+            pass
+
+        assert len(bundle.get_message_ids()) == count_before
+        result, _ = bundle.format_pattern("msg")
+        assert result == "Hello"
+
+    def test_context_manager_exit_without_cache(self) -> None:
+        """Context manager works when cache is disabled."""
+        bundle = FluentBundle("en", enable_cache=False)
+        bundle.add_resource("msg = Test")
+        with bundle:
+            pass
+        result, _ = bundle.format_pattern("msg")
+        assert result == "Test"
+
+
+# =============================================================================
+# for_system_locale Factory Method
+# =============================================================================
+
+
+class TestBundleForSystemLocale:
+    """Test for_system_locale classmethod."""
+
+    def test_creates_bundle_with_detected_locale(self) -> None:
+        """for_system_locale creates bundle with system locale."""
+        with patch(
+            "ftllexengine.runtime.bundle.get_system_locale",
+            return_value="en_US",
+        ):
+            bundle = FluentBundle.for_system_locale()
+            assert bundle.locale == "en_US"
+
+    def test_passes_configuration_parameters(self) -> None:
+        """for_system_locale passes all configuration parameters."""
+        with patch(
+            "ftllexengine.runtime.bundle.get_system_locale",
+            return_value="de_DE",
+        ):
+            bundle = FluentBundle.for_system_locale(
+                use_isolating=False,
+                enable_cache=True,
+                cache_size=2000,
+                strict=True,
+                max_source_size=500_000,
+            )
+            assert bundle.locale == "de_DE"
+            assert bundle.use_isolating is False
+            assert bundle.cache_enabled is True
+            assert bundle.cache_size == 2000
+            assert bundle.strict is True
+            assert bundle.max_source_size == 500_000
+
+    def test_raises_when_locale_unavailable(self) -> None:
+        """for_system_locale raises RuntimeError when locale unavailable."""
+        with patch(
+            "ftllexengine.runtime.bundle.get_system_locale",
+            side_effect=RuntimeError("Cannot determine system locale"),
+        ), pytest.raises(RuntimeError, match="Cannot determine"):
+            FluentBundle.for_system_locale()
+
+    def test_falls_back_to_env_vars_when_getlocale_fails(self) -> None:
+        """for_system_locale uses env vars when getlocale() returns None."""
+        with patch("locale.getlocale", return_value=(None, None)), patch.dict(
+            "os.environ", {"LC_ALL": "de_DE"}, clear=False
+        ):
+            bundle = FluentBundle.for_system_locale()
+            assert bundle.locale == "de_de"
+
+    def test_tries_lc_messages_when_lc_all_missing(self) -> None:
+        """for_system_locale tries LC_MESSAGES when LC_ALL not set."""
+        with patch("locale.getlocale", return_value=(None, None)), patch.dict(
+            "os.environ", {"LC_MESSAGES": "fr_FR"}, clear=True
+        ):
+            bundle = FluentBundle.for_system_locale()
+            assert bundle.locale == "fr_fr"
+
+    def test_tries_lang_when_others_missing(self) -> None:
+        """for_system_locale tries LANG as final fallback."""
+        with patch("locale.getlocale", return_value=(None, None)), patch.dict(
+            "os.environ", {"LANG": "es_ES"}, clear=True
+        ):
+            bundle = FluentBundle.for_system_locale()
+            assert bundle.locale == "es_es"
+
+    def test_raises_when_no_locale_found(self) -> None:
+        """for_system_locale raises RuntimeError with no locale."""
+        with (
+            patch("locale.getlocale", return_value=(None, None)),
+            patch.dict("os.environ", {}, clear=True),
+            pytest.raises(
+                RuntimeError, match="Could not determine system locale"
+            ),
+        ):
+            FluentBundle.for_system_locale()
+
+    def test_normalizes_posix_format(self) -> None:
+        """for_system_locale strips encoding suffix and normalizes."""
+        with patch("locale.getlocale", return_value=("en_US.UTF-8", None)):
+            bundle = FluentBundle.for_system_locale()
+            assert bundle.locale == "en_us"
+            assert "UTF-8" not in bundle.locale
+
+    def test_handles_locale_without_encoding(self) -> None:
+        """for_system_locale handles locale without encoding suffix."""
+        with patch("locale.getlocale", return_value=("pl_PL", None)):
+            bundle = FluentBundle.for_system_locale()
+            assert bundle.locale == "pl_pl"
+
+
+# =============================================================================
+# Resource Management (add_resource, comments, terms)
+# =============================================================================
+
+
+class TestBundleResourceManagement:
+    """Test add_resource edge cases, comment handling, term attributes."""
+
+    def test_add_resource_with_comments(self) -> None:
+        """Comments are parsed but not registered as messages."""
+        bundle = FluentBundle("en")
+        ftl_source = (
+            "# Standalone comment\nmsg1 = Hello\n\n"
+            "## Section comment\nmsg2 = World\n\n"
+            "### Resource comment\n-term = Value\n"
+        )
+        junk = bundle.add_resource(ftl_source)
+        assert len(junk) == 0
+        assert bundle.has_message("msg1")
+        assert bundle.has_message("msg2")
+        assert len(bundle.get_message_ids()) == 2
+
+    def test_standalone_comment_only_resource(self) -> None:
+        """Resource containing only comments is valid."""
+        bundle = FluentBundle("en")
+        junk = bundle.add_resource(
+            "# Comment\n## Section\n### Resource\n"
+        )
+        assert len(junk) == 0
+        assert len(bundle.get_message_ids()) == 0
+
+    def test_consecutive_comments(self) -> None:
+        """Multiple consecutive comments hit Comment->loop branch."""
+        bundle = FluentBundle("en")
+        ftl = "## Section 1\n## Section 2\n### Resource\nmsg = Value\n"
+        junk = bundle.add_resource(ftl)
+        assert len(junk) == 0
+        assert bundle.has_message("msg")
+
+    def test_message_without_value_only_attributes(self) -> None:
+        """Message with no value, only attributes, is registered."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource("msg =\n    .attr1 = Value 1\n    .attr2 = Value 2\n")
+        assert bundle.has_message("msg")
+
+    def test_term_with_multiple_attributes(self) -> None:
+        """Term with attributes is registered successfully."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle.add_resource(
+            "-brand = Firefox\n    .gender = masculine\n"
+            "    .case = nominative\n"
+        )
+        assert bundle is not None
+
+    def test_add_resource_clears_cache(self) -> None:
+        """add_resource clears cache when enabled."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("first = First")
+        bundle.format_pattern("first")
+        assert bundle.get_cache_stats()["size"] > 0  # type: ignore[index]
+        bundle.add_resource("second = Second")
+        assert bundle.get_cache_stats()["size"] == 0  # type: ignore[index]
+
+    def test_duplicate_terms_overwrite(self, caplog: Any) -> None:
+        """Duplicate term definitions produce overwrite warning."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("-brand = Firefox\n-brand = Chrome\n")
+        assert any(
+            "Overwriting existing term '-brand'" in r.message
+            for r in caplog.records
+        )
+
+    def test_multiple_duplicate_terms(self, caplog: Any) -> None:
+        """Multiple duplicate terms each produce warnings."""
+        bundle = FluentBundle("en")
+        bundle.add_resource(
+            "-brand = First\n-version = First\n"
+            "-brand = Second\n-version = Second\n"
+        )
+        warnings = [
+            r for r in caplog.records
+            if "Overwriting existing term" in r.message
+        ]
+        assert len(warnings) == 2
+
+    def test_comments_with_debug_logging(self, caplog: Any) -> None:
+        """Comments are processed at debug level without errors."""
+        caplog.set_level(logging.DEBUG)
+        bundle = FluentBundle("en")
+        ftl = (
+            "# Comment before term\n"
+            "-brand = Firefox\n"
+        )
+        junk = bundle.add_resource(ftl)
+        assert len(junk) == 0
+
+
+# =============================================================================
+# Type Validation (add_resource, validate_resource, format_pattern)
+# =============================================================================
+
+
+class TestBundleTypeValidation:
+    """Test type validation at API boundaries."""
+
+    def test_add_resource_rejects_bytes(self) -> None:
+        """add_resource raises TypeError for bytes with decode suggestion."""
+        bundle = FluentBundle("en")
+        with pytest.raises(TypeError, match=r"source must be str, not bytes"):
+            bundle.add_resource(b"msg = Hello")  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match=r"source.decode\('utf-8'\)"):
+            bundle.add_resource(b"msg = Hello")  # type: ignore[arg-type]
+
+    def test_add_resource_rejects_int(self) -> None:
+        """add_resource raises TypeError for non-string types."""
+        bundle = FluentBundle("en")
+        with pytest.raises(TypeError, match=r"source must be str"):
+            bundle.add_resource(42)  # type: ignore[arg-type]
+
+    def test_validate_resource_rejects_bytes(self) -> None:
+        """validate_resource raises TypeError for bytes."""
+        bundle = FluentBundle("en")
+        with pytest.raises(TypeError, match=r"source must be str, not bytes"):
+            bundle.validate_resource(b"msg = Hello")  # type: ignore[arg-type]
+
+    def test_format_pattern_empty_message_id(self) -> None:
+        """format_pattern with empty message ID returns fallback."""
+        bundle = FluentBundle("en")
+        result, errors = bundle.format_pattern("")
+        assert result == "{???}"
+        assert len(errors) == 1
+
+    def test_format_pattern_invalid_args_type(self) -> None:
+        """format_pattern with non-Mapping args returns fallback."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Hello")
+        result, errors = bundle.format_pattern("msg", [])  # type: ignore[arg-type]
+        assert result == "{???}"
+        assert len(errors) == 1
+
+    def test_format_pattern_invalid_attribute_type(self) -> None:
+        """format_pattern with non-string attribute returns fallback."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Hello")
+        result, errors = bundle.format_pattern(
+            "msg", {}, attribute=123  # type: ignore[arg-type]
+        )
+        assert result == "{???}"
+        assert len(errors) == 1
+
+    def test_strict_mode_raises_on_empty_message_id(self) -> None:
+        """format_pattern in strict mode raises on empty message ID."""
+        bundle = FluentBundle("en", strict=True)
+        with pytest.raises(FormattingIntegrityError):
+            bundle.format_pattern("")
+
+    def test_strict_mode_raises_on_invalid_args_type(self) -> None:
+        """format_pattern in strict mode raises on invalid args type."""
+        bundle = FluentBundle("en", strict=True)
+        bundle.add_resource("msg = Hello")
+        with pytest.raises(FormattingIntegrityError):
+            bundle.format_pattern("msg", [])  # type: ignore[arg-type]
+
+    def test_strict_mode_raises_on_invalid_attribute_type(self) -> None:
+        """format_pattern in strict mode raises on invalid attribute type."""
+        bundle = FluentBundle("en", strict=True)
+        bundle.add_resource("msg = Hello")
+        with pytest.raises(FormattingIntegrityError):
+            bundle.format_pattern(
+                "msg", {}, attribute=123  # type: ignore[arg-type]
+            )
+
+
+# =============================================================================
+# Strict Mode (syntax errors, formatting errors, caching)
+# =============================================================================
+
+
+class TestBundleStrictMode:
+    """Test strict mode syntax and formatting error handling."""
+
+    def test_raises_syntax_integrity_error_on_junk(self) -> None:
+        """Strict mode raises SyntaxIntegrityError for junk entries."""
+        bundle = FluentBundle("en", strict=True)
+        with pytest.raises(
+            SyntaxIntegrityError, match=r"Strict mode: .* syntax error"
+        ):
+            bundle.add_resource("msg = \n!!invalid!!")
+
+    def test_error_includes_source_path(self) -> None:
+        """Strict mode error includes source_path when provided."""
+        bundle = FluentBundle("en", strict=True)
+        with pytest.raises(
+            SyntaxIntegrityError, match=r"locales/en/messages.ftl"
+        ) as exc_info:
+            bundle.add_resource(
+                "msg = \n!!invalid!!",
+                source_path="locales/en/messages.ftl",
+            )
+        assert exc_info.value.source_path == "locales/en/messages.ftl"
+
+    def test_error_truncates_long_summary(self) -> None:
+        """Strict mode truncates to first 3 junk entries."""
+        bundle = FluentBundle("en", strict=True)
+        invalid_ftl = (
+            "msg1 =\n!!e1!!\nmsg2 =\n!!e2!!\n"
+            "msg3 =\n!!e3!!\nmsg4 =\n!!e4!!\n"
+        )
+        with pytest.raises(
+            SyntaxIntegrityError, match=r"and \d+ more"
+        ):
+            bundle.add_resource(invalid_ftl)
+
+    def test_does_not_mutate_bundle_on_error(self) -> None:
+        """Strict mode does not partially populate bundle on syntax error."""
+        bundle = FluentBundle("en", strict=True)
+        bundle.add_resource("msg1 = Hello")
+        assert len(bundle.get_message_ids()) == 1
+
+        with pytest.raises(SyntaxIntegrityError):
+            bundle.add_resource("msg2 = World\n!!invalid!!")
+        assert len(bundle.get_message_ids()) == 1
+
+    def test_formatting_integrity_error_on_missing_var(self) -> None:
+        """Strict mode raises FormattingIntegrityError for missing vars."""
+        bundle = FluentBundle("en", strict=True)
+        bundle.add_resource("msg = Hello { $name }")
+        with pytest.raises(FormattingIntegrityError, match=r"Strict mode"):
+            bundle.format_pattern("msg", {})
+
+    def test_formatting_error_includes_message_id(self) -> None:
+        """Strict mode formatting error includes message ID."""
+        bundle = FluentBundle("en", strict=True)
+        bundle.add_resource("greeting = Hello { $name }")
+        with pytest.raises(
+            FormattingIntegrityError, match=r"greeting"
+        ) as exc_info:
+            bundle.format_pattern("greeting", {})
+        assert exc_info.value.message_id == "greeting"
+
+    def test_formatting_error_truncates_multiple_errors(self) -> None:
+        """Strict mode error truncates to first 3 formatting errors."""
+        bundle = FluentBundle("en", strict=True)
+        bundle.add_resource("msg = { $a } { $b } { $c } { $d }")
+        with pytest.raises(FormattingIntegrityError, match=r"and \d+ more"):
+            bundle.format_pattern("msg", {})
+
+
+# =============================================================================
+# Validation (circular refs, undefined refs, duplicates, syntax errors)
+# =============================================================================
+
+
+class TestBundleValidation:
+    """Test validate_resource warning and error detection."""
+
+    def test_detects_circular_message_refs(self) -> None:
+        """Circular message references generate warnings."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource(
+            "msg1 = { msg2 }\nmsg2 = { msg1 }\n"
+        )
+        assert any(
+            "Circular message reference" in w.message
+            for w in result.warnings
+        )
+
+    def test_detects_self_referencing_message(self) -> None:
+        """Message referencing itself detected as circular."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("msg = { msg }\n")
+        assert len(result.warnings) > 0
+
+    def test_detects_circular_term_refs(self) -> None:
+        """Circular term references generate warnings."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource(
+            "-term1 = { -term2 }\n-term2 = { -term1 }\n"
+        )
+        assert any(
+            "Circular term reference" in w.message
+            for w in result.warnings
+        )
+
+    def test_detects_self_referencing_term(self) -> None:
+        """Term referencing itself detected as circular."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("-term = { -term }\n")
+        assert len(result.warnings) > 0
+
+    def test_detects_term_attribute_circular_ref(self) -> None:
+        """Circular reference in term attribute detected."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource(
+            "-term = Value\n    .attr = { -term.attr }\n"
+        )
+        assert len(result.warnings) > 0
+
+    def test_detects_nested_term_circular_ref(self) -> None:
+        """Three-way circular term reference detected."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource(
+            "-t1 = { -t2 }\n-t2 = { -t3 }\n-t3 = { -t1 }\n"
+        )
+        assert len(result.warnings) > 0
+
+    def test_detects_undefined_message_ref(self) -> None:
+        """Undefined message reference generates warning."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("msg = { undefined }\n")
+        assert any(
+            "undefined" in w.message.lower() for w in result.warnings
+        )
+
+    def test_detects_undefined_term_ref_from_message(self) -> None:
+        """Message referencing undefined term generates warning."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("msg = { -undefined_term }\n")
+        assert len(result.warnings) > 0
+
+    def test_detects_undefined_term_ref_from_term(self) -> None:
+        """Term referencing undefined term generates warning."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        result = bundle.validate_resource("-term-a = { -term-b }\n")
+        assert any(
+            "undefined term '-term-b'" in w.message
+            for w in result.warnings
+        )
+
+    def test_detects_undefined_message_ref_from_term(self) -> None:
+        """Term referencing undefined message generates warning."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("-term = { undefined_msg }\n")
+        assert len(result.warnings) > 0
+
+    def test_term_referencing_defined_message_no_warning(self) -> None:
+        """Term referencing a defined message does not warn."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        result = bundle.validate_resource(
+            "greeting = Hello\n-term = { greeting }\n"
+        )
+        assert not any(
+            "undefined message" in w.message for w in result.warnings
+        )
+
+    def test_detects_duplicate_term_id(self) -> None:
+        """Duplicate term ID generates warning."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        result = bundle.validate_resource(
+            "-brand = Firefox\n-brand = Chrome\n"
+        )
+        assert any(
+            "Duplicate term ID" in w.message for w in result.warnings
+        )
+
+    def test_message_without_value_validates(self) -> None:
+        """Message with only attributes validates successfully."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        result = bundle.validate_resource("msg =\n    .attr = Value\n")
+        assert result.is_valid
+
+    def test_term_with_attributes_validates(self) -> None:
+        """Term with attributes validates successfully."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        result = bundle.validate_resource(
+            "-term = Base\n    .attr1 = A1\n    .attr2 = A2\n"
+        )
+        assert result.is_valid
+
+    def test_handles_critical_syntax_error(self) -> None:
+        """Critical syntax errors produce validation errors."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("msg = {{ invalid")
+        assert not result.is_valid
+        assert len(result.errors) > 0
+
+    def test_critical_error_returns_validation_error(self) -> None:
+        """Critical errors are ValidationError instances."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        result = bundle.validate_resource("msg = {{ broken")
+        assert all(
+            isinstance(e, ValidationError) for e in result.errors
+        )
+
+    def test_integration_all_warning_types(self) -> None:
+        """Resource with all warning types produces correct warnings."""
+        bundle = FluentBundle("en_US", use_isolating=False)
+        ftl = (
+            "msg-dup = First\nmsg-dup = Second\n"
+            "-term-dup = First\n-term-dup = Second\n"
+            "circ-a = { circ-b }\ncirc-b = { circ-a }\n"
+            "-tc-a = { -tc-b }\n-tc-b = { -tc-a }\n"
+            "msg-undef = { missing-msg }\n"
+            "-term-undef = { -missing-term }\n"
+            "msg-attrs =\n    .attr = Value\n"
+            "-term-attrs = Base\n    .attr = Attribute\n"
+        )
+        result = bundle.validate_resource(ftl)
+        warnings = " ".join(w.message for w in result.warnings)
+        assert "Duplicate message ID" in warnings
+        assert "Duplicate term ID" in warnings
+        assert "Circular message reference" in warnings
+        assert "Circular term reference" in warnings
+        assert "undefined message" in warnings
+        assert "undefined term" in warnings
+
+    def test_message_without_value_no_crash(self) -> None:
+        """Validation doesn't crash on empty-value message."""
+        bundle = FluentBundle("en")
+        result = bundle.validate_resource("empty =\n")
+        assert result is not None
+
+
+# =============================================================================
+# Cache Management
+# =============================================================================
+
+
+class TestBundleCacheManagement:
+    """Test clear_cache, get_cache_stats, cache invalidation."""
+
+    def test_clear_cache_when_enabled(self) -> None:
+        """clear_cache removes all cached format results."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg1 = Hello\nmsg2 = World")
+        bundle.format_pattern("msg1")
+        bundle.format_pattern("msg2")
+        assert bundle.cache_usage == 2
+        bundle.clear_cache()
+        assert bundle.cache_usage == 0
+
+    def test_clear_cache_when_disabled(self) -> None:
+        """clear_cache succeeds when cache is disabled."""
+        bundle = FluentBundle("en", enable_cache=False)
+        bundle.clear_cache()
+        assert bundle.get_cache_stats() is None
+
+    def test_clear_cache_marks_modified(self) -> None:
+        """clear_cache marks bundle as modified for context manager."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg = Hello")
+        with bundle:
+            bundle.clear_cache()
+        assert bundle.cache_usage == 0
+
+    def test_get_cache_stats_returns_dict_when_enabled(self) -> None:
+        """get_cache_stats returns dict with hits/misses when enabled."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg", {})
+        bundle.format_pattern("msg", {})
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+
+    def test_get_cache_stats_returns_none_when_disabled(self) -> None:
+        """get_cache_stats returns None when caching is disabled."""
+        bundle = FluentBundle("en", enable_cache=False)
+        assert bundle.get_cache_stats() is None
+
+    def test_format_pattern_caches_result(self) -> None:
+        """format_pattern caches results when cache enabled."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg = Hello")
+        result1, _ = bundle.format_pattern("msg")
+        stats1 = bundle.get_cache_stats()
+        assert stats1 is not None
+        assert stats1["misses"] == 1
+        result2, _ = bundle.format_pattern("msg")
+        stats2 = bundle.get_cache_stats()
+        assert stats2 is not None
+        assert stats2["hits"] == 1
+        assert result1 == result2
+
+
+# -- Introspection (variables, introspect_message/term, has_attribute) -------
+
+
+class TestBundleIntrospection:
+    """Test introspection and query methods."""
+
+    def test_get_message_variables_returns_frozenset(self) -> None:
+        """get_message_variables returns frozenset of variable names."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("greeting = Hello, { $name }!")
+        variables = bundle.get_message_variables("greeting")
+        assert "name" in variables
+        assert isinstance(variables, frozenset)
+
+    def test_get_message_variables_raises_keyerror(self) -> None:
+        """get_message_variables raises KeyError for missing message."""
+        bundle = FluentBundle("en")
+        with pytest.raises(KeyError, match="not found"):
+            bundle.get_message_variables("nonexistent")
+
+    def test_get_all_message_variables(self) -> None:
+        """get_all_message_variables returns dict of variable sets."""
+        bundle = FluentBundle("en")
+        bundle.add_resource(
+            "greeting = Hello, { $name }!\n"
+            "farewell = Bye, { $first } { $last }!\n"
+            "simple = No variables\n"
+        )
+        all_vars = bundle.get_all_message_variables()
+        assert all_vars["greeting"] == frozenset({"name"})
+        assert all_vars["farewell"] == frozenset({"first", "last"})
+        assert all_vars["simple"] == frozenset()
+
+    def test_get_all_message_variables_empty_bundle(self) -> None:
+        """get_all_message_variables returns empty dict when empty."""
+        bundle = FluentBundle("en")
+        assert bundle.get_all_message_variables() == {}
+
+    def test_introspect_message_returns_metadata(self) -> None:
+        """introspect_message returns MessageIntrospection with metadata."""
+        bundle = FluentBundle("en")
+        bundle.add_resource(
+            "price = { NUMBER($amount, minimumFractionDigits: 2) }"
+        )
+        info = bundle.introspect_message("price")
+        assert "amount" in info.get_variable_names()
+        assert "NUMBER" in info.get_function_names()
+
+    def test_introspect_message_raises_keyerror(self) -> None:
+        """introspect_message raises KeyError for missing message."""
+        bundle = FluentBundle("en")
+        with pytest.raises(KeyError, match="not found"):
+            bundle.introspect_message("nonexistent")
+
+    def test_introspect_term_returns_metadata(self) -> None:
+        """introspect_term returns MessageIntrospection for term."""
+        bundle = FluentBundle("en")
+        bundle.add_resource(
+            "-brand = { $case ->\n"
+            "    [nominative] Firefox\n"
+            "    *[other] Firefox\n}\n"
+        )
+        info = bundle.introspect_term("brand")
+        assert "case" in info.get_variable_names()
+
+    def test_introspect_term_raises_keyerror(self) -> None:
+        """introspect_term raises KeyError for missing term."""
+        bundle = FluentBundle("en")
+        with pytest.raises(KeyError, match="Term 'nonexistent' not found"):
+            bundle.introspect_term("nonexistent")
+
+    def test_introspect_term_success(self) -> None:
+        """introspect_term returns valid data for existing term."""
+        bundle = FluentBundle("en")
+        bundle.add_resource(
+            "-brand = Firefox\n    .gender = masculine"
+        )
+        info = bundle.introspect_term("brand")
+        assert info is not None
+
+    def test_has_attribute_true(self) -> None:
+        """has_attribute returns True when attribute exists."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("button = Click\n    .tooltip = Save\n")
+        assert bundle.has_attribute("button", "tooltip") is True
+
+    def test_has_attribute_false_missing_attribute(self) -> None:
+        """has_attribute returns False when attribute missing."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("button = Click\n    .tooltip = Save\n")
+        assert bundle.has_attribute("button", "nonexistent") is False
+
+    def test_has_attribute_false_missing_message(self) -> None:
+        """has_attribute returns False when message missing."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Hello")
+        assert bundle.has_attribute("nonexistent", "tooltip") is False
+
+    def test_has_attribute_multiple_attributes(self) -> None:
+        """has_attribute correctly checks among multiple attributes."""
+        bundle = FluentBundle("en")
+        bundle.add_resource(
+            "button = Click\n"
+            "    .tooltip = Tooltip\n"
+            "    .aria-label = Label\n"
+            "    .placeholder = Enter\n"
+        )
+        assert bundle.has_attribute("button", "tooltip") is True
+        assert bundle.has_attribute("button", "aria-label") is True
+        assert bundle.has_attribute("button", "placeholder") is True
+        assert bundle.has_attribute("button", "missing") is False
+
+
+# =============================================================================
+# Formatting (format_value, format_pattern error paths)
+# =============================================================================
+
+
+class TestBundleFormatting:
+    """Test formatting methods and error handling."""
+
+    def test_format_value_formats_message(self) -> None:
+        """format_value formats message without attribute access."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("welcome = Hello, { $name }!")
+        result, errors = bundle.format_value("welcome", {"name": "Alice"})
+        assert result == "Hello, Alice!"
+        assert errors == ()
+
+    def test_format_value_is_alias(self) -> None:
+        """format_value is equivalent to format_pattern without attr."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Test message")
+        r1, e1 = bundle.format_value("msg")
+        r2, e2 = bundle.format_pattern("msg", attribute=None)
+        assert r1 == r2
+        assert e1 == e2
+
+    def test_format_pattern_handles_recursion_error(self) -> None:
+        """format_pattern catches RecursionError from circular refs."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg1 = { msg2 }\nmsg2 = { msg1 }\n")
+        _result, errors = bundle.format_pattern("msg1")
+        assert len(errors) > 0
+
+
+# =============================================================================
+# Custom Functions
+# =============================================================================
+
+
+class TestBundleCustomFunctions:
+    """Test custom function registration and registry isolation."""
+
+    def test_custom_function_registered_and_works(self) -> None:
+        """add_function registers custom function successfully."""
+        bundle = FluentBundle("en")
+
+        def CUSTOM(value: Any) -> str:  # noqa: N802
+            return str(value).upper()
+
+        bundle.add_function("CUSTOM", CUSTOM)
+        bundle.add_resource("msg = { CUSTOM($val) }")
+        result, _ = bundle.format_pattern("msg", {"val": "hello"})
+        assert "HELLO" in result
+
+    def test_add_function_clears_cache(self) -> None:
+        """add_function clears cache after registration."""
+        bundle = FluentBundle("en", enable_cache=True)
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
+        assert bundle.cache_usage == 1
+
+        def CUSTOM(v: Any) -> str:  # noqa: N802
+            return str(v)
+
+        bundle.add_function("CUSTOM", CUSTOM)
+        assert bundle.cache_usage == 0
+
+    def test_add_function_marks_modified(self) -> None:
+        """add_function marks bundle as modified for context manager."""
+        bundle = FluentBundle("en", enable_cache=True)
+
+        def CUSTOM(v: Any) -> str:  # noqa: N802
+            return str(v)
+
+        with bundle:
+            bundle.add_function("CUSTOM", CUSTOM)
+        assert bundle.cache_usage == 0
+
+    def test_add_function_without_cache(self) -> None:
+        """add_function works when cache is disabled."""
+        bundle = FluentBundle("en", enable_cache=False, use_isolating=False)
+
+        def CUSTOM(val: str) -> str:  # noqa: N802
+            return val.upper()
+
+        bundle.add_function("CUSTOM", CUSTOM)
+        bundle.add_resource("msg = { CUSTOM($val) }")
+        result, _ = bundle.format_pattern("msg", {"val": "test"})
+        assert result == "TEST"
+
+    def test_init_with_custom_registry(self) -> None:
+        """FluentBundle accepts custom FunctionRegistry."""
+        registry = create_default_registry()
+
+        def my_func(_val: int) -> str:
+            return "custom"
+
+        registry.register(my_func, ftl_name="CUSTOM")
+        bundle = FluentBundle("en", functions=registry)
+        bundle.add_resource("test = { CUSTOM(123) }")
+        result, errors = bundle.format_pattern("test")
+        assert not errors
+        assert "custom" in result
+
+    def test_init_copies_registry_for_isolation(self) -> None:
+        """FluentBundle creates copy of registry for isolation."""
+        original = create_default_registry()
+        bundle = FluentBundle("en", functions=original)
+
+        def new_func(_val: int) -> str:
+            return "new"
+
+        original.register(new_func, ftl_name="NEWFUNC")
+        bundle.add_resource("test = { NEWFUNC(1) }")
+        result, errors = bundle.format_pattern("test")
+        assert len(errors) > 0 or "NEWFUNC" not in result
+
+
+# =============================================================================
+# get_babel_locale Method
+# =============================================================================
+
+
+class TestBundleGetBabelLocale:
+    """Test get_babel_locale introspection method."""
+
+    def test_returns_locale_identifier(self) -> None:
+        """get_babel_locale returns Babel locale identifier."""
+        assert FluentBundle("lv").get_babel_locale() == "lv"
+
+    def test_handles_underscore_locale(self) -> None:
+        """get_babel_locale handles underscore-separated locales."""
+        assert FluentBundle("en_US").get_babel_locale() == "en_US"
+
+    def test_handles_hyphen_locale(self) -> None:
+        """get_babel_locale handles hyphen-separated locales."""
+        result = FluentBundle("en-GB").get_babel_locale()
+        assert "en" in result
+
+    def test_invalid_locale_uses_fallback(self) -> None:
+        """get_babel_locale uses fallback for invalid locale."""
+        bundle = FluentBundle("xx-INVALID")
+        result = bundle.get_babel_locale()
+        assert isinstance(result, str)
+        assert "en" in result.lower()
+
+
+# =============================================================================
+# Thread Safety
+# =============================================================================
+
+
+class TestBundleThreadSafety:
+    """Test always-on thread safety via readers-writer lock."""
+
+    def test_add_resource_is_thread_safe(self) -> None:
+        """add_resource acquires lock (always-on thread safety)."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("msg = Hello")
+        assert bundle.has_message("msg")
+        result, errors = bundle.format_pattern("msg")
+        assert result == "Hello"
+        assert errors == ()
+
+    def test_format_pattern_is_thread_safe(self) -> None:
+        """format_pattern acquires lock (always-on thread safety)."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("greeting = Hello, { $name }!")
+        result, errors = bundle.format_pattern(
+            "greeting", {"name": "World"}
+        )
+        assert result == "Hello, World!"
+        assert errors == ()
+
+
+# =============================================================================
+# Hypothesis Property-Based Tests
+# =============================================================================
+
+
+class TestBundleHypothesisProperties:
+    """Property-based tests for FluentBundle boundary exploration."""
+
+    # --- Init type validation (from test_bundle_100pct_final_coverage) ---
+
+    @given(
+        invalid_functions=st.one_of(
+            st.dictionaries(
+                st.text(min_size=1, max_size=10), st.integers()
+            ),
+            st.lists(st.text()),
+            st.integers(),
+            st.text(),
+            st.none(),
+        )
+    )
+    def test_init_rejects_non_function_registry(
+        self, invalid_functions: object
+    ) -> None:
+        """FluentBundle.__init__ rejects non-FunctionRegistry functions."""
+        if invalid_functions is None:
+            event("type=NoneType_valid")
+            return
+
+        type_name = type(invalid_functions).__name__
+        event(f"type={type_name}")
+
+        with pytest.raises(
+            TypeError,
+            match="functions must be FunctionRegistry, not",
+        ):
+            FluentBundle(
+                "en_US", functions=invalid_functions  # type: ignore[arg-type]
+            )
+
+    @example(invalid_functions={"NUMBER": lambda x: x})
+    @example(invalid_functions=[])
+    @example(invalid_functions=42)
+    @example(invalid_functions="not_a_registry")
+    @given(
+        invalid_functions=st.one_of(
+            st.dictionaries(
+                st.text(min_size=1, max_size=5),
+                st.integers(),
+                min_size=1,
+            ),
+            st.lists(st.integers(), min_size=1),
+        )
+    )
+    def test_init_type_error_message_includes_type_name(
+        self, invalid_functions: object
+    ) -> None:
+        """TypeError message includes actual type name."""
+        type_name = type(invalid_functions).__name__
+
+        with pytest.raises(TypeError) as exc_info:
+            FluentBundle(
+                "en_US", functions=invalid_functions  # type: ignore[arg-type]
+            )
+
+        assert type_name in str(exc_info.value)
+        assert "FunctionRegistry" in str(exc_info.value)
+        assert "create_default_registry" in str(exc_info.value)
+
+    # --- Property getters (from test_bundle_100pct_final_coverage) ---
+
+    @given(
+        max_expansion_size=st.integers(
+            min_value=1000, max_value=10_000_000
+        ),
+        locale=st.sampled_from(["en_US", "de_DE", "lv_LV", "ja_JP"]),
+    )
+    def test_max_expansion_size_preserved(
+        self, max_expansion_size: int, locale: str
+    ) -> None:
+        """max_expansion_size property returns configured value."""
+        if max_expansion_size < 10_000:
+            event("boundary=small")
+        elif max_expansion_size > 1_000_000:
+            event("boundary=large")
+        else:
+            event("boundary=medium")
+
+        bundle = FluentBundle(
+            locale, max_expansion_size=max_expansion_size
+        )
+        assert bundle.max_expansion_size == max_expansion_size
+
+    @given(
+        locale=st.sampled_from(["en", "de", "lv", "pl", "ar", "ja"]),
+        provide_custom_registry=st.booleans(),
+    )
+    def test_function_registry_preserved(
+        self, locale: str, provide_custom_registry: bool
+    ) -> None:
+        """function_registry property returns valid registry."""
+        if provide_custom_registry:
+            event("registry_type=custom")
+            custom_registry = create_default_registry()
+            bundle = FluentBundle(locale, functions=custom_registry)
+        else:
+            event("registry_type=shared")
+            bundle = FluentBundle(locale)
+
+        registry = bundle.function_registry
+        assert isinstance(registry, FunctionRegistry)
+        assert "NUMBER" in registry
+
+    # --- Comment handling (from test_bundle_100pct_final_coverage) ---
+
+    @given(
+        num_comments=st.integers(min_value=1, max_value=10),
+        comment_style=st.sampled_from(
+            ["single", "double", "triple"]
+        ),
+    )
+    def test_comments_handled_correctly(
+        self, num_comments: int, comment_style: str
+    ) -> None:
+        """Comment entries handled during resource registration."""
+        event(f"comment_count={num_comments}")
+        event(f"comment_style={comment_style}")
+
+        marker = {"single": "#", "double": "##", "triple": "###"}[
+            comment_style
+        ]
+        lines = [f"{marker} Comment {i}" for i in range(num_comments)]
+        lines.extend(["", "msg = Hello"])
+
+        bundle = FluentBundle("en_US")
+        junk = bundle.add_resource("\n".join(lines))
+        assert len(junk) == 0
+        assert bundle.has_message("msg")
+
+    @example(num_standalone=1)
+    @example(num_standalone=3)
+    @example(num_standalone=10)
+    @given(num_standalone=st.integers(min_value=1, max_value=20))
+    def test_comments_do_not_create_junk(
+        self, num_standalone: int
+    ) -> None:
+        """Comments are skipped without creating Junk entries."""
+        event(f"standalone_comments={num_standalone}")
+
+        lines = ["### Section Header"]
+        lines.extend(
+            f"# Comment line {i}" for i in range(num_standalone)
+        )
+        lines.extend(["", "message = Value", "## Trailing comment"])
+
+        bundle = FluentBundle("en_US")
+        junk = bundle.add_resource("\n".join(lines))
+        assert len(junk) == 0
+        assert bundle.has_message("message")
+
+    # --- Strict mode cache interaction ---
+    # (from test_bundle_100pct_final_coverage)
+
+    @given(
+        locale=st.sampled_from(["en", "de", "lv", "pl"]),
+        missing_var_name=st.text(
+            alphabet=st.characters(
+                min_codepoint=ord("a"), max_codepoint=ord("z")
+            ),
+            min_size=1,
+            max_size=20,
+        ),
+    )
+    def test_strict_mode_raises_on_cached_error(
+        self, locale: str, missing_var_name: str
+    ) -> None:
+        """Strict mode raises FormattingIntegrityError on cached errors."""
+        bundle = FluentBundle(
+            locale, strict=True, enable_cache=True
+        )
+        bundle.add_resource(
+            f"msg = Hello {{ ${missing_var_name} }}"
+        )
+
+        with pytest.raises(FormattingIntegrityError) as exc1:
+            bundle.format_pattern("msg", {})
+
+        event("cache_hit_type=error")
+        assert exc1.value.message_id == "msg"
+        assert len(exc1.value.fluent_errors) == 1
+        assert (
+            exc1.value.fluent_errors[0].category
+            == ErrorCategory.REFERENCE
+        )
+
+        with pytest.raises(FormattingIntegrityError) as exc2:
+            bundle.format_pattern("msg", {})
+        assert exc2.value.message_id == "msg"
+
+    @given(
+        locale=st.sampled_from(["en_US", "de_DE", "lv_LV"]),
+        message_text=st.text(
+            alphabet=st.characters(
+                min_codepoint=ord("A"),
+                max_codepoint=ord("z"),
+                blacklist_categories=("Cc", "Cs"),
+            ),
+            min_size=1,
+            max_size=50,
+        ),
+    )
+    def test_strict_mode_cache_hit_without_errors(
+        self, locale: str, message_text: str
+    ) -> None:
+        """Strict mode cached success result returns normally."""
+        safe = "".join(
+            c for c in message_text if c.isprintable() and c not in "{}#"
+        ).strip()
+        if not safe:
+            safe = "Hello"
+
+        bundle = FluentBundle(
+            locale, strict=True, enable_cache=True
+        )
+        bundle.add_resource(f"msg = {safe}")
+
+        r1, e1 = bundle.format_pattern("msg")
+        assert r1 == safe
+        assert e1 == ()
+
+        event("cache_hit_type=success")
+
+        r2, e2 = bundle.format_pattern("msg")
+        assert r2 == safe
+        assert e2 == ()
+
+    # --- Configuration preservation properties ---
+    # (from test_bundle_complete_final_coverage, events added)
+
+    @given(
+        st.text(
+            alphabet=st.sampled_from(["a", "b", "c", "_", "-"]),
+            min_size=1,
+            max_size=50,
+        )
+    )
+    def test_valid_locale_accepted(self, locale: str) -> None:
+        """Valid locale formats are accepted by FluentBundle."""
+        if not locale or not locale[0].isalnum():
+            event("outcome=filtered")
+            return
+
+        try:
+            bundle = FluentBundle(locale)
+            event("outcome=accepted")
+            assert bundle.locale == locale
+        except ValueError:
+            event("outcome=rejected")
+
+    @given(st.booleans())
+    def test_use_isolating_preserved(
+        self, use_isolating: bool
+    ) -> None:
+        """use_isolating configuration is preserved."""
+        kind = "isolating" if use_isolating else "non_isolating"
+        event(f"outcome={kind}")
+        bundle = FluentBundle("en", use_isolating=use_isolating)
+        assert bundle.use_isolating == use_isolating
+
+    @given(st.booleans())
+    def test_strict_mode_preserved(self, strict: bool) -> None:
+        """strict mode configuration is preserved."""
+        kind = "strict" if strict else "lenient"
+        event(f"outcome={kind}")
+        bundle = FluentBundle("en", strict=strict)
+        assert bundle.strict == strict
+
+    @given(st.integers(min_value=1, max_value=10000))
+    def test_cache_size_preserved(self, cache_size: int) -> None:
+        """cache_size configuration is preserved."""
+        if cache_size < 100:
+            event("boundary=small")
+        elif cache_size < 5000:
+            event("boundary=medium")
+        else:
+            event("boundary=large")
+        bundle = FluentBundle("en", cache_size=cache_size)
+        assert bundle.cache_size == cache_size
+
+    # --- Validation properties (from test_bundle_coverage, events added) ---
+
+    @given(
+        term_name=st.from_regex(
+            r"[a-z][a-z0-9-]{0,10}", fullmatch=True
+        )
+    )
+    def test_duplicate_term_generates_warning(
+        self, term_name: str
+    ) -> None:
+        """Duplicate term IDs always generate warnings."""
+        event("outcome=duplicate_warned")
+        bundle = FluentBundle("en_US", use_isolating=False)
+        ftl = f"-{term_name} = First\n-{term_name} = Second\n"
+        result = bundle.validate_resource(ftl)
+        assert any(
+            "Duplicate term ID" in w.message for w in result.warnings
+        )
+
+    @given(
+        term_a=st.from_regex(
+            r"[a-z][a-z0-9-]{0,10}", fullmatch=True
+        ),
+        term_b=st.from_regex(
+            r"[a-z][a-z0-9-]{0,10}", fullmatch=True
+        ),
+    )
+    def test_undefined_term_ref_generates_warning(
+        self, term_a: str, term_b: str
+    ) -> None:
+        """Undefined term references always generate warnings."""
+        assume(term_a != term_b)
+        event("outcome=undefined_warned")
+        bundle = FluentBundle("en_US", use_isolating=False)
+        ftl = f"-{term_a} = {{ -{term_b} }}"
+        result = bundle.validate_resource(ftl)
+        assert any(
+            f"undefined term '-{term_b}'" in w.message
+            for w in result.warnings
+        )

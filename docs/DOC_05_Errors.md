@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: ERRORS
 updated: "2026-02-10"
 route:
@@ -191,7 +191,7 @@ class ImmutabilityViolationError(DataIntegrityError):
 
 ## `SyntaxIntegrityError`
 
-Syntax errors detected in strict mode during resource loading.
+Syntax errors detected in strict mode during FTL source loading.
 
 ### Signature
 ```python
@@ -226,7 +226,7 @@ class SyntaxIntegrityError(DataIntegrityError):
 - Purpose: Raised by `FluentBundle.add_resource()` in strict mode when syntax errors (Junk entries) are detected.
 - Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
 - Sealed: `@final` decorator prevents subclassing.
-- Financial: Financial applications require fail-fast behavior. Silent failures during resource loading are unacceptable for monetary formatting.
+- Financial: Financial applications require fail-fast behavior. Silent failures during FTL source loading are unacceptable for monetary formatting.
 - Import: `from ftllexengine.integrity import SyntaxIntegrityError` or `from ftllexengine import SyntaxIntegrityError`
 - Version: Added in v0.85.0.
 

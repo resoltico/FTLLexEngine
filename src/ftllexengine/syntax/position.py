@@ -198,4 +198,11 @@ def get_error_context(source: str, pos: int, context_lines: int = 2, marker: str
         if i == line_num:
             context.append(" " * col_num + marker)
 
+    # Handle EOF position beyond last line (e.g., pos at end of
+    # newline-terminated source). The position is valid but points
+    # past all splitlines() content. Emit marker on an empty line.
+    if line_num >= len(lines):
+        context.append("")
+        context.append(" " * col_num + marker)
+
     return "\n".join(context)

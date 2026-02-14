@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.103.0"
+version: "0.107.0"
 domain: reference
 updated: "2026-02-10"
 route:
@@ -392,7 +392,12 @@ l10n.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tupl
 l10n.format_value(message_id, args=None) -> tuple[str, tuple[FrozenFluentError, ...]]
 l10n.validate_resource(ftl_source: str) -> ValidationResult
 l10n.has_message(message_id: str) -> bool
+l10n.has_attribute(message_id: str, attribute: str) -> bool
+l10n.get_message_ids() -> list[str]
+l10n.get_message_variables(message_id: str) -> frozenset[str]
+l10n.get_all_message_variables() -> dict[str, frozenset[str]]
 l10n.introspect_message(message_id: str) -> MessageIntrospection
+l10n.introspect_term(term_id: str) -> MessageIntrospection | None
 l10n.add_function(name: str, func: Callable) -> None
 l10n.clear_cache() -> None
 l10n.get_cache_stats() -> dict[str, Any]

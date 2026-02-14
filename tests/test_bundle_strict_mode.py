@@ -12,7 +12,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -380,6 +380,8 @@ class TestStrictModeProperties:
     @settings(max_examples=50)
     def test_missing_message_always_raises(self, message_id: str) -> None:
         """Any missing message raises in strict mode."""
+        event("outcome=raised")
+
         bundle = FluentBundle("en", strict=True)
 
         with pytest.raises(FormattingIntegrityError) as exc_info:
@@ -391,6 +393,8 @@ class TestStrictModeProperties:
     @settings(max_examples=50)
     def test_missing_variable_always_raises(self, var_name: str) -> None:
         """Any missing variable raises in strict mode."""
+        event("outcome=raised")
+
         bundle = FluentBundle("en", strict=True)
         # Variable names must start with a letter (FTL spec)
         bundle.add_resource(f"msg = Hello {{ ${var_name} }}!")

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 # --- PEP 695 Type Aliases (Python 3.13) ---
@@ -222,6 +222,9 @@ def test_extreme_memory_pressure(maxsize, max_entry_weight, entry_count):
             },
             timeout=60.0,
         )
+        pressure = "high" if entry_count > maxsize * 5 else "low"
+        event(f"outcome={'success' if result.success else 'crash'}")
+        event(f"boundary={pressure}_pressure")
         assert result.success, f"Cache crashed under pressure: {result.stderr}"
         output = json.loads(result.stdout.strip())
         assert output["result"]["entries_processed"] > 0
@@ -258,6 +261,8 @@ def test_deep_nesting_survival(test_depth):
         result = run_in_subprocess(
             func_code, "test_deep_nesting_survival", args={"test_depth": test_depth}
         )
+        event(f"depth={test_depth}")
+        event(f"outcome={'survived' if not result.crashed_abnormally else 'crash'}")
         assert not result.crashed_abnormally
 
     @pytest.mark.survivability
@@ -303,6 +308,8 @@ def test_concurrent(thread_count, operation_count):
             args={"thread_count": thread_count, "operation_count": operation_count},
             timeout=30.0,
         )
+        event(f"thread_count={thread_count}")
+        event(f"outcome={'success' if result.success else 'failure'}")
         assert result.success
         assert json.loads(result.stdout)["result"]["corruption_detected"] == 0
 
@@ -342,6 +349,9 @@ def test_strict_formatting(strict, ftl):
         result = run_in_subprocess(
             func_code, "test_strict_formatting", args={"strict": strict, "ftl": resource_ftl}
         )
+        event(f"strict={strict}")
+        has_cycle = "cyclic" in resource_ftl
+        event(f"resource={'cyclic' if has_cycle else 'missing_var'}")
         assert result.success
         status = json.loads(result.stdout)["result"]["status"]
         if strict:
@@ -374,8 +384,10 @@ def test_corruption(strict):
         return {"result": "fail_fast"}
 """
         result = run_in_subprocess(func_code, "test_corruption", args={"strict": strict})
+        event(f"strict={strict}")
         assert result.success
         res = json.loads(result.stdout)["result"]["result"]
+        event(f"outcome={res}")
         assert res == ("fail_fast" if strict else "evicted")
 
 
@@ -413,4 +425,8 @@ def test_ops(cfg, ops):
     return "ok"
 """
     result = run_in_subprocess(func_code, "test_ops", args={"cfg": cache_config, "ops": ops})
+    event(f"strict={cache_config['strict']}")
+    event(f"write_once={cache_config['write_once']}")
+    put_count = sum(1 for op, _ in ops if op == "put")
+    event(f"op_mix={'put_heavy' if put_count > len(ops) // 2 else 'get_heavy'}")
     assert result.success

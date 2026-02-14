@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: parsing
 updated: "2026-02-03"
 route:
@@ -276,7 +276,7 @@ result, errors = parse_decimal(formatted, "en_US")  # Wrong locale!
 from ftllexengine.parsing import parse_decimal
 from ftllexengine.parsing.guards import is_valid_decimal
 
-# Check errors list instead of try/except
+# Check errors tuple instead of try/except
 result, errors = parse_decimal(user_input, locale)
 
 if errors:
@@ -419,7 +419,7 @@ def process_invoice(user_input: str) -> dict | None:
 
 # Example usage
 result = process_invoice("1 234,56")
-# display: {"subtotal": "Summa: 1 234,56 EUR", ...}
+# display: {"subtotal": "Summa: 1 234,56 €", ...}
 # data: {"subtotal": Decimal('1234.56'), ...}
 ```
 
@@ -588,7 +588,7 @@ All functions in `ftllexengine.parsing` require Babel and will raise `BabelImpor
 
 ### Parse Returns Errors
 
-**Problem**: `parse_decimal()` returns non-empty errors list
+**Problem**: `parse_decimal()` returns non-empty errors tuple
 
 **Common causes**:
 1. **Wrong locale**: Make sure parsing locale matches formatting locale

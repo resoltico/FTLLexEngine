@@ -7,7 +7,7 @@ LocaleContext.create() always succeeds with en_US fallback.
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.function_bridge import FluentNumber
@@ -34,6 +34,8 @@ class TestNumberFormatBehavior:
     @given(st.floats(allow_nan=False, allow_infinity=False, min_value=-1e10, max_value=1e10))
     def test_number_format_always_returns_fluent_number(self, value: float) -> None:
         """Property: number_format always returns a FluentNumber for any finite float."""
+        sign = "negative" if value < 0 else "non_negative"
+        event(f"outcome={sign}")
         result = number_format(value, "en-US")
         assert isinstance(result, FluentNumber)
 
@@ -85,6 +87,7 @@ class TestDatetimeFormatBehavior:
     @given(st.datetimes(timezones=st.just(UTC)))
     def test_datetime_format_always_returns_string(self, dt: datetime) -> None:
         """Property: datetime_format always returns a string for datetime inputs."""
+        event(f"year={dt.year}")
         result = datetime_format(dt, "en-US")
         assert isinstance(result, str)
 
@@ -131,6 +134,7 @@ class TestCurrencyFormatBehavior:
         self, value: float, currency: str,
     ) -> None:
         """Property: currency_format always returns a FluentNumber."""
+        event(f"currency={currency}")
         result = currency_format(value, "en-US", currency=currency)
         assert isinstance(result, FluentNumber)
 
@@ -350,6 +354,9 @@ class TestNumberFormatPrecisionCalculation:
         if min_frac > max_frac:
             min_frac, max_frac = max_frac, min_frac
 
+        event(f"min_frac={min_frac}")
+        event(f"max_frac={max_frac}")
+
         result = number_format(
             value,
             "en-US",
@@ -367,3 +374,21 @@ class TestNumberFormatPrecisionCalculation:
 
         # Precision must match actual visible digits
         assert result.precision == actual_digits
+
+
+class TestNumberFormatGroupingBranch:
+    """Test number_format grouping with integer (no decimal separator)."""
+
+    def test_integer_with_grouping_no_decimal(self) -> None:
+        """Integer with grouping produces no decimal separator."""
+        result = number_format(
+            1000000,
+            "en-US",
+            use_grouping=True,
+            minimum_fraction_digits=0,
+            maximum_fraction_digits=0,
+        )
+        formatted = str(result)
+        assert len(formatted) > 0
+        clean = formatted.replace(",", "").replace(" ", "")
+        assert clean.isdigit()

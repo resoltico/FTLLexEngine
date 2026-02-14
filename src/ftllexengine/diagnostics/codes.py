@@ -201,6 +201,9 @@ class Diagnostic:
     def format_error(self) -> str:
         """Format diagnostic like Rust compiler.
 
+        Delegates to DiagnosticFormatter for consistent output with
+        control-character escaping (log injection prevention).
+
         Example output:
             error[MESSAGE_NOT_FOUND]: Message 'hello' not found
               --> line 5, column 10
@@ -219,34 +222,6 @@ class Diagnostic:
         Returns:
             Formatted error message
         """
-        severity_prefix = self.severity if self.severity == "warning" else "error"
-        parts = [f"{severity_prefix}[{self.code.name}]: {self.message}"]
+        from .formatter import DiagnosticFormatter  # noqa: PLC0415
 
-        if self.span:
-            parts.append(f"  --> line {self.span.line}, column {self.span.column}")
-        elif self.ftl_location:
-            parts.append(f"  --> {self.ftl_location}")
-
-        if self.function_name:
-            parts.append(f"  = function: {self.function_name}")
-
-        if self.argument_name:
-            parts.append(f"  = argument: {self.argument_name}")
-
-        if self.expected_type:
-            parts.append(f"  = expected: {self.expected_type}")
-
-        if self.received_type:
-            parts.append(f"  = received: {self.received_type}")
-
-        if self.resolution_path:
-            path_str = " -> ".join(self.resolution_path)
-            parts.append(f"  = resolution path: {path_str}")
-
-        if self.hint:
-            parts.append(f"  = help: {self.hint}")
-
-        if self.help_url:
-            parts.append(f"  = note: see {self.help_url}")
-
-        return "\n".join(parts)
+        return DiagnosticFormatter().format(self)

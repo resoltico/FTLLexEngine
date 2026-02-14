@@ -311,6 +311,7 @@ COMMANDS:
     --corpus            Run corpus health check (fuzz_atheris_corpus_health.py)
     --minimize TARGET FILE   Minimize a crash input using the specified target
     --replay TARGET [DIR]    Replay finding artifacts without Atheris
+    --report TARGET          Show the report for the last run of a target
     --clean TARGET           Clean corpus for a specific target
 
 OPTIONS:
@@ -339,71 +340,71 @@ run_list() {
         return 0
     fi
 
-    # Section 1: Raw libFuzzer crash files
-    echo -e "${BOLD}Crashes (raw libFuzzer artifacts)${NC}"
-    local crashes=()
-    while IFS= read -r -d '' file; do
-        crashes+=("$file")
-    done < <(find "$corpus_dir" -name "crash_*" -type f -print0 2>/dev/null | head -z -n 50)
+    # Use Python for robust JSON parsing and listing
+    uv run python - "$corpus_dir" << 'EOF'
+import sys
+import os
+import json
+import glob
 
-    local count="${#crashes[@]}"
-    if [[ $count -gt 0 ]]; then
-         echo "Found $count crash(es):"
-         for crash in "${crashes[@]:0:10}"; do
-             echo "  $crash"
-         done
-         if [[ $count -gt 10 ]]; then
-             echo "  ... and $((count - 10)) more"
-         fi
-         echo ""
-         echo "Inspect: xxd ${crashes[0]} | head -20"
-    else
-         echo "  No crashes found."
-    fi
-    echo ""
+corpus_dir = sys.argv[1]
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+BLUE = '\033[0;34m'
+BOLD = '\033[1m'
+NC = '\033[0m'
 
-    # Section 2: Finding artifacts (human-readable, actionable)
-    echo -e "${BOLD}Findings (actionable artifacts)${NC}"
-    local finding_dirs=()
-    while IFS= read -r -d '' dir; do
-        finding_dirs+=("$dir")
-    done < <(find "$corpus_dir" -type d -name "findings" -print0 2>/dev/null)
+if not os.isatty(1):
+    RED = GREEN = BLUE = BOLD = NC = ''
 
-    local total_findings=0
-    for fdir in "${finding_dirs[@]}"; do
-        local meta_files=()
-        while IFS= read -r -d '' mf; do
-            meta_files+=("$mf")
-        done < <(find "$fdir" -name "*_meta.json" -type f -print0 2>/dev/null | sort -z)
+# Section 1: Raw libFuzzer crash files
+print(f"{BOLD}Crashes (raw libFuzzer artifacts){NC}")
+crashes = glob.glob(os.path.join(corpus_dir, "crash_*"))
+crash_count = len(crashes)
 
-        if [[ ${#meta_files[@]} -gt 0 ]]; then
-            echo "  ${fdir}:"
-            for meta_file in "${meta_files[@]:0:10}"; do
-                total_findings=$((total_findings + 1))
-                local basename
-                basename=$(basename "$meta_file")
-                if command -v jq &>/dev/null; then
-                    local pattern diff_offset source_len
-                    pattern=$(jq -r '.pattern // "unknown"' "$meta_file" 2>/dev/null)
-                    diff_offset=$(jq -r '.diff_offset // "?"' "$meta_file" 2>/dev/null)
-                    source_len=$(jq -r '.source_len // "?"' "$meta_file" 2>/dev/null)
-                    echo "    $basename  pattern=$pattern  source=${source_len}chars  diff@byte${diff_offset}"
-                else
-                    echo "    $basename"
-                fi
-            done
-            if [[ ${#meta_files[@]} -gt 10 ]]; then
-                echo "    ... and $((${#meta_files[@]} - 10)) more"
-            fi
-        fi
-    done
+if crash_count > 0:
+    print(f"Found {crash_count} crash(es):")
+    for crash in crashes[:10]:
+        print(f"  {crash}")
+    if crash_count > 10:
+        print(f"  ... and {crash_count - 10} more")
+    print(f"\nInspect: xxd {crashes[0]} | head -20")
+else:
+    print("  No crashes found.")
+print("")
 
-    if [[ $total_findings -eq 0 ]]; then
-        echo "  No finding artifacts found."
-    else
-        echo ""
-        echo "Replay: ./scripts/fuzz_atheris.sh --replay <target> <findings_dir>"
-    fi
+# Section 2: Finding artifacts (human-readable, actionable)
+print(f"{BOLD}Findings (actionable artifacts){NC}")
+finding_dirs = []
+for root, dirs, files in os.walk(corpus_dir):
+    if os.path.basename(root) == "findings":
+        finding_dirs.append(root)
+
+total_findings = 0
+for fdir in finding_dirs:
+    meta_files = sorted(glob.glob(os.path.join(fdir, "*_meta.json")))
+    if meta_files:
+        print(f"  {fdir}:")
+        for meta_file in meta_files[:10]:
+            total_findings += 1
+            basename = os.path.basename(meta_file)
+            try:
+                with open(meta_file, 'r') as f:
+                    data = json.load(f)
+                    pattern = data.get('pattern', 'unknown')
+                    diff_offset = data.get('diff_offset', '?')
+                    source_len = data.get('source_len', '?')
+                    print(f"    {basename}  pattern={pattern}  source={source_len}chars  diff@byte{diff_offset}")
+            except Exception:
+                print(f"    {basename} (parse error)")
+        if len(meta_files) > 10:
+            print(f"    ... and {len(meta_files) - 10} more")
+
+if total_findings == 0:
+    print("  No finding artifacts found.")
+else:
+    print("\nReplay: ./scripts/fuzz_atheris.sh --replay <target> <findings_dir>")
+EOF
 }
 
 run_corpus_health() {
@@ -422,120 +423,121 @@ parse_and_display_report() {
 
     # Try to read JSON report from file (written during fuzzing)
     local report_file="$corpus_dir/fuzz_${target_key}_report.json"
-    local json_report=""
 
-    if [[ -f "$report_file" ]]; then
-        json_report=$(cat "$report_file" 2>/dev/null)
-    fi
-
-    if [[ -z "$json_report" ]]; then
+    if [[ ! -f "$report_file" ]]; then
         log_warn "No JSON summary found (fuzzer may not have completed enough iterations)"
         return 0
     fi
 
-    # Check for jq availability
-    if ! command -v jq &> /dev/null; then
-        log_warn "jq not found - install for detailed reporting (brew install jq)"
-        # Fallback: extract key metrics with grep/sed
-        echo "Raw findings count: $(echo "$json_report" | grep -o '"findings":[0-9]*' | cut -d: -f2)"
-        return 0
-    fi
+    # Use Python for robust JSON parsing and display
+    uv run python - "$report_file" << 'EOF'
+import sys
+import json
+import os
 
-    # Parse key metrics
-    local status iterations findings
-    status=$(echo "$json_report" | jq -r '.status // "unknown"')
-    iterations=$(echo "$json_report" | jq -r '.iterations // 0')
-    findings=$(echo "$json_report" | jq -r '.findings // 0')
+report_file = sys.argv[1]
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[0;33m'
+BLUE = '\033[0;34m'
+BOLD = '\033[1m'
+NC = '\033[0m'
 
-    # Parse identification and timing (optional fields)
-    local fuzzer_name fuzzer_target duration throughput
-    fuzzer_name=$(echo "$json_report" | jq -r '.fuzzer_name // empty')
-    fuzzer_target=$(echo "$json_report" | jq -r '.fuzzer_target // empty')
-    duration=$(echo "$json_report" | jq -r '.campaign_duration_sec // empty')
-    throughput=$(echo "$json_report" | jq -r '.iterations_per_sec // empty')
+if not os.isatty(1):
+    RED = GREEN = YELLOW = BLUE = BOLD = NC = ''
 
-    # Display summary header
-    echo -e "\n${BOLD}============================================================${NC}"
-    echo -e "${BOLD}Fuzzing Campaign Summary${NC}"
-    echo -e "${BOLD}============================================================${NC}"
-    if [[ -n "$fuzzer_name" ]]; then
-        echo "Fuzzer:     $fuzzer_name"
-    fi
-    if [[ -n "$fuzzer_target" ]]; then
-        echo "Target:     $fuzzer_target"
-    fi
-    echo "Status:     $status"
-    echo "Iterations: $(printf "%'d" "$iterations")"
-    if [[ -n "$duration" ]]; then
-        echo "Duration:   ${duration}s"
-    fi
-    if [[ -n "$throughput" ]]; then
-        echo "Throughput: $(printf "%'.1f" "$throughput") iter/s"
-    fi
-    echo "Findings:   $(printf "%'d" "$findings")"
+def format_number(n):
+    return "{:,}".format(n)
 
-    # Performance metrics (if available)
-    local perf_mean perf_p95 perf_p99
-    perf_mean=$(echo "$json_report" | jq -r '.perf_mean_ms // empty')
-    perf_p95=$(echo "$json_report" | jq -r '.perf_p95_ms // empty')
-    perf_p99=$(echo "$json_report" | jq -r '.perf_p99_ms // empty')
+try:
+    with open(report_file, 'r') as f:
+        data = json.load(f)
+except Exception:
+    # If JSON is invalid or empty, we can't do much
+    sys.exit(0)
 
-    if [[ -n "$perf_mean" ]]; then
-        echo ""
-        echo "Performance:"
-        echo "  Mean:     ${perf_mean}ms"
-        if [[ -n "$perf_p95" ]]; then
-            echo "  P95:      ${perf_p95}ms"
-        fi
-        if [[ -n "$perf_p99" ]]; then
-            echo "  P99:      ${perf_p99}ms"
-        fi
-    fi
+# Parse key metrics
+status = data.get('status', 'unknown')
+iterations = data.get('iterations', 0)
+findings = data.get('findings', 0)
 
-    # Memory metrics (if available)
-    local mem_peak mem_delta
-    mem_peak=$(echo "$json_report" | jq -r '.memory_peak_mb // empty')
-    mem_delta=$(echo "$json_report" | jq -r '.memory_delta_mb // empty')
+# Parse optional fields
+fuzzer_name = data.get('fuzzer_name')
+fuzzer_target = data.get('fuzzer_target')
+duration = data.get('campaign_duration_sec')
+throughput = data.get('iterations_per_sec')
 
-    if [[ -n "$mem_peak" ]]; then
-        echo ""
-        echo "Memory:"
-        echo "  Peak:     ${mem_peak}MB"
-        if [[ -n "$mem_delta" ]]; then
-            echo "  Delta:    ${mem_delta}MB"
-        fi
-    fi
+# Display summary header
+print(f"\n{BOLD}============================================================{NC}")
+print(f"{BOLD}Fuzzing Campaign Summary{NC}")
+print(f"{BOLD}============================================================{NC}")
+if fuzzer_name:
+    print(f"Fuzzer:     {fuzzer_name}")
+if fuzzer_target:
+    print(f"Target:     {fuzzer_target}")
+print(f"Status:     {status}")
+print(f"Iterations: {format_number(iterations)}")
+if duration is not None:
+    print(f"Duration:   {duration}s")
+if throughput is not None:
+    print(f"Throughput: {throughput:,.1f} iter/s")
+print(f"Findings:   {format_number(findings)}")
 
-    # CRITICAL: Alert on findings
-    if [[ "$findings" -gt 0 ]]; then
-        echo -e "\n${RED}${BOLD}[WARNING] API Contract Violations Detected${NC}"
-        echo -e "${RED}Found $findings violations during fuzzing campaign${NC}"
-        echo ""
+# Performance metrics
+perf_mean = data.get('perf_mean_ms')
+perf_p95 = data.get('perf_p95_ms')
+perf_p99 = data.get('perf_p99_ms')
 
-        # Extract and display top error patterns (handle both flat and nested)
-        echo "Top Error Patterns:"
-        echo "$json_report" | jq -r '
-            to_entries
-            | map(select(.key | test("^(error_|contract_)")))
-            | sort_by(-.value)
-            | limit(10; .[])
-            | "  \(.key): \(.value)"
-        ' 2>/dev/null || echo "  (Could not parse error patterns)"
+if perf_mean is not None:
+    print("")
+    print("Performance:")
+    print(f"  Mean:     {perf_mean}ms")
+    if perf_p95 is not None:
+        print(f"  P95:      {perf_p95}ms")
+    if perf_p99 is not None:
+        print(f"  P99:      {perf_p99}ms")
 
-        echo ""
-        echo -e "${YELLOW}Action Required:${NC}"
-        echo "  1. Review error patterns above"
-        echo "  2. Inspect full JSON report: $report_file"
-        echo "  3. Fix API contract violations in source code"
-        echo "  4. Re-run fuzzer to verify fixes"
+# Memory metrics
+mem_peak = data.get('memory_peak_mb')
+mem_delta = data.get('memory_delta_mb')
 
-        echo -e "${BOLD}============================================================${NC}"
-        return 1
-    else
-        echo -e "\n${GREEN}[OK] No API contract violations detected${NC}"
-        echo -e "${BOLD}============================================================${NC}"
-        return 0
-    fi
+if mem_peak is not None:
+    print("")
+    print("Memory:")
+    print(f"  Peak:     {mem_peak}MB")
+    if mem_delta is not None:
+        print(f"  Delta:    {mem_delta}MB")
+
+# CRITICAL: Alert on findings
+if findings > 0:
+    print(f"\n{RED}{BOLD}[WARNING] API Contract Violations Detected{NC}")
+    print(f"{RED}Found {findings} violations during fuzzing campaign{NC}")
+    print("")
+
+    # Extract top error patterns
+    print("Top Error Patterns:")
+    error_patterns = {k: v for k, v in data.items() if k.startswith('error_') or k.startswith('contract_')}
+    sorted_patterns = sorted(error_patterns.items(), key=lambda item: item[1], reverse=True)[:10]
+    
+    if sorted_patterns:
+        for k, v in sorted_patterns:
+            print(f"  {k}: {v}")
+    else:
+        print("  (No specific error patterns found)")
+
+    print("")
+    print(f"{YELLOW}Action Required:{NC}")
+    print("  1. Review error patterns above")
+    print(f"  2. Inspect full JSON report: {report_file}")
+    print("  3. Fix API contract violations in source code")
+    print("  4. Re-run fuzzer to verify fixes")
+    print(f"{BOLD}============================================================{NC}")
+    sys.exit(1)
+else:
+    print(f"\n{GREEN}[OK] No API contract violations detected{NC}")
+    print(f"{BOLD}============================================================{NC}")
+    sys.exit(0)
+EOF
 }
 
 run_fuzz_target() {
@@ -793,6 +795,19 @@ while [[ $# -gt 0 ]]; do
                 shift
             fi
             ;;
+        --report)
+            MODE="report"
+            if [[ -z "$TARGET" ]]; then
+                if [[ $# -lt 2 ]] || [[ "$2" == --* ]]; then
+                    log_error "--report requires a TARGET argument"
+                    echo "Usage: ./scripts/fuzz_atheris.sh --report TARGET"
+                    exit 1
+                fi
+                TARGET="$2"
+                shift
+            fi
+            shift
+            ;;
         --workers)
             if [[ $# -lt 2 ]] || [[ "$2" == --* ]]; then
                 log_error "--workers requires a positive integer argument"
@@ -869,6 +884,14 @@ case "$MODE" in
         ;;
     replay)
         run_replay "$REPLAY_TARGET" "$REPLAY_DIR"
+        ;;
+    report)
+        if [[ -z "$TARGET" ]]; then
+            log_error "Target not specified for report."
+            show_help
+            exit 1
+        fi
+        parse_and_display_report "$TARGET"
         ;;
     clean)
         CLEAN_DIR="$PROJECT_ROOT/.fuzz_atheris_corpus/$TARGET"

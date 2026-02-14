@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: PARSING
 updated: "2026-02-10"
 route:
@@ -68,7 +68,7 @@ def serialize(
 
 ## `validate_resource`
 
-Function validating FTL resource for syntax and semantic errors.
+Function validating FTL source for syntax and semantic errors.
 
 ### Signature
 ```python
@@ -99,7 +99,7 @@ def validate_resource(
 ### Usage
 - When: Validate FTL files in CI/CD pipelines without runtime bundle
 - Prefer: This over FluentBundle.validate_resource for parser-only workflows
-- Avoid: Repeatedly parsing same resource (cache parsed AST instead)
+- Avoid: Repeatedly parsing same FTL source (cache the Resource AST instead)
 
 ### Notes
 - Available at top-level: `from ftllexengine import validate_resource`

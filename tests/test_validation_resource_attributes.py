@@ -248,3 +248,38 @@ msg = value
         ]
         # Should warn for second and third occurrences
         assert len(dup_warnings) >= 2
+
+    @given(
+        attribute_count=st.integers(min_value=2, max_value=5),
+        duplicate_index=st.integers(min_value=0, max_value=4),
+    )
+    def test_duplicate_detected_at_any_position(
+        self, attribute_count: int, duplicate_index: int
+    ) -> None:
+        """Property: Duplicate attribute detected regardless of position."""
+        if duplicate_index >= attribute_count:
+            duplicate_index = attribute_count - 1
+
+        event(f"attribute_count={attribute_count}")
+        event(f"duplicate_index={duplicate_index}")
+
+        attrs = [
+            f"    .attr{i} = Value {i}"
+            for i in range(attribute_count)
+        ]
+        attrs.append(f"    .attr{duplicate_index} = Duplicate")
+        ftl_source = "message = Test\n" + "\n".join(attrs)
+
+        result = validate_resource(ftl_source)
+
+        dup_warnings = [
+            w
+            for w in result.warnings
+            if w.code
+            == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+        ]
+        assert len(dup_warnings) >= 1
+        assert any(
+            f"attr{duplicate_index}" in w.message
+            for w in dup_warnings
+        )

@@ -542,7 +542,7 @@ button = Save
 
     def test_circular_reference_direct_check(self) -> None:
         """Resolver's circular reference detection via ResolutionContext."""
-        from ftllexengine.runtime.resolver import ResolutionContext  # noqa: PLC0415
+        from ftllexengine.runtime.resolution_context import ResolutionContext  # noqa: PLC0415
 
         # Create a simple message
         msg = Message(

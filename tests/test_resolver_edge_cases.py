@@ -13,7 +13,8 @@ import pytest
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
-from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
     Expression,
     Identifier,

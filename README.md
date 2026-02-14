@@ -18,27 +18,30 @@ RETRIEVAL_HINTS:
 
 # FTLLexEngine
 
-**Declarative localization for Python. Plurals, grammar, and formatting in `.ftl` files - not your code.**
+**Declarative localization for Python. Bidirectional parsing, thread-safe formatting, and Decimal precision -- in `.ftl` files, not your code.**
 
-"1 bag" or "500 bags" - simple in English. Polish has 4 plural forms. Arabic has 6. FTLLexEngine handles them all so your code stays clean.
+Meet **Alice** and **Bob**.
 
-But it goes further: **bidirectional parsing**. Your buyer in Hamburg types `"12.450,00 EUR"`. Your seller in Bogota types `"45.000.000 COP"`. FTLLexEngine parses both to `Decimal` with currency code. Parse errors return as structured data, not raised exceptions.
+**Alice** exports specialty coffee. Her invoices ship to buyers in Tokyo, Hamburg, and New York. Three languages, three currency formats, zero tolerance for rounding errors. "1 bag" in English, "1 Sack" in German, "1袋" in Japanese -- and Polish has four plural forms, Arabic has six. Her if-statements turned into spaghetti. Then she moved grammar rules to `.ftl` files and never looked back.
 
-Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe.
+**Bob** runs supply operations at Mars Colony 1. Personnel from Germany, Japan, and Colombia order provisions in their own locale. A German engineer types `"12.450,00 EUR"`. A Japanese technician enters `"￥1,245,000"`. Bob's system needs exact `Decimal` values from both. One parsing error on a cargo manifest means delayed shipments and cold brew for 200 colonists.
+
+FTLLexEngine keeps their systems coherent. Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe by default.
 
 ---
 
 ## Why FTLLexEngine?
 
-- **Bidirectional** - Format data for display *and* parse user input back to Python types
-- **Thread-safe** - No global state. Process 1000 concurrent trades without locale conflicts
-- **Strict mode** - Opt-in fail-fast. Errors raise exceptions, not silent `{$amount}` fallbacks
-- **Introspectable** - Query what variables a message needs before you call it
-- **Declarative grammar** - Plurals, gender, cases in `.ftl` files. Code stays clean
+- **Bidirectional** -- Format data for display *and* parse user input back to Python types
+- **Thread-safe** -- No global state. 100 concurrent requests, zero locale conflicts
+- **Strict mode** -- Opt-in fail-fast. Errors raise exceptions, not silent `{$amount}` fallbacks
+- **Introspectable** -- Query what variables a message needs before you call it
+- **Declarative grammar** -- Plurals, gender, cases in `.ftl` files. Code stays clean
+- **Decimal precision** -- `Decimal` throughout. No float math, no rounding surprises
 
 ---
 
-## Quickstart
+## Quick Start
 
 ```python
 from ftllexengine import FluentBundle
@@ -61,11 +64,20 @@ result, _ = bundle.format_pattern("shipment", {"bags": 500})
 from ftllexengine.parsing import parse_currency
 
 # German buyer enters a bid price
-amount, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
-# amount = (Decimal('12450.00'), 'EUR')
+result, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
+if not errors:
+    amount, currency = result  # (Decimal('12450.00'), 'EUR')
+```
 
-if errors:
-    print(errors[0])  # Structured error with input, locale, parse type
+```mermaid
+flowchart LR
+    A[Bob's Colonist<br/>Mars Colony 1] -- "12.450,00 EUR" --> B(FTLLexEngine<br/>Parser)
+    B -- "Decimal('12450.00')" --> C{Python<br/>Application}
+    C -- "Decimal('12450.00')" --> D(FTLLexEngine<br/>Formatter)
+    D -- "$12,450.00" --> E[Alice's Ledger<br/>Earth]
+
+    style B fill:#f9f,stroke:#333,stroke-width:2px
+    style D fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 ---
@@ -73,11 +85,12 @@ if errors:
 ## Table of Contents
 
 - [Installation](#installation)
-- [Your Operation Speaks Every Language](#your-operation-speaks-every-language)
-- [Buyers and Sellers Type Prices. You Get Decimals.](#buyers-and-sellers-type-prices-you-get-decimals)
-- [Concurrent Trades? No Problem.](#concurrent-trades-no-problem)
-- [Know What Your Messages Need](#know-what-your-messages-need)
-- [Your Operation Spans Continents](#your-operation-spans-continents)
+- [Alice Ships to Every Port on Two Planets](#alice-ships-to-every-port-on-two-planets)
+- [Bob Parses Every Input at Mars Colony 1](#bob-parses-every-input-at-mars-colony-1)
+- [Mission Control: 100 Threads, Zero Race Conditions](#mission-control-100-threads-zero-race-conditions)
+- [Pre-Flight Checks](#pre-flight-checks)
+- [Your Operation Spans Two Planets](#your-operation-spans-two-planets)
+- [Flight-Proven Engineering](#flight-proven-engineering)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -122,16 +135,18 @@ Or: `pip install ftllexengine`
 
 ---
 
-## Your Operation Speaks Every Language
+## Alice Ships to Every Port on Two Planets
 
-You export specialty coffee. Your invoices go to Tokyo, Hamburg, and New York. "500 bags" - simple in English. But your documents go global.
+Alice's invoices go to Tokyo, Hamburg, and New York. Same data, different languages, different number formats. She maintains one `.ftl` file per locale. Translators edit the files. Her trading platform ships features.
 
-**The problem:** Polish has four plural forms. Arabic has six. Your if-statements turn into spaghetti.
+**English (New York buyer):**
 
-**The solution:** Move grammar rules to `.ftl` files. Your code just passes data.
+```python
+from decimal import Decimal
+from ftllexengine import FluentBundle
 
-**invoice.ftl**
-```fluent
+bundle = FluentBundle("en_US")
+bundle.add_resource("""
 shipment-line = { $bags ->
     [0]     No bags shipped
     [one]   1 bag of { $origin } beans
@@ -139,15 +154,7 @@ shipment-line = { $bags ->
 }
 
 invoice-total = Total: { CURRENCY($amount, currency: "USD") }
-```
-
-```python
-from pathlib import Path
-from decimal import Decimal
-from ftllexengine import FluentBundle
-
-bundle = FluentBundle("en_US")
-bundle.add_resource(Path("invoice.ftl").read_text())
+""")
 
 result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
 # "500 bags of Colombian beans"
@@ -156,83 +163,79 @@ result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00
 # "Total: $187,500.00"
 ```
 
-Now add German - your Hamburg buyer needs invoices in their language:
+**German (Hamburg buyer):**
 
-**invoice_de.ftl**
-```fluent
+```python
+bundle_de = FluentBundle("de_DE")
+bundle_de.add_resource("""
 shipment-line = { $bags ->
-    [0]     Keine Säcke versandt
+    [0]     Keine Saecke versandt
     [one]   1 Sack { $origin } Bohnen
-   *[other] { $bags } Säcke { $origin } Bohnen
+   *[other] { $bags } Saecke { $origin } Bohnen
 }
 
 invoice-total = Gesamt: { CURRENCY($amount, currency: "EUR") }
+""")
+
+result, _ = bundle_de.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianische"})
+# "500 Saecke kolumbianische Bohnen"
+
+result, _ = bundle_de.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
+# "Gesamt: 187.500,00 €"  (CLDR: locale-specific symbol with non-breaking space)
 ```
+
+**Japanese (Tokyo buyer):**
 
 ```python
-bundle = FluentBundle("de_DE")
-bundle.add_resource(Path("invoice_de.ftl").read_text())
-
-result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianische"})
-# "500 Säcke kolumbianische Bohnen"
-
-result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
-# "Gesamt: 187.500,00\xa0€"  (CLDR uses non-breaking space U+00A0 before symbol)
-```
-
-Japanese for your Tokyo buyer:
-
-**invoice_ja.ftl**
-```fluent
+bundle_ja = FluentBundle("ja_JP")
+bundle_ja.add_resource("""
 shipment-line = { $bags ->
-    [0]     出荷なし
-   *[other] { $origin }豆 { $bags }袋
+    [0]     No shipment
+   *[other] { $origin } beans: { $bags } bags
 }
 
-invoice-total = 合計: { CURRENCY($amount, currency: "JPY") }
+invoice-total = Total: { CURRENCY($amount, currency: "JPY") }
+""")
+
+result, _ = bundle_ja.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
+# "Colombian beans: 500 bags"
+
+result, _ = bundle_ja.format_pattern("invoice-total", {"amount": Decimal("28125000")})
+# "Total: JPY 28,125,000"
 ```
 
-```python
-bundle = FluentBundle("ja_JP")
-bundle.add_resource(Path("invoice_ja.ftl").read_text())
+Bob uses the same pattern at Mars Colony 1. Spanish for the Colombian agronomists? Add one `.ftl` file. Zero code changes.
 
-result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "コロンビア"})
-# "コロンビア豆 500袋"
-
-result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("28125000")})
-# "合計: ￥28,125,000"
-```
-
-Spanish for your origin operations in Colombia - same pattern. Translators edit `.ftl` files. Your trading platform ships features.
+> In production, translators maintain separate `.ftl` files per locale. Your code loads them with `Path("invoice_de.ftl").read_text()`.
 
 ---
 
-## Buyers and Sellers Type Prices. You Get Decimals.
+## Bob Parses Every Input at Mars Colony 1
 
-A buyer in Germany enters their bid: `"12.450,00"`. A seller in Colombia enters their ask: `"45.000.000"`. Your system needs exact decimals for both.
+Most libraries only format outbound data. That's a one-way trip.
 
-Most libraries only format *outbound* - they turn your data into display strings. FTLLexEngine works *both directions*.
+Bob's colonists type orders and quantities in their local format. A German engineer enters `"12.450,00 EUR"`. A Colombian agronomist enters `"45.000.000 COP"`. A Japanese technician files a delivery date as `"2026年3月15日"`. FTLLexEngine parses them all to exact Python types.
 
 ```python
 from decimal import Decimal
 from ftllexengine.parsing import parse_currency, parse_decimal, parse_date
 
-# German buyer enters a bid in EUR
+# German engineer enters a bid in EUR
 bid_result, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
 if not errors:
     bid_amount, bid_currency = bid_result  # (Decimal('12450.00'), 'EUR')
 
-# Colombian seller enters an ask in COP
+# Colombian agronomist enters an ask in COP
 ask_result, errors = parse_currency("45.000.000 COP", "es_CO", default_currency="COP")
 if not errors:
     ask_amount, ask_currency = ask_result  # (Decimal('45000000'), 'COP')
 
-# Contract date from Japanese buyer
+# Japanese technician enters a delivery date
 contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 # datetime.date(2026, 3, 15)
 ```
 
-**When parsing fails, you get errors - not exceptions:**
+**When parsing fails, you get structured errors -- not exceptions:**
 
 ```python
 price, errors = parse_decimal("twelve thousand", "en_US")
@@ -244,9 +247,9 @@ if errors:
     print(err)  # "Failed to parse decimal 'twelve thousand' for locale 'en_US': ..."
 ```
 
-### Commodity Calculations Stay Exact
+### Decimal Precision
 
-You calculate contract values. Float math fails you: `0.1 + 0.2 = 0.30000000000000004`.
+Alice calculates contract values. Float math fails: `0.1 + 0.2 = 0.30000000000000004`.
 
 FTLLexEngine uses `Decimal` throughout:
 
@@ -266,9 +269,12 @@ if not errors:
     # Decimal('280500.00') - exact, every time
 ```
 
-### Strict Mode: No Silent Failures
+### No Silent Failures in Space
 
-Commodity trading cannot tolerate silent fallbacks. A missing variable returning `{$price}` instead of raising could display wrong data on a trade confirmation.
+> [!WARNING]
+> A missing variable normally returns a fallback string like `"Contract: 500 bags at {!CURRENCY}/lb"`. In financial systems or mission-critical operations, displaying this to a user is unacceptable.
+
+Enable `strict=True`. FTLLexEngine raises immediately -- no bad data reaches the user.
 
 ```python
 from decimal import Decimal
@@ -283,21 +289,20 @@ bundle.add_resource('confirm = Contract: { $bags } bags at { CURRENCY($price, cu
 result, _ = bundle.format_pattern("confirm", {"bags": 500, "price": Decimal("4.25")})
 # "Contract: 500 bags at $4.25/lb"
 
-# Missing variable? Raises immediately - no silent fallback
+# Missing variable? Raises immediately
 try:
     bundle.format_pattern("confirm", {"bags": 500})  # forgot $price
 except FormattingIntegrityError as e:
-    # e.message_id = "confirm"
+    print(f"HALT: {e.message_id} failed")
     # e.fallback_value = "Contract: 500 bags at {!CURRENCY}/lb"
     # e.fluent_errors = (FrozenFluentError(...),)
-    halt_trade(e)  # stop the trade, alert compliance
 ```
 
 ---
 
-## Concurrent Trades? No Problem.
+## Mission Control: 100 Threads, Zero Race Conditions
 
-Your trading desk gets busy. Bids from Frankfurt, asks from Bogota, confirmations to Tokyo - concurrent requests, each in a different locale.
+Alice's trading desk gets busy. Bids from Frankfurt, asks from Bogota, confirmations to Tokyo -- concurrent requests, each in a different locale. Bob's colony runs the same pattern: 200 settlers, simultaneous orders, mixed locales.
 
 **The problem:** Python's `locale` module uses global state. Thread A sets German, Thread B reads it, chaos ensues.
 
@@ -329,19 +334,21 @@ with ThreadPoolExecutor(max_workers=100) as executor:
         executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "lb"),
     ]
     confirmations = [f.result() for f in futures]
-    # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]
+    # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]  (CLDR locale symbols)
 ```
 
 `FluentBundle` is thread-safe by design:
 - Multiple threads can format messages simultaneously (read lock)
 - Adding resources or functions acquires exclusive access (write lock)
-- You don't manage any of this - it just works
+- You don't manage any of this -- it just works
 
 ---
 
-## Know What Your Messages Need
+## Pre-Flight Checks
 
-Your trading platform generates contract confirmations. Before it calls `format_pattern()`, it needs to know: *what variables does this message require?*
+Bob's systems generate cargo manifests. Before calling `format_pattern()`, they verify: *what variables does this message require? Are all of them available?*
+
+Alice's compliance team uses the same introspection to catch missing variables at build time, not during live operations.
 
 ```python
 from ftllexengine import FluentBundle
@@ -371,21 +378,19 @@ info.requires_variable("price")
 ```
 
 **Use cases:**
-- Trading systems verify all required data before generating confirmations
-- Form builders auto-generate input fields from contract templates
-- Compliance tools catch missing variables at build time, not during live trading
+- Verify all required data before generating manifests or confirmations
+- Auto-generate input fields from message templates
+- Catch missing variables at build time, not during live operations
 
 ---
 
-## Your Operation Spans Continents
+## Your Operation Spans Two Planets
 
-You source beans from Colombia, Ethiopia, and Brazil. You sell to importers in Japan, Germany, and the US. Each country uses different currencies. Each has different fiscal years for reporting.
+Alice sources beans from Colombia, Ethiopia, and Brazil. She sells to importers in Japan, Germany, and the US. Each country uses different currencies with different decimal places. Each has different fiscal years for compliance reporting.
 
-**The problem:** Japanese yen has no decimal places (no cents). Kuwaiti dinar has 3 decimal places. The UK fiscal year starts in April; Colombia's starts in January; Japan's corporate fiscal year often starts in April.
+Bob faces the same complexity on Mars: colony expenditures reported to three national space agencies, each with its own fiscal calendar.
 
-**The solution:** Query ISO standards data and calculate fiscal periods.
-
-### Which Currency for Each Market?
+### Currency Data
 
 ```python
 from ftllexengine.introspection.iso import get_territory_currencies, get_currency
@@ -409,9 +414,9 @@ panama_currencies = get_territory_currencies("PA")
 # ("PAB", "USD") - Panama uses both Balboa and US Dollar
 ```
 
-Your invoices format correctly - `￥28,125,000` in Tokyo, `$187,500.00` in New York.
+Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New York.
 
-### Quarterly Reports Across Jurisdictions
+### Fiscal Calendars
 
 ```python
 from datetime import date
@@ -442,7 +447,18 @@ uk_calendar.quarter_end_date(2026, 4)
 # date(2026, 3, 31)
 ```
 
-Your compliance team in London, New York, and Tokyo each see the correct fiscal periods for their jurisdiction.
+Alice's compliance team in London, New York, and Tokyo each see the correct fiscal periods for their jurisdiction. Bob reports colony expenditures on all three calendars simultaneously.
+
+---
+
+## Flight-Proven Engineering
+
+"Mission critical" is an engineering standard, not a marketing claim. FTLLexEngine is built to survive environments where you cannot restart the server.
+
+- **Property-Based Testing** -- Powered by Hypothesis. Roundtrip properties (`parse(format(x)) == x`) verified across thousands of locale and value combinations.
+- **Continuous Fuzzing** -- Atheris (libFuzzer) and HypoFuzz subject the parser to millions of random inputs per session. No panics, no hangs, no crashes.
+- **98%+ Branch Coverage** -- Every execution path is tested and illuminated.
+- **Immutable Error Data** -- `FrozenFluentError` instances are frozen dataclasses with BLAKE2b checksums. Errors cannot be silently modified after creation.
 
 ---
 
@@ -454,7 +470,7 @@ Your compliance team in London, New York, and Tokyo each see the correct fiscal 
 | :--- | :--- |
 | **Parsing user input** | Errors as data, not exceptions. Show helpful feedback. |
 | **Financial calculations** | `Decimal` precision. Strict mode available. |
-| **Trading systems** | Thread-safe. No global locale state. |
+| **Concurrent systems** | Thread-safe. No global locale state. |
 | **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
 | **Multi-locale apps** | 200+ locales. CLDR-compliant. |
 | **Multi-currency operations** | ISO 4217 data. Territory-to-currency mapping. Decimal places. |
@@ -498,3 +514,5 @@ MIT License - See [LICENSE](LICENSE).
 Implements the [Fluent Specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf) (Apache 2.0).
 
 **Legal**: [PATENTS.md](PATENTS.md) | [NOTICE](NOTICE)
+
+Alice ships invoices to three continents. Bob keeps a Mars colony fed. FTLLexEngine handles the localization so they can focus on the coffee.

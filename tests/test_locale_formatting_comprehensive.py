@@ -11,7 +11,7 @@ This ensures our claim of "30 locale support" is fully backed by tests.
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -307,6 +307,7 @@ class TestHypothesisLocaleFormatting:
     @settings(max_examples=200)
     def test_number_format_never_crashes(self, locale: str, number: float) -> None:
         """format_number() never crashes for any locale and number."""
+        event(f"locale={locale}")
         ctx = LocaleContext.create_or_raise(locale)
         result = ctx.format_number(number)
         assert isinstance(result, str)
@@ -322,6 +323,7 @@ class TestHypothesisLocaleFormatting:
         self, locale: str, year: int, month: int, day: int
     ) -> None:
         """format_datetime() never crashes for any locale and date."""
+        event(f"locale={locale}")
         ctx = LocaleContext.create_or_raise(locale)
         dt = datetime(year, month, day, tzinfo=UTC)
         result = ctx.format_datetime(dt)
@@ -337,6 +339,8 @@ class TestHypothesisLocaleFormatting:
         self, locale: str, amount: float, currency: str
     ) -> None:
         """format_currency() never crashes for any locale, amount, and currency."""
+        event(f"locale={locale}")
+        event(f"currency={currency}")
         ctx = LocaleContext.create_or_raise(locale)
         result = ctx.format_currency(amount, currency=currency)
         assert isinstance(result, str)
@@ -348,6 +352,7 @@ class TestHypothesisLocaleFormatting:
     @settings(max_examples=200)
     def test_plural_selection_never_crashes(self, locale: str, count: int) -> None:
         """Plural selection in FluentBundle never crashes for any locale."""
+        event(f"locale={locale}")
         bundle = FluentBundle(locale)
         bundle.add_resource("""
 items = { $count ->

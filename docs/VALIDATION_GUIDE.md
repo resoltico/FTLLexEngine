@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: validation
 updated: "2026-02-03"
 route:
@@ -253,7 +253,7 @@ Attempting to consolidate all checks into one validator would create a "god clas
 
 ## Integration with FluentBundle
 
-`FluentBundle.add_resource()` automatically validates during resource loading:
+`FluentBundle.add_resource()` automatically validates during FTL source loading:
 
 ```python
 from ftllexengine import FluentBundle

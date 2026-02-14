@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from .codes import Diagnostic
 
@@ -90,6 +90,8 @@ class DiagnosticFormatter:
                 return self._format_simple(diagnostic)
             case OutputFormat.JSON:
                 return self._format_json(diagnostic)
+            case _:
+                assert_never(self.output_format)
 
     def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:
         """Format multiple diagnostics.
@@ -168,12 +170,21 @@ class DiagnosticFormatter:
         Returns:
             Formatted error string with location and content
         """
-        # Access attributes safely for duck typing
-        code = getattr(error, "code", "UNKNOWN")
-        message = getattr(error, "message", str(error))
-        content = getattr(error, "content", None)
-        line = getattr(error, "line", None)
-        column = getattr(error, "column", None)
+        # Direct attribute access for known type; getattr fallback for duck typing
+        from .validation import ValidationError  # noqa: PLC0415
+
+        if isinstance(error, ValidationError):
+            code = error.code
+            message = error.message
+            content: str | None = error.content
+            line = error.line
+            column = error.column
+        else:
+            code = getattr(error, "code", "UNKNOWN")
+            message = getattr(error, "message", str(error))
+            content = getattr(error, "content", None)
+            line = getattr(error, "line", None)
+            column = getattr(error, "column", None)
 
         # Build location string
         location = ""
@@ -202,12 +213,21 @@ class DiagnosticFormatter:
         Returns:
             Formatted warning string with location and context
         """
-        # Access attributes safely for duck typing
-        code = getattr(warning, "code", "UNKNOWN")
-        message = getattr(warning, "message", str(warning))
-        context = getattr(warning, "context", None)
-        line = getattr(warning, "line", None)
-        column = getattr(warning, "column", None)
+        # Direct attribute access for known type; getattr fallback for duck typing
+        from .validation import ValidationWarning  # noqa: PLC0415
+
+        if isinstance(warning, ValidationWarning):
+            code = warning.code
+            message = warning.message
+            context = warning.context
+            line = warning.line
+            column = warning.column
+        else:
+            code = getattr(warning, "code", "UNKNOWN")
+            message = getattr(warning, "message", str(warning))
+            context = getattr(warning, "context", None)
+            line = getattr(warning, "line", None)
+            column = getattr(warning, "column", None)
 
         # Build location string
         location = ""
@@ -243,6 +263,21 @@ class DiagnosticFormatter:
             return f"[{code}]: {message} ({args_str})"
         return f"[{code}]: {message}"
 
+    def _severity_str(self, severity: str) -> str:
+        """Format severity label with optional ANSI color.
+
+        Args:
+            severity: "error" or "warning"
+
+        Returns:
+            Plain or ANSI-colored severity string
+        """
+        if not self.color:
+            return severity
+        if severity == "error":
+            return f"\033[1;31m{severity}\033[0m"  # Bold red
+        return f"\033[1;33m{severity}\033[0m"  # Bold yellow
+
     def _format_rust(self, diagnostic: Diagnostic) -> str:
         """Format diagnostic in Rust compiler style.
 
@@ -253,15 +288,7 @@ class DiagnosticFormatter:
               = note: see https://projectfluent.org/fluent/guide/messages.html
         """
         severity = diagnostic.severity if diagnostic.severity == "warning" else "error"
-
-        # Apply color if enabled
-        if self.color:
-            if severity == "error":
-                severity_str = f"\033[1;31m{severity}\033[0m"  # Bold red
-            else:
-                severity_str = f"\033[1;33m{severity}\033[0m"  # Bold yellow
-        else:
-            severity_str = severity
+        severity_str = self._severity_str(severity)
 
         # Escape control characters in all user-influenced fields to prevent
         # log injection (fake diagnostic lines via embedded newlines)
@@ -284,6 +311,12 @@ class DiagnosticFormatter:
 
         if diagnostic.received_type:
             parts.append(f"  = received: {self._escape_control_chars(diagnostic.received_type)}")
+
+        if diagnostic.resolution_path:
+            path_str = " -> ".join(diagnostic.resolution_path)
+            parts.append(
+                f"  = resolution path: {self._escape_control_chars(path_str)}"
+            )
 
         if diagnostic.hint:
             hint = self._escape_control_chars(self._maybe_sanitize(diagnostic.hint))
@@ -311,7 +344,7 @@ class DiagnosticFormatter:
         """
         import json  # noqa: PLC0415
 
-        data: dict[str, str | int | None] = {
+        data: dict[str, str | int | list[str] | None] = {
             "code": diagnostic.code.name,
             "code_value": diagnostic.code.value,
             "message": self._maybe_sanitize(diagnostic.message),
@@ -339,6 +372,9 @@ class DiagnosticFormatter:
 
         if diagnostic.received_type:
             data["received_type"] = diagnostic.received_type
+
+        if diagnostic.resolution_path:
+            data["resolution_path"] = list(diagnostic.resolution_path)
 
         if diagnostic.hint:
             data["hint"] = self._maybe_sanitize(diagnostic.hint)

@@ -6,10 +6,12 @@ Tests cover:
 - Type guards (is_valid_territory_code, is_valid_currency_code)
 - Cache behavior
 - Localization support
+- UnknownLocaleError import failure paths (defensive exception handling)
 """
 
+import builtins
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -1461,3 +1463,173 @@ class TestDefensiveExceptionPropagation:
             pytest.raises(_LocaleWordTestError),
         ):
             _get_babel_currency_symbol("USD", "en")
+
+
+class TestUnknownLocaleErrorImportFailure:
+    """Tests for UnknownLocaleError import failure paths.
+
+    These tests cover the edge case where:
+    1. Babel raises a non-standard exception (not in the caught set)
+    2. Attempting to import UnknownLocaleError fails with ImportError
+    3. The original exception should be re-raised
+    """
+
+    def test_currency_name_reraises_when_import_fails(self) -> None:
+        """_get_babel_currency_name re-raises when UnknownLocaleError import fails."""
+
+        class CustomBabelError(Exception):
+            """Custom exception to simulate unexpected Babel error."""
+
+        custom_exc = CustomBabelError("Unexpected Babel error")
+        mock_get_currency_name = MagicMock(side_effect=custom_exc)
+        original_import = builtins.__import__
+
+        def mock_import(
+            name: str,
+            globals_arg: dict[str, object] | None = None,
+            locals_arg: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name in ("babel", "babel.numbers"):
+                return original_import(
+                    name, globals_arg, locals_arg, fromlist, level
+                )
+            if name == "babel.core" and "UnknownLocaleError" in fromlist:
+                msg = "Cannot import UnknownLocaleError"
+                raise ImportError(msg)
+            return original_import(
+                name, globals_arg, locals_arg, fromlist, level
+            )
+
+        with (
+            patch(
+                "babel.numbers.get_currency_name",
+                mock_get_currency_name,
+            ),
+            patch("builtins.__import__", side_effect=mock_import),
+            pytest.raises(CustomBabelError) as exc_info,
+        ):
+            _get_babel_currency_name("USD", "en")
+
+        assert exc_info.value is custom_exc
+
+    def test_currency_symbol_reraises_when_import_fails(self) -> None:
+        """_get_babel_currency_symbol re-raises when UnknownLocaleError import fails."""
+
+        class CustomBabelError(Exception):
+            """Custom exception to simulate unexpected Babel error."""
+
+        custom_exc = CustomBabelError("Unexpected symbol error")
+        mock_get_currency_symbol = MagicMock(side_effect=custom_exc)
+        original_import = builtins.__import__
+
+        def mock_import(
+            name: str,
+            globals_arg: dict[str, object] | None = None,
+            locals_arg: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name == "babel.numbers":
+                return original_import(
+                    name, globals_arg, locals_arg, fromlist, level
+                )
+            if name == "babel.core" and "UnknownLocaleError" in fromlist:
+                msg = "Cannot import UnknownLocaleError"
+                raise ImportError(msg)
+            return original_import(
+                name, globals_arg, locals_arg, fromlist, level
+            )
+
+        with (
+            patch(
+                "babel.numbers.get_currency_symbol",
+                mock_get_currency_symbol,
+            ),
+            patch("builtins.__import__", side_effect=mock_import),
+            pytest.raises(CustomBabelError) as exc_info,
+        ):
+            _get_babel_currency_symbol("USD", "en")
+
+        assert exc_info.value is custom_exc
+
+    def test_currency_name_chained_exception_propagation(self) -> None:
+        """Exception propagation when UnknownLocaleError import fails."""
+
+        class UnexpectedError(Exception):
+            """Simulates an unexpected Babel exception."""
+
+        original_exc = UnexpectedError("Original error")
+        mock_get_currency_name = MagicMock(side_effect=original_exc)
+        original_import = builtins.__import__
+
+        def mock_import(
+            name: str,
+            globals_arg: dict[str, object] | None = None,
+            locals_arg: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name in ("babel", "babel.numbers"):
+                return original_import(
+                    name, globals_arg, locals_arg, fromlist, level
+                )
+            if name == "babel.core" and "UnknownLocaleError" in fromlist:
+                msg = "UnknownLocaleError unavailable"
+                raise ImportError(msg)
+            return original_import(
+                name, globals_arg, locals_arg, fromlist, level
+            )
+
+        with (
+            patch(
+                "babel.numbers.get_currency_name",
+                mock_get_currency_name,
+            ),
+            patch("builtins.__import__", side_effect=mock_import),
+            pytest.raises(UnexpectedError) as exc_info,
+        ):
+            _get_babel_currency_name("USD", "en")
+
+        assert exc_info.value is original_exc
+
+    def test_currency_symbol_chained_exception_propagation(self) -> None:
+        """Exception propagation when UnknownLocaleError import fails."""
+
+        class UnexpectedError(Exception):
+            """Simulates an unexpected Babel exception."""
+
+        original_exc = UnexpectedError("Original symbol error")
+        mock_get_currency_symbol = MagicMock(side_effect=original_exc)
+        original_import = builtins.__import__
+
+        def mock_import(
+            name: str,
+            globals_arg: dict[str, object] | None = None,
+            locals_arg: dict[str, object] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> object:
+            if name == "babel.numbers":
+                return original_import(
+                    name, globals_arg, locals_arg, fromlist, level
+                )
+            if name == "babel.core" and "UnknownLocaleError" in fromlist:
+                msg = "UnknownLocaleError unavailable"
+                raise ImportError(msg)
+            return original_import(
+                name, globals_arg, locals_arg, fromlist, level
+            )
+
+        with (
+            patch(
+                "babel.numbers.get_currency_symbol",
+                mock_get_currency_symbol,
+            ),
+            patch("builtins.__import__", side_effect=mock_import),
+            pytest.raises(UnexpectedError) as exc_info,
+        ):
+            _get_babel_currency_symbol("USD", "en")
+
+        assert exc_info.value is original_exc

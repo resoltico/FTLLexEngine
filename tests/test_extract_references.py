@@ -3,7 +3,7 @@
 Tests reference extraction for message and term dependency analysis.
 """
 
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.introspection import extract_references
@@ -191,6 +191,7 @@ class TestExtractReferencesProperties:
         assert isinstance(msg, Message)
 
         msg_refs, term_refs = extract_references(msg)
+        event(f"id_len={len(msg_id)}")
         assert msg_refs == frozenset()
         assert term_refs == frozenset()
 
@@ -207,6 +208,8 @@ class TestExtractReferencesProperties:
         assert isinstance(msg, Message)
 
         msg_refs, _ = extract_references(msg)
+        same = msg_id == ref_id
+        event(f"outcome={'self_ref' if same else 'cross_ref'}")
         assert ref_id in msg_refs
 
     @given(
@@ -222,4 +225,5 @@ class TestExtractReferencesProperties:
         assert isinstance(msg, Message)
 
         _, term_refs = extract_references(msg)
+        event(f"term_id_len={len(term_id)}")
         assert term_id in term_refs

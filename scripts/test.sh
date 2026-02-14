@@ -215,7 +215,15 @@ SKIPPED_OTHER=$(grep -o '\[SKIP-BREAKDOWN\] fuzz=[0-9]* other=[0-9]*' "$LOG_FILE
 # Pattern: "FAILED tests/test_module.py::test_case - ..."
 # We look for lines starting with FAILED (standard pytest without -p no:terminal might differ, but with -p no:terminal it's clean)
 # With -p no:terminal, output is simpler. "FAILED test_path::test_name"
-mapfile -t FAILED_TEST_LIST < <(grep -E "^FAILED " "$LOG_FILE" | cut -d' ' -f2 | sort -u)
+# Universal parsing: extract test IDs from output (handle spaces/quotes)
+# Support: "FAILED tests/test_foo.py::test_bar[param with spaces] - AssertionError: ..."
+# We look for "FAILED <id> - " and capture <id>.
+# Use Perl-compatible regex in grep if available, or just use sed to strip the prefix and suffix.
+# Sed logic:
+# 1. s/^FAILED //  -> Remove leading FAILED
+# 2. s/ - .*//     -> Remove trailing " - <Error>"
+# 3. s/ FAILED.*// -> Remove trailing " FAILED" (verbose mode)
+mapfile -t FAILED_TEST_LIST < <(grep -E "^FAILED | FAILED " "$LOG_FILE" | sed -E 's/^FAILED //' | sed -E 's/ - .*//' | sed -E 's/ FAILED.*//' | sort -u)
 
 # Hypothesis Check
 if grep -q "Falsifying example" "$LOG_FILE"; then
@@ -251,29 +259,43 @@ fi
 
 # [SECTION: REPORT]
 # JSON Summary
+# JSON Summary
 log_group_start "Final Report"
 echo "[SUMMARY-JSON-BEGIN]"
-printf "{"
-printf "\"result\":\"%s\"," "$([[ $EXIT_CODE -eq 0 ]] && echo pass || echo fail)"
-printf "\"duration_sec\":\"%s\"," "$DURATION"
-printf "\"tests_passed\":\"%s\"," "$TESTS_PASSED"
-printf "\"tests_failed\":\"%s\"," "$TESTS_FAILED"
-printf "\"tests_skipped\":\"%s\"," "$TESTS_SKIPPED"
-printf "\"skipped_fuzz\":\"%s\"," "$SKIPPED_FUZZ"
-printf "\"skipped_other\":\"%s\"," "$SKIPPED_OTHER"
-printf "\"coverage_pct\":\"%s\"," "$COVERAGE_PCT"
-printf "\"hypothesis_fail\":\"%s\"," "$HYPOTHESIS_FAILURE"
-# Failed Tests Array
-printf "\"failed_tests\":["
-item_first=1
-for item in "${FAILED_TEST_LIST[@]}"; do
-    [[ $item_first -eq 0 ]] && printf ","
-    printf "\"%s\"" "$item"
-    item_first=0
-done
-printf "]"
+PYTHON_JSON_SCRIPT="
+import json, sys, os
 
-printf ",\"exit_code\":%d}\n" "$EXIT_CODE"
+try:
+    with open(sys.argv[1], 'r') as f:
+        failed_tests = sorted(list(set(line.strip() for line in f if line.strip())))
+except FileNotFoundError:
+    failed_tests = []
+
+final_obj = {
+    'result': 'pass' if int(sys.argv[2]) == 0 else 'fail',
+    'duration_sec': sys.argv[3],
+    'tests_passed': int(sys.argv[4]),
+    'tests_failed': int(sys.argv[5]),
+    'tests_skipped': int(sys.argv[6]),
+    'skipped_fuzz': int(sys.argv[7]),
+    'skipped_other': int(sys.argv[8]),
+    'coverage_pct': float(sys.argv[9]),
+    'hypothesis_fail': sys.argv[10].lower() == 'true',
+    'failed_tests': failed_tests,
+    'exit_code': int(sys.argv[2])
+}
+
+print(json.dumps(final_obj, separators=(',', ':')))
+"
+
+# Dump failed tests to a temp file for Python to read
+FAILED_TESTS_FILE=$(mktemp)
+for item in "${FAILED_TEST_LIST[@]}"; do
+    echo "$item" >> "$FAILED_TESTS_FILE"
+done
+
+python3 -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE"
+rm -f "$FAILED_TESTS_FILE"
 echo "[SUMMARY-JSON-END]"
 
 # Debug Suggestions

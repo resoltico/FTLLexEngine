@@ -78,7 +78,7 @@ if TYPE_CHECKING:
     # Type hints only - not imported at runtime to avoid Babel dependency
     from .localization import FluentLocalization as FluentLocalizationType
     from .runtime import FluentBundle as FluentBundleType
-    from .runtime.function_bridge import FluentValue as FluentValueType
+    from .runtime.value_types import FluentValue as FluentValueType
 
 # Lazy-loaded attributes that require Babel for CLDR locale data
 _BABEL_REQUIRED_ATTRS = frozenset({
@@ -111,7 +111,7 @@ def __getattr__(name: str) -> object:
             return _lazy_cache[name]
 
         if name == "FluentValue":
-            from .runtime.function_bridge import FluentValue
+            from .runtime.value_types import FluentValue
 
             _lazy_cache[name] = FluentValue
             return FluentValue

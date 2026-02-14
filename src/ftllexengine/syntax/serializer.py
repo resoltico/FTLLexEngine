@@ -199,7 +199,7 @@ def _validate_call_arguments(
         # No need to recursively validate StringLiteral/NumberLiteral (they have no sub-expressions)
 
 
-def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:  # noqa: PLR0912
+def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:
     """Validate an Expression recursively.
 
     Args:
@@ -236,8 +236,7 @@ def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard
                 _validate_call_arguments(expr.arguments, context, depth_guard)
         case FunctionReference():
             _validate_identifier(expr.id, f"{context}, function reference")
-            if expr.arguments:
-                _validate_call_arguments(expr.arguments, context, depth_guard)
+            _validate_call_arguments(expr.arguments, context, depth_guard)
         case _:
             pass  # Other expressions (NumberLiteral, StringLiteral) don't need validation
 
@@ -888,6 +887,8 @@ class FluentSerializer(ASTVisitor):
                     output.append(name)
                 case NumberLiteral(raw=raw):
                     output.append(raw)
+                case _ as unreachable:  # pragma: no cover
+                    assert_never(unreachable)
 
             output.append("] ")
             self._serialize_pattern(variant.value, output, depth_guard)

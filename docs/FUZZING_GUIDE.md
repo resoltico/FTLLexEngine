@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.104.0"
+version: "0.107.0"
 domain: fuzzing
 updated: "2026-02-10"
 route:

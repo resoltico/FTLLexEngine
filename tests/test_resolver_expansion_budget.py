@@ -23,7 +23,8 @@ sys.path.insert(0, "src")
 
 from ftllexengine.diagnostics import DiagnosticCode, ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax import (
     CallArguments,
     FunctionReference,

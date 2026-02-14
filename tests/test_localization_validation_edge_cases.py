@@ -1,6 +1,6 @@
 """Validation and edge case tests for localization.py.
 
-Tests validation logic and edge cases in localization module:
+Unit tests and unique property tests for localization module:
 - LoadSummary junk entry handling
 - PathResourceLoader whitespace validation for resource IDs
 - FluentLocalization whitespace validation for locales
@@ -8,7 +8,9 @@ Tests validation logic and edge cases in localization module:
 - ResourceLoadResult property methods
 - FluentLocalization auxiliary methods (repr, cache, bundles, etc.)
 
-Uses hypothesis property-based testing for thorough validation.
+Property tests that overlap with test_localization_property.py (the fuzz
+module) are deliberately omitted here; only properties unique to this
+file are retained (format_pattern invalid args, get_bundles laziness).
 
 Python 3.13+.
 """
@@ -18,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.localization import (
@@ -70,31 +72,11 @@ def message_identifiers(draw: st.DrawFn) -> str:
     return first_char + rest_chars
 
 
-@st.composite
-def whitespace_padded_strings(draw: st.DrawFn) -> str:
-    """Generate strings with leading/trailing whitespace."""
-    base = draw(st.text(min_size=1, max_size=10, alphabet=st.characters(
-        whitelist_categories=("L", "N")
-    )))
-    whitespace = draw(st.sampled_from([" ", "\t", "\n", "\r", "  ", "\t\t"]))
-    position = draw(st.sampled_from(["leading", "trailing", "both"]))
-
-    match position:
-        case "leading":
-            return whitespace + base
-        case "trailing":
-            return base + whitespace
-        case "both":
-            return whitespace + base + whitespace
-        case _:
-            return base
-
-
 class TestLoadSummaryAllCleanProperty:
     """Test LoadSummary.all_clean property with junk entries."""
 
     def test_all_clean_false_with_junk_entries(self) -> None:
-        """all_clean returns False when junk_count > 0 (line 252)."""
+        """all_clean returns False when junk_count > 0."""
         # Create Junk entry for testing
         junk_entry = Junk(content="invalid content", span=Span(start=0, end=15))
 
@@ -113,27 +95,6 @@ class TestLoadSummaryAllCleanProperty:
         assert summary.has_junk is True
         assert summary.junk_count == 1
         assert summary.all_clean is False  # Line 252: junk_count > 0
-
-    @given(junk_count=st.integers(min_value=1, max_value=10))
-    def test_all_clean_false_with_multiple_junk(self, junk_count: int) -> None:
-        """all_clean is False when any resource has junk (property test)."""
-        junk_entries = tuple(
-            Junk(content=f"invalid {i}", span=Span(start=i * 10, end=i * 10 + 9))
-            for i in range(junk_count)
-        )
-
-        result = ResourceLoadResult(
-            locale="en",
-            resource_id="test.ftl",
-            status=LoadStatus.SUCCESS,
-            junk_entries=junk_entries,
-        )
-
-        summary = LoadSummary(results=(result,))
-
-        assert summary.all_successful is True
-        assert summary.all_clean is False  # Has junk
-        assert summary.junk_count == junk_count
 
     def test_all_clean_true_when_no_junk(self) -> None:
         """all_clean is True when all successful and no junk."""
@@ -154,20 +115,8 @@ class TestLoadSummaryAllCleanProperty:
 class TestPathResourceLoaderWhitespaceValidation:
     """Test PathResourceLoader._validate_resource_id whitespace handling."""
 
-    @given(resource_id=whitespace_padded_strings())
-    def test_resource_id_with_whitespace_raises_valueerror(
-        self, resource_id: str
-    ) -> None:
-        """Resource ID with leading/trailing whitespace raises ValueError (lines 418-422)."""
-        # Only test if whitespace is actually present
-        if resource_id != resource_id.strip():
-            loader = PathResourceLoader("locales/{locale}")
-
-            with pytest.raises(ValueError, match="leading/trailing whitespace"):
-                loader.load("en", resource_id)
-
     def test_resource_id_leading_space_explicit(self) -> None:
-        """Resource ID with leading space raises ValueError (line 418-422)."""
+        """Resource ID with leading space raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
         with pytest.raises(
@@ -180,7 +129,7 @@ class TestPathResourceLoaderWhitespaceValidation:
         assert "'test.ftl'" in str(exc_info.value)
 
     def test_resource_id_trailing_space_explicit(self) -> None:
-        """Resource ID with trailing space raises ValueError (line 418-422)."""
+        """Resource ID with trailing space raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
         with pytest.raises(
@@ -216,27 +165,6 @@ class TestPathResourceLoaderWhitespaceValidation:
 
 class TestFluentLocalizationAddResourceWhitespaceValidation:
     """Test FluentLocalization.add_resource locale whitespace validation."""
-
-    @given(
-        base_locale=locale_codes(),
-        whitespace=st.sampled_from([" ", "\t", "\n"]),
-        position=st.sampled_from(["leading", "trailing"]),
-    )
-    def test_add_resource_locale_with_whitespace_raises(
-        self, base_locale: str, whitespace: str, position: str
-    ) -> None:
-        """add_resource with whitespace in locale raises ValueError (lines 821-825)."""
-        # Construct locale with whitespace
-        locale_with_ws = (
-            whitespace + base_locale
-            if position == "leading"
-            else base_locale + whitespace
-        )
-
-        l10n = FluentLocalization([base_locale])
-
-        with pytest.raises(ValueError, match="leading/trailing whitespace"):
-            l10n.add_resource(locale_with_ws, "msg = test")
 
     def test_add_resource_locale_leading_space_explicit(self) -> None:
         """add_resource with leading space in locale raises ValueError."""
@@ -277,39 +205,8 @@ class TestFluentLocalizationAddResourceWhitespaceValidation:
 class TestFormatValueInvalidArgsTypeValidation:
     """Test FluentLocalization.format_value with invalid args type."""
 
-    @given(
-        locale=locale_codes(),
-        message_id=message_identifiers(),
-        invalid_args=st.one_of(
-            st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
-            st.text(min_size=1, max_size=10),
-            st.lists(st.integers()),
-            st.booleans(),
-        ),
-    )
-    def test_format_value_invalid_args_type_returns_error(
-        self,
-        locale: str,
-        message_id: str,
-        invalid_args: int | float | str | list[int] | bool,
-    ) -> None:
-        """format_value with non-Mapping args returns error (lines 895-900)."""
-        l10n = FluentLocalization([locale])
-        l10n.add_resource(locale, f"{message_id} = test")
-
-        # Call with invalid args type (not Mapping)
-        result, errors = l10n.format_value(
-            message_id, invalid_args  # type: ignore[arg-type]
-        )
-
-        # Should return fallback and error
-        assert result == "{???}"
-        assert len(errors) > 0
-        assert "Invalid args type" in str(errors[0])
-
     def test_format_value_list_args_explicit(self) -> None:
-        """format_value with list args returns error (line 895-900 explicit)."""
+        """format_value with list args returns error."""
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "msg = test")
 
@@ -355,9 +252,13 @@ class TestFormatPatternInvalidArgsTypeValidation:
         ),
     )
     def test_format_pattern_invalid_args_type_returns_error(
-        self, locale: str, message_id: str, invalid_args: int | float | str | list[int]
+        self,
+        locale: str,
+        message_id: str,
+        invalid_args: int | float | str | list[int],
     ) -> None:
-        """format_pattern with non-Mapping args returns error (lines 981-986)."""
+        """format_pattern with non-Mapping args returns error."""
+        event(f"args_type={type(invalid_args).__name__}")
         l10n = FluentLocalization([locale])
         l10n.add_resource(locale, f"{message_id} = test")
 
@@ -368,7 +269,7 @@ class TestFormatPatternInvalidArgsTypeValidation:
         assert "Invalid args type" in str(errors[0])
 
     def test_format_pattern_list_args_explicit(self) -> None:
-        """format_pattern with list args returns error (line 981-986 explicit)."""
+        """format_pattern with list args returns error."""
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "msg = test")
 
@@ -382,33 +283,8 @@ class TestFormatPatternInvalidArgsTypeValidation:
 class TestFormatPatternInvalidAttributeTypeValidation:
     """Test FluentLocalization.format_pattern with invalid attribute type."""
 
-    @given(
-        locale=locale_codes(),
-        message_id=message_identifiers(),
-        invalid_attr=st.one_of(
-            st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
-            st.lists(st.text(min_size=1, max_size=5)),
-            st.dictionaries(st.text(min_size=1, max_size=5), st.integers()),
-        ),
-    )
-    def test_format_pattern_invalid_attribute_type_returns_error(
-        self, locale: str, message_id: str, invalid_attr: int | float | list[str] | dict[str, int]
-    ) -> None:
-        """format_pattern with non-str attribute returns error (lines 990-996)."""
-        l10n = FluentLocalization([locale])
-        l10n.add_resource(locale, f"{message_id} = test\n  .attr = value")
-
-        result, errors = l10n.format_pattern(
-            message_id, None, attribute=invalid_attr  # type: ignore[arg-type]
-        )
-
-        assert result == "{???}"
-        assert len(errors) > 0
-        assert "Invalid attribute type" in str(errors[0])
-
     def test_format_pattern_int_attribute_explicit(self) -> None:
-        """format_pattern with int attribute returns error (line 990-996 explicit)."""
+        """format_pattern with int attribute returns error."""
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "msg = test\n  .attr = value")
 
@@ -589,16 +465,6 @@ class TestFluentLocalizationReprMethod:
         assert "locales=('en', 'de', 'fr')" in repr_str
         assert "bundles=" in repr_str
 
-    @given(locales=st.lists(locale_codes(), min_size=1, max_size=5, unique=True))
-    def test_repr_format_invariant(self, locales: list[str]) -> None:
-        """__repr__ always includes locales and bundle count (invariant)."""
-        l10n = FluentLocalization(locales)
-        repr_str = repr(l10n)
-
-        assert "FluentLocalization" in repr_str
-        assert "locales=" in repr_str
-        assert "bundles=" in repr_str
-
 
 class TestFluentLocalizationGetBundlesGenerator:
     """Test FluentLocalization.get_bundles generator method."""
@@ -614,16 +480,21 @@ class TestFluentLocalizationGetBundlesGenerator:
         assert bundles[1].get_babel_locale() == "de"
         assert bundles[2].get_babel_locale() == "fr"
 
-    @given(locales=st.lists(locale_codes(), min_size=1, max_size=5, unique=True))
-    def test_get_bundles_creates_lazily(self, locales: list[str]) -> None:
+    @given(
+        locales=st.lists(
+            locale_codes(), min_size=1, max_size=5, unique=True
+        )
+    )
+    def test_get_bundles_creates_lazily(
+        self, locales: list[str]
+    ) -> None:
         """get_bundles creates bundles lazily if not already created."""
+        event(f"locale_count={len(locales)}")
         l10n = FluentLocalization(locales)
 
-        # Call get_bundles - should create all bundles
         bundles = list(l10n.get_bundles())
 
         assert len(bundles) == len(locales)
-        # All bundles should now be cached
         assert len(bundles) == len(l10n._bundles)
 
 

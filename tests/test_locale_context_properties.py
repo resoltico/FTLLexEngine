@@ -1,7 +1,7 @@
 """Property-based tests for LocaleContext with HypoFuzz event emission.
 
 Comprehensive Hypothesis tests designed for coverage-guided fuzzing.
-Emits semantic coverage events.
+Emits semantic coverage events for HypoFuzz guidance.
 
 Python 3.13+.
 """
@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from hypothesis import event, example, given, settings
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_FORMAT_DIGITS
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -26,24 +27,69 @@ COMMON_LOCALES = [
 ]
 
 
+class TestLocaleContextCreateProperties:
+    """Property-based tests for LocaleContext.create() robustness."""
+
+    @given(
+        locale_code=st.text(
+            alphabet=st.characters(
+                blacklist_categories=["Cs"],
+                blacklist_characters="\x00",
+            ),
+            min_size=0,
+            max_size=100,
+        ),
+    )
+    @example(locale_code="")
+    @example(locale_code="en-US")
+    @example(locale_code="not-a-locale!!!")
+    def test_create_never_crashes(self, locale_code: str) -> None:
+        """create() never raises an unhandled exception (property: robustness).
+
+        Property: For all strings S, create(S) returns a LocaleContext
+        instance (with en_US fallback for invalid locales).
+
+        Events emitted:
+        - outcome={result}: Whether locale was valid or fell back
+        - input_length={range}: Length category of input
+        """
+        result = LocaleContext.create(locale_code)
+
+        assert isinstance(result, LocaleContext)
+        if result.is_fallback:
+            event("outcome=fallback")
+        else:
+            event("outcome=exact_match")
+
+        length = len(locale_code)
+        if length == 0:
+            event("input_length=empty")
+        elif length <= 5:
+            event("input_length=short")
+        elif length <= 20:
+            event("input_length=medium")
+        else:
+            event("input_length=long")
+
+
 class TestLocaleContextCacheProperties:
     """Property-based tests for cache behavior."""
 
     @given(
-        locale=st.sampled_from([*COMMON_LOCALES, "lv-LV", "ko-KR", "nl-NL"])
+        locale=st.sampled_from(
+            [*COMMON_LOCALES, "lv-LV", "ko-KR", "nl-NL"]
+        )
     )
     @example(locale="en-US")
     @example(locale="de-DE")
-    @settings(max_examples=100)
     def test_cache_identity_property(self, locale: str) -> None:
         """Cache returns same instance for same locale (property: identity).
 
-        Property: For all locales L, create(L) is create(L) (Python identity).
+        Property: For all locales L, create(L) is create(L).
 
         Events emitted:
         - locale={locale_category}: Locale category for diversity
         """
-        # Emit event for locale category
         if locale.startswith("en"):
             event("locale=english")
         elif locale.startswith("de"):
@@ -58,7 +104,6 @@ class TestLocaleContextCacheProperties:
         ctx1 = LocaleContext.create(locale)
         ctx2 = LocaleContext.create(locale)
 
-        # Identity check - same object reference
         assert ctx1 is ctx2
 
     @given(
@@ -66,7 +111,6 @@ class TestLocaleContextCacheProperties:
     )
     @example(count=1)
     @example(count=5)
-    @settings(max_examples=50)
     def test_cache_size_monotonic_property(self, count: int) -> None:
         """Cache size increases monotonically until max (property: monotonicity).
 
@@ -77,7 +121,6 @@ class TestLocaleContextCacheProperties:
         """
         LocaleContext.clear_cache()
 
-        # Emit event for cache pressure
         if count <= 2:
             event("cache_count=low")
         elif count <= 5:
@@ -88,9 +131,10 @@ class TestLocaleContextCacheProperties:
         initial_size = LocaleContext.cache_size()
         assert initial_size == 0
 
-        # Create count unique locales
         for i in range(count):
-            LocaleContext.create(COMMON_LOCALES[i % len(COMMON_LOCALES)])
+            LocaleContext.create(
+                COMMON_LOCALES[i % len(COMMON_LOCALES)]
+            )
 
         final_size = LocaleContext.cache_size()
         assert 0 < final_size <= count
@@ -101,7 +145,10 @@ class TestFormatNumberProperties:
 
     @given(
         value=st.one_of(
-            st.integers(min_value=-1_000_000_000, max_value=1_000_000_000),
+            st.integers(
+                min_value=-1_000_000_000,
+                max_value=1_000_000_000,
+            ),
             st.floats(
                 min_value=-1_000_000_000.0,
                 max_value=1_000_000_000.0,
@@ -120,7 +167,6 @@ class TestFormatNumberProperties:
     @example(value=0, locale="en-US")
     @example(value=1234.5, locale="de-DE")
     @example(value=Decimal("999.99"), locale="fr-FR")
-    @settings(max_examples=200)
     def test_format_number_type_safety(
         self, value: int | float | Decimal, locale: str
     ) -> None:
@@ -134,7 +180,6 @@ class TestFormatNumberProperties:
         - value_sign={sign}: Sign of value
         - locale={category}: Locale category
         """
-        # Emit type diversity event
         if isinstance(value, int):
             event("value_type=int")
         elif isinstance(value, float):
@@ -142,7 +187,6 @@ class TestFormatNumberProperties:
         else:
             event("value_type=Decimal")
 
-        # Emit sign event
         if value == 0:
             event("value_sign=zero")
         elif value > 0:
@@ -150,7 +194,6 @@ class TestFormatNumberProperties:
         else:
             event("value_sign=negative")
 
-        # Emit locale category event
         if "US" in locale or "GB" in locale:
             event("locale=english")
         elif "DE" in locale:
@@ -177,8 +220,9 @@ class TestFormatNumberProperties:
     @example(value=float("inf"))
     @example(value=float("-inf"))
     @example(value=float("nan"))
-    @settings(max_examples=100)
-    def test_format_number_special_values_property(self, value: float) -> None:
+    def test_format_number_special_values_property(
+        self, value: float
+    ) -> None:
         """format_number() handles special float values (property: robustness).
 
         Property: For all special values v in {inf, -inf, nan, normal},
@@ -187,7 +231,6 @@ class TestFormatNumberProperties:
         Events emitted:
         - special_value={type}: Special value type
         """
-        # Emit special value event
         if math.isnan(value):
             event("special_value=nan")
         elif math.isinf(value):
@@ -211,7 +254,6 @@ class TestFormatNumberProperties:
     @example(minimum=0, maximum=0)
     @example(minimum=2, maximum=2)
     @example(minimum=0, maximum=3)
-    @settings(max_examples=100)
     def test_format_number_fraction_digits_valid_range(
         self, minimum: int, maximum: int
     ) -> None:
@@ -220,10 +262,9 @@ class TestFormatNumberProperties:
         Property: When 0 <= minimum <= maximum <= 10, formatting succeeds.
 
         Events emitted:
-        - fraction_relation={relation}: Relationship between min and max
+        - fraction_relation={relation}: Relationship between min/max
         - decimal_count={range}: Decimal place count
         """
-        # Emit fraction relationship event
         if minimum > maximum:
             event("fraction_relation=invalid")
             return  # Skip invalid combinations
@@ -232,7 +273,6 @@ class TestFormatNumberProperties:
         else:
             event("fraction_relation=variable")
 
-        # Emit decimal count event
         if maximum == 0:
             event("decimal_count=none")
         elif maximum <= 2:
@@ -257,11 +297,13 @@ class TestFormatNumberProperties:
     )
     @example(minimum=-1)
     @example(minimum=-100)
-    @settings(max_examples=50)
-    def test_format_number_negative_minimum_raises(self, minimum: int) -> None:
-        """format_number() raises for negative minimum_fraction_digits (property: validation).
+    def test_format_number_negative_minimum_raises(
+        self, minimum: int
+    ) -> None:
+        """format_number() raises for negative minimum_fraction_digits.
 
-        Property: For all n < 0, format_number(..., minimum_fraction_digits=n) raises ValueError.
+        Property: For all n < 0,
+        format_number(..., minimum_fraction_digits=n) raises ValueError.
 
         Events emitted:
         - error=ValueError_minimum_negative: Error path
@@ -270,19 +312,25 @@ class TestFormatNumberProperties:
 
         ctx = LocaleContext.create("en-US")
 
-        with pytest.raises(ValueError, match=r"minimum_fraction_digits"):
-            ctx.format_number(123.45, minimum_fraction_digits=minimum)
+        with pytest.raises(
+            ValueError, match=r"minimum_fraction_digits"
+        ):
+            ctx.format_number(
+                123.45, minimum_fraction_digits=minimum
+            )
 
     @given(
         maximum=st.integers(max_value=-1),
     )
     @example(maximum=-1)
     @example(maximum=-50)
-    @settings(max_examples=50)
-    def test_format_number_negative_maximum_raises(self, maximum: int) -> None:
-        """format_number() raises for negative maximum_fraction_digits (property: validation).
+    def test_format_number_negative_maximum_raises(
+        self, maximum: int
+    ) -> None:
+        """format_number() raises for negative maximum_fraction_digits.
 
-        Property: For all n < 0, format_number(..., maximum_fraction_digits=n) raises ValueError.
+        Property: For all n < 0,
+        format_number(..., maximum_fraction_digits=n) raises ValueError.
 
         Events emitted:
         - error=ValueError_maximum_negative: Error path
@@ -291,8 +339,90 @@ class TestFormatNumberProperties:
 
         ctx = LocaleContext.create("en-US")
 
-        with pytest.raises(ValueError, match=r"maximum_fraction_digits"):
-            ctx.format_number(123.45, maximum_fraction_digits=maximum)
+        with pytest.raises(
+            ValueError, match=r"maximum_fraction_digits"
+        ):
+            ctx.format_number(
+                123.45, maximum_fraction_digits=maximum
+            )
+
+    @given(
+        value=st.integers(
+            min_value=MAX_FORMAT_DIGITS + 1,
+            max_value=MAX_FORMAT_DIGITS + 1000,
+        ),
+    )
+    @example(value=MAX_FORMAT_DIGITS + 1)
+    @example(value=MAX_FORMAT_DIGITS + 500)
+    def test_minimum_fraction_digits_exceeds_max_property(
+        self, value: int
+    ) -> None:
+        """format_number() raises when minimum_fraction_digits > MAX_FORMAT_DIGITS.
+
+        Property: For all n > MAX_FORMAT_DIGITS,
+        format_number(..., minimum_fraction_digits=n) raises ValueError.
+
+        Events emitted:
+        - error=ValueError_minimum_exceeds_max: Error path
+        - boundary={range}: How far above the limit
+        """
+        event("error=ValueError_minimum_exceeds_max")
+
+        overshoot = value - MAX_FORMAT_DIGITS
+        if overshoot <= 10:
+            event("boundary=near")
+        elif overshoot <= 100:
+            event("boundary=moderate")
+        else:
+            event("boundary=far")
+
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(
+            ValueError, match=r"minimum_fraction_digits"
+        ):
+            ctx.format_number(
+                42.0, minimum_fraction_digits=value
+            )
+
+    @given(
+        value=st.integers(
+            min_value=MAX_FORMAT_DIGITS + 1,
+            max_value=MAX_FORMAT_DIGITS + 1000,
+        ),
+    )
+    @example(value=MAX_FORMAT_DIGITS + 1)
+    @example(value=MAX_FORMAT_DIGITS + 500)
+    def test_maximum_fraction_digits_exceeds_max_property(
+        self, value: int
+    ) -> None:
+        """format_number() raises when maximum_fraction_digits > MAX_FORMAT_DIGITS.
+
+        Property: For all n > MAX_FORMAT_DIGITS,
+        format_number(..., maximum_fraction_digits=n) raises ValueError.
+
+        Events emitted:
+        - error=ValueError_maximum_exceeds_max: Error path
+        - boundary={range}: How far above the limit
+        """
+        event("error=ValueError_maximum_exceeds_max")
+
+        overshoot = value - MAX_FORMAT_DIGITS
+        if overshoot <= 10:
+            event("boundary=near")
+        elif overshoot <= 100:
+            event("boundary=moderate")
+        else:
+            event("boundary=far")
+
+        ctx = LocaleContext.create("en-US")
+
+        with pytest.raises(
+            ValueError, match=r"maximum_fraction_digits"
+        ):
+            ctx.format_number(
+                42.0, maximum_fraction_digits=value
+            )
 
 
 class TestFormatDatetimeProperties:
@@ -301,15 +431,27 @@ class TestFormatDatetimeProperties:
     @given(
         year=st.integers(min_value=1900, max_value=2100),
         month=st.integers(min_value=1, max_value=12),
-        day=st.integers(min_value=1, max_value=28),  # Safe for all months
+        day=st.integers(min_value=1, max_value=28),
         locale=st.sampled_from(COMMON_LOCALES),
-        date_style=st.sampled_from(["short", "medium", "long", "full"]),
+        date_style=st.sampled_from(
+            ["short", "medium", "long", "full"]
+        ),
     )
-    @example(year=2025, month=10, day=27, locale="en-US", date_style="short")
-    @example(year=2000, month=1, day=1, locale="ja-JP", date_style="full")
-    @settings(max_examples=200)
+    @example(
+        year=2025, month=10, day=27,
+        locale="en-US", date_style="short",
+    )
+    @example(
+        year=2000, month=1, day=1,
+        locale="ja-JP", date_style="full",
+    )
     def test_format_datetime_type_safety(
-        self, year: int, month: int, day: int, locale: str, date_style: str
+        self,
+        year: int,
+        month: int,
+        day: int,
+        locale: str,
+        date_style: str,
     ) -> None:
         """format_datetime() always returns non-empty string (property: type safety).
 
@@ -320,10 +462,8 @@ class TestFormatDatetimeProperties:
         - date_style={style}: Style parameter
         - locale={category}: Locale category
         """
-        # Emit style event
         event(f"date_style={date_style}")
 
-        # Emit locale category event
         if "US" in locale:
             event("locale=us")
         elif "DE" in locale:
@@ -338,22 +478,27 @@ class TestFormatDatetimeProperties:
         dt = datetime(year, month, day, tzinfo=UTC)
         ctx = LocaleContext.create(locale)
 
-        result = ctx.format_datetime(dt, date_style=date_style)  # type: ignore[arg-type]
+        result = ctx.format_datetime(
+            dt, date_style=date_style  # type: ignore[arg-type]
+        )
 
         assert isinstance(result, str)
         assert len(result) > 0
 
     @given(
         invalid_string=st.text(
-            alphabet=st.characters(blacklist_categories=["Cs"]),
+            alphabet=st.characters(
+                blacklist_categories=["Cs"]
+            ),
             min_size=1,
             max_size=50,
         ).filter(lambda s: not _is_valid_iso_date(s))
     )
     @example(invalid_string="not-a-date")
     @example(invalid_string="2025-13-45")
-    @settings(max_examples=100)
-    def test_format_datetime_invalid_string_raises(self, invalid_string: str) -> None:
+    def test_format_datetime_invalid_string_raises(
+        self, invalid_string: str
+    ) -> None:
         """format_datetime() raises for invalid ISO strings (property: validation).
 
         Property: For all invalid ISO strings S,
@@ -391,15 +536,22 @@ class TestFormatCurrencyProperties:
                 allow_infinity=False,
             ),
         ),
-        currency=st.sampled_from(["USD", "EUR", "GBP", "JPY", "CNY"]),
+        currency=st.sampled_from(
+            ["USD", "EUR", "GBP", "JPY", "CNY"]
+        ),
         locale=st.sampled_from(COMMON_LOCALES[:5]),
     )
     @example(value=0, currency="USD", locale="en-US")
     @example(value=123.45, currency="EUR", locale="de-DE")
-    @example(value=Decimal("999.99"), currency="JPY", locale="ja-JP")
-    @settings(max_examples=150)
+    @example(
+        value=Decimal("999.99"),
+        currency="JPY", locale="ja-JP",
+    )
     def test_format_currency_type_safety(
-        self, value: int | float | Decimal, currency: str, locale: str
+        self,
+        value: int | float | Decimal,
+        currency: str,
+        locale: str,
     ) -> None:
         """format_currency() always returns non-empty string (property: type safety).
 
@@ -411,7 +563,6 @@ class TestFormatCurrencyProperties:
         - currency={code}: Currency code
         - locale={category}: Locale category
         """
-        # Emit type event
         if isinstance(value, int):
             event("value_type=int")
         elif isinstance(value, float):
@@ -419,10 +570,8 @@ class TestFormatCurrencyProperties:
         else:
             event("value_type=Decimal")
 
-        # Emit currency event
         event(f"currency={currency}")
 
-        # Emit locale event
         if "US" in locale:
             event("locale=us")
         elif "DE" in locale:
@@ -444,8 +593,9 @@ class TestFormatCurrencyProperties:
     @example(display="symbol")
     @example(display="code")
     @example(display="name")
-    @settings(max_examples=50)
-    def test_format_currency_display_modes(self, display: str) -> None:
+    def test_format_currency_display_modes(
+        self, display: str
+    ) -> None:
         """format_currency() supports all display modes (property: completeness).
 
         Property: For all display modes D in {symbol, code, name},

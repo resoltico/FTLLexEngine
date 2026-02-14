@@ -22,7 +22,8 @@ from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.diagnostics import ErrorCategory, ErrorTemplate, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.resolver import FluentResolver, GlobalDepthGuard
+from ftllexengine.runtime.resolution_context import GlobalDepthGuard
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax import (
     Identifier,
     Message,

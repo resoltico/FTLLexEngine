@@ -5,7 +5,7 @@ Tests metadata system for built-in Fluent functions.
 """
 
 import pytest
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -42,6 +42,7 @@ class TestFunctionCategoryEnum:
     @given(st.sampled_from(FunctionCategory))
     def test_function_category_str_idempotent(self, category: FunctionCategory) -> None:
         """Property: str(category) is idempotent."""
+        event(f"category={category.value}")
         first = str(category)
         second = str(category)
         assert first == second
@@ -76,6 +77,9 @@ class TestFunctionMetadataDataclass:
         category: FunctionCategory,
     ) -> None:
         """Property: FunctionMetadata can be constructed with any valid inputs."""
+        event(f"category={category.value}")
+        locale = "locale" if requires_locale else "no_locale"
+        event(f"outcome={locale}")
         metadata = FunctionMetadata(
             python_name=python_name,
             ftl_name=ftl_name,
@@ -140,11 +144,13 @@ class TestRequiresLocaleInjection:
     @given(st.sampled_from(["NUMBER", "DATETIME", "CURRENCY"]))
     def test_builtin_functions_require_locale(self, func_name: str) -> None:
         """Property: All built-in functions require locale injection."""
+        event(f"func_name={func_name}")
         assert requires_locale_injection(func_name) is True
 
     @given(st.text().filter(lambda x: x not in BUILTIN_FUNCTIONS))
     def test_unknown_functions_dont_require_locale(self, func_name: str) -> None:
         """Property: Unknown functions don't require locale injection."""
+        event(f"name_len={len(func_name)}")
         assert requires_locale_injection(func_name) is False
 
     def test_empty_string_doesnt_require_locale(self) -> None:
@@ -154,6 +160,7 @@ class TestRequiresLocaleInjection:
     @given(st.sampled_from(list(BUILTIN_FUNCTIONS.keys())))
     def test_requires_locale_idempotent(self, func_name: str) -> None:
         """Property: requires_locale_injection is idempotent."""
+        event(f"func_name={func_name}")
         first = requires_locale_injection(func_name)
         second = requires_locale_injection(func_name)
         assert first == second
@@ -165,11 +172,13 @@ class TestIsBuiltinFunction:
     @given(st.sampled_from(["NUMBER", "DATETIME", "CURRENCY"]))
     def test_builtin_functions_recognized(self, func_name: str) -> None:
         """Property: All built-in function names are recognized."""
+        event(f"func_name={func_name}")
         assert is_builtin_function(func_name) is True
 
     @given(st.text().filter(lambda x: x not in BUILTIN_FUNCTIONS))
     def test_non_builtin_functions_not_recognized(self, func_name: str) -> None:
         """Property: Non-built-in function names are not recognized."""
+        event(f"name_len={len(func_name)}")
         assert is_builtin_function(func_name) is False
 
     def test_empty_string_not_builtin(self) -> None:
@@ -179,6 +188,7 @@ class TestIsBuiltinFunction:
     @given(st.sampled_from(list(BUILTIN_FUNCTIONS.keys())))
     def test_is_builtin_idempotent(self, func_name: str) -> None:
         """Property: is_builtin_function is idempotent."""
+        event(f"func_name={func_name}")
         first = is_builtin_function(func_name)
         second = is_builtin_function(func_name)
         assert first == second
@@ -202,6 +212,7 @@ class TestGetPythonName:
     @given(st.text().filter(lambda x: x not in BUILTIN_FUNCTIONS))
     def test_unknown_function_returns_none(self, func_name: str) -> None:
         """Property: Unknown functions return None."""
+        event(f"name_len={len(func_name)}")
         assert get_python_name(func_name) is None
 
     def test_empty_string_returns_none(self) -> None:
@@ -211,6 +222,7 @@ class TestGetPythonName:
     @given(st.sampled_from(list(BUILTIN_FUNCTIONS.keys())))
     def test_get_python_name_idempotent(self, func_name: str) -> None:
         """Property: get_python_name is idempotent."""
+        event(f"func_name={func_name}")
         first = get_python_name(func_name)
         second = get_python_name(func_name)
         assert first == second
@@ -289,6 +301,7 @@ class TestShouldInjectLocale:
     @given(st.sampled_from(["NUMBER", "DATETIME", "CURRENCY"]))
     def test_should_inject_idempotent(self, func_name: str) -> None:
         """Property: should_inject_locale is idempotent for built-ins."""
+        event(f"func_name={func_name}")
         bundle = FluentBundle("en", use_isolating=False)
         first = bundle._function_registry.should_inject_locale(func_name)
         second = bundle._function_registry.should_inject_locale(func_name)
@@ -326,6 +339,8 @@ class TestFunctionMetadataInvariants:
         """Metamorphic: is_builtin and get_python_name consistency."""
         is_builtin = is_builtin_function(func_name)
         python_name = get_python_name(func_name)
+        builtin = "builtin" if is_builtin else "custom"
+        event(f"outcome={builtin}")
 
         # If it's a built-in, must have Python name
         if is_builtin:
@@ -333,3 +348,131 @@ class TestFunctionMetadataInvariants:
         # If it's not a built-in, Python name must be None
         else:
             assert python_name is None
+
+
+class TestFunctionMetadataReturnTypes:
+    """Property tests for return type invariants."""
+
+    @given(func_name=st.text(min_size=1, max_size=50))
+    def test_requires_locale_injection_is_boolean(
+        self, func_name: str
+    ) -> None:
+        """requires_locale_injection always returns boolean."""
+        result = requires_locale_injection(func_name)
+        builtin = "builtin" if result else "custom"
+        event(f"outcome={builtin}")
+        assert isinstance(result, bool)
+
+    @given(func_name=st.text(min_size=1, max_size=50))
+    def test_is_builtin_function_is_boolean(
+        self, func_name: str
+    ) -> None:
+        """is_builtin_function always returns boolean."""
+        result = is_builtin_function(func_name)
+        builtin = "builtin" if result else "custom"
+        event(f"outcome={builtin}")
+        assert isinstance(result, bool)
+
+    @given(func_name=st.text(min_size=1, max_size=50))
+    def test_get_python_name_returns_str_or_none(
+        self, func_name: str
+    ) -> None:
+        """get_python_name returns str or None."""
+        result = get_python_name(func_name)
+        has_name = "found" if result else "none"
+        event(f"outcome={has_name}")
+        assert result is None or isinstance(result, str)
+
+    @given(func_name=st.text(min_size=1, max_size=50))
+    def test_builtin_implies_has_python_name(
+        self, func_name: str
+    ) -> None:
+        """If function is built-in, it has a Python name."""
+        builtin = "builtin" if is_builtin_function(func_name) else "custom"
+        event(f"outcome={builtin}")
+        if is_builtin_function(func_name):
+            assert get_python_name(func_name) is not None
+
+    @given(func_name=st.text(min_size=1, max_size=50))
+    def test_requires_locale_implies_builtin(
+        self, func_name: str
+    ) -> None:
+        """If function requires locale, it must be built-in."""
+        needs = requires_locale_injection(func_name)
+        event(f"outcome={'locale' if needs else 'no_locale'}")
+        if needs:
+            assert is_builtin_function(func_name)
+
+    @given(func_name=st.text(min_size=1, max_size=50))
+    def test_should_inject_locale_never_crashes(
+        self, func_name: str
+    ) -> None:
+        """should_inject_locale never raises exception."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            FunctionRegistry,
+        )
+
+        registry = FunctionRegistry()
+
+        def test_func(value: str) -> str:
+            return value
+
+        registry.register(test_func, ftl_name=func_name)
+        result = registry.should_inject_locale(func_name)
+        event(f"outcome={'inject' if result else 'no_inject'}")
+        assert isinstance(result, bool)
+
+
+class TestShouldInjectLocaleEdgeCases:
+    """Edge cases for FunctionRegistry.should_inject_locale."""
+
+    def test_function_not_in_registry(self) -> None:
+        """should_inject_locale returns False if not registered."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            FunctionRegistry,
+        )
+
+        registry = FunctionRegistry()
+        assert registry.should_inject_locale("NUMBER") is False
+
+    def test_custom_function_same_name_as_builtin(self) -> None:
+        """Custom function with built-in name does not inject."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            FunctionRegistry,
+        )
+
+        registry = FunctionRegistry()
+
+        def custom_number(value: float) -> str:
+            return f"CUSTOM:{value}"
+
+        registry.register(custom_number, ftl_name="NUMBER")
+        assert registry.should_inject_locale("NUMBER") is False
+
+    def test_explicitly_false_marker(self) -> None:
+        """Explicit _ftl_requires_locale=False does not inject."""
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+            _FTL_REQUIRES_LOCALE_ATTR,
+            FunctionRegistry,
+        )
+
+        registry = FunctionRegistry()
+
+        def test_func(value: str) -> str:
+            return value
+
+        setattr(test_func, _FTL_REQUIRES_LOCALE_ATTR, False)
+        registry.register(test_func, ftl_name="EXPLICIT_FALSE")
+        assert registry.should_inject_locale("EXPLICIT_FALSE") is False
+
+    def test_with_built_in_registry(self) -> None:
+        """should_inject_locale with create_default_registry."""
+        from ftllexengine.runtime.functions import (  # noqa: PLC0415
+            create_default_registry,
+        )
+
+        registry = create_default_registry()
+        assert registry.should_inject_locale("NUMBER") is True
+        assert registry.should_inject_locale("DATETIME") is True
+        assert registry.should_inject_locale("CURRENCY") is True
+        assert registry.should_inject_locale("NONEXISTENT") is False

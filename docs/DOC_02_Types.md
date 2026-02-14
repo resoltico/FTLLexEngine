@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: TYPES
 updated: "2026-02-03"
 route:
@@ -810,7 +810,7 @@ type FluentValue = (
 - Used for type-hinting resolver arguments: `args: dict[str, FluentValue]`.
 - Collections: Arbitrarily nested structures supported (e.g., `{"items": [1, 2, {"nested": "value"}]}`).
 - Cache: Collections handled correctly by `_make_hashable()` for cache key generation.
-- Location: `runtime/function_bridge.py`, exported from package root.
+- Location: `runtime/value_types.py`, exported from package root.
 
 ---
 

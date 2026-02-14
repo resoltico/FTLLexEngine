@@ -280,17 +280,19 @@ class TestCacheConsistencyProperties:
 
     @given(code=territory_codes)
     def test_repeated_territory_lookup_consistent(self, code: str) -> None:
-        """Repeated lookups return identical results."""
+        """Repeated lookups return identical results (cache identity)."""
         first = get_territory(code)
         second = get_territory(code)
-        assert first is second  # Same object from cache
+        assert first is second
+        event(f"code={code}")
 
     @given(code=currency_codes)
     def test_repeated_currency_lookup_consistent(self, code: str) -> None:
-        """Repeated lookups return identical results."""
+        """Repeated lookups return identical results (cache identity)."""
         first = get_currency(code)
         second = get_currency(code)
-        assert first is second  # Same object from cache
+        assert first is second
+        event(f"code={code}")
 
     @given(code=territory_codes, locale=locale_codes)
     def test_locale_specific_caching(self, code: str, locale: str) -> None:

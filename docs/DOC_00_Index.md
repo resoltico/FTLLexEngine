@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: INDEX
 updated: "2026-02-10"
 route:
@@ -228,8 +228,10 @@ ftllexengine/
     functions.py           # Built-in functions, create_default_registry, get_shared_registry
     locale_context.py      # Locale context for runtime formatting
     plural_rules.py        # select_plural_category
-    resolver.py            # FluentResolver, ResolutionContext
+    resolution_context.py  # GlobalDepthGuard, ResolutionContext
+    resolver.py            # FluentResolver
     rwlock.py              # RWLock (readers-writer lock)
+    value_types.py         # FluentNumber, FluentValue, FluentFunction, FunctionSignature
   parsing/
     __init__.py            # Parsing API exports
     numbers.py             # parse_number, parse_decimal
@@ -255,7 +257,7 @@ ftllexengine/
 
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
-| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/function_bridge.py (exported from root) |
+| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
 | `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |

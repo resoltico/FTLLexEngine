@@ -44,7 +44,7 @@ from .constants import DEFAULT_CACHE_SIZE, FALLBACK_INVALID, FALLBACK_MISSING_ME
 from .diagnostics.codes import Diagnostic, DiagnosticCode
 from .diagnostics.errors import ErrorCategory, FrozenFluentError
 from .runtime.bundle import FluentBundle
-from .runtime.function_bridge import FluentValue
+from .runtime.value_types import FluentValue
 from .syntax import Junk
 
 if TYPE_CHECKING:
@@ -1091,7 +1091,9 @@ class FluentLocalization:
             for bundle in self._bundles.values():
                 bundle.add_function(name, func)
 
-    def introspect_message(self, message_id: MessageId) -> MessageIntrospection | None:
+    def introspect_message(
+        self, message_id: MessageId,
+    ) -> MessageIntrospection | None:
         """Get message introspection from first bundle with message.
 
         Args:
@@ -1099,19 +1101,134 @@ class FluentLocalization:
 
         Returns:
             MessageIntrospection or None if not found
-
-        Example:
-            >>> l10n = FluentLocalization(['lv', 'en'])
-            >>> l10n.add_resource('en', 'msg = { $name } has { $count } items')
-            >>> info = l10n.introspect_message('msg')
-            >>> info.get_variable_names() if info else set()
-            frozenset({'name', 'count'})
         """
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
             if bundle.has_message(message_id):
                 return bundle.introspect_message(message_id)
         return None
+
+    def has_attribute(
+        self, message_id: MessageId, attribute: str,
+    ) -> bool:
+        """Check if message has specific attribute in any locale.
+
+        Tries bundles in fallback order. Returns True if any bundle
+        has the message AND the specified attribute.
+
+        Args:
+            message_id: Message identifier
+            attribute: Attribute name
+
+        Returns:
+            True if attribute exists in at least one locale
+        """
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            if bundle.has_attribute(message_id, attribute):
+                return True
+        return False
+
+    def get_message_ids(self) -> list[str]:
+        """Get all message IDs across all locales.
+
+        Returns the union of message IDs from all bundles, ordered by
+        first appearance in locale priority order. Primary locale IDs
+        appear first.
+
+        Returns:
+            List of unique message identifiers
+        """
+        seen: set[str] = set()
+        result: list[str] = []
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            for msg_id in bundle.get_message_ids():
+                if msg_id not in seen:
+                    seen.add(msg_id)
+                    result.append(msg_id)
+        return result
+
+    def get_message_variables(
+        self, message_id: MessageId,
+    ) -> frozenset[str]:
+        """Get variables required by a message.
+
+        Delegates to the first bundle in fallback order that has the
+        message.
+
+        Args:
+            message_id: Message identifier
+
+        Returns:
+            Frozen set of variable names (without $ prefix)
+
+        Raises:
+            KeyError: If message not found in any locale
+        """
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            if bundle.has_message(message_id):
+                return bundle.get_message_variables(message_id)
+        msg = f"Message '{message_id}' not found in any locale"
+        raise KeyError(msg)
+
+    def get_all_message_variables(
+        self,
+    ) -> dict[str, frozenset[str]]:
+        """Get variables for all messages across all locales.
+
+        Merges variables from all bundles. For messages present in
+        multiple locales, the primary locale's variables take
+        precedence (first-wins).
+
+        Returns:
+            Dictionary mapping message IDs to variable sets
+        """
+        result: dict[str, frozenset[str]] = {}
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            for msg_id, variables in (
+                bundle.get_all_message_variables().items()
+            ):
+                if msg_id not in result:
+                    result[msg_id] = variables
+        return result
+
+    def introspect_term(
+        self, term_id: str,
+    ) -> MessageIntrospection | None:
+        """Get term introspection from first bundle with term.
+
+        Tries bundles in fallback order.
+
+        Args:
+            term_id: Term identifier (without leading dash)
+
+        Returns:
+            MessageIntrospection or None if not found
+        """
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            try:
+                return bundle.introspect_term(term_id)
+            except KeyError:
+                continue
+        return None
+
+    def __enter__(self) -> FluentLocalization:
+        """Enter context manager, acquire lock."""
+        self._lock.acquire()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        """Exit context manager, release lock."""
+        self._lock.release()
 
     def get_babel_locale(self) -> str:
         """Get Babel locale identifier from primary bundle.

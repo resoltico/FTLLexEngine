@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.core.babel_compat import (
@@ -99,13 +99,13 @@ class TestBabelNumbersProtocolConformance:
         Property: format_decimal returns a string for all valid inputs.
         Coverage: Exercises BabelNumbersProtocol.format_decimal (line 55-62).
         """
-        # Get typed reference to babel.numbers
-        numbers: BabelNumbersProtocol = get_babel_numbers()
+        num_type = type(number).__name__
+        event(f"number_type={num_type}")
+        event(f"locale={locale}")
 
-        # Call through Protocol interface
+        numbers: BabelNumbersProtocol = get_babel_numbers()
         result = numbers.format_decimal(number, locale=locale)
 
-        # Verify conformance
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -128,13 +128,14 @@ class TestBabelNumbersProtocolConformance:
         Property: format_currency returns a string for all valid inputs.
         Coverage: Exercises BabelNumbersProtocol.format_currency (line 64-74).
         """
-        # Get typed reference to babel.numbers
-        numbers: BabelNumbersProtocol = get_babel_numbers()
+        num_type = type(number).__name__
+        event(f"number_type={num_type}")
+        event(f"currency={currency}")
+        event(f"locale={locale}")
 
-        # Call through Protocol interface
+        numbers: BabelNumbersProtocol = get_babel_numbers()
         result = numbers.format_currency(number, currency, locale=locale)
 
-        # Verify conformance
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -160,13 +161,13 @@ class TestBabelNumbersProtocolConformance:
         Property: format_percent returns a string for all valid inputs.
         Coverage: Exercises BabelNumbersProtocol.format_percent (line 76-83).
         """
-        # Get typed reference to babel.numbers
-        numbers: BabelNumbersProtocol = get_babel_numbers()
+        num_type = type(number).__name__
+        event(f"number_type={num_type}")
+        event(f"locale={locale}")
 
-        # Call through Protocol interface
+        numbers: BabelNumbersProtocol = get_babel_numbers()
         result = numbers.format_percent(number, locale=locale)
 
-        # Verify conformance
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -244,18 +245,16 @@ class TestBabelDatesProtocolConformance:
         Property: format_datetime returns a string for all valid inputs.
         Coverage: Exercises BabelDatesProtocol.format_datetime (line 93-101).
         """
-        # Get typed reference to babel.dates
-        dates_module: BabelDatesProtocol = get_babel_dates()
+        event(f"format={format_pattern}")
+        event(f"locale={locale}")
 
-        # Create test datetime (fixed to avoid timezone issues)
+        dates_module: BabelDatesProtocol = get_babel_dates()
         test_datetime = datetime(2024, 1, 15, 14, 30, 0, tzinfo=UTC)
 
-        # Call through Protocol interface
         result = dates_module.format_datetime(
             test_datetime, format=format_pattern, locale=locale
         )
 
-        # Verify conformance
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -276,16 +275,16 @@ class TestBabelDatesProtocolConformance:
         Property: format_date returns a string for all valid inputs.
         Coverage: Exercises BabelDatesProtocol.format_date (line 103-110).
         """
-        # Get typed reference to babel.dates
-        dates_module: BabelDatesProtocol = get_babel_dates()
+        event(f"format={format_pattern}")
+        event(f"locale={locale}")
 
-        # Create test date
+        dates_module: BabelDatesProtocol = get_babel_dates()
         test_date = date(2024, 1, 15)
 
-        # Call through Protocol interface
-        result = dates_module.format_date(test_date, format=format_pattern, locale=locale)
+        result = dates_module.format_date(
+            test_date, format=format_pattern, locale=locale
+        )
 
-        # Verify conformance
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -320,18 +319,16 @@ class TestBabelDatesProtocolConformance:
         Property: format_time returns a string for all valid inputs.
         Coverage: Exercises BabelDatesProtocol.format_time (line 112-120).
         """
-        # Get typed reference to babel.dates
-        dates_module: BabelDatesProtocol = get_babel_dates()
+        event(f"format={format_pattern}")
+        event(f"locale={locale}")
 
-        # Create test time (as datetime - Babel expects datetime for format_time)
+        dates_module: BabelDatesProtocol = get_babel_dates()
         test_time = datetime(2024, 1, 15, 14, 30, 0, tzinfo=UTC)
 
-        # Call through Protocol interface
         result = dates_module.format_time(
             test_time, format=format_pattern, locale=locale
         )
 
-        # Verify conformance
         assert isinstance(result, str)
         assert len(result) > 0
 

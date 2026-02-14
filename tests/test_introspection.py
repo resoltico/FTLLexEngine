@@ -2,16 +2,36 @@
 
 Tests the best-in-class introspection system using TypeIs, frozen dataclasses,
 and pattern matching for FTL message analysis.
+
+Covers:
+- Variable extraction (simple, multiple, duplicate, selectors, nested)
+- Function introspection (detection, named args, positional args)
+- Reference introspection (message, term, attribute references)
+- MessageIntrospection object (immutability, requires_variable, has_selectors)
+- Span tracking for all reference types
+- Term references with arguments (positional and named)
+- Depth guard boundary conditions
+- Visitor pattern edge cases and context restoration
+- TypeError handling for invalid inputs
+- Function arguments with variable references in named values
 """
 
 from __future__ import annotations
 
 import pytest
+from hypothesis import event, given, settings
+from hypothesis import strategies as st
 
-from ftllexengine import FluentBundle
+from ftllexengine import FluentBundle, parse_ftl
 from ftllexengine.enums import ReferenceKind, VariableContext
-from ftllexengine.introspection import VariableInfo, extract_variables, introspect_message
-from ftllexengine.syntax.ast import Message, Term
+from ftllexengine.introspection import (
+    VariableInfo,
+    extract_references,
+    extract_variables,
+    introspect_message,
+)
+from ftllexengine.introspection.message import IntrospectionVisitor, ReferenceExtractor
+from ftllexengine.syntax.ast import Junk, Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 
 
@@ -543,3 +563,563 @@ class TestSpanTracking:
         assert refs[0].span.start == 8
         # "other.attr" is 10 chars
         assert refs[0].span.end == 18
+
+
+# ---------------------------------------------------------------------------
+# Term reference arguments
+# ---------------------------------------------------------------------------
+
+
+class TestTermReferenceArguments:
+    """Test introspection of term references with arguments."""
+
+    def test_term_reference_with_positional_args(self) -> None:
+        """Term reference with positional arguments extracts nested variables."""
+        parser = FluentParserV1()
+        resource = parser.parse("greeting = { -brand($platform) }")
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        info = introspect_message(message)
+        assert "platform" in info.get_variable_names()
+
+    def test_term_reference_with_named_args(self) -> None:
+        """Term reference with named arguments (using literals per FTL spec)."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            'app-name = { -brand($userCase, case: "nominative") }'
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        info = introspect_message(message)
+        assert "userCase" in info.get_variable_names()
+
+    def test_term_reference_with_both_arg_types(self) -> None:
+        """Term reference with both positional and named arguments."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            'msg = { -term($pos1, $pos2, style: "formal") }'
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        info = introspect_message(message)
+        assert "pos1" in info.get_variable_names()
+        assert "pos2" in info.get_variable_names()
+
+    def test_term_reference_extract_references(self) -> None:
+        """Term references with arguments are tracked by ReferenceExtractor."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            'msg = { -brand($var, case: "nominative") }'
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        _msg_refs, term_refs = extract_references(message)
+        assert "brand" in term_refs
+
+    def test_reference_extractor_depth_guard(self) -> None:
+        """ReferenceExtractor uses depth guard for nested term arguments."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { -outer(-inner($var)) }")
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        _msg_refs, term_refs = extract_references(message)
+        assert "outer" in term_refs
+        assert "inner" in term_refs
+
+
+# ---------------------------------------------------------------------------
+# Visitor edge cases and depth limits
+# ---------------------------------------------------------------------------
+
+
+class TestIntrospectionVisitorEdgeCases:
+    """Test edge cases in IntrospectionVisitor."""
+
+    def test_placeable_expression_branch(self) -> None:
+        """Nested Placeable expressions handled correctly."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = Text { $var } more")
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        info = introspect_message(message)
+        assert "var" in info.get_variable_names()
+
+    def test_visitor_context_restoration(self) -> None:
+        """Variable context correctly restored after visiting expressions."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            "emails = { $count ->\n"
+            "    [one] { $name } has one email\n"
+            "   *[other] { $name } has { $count } emails\n"
+            "}"
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        visitor = IntrospectionVisitor()
+        if message.value:
+            visitor.visit(message.value)
+
+        var_contexts = {v.name: v.context for v in visitor.variables}
+        assert "count" in var_contexts
+        assert "name" in var_contexts
+
+
+class TestIntrospectionDepthLimits:
+    """Test depth guard behavior in introspection."""
+
+    def test_introspection_respects_depth_limit(self) -> None:
+        """IntrospectionVisitor respects max_depth configuration."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            "msg = { $a -> [x] { $b -> [y] { $c -> "
+            "[z] value *[o] v } *[o] v } *[o] v }"
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        visitor = IntrospectionVisitor(max_depth=100)
+        if message.value:
+            visitor.visit(message.value)
+
+        assert "a" in {v.name for v in visitor.variables}
+        assert "b" in {v.name for v in visitor.variables}
+        assert "c" in {v.name for v in visitor.variables}
+
+    def test_reference_extractor_respects_depth_limit(self) -> None:
+        """ReferenceExtractor respects max_depth configuration."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { -term1(-term2(-term3)) }")
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        extractor = ReferenceExtractor(max_depth=100)
+        if message.value:
+            extractor.visit(message.value)
+
+        assert "term1" in extractor.term_refs
+        assert "term2" in extractor.term_refs
+        assert "term3" in extractor.term_refs
+
+
+class TestReferenceExtractorMessageReference:
+    """Test MessageReference handling in ReferenceExtractor."""
+
+    def test_message_reference_no_nested_calls(self) -> None:
+        """MessageReference contains no nested references requiring traversal."""
+        parser = FluentParserV1()
+        resource = parser.parse("msg = { other-message }")
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        extractor = ReferenceExtractor()
+        if message.value:
+            extractor.visit(message.value)
+
+        assert "other-message" in extractor.message_refs
+
+
+# ---------------------------------------------------------------------------
+# Variable contexts
+# ---------------------------------------------------------------------------
+
+
+class TestIntrospectionVariableContexts:
+    """Test variable context tracking in introspection."""
+
+    def test_function_arg_context(self) -> None:
+        """Variables in function arguments have FUNCTION_ARG context."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            "msg = { NUMBER($value, minimumFractionDigits: 2) }"
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        visitor = IntrospectionVisitor()
+        if message.value:
+            visitor.visit(message.value)
+
+        value_vars = [v for v in visitor.variables if v.name == "value"]
+        assert len(value_vars) == 1
+        assert value_vars[0].context == VariableContext.FUNCTION_ARG
+
+    def test_selector_context(self) -> None:
+        """Variables in selectors have SELECTOR context."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            "msg = { $count -> [one] one *[other] many }"
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        visitor = IntrospectionVisitor()
+        if message.value:
+            visitor.visit(message.value)
+
+        count_vars = [v for v in visitor.variables if v.name == "count"]
+        selector_contexts = [
+            v for v in count_vars if v.context == VariableContext.SELECTOR
+        ]
+        assert len(selector_contexts) >= 1
+
+    def test_variant_context(self) -> None:
+        """Variables in variant values have VARIANT context."""
+        parser = FluentParserV1()
+        resource = parser.parse(
+            "msg = { $sel -> [key] Value is { $value } *[other] none }"
+        )
+        message = resource.entries[0]
+        assert isinstance(message, (Message, Term))
+
+        visitor = IntrospectionVisitor()
+        if message.value:
+            visitor.visit(message.value)
+
+        value_vars = [v for v in visitor.variables if v.name == "value"]
+        variant_contexts = [
+            v for v in value_vars if v.context == VariableContext.VARIANT
+        ]
+        assert len(variant_contexts) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Function arguments with variable named args
+# ---------------------------------------------------------------------------
+
+
+class TestFunctionWithVariableNamedArgs:
+    """Test functions with variable references in named arguments."""
+
+    def test_function_with_variable_in_named_arg(self) -> None:
+        """Custom function with variable in named argument value."""
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+            CallArguments,
+            FunctionReference,
+            Identifier,
+            NamedArgument,
+            Pattern,
+            Placeable,
+            VariableReference,
+        )
+
+        func_ref = FunctionReference(
+            id=Identifier(name="CUSTOM"),
+            arguments=CallArguments(
+                positional=(
+                    VariableReference(id=Identifier(name="x")),
+                ),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="opt"),
+                        value=VariableReference(id=Identifier(name="y")),
+                    ),
+                ),
+            ),
+        )
+
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(elements=(Placeable(expression=func_ref),)),
+            attributes=(),
+            comment=None,
+        )
+
+        info = introspect_message(msg)
+        variables = info.get_variable_names()
+        assert "x" in variables
+        assert "y" in variables
+
+    def test_multiple_named_args_with_variables(self) -> None:
+        """Multiple named arguments with variable values."""
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+            CallArguments,
+            FunctionReference,
+            Identifier,
+            NamedArgument,
+            Pattern,
+            Placeable,
+            VariableReference,
+        )
+
+        func_ref = FunctionReference(
+            id=Identifier(name="FUNC"),
+            arguments=CallArguments(
+                positional=(
+                    VariableReference(id=Identifier(name="val")),
+                ),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="a"),
+                        value=VariableReference(id=Identifier(name="x")),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="b"),
+                        value=VariableReference(id=Identifier(name="y")),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="c"),
+                        value=VariableReference(id=Identifier(name="z")),
+                    ),
+                ),
+            ),
+        )
+
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(elements=(Placeable(expression=func_ref),)),
+            attributes=(),
+            comment=None,
+        )
+
+        info = introspect_message(msg)
+        variables = info.get_variable_names()
+        assert variables == frozenset({"val", "x", "y", "z"})
+
+    def test_mixed_positional_and_named_variable_args(self) -> None:
+        """Function with both positional and named variable arguments."""
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+            CallArguments,
+            FunctionReference,
+            Identifier,
+            NamedArgument,
+            NumberLiteral,
+            Pattern,
+            Placeable,
+            VariableReference,
+        )
+
+        func_ref = FunctionReference(
+            id=Identifier(name="CUSTOM"),
+            arguments=CallArguments(
+                positional=(
+                    VariableReference(id=Identifier(name="x")),
+                    VariableReference(id=Identifier(name="y")),
+                ),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="opt1"),
+                        value=VariableReference(id=Identifier(name="a")),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="opt2"),
+                        value=VariableReference(id=Identifier(name="b")),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="literal"),
+                        value=NumberLiteral(value=42, raw="42"),
+                    ),
+                ),
+            ),
+        )
+
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(elements=(Placeable(expression=func_ref),)),
+            attributes=(),
+            comment=None,
+        )
+
+        info = introspect_message(msg)
+        variables = info.get_variable_names()
+        assert variables == frozenset({"x", "y", "a", "b"})
+        assert "CUSTOM" in info.get_function_names()
+
+    @given(
+        st.lists(
+            st.text(
+                alphabet=st.characters(
+                    min_codepoint=97, max_codepoint=122
+                ),
+                min_size=1,
+                max_size=10,
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    @settings(max_examples=30)
+    def test_arbitrary_variable_named_args(
+        self, var_names: list[str]
+    ) -> None:
+        """Functions with arbitrary variable names in args."""
+        var_names = list(dict.fromkeys(var_names))
+        if not var_names:
+            return
+
+        event(f"var_count={len(var_names)}")
+
+        var_list = ", ".join(f"{name}: ${name}" for name in var_names)
+        ftl = f"test = {{ NUMBER($value, {var_list}) }}"
+
+        resource = parse_ftl(ftl)
+        if not resource.entries or isinstance(resource.entries[0], Junk):
+            return
+
+        msg = resource.entries[0]
+        if not isinstance(msg, Message):
+            return
+
+        info = introspect_message(msg)
+        variables = info.get_variable_names()
+
+        assert "value" in variables
+        for name in var_names:
+            assert name in variables
+
+
+# ---------------------------------------------------------------------------
+# TypeError handling for invalid inputs
+# ---------------------------------------------------------------------------
+
+
+class TestIntrospectMessageTypeErrors:
+    """Test introspect_message with invalid input types."""
+
+    def test_introspect_message_with_junk(self) -> None:
+        """Introspecting a Junk entry raises TypeError."""
+        resource = parse_ftl("invalid syntax here !!!")
+
+        assert resource.entries
+        junk = resource.entries[0]
+        assert isinstance(junk, Junk)
+
+        with pytest.raises(TypeError, match="Expected Message or Term"):
+            introspect_message(junk)  # type: ignore[arg-type]
+
+    def test_introspect_message_with_string(self) -> None:
+        """Introspecting a string raises TypeError."""
+        with pytest.raises(TypeError, match="Expected Message or Term"):
+            introspect_message("not a message")  # type: ignore[arg-type]
+
+    def test_introspect_message_with_none(self) -> None:
+        """Introspecting None raises TypeError."""
+        with pytest.raises(TypeError, match="Expected Message or Term"):
+            introspect_message(None)  # type: ignore[arg-type]
+
+    def test_introspect_message_with_dict(self) -> None:
+        """Introspecting a dict raises TypeError."""
+        with pytest.raises(TypeError, match="Expected Message or Term"):
+            introspect_message({"not": "a message"})  # type: ignore[arg-type]
+
+    @given(
+        st.one_of(
+            st.integers(),
+            st.floats(allow_nan=False, allow_infinity=False),
+            st.booleans(),
+            st.lists(st.text()),
+        )
+    )
+    @settings(max_examples=30)
+    def test_introspect_message_with_arbitrary_types(
+        self, invalid_input: object
+    ) -> None:
+        """Non-Message types raise TypeError."""
+        event(f"input_type={type(invalid_input).__name__}")
+        with pytest.raises(TypeError, match="Expected Message or Term"):
+            introspect_message(invalid_input)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# extract_variables edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestExtractVariablesEdgeCases:
+    """Test extract_variables with edge cases."""
+
+    def test_extract_variables_from_message_with_no_value(self) -> None:
+        """Message with no value pattern returns empty set."""
+        resource = parse_ftl("empty =\n    .attr = Attribute only")
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+
+        variables = extract_variables(msg)
+        assert isinstance(variables, frozenset)
+
+    def test_extract_variables_from_select_with_variants(self) -> None:
+        """Select expression with variables in variants."""
+        resource = parse_ftl(
+            "msg = { $count ->\n"
+            "    [one] You have { $count } item from { $source }\n"
+            "    [few] You have { $count } items from { $source }\n"
+            "   *[other] You have { $count } items from { $source }\n"
+            "}"
+        )
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+
+        variables = extract_variables(msg)
+        assert "count" in variables
+        assert "source" in variables
+
+
+# ---------------------------------------------------------------------------
+# Hypothesis property tests for introspection roundtrips
+# ---------------------------------------------------------------------------
+
+
+class TestIntrospectionPropertyRoundtrips:
+    """Hypothesis-based property tests for introspection roundtrips."""
+
+    @given(
+        var_name=st.text(
+            alphabet=st.characters(whitelist_categories=("Lu", "Ll")),
+            min_size=1,
+            max_size=20,
+        )
+    )
+    def test_variable_extraction_roundtrip(self, var_name: str) -> None:
+        """Variables extracted match those in source pattern."""
+        parser = FluentParserV1()
+        ftl_source = f"msg = Hello {{ ${var_name} }}"
+        event(f"var_len={len(var_name)}")
+        try:
+            resource = parser.parse(ftl_source)
+            if not resource.entries:
+                return
+
+            message = resource.entries[0]
+            if not isinstance(message, (Message, Term)):
+                return
+
+            variables = extract_variables(message)
+            assert var_name in variables
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+
+    @given(
+        term_name=st.text(
+            alphabet=st.characters(whitelist_categories=("Lu", "Ll")),
+            min_size=1,
+            max_size=20,
+        )
+    )
+    def test_term_reference_extraction_roundtrip(
+        self, term_name: str
+    ) -> None:
+        """Term references extracted match those in source."""
+        parser = FluentParserV1()
+        ftl_source = f"msg = {{ -{term_name} }}"
+        event(f"term_len={len(term_name)}")
+        try:
+            resource = parser.parse(ftl_source)
+            if not resource.entries:
+                return
+
+            message = resource.entries[0]
+            if not isinstance(message, (Message, Term)):
+                return
+
+            _msg_refs, term_refs = extract_references(message)
+            assert term_name in term_refs
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass

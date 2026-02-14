@@ -13,7 +13,8 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import FALLBACK_INVALID
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.resolver import FluentResolver, GlobalDepthGuard
+from ftllexengine.runtime.resolution_context import GlobalDepthGuard
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
     Identifier,
     Message,

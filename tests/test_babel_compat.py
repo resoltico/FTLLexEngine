@@ -5,7 +5,7 @@ for the optional Babel dependency.
 """
 
 import pytest
-from hypothesis import example, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.core.babel_compat import (
@@ -236,6 +236,11 @@ class TestBabelImportErrorProperties:
         3. Install instructions appear in error message
         4. Feature attribute matches constructor argument
         """
+        has_spaces = " " in feature_name
+        event(f"feature_has_spaces={has_spaces}")
+        length = "short" if len(feature_name) <= 10 else "long"
+        event(f"feature_length={length}")
+
         error = BabelImportError(feature_name)
 
         # Property 1: Type inheritance
@@ -263,7 +268,9 @@ class TestRequireBabelProperties:
         Property: When Babel is available, require_babel never raises regardless
         of the feature name provided.
         """
-        # In test environment, Babel is available, so this should never raise
+        length = "short" if len(feature_name) <= 10 else "long"
+        event(f"feature_length={length}")
+
         require_babel(feature_name)  # Should not raise
 
 
@@ -355,10 +362,14 @@ class TestGetBabelLocaleProperties:
 
         Property: get_babel_locale(x) is get_babel_locale(x) (identity, not just equality)
         """
+        has_territory = "_" in locale_code or "-" in locale_code
+        event(f"has_territory={has_territory}")
+        separator = "hyphen" if "-" in locale_code else "underscore"
+        event(f"separator={separator}")
+
         locale1 = get_babel_locale(locale_code)
         locale2 = get_babel_locale(locale_code)
 
-        # Should be exact same object (cached)
         assert locale1 is locale2
 
     @given(locale_code=_VALID_LOCALE_CODES)
@@ -369,6 +380,8 @@ class TestGetBabelLocaleProperties:
 
         Property: Type(get_babel_locale(x)) = Locale for all valid x
         """
+        event(f"locale={locale_code}")
+
         locale = get_babel_locale(locale_code)
         locale_class = get_locale_class()
 
@@ -382,8 +395,10 @@ class TestGetBabelLocaleProperties:
 
         Property: Underscore and hyphen formats for the same locale produce equal results.
         """
-        # Only test if locale has territory (contains separator)
-        if "_" in locale_code or "-" in locale_code:
+        has_territory = "_" in locale_code or "-" in locale_code
+        event(f"has_territory={has_territory}")
+
+        if has_territory:
             underscore_version = locale_code.replace("-", "_")
             hyphen_version = locale_code.replace("_", "-")
 

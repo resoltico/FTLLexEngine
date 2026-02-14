@@ -203,8 +203,8 @@ execute_tool() {
         record_result "$tool_name" "$target_name" "fail" "$duration" "$file_count"
         cat "$output_file"
         
-        # Universal parsing: extract filenames from output
-        grep -E "^[^: ]+\.py:[0-9]+:" "$output_file" | cut -d: -f1 | sed 's/^[[:space:]]*//' >> "$FAILED_ITEMS_FILE"
+        # Universal parsing: extract filenames from output (handle spaces/quotes)
+        sed -nE 's/^([^:]+\.py):[0-9]+:.*/\1/p' "$output_file" >> "$FAILED_ITEMS_FILE"
     fi
     rm -f "$output_file"
     return $exit_code
@@ -336,39 +336,60 @@ declare -a FAILED_FILE_LIST=()
 if [[ -f "$FAILED_ITEMS_FILE" ]]; then
     mapfile -t FAILED_FILE_LIST < <(sort -u "$FAILED_ITEMS_FILE")
 fi
-rm -f "$FAILED_ITEMS_FILE"
+# rm -f "$FAILED_ITEMS_FILE" (Deferred deletion)
 
 echo "[SUMMARY-JSON-BEGIN]"
-printf "{"
-first=1
-if [[ ${#STATUS[@]} -gt 0 ]]; then
-    declare -a sorted_keys
-    set +e
-    readarray -t sorted_keys < <(printf '%s\n' "${!STATUS[@]}" | sort 2>/dev/null)
-    set -e
-    for key in "${sorted_keys[@]}"; do
-        [[ $first -eq 0 ]] && printf ","
-        printf "\"%s\":{" "$key"
-        printf "\"status\":\"%s\"," "${STATUS[$key]:-unknown}"
-        printf "\"duration_sec\":\"%s\"," "${TIMING[$key]:-0}"
-        printf "\"files\":\"%s\"" "${METRICS[$key]:-0}"
-        printf "}"
-        first=0
-    done
-fi
+echo "[SUMMARY-JSON-BEGIN]"
+# Use Python for reliable JSON generation (handles escaping, utf-8, etc.)
+PYTHON_JSON_SCRIPT="
+import json, sys, os
 
-printf ",\"failed_files\":["
-item_first=1
-for item in "${FAILED_FILE_LIST[@]}"; do
-    [[ $item_first -eq 0 ]] && printf ","
-    printf "\"%s\"" "$item"
-    item_first=0
+data = {}
+# Read results from temporary file
+try:
+    with open(sys.argv[1], 'r') as f:
+        for line in f:
+            if '|' not in line: continue
+            # Split from right to handle keys containing pipes (e.g. 'tool|target')
+            parts = line.strip().rsplit('|', 3)
+            if len(parts) != 4: continue
+            key, status, duration, files = parts
+            data[key] = {
+                'status': status, 
+                'duration_sec': duration, 
+                'files': files
+            }
+except FileNotFoundError:
+    pass
+
+# Read failed files
+failed_files = []
+try:
+    with open(sys.argv[2], 'r') as f:
+        failed_files = sorted(list(set(line.strip() for line in f if line.strip())))
+except FileNotFoundError:
+    pass
+
+# Construct final object
+final_obj = data.copy()
+final_obj['failed_files'] = failed_files
+final_obj['exit_code'] = int(sys.argv[3])
+
+print(json.dumps(final_obj, separators=(',', ':')))
+"
+
+# Dump results to a temp file for Python to read
+RESULTS_FILE=$(mktemp)
+for key in "${!STATUS[@]}"; do
+    echo "${key}|${STATUS[$key]}|${TIMING[$key]}|${METRICS[$key]}" >> "$RESULTS_FILE"
 done
-printf "]"
 
 exit_code_val=0
 if [[ "$FAILED" == "true" ]]; then exit_code_val=1; fi
-printf ",\"exit_code\":%d}\n" "$exit_code_val"
+
+python3 -c "$PYTHON_JSON_SCRIPT" "$RESULTS_FILE" "$FAILED_ITEMS_FILE" "$exit_code_val"
+rm -f "$RESULTS_FILE"
+rm -f "$FAILED_ITEMS_FILE"
 echo "[SUMMARY-JSON-END]"
 
 if [[ "$FAILED" == "true" ]]; then

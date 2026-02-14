@@ -25,13 +25,14 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - currency_by_decimals, territory_by_region, locale_by_script
     - source_spans, frozen_error_contexts, diagnostics, diagnostic_codes
     - error_categories, validation_errors, validation_warnings
-    - validation_results
+    - validation_results, diagnostic_formatters
 """
 
 # Diagnostics strategies
 from .diagnostics import (
     annotation_nodes,
     diagnostic_codes,
+    diagnostic_formatters,
     diagnostics,
     error_categories,
     frozen_error_contexts,
@@ -164,6 +165,21 @@ from .iso import (
     three_decimal_currencies,
     two_decimal_currencies,
     zero_decimal_currencies,
+)
+
+# Localization strategies
+from .localization import (
+    DictResourceLoader,
+    FailingResourceLoader,
+    ftl_message_values,
+    ftl_messages_with_attributes,
+    ftl_messages_with_terms,
+    ftl_resource_sets,
+    l10n_locale_chains,
+    l10n_message_ids,
+    locale_chains,
+    message_ids,
+    resource_loaders,
 )
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
@@ -311,4 +327,17 @@ __all__ = [
     "validation_errors",
     "validation_warnings",
     "validation_results",
+    "diagnostic_formatters",
+    # Localization strategies
+    "locale_chains",
+    "message_ids",
+    "ftl_resource_sets",
+    "ftl_message_values",
+    "ftl_messages_with_attributes",
+    "ftl_messages_with_terms",
+    "resource_loaders",
+    "l10n_locale_chains",
+    "l10n_message_ids",
+    "DictResourceLoader",
+    "FailingResourceLoader",
 ]

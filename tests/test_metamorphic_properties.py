@@ -23,7 +23,7 @@ References:
 from __future__ import annotations
 
 import pytest
-from hypothesis import assume, example, given, settings
+from hypothesis import assume, event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.syntax.ast import Message, Resource, Term
@@ -65,6 +65,8 @@ class TestParsingProperties:
         entry_ids = {
             e.id.name for e in resource.entries if isinstance(e, (Message, Term))
         }
+        types = "_".join(sorted({type(e).__name__ for e in resource.entries}))
+        event(f"entry_types={types}")
 
         # CRITICAL: The expected ID must appear exactly in the parsed output
         assert expected_id in entry_ids, (
@@ -90,6 +92,8 @@ class TestParsingProperties:
         r1 = parser.parse(ftl)
         r2 = parser.parse(ftl)
         r3 = parser.parse(ftl)
+
+        event(f"entry_count={len(r1.entries)}")
 
         # Entry counts must match
         assert len(r1.entries) == len(r2.entries) == len(r3.entries), (
@@ -123,6 +127,9 @@ class TestParsingProperties:
         # Should never raise exception
         resource = parser.parse(ftl)
 
+        parsed = "parsed" if resource.entries else "empty"
+        event(f"outcome={parsed}")
+
         assert isinstance(resource, Resource)
         assert hasattr(resource, "entries")
         assert isinstance(resource.entries, tuple)
@@ -149,6 +156,8 @@ class TestSerializationProperties:
         out1 = serialize(resource)
         out2 = serialize(resource)
 
+        event(f"entry_count={len(resource.entries)}")
+
         assert out1 == out2, "Serialization is not deterministic"
 
     @example(ftl="test = value")
@@ -171,6 +180,9 @@ class TestSerializationProperties:
         # Third roundtrip (should equal second)
         r3 = parser.parse(out2)
         out3 = serialize(r3)
+
+        fixed = "fixed_point" if out1 == out2 else "converged"
+        event(f"outcome={fixed}")
 
         assert out2 == out3, (
             f"Roundtrip does not converge:\n"
@@ -198,6 +210,9 @@ class TestErrorRecovery:
         parser = FluentParserV1()
         resource = parser.parse(text)
 
+        parsed = "parsed" if resource.entries else "empty"
+        event(f"outcome={parsed}")
+
         assert isinstance(resource, Resource)
         assert isinstance(resource.entries, tuple)
 
@@ -212,6 +227,9 @@ class TestErrorRecovery:
 
         truncate_pos = min(truncate_pos, len(ftl))
         truncated = ftl[:truncate_pos]
+
+        full = "full" if truncate_pos == len(ftl) else "truncated"
+        event(f"boundary={full}")
 
         parser = FluentParserV1()
         resource = parser.parse(truncated)
@@ -344,6 +362,8 @@ class TestPerformanceProperties:
         """
         parser = FluentParserV1()
         ftl = "\n\n".join(messages)
+
+        event(f"message_count={len(messages)}")
 
         resource = parser.parse(ftl)
 

@@ -16,7 +16,8 @@ from hypothesis import strategies as st
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
-from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
     FunctionReference,
     Identifier,

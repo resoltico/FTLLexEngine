@@ -120,6 +120,22 @@ farewell = Goodbye
         ]
         assert len(shadow_warnings) >= 2
 
+    def test_no_shadow_when_different_namespace(self) -> None:
+        """Message named 'brand' does not shadow known term 'brand'."""
+        ftl = "brand = This is a message named brand"
+
+        result = validate_resource(
+            ftl, known_terms=frozenset(["brand"])
+        )
+
+        shadow_warnings = [
+            w
+            for w in result.warnings
+            if w.code
+            == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+        ]
+        assert len(shadow_warnings) == 0
+
     @given(
         num_shadows=st.integers(min_value=1, max_value=10),
     )
@@ -474,3 +490,96 @@ msg = Second
             if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
         ]
         assert len(shadow_warnings) >= 1
+
+
+# ============================================================================
+# Cross-Resource Reference Chains
+# ============================================================================
+
+
+class TestCrossResourceReferenceChains:
+    """Test cross-resource reference validation with known entries."""
+
+    def test_cross_resource_term_cycle_handled(self) -> None:
+        """Term referencing known term validates without errors."""
+        ftl = "-term-a = { -term-b }"
+
+        result = validate_resource(
+            ftl, known_terms=frozenset(["term-b"])
+        )
+
+        undef = [
+            w
+            for w in result.warnings
+            if w.code
+            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            and "term-b" in w.message
+        ]
+        assert len(undef) == 0
+
+    def test_cross_resource_mixed_reference(self) -> None:
+        """Message referencing known term validates without errors."""
+        ftl = "hello = { -brand }"
+
+        result = validate_resource(
+            ftl, known_terms=frozenset(["brand"])
+        )
+
+        undef = [
+            w
+            for w in result.warnings
+            if w.code
+            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            and "brand" in w.message
+        ]
+        assert len(undef) == 0
+
+    def test_complex_cross_resource_chain(self) -> None:
+        """Multi-hop chain with known entries validates correctly."""
+        ftl = """
+msg-a = { msg-b }
+msg-b = { msg-c }
+msg-c = { -term-x }
+"""
+        result = validate_resource(
+            ftl,
+            known_messages=frozenset(["msg-d"]),
+            known_terms=frozenset(["term-x"]),
+        )
+
+        assert result.is_valid
+        undef = [
+            w
+            for w in result.warnings
+            if w.code
+            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+        ]
+        assert len(undef) == 0
+
+    @given(
+        known_count=st.integers(min_value=1, max_value=10),
+        shadow_count=st.integers(min_value=1, max_value=10),
+    )
+    def test_shadow_count_proportional(
+        self, known_count: int, shadow_count: int
+    ) -> None:
+        """Property: Shadow warning count equals shadowed entries."""
+        actual = min(shadow_count, known_count)
+        event(f"known_count={known_count}")
+        event(f"shadow_count={actual}")
+
+        known = frozenset(f"msg-{i}" for i in range(known_count))
+        lines = [f"msg-{i} = Shadow" for i in range(actual)]
+        ftl_source = "\n".join(lines)
+
+        result = validate_resource(
+            ftl_source, known_messages=known
+        )
+
+        shadow_warnings = [
+            w
+            for w in result.warnings
+            if w.code
+            == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+        ]
+        assert len(shadow_warnings) == actual

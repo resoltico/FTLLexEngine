@@ -2,7 +2,6 @@
 RETRIEVAL_HINTS:
   keywords: [changelog, release notes, version history, breaking changes, migration, what's new]
   answers: [what changed in version, breaking changes, release history, version changes]
-  related: [docs/MIGRATION.md]
 -->
 # Changelog
 
@@ -12,6 +11,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.107.0] - 2026-02-14
+
+### Changed (BREAKING)
+
+- **Value types extracted to `runtime.value_types` module** (REFACTOR-VALUE-TYPES-001):
+  - `FluentNumber`, `FluentValue`, `FluentFunction`, `FunctionSignature` moved from `runtime.function_bridge` to `runtime.value_types`
+  - `function_bridge` re-exports all symbols for compatibility; direct imports from `function_bridge` continue to work
+  - Canonical import path: `from ftllexengine.runtime.value_types import FluentNumber, FluentValue`
+  - Rationale: separates core value type definitions from registry/bridge machinery
+  - Location: `runtime/value_types.py` (new), `runtime/function_bridge.py`
+
+- **Resolution context extracted to `runtime.resolution_context` module** (REFACTOR-RESOLUTION-CONTEXT-001):
+  - `GlobalDepthGuard`, `ResolutionContext` moved from `runtime.resolver` to `runtime.resolution_context`
+  - `resolver` re-exports both symbols for compatibility
+  - Canonical import path: `from ftllexengine.runtime.resolution_context import ResolutionContext`
+  - Rationale: `ResolutionContext` and `GlobalDepthGuard` are independent of `FluentResolver` and used by external code
+  - Location: `runtime/resolution_context.py` (new), `runtime/resolver.py`
+
+- **Validation resource.py deduplication** (REFACTOR-VALIDATION-DEDUP-001):
+  - `_collect_entries()` Message/Term handling consolidated into shared `_check_entry()` helper
+  - `_build_dependency_graph()` reference resolution consolidated into `_resolve_reference()`, node building into `_add_entry_nodes()`, known entry handling into `_add_known_entries()`
+  - No public API changes; internal refactor only
+  - Location: `validation/resource.py`
+
+### Added
+
+- **FluentLocalization API surface parity with FluentBundle**:
+  - `has_attribute(message_id, attribute)`: check attribute existence across fallback chain
+  - `get_message_ids()`: union of message IDs from all bundles, priority-ordered
+  - `get_message_variables(message_id)`: delegate to first bundle with the message
+  - `get_all_message_variables()`: merge variables from all bundles (first-wins)
+  - `introspect_term(term_id)`: delegate to first bundle with the term
+  - `__enter__` / `__exit__`: context manager support (acquires/releases RLock)
+  - Location: `localization.py`
+
+### Changed
+
+- **DiagnosticFormatter exhaustive match/case with `assert_never()`** (MODERNIZE-FORMATTER-EXHAUSTIVE-001):
+  - `format()` match/case on `OutputFormat` StrEnum now includes `case _: assert_never(self.output_format)` default branch
+  - Catches future enum additions at type-check time; eliminates coverage.py phantom partial branch (91->exit)
+  - Severity string formatting extracted to `_severity_str()` helper to keep `_format_rust()` within branch limit
+  - Location: `diagnostics/formatter.py`
+
+- **`Diagnostic.format_error()` delegates to `DiagnosticFormatter`** (SIMPLIFY-FORMATTER-DELEGATION-001):
+  - `Diagnostic.format_error()` in `codes.py` now delegates to `DiagnosticFormatter().format(self)` instead of maintaining a parallel Rust-style formatting implementation
+  - Eliminates divergence risk between two near-identical formatting paths
+  - `_format_rust()` and `_format_json()` now include `resolution_path` in output (was only in the old `format_error()` implementation)
+  - `format_error()` output now includes control-character escaping via `_escape_control_chars()` (security hardening)
+  - Location: `diagnostics/codes.py`, `diagnostics/formatter.py`
+
+- **`isinstance` fast paths in `format_error()` / `format_warning()`** (PERF-FORMATTER-FASTPATH-001):
+  - Primary callers always pass `ValidationError` / `ValidationWarning` with known attributes; `isinstance` check enables direct attribute access on the fast path
+  - Duck-typing `getattr()` fallback preserved for third-party objects
+  - Location: `diagnostics/formatter.py`
+
+- **Serializer: removed dead guard on `FunctionReference.arguments`** (SIMPLIFY-SERIALIZER-DEAD-GUARD-001):
+  - `_validate_expression` wrapped `_validate_call_arguments` in `if expr.arguments:` for the `FunctionReference` case
+  - `FunctionReference.arguments` is typed `CallArguments` (required field); dataclass instances are always truthy, so the guard was dead code
+  - `TermReference.arguments` retains its guard (`CallArguments | None`, genuinely optional)
+  - Location: `syntax/serializer.py`
+
+- **Serializer: exhaustive `assert_never()` on variant key match/case** (SIMPLIFY-SERIALIZER-EXHAUSTIVE-VARIANT-KEY-001):
+  - `_serialize_select_expression` match on `variant.key` dispatched `Identifier` and `NumberLiteral` without a default branch
+  - Added `case _ as unreachable: assert_never(unreachable)` consistent with other match dispatches in the same file (lines 519, 771, 833)
+  - Documents the type-system invariant (`VariantKey = Identifier | NumberLiteral`)
+  - Location: `syntax/serializer.py`
+
+### Fixed
+
+- **`get_error_context` missing marker at EOF after trailing newline** (BUG-POSITION-EOF-MARKER-001):
+  - When `pos` pointed at EOF after a trailing newline (e.g., `pos == len(source)` where `source[-1] == '\n'`), `line_offset` resolved to `len(lines)` (past all `splitlines()` content) and the marker was never emitted
+  - Function contract requires unconditional marker presence for non-empty source; callers had to guard with `assume(line_num < len(lines))` to avoid assertion failures
+  - Fix: emit marker on an empty line when `line_num >= len(lines)`, consistent with the existing loop logic for in-range lines
+  - Location: `syntax/position.py` `get_error_context()`
 
 ## [0.106.0] - 2026-02-11
 
@@ -3321,6 +3395,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.107.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.107.0
 [0.106.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.106.0
 [0.105.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.105.0
 [0.104.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.104.0

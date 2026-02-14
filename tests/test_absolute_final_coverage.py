@@ -22,7 +22,8 @@ from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.localization import PathResourceLoader
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.locale_context import LocaleContext
-from ftllexengine.runtime.resolver import FluentResolver, ResolutionContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax.ast import (
     Identifier,
     Message,

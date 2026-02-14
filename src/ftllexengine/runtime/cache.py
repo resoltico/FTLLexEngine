@@ -50,7 +50,7 @@ from ftllexengine.integrity import (
     IntegrityContext,
     WriteConflictError,
 )
-from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
+from ftllexengine.runtime.value_types import FluentNumber, FluentValue
 
 __all__ = [
     "HashableValue",

@@ -11,7 +11,7 @@ Python 3.13+.
 from decimal import Decimal
 
 import pytest
-from hypothesis import example, given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.bundle import FluentBundle
@@ -146,6 +146,9 @@ class TestDecimalMatchingHypothesis:
         # Create a decimal value
         decimal_value = Decimal(numerator) / Decimal(denominator)
         decimal_str = str(decimal_value)
+        is_int = decimal_value == int(decimal_value)
+        kind = "integer" if is_int else "fractional"
+        event(f"outcome={kind}")
 
         # Skip if string representation is too long (would create invalid FTL)
         if len(decimal_str) > 20:
@@ -168,6 +171,9 @@ test = {{ $val ->
     @settings(max_examples=100)
     def test_integer_decimal_matches_integer_variant(self, n: int) -> None:
         """Property: Decimal(n) matches variant [n] for any integer n."""
+        sign = "negative" if n < 0 else "non_negative"
+        event(f"outcome={sign}")
+
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource(f"""
 num = {{ $val ->
@@ -189,6 +195,9 @@ num = {{ $val ->
     @example(whole=0, frac=3)  # Regression test for 0.3 case
     def test_single_decimal_place_matches(self, whole: int, frac: int) -> None:
         """Property: Decimal('X.Y') matches [X.Y] for single decimal place."""
+        lead = "zero_whole" if whole == 0 else "nonzero"
+        event(f"outcome={lead}")
+
         decimal_str = f"{whole}.{frac}"
         decimal_value = Decimal(decimal_str)
 
@@ -315,6 +324,8 @@ class TestSerializerDepthGuardHypothesis:
     @settings(max_examples=50)
     def test_serialization_succeeds_within_limit(self, depth: int) -> None:
         """Property: Serialization succeeds for depth within limit."""
+        event(f"depth={depth}")
+
         current: Placeable = Placeable(expression=StringLiteral(value="inner"))
         for _ in range(depth):
             current = Placeable(expression=current)
@@ -335,6 +346,8 @@ class TestSerializerDepthGuardHypothesis:
     @settings(max_examples=20)
     def test_serialization_fails_over_limit(self, depth: int) -> None:
         """Property: Serialization fails for depth over limit."""
+        event(f"depth={depth}")
+
         current: Placeable = Placeable(expression=StringLiteral(value="deep"))
         for _ in range(depth):
             current = Placeable(expression=current)
@@ -357,6 +370,9 @@ class TestSerializerDepthGuardHypothesis:
     @settings(max_examples=50)
     def test_custom_depth_limit_property(self, depth: int, max_depth: int) -> None:
         """Property: Serialization respects custom max_depth parameter."""
+        result_kind = "success" if depth < max_depth else "failure"
+        event(f"outcome={result_kind}")
+
         current: Placeable = Placeable(expression=StringLiteral(value="x"))
         for _ in range(depth):
             current = Placeable(expression=current)

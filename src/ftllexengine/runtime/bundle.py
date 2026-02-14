@@ -38,11 +38,12 @@ from ftllexengine.integrity import (
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.locale_utils import get_system_locale
 from ftllexengine.runtime.cache import IntegrityCache
-from ftllexengine.runtime.function_bridge import FluentValue, FunctionRegistry
+from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.runtime.rwlock import RWLock
+from ftllexengine.runtime.value_types import FluentValue
 from ftllexengine.syntax import Comment, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl

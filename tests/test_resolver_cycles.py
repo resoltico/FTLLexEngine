@@ -25,7 +25,7 @@ from hypothesis import strategies as st
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
-from ftllexengine.runtime.resolver import ResolutionContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
 
 # =============================================================================
 # Essential Cycle Detection Tests (Run in every CI build)

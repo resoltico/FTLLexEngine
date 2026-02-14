@@ -199,6 +199,7 @@ class TestDiagnosticCodeEnum:
             DiagnosticCode.TERM_POSITIONAL_ARGS_IGNORED,
             DiagnosticCode.PLURAL_SUPPORT_UNAVAILABLE,
             DiagnosticCode.FORMATTING_FAILED,
+            DiagnosticCode.EXPANSION_BUDGET_EXCEEDED,
         ]
         for code in resolution_codes:
             assert 2000 <= code.value < 3000
@@ -364,12 +365,23 @@ class TestDiagnosticDataclass:
         event(f"has_span={has_span}")
 
     @given(diagnostic=diagnostic_strategy())
-    def test_diagnostic_format_error_contains_message(
+    def test_diagnostic_format_error_contains_escaped_message(
         self, diagnostic: Diagnostic
     ) -> None:
-        """PROPERTY: Formatted diagnostic contains error message."""
+        """PROPERTY: Formatted diagnostic contains escaped error message.
+
+        The formatter escapes control characters (newlines, carriage
+        returns, tabs) to prevent log injection. The escaped message
+        must appear in the formatted output.
+        """
         formatted = diagnostic.format_error()
-        assert diagnostic.message in formatted
+        escaped = (
+            diagnostic.message
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
+        assert escaped in formatted
         has_hint = diagnostic.hint is not None
         event(f"has_hint={has_hint}")
 
@@ -380,6 +392,14 @@ class TestDiagnosticDataclass:
         assert isinstance(formatted, str)
         assert len(formatted) > 0
         event(f"formatted_len={len(formatted)}")
+
+    @given(diagnostic=diagnostic_strategy())
+    def test_diagnostic_str_returns_message(
+        self, diagnostic: Diagnostic
+    ) -> None:
+        """PROPERTY: str(diagnostic) returns the raw message."""
+        assert str(diagnostic) == diagnostic.message
+        event(f"msg_len={len(diagnostic.message)}")
 
     @given(
         code=st.sampled_from(list(DiagnosticCode)),

@@ -44,8 +44,8 @@ from .integrity import (
 # Localization and runtime (requires Babel)
 from .localization import FluentLocalization as FluentLocalization
 from .runtime import FluentBundle as FluentBundle
-from .runtime.function_bridge import FluentValue as FluentValue
 from .runtime.function_bridge import fluent_function as fluent_function
+from .runtime.value_types import FluentValue as FluentValue
 
 # Syntax API (no Babel required)
 from .syntax import parse as parse_ftl

@@ -2,7 +2,8 @@
 
 Provides reusable, event-emitting strategies for generating diagnostic
 data structures: SourceSpan, FrozenErrorContext, Diagnostic, ErrorCategory,
-DiagnosticCode, ValidationError, ValidationWarning, and ValidationResult.
+DiagnosticCode, ValidationError, ValidationWarning, ValidationResult,
+and DiagnosticFormatter.
 
 Event-Emitting Strategies (HypoFuzz-Optimized):
     These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
@@ -15,6 +16,8 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - diag_verr_location: ValidationError location presence
     - diag_vwarn_severity: ValidationWarning severity level
     - diag_vresult_valid: ValidationResult validity
+    - diag_fmt_format: DiagnosticFormatter output format (rust|simple|json)
+    - diag_fmt_sanitize: DiagnosticFormatter sanitize mode (off|truncate|redact)
 """
 
 from __future__ import annotations
@@ -28,6 +31,10 @@ from ftllexengine.diagnostics.codes import (
     ErrorCategory,
     FrozenErrorContext,
     SourceSpan,
+)
+from ftllexengine.diagnostics.formatter import (
+    DiagnosticFormatter,
+    OutputFormat,
 )
 from ftllexengine.diagnostics.validation import (
     ValidationError,
@@ -330,3 +337,39 @@ def validation_results(draw: st.DrawFn) -> ValidationResult:
     )
     event(f"diag_vresult_valid={result.is_valid}")
     return result
+
+
+@st.composite
+def diagnostic_formatters(
+    draw: st.DrawFn,
+) -> DiagnosticFormatter:
+    """Generate DiagnosticFormatter instances with varied configurations.
+
+    Bucket-first: draws output format and sanitize mode independently,
+    then generates matching formatter, ensuring uniform distribution
+    across all configuration combinations.
+
+    Events emitted:
+    - diag_fmt_format={rust|simple|json}: Output format
+    - diag_fmt_sanitize={off|truncate|redact}: Sanitize mode
+    """
+    fmt = draw(st.sampled_from(list(OutputFormat)))
+    event(f"diag_fmt_format={fmt.value}")
+
+    sanitize = draw(st.booleans())
+    redact = draw(st.booleans()) if sanitize else False
+    sanitize_label = (
+        "redact" if redact else ("truncate" if sanitize else "off")
+    )
+    event(f"diag_fmt_sanitize={sanitize_label}")
+
+    color = draw(st.booleans())
+    max_len = draw(st.integers(min_value=10, max_value=500))
+
+    return DiagnosticFormatter(
+        output_format=fmt,
+        sanitize=sanitize,
+        redact_content=redact,
+        color=color,
+        max_content_length=max_len,
+    )

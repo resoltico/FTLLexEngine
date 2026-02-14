@@ -8,7 +8,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import given
+from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -325,6 +325,9 @@ class TestGetAllMessageVariablesPropertyBased:
 
         result = bundle.get_all_message_variables()
 
+        scale = "empty" if num_messages == 0 else "small"
+        event(f"boundary={scale}")
+        event(f"vars_per_msg={num_vars_per_msg}")
         assert isinstance(result, dict)
         assert len(result) == num_messages
 
@@ -354,6 +357,7 @@ class TestGetAllMessageVariablesPropertyBased:
 
         result = bundle.get_all_message_variables()
 
+        event(f"msg_count={len(message_ids)}")
         assert set(result.keys()) == set(message_ids)
 
     @given(st.integers(min_value=0, max_value=50))
@@ -378,6 +382,8 @@ class TestGetAllMessageVariablesPropertyBased:
             for msg_id in bundle.get_message_ids()
         }
 
+        scale = "empty" if num_messages == 0 else "large"
+        event(f"boundary={scale}")
         assert batch_result == individual_results
 
 

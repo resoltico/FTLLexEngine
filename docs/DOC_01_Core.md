@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.101.0"
+version: "0.107.0"
 domain: CORE
 updated: "2026-02-10"
 route:
@@ -62,7 +62,7 @@ class FluentBundle:
 - State: Creates internal message/term registries.
 - Thread: Always thread-safe via internal RWLock.
 - Context: Supports context manager protocol (__enter__/__exit__).
-- Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`.
+- Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`. `FluentValue` from `ftllexengine.runtime.value_types`.
 - Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback. Errors are cached before raising; subsequent cache hits re-raise without re-resolution.
 - Cache: Security parameters expose `IntegrityCache` features for financial-grade applications.
 
@@ -873,6 +873,105 @@ def has_message(self, message_id: MessageId) -> bool:
 
 ### Constraints
 - Return: True if message exists in any locale.
+- Raises: None.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `FluentLocalization.has_attribute`
+
+### Signature
+```python
+def has_attribute(self, message_id: MessageId, attribute: str) -> bool:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message_id` | `MessageId` | Y | Message identifier. |
+| `attribute` | `str` | Y | Attribute name to check. |
+
+### Constraints
+- Return: True if message exists in any locale AND has the specified attribute.
+- Raises: None.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `FluentLocalization.get_message_ids`
+
+### Signature
+```python
+def get_message_ids(self) -> list[str]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: List of all message identifiers across all locales.
+- Raises: None.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `FluentLocalization.get_message_variables`
+
+### Signature
+```python
+def get_message_variables(self, message_id: MessageId) -> frozenset[str]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message_id` | `MessageId` | Y | Message identifier. |
+
+### Constraints
+- Return: Frozen set of variable names (without $ prefix).
+- Raises: `KeyError` if message not found in any locale.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `FluentLocalization.get_all_message_variables`
+
+### Signature
+```python
+def get_all_message_variables(self) -> dict[str, frozenset[str]]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Dict mapping message IDs to variable sets across all locales.
+- Raises: None.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `FluentLocalization.introspect_term`
+
+### Signature
+```python
+def introspect_term(self, term_id: str) -> MessageIntrospection | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `term_id` | `str` | Y | Term identifier (without leading dash). |
+
+### Constraints
+- Return: MessageIntrospection from first bundle with term, or None.
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.

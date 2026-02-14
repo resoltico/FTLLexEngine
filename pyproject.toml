@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.106.0"
+version = "0.107.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -75,10 +75,10 @@ dev = [
     "Babel>=2.18.0,<3.0.0",  # Required for tests (locale formatting, parsing)
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
-    "hypothesis>=6.151.5",
+    "hypothesis>=6.151.6",
     "mypy>=1.19.1",
     "pylint>=4.0.4",
-    "ruff>=0.15.0",
+    "ruff>=0.15.1",
     "pytest-benchmark>=5.2.3",
     "pytest-xdist>=3.8.0",
     "pytest-sugar>=1.1.1",
@@ -203,10 +203,10 @@ warn_return_any = false
 module = "ftllexengine.syntax.visitor"
 # ASTTransformer.generic_visit and _transform_list require these suppressions:
 # - arg-type: visit() returns ASTNode union; pattern matching narrows at runtime but mypy
-#   cannot verify the correct subtype for each replace() field (75+ false positives)
+#   cannot verify the correct subtype for each replace() field
 # - unreachable: _transform_list checks for None/list returns from subclass visit_* methods
 #   which are valid at runtime but typed as -> ASTNode in base class
-# Inline type:ignore per-line would require 30+ comments - module override is cleaner.
+# Inline type:ignore per-line would require multiple comments - module override is cleaner.
 # ASTVisitor base class remains fully type-checked.
 disable_error_code = ["arg-type", "unreachable"]
 
@@ -300,46 +300,32 @@ ignore = [
 
 # TESTS - Minimal architectural pattern suppressions
 "tests/test_visitor.py" = ["N802"]
-"tests/test_visitor_coverage.py" = ["N802"]
+"tests/test_visitor_transformer.py" = ["N802"]
 "tests/test_visitor_hypothesis.py" = ["N802", "ARG002"]
 "tests/test_ast_tooling.py" = ["N802", "ARG002"]
 "tests/test_ast_edge_cases.py" = ["N801", "N802", "PLC0415"]
 "tests/test_api_consistency_contracts.py" = ["PLC0415"]
 "tests/test_fluent_bundle.py" = ["N802", "N806"]
 "tests/test_fluent_resolver.py" = ["N802", "EM101"]
-"tests/test_resolver_coverage.py" = ["N802"]
 "tests/test_function_registry_integration.py" = ["N802"]
 "tests/test_cache_basic.py" = ["N802"]
 "tests/test_cache_properties.py" = ["E501"]
 "tests/test_localization_api_completeness.py" = ["N802"]
 "tests/test_parsing_dates.py" = ["DTZ001"]
 "tests/test_parsing_*.py" = ["PLC0415"]
-"tests/test_parser_final_coverage.py" = ["N801", "PLC0415"]
-"tests/test_parser_coverage_gaps.py" = ["PLC0415", "PT017"]
 "tests/test_spec_conformance.py" = ["ARG002", "PLC0415"]
 "tests/test_systematic_error_paths.py" = ["ARG002"]
 "tests/test_multiline_hypothesis.py" = ["E721", "E501"]
-"tests/test_parser_hypothesis_errors.py" = ["E721"]
-
 # Fuzzing: pytestmark must precede imports for file-level marker application
 "tests/test_grammar_based_fuzzing.py" = ["E402"]
 "tests/test_whitespace_fuzzing.py" = ["E402"]
-"tests/test_serializer_completeness.py" = ["RUF002"]
 "tests/test_semantic_validation.py" = ["PLC0415"]
 "tests/test_span_attachment.py" = ["PLC0415"]
-"tests/test_introspection_coverage.py" = ["PLC0415"]
-"tests/test_locale_context_coverage.py" = ["PLC0415"]
 "tests/test_ast_validation_coverage.py" = ["PLC0415"]
-"tests/test_functions_coverage.py" = ["SIM105"]
 "tests/test_properties.py" = ["PLC0415", "SIM105"]
 "tests/test_function_bridge_coverage.py" = ["PLC0415"]
-"tests/test_function_metadata_coverage.py" = ["PLC0415"]
-"tests/test_parser_entries_complete_coverage.py" = ["PLC0415"]
-"tests/test_parser_entries_comprehensive.py" = ["PLC0415"]
-"tests/test_parser_expressions_remaining_coverage.py" = ["PLC0415"]
 "tests/test_validation_resource_comprehensive.py" = ["PLC0415"]
 "tests/test_init_error_paths.py" = ["PLC0415", "EM101", "PT017", "F401"]
-"tests/test_serialization_hypothesis.py" = ["PLC0415"]
 "tests/test_metamorphic_properties.py" = ["PLC0415"]
 "tests/test_version_058_issues.py" = ["PLC0415"]
 "tests/test_rwlock_implementation.py" = ["PLC0415"]

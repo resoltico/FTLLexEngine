@@ -5,10 +5,13 @@ Achieves 100% line and branch coverage by testing:
 - Exception handling in number_format and currency_format for malformed patterns
 - is_builtin_with_locale_requirement function
 - get_shared_registry and _create_shared_registry functions
+- FluentBundle functions parameter validation (dict rejection)
+- NaN/Infinity graceful handling in plural category selection
 
 Property-based tests using Hypothesis for edge cases and invariants.
 """
 
+from collections import OrderedDict
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal, cast
@@ -19,6 +22,7 @@ from babel.numbers import NumberPattern
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import (
     _compute_visible_precision,
@@ -30,6 +34,7 @@ from ftllexengine.runtime.functions import (
     is_builtin_with_locale_requirement,
     number_format,
 )
+from ftllexengine.runtime.plural_rules import select_plural_category
 
 
 class TestComputeVisiblePrecisionCapping:
@@ -75,6 +80,19 @@ class TestComputeVisiblePrecisionCapping:
         result = _compute_visible_precision("1,2345", ",", max_fraction_digits=2)
         assert result == 2
 
+    def test_cap_does_not_inflate(self) -> None:
+        """Cap does not inflate precision beyond actual digits."""
+        assert _compute_visible_precision("1.2", ".", max_fraction_digits=5) == 1
+
+    def test_zero_max_fraction_digits(self) -> None:
+        """max_fraction_digits=0 returns 0 precision."""
+        assert _compute_visible_precision("1.25", ".", max_fraction_digits=0) == 0
+
+    def test_no_decimal_point(self) -> None:
+        """No decimal point returns 0 regardless of cap."""
+        assert _compute_visible_precision("125", ".") == 0
+        assert _compute_visible_precision("125", ".", max_fraction_digits=3) == 0
+
     @given(
         st.integers(min_value=1, max_value=10),
         st.integers(min_value=0, max_value=5),
@@ -89,6 +107,16 @@ class TestComputeVisiblePrecisionCapping:
         formatted = "1." + "0" * digit_count
         result = _compute_visible_precision(formatted, ".", max_fraction_digits=max_frac)
         assert result <= max_frac
+
+    @given(frac_digits=st.integers(min_value=0, max_value=20))
+    def test_result_never_exceeds_actual_digits(self, frac_digits: int) -> None:
+        """Result never exceeds actual fraction digit count."""
+        event(f"frac_digits={frac_digits}")
+        formatted = "1." + "0" * frac_digits if frac_digits > 0 else "1"
+        result = _compute_visible_precision(
+            formatted, ".", max_fraction_digits=100
+        )
+        assert result <= frac_digits
 
 
 class TestNumberFormatPatternExceptionHandling:
@@ -492,6 +520,7 @@ class TestComprehensiveEdgeCases:
     def test_number_format_precision_invariant(self, value: Decimal) -> None:
         """Property: FluentNumber.precision is always non-negative integer."""
         result = number_format(value, "en-US")
+        event(f"precision={result.precision}")
         assert isinstance(result.precision, int)
         assert result.precision >= 0
 
@@ -508,6 +537,7 @@ class TestComprehensiveEdgeCases:
         self, value: Decimal, currency: str
     ) -> None:
         """Property: Currency formatting always produces non-negative precision."""
+        event(f"currency={currency}")
         result = currency_format(value, "en-US", currency=currency)
         assert isinstance(result.precision, int)
         assert result.precision >= 0
@@ -517,6 +547,7 @@ class TestComprehensiveEdgeCases:
         self, dt: datetime
     ) -> None:
         """Property: datetime_format always returns non-empty string."""
+        event(f"year={dt.year}")
         result = datetime_format(dt, "en-US")
         assert isinstance(result, str)
         assert len(result) > 0
@@ -533,6 +564,8 @@ class TestComprehensiveEdgeCases:
         # Ensure min <= max
         if min_frac > max_frac:
             min_frac, max_frac = max_frac, min_frac
+        same = min_frac == max_frac
+        event(f"boundary={'equal' if same else 'range'}_frac")
 
         result = number_format(
             value,
@@ -555,6 +588,7 @@ class TestComprehensiveEdgeCases:
         self, locale_code: str, value: int
     ) -> None:
         """Property: number_format produces consistent results for same locale/value."""
+        event(f"locale={locale_code}")
         result1 = number_format(value, locale_code)
         result2 = number_format(value, locale_code)
 
@@ -571,6 +605,8 @@ class TestComprehensiveEdgeCases:
         self, currency: str, display: str, value: float
     ) -> None:
         """Property: currency_format with same parameters produces consistent results."""
+        event(f"currency={currency}")
+        event(f"display={display}")
         # Cast display to correct type for type checker
         display_style = cast(Literal["symbol", "code", "name"], display)
 
@@ -627,3 +663,77 @@ class TestRegistryIntegrationWithSharedRegistry:
 
         assert "CUSTOM" in copy
         assert "CUSTOM" not in shared
+
+
+class TestDictFunctionsRejected:
+    """FluentBundle rejects dict as functions parameter."""
+
+    def test_dict_raises_type_error(self) -> None:
+        """Passing a dict for functions raises TypeError at init time."""
+        with pytest.raises(TypeError, match="FunctionRegistry"):
+            FluentBundle(
+                "en_US",
+                functions={"UPPER": str.upper},  # type: ignore[arg-type]
+            )
+
+    def test_none_functions_accepted(self) -> None:
+        """None for functions creates default registry."""
+        bundle = FluentBundle("en_US", functions=None)
+        assert bundle is not None
+
+    def test_ordered_dict_rejected(self) -> None:
+        """OrderedDict also rejected (has .copy() but not FunctionRegistry)."""
+        with pytest.raises(TypeError, match="FunctionRegistry"):
+            FluentBundle(
+                "en_US",
+                functions=OrderedDict(),  # type: ignore[arg-type]
+            )
+
+
+class TestNaNPluralHandling:
+    """NaN and Infinity values fall through to 'other' plural category."""
+
+    def test_float_nan_returns_other(self) -> None:
+        """float('nan') returns 'other' plural category."""
+        result = select_plural_category(float("nan"), "en_US")
+        assert result == "other"
+
+    def test_float_inf_returns_other(self) -> None:
+        """float('inf') returns 'other' plural category."""
+        result = select_plural_category(float("inf"), "en_US")
+        assert result == "other"
+
+    def test_float_neg_inf_returns_other(self) -> None:
+        """float('-inf') returns 'other' plural category."""
+        result = select_plural_category(float("-inf"), "en_US")
+        assert result == "other"
+
+    def test_decimal_nan_returns_other(self) -> None:
+        """Decimal('NaN') returns 'other' plural category."""
+        result = select_plural_category(Decimal("NaN"), "en_US")
+        assert result == "other"
+
+    def test_decimal_inf_returns_other(self) -> None:
+        """Decimal('Infinity') returns 'other' plural category."""
+        result = select_plural_category(Decimal("Infinity"), "en_US")
+        assert result == "other"
+
+    def test_normal_numbers_still_work(self) -> None:
+        """Normal numbers still get proper plural categories."""
+        assert select_plural_category(1, "en_US") == "one"
+        assert select_plural_category(0, "en_US") == "other"
+        assert select_plural_category(2, "en_US") == "other"
+
+    def test_nan_in_select_expression(self) -> None:
+        """NaN in select expression falls through to default variant."""
+        bundle = FluentBundle("en_US")
+        bundle.add_resource(
+            "msg = { NUMBER($count) ->\n"
+            "    [one] one item\n"
+            "   *[other] many items\n"
+            "}"
+        )
+        result, _errors = bundle.format_pattern(
+            "msg", {"count": float("nan")}
+        )
+        assert "many items" in result

@@ -245,6 +245,16 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "diag_verr_location=": "diag_validation_errors",
     "diag_vwarn_severity=": "diag_validation_warnings",
     "diag_vresult_valid=": "diag_validation_results",
+    "diag_fmt_format=": "diag_diagnostic_formatters",
+    "diag_fmt_sanitize=": "diag_diagnostic_formatters",
+    # localization.py strategies
+    "l10n_chain_size=": "l10n_locale_chains",
+    "l10n_msg_id_len=": "l10n_message_ids",
+    "l10n_resource_overlap=": "l10n_resource_sets",
+    "l10n_loader_type=": "l10n_resource_loaders",
+    "l10n_value_type=": "l10n_message_values",
+    "l10n_attr_count=": "l10n_messages_with_attributes",
+    "l10n_term_count=": "l10n_messages_with_terms",
 }
 
 # Known strategy weight distributions (intended weights)
@@ -454,6 +464,55 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "True": 0.50,
         "False": 0.50,
     },
+    "diag_fmt_format=": {
+        "rust": 1 / 3,
+        "simple": 1 / 3,
+        "json": 1 / 3,
+    },
+    "diag_fmt_sanitize=": {
+        "off": 0.50,
+        "truncate": 0.25,
+        "redact": 0.25,
+    },
+    # Localization strategies
+    "l10n_chain_size=": {
+        "1": 0.20,
+        "2": 0.20,
+        "3": 0.20,
+        "4": 0.20,
+        "5": 0.20,
+    },
+    "l10n_msg_id_len=": {
+        "short": 1 / 3,
+        "medium": 1 / 3,
+        "long": 1 / 3,
+    },
+    "l10n_resource_overlap=": {
+        "full": 1 / 3,
+        "partial": 1 / 3,
+        "disjoint": 1 / 3,
+    },
+    "l10n_loader_type=": {
+        "dict": 1 / 3,
+        "failing": 1 / 3,
+        "empty": 1 / 3,
+    },
+    "l10n_value_type=": {
+        "simple": 1 / 3,
+        "with_variable": 1 / 3,
+        "numeric": 1 / 3,
+    },
+    "l10n_attr_count=": {
+        "0": 0.25,
+        "1": 0.25,
+        "2": 0.25,
+        "3": 0.25,
+    },
+    "l10n_term_count=": {
+        "1": 1 / 3,
+        "2": 1 / 3,
+        "3": 1 / 3,
+    },
 }
 
 # Expected event categories (for coverage gap detection)
@@ -598,6 +657,38 @@ EXPECTED_EVENTS: set[str] = {
     "diag_vwarn_severity=info",
     "diag_vresult_valid=True",
     "diag_vresult_valid=False",
+    # DiagnosticFormatter strategies
+    "diag_fmt_format=rust",
+    "diag_fmt_format=simple",
+    "diag_fmt_format=json",
+    "diag_fmt_sanitize=off",
+    "diag_fmt_sanitize=truncate",
+    "diag_fmt_sanitize=redact",
+    # Localization strategy events
+    "l10n_chain_size=1",
+    "l10n_chain_size=2",
+    "l10n_chain_size=3",
+    "l10n_chain_size=4",
+    "l10n_chain_size=5",
+    "l10n_msg_id_len=short",
+    "l10n_msg_id_len=medium",
+    "l10n_msg_id_len=long",
+    "l10n_resource_overlap=full",
+    "l10n_resource_overlap=partial",
+    "l10n_resource_overlap=disjoint",
+    "l10n_loader_type=dict",
+    "l10n_loader_type=failing",
+    "l10n_loader_type=empty",
+    "l10n_value_type=simple",
+    "l10n_value_type=with_variable",
+    "l10n_value_type=numeric",
+    "l10n_attr_count=0",
+    "l10n_attr_count=1",
+    "l10n_attr_count=2",
+    "l10n_attr_count=3",
+    "l10n_term_count=1",
+    "l10n_term_count=2",
+    "l10n_term_count=3",
 }
 
 

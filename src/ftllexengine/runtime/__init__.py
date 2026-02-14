@@ -18,7 +18,8 @@ from .functions import (
     number_format,
 )
 from .plural_rules import select_plural_category
-from .resolver import FluentResolver, ResolutionContext
+from .resolution_context import ResolutionContext
+from .resolver import FluentResolver
 
 __all__ = [
     "FluentBundle",

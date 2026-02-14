@@ -224,10 +224,14 @@ class TestDiagnosticConstruction:
         start=byte_offsets,
     )
     @settings(max_examples=50)
-    def test_diagnostic_format_contains_message(
+    def test_diagnostic_format_contains_escaped_message(
         self, message: str, line: int, col: int, start: int
     ) -> None:
-        """PROPERTY: Formatted diagnostic includes error message."""
+        """PROPERTY: Formatted diagnostic includes escaped error message.
+
+        The formatter escapes control characters to prevent log
+        injection, so the escaped message must appear in the output.
+        """
         end = start + 10
         span = SourceSpan(start=start, end=end, line=line, column=col)
         diagnostic = Diagnostic(
@@ -238,8 +242,13 @@ class TestDiagnosticConstruction:
 
         formatted = diagnostic.format_error()
 
-        # Must contain the error message
-        assert message in formatted
+        escaped = (
+            message
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
+        assert escaped in formatted
         event(f"msg_len={len(message)}")
 
 
@@ -577,7 +586,11 @@ class TestDiagnosticFormatting:
     def test_formatted_diagnostic_has_structure(
         self, message: str, line: int, col: int, start: int
     ) -> None:
-        """PROPERTY: Formatted diagnostics have consistent structure."""
+        """PROPERTY: Formatted diagnostics have consistent structure.
+
+        The formatter escapes control characters to prevent log
+        injection, so the escaped message must appear in the output.
+        """
         end = start + 10
         span = SourceSpan(start=start, end=end, line=line, column=col)
         diagnostic = Diagnostic(
@@ -588,10 +601,14 @@ class TestDiagnosticFormatting:
 
         formatted = diagnostic.format_error()
 
-        # Should be a string with multiple components
         assert isinstance(formatted, str)
-        # Should contain all key information
-        assert message in formatted
+        escaped = (
+            message
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
+        assert escaped in formatted
         assert str(line) in formatted
         assert str(col) in formatted
         event(f"msg_len={len(message)}")

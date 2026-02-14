@@ -28,8 +28,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FluentNumber, FunctionRegistry
+from .function_bridge import FunctionRegistry
 from .locale_context import LocaleContext
+from .value_types import _FTL_REQUIRES_LOCALE_ATTR, FluentNumber
 
 __all__ = ["create_default_registry", "get_shared_registry"]
 

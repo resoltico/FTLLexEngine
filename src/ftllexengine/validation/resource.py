@@ -32,7 +32,7 @@ from ftllexengine.diagnostics import (
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.introspection import extract_references, extract_references_by_attribute
-from ftllexengine.syntax import Junk, Message, Resource, Term
+from ftllexengine.syntax import Attribute, Junk, Message, Resource, Term
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.validator import SemanticValidator
 
@@ -128,6 +128,90 @@ def _extract_syntax_errors(
     return errors
 
 
+def _check_entry(
+    entry: Message | Term,
+    *,
+    kind: str,
+    entry_name: str,
+    attributes: tuple[Attribute, ...],
+    seen_ids: set[str],
+    known_ids: frozenset[str] | None,
+    line_cache: LineOffsetCache,
+    warnings: list[ValidationWarning],
+) -> None:
+    """Check a single entry for duplicates, shadows, and attribute issues.
+
+    Shared logic for both Message and Term validation in _collect_entries.
+
+    Args:
+        entry: The Message or Term AST node
+        kind: Entry kind label ("message" or "term")
+        entry_name: The entry identifier name
+        attributes: The entry's attributes tuple
+        seen_ids: Mutable set of IDs already seen in this namespace
+        known_ids: Optional set of IDs already in bundle (for shadow detection)
+        line_cache: Shared line offset cache for position lookups
+        warnings: Mutable list to append warnings to
+    """
+    # Check for duplicate IDs within namespace
+    if entry_name in seen_ids:
+        line, column = _get_entry_position(entry, line_cache)
+        warnings.append(
+            ValidationWarning(
+                code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
+                message=(
+                    f"Duplicate {kind} ID '{entry_name}' "
+                    f"(later definition will overwrite earlier)"
+                ),
+                context=entry_name,
+                line=line,
+                column=column,
+                severity=WarningSeverity.WARNING,
+            )
+        )
+    seen_ids.add(entry_name)
+
+    # Check for shadow conflict with known entries
+    if known_ids and entry_name in known_ids:
+        line, column = _get_entry_position(entry, line_cache)
+        warnings.append(
+            ValidationWarning(
+                code=DiagnosticCode.VALIDATION_SHADOW_WARNING.name,
+                message=(
+                    f"{kind.capitalize()} '{entry_name}' shadows "
+                    f"existing {kind} "
+                    f"(this definition will override the earlier one)"
+                ),
+                context=entry_name,
+                line=line,
+                column=column,
+                severity=WarningSeverity.WARNING,
+            )
+        )
+
+    # Check for duplicate attribute IDs within this entry
+    seen_attr_ids: set[str] = set()
+    for attr in attributes:
+        attr_name = attr.id.name
+        if attr_name in seen_attr_ids:
+            line, column = _get_entry_position(entry, line_cache)
+            warnings.append(
+                ValidationWarning(
+                    code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name,
+                    message=(
+                        f"{kind.capitalize()} '{entry_name}' has "
+                        f"duplicate attribute '{attr_name}' "
+                        f"(later will override earlier)"
+                    ),
+                    context=f"{entry_name}.{attr_name}",
+                    line=line,
+                    column=column,
+                    severity=WarningSeverity.WARNING,
+                )
+            )
+        seen_attr_ids.add(attr_name)
+
+
 def _collect_entries(
     resource: Resource,
     line_cache: LineOffsetCache,
@@ -166,74 +250,41 @@ def _collect_entries(
 
     for entry in resource.entries:
         match entry:
-            case Message(id=msg_id, value=value, attributes=attributes):
-                # Check for duplicate message IDs within message namespace
-                if msg_id.name in seen_message_ids:
-                    line, column = _get_entry_position(entry, line_cache)
-                    warnings.append(
-                        ValidationWarning(
-                            code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
-                            message=(
-                                f"Duplicate message ID '{msg_id.name}' "
-                                f"(later definition will overwrite earlier)"
-                            ),
-                            context=msg_id.name,
-                            line=line,
-                            column=column,
-                            severity=WarningSeverity.WARNING,
-                        )
-                    )
-                seen_message_ids.add(msg_id.name)
+            case Message(
+                id=msg_id, value=value, attributes=attributes
+            ):
+                _check_entry(
+                    entry,
+                    kind="message",
+                    entry_name=msg_id.name,
+                    attributes=attributes,
+                    seen_ids=seen_message_ids,
+                    known_ids=known_messages,
+                    line_cache=line_cache,
+                    warnings=warnings,
+                )
                 messages_dict[msg_id.name] = entry
 
-                # Check for shadow conflict with known messages
-                if known_messages and msg_id.name in known_messages:
-                    line, column = _get_entry_position(entry, line_cache)
-                    warnings.append(
-                        ValidationWarning(
-                            code=DiagnosticCode.VALIDATION_SHADOW_WARNING.name,
-                            message=(
-                                f"Message '{msg_id.name}' shadows existing message "
-                                f"(this definition will override the earlier one)"
-                            ),
-                            context=msg_id.name,
-                            line=line,
-                            column=column,
-                            severity=WarningSeverity.WARNING,
-                        )
+                # Messages without values (defense-in-depth)
+                # NOTE: Unreachable - parser/AST prevent this.
+                # Kept for external AST construction scenarios.
+                if (  # pragma: no cover
+                    value is None and len(attributes) == 0
+                ):
+                    line, column = _get_entry_position(  # pragma: no cover
+                        entry, line_cache
                     )
-
-                # Check for duplicate attribute IDs within this message
-                seen_message_attr_ids: set[str] = set()
-                for attr in attributes:
-                    if attr.id.name in seen_message_attr_ids:
-                        line, column = _get_entry_position(entry, line_cache)
-                        warnings.append(
-                            ValidationWarning(
-                                code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name,
-                                message=(
-                                    f"Message '{msg_id.name}' has duplicate attribute "
-                                    f"'{attr.id.name}' (later will override earlier)"
-                                ),
-                                context=f"{msg_id.name}.{attr.id.name}",
-                                line=line,
-                                column=column,
-                                severity=WarningSeverity.WARNING,
-                            )
-                        )
-                    seen_message_attr_ids.add(attr.id.name)
-
-                # Check for messages without values (only attributes)
-                # NOTE: This check is unreachable due to defense-in-depth:
-                # 1. Parser validates in validate_message_content() and creates Junk instead
-                # 2. Message.__post_init__() raises ValueError if value=None and no attributes
-                # Kept as defensive programming for external AST construction scenarios.
-                if value is None and len(attributes) == 0:  # pragma: no cover
-                    line, column = _get_entry_position(entry, line_cache)  # pragma: no cover
                     warnings.append(  # pragma: no cover
                         ValidationWarning(
-                            code=DiagnosticCode.VALIDATION_NO_VALUE_OR_ATTRS.name,
-                            message=f"Message '{msg_id.name}' has neither value nor attributes",
+                            code=(
+                                DiagnosticCode
+                                .VALIDATION_NO_VALUE_OR_ATTRS
+                                .name
+                            ),
+                            message=(
+                                f"Message '{msg_id.name}' has "
+                                f"neither value nor attributes"
+                            ),
                             context=msg_id.name,
                             line=line,
                             column=column,
@@ -242,61 +293,17 @@ def _collect_entries(
                     )
 
             case Term(id=term_id, attributes=attributes):
-                # Check for duplicate term IDs within term namespace
-                if term_id.name in seen_term_ids:
-                    line, column = _get_entry_position(entry, line_cache)
-                    warnings.append(
-                        ValidationWarning(
-                            code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
-                            message=(
-                                f"Duplicate term ID '{term_id.name}' "
-                                f"(later definition will overwrite earlier)"
-                            ),
-                            context=term_id.name,
-                            line=line,
-                            column=column,
-                            severity=WarningSeverity.WARNING,
-                        )
-                    )
-                seen_term_ids.add(term_id.name)
+                _check_entry(
+                    entry,
+                    kind="term",
+                    entry_name=term_id.name,
+                    attributes=attributes,
+                    seen_ids=seen_term_ids,
+                    known_ids=known_terms,
+                    line_cache=line_cache,
+                    warnings=warnings,
+                )
                 terms_dict[term_id.name] = entry
-
-                # Check for shadow conflict with known terms
-                if known_terms and term_id.name in known_terms:
-                    line, column = _get_entry_position(entry, line_cache)
-                    warnings.append(
-                        ValidationWarning(
-                            code=DiagnosticCode.VALIDATION_SHADOW_WARNING.name,
-                            message=(
-                                f"Term '{term_id.name}' shadows existing term "
-                                f"(this definition will override the earlier one)"
-                            ),
-                            context=term_id.name,
-                            line=line,
-                            column=column,
-                            severity=WarningSeverity.WARNING,
-                        )
-                    )
-
-                # Check for duplicate attribute IDs within this term
-                seen_term_attr_ids: set[str] = set()
-                for attr in attributes:
-                    if attr.id.name in seen_term_attr_ids:
-                        line, column = _get_entry_position(entry, line_cache)
-                        warnings.append(
-                            ValidationWarning(
-                                code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name,
-                                message=(
-                                    f"Term '{term_id.name}' has duplicate attribute "
-                                    f"'{attr.id.name}' (later will override earlier)"
-                                ),
-                                context=f"{term_id.name}.{attr.id.name}",
-                                line=line,
-                                column=column,
-                                severity=WarningSeverity.WARNING,
-                            )
-                        )
-                    seen_term_attr_ids.add(attr.id.name)
 
     return messages_dict, terms_dict, warnings
 
@@ -474,6 +481,107 @@ def _detect_circular_references(
     return warnings
 
 
+def _resolve_reference(
+    ref: str,
+    prefix: str,
+    local_entries: dict[str, Message] | dict[str, Term],
+    known_ids: frozenset[str] | None,
+) -> str | None:
+    """Resolve a reference string to a graph node key.
+
+    Shared logic for both message and term reference resolution.
+    References may be attribute-qualified ("name.attr") or bare ("name").
+
+    Args:
+        ref: Reference string (possibly attribute-qualified)
+        prefix: Graph node prefix ("msg" or "term")
+        local_entries: Local entries dict for this namespace
+        known_ids: Optional set of IDs already in bundle
+
+    Returns:
+        Prefixed graph node key, or None if reference is unknown
+    """
+    if "." in ref:
+        base, attr = ref.split(".", 1)
+        if base in local_entries or (known_ids and base in known_ids):
+            return f"{prefix}:{base}.{attr}"
+    elif ref in local_entries or (known_ids and ref in known_ids):
+        return f"{prefix}:{ref}"
+    return None
+
+
+def _add_entry_nodes(
+    entries: dict[str, Message] | dict[str, Term],
+    prefix: str,
+    messages_dict: dict[str, Message],
+    terms_dict: dict[str, Term],
+    known_messages: frozenset[str] | None,
+    known_terms: frozenset[str] | None,
+    graph: dict[str, set[str]],
+) -> None:
+    """Add nodes and edges for a set of entries to the dependency graph.
+
+    Shared logic for both message and term node building.
+
+    Args:
+        entries: The entries to process (messages or terms)
+        prefix: Graph node prefix ("msg" or "term")
+        messages_dict: All local messages (for reference resolution)
+        terms_dict: All local terms (for reference resolution)
+        known_messages: Optional set of message IDs already in bundle
+        known_terms: Optional set of term IDs already in bundle
+        graph: Mutable graph to add nodes to
+    """
+    for name, entry in entries.items():
+        refs_by_attr = extract_references_by_attribute(entry)
+
+        for attr_name, (msg_refs, term_refs) in refs_by_attr.items():
+            node_key = (
+                f"{prefix}:{name}"
+                if attr_name is None
+                else f"{prefix}:{name}.{attr_name}"
+            )
+            deps: set[str] = set()
+            for ref in msg_refs:
+                resolved = _resolve_reference(
+                    ref, "msg", messages_dict, known_messages
+                )
+                if resolved is not None:
+                    deps.add(resolved)
+            for ref in term_refs:
+                resolved = _resolve_reference(
+                    ref, "term", terms_dict, known_terms
+                )
+                if resolved is not None:
+                    deps.add(resolved)
+            graph[node_key] = deps
+
+
+def _add_known_entries(
+    known_ids: frozenset[str] | None,
+    prefix: str,
+    known_deps: dict[str, set[str]] | None,
+    graph: dict[str, set[str]],
+) -> None:
+    """Add known (pre-existing) entries to the graph.
+
+    Args:
+        known_ids: Set of known entry IDs
+        prefix: Graph node prefix ("msg" or "term")
+        known_deps: Optional dependency map for known entries
+        graph: Mutable graph to add nodes to
+    """
+    if not known_ids:
+        return
+    for known_id in known_ids:
+        node_key = f"{prefix}:{known_id}"
+        if node_key not in graph:
+            if known_deps and known_id in known_deps:
+                graph[node_key] = known_deps[known_id].copy()
+            else:
+                graph[node_key] = set()
+
+
 def _build_dependency_graph(
     messages_dict: dict[str, Message],
     terms_dict: dict[str, Term],
@@ -502,90 +610,28 @@ def _build_dependency_graph(
     """
     graph: dict[str, set[str]] = {}
 
-    # Helper to resolve a reference string to a graph node key.
-    # References may be attribute-qualified ("msg.attr") or bare ("msg").
-    def _resolve_msg_ref(ref: str) -> str | None:
-        """Resolve a message reference to its graph node key, or None if unknown."""
-        if "." in ref:
-            # Attribute-qualified reference (e.g., "msg.tooltip")
-            base, attr = ref.split(".", 1)
-            if base in messages_dict or (known_messages and base in known_messages):
-                return f"msg:{base}.{attr}"
-        # Bare message reference
-        elif ref in messages_dict or (known_messages and ref in known_messages):
-            return f"msg:{ref}"
-        return None
+    # Add entry nodes with attribute-granular dependencies.
+    # Each attribute gets its own node to avoid false positive cycles
+    # when msg.a references msg.b (non-cyclic intra-entry reference).
+    _add_entry_nodes(
+        messages_dict, "msg",
+        messages_dict, terms_dict,
+        known_messages, known_terms, graph,
+    )
+    _add_entry_nodes(
+        terms_dict, "term",
+        messages_dict, terms_dict,
+        known_messages, known_terms, graph,
+    )
 
-    def _resolve_term_ref(ref: str) -> str | None:
-        """Resolve a term reference to its graph node key, or None if unknown."""
-        if "." in ref:
-            # Attribute-qualified reference (e.g., "-term.attr")
-            base, attr = ref.split(".", 1)
-            if base in terms_dict or (known_terms and base in known_terms):
-                return f"term:{base}.{attr}"
-        elif ref in terms_dict or (known_terms and ref in known_terms):
-            return f"term:{ref}"
-        return None
-
-    # Add message nodes with attribute-granular dependencies.
-    # Each attribute gets its own node in the graph to avoid false positive
-    # cycles when msg.a references msg.b (non-cyclic intra-message reference).
-    for msg_name, message in messages_dict.items():
-        refs_by_attr = extract_references_by_attribute(message)
-
-        for attr_name, (msg_refs, term_refs) in refs_by_attr.items():
-            node_key = f"msg:{msg_name}" if attr_name is None else f"msg:{msg_name}.{attr_name}"
-
-            deps: set[str] = set()
-            for ref in msg_refs:
-                resolved = _resolve_msg_ref(ref)
-                if resolved is not None:
-                    deps.add(resolved)
-            for ref in term_refs:
-                resolved = _resolve_term_ref(ref)
-                if resolved is not None:
-                    deps.add(resolved)
-            graph[node_key] = deps
-
-    # Add term nodes with all their dependencies (both message and term refs)
-    for term_name, term in terms_dict.items():
-        refs_by_attr = extract_references_by_attribute(term)
-
-        for attr_name, (msg_refs, term_refs) in refs_by_attr.items():
-            node_key = f"term:{term_name}" if attr_name is None else f"term:{term_name}.{attr_name}"
-
-            term_deps: set[str] = set()
-            for ref in msg_refs:
-                resolved = _resolve_msg_ref(ref)
-                if resolved is not None:
-                    term_deps.add(resolved)
-            for ref in term_refs:
-                resolved = _resolve_term_ref(ref)
-                if resolved is not None:
-                    term_deps.add(resolved)
-            graph[node_key] = term_deps
-
-    # Add known entries as nodes WITH their actual dependencies if provided.
-    # This enables detection of cross-resource cycles involving dependencies OF known entries.
-    if known_messages:
-        for known_msg in known_messages:
-            node_key = f"msg:{known_msg}"
-            if node_key not in graph:
-                # Use provided dependencies if available, otherwise empty set
-                if known_msg_deps and known_msg in known_msg_deps:
-                    graph[node_key] = known_msg_deps[known_msg].copy()
-                else:
-                    graph[node_key] = set()
-
-    if known_terms:
-        for known_term in known_terms:
-            node_key = f"term:{known_term}"
-            if node_key not in graph:
-                # Use provided dependencies if available, otherwise empty set
-                if known_term_deps and known_term in known_term_deps:
-                    graph[node_key] = known_term_deps[known_term].copy()
-                else:
-                    graph[node_key] = set()
+    # Add known entries with their dependencies for cross-resource
+    # cycle detection.
+    _add_known_entries(
+        known_messages, "msg", known_msg_deps, graph,
+    )
+    _add_known_entries(
+        known_terms, "term", known_term_deps, graph,
+    )
 
     return graph
 

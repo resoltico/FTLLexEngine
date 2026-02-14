@@ -11,7 +11,7 @@ Python 3.13+.
 from datetime import UTC, date, datetime
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
@@ -64,6 +64,8 @@ class TestFluentBundleLocaleValidation:
 
         BCP 47 format: alphanumeric starting with letter, optional underscore-delimited subtag.
         """
+        has_subtag = "_" in locale
+        event(f"outcome={'subtag' if has_subtag else 'simple'}")
         bundle = FluentBundle(locale)
         assert bundle.locale == locale
 
@@ -73,6 +75,7 @@ class TestFluentBundleLocaleValidation:
     @settings(max_examples=50)
     def test_invalid_locale_formats_rejected(self, locale: str) -> None:
         """Invalid locale formats are rejected by __init__."""
+        event("outcome=rejected")
         with pytest.raises(ValueError, match="Invalid locale code format"):
             FluentBundle(locale)
 
@@ -236,6 +239,7 @@ class TestCurrencyDecimalsPropertyBased:
     @settings(max_examples=50)
     def test_jpy_code_display_never_has_decimals(self, amount: float) -> None:
         """JPY code display never shows decimal places."""
+        event("outcome=zero_decimals")
         result = currency_format(amount, "en-US", currency="JPY", currency_display="code")
 
         # JPY should never have .00 or any decimal point before digits
@@ -255,6 +259,7 @@ class TestCurrencyDecimalsPropertyBased:
     @settings(max_examples=50)
     def test_bhd_code_display_has_three_decimals(self, amount: float) -> None:
         """BHD code display shows exactly 3 decimal places."""
+        event("outcome=three_decimals")
         result = currency_format(round(amount, 3), "en-US", currency="BHD", currency_display="code")
 
         assert "BHD" in result
