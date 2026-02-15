@@ -327,12 +327,10 @@ class FunctionRegistry:
         func_sig = self._functions[ftl_name]
 
         # Convert FTL camelCase args → Python snake_case args
-        # Reconstruct dict from immutable tuple for O(1) lookup
-        param_dict = dict(func_sig.param_mapping)
+        # Uses cached MappingProxyType for O(1) lookup without per-call dict construction
         python_kwargs = {}
         for ftl_param, value in named.items():
-            # Look up Python parameter name
-            python_param = param_dict.get(ftl_param, ftl_param)
+            python_param = func_sig.param_dict.get(ftl_param, ftl_param)
             python_kwargs[python_param] = value
 
         # Call Python function

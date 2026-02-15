@@ -12,8 +12,6 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, NoReturn
 
 from ftllexengine.constants import (
-    DEFAULT_CACHE_SIZE,
-    DEFAULT_MAX_ENTRY_SIZE,
     DEFAULT_MAX_EXPANSION_SIZE,
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
@@ -38,6 +36,7 @@ from ftllexengine.integrity import (
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.locale_utils import get_system_locale
 from ftllexengine.runtime.cache import IntegrityCache
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -65,6 +64,33 @@ _LOG_TRUNCATE_DEBUG: int = 50
 # Rejects non-ASCII characters like accented letters (e.g., "e_FR" with accented e).
 # Uses \Z instead of $ to match only at end-of-string, not before trailing newline.
 _LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*\Z")
+
+
+class _PendingRegistration:
+    """Collected entries from a parsed resource, prior to bundle state mutation.
+
+    Intermediate result of Phase 1 (collection) in the two-phase commit
+    protocol used by ``_register_resource``. Separating collection from
+    mutation makes strict-mode atomicity explicit: if strict validation
+    rejects the resource, no bundle state has been touched.
+    """
+
+    __slots__ = (
+        "junk",
+        "messages",
+        "msg_deps",
+        "overwrite_warnings",
+        "term_deps",
+        "terms",
+    )
+
+    def __init__(self) -> None:
+        self.messages: dict[str, Message] = {}
+        self.terms: dict[str, Term] = {}
+        self.msg_deps: dict[str, set[str]] = {}
+        self.term_deps: dict[str, set[str]] = {}
+        self.junk: list[Junk] = []
+        self.overwrite_warnings: list[tuple[str, str]] = []
 
 
 class FluentBundle:
@@ -121,12 +147,7 @@ class FluentBundle:
 
     __slots__ = (
         "_cache",
-        "_cache_enable_audit",
-        "_cache_max_audit_entries",
-        "_cache_max_entry_weight",
-        "_cache_max_errors_per_entry",
-        "_cache_size",
-        "_cache_write_once",
+        "_cache_config",
         "_function_registry",
         "_locale",
         "_max_expansion_size",
@@ -185,13 +206,7 @@ class FluentBundle:
         /,
         *,
         use_isolating: bool = True,
-        enable_cache: bool = False,
-        cache_size: int = DEFAULT_CACHE_SIZE,
-        cache_write_once: bool = False,
-        cache_enable_audit: bool = False,
-        cache_max_audit_entries: int = 10000,
-        cache_max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
-        cache_max_errors_per_entry: int = 50,
+        cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
@@ -202,24 +217,12 @@ class FluentBundle:
 
         Args:
             locale: Locale code (lv_LV, en_US, de_DE, pl_PL) [positional-only]
-            use_isolating: Wrap interpolated values in Unicode bidi isolation marks (default: True)
+            use_isolating: Wrap interpolated values in Unicode bidi isolation marks (default: True).
                           Set to False only if you're certain RTL languages won't be used.
                           See Unicode TR9: http://www.unicode.org/reports/tr9/
-            enable_cache: Enable format caching for performance (default: False)
-                         Cache provides 50x speedup on repeated format calls.
-            cache_size: Maximum cache entries when caching enabled (default: 1000)
-            cache_write_once: Reject updates to existing cache keys (default: False).
-                             Enables data race prevention for financial applications.
-                             When True and strict=True, raises WriteConflictError on overwrite attempt.
-            cache_enable_audit: Maintain audit log of all cache operations (default: False).
-                               Enables post-mortem analysis and compliance logging.
-            cache_max_audit_entries: Maximum audit log entries before oldest eviction (default: 10000).
-                                    Only relevant when cache_enable_audit=True.
-            cache_max_entry_weight: Maximum memory weight for cached results (default: 10000).
-                                   Weight is calculated as: len(formatted_str) + sum(error_weights).
-                                   Results exceeding this limit are computed but not cached.
-            cache_max_errors_per_entry: Maximum errors per cache entry (default: 50).
-                                       Prevents memory exhaustion from pathological error cases.
+            cache: Cache configuration (default: None = caching disabled).
+                  Pass ``CacheConfig()`` for default settings or customize fields.
+                  Cache provides 50x speedup on repeated format calls.
             functions: Custom FunctionRegistry to use (default: standard registry with
                       NUMBER, DATETIME, CURRENCY). Pass a custom registry to:
                       - Use pre-registered custom functions
@@ -246,6 +249,8 @@ class FluentBundle:
             Write operations (add_resource, add_function) acquire exclusive access.
 
         Example:
+            >>> from ftllexengine.runtime.cache_config import CacheConfig
+            >>>
             >>> # Using default registry (standard functions)
             >>> bundle = FluentBundle("en")
             >>>
@@ -259,10 +264,10 @@ class FluentBundle:
             >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
             >>>
             >>> # Financial-grade strict mode with write-once cache
-            >>> bundle = FluentBundle("en", strict=True, enable_cache=True, cache_write_once=True)
+            >>> bundle = FluentBundle("en", strict=True, cache=CacheConfig(write_once=True))
             >>>
             >>> # Audit-enabled cache for compliance
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_enable_audit=True)
+            >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
         """
         # Validate locale format
         FluentBundle._validate_locale_format(locale)
@@ -292,55 +297,35 @@ class FluentBundle:
         )
 
         # Thread safety: always enabled via RWLock (readers-writer lock)
-        # Allows concurrent read operations (format calls) while ensuring
-        # exclusive write access (add_resource, add_function)
         self._rwlock = RWLock()
 
         # Function registry: copy-on-write optimization
-        # Using the shared registry avoids re-registering built-in functions for each bundle.
-        # Copy is deferred until add_function() is called (copy-on-write pattern).
         if functions is not None:
-            # Type validation at API boundary: reject non-FunctionRegistry objects early.
-            # dict, OrderedDict, and other Mapping types have .copy() but lack the
-            # FunctionRegistry interface (should_inject_locale, call, etc.), causing
-            # opaque AttributeErrors during format_pattern() if not caught here.
             if not isinstance(functions, FunctionRegistry):
                 msg = (  # type: ignore[unreachable]
                     f"functions must be FunctionRegistry, not {type(functions).__name__}. "
                     "Use create_default_registry() or FunctionRegistry() to create one."
                 )
                 raise TypeError(msg)
-            # User provided a registry - copy it for isolation
             self._function_registry = functions.copy()
             self._owns_registry = True
         else:
-            # Use shared registry directly (frozen, so safe to share)
-            # Will be copied on first add_function() call
             self._function_registry = get_shared_registry()
             self._owns_registry = False
 
-        # Format cache (opt-in) with integrity verification
-        # Store cache configuration for introspection; created eagerly when enable_cache=True
+        # Cache configuration and instance
+        self._cache_config: CacheConfig = cache if cache is not None else CacheConfig()
         self._cache: IntegrityCache | None = None
-        self._cache_size = cache_size
-        self._cache_write_once = cache_write_once
-        self._cache_enable_audit = cache_enable_audit
-        self._cache_max_audit_entries = cache_max_audit_entries
-        self._cache_max_entry_weight = cache_max_entry_weight
-        self._cache_max_errors_per_entry = cache_max_errors_per_entry
 
-        if enable_cache:
-            # Cache strict mode matches bundle strict mode for consistent error handling.
-            # When bundle strict=True, cache corruption raises CacheCorruptionError.
-            # When bundle strict=False, cache corruption silently evicts the entry.
+        if cache is not None:
             self._cache = IntegrityCache(
-                maxsize=cache_size,
-                max_entry_weight=cache_max_entry_weight,
-                max_errors_per_entry=cache_max_errors_per_entry,
-                write_once=cache_write_once,
+                maxsize=cache.size,
+                max_entry_weight=cache.max_entry_weight,
+                max_errors_per_entry=cache.max_errors_per_entry,
+                write_once=cache.write_once,
                 strict=self._strict,
-                enable_audit=cache_enable_audit,
-                max_audit_entries=cache_max_audit_entries,
+                enable_audit=cache.enable_audit,
+                max_audit_entries=cache.max_audit_entries,
             )
 
         # Context manager state tracking (cache invalidation optimization)
@@ -350,7 +335,7 @@ class FluentBundle:
             "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s, strict=%s)",
             locale,
             use_isolating,
-            "enabled" if enable_cache else "disabled",
+            "enabled" if cache is not None else "disabled",
             strict,
         )
 
@@ -411,7 +396,8 @@ class FluentBundle:
             bool: True if caching is enabled, False otherwise
 
         Example:
-            >>> bundle = FluentBundle("en", enable_cache=True)
+            >>> from ftllexengine.runtime.cache_config import CacheConfig
+            >>> bundle = FluentBundle("en", cache=CacheConfig())
             >>> bundle.cache_enabled
             True
             >>> bundle_no_cache = FluentBundle("en")
@@ -421,28 +407,28 @@ class FluentBundle:
         return self._cache is not None
 
     @property
+    def cache_config(self) -> CacheConfig:
+        """Get cache configuration (read-only).
+
+        Returns:
+            CacheConfig: Frozen cache configuration object.
+
+        Example:
+            >>> from ftllexengine.runtime.cache_config import CacheConfig
+            >>> bundle = FluentBundle("en", cache=CacheConfig(size=500))
+            >>> bundle.cache_config.size
+            500
+        """
+        return self._cache_config
+
+    @property
     def cache_size(self) -> int:
         """Get maximum cache size configuration (read-only).
 
         Returns:
             int: Configured maximum cache entries
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_size=500)
-            >>> bundle.cache_size
-            500
-            >>> # Cache size is returned even when caching is disabled
-            >>> bundle_no_cache = FluentBundle("en", cache_size=200)
-            >>> bundle_no_cache.cache_size
-            200
-            >>> bundle_no_cache.cache_enabled
-            False
-
-        Note:
-            Returns configured size regardless of whether caching is enabled.
-            Use cache_enabled to check if caching is active.
         """
-        return self._cache_size
+        return self._cache_config.size
 
     @property
     def cache_usage(self) -> int:
@@ -450,19 +436,6 @@ class FluentBundle:
 
         Returns:
             int: Number of entries currently in cache (0 if caching disabled)
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_size=500)
-            >>> bundle.add_resource("msg = Hello")
-            >>> bundle.format_pattern("msg", {})
-            ('Hello', ())
-            >>> bundle.cache_usage  # One entry cached
-            1
-            >>> bundle.cache_size   # Configured limit
-            500
-
-        Note:
-            Use with cache_size to calculate utilization: cache_usage / cache_size
         """
         if self._cache is None:
             return 0
@@ -472,108 +445,46 @@ class FluentBundle:
     def cache_write_once(self) -> bool:
         """Get whether cache write-once mode is enabled (read-only).
 
-        Write-once mode rejects updates to existing cache keys, preventing
-        data races in concurrent environments. Essential for financial
-        applications where cache overwrites could indicate race conditions.
-
         Returns:
             bool: True if write-once mode is configured
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_write_once=True)
-            >>> bundle.cache_write_once
-            True
-            >>> bundle_normal = FluentBundle("en", enable_cache=True)
-            >>> bundle_normal.cache_write_once
-            False
-
-        Note:
-            Returns configured value regardless of whether caching is enabled.
         """
-        return self._cache_write_once
+        return self._cache_config.write_once
 
     @property
     def cache_enable_audit(self) -> bool:
         """Get whether cache audit logging is enabled (read-only).
 
-        Audit logging maintains a history of all cache operations for
-        compliance and debugging purposes. Each operation (GET, PUT, HIT,
-        MISS, EVICT, CORRUPTION) is recorded with timestamps.
-
         Returns:
             bool: True if audit logging is configured
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_enable_audit=True)
-            >>> bundle.cache_enable_audit
-            True
-
-        Note:
-            Returns configured value regardless of whether caching is enabled.
         """
-        return self._cache_enable_audit
+        return self._cache_config.enable_audit
 
     @property
     def cache_max_audit_entries(self) -> int:
         """Get maximum audit log entries configuration (read-only).
 
-        The audit log uses a bounded deque with O(1) eviction of oldest
-        entries when the limit is reached.
-
         Returns:
             int: Configured maximum audit log entries
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_enable_audit=True, cache_max_audit_entries=5000)
-            >>> bundle.cache_max_audit_entries
-            5000
-
-        Note:
-            Returns configured value regardless of whether caching or audit is enabled.
         """
-        return self._cache_max_audit_entries
+        return self._cache_config.max_audit_entries
 
     @property
     def cache_max_entry_weight(self) -> int:
         """Get maximum cache entry weight configuration (read-only).
 
-        Weight is calculated as: len(formatted_str) + sum(error_weights).
-        Results exceeding this limit are computed but not cached, protecting
-        against memory exhaustion from large formatted outputs.
-
         Returns:
             int: Configured maximum entry weight in approximate bytes
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_max_entry_weight=5000)
-            >>> bundle.cache_max_entry_weight
-            5000
-
-        Note:
-            Returns configured value regardless of whether caching is enabled.
         """
-        return self._cache_max_entry_weight
+        return self._cache_config.max_entry_weight
 
     @property
     def cache_max_errors_per_entry(self) -> int:
         """Get maximum errors per cache entry configuration (read-only).
 
-        Entries with more errors than this limit are not cached, preventing
-        memory exhaustion from pathological cases where resolution produces
-        many errors (e.g., cyclic references, deeply nested validation failures).
-
         Returns:
             int: Configured maximum errors per cache entry
-
-        Example:
-            >>> bundle = FluentBundle("en", enable_cache=True, cache_max_errors_per_entry=25)
-            >>> bundle.cache_max_errors_per_entry
-            25
-
-        Note:
-            Returns configured value regardless of whether caching is enabled.
         """
-        return self._cache_max_errors_per_entry
+        return self._cache_config.max_errors_per_entry
 
     @property
     def max_source_size(self) -> int:
@@ -639,13 +550,7 @@ class FluentBundle:
         cls,
         *,
         use_isolating: bool = True,
-        enable_cache: bool = False,
-        cache_size: int = DEFAULT_CACHE_SIZE,
-        cache_write_once: bool = False,
-        cache_enable_audit: bool = False,
-        cache_max_audit_entries: int = 10000,
-        cache_max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
-        cache_max_errors_per_entry: int = 50,
+        cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
@@ -659,13 +564,9 @@ class FluentBundle:
 
         Args:
             use_isolating: Wrap interpolated values in Unicode bidi isolation marks
-            enable_cache: Enable format caching for performance
-            cache_size: Maximum cache entries when caching enabled
-            cache_write_once: Reject updates to existing cache keys (data race prevention)
-            cache_enable_audit: Maintain audit log of all cache operations
-            cache_max_audit_entries: Maximum audit log entries before oldest eviction
-            cache_max_entry_weight: Maximum memory weight for cached results
-            cache_max_errors_per_entry: Maximum errors per cache entry
+            cache: Cache configuration. Pass ``CacheConfig()`` to enable caching
+                with defaults, or ``CacheConfig(size=500, ...)`` for custom settings.
+                ``None`` disables caching (default).
             functions: Custom FunctionRegistry to use (default: standard registry)
             max_source_size: Maximum FTL source size in characters (default: 10 MiB / 10,485,760 chars)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
@@ -688,13 +589,7 @@ class FluentBundle:
         return cls(
             system_locale,
             use_isolating=use_isolating,
-            enable_cache=enable_cache,
-            cache_size=cache_size,
-            cache_write_once=cache_write_once,
-            cache_enable_audit=cache_enable_audit,
-            cache_max_audit_entries=cache_max_audit_entries,
-            cache_max_entry_weight=cache_max_entry_weight,
-            cache_max_errors_per_entry=cache_max_errors_per_entry,
+            cache=cache,
             functions=functions,
             max_source_size=max_source_size,
             max_nesting_depth=max_nesting_depth,
@@ -735,7 +630,7 @@ class FluentBundle:
             Self (the FluentBundle instance)
 
         Example:
-            >>> with FluentBundle("en_US", enable_cache=True) as bundle:
+            >>> with FluentBundle("en_US", cache=CacheConfig()) as bundle:
             ...     bundle.add_resource("hello = Hello")  # Modifying operation
             ...     result = bundle.format_pattern("hello")
             ... # Cache cleared (bundle was modified)
@@ -876,19 +771,62 @@ class FluentBundle:
         with self._rwlock.write():
             return self._register_resource(resource, source_path)
 
-    def _register_resource(  # noqa: PLR0915 - Two-phase commit requires statement count
+    def _collect_pending_entries(
+        self, resource: Resource
+    ) -> _PendingRegistration:
+        """Phase 1: Collect entries from a parsed resource without mutating state.
+
+        Iterates over all resource entries, partitioning them into messages,
+        terms, and junk. Detects overwrites against both existing bundle state
+        and entries already collected in this batch.
+
+        Args:
+            resource: Parsed FTL resource
+
+        Returns:
+            Collected entries ready for Phase 2 (commit).
+        """
+        from ftllexengine.analysis.graph import entry_dependency_set  # noqa: PLC0415
+        from ftllexengine.introspection import extract_references  # noqa: PLC0415
+
+        pending = _PendingRegistration()
+
+        for entry in resource.entries:
+            match entry:
+                case Message():
+                    msg_id = entry.id.name
+                    if msg_id in self._messages or msg_id in pending.messages:
+                        pending.overwrite_warnings.append(("message", msg_id))
+                    pending.messages[msg_id] = entry
+                    pending.msg_deps[msg_id] = entry_dependency_set(
+                        *extract_references(entry)
+                    )
+                case Term():
+                    term_id = entry.id.name
+                    if term_id in self._terms or term_id in pending.terms:
+                        pending.overwrite_warnings.append(("term", term_id))
+                    pending.terms[term_id] = entry
+                    pending.term_deps[term_id] = entry_dependency_set(
+                        *extract_references(entry)
+                    )
+                case Junk():
+                    pending.junk.append(entry)
+                case Comment():
+                    logger.debug("Skipping comment entry")
+
+        return pending
+
+    def _register_resource(
         self, resource: Resource, source_path: str | None
     ) -> tuple[Junk, ...]:
-        """Register parsed resource entries (messages, terms, junk).
+        """Register parsed resource entries via two-phase commit.
 
-        Assumes caller holds write lock. Internal method for add_resource.
+        Phase 1 (collection) delegates to ``_collect_pending_entries``.
+        Phase 2 (commit) applies mutations only after strict-mode validation
+        passes, ensuring atomicity: a resource with syntax errors never
+        partially populates the bundle.
 
-        Two-phase commit for strict mode atomicity:
-        Phase 1: Collect all entries and validate (no state mutation)
-        Phase 2: Apply mutations only if strict mode check passes
-
-        This ensures that in strict mode, a resource with syntax errors
-        does not partially populate the bundle before raising an exception.
+        Assumes caller holds write lock.
 
         Args:
             resource: Parsed FTL resource
@@ -897,53 +835,9 @@ class FluentBundle:
         Returns:
             Tuple of Junk entries from resource
         """
-        from ftllexengine.introspection import extract_references  # noqa: PLC0415
-
-        # Phase 1: Collect entries without mutating bundle state
-        pending_messages: dict[str, Message] = {}
-        pending_terms: dict[str, Term] = {}
-        pending_msg_deps: dict[str, set[str]] = {}
-        pending_term_deps: dict[str, set[str]] = {}
-        junk_entries: list[Junk] = []
-        overwrite_warnings: list[tuple[str, str]] = []  # (type, id)
-
-        for entry in resource.entries:
-            match entry:
-                case Message():
-                    msg_id = entry.id.name
-                    # Check for overwrites (log later, after strict check)
-                    if msg_id in self._messages or msg_id in pending_messages:
-                        overwrite_warnings.append(("message", msg_id))
-                    pending_messages[msg_id] = entry
-                    # Extract dependencies for cross-resource cycle detection
-                    msg_refs, term_refs = extract_references(entry)
-                    deps: set[str] = set()
-                    for ref in msg_refs:
-                        deps.add(f"msg:{ref}")
-                    for ref in term_refs:
-                        deps.add(f"term:{ref}")
-                    pending_msg_deps[msg_id] = deps
-                case Term():
-                    term_id = entry.id.name
-                    # Check for overwrites (log later, after strict check)
-                    if term_id in self._terms or term_id in pending_terms:
-                        overwrite_warnings.append(("term", term_id))
-                    pending_terms[term_id] = entry
-                    # Extract dependencies for cross-resource cycle detection
-                    msg_refs, term_refs = extract_references(entry)
-                    deps_term: set[str] = set()
-                    for ref in msg_refs:
-                        deps_term.add(f"msg:{ref}")
-                    for ref in term_refs:
-                        deps_term.add(f"term:{ref}")
-                    pending_term_deps[term_id] = deps_term
-                case Junk():
-                    junk_entries.append(entry)
-                case Comment():
-                    # Comments don't need registration
-                    logger.debug("Skipping comment entry")
-
-        junk_tuple = tuple(junk_entries)
+        # Phase 1: Collect without mutation
+        pending = self._collect_pending_entries(resource)
+        junk_tuple = tuple(pending.junk)
 
         # Strict mode: fail fast on syntax errors BEFORE any state mutation
         if self._strict and junk_tuple:
@@ -974,9 +868,8 @@ class FluentBundle:
                 source_path=source_path,
             )
 
-        # Phase 2: Apply mutations (only reached if strict check passes or not strict)
-        # Log overwrite warnings now that we know we'll proceed
-        for entry_type, entry_id in overwrite_warnings:
+        # Phase 2: Commit — apply mutations
+        for entry_type, entry_id in pending.overwrite_warnings:
             if entry_type == "message":
                 logger.warning(
                     "Overwriting existing message '%s' with new definition",
@@ -988,50 +881,44 @@ class FluentBundle:
                     entry_id,
                 )
 
-        # Apply collected entries to bundle state
-        self._messages.update(pending_messages)
-        self._terms.update(pending_terms)
-        self._msg_deps.update(pending_msg_deps)
-        self._term_deps.update(pending_term_deps)
+        self._messages.update(pending.messages)
+        self._terms.update(pending.terms)
+        self._msg_deps.update(pending.msg_deps)
+        self._term_deps.update(pending.term_deps)
 
-        # Log registration of individual entries
-        for msg_id in pending_messages:
+        for msg_id in pending.messages:
             logger.debug("Registered message: %s", msg_id)
-        for term_id in pending_terms:
+        for term_id in pending.terms:
             logger.debug("Registered term: %s", term_id)
 
-        # Log junk entries (always WARNING level for syntax errors)
         source_desc = source_path or "<string>"
-        for junk in junk_entries:
+        for junk in pending.junk:
             logger.warning(
                 "Syntax error in %s: %s",
                 source_desc,
                 repr(junk.content[:_LOG_TRUNCATE_WARNING]),
             )
 
-        # Log summary with file context
         if source_path:
             logger.info(
                 "Added resource %s: %d messages, %d terms, %d junk entries",
                 source_path,
                 len(self._messages),
                 len(self._terms),
-                len(junk_entries),
+                len(pending.junk),
             )
         else:
             logger.info(
                 "Added resource: %d messages, %d terms, %d junk entries",
                 len(self._messages),
                 len(self._terms),
-                len(junk_entries),
+                len(pending.junk),
             )
 
-        # Invalidate cache (messages changed)
         if self._cache is not None:
             self._cache.clear()
             logger.debug("Cache cleared after add_resource")
 
-        # Mark bundle as modified for context manager tracking
         self._modified_in_context = True
 
         return junk_tuple
@@ -1575,7 +1462,7 @@ class FluentBundle:
         Automatically called by add_resource() and add_function().
 
         Example:
-            >>> bundle = FluentBundle("en", enable_cache=True)
+            >>> bundle = FluentBundle("en", cache=CacheConfig())
             >>> bundle.add_resource("msg = Hello")
             >>> bundle.format_pattern("msg")  # Caches result
             >>> bundle.clear_cache()  # Manual invalidation
@@ -1597,7 +1484,7 @@ class FluentBundle:
                   hit_rate (float 0.0-100.0), unhashable_skips (int)
 
         Example:
-            >>> bundle = FluentBundle("en", enable_cache=True)
+            >>> bundle = FluentBundle("en", cache=CacheConfig())
             >>> bundle.add_resource("msg = Hello")
             >>> bundle.format_pattern("msg", {})  # Cache miss
             >>> bundle.format_pattern("msg", {})  # Cache hit

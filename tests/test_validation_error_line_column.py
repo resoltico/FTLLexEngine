@@ -15,6 +15,7 @@ import pytest
 from ftllexengine import FluentLocalization
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax.ast import Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 
@@ -355,7 +356,7 @@ class TestBundleContextManagerCacheClearing:
 
     def test_context_manager_clears_cache_on_exit(self) -> None:
         """Context manager clears format cache on exit."""
-        with FluentBundle("en", enable_cache=True) as bundle:
+        with FluentBundle("en", cache=CacheConfig()) as bundle:
             bundle.add_resource("msg = Hello")
 
             # Format to populate cache

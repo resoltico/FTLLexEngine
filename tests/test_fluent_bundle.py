@@ -7,6 +7,7 @@ import pytest
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 class TestFluentBundleCreation:
@@ -736,13 +737,13 @@ def test_use_isolating_with_multiple_placeables():
 
 def test_cache_enabled_property_when_enabled():
     """cache_enabled property returns True when caching enabled."""
-    bundle = FluentBundle("en", enable_cache=True)
+    bundle = FluentBundle("en", cache=CacheConfig())
     assert bundle.cache_enabled is True
 
 
 def test_cache_enabled_property_when_disabled():
     """cache_enabled property returns False when caching disabled."""
-    bundle = FluentBundle("en", enable_cache=False)
+    bundle = FluentBundle("en")
     assert bundle.cache_enabled is False
 
 
@@ -754,17 +755,8 @@ def test_cache_enabled_property_default():
 
 def test_cache_size_property_when_enabled():
     """cache_size property returns configured size when caching enabled."""
-    bundle = FluentBundle("en", enable_cache=True, cache_size=500)
+    bundle = FluentBundle("en", cache=CacheConfig(size=500))
     assert bundle.cache_size == 500
-
-
-def test_cache_size_property_when_disabled():
-    """cache_size property returns configured limit even when caching disabled."""
-    bundle = FluentBundle("en", enable_cache=False, cache_size=500)
-    # Returns configured limit regardless of cache_enabled state
-    assert bundle.cache_size == 500
-    assert bundle.cache_enabled is False
-    # Use cache_enabled to check if caching is active
 
 
 def test_cache_size_property_default():

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ftllexengine import FluentBundle
 from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.runtime.cache_config import CacheConfig
 
 # Example 1: Simple message
 print("=" * 50)
@@ -279,7 +280,7 @@ print("=" * 50)
 
 # Context manager clears format cache on exit but preserves messages/terms
 # Bundle remains fully usable after exiting the with block
-with FluentBundle("en", use_isolating=False, enable_cache=True) as ctx_bundle:
+with FluentBundle("en", use_isolating=False, cache=CacheConfig()) as ctx_bundle:
     ctx_bundle.add_resource("""
 ctx-hello = Hello from context manager!
 ctx-goodbye = Goodbye, { $name }!
@@ -313,12 +314,13 @@ print("=" * 50)
 financial_bundle = FluentBundle(
     "en",
     use_isolating=False,
-    enable_cache=True,
-    cache_write_once=True,      # Prevent data races
-    cache_enable_audit=True,    # Compliance audit trail
-    cache_max_entry_weight=5000,  # Memory protection
-    cache_max_errors_per_entry=10,  # Error bloat protection
-    strict=True,                # Fail-fast on ANY error
+    cache=CacheConfig(
+        write_once=True,            # Prevent data races
+        enable_audit=True,          # Compliance audit trail
+        max_entry_weight=5000,      # Memory protection
+        max_errors_per_entry=10,    # Error bloat protection
+    ),
+    strict=True,                    # Fail-fast on ANY error
 )
 
 financial_bundle.add_resource("""
@@ -339,10 +341,11 @@ print(f"[FINANCIAL] {result}")
 
 # Check cache configuration
 print("\nCache security settings:")
-print(f"  write_once: {financial_bundle.cache_write_once}")
-print(f"  audit_enabled: {financial_bundle.cache_enable_audit}")
-print(f"  max_entry_weight: {financial_bundle.cache_max_entry_weight}")
-print(f"  max_errors_per_entry: {financial_bundle.cache_max_errors_per_entry}")
+cfg = financial_bundle.cache_config
+print(f"  write_once: {cfg.write_once}")
+print(f"  audit_enabled: {cfg.enable_audit}")
+print(f"  max_entry_weight: {cfg.max_entry_weight}")
+print(f"  max_errors_per_entry: {cfg.max_errors_per_entry}")
 
 # Get cache stats including audit entries
 stats = financial_bundle.get_cache_stats()

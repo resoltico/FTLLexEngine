@@ -20,8 +20,8 @@ Initialization Behavior:
 
         l10n = FluentLocalization(['en', 'de'], ...)
         summary = l10n.get_load_summary()
-        if summary.error_count > 0:
-            raise RuntimeError(f"Failed to load {summary.error_count} resources")
+        if summary.errors > 0:
+            raise RuntimeError(f"Failed to load {summary.errors} resources")
 
     Bundles are created eagerly for locales that have resources loaded during
     initialization. Fallback locale bundles (for locales not in the resource
@@ -40,10 +40,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from .constants import DEFAULT_CACHE_SIZE, FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
+from .constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
 from .diagnostics.codes import Diagnostic, DiagnosticCode
 from .diagnostics.errors import ErrorCategory, FrozenFluentError
 from .runtime.bundle import FluentBundle
+from .runtime.cache_config import CacheConfig
 from .runtime.value_types import FluentValue
 from .syntax import Junk
 
@@ -134,20 +135,19 @@ class ResourceLoadResult:
         return len(self.junk_entries) > 0
 
 
-@dataclass(frozen=True, slots=True)
 class LoadSummary:
     """Summary of all resource load attempts during initialization.
 
     Provides aggregated information about resource loading success/failure
     across all locales. Use this to diagnose missing resources or loading errors.
 
+    All statistics are computed properties derived from ``results``. This
+    avoids ``object.__setattr__`` workarounds on frozen dataclasses while
+    keeping the class fully immutable (``results`` is set once in ``__init__``
+    and stored in a slot).
+
     Attributes:
-        results: All individual load results
-        total_attempted: Total number of load attempts
-        successful: Number of successful loads
-        not_found: Number of resources not found
-        errors: Number of load errors
-        junk_count: Total number of Junk entries across all resources
+        results: All individual load results (immutable tuple)
 
     Example:
         >>> l10n = FluentLocalization(['en', 'de'], ['ui.ftl'], loader)
@@ -160,27 +160,67 @@ class LoadSummary:
         ...         print(f"Junk in {result.source_path}: {len(result.junk_entries)} entries")
     """
 
+    __slots__ = ("results",)
     results: tuple[ResourceLoadResult, ...]
-    total_attempted: int = field(init=False)
-    successful: int = field(init=False)
-    not_found: int = field(init=False)
-    errors: int = field(init=False)
-    junk_count: int = field(init=False)
 
-    def __post_init__(self) -> None:
-        """Calculate summary statistics."""
-        # Use object.__setattr__ because this is a frozen dataclass
-        object.__setattr__(self, "total_attempted", len(self.results))
-        object.__setattr__(
-            self, "successful", sum(1 for r in self.results if r.is_success)
+    def __init__(self, results: tuple[ResourceLoadResult, ...]) -> None:
+        """Initialize with immutable results tuple."""
+        object.__setattr__(self, "results", results)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Prevent mutation after construction."""
+        msg = f"LoadSummary is immutable: cannot set '{name}'"
+        raise AttributeError(msg)
+
+    def __delattr__(self, name: str) -> None:
+        """Prevent attribute deletion."""
+        msg = f"LoadSummary is immutable: cannot delete '{name}'"
+        raise AttributeError(msg)
+
+    def __eq__(self, other: object) -> bool:
+        """Equality based on results tuple."""
+        if not isinstance(other, LoadSummary):
+            return NotImplemented
+        return self.results == other.results
+
+    def __hash__(self) -> int:
+        """Hash based on results tuple."""
+        return hash(self.results)
+
+    def __repr__(self) -> str:
+        """Return string representation for debugging."""
+        return (
+            f"LoadSummary(total={self.total_attempted}, "
+            f"ok={self.successful}, "
+            f"not_found={self.not_found}, "
+            f"errors={self.errors}, "
+            f"junk={self.junk_count})"
         )
-        object.__setattr__(
-            self, "not_found", sum(1 for r in self.results if r.is_not_found)
-        )
-        object.__setattr__(self, "errors", sum(1 for r in self.results if r.is_error))
-        object.__setattr__(
-            self, "junk_count", sum(len(r.junk_entries) for r in self.results)
-        )
+
+    @property
+    def total_attempted(self) -> int:
+        """Total number of load attempts."""
+        return len(self.results)
+
+    @property
+    def successful(self) -> int:
+        """Number of successful loads."""
+        return sum(1 for r in self.results if r.is_success)
+
+    @property
+    def not_found(self) -> int:
+        """Number of resources not found."""
+        return sum(1 for r in self.results if r.is_not_found)
+
+    @property
+    def errors(self) -> int:
+        """Number of load errors."""
+        return sum(1 for r in self.results if r.is_error)
+
+    @property
+    def junk_count(self) -> int:
+        """Total number of Junk entries across all resources."""
+        return sum(len(r.junk_entries) for r in self.results)
 
     def get_errors(self) -> tuple[ResourceLoadResult, ...]:
         """Get all results with errors."""
@@ -447,7 +487,7 @@ class PathResourceLoader:
 
         # Reject paths starting with / or \
         if resource_id.startswith(("/", "\\")):
-            msg = f"Resource ID must not start with path separator: '{resource_id}'"
+            msg = f"Leading path separator not allowed in resource_id: '{resource_id}'"
             raise ValueError(msg)
 
     @staticmethod
@@ -517,8 +557,7 @@ class FluentLocalization:
 
     __slots__ = (
         "_bundles",
-        "_cache_size",
-        "_enable_cache",
+        "_cache_config",
         "_load_results",
         "_locales",
         "_lock",
@@ -538,8 +577,7 @@ class FluentLocalization:
         resource_loader: ResourceLoader | None = None,
         *,
         use_isolating: bool = True,
-        enable_cache: bool = False,
-        cache_size: int = DEFAULT_CACHE_SIZE,
+        cache: CacheConfig | None = None,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
         strict: bool = False,
     ) -> None:
@@ -550,9 +588,9 @@ class FluentLocalization:
             resource_ids: FTL file identifiers to load (e.g., ['ui.ftl', 'errors.ftl'])
             resource_loader: Loader for fetching FTL resources (optional)
             use_isolating: Wrap placeables in Unicode bidi isolation marks
-            enable_cache: Enable format caching for performance (default: False)
-                         Cache provides 50x speedup on repeated format calls.
-            cache_size: Maximum cache entries when caching enabled (default: DEFAULT_CACHE_SIZE)
+            cache: Cache configuration. Pass ``CacheConfig()`` to enable caching
+                with defaults, or ``CacheConfig(size=500, ...)`` for custom settings.
+                ``None`` disables caching (default). Applied to each bundle created.
             on_fallback: Optional callback invoked when a message is resolved from
                         a fallback locale instead of the primary locale. Useful for
                         debugging and monitoring which messages are missing translations.
@@ -589,8 +627,7 @@ class FluentLocalization:
         self._resource_ids: tuple[ResourceId, ...] = tuple(resource_ids) if resource_ids else ()
         self._resource_loader: ResourceLoader | None = resource_loader
         self._use_isolating = use_isolating
-        self._enable_cache = enable_cache
-        self._cache_size = cache_size
+        self._cache_config: CacheConfig | None = cache
         self._on_fallback = on_fallback
         self._strict = strict
 
@@ -650,8 +687,7 @@ class FluentLocalization:
             bundle = FluentBundle(
                 locale,
                 use_isolating=self._use_isolating,
-                enable_cache=self._enable_cache,
-                cache_size=self._cache_size,
+                cache=self._cache_config,
                 strict=self._strict,
             )
             # Apply any pending functions that were registered before bundle creation
@@ -766,38 +802,30 @@ class FluentLocalization:
             bool: True if caching is enabled, False otherwise
 
         Example:
-            >>> l10n = FluentLocalization(['lv', 'en'], enable_cache=True)
+            >>> from ftllexengine.runtime.cache_config import CacheConfig
+            >>> l10n = FluentLocalization(['lv', 'en'], cache=CacheConfig())
             >>> l10n.cache_enabled
             True
             >>> l10n_no_cache = FluentLocalization(['lv', 'en'])
             >>> l10n_no_cache.cache_enabled
             False
         """
-        return self._enable_cache
+        return self._cache_config is not None
 
     @property
-    def cache_size(self) -> int:
-        """Get maximum cache size per bundle (read-only).
+    def cache_config(self) -> CacheConfig | None:
+        """Get cache configuration (read-only).
 
         Returns:
-            int: Configured maximum cache entries per bundle
+            CacheConfig or None if caching is disabled.
 
         Example:
-            >>> l10n = FluentLocalization(['lv', 'en'], enable_cache=True, cache_size=500)
-            >>> l10n.cache_size
+            >>> from ftllexengine.runtime.cache_config import CacheConfig
+            >>> l10n = FluentLocalization(['lv', 'en'], cache=CacheConfig(size=500))
+            >>> l10n.cache_config.size
             500
-            >>> # Cache size is returned even when caching is disabled
-            >>> l10n_no_cache = FluentLocalization(['lv', 'en'], cache_size=200)
-            >>> l10n_no_cache.cache_size
-            200
-            >>> l10n_no_cache.cache_enabled
-            False
-
-        Note:
-            Returns configured size per bundle, not total across all bundles.
-            Use cache_enabled to check if caching is active.
         """
-        return self._cache_size
+        return self._cache_config
 
     def __repr__(self) -> str:
         """Return string representation for debugging.
@@ -1302,7 +1330,7 @@ class FluentLocalization:
         Thread-safe via internal RLock.
 
         Example:
-            >>> l10n = FluentLocalization(['en', 'de'], enable_cache=True)
+            >>> l10n = FluentLocalization(['en', 'de'], cache=CacheConfig())
             >>> l10n.add_resource('en', 'msg = Hello')
             >>> l10n.add_resource('de', 'msg = Hallo')
             >>> l10n.format_value('msg')  # Uses 'en' bundle
@@ -1312,7 +1340,7 @@ class FluentLocalization:
             >>> stats["size"]  # Total entries across all bundles
             1
         """
-        if not self._enable_cache:
+        if self._cache_config is None:
             return None
 
         with self._lock:

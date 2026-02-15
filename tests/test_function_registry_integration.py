@@ -67,14 +67,12 @@ class TestBuiltInFunctionsIntrospection:
         # param_mapping is now immutable tuple[tuple[str, str], ...]
         assert isinstance(info.param_mapping, tuple)
 
-        # Check parameter mappings (convert to dict for lookup)
-        param_dict = dict(info.param_mapping)
-        assert "minimumFractionDigits" in param_dict
-        assert param_dict["minimumFractionDigits"] == "minimum_fraction_digits"
-        assert "maximumFractionDigits" in param_dict
-        assert param_dict["maximumFractionDigits"] == "maximum_fraction_digits"
-        assert "useGrouping" in param_dict
-        assert param_dict["useGrouping"] == "use_grouping"
+        assert "minimumFractionDigits" in info.param_dict
+        assert info.param_dict["minimumFractionDigits"] == "minimum_fraction_digits"
+        assert "maximumFractionDigits" in info.param_dict
+        assert info.param_dict["maximumFractionDigits"] == "maximum_fraction_digits"
+        assert "useGrouping" in info.param_dict
+        assert info.param_dict["useGrouping"] == "use_grouping"
 
     def test_get_datetime_function_info(self, registry: FunctionRegistry) -> None:
         """get_function_info returns metadata for DATETIME function."""
@@ -84,15 +82,12 @@ class TestBuiltInFunctionsIntrospection:
         assert info.ftl_name == "DATETIME"
         assert info.python_name == "datetime_format"
         assert callable(info.callable)
-        # param_mapping is now immutable tuple[tuple[str, str], ...]
         assert isinstance(info.param_mapping, tuple)
 
-        # Check parameter mappings (convert to dict for lookup)
-        param_dict = dict(info.param_mapping)
-        assert "dateStyle" in param_dict
-        assert param_dict["dateStyle"] == "date_style"
-        assert "timeStyle" in param_dict
-        assert param_dict["timeStyle"] == "time_style"
+        assert "dateStyle" in info.param_dict
+        assert info.param_dict["dateStyle"] == "date_style"
+        assert "timeStyle" in info.param_dict
+        assert info.param_dict["timeStyle"] == "time_style"
 
     def test_get_currency_function_info(self, registry: FunctionRegistry) -> None:
         """get_function_info returns metadata for CURRENCY function."""
@@ -102,15 +97,12 @@ class TestBuiltInFunctionsIntrospection:
         assert info.ftl_name == "CURRENCY"
         assert info.python_name == "currency_format"
         assert callable(info.callable)
-        # param_mapping is now immutable tuple[tuple[str, str], ...]
         assert isinstance(info.param_mapping, tuple)
 
-        # Check parameter mappings (convert to dict for lookup)
-        param_dict = dict(info.param_mapping)
-        assert "currency" in param_dict
-        assert param_dict["currency"] == "currency"
-        assert "currencyDisplay" in param_dict
-        assert param_dict["currencyDisplay"] == "currency_display"
+        assert "currency" in info.param_dict
+        assert info.param_dict["currency"] == "currency"
+        assert "currencyDisplay" in info.param_dict
+        assert info.param_dict["currencyDisplay"] == "currency_display"
 
 
 # ============================================================================
@@ -187,9 +179,6 @@ class TestFunctionDiscoveryWorkflow:
 
         assert info is not None
 
-        # Inspect parameter mappings (convert tuple to dict)
-        param_dict = dict(info.param_mapping)
-
         # Should have all NUMBER parameters
         expected_params = {
             "minimumFractionDigits",
@@ -198,7 +187,7 @@ class TestFunctionDiscoveryWorkflow:
             "value",
             "localeCode",
         }
-        assert expected_params.issubset(set(param_dict.keys()))
+        assert expected_params.issubset(set(info.param_dict.keys()))
 
     def test_verify_function_exists_before_use(self) -> None:
         """Verify built-in NUMBER function exists and is usable."""

@@ -9,6 +9,7 @@ Python 3.13+.
 from ftllexengine.diagnostics import ValidationResult
 
 from .bundle import FluentBundle
+from .cache_config import CacheConfig
 from .function_bridge import FunctionRegistry
 from .functions import (
     create_default_registry,
@@ -22,6 +23,7 @@ from .resolution_context import ResolutionContext
 from .resolver import FluentResolver
 
 __all__ = [
+    "CacheConfig",
     "FluentBundle",
     "FluentResolver",
     "FunctionRegistry",

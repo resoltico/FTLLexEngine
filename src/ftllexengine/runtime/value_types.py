@@ -16,9 +16,10 @@ Python 3.13+. Zero external dependencies.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Protocol
 
 __all__ = [
@@ -149,16 +150,29 @@ class FunctionSignature:
         ftl_name: Function name in FTL files (UPPERCASE)
         param_mapping: Immutable mapping of FTL camelCase to Python snake_case
             params. Stored as sorted tuple of (ftl_param, python_param) pairs
-            for full immutability. Use dict(param_mapping) for O(1) lookup.
+            for full immutability.
         callable: The actual Python function
+        param_dict: Read-only dict view of param_mapping for O(1) lookup.
+            Computed once at construction, exposed as MappingProxyType to
+            prevent mutation while avoiding per-call dict reconstruction.
 
     Immutability:
         All fields are immutable. param_mapping uses tuple instead of dict to
         ensure FunctionSignature objects can be safely shared across registries
-        without risk of mutation via retained references.
+        without risk of mutation via retained references. param_dict is a
+        MappingProxyType wrapping a dict built from param_mapping at init.
     """
 
     python_name: str
     ftl_name: str
     param_mapping: tuple[tuple[str, str], ...]
     callable: Callable[..., FluentValue]
+    param_dict: MappingProxyType[str, str] = field(
+        init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        """Compute cached dict view from param_mapping."""
+        object.__setattr__(
+            self, "param_dict", MappingProxyType(dict(self.param_mapping))
+        )

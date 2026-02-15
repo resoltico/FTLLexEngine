@@ -394,10 +394,8 @@ class TestFunctionRegistryDictInterface:
         assert info is not None
         assert info.python_name == "my_function"
         assert info.ftl_name == "CUSTOM"
-        # Convert immutable tuple to dict for lookup
-        param_dict = dict(info.param_mapping)
-        assert "myParam" in param_dict
-        assert param_dict["myParam"] == "_my_param"
+        assert "myParam" in info.param_dict
+        assert info.param_dict["myParam"] == "_my_param"
 
     def test_get_function_info_not_found(self) -> None:
         """Verify get_function_info returns None for unregistered function."""

@@ -214,6 +214,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         WriteConflictError,
     )
     from ftllexengine.runtime.bundle import FluentBundle
+    from ftllexengine.runtime.cache_config import CacheConfig
 
 
 # --- Constants ---
@@ -582,13 +583,14 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     try:
         bundle = FluentBundle(
             locale,
-            enable_cache=True,
-            cache_size=cache_size,
-            cache_max_entry_weight=max_entry_weight,
-            cache_max_errors_per_entry=max_errors_per_entry,
-            cache_write_once=write_once,
+            cache=CacheConfig(
+                size=cache_size,
+                max_entry_weight=max_entry_weight,
+                max_errors_per_entry=max_errors_per_entry,
+                write_once=write_once,
+                enable_audit=enable_audit,
+            ),
             strict=strict_mode,
-            cache_enable_audit=enable_audit,
         )
     except (ValueError, TypeError, DataIntegrityError):
         return

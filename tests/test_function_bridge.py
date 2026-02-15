@@ -419,11 +419,9 @@ class TestFunctionRegistryIntrospection:
         assert info is not None
         assert info.python_name == "sample_function"
         assert info.ftl_name == "FORMAT"
-        # param_mapping is now immutable tuple[tuple[str, str], ...]
         assert isinstance(info.param_mapping, tuple)
-        param_dict = dict(info.param_mapping)
-        assert "minimumFractionDigits" in param_dict
-        assert param_dict["minimumFractionDigits"] == "minimum_fraction_digits"
+        assert "minimumFractionDigits" in info.param_dict
+        assert info.param_dict["minimumFractionDigits"] == "minimum_fraction_digits"
         assert callable(info.callable)
 
     def test_get_function_info_nonexistent_function(self) -> None:

@@ -1,10 +1,10 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.108.0"
 domain: reference
-updated: "2026-02-10"
+updated: "2026-02-15"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, cache_write_once, cache_enable_audit]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
 ---
 
@@ -302,13 +302,7 @@ FluentBundle(
     /,
     *,
     use_isolating: bool = True,
-    enable_cache: bool = False,
-    cache_size: int = 1000,
-    cache_write_once: bool = False,
-    cache_enable_audit: bool = False,
-    cache_max_audit_entries: int = 10000,
-    cache_max_entry_weight: int = 10000,
-    cache_max_errors_per_entry: int = 50,
+    cache: CacheConfig | None = None,
     functions: FunctionRegistry | None = None,
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
@@ -323,7 +317,7 @@ FluentBundle(
 bundle = FluentBundle.for_system_locale()
 
 # Context manager support (clears cache on exit)
-with FluentBundle("en", enable_cache=True) as bundle:
+with FluentBundle("en", cache=CacheConfig()) as bundle:
     bundle.add_resource("hello = Hello!")
     result, _ = bundle.format_pattern("hello")
 ```
@@ -351,13 +345,8 @@ bundle.get_babel_locale() -> str
 ```python
 bundle.locale -> str  # Read-only
 bundle.use_isolating -> bool  # Read-only
+bundle.cache_config -> CacheConfig  # Read-only
 bundle.cache_enabled -> bool  # Read-only
-bundle.cache_size -> int  # Read-only
-bundle.cache_write_once -> bool  # Read-only
-bundle.cache_enable_audit -> bool  # Read-only
-bundle.cache_max_audit_entries -> int  # Read-only
-bundle.cache_max_entry_weight -> int  # Read-only
-bundle.cache_max_errors_per_entry -> int  # Read-only
 bundle.cache_usage -> int  # Read-only
 bundle.max_source_size -> int  # Read-only
 bundle.max_nesting_depth -> int  # Read-only
@@ -378,8 +367,7 @@ FluentLocalization(
     resource_loader: ResourceLoader | None = None,
     *,
     use_isolating: bool = True,
-    enable_cache: bool = False,
-    cache_size: int = 1000,
+    cache: CacheConfig | None = None,
     on_fallback: Callable[[FallbackInfo], None] | None = None,
     strict: bool = False,
 )
@@ -409,11 +397,11 @@ l10n.get_babel_locale() -> str
 **Properties**:
 ```python
 l10n.locales -> tuple[str, ...]  # Read-only
+l10n.cache_config -> CacheConfig | None  # Read-only
 l10n.cache_enabled -> bool  # Read-only
-l10n.cache_size -> int  # Read-only
 ```
 
-**Caching**: Enable `enable_cache=True` for 50x speedup on repeated format calls.
+**Caching**: Pass `cache=CacheConfig()` for 50x speedup on repeated format calls.
 
 ---
 

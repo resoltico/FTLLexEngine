@@ -65,7 +65,7 @@ class TestPathResourceLoaderSecurity:
         """Test that paths starting with '\\' are rejected (lines 160-161)."""
         loader = PathResourceLoader("locales/{locale}")
 
-        with pytest.raises(ValueError, match="must not start with path separator"):
+        with pytest.raises(ValueError, match="not allowed in resource_id"):
             loader.load("en", "\\messages.ftl")
 
     def test_load_detects_symlink_escape_via_is_safe_path(self) -> None:

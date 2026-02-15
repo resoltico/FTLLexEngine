@@ -1,10 +1,10 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.108.0"
 domain: RUNTIME
-updated: "2026-02-10"
+updated: "2026-02-15"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, cache_write_once, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
 ---
 

@@ -204,11 +204,9 @@ class TestFunctionRegistryIntegration:
         assert sig is not None
         assert sig.python_name == "number_format"
         assert sig.ftl_name == "NUMBER"
-        # Should have camelCase parameter mappings (convert tuple to dict for lookup)
-        param_dict = dict(sig.param_mapping)
-        assert "minimumFractionDigits" in param_dict
-        assert "maximumFractionDigits" in param_dict
-        assert "useGrouping" in param_dict
+        assert "minimumFractionDigits" in sig.param_dict
+        assert "maximumFractionDigits" in sig.param_dict
+        assert "useGrouping" in sig.param_dict
 
     def test_datetime_function_signature_in_registry(self) -> None:
         """Verify DATETIME function has correct signature in registry."""
@@ -217,10 +215,8 @@ class TestFunctionRegistryIntegration:
         assert sig is not None
         assert sig.python_name == "datetime_format"
         assert sig.ftl_name == "DATETIME"
-        # Should have camelCase parameter mappings (convert tuple to dict for lookup)
-        param_dict = dict(sig.param_mapping)
-        assert "dateStyle" in param_dict
-        assert "timeStyle" in param_dict
+        assert "dateStyle" in sig.param_dict
+        assert "timeStyle" in sig.param_dict
 
     def test_currency_function_signature_in_registry(self) -> None:
         """Verify CURRENCY function has correct signature in registry."""
@@ -229,9 +225,7 @@ class TestFunctionRegistryIntegration:
         assert sig is not None
         assert sig.python_name == "currency_format"
         assert sig.ftl_name == "CURRENCY"
-        # Should have camelCase parameter mappings (convert tuple to dict for lookup)
-        param_dict = dict(sig.param_mapping)
-        assert "currencyDisplay" in param_dict
+        assert "currencyDisplay" in sig.param_dict
 
 
 class TestComputeVisiblePrecision:

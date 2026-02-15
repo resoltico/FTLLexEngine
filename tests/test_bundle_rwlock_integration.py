@@ -12,6 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 class TestBundleReadOperationsConcurrency:
@@ -303,7 +304,7 @@ class TestBundleLockCorrectness:
 
     def test_cache_clear_synchronized(self) -> None:
         """Cache clear is properly synchronized."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
 
         # Prime cache
@@ -388,7 +389,7 @@ class TestBundleStressTest:
 
     def test_high_concurrency_mixed_operations(self) -> None:
         """Stress test with many concurrent mixed operations."""
-        bundle = FluentBundle("en", use_isolating=False, enable_cache=True)
+        bundle = FluentBundle("en", use_isolating=False, cache=CacheConfig())
         bundle.add_resource("msg = Hello, { $name }!")
 
         operation_count = {"format": 0, "add": 0, "check": 0}

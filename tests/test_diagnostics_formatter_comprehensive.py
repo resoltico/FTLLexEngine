@@ -10,7 +10,7 @@ Python 3.13+.
 import json
 
 import pytest
-from hypothesis import event, given
+from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics.codes import (
@@ -162,6 +162,22 @@ def test_rust_format_optional_fields(diagnostic: Diagnostic) -> None:
 # ===================================================================
 
 
+@example(
+    diagnostic=Diagnostic(
+        code=DiagnosticCode.MESSAGE_NOT_FOUND,
+        message="0",
+        ftl_location="\x1b[",
+    ),
+    color=False,
+)
+@example(
+    diagnostic=Diagnostic(
+        code=DiagnosticCode.MESSAGE_NOT_FOUND,
+        message="0",
+        help_url="\x1b[",
+    ),
+    color=False,
+)
 @given(
     diagnostic=diagnostics(),
     color=st.booleans(),

@@ -11,6 +11,7 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentLocalization
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 class TestGetCacheStatsBasic:
@@ -18,7 +19,7 @@ class TestGetCacheStatsBasic:
 
     def test_returns_none_when_caching_disabled(self) -> None:
         """get_cache_stats() returns None when caching is disabled."""
-        l10n = FluentLocalization(["en"], enable_cache=False)
+        l10n = FluentLocalization(["en"], cache=None)
         l10n.add_resource("en", "msg = Hello")
         l10n.format_value("msg")
 
@@ -26,7 +27,7 @@ class TestGetCacheStatsBasic:
 
     def test_returns_dict_when_caching_enabled(self) -> None:
         """get_cache_stats() returns dict when caching is enabled."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         stats = l10n.get_cache_stats()
@@ -34,7 +35,7 @@ class TestGetCacheStatsBasic:
 
     def test_returns_all_expected_keys(self) -> None:
         """get_cache_stats() returns all documented keys."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         stats = l10n.get_cache_stats()
@@ -53,7 +54,7 @@ class TestGetCacheStatsBasic:
 
     def test_correct_types_for_all_keys(self) -> None:
         """All returned values have correct types."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
         l10n.format_value("msg")
 
@@ -74,7 +75,7 @@ class TestGetCacheStatsAggregation:
 
     def test_aggregates_size_across_bundles(self) -> None:
         """Total size is sum of all bundle cache sizes."""
-        l10n = FluentLocalization(["en", "de", "fr"], enable_cache=True)
+        l10n = FluentLocalization(["en", "de", "fr"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
         l10n.add_resource("de", "msg = Hallo")
         l10n.add_resource("fr", "msg = Bonjour")
@@ -96,7 +97,7 @@ class TestGetCacheStatsAggregation:
 
     def test_aggregates_hits_and_misses(self) -> None:
         """Total hits and misses are sums across all bundles."""
-        l10n = FluentLocalization(["en", "de"], enable_cache=True)
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
         l10n.add_resource("de", "msg = Hallo")
 
@@ -117,7 +118,7 @@ class TestGetCacheStatsAggregation:
         cache_size = 500
         locales = ["en", "de", "fr"]
         l10n = FluentLocalization(
-            locales, enable_cache=True, cache_size=cache_size
+            locales, cache=CacheConfig(size=cache_size)
         )
 
         # Initialize all bundles
@@ -132,7 +133,7 @@ class TestGetCacheStatsAggregation:
 
     def test_bundle_count_reflects_initialized_bundles(self) -> None:
         """bundle_count shows only initialized (not lazy) bundles."""
-        l10n = FluentLocalization(["en", "de", "fr"], enable_cache=True)
+        l10n = FluentLocalization(["en", "de", "fr"], cache=CacheConfig())
 
         # Only initialize 'en' bundle
         l10n.add_resource("en", "msg = Hello")
@@ -155,7 +156,7 @@ class TestGetCacheStatsHitRate:
 
     def test_hit_rate_zero_when_no_requests(self) -> None:
         """hit_rate is 0.0 when no format calls made."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         stats = l10n.get_cache_stats()
@@ -164,7 +165,7 @@ class TestGetCacheStatsHitRate:
 
     def test_hit_rate_zero_on_first_request(self) -> None:
         """hit_rate is 0.0 after first request (all misses)."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
         l10n.format_value("msg")
 
@@ -174,7 +175,7 @@ class TestGetCacheStatsHitRate:
 
     def test_hit_rate_fifty_percent(self) -> None:
         """hit_rate is 50% when half hits, half misses."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         l10n.format_value("msg")  # miss
@@ -186,7 +187,7 @@ class TestGetCacheStatsHitRate:
 
     def test_hit_rate_rounded_to_two_decimals(self) -> None:
         """hit_rate is rounded to 2 decimal places."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         # 1 miss + 2 hits = 66.666...%
@@ -204,7 +205,7 @@ class TestGetCacheStatsEdgeCases:
 
     def test_empty_bundles_dict(self) -> None:
         """Returns valid stats even with no initialized bundles."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         # Don't add any resources - no bundles created yet
 
         stats = l10n.get_cache_stats()
@@ -218,7 +219,7 @@ class TestGetCacheStatsEdgeCases:
 
     def test_after_clear_cache(self) -> None:
         """Stats reflect state after clear_cache() called."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         # Build up cache
@@ -244,7 +245,7 @@ class TestGetCacheStatsThreadSafety:
 
     def test_concurrent_stats_reads(self) -> None:
         """Multiple threads can safely read stats concurrently."""
-        l10n = FluentLocalization(["en", "de"], enable_cache=True)
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
         l10n.add_resource("de", "msg = Hallo")
 
@@ -274,7 +275,7 @@ class TestGetCacheStatsThreadSafety:
 
     def test_concurrent_stats_during_format(self) -> None:
         """Stats can be read while format calls are happening."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello { $name }")
 
         errors: list[Exception] = []
@@ -317,7 +318,7 @@ class TestGetCacheStatsProperty:
     def test_bundle_count_never_exceeds_locale_count(self, num_locales: int) -> None:
         """bundle_count is always <= number of locales."""
         locales = [f"locale{i}" for i in range(num_locales)]
-        l10n = FluentLocalization(locales, enable_cache=True)
+        l10n = FluentLocalization(locales, cache=CacheConfig())
 
         # Initialize some bundles
         for i in range(num_locales):
@@ -333,7 +334,7 @@ class TestGetCacheStatsProperty:
     @settings(max_examples=10)
     def test_maxsize_matches_configuration(self, cache_size: int) -> None:
         """maxsize is deterministic based on cache_size config."""
-        l10n = FluentLocalization(["en"], enable_cache=True, cache_size=cache_size)
+        l10n = FluentLocalization(["en"], cache=CacheConfig(size=cache_size))
         l10n.add_resource("en", "msg = test")
 
         stats = l10n.get_cache_stats()
@@ -345,7 +346,7 @@ class TestGetCacheStatsProperty:
     @settings(max_examples=20)
     def test_hits_plus_misses_equals_total_requests(self, num_requests: int) -> None:
         """hits + misses always equals total format calls on unique keys."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
 
         # Create unique messages
         for i in range(num_requests):

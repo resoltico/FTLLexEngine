@@ -18,6 +18,7 @@ from hypothesis import strategies as st
 from ftllexengine import FluentBundle
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.runtime.cache_config import CacheConfig
 
 # ============================================================================
 # STRICT MODE BASIC BEHAVIOR TESTS
@@ -295,7 +296,7 @@ class TestStrictModeWithCaching:
 
     def test_successful_format_is_cached(self) -> None:
         """Successful formatting in strict mode is cached."""
-        bundle = FluentBundle("en", strict=True, enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", strict=True, cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         # First call - cache miss
@@ -313,7 +314,7 @@ class TestStrictModeWithCaching:
 
     def test_errors_cached_before_strict_raise(self) -> None:
         """Errors are cached before strict mode raises, enabling cache hits on retry."""
-        bundle = FluentBundle("en", strict=True, enable_cache=True)
+        bundle = FluentBundle("en", strict=True, cache=CacheConfig())
         bundle.add_resource("msg = { $name }")
 
         # First call: resolves with error, caches result, then raises
@@ -329,14 +330,14 @@ class TestStrictModeWithCaching:
 class TestStrictModeCachePropagation:
     """Test that bundle strict mode propagates to cache.
 
-    When FluentBundle is created with strict=True and enable_cache=True,
+    When FluentBundle is created with strict=True and cache=CacheConfig(),
     the internal IntegrityCache must also use strict=True so that cache
     corruption raises CacheCorruptionError rather than silently evicting.
     """
 
     def test_strict_bundle_has_strict_cache(self) -> None:
         """Bundle with strict=True creates cache with strict=True."""
-        bundle = FluentBundle("en", strict=True, enable_cache=True)
+        bundle = FluentBundle("en", strict=True, cache=CacheConfig())
 
         # Access internal cache to verify strict mode
         cache = bundle._cache  # pylint: disable=protected-access
@@ -345,7 +346,7 @@ class TestStrictModeCachePropagation:
 
     def test_non_strict_bundle_has_non_strict_cache(self) -> None:
         """Bundle with strict=False creates cache with strict=False."""
-        bundle = FluentBundle("en", strict=False, enable_cache=True)
+        bundle = FluentBundle("en", strict=False, cache=CacheConfig())
 
         cache = bundle._cache  # pylint: disable=protected-access
         assert cache is not None
@@ -353,7 +354,7 @@ class TestStrictModeCachePropagation:
 
     def test_strict_cache_stats_reflects_mode(self) -> None:
         """Cache stats reflect strict mode setting."""
-        bundle = FluentBundle("en", strict=True, enable_cache=True)
+        bundle = FluentBundle("en", strict=True, cache=CacheConfig())
 
         stats = bundle.get_cache_stats()
         assert stats is not None
@@ -361,7 +362,7 @@ class TestStrictModeCachePropagation:
 
     def test_non_strict_cache_stats_reflects_mode(self) -> None:
         """Non-strict bundle cache stats reflect strict=False."""
-        bundle = FluentBundle("en", strict=False, enable_cache=True)
+        bundle = FluentBundle("en", strict=False, cache=CacheConfig())
 
         stats = bundle.get_cache_stats()
         assert stats is not None
@@ -416,7 +417,7 @@ class TestStrictModeThreadSafety:
 
     def test_concurrent_strict_formatting(self) -> None:
         """Strict mode works correctly under concurrent access."""
-        bundle = FluentBundle("en", strict=True, enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", strict=True, cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         errors: list[Exception] = []

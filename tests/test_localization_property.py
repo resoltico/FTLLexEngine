@@ -24,6 +24,7 @@ from ftllexengine.localization import (
     PathResourceLoader,
     ResourceLoadResult,
 )
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax.ast import Junk, Span
 from tests.strategies.localization import (
     DictResourceLoader,
@@ -911,7 +912,7 @@ class TestCacheStatsAggregation:
         """get_cache_stats sums metrics across all initialized bundles."""
         event(f"bundle_count={len(locales)}")
         l10n = FluentLocalization(
-            locales, enable_cache=True,
+            locales, cache=CacheConfig(),
         )
         # Initialize all bundles with resources
         for locale in locales:
@@ -923,7 +924,8 @@ class TestCacheStatsAggregation:
         stats = l10n.get_cache_stats()
         assert stats is not None
         assert stats["bundle_count"] == len(locales)
-        assert stats["maxsize"] == l10n.cache_size * len(locales)
+        assert l10n.cache_config is not None
+        assert stats["maxsize"] == l10n.cache_config.size * len(locales)
 
     @given(
         locales=locale_chains(min_size=1, max_size=2),
@@ -933,7 +935,7 @@ class TestCacheStatsAggregation:
     ) -> None:
         """get_cache_stats returns None when caching disabled."""
         event("outcome=cache_disabled")
-        l10n = FluentLocalization(locales, enable_cache=False)
+        l10n = FluentLocalization(locales)
         assert l10n.get_cache_stats() is None
 
 

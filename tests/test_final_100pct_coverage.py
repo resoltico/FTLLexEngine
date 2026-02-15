@@ -34,6 +34,7 @@ from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.diagnostics.formatter import DiagnosticFormatter, OutputFormat
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.localization import FluentLocalization, PathResourceLoader
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolution_context import ResolutionContext
@@ -110,7 +111,7 @@ def test_localization_add_function_to_created_bundle():
     Verifies that when a bundle has been lazily created, add_function()
     applies the function to that existing bundle.
     """
-    l10n = FluentLocalization(["en"], enable_cache=False, use_isolating=False)
+    l10n = FluentLocalization(["en"], use_isolating=False)
 
     # Add resource to trigger bundle creation for 'en'
     l10n.add_resource("en", "msg = Test")
@@ -142,7 +143,7 @@ def test_localization_clear_cache_with_uninitialized_bundles():
     cases where some bundles in _bundles dict are still None.
     """
     # Create FluentLocalization with multiple locales but don't access them
-    l10n = FluentLocalization(["en", "fr", "de"], enable_cache=True)
+    l10n = FluentLocalization(["en", "fr", "de"], cache=CacheConfig())
 
     # Only access one locale to create one bundle
     l10n.add_resource("en", "msg = Test")
@@ -373,7 +374,7 @@ def test_localization_clear_cache_idempotent(locales):
     the same result as calling it once.
     """
     event(f"locale_count={len(locales)}")
-    l10n = FluentLocalization(locales, enable_cache=True)
+    l10n = FluentLocalization(locales, cache=CacheConfig())
 
     # Add some data
     l10n.add_resource(locales[0], "msg = Test")

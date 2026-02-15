@@ -8,6 +8,7 @@ from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 @st.composite
@@ -38,12 +39,12 @@ class TestCacheProperties:
         ftl_source = f"msg = Hello {ftl_vars}!"
 
         # Bundle without cache
-        bundle_no_cache = FluentBundle("en", enable_cache=False, use_isolating=False)
+        bundle_no_cache = FluentBundle("en", use_isolating=False)
         bundle_no_cache.add_resource(ftl_source)
         result_no_cache, errors_no_cache = bundle_no_cache.format_pattern("msg", args)
 
         # Bundle with cache
-        bundle_with_cache = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle_with_cache = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle_with_cache.add_resource(ftl_source)
 
         # First call (cache miss)
@@ -81,7 +82,7 @@ class TestCacheProperties:
         ftl_placeholders = " ".join([f"{{ ${k} }}" for k in ftl_vars])
         ftl_source = f"msg = Test {ftl_placeholders}"
 
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource(ftl_source)
 
         # Format with args1
@@ -106,7 +107,7 @@ class TestCacheProperties:
 
         Property: No matter how many format calls, cache size ≤ maxsize.
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=cache_size)
+        bundle = FluentBundle("en", cache=CacheConfig(size=cache_size))
 
         # Add many messages
         ftl_source = "\n".join([f"msg{i} = Message {i}" for i in range(num_messages)])
@@ -132,7 +133,7 @@ class TestCacheProperties:
 
         Property: hits + misses = total calls
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # Make num_calls format calls
@@ -160,7 +161,7 @@ class TestCacheInvalidationProperties:
 
         Property: After add_resource(), cache size = 0 and stats reset.
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # Warm up cache
@@ -188,7 +189,7 @@ class TestCacheInvalidationProperties:
 
         Property: After add_function(), cache size = 0 and stats reset.
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # Warm up cache
@@ -223,7 +224,7 @@ class TestCacheInternalProperties:
 
         Property: len(cache) ≤ maxsize and len(cache) = stats["size"]
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=cache_size)
+        bundle = FluentBundle("en", cache=CacheConfig(size=cache_size))
 
         # Add messages
         ftl_source = "\n".join([f"msg{i} = Message {i}" for i in range(num_operations)])
@@ -250,7 +251,7 @@ class TestCacheInternalProperties:
 
         Property: Properties always match internal state.
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=cache_size)
+        bundle = FluentBundle("en", cache=CacheConfig(size=cache_size))
         bundle.add_resource("msg = Hello")
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy
@@ -281,7 +282,7 @@ class TestCacheInternalProperties:
 
         Property: Repeatedly formatting same message keeps cache size at 1.
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=10)
+        bundle = FluentBundle("en", cache=CacheConfig(size=10))
         bundle.add_resource("msg = Hello")
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy
@@ -313,7 +314,7 @@ class TestCacheInternalProperties:
 
         Property: Distinct args → distinct cache keys → separate entries.
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=100, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(size=100), use_isolating=False)
         bundle.add_resource("msg = { $a } { $b } { $c }")
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy
@@ -342,7 +343,7 @@ class TestCacheInternalProperties:
 
         Property: Each message_id → separate cache entry.
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=100)
+        bundle = FluentBundle("en", cache=CacheConfig(size=100))
 
         # Add all messages
         ftl_source = "\n".join([f"{msg_id} = Message {i}" for i, msg_id in enumerate(message_ids)])
@@ -372,7 +373,7 @@ class TestCacheInternalProperties:
 
         Property: Each attribute → separate cache entry.
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=100, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(size=100), use_isolating=False)
 
         # Create message with multiple attributes
         attrs_ftl = "\n    ".join([f".{attr} = Attr {attr}" for attr in attributes if attr])
@@ -398,7 +399,7 @@ class TestCacheInternalProperties:
 
         Property: cache.size == len(cache._cache)
         """
-        bundle = FluentBundle("en", enable_cache=True, cache_size=100)
+        bundle = FluentBundle("en", cache=CacheConfig(size=100))
 
         # Add messages
         ftl_source = "\n".join([f"msg{i} = Message {i}" for i in range(num_operations)])
@@ -433,7 +434,7 @@ class TestCacheTypeCollisionPrevention:
         In Fluent, True formats as "true" while 1 formats as "1". Without type
         tagging, Python's hash equality would cause cache collision.
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         # Format with True first
@@ -455,7 +456,7 @@ class TestCacheTypeCollisionPrevention:
 
         Without type tagging, hash(1) == hash(1.0) would cause collision.
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         # Format with int first
@@ -473,7 +474,7 @@ class TestCacheTypeCollisionPrevention:
 
         hash(False) == hash(0) in Python.
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         result_bool, _ = bundle.format_pattern("msg", {"v": False})
@@ -493,7 +494,7 @@ class TestCacheTypeCollisionPrevention:
         This is the critical test: after caching with int 1, looking up with
         bool True must NOT return the cached "1", but cache miss and format "true".
         """
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         # Cache with int 1
@@ -512,7 +513,7 @@ class TestCacheTypeCollisionPrevention:
         if hash(b) != hash(i):
             return
 
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         # Format both
@@ -532,7 +533,7 @@ class TestCacheTypeCollisionPrevention:
         if i != f:
             return
 
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         # Format both

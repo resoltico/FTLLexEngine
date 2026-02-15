@@ -377,6 +377,7 @@ class TestDiagnosticDataclass:
         formatted = diagnostic.format_error()
         escaped = (
             diagnostic.message
+            .replace("\x1b", "\\x1b")
             .replace("\r", "\\r")
             .replace("\n", "\\n")
             .replace("\t", "\\t")

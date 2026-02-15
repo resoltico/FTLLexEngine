@@ -7,6 +7,7 @@ import pytest
 
 from ftllexengine import FluentBundle
 from ftllexengine.runtime.cache import IntegrityCache
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 class TestCacheDisabled:
@@ -39,12 +40,12 @@ class TestCacheEnabled:
 
     def test_enable_cache(self) -> None:
         """Enable caching via constructor."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         assert bundle.get_cache_stats() is not None
 
     def test_cache_hit(self) -> None:
         """Cache hit on repeated format call."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         # First call - cache miss
@@ -67,7 +68,7 @@ class TestCacheEnabled:
 
     def test_cache_miss_different_args(self) -> None:
         """Cache miss when args differ."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         result1, _ = bundle.format_pattern("msg", {"name": "Alice"})
@@ -83,7 +84,7 @@ class TestCacheEnabled:
 
     def test_cache_miss_different_message_id(self) -> None:
         """Cache miss when message_id differs."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("""
             msg1 = Message 1
             msg2 = Message 2
@@ -99,7 +100,7 @@ class TestCacheEnabled:
 
     def test_cache_miss_different_attribute(self) -> None:
         """Cache miss when attribute differs."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("""
             msg = Hello
                 .tooltip = Tooltip text
@@ -121,7 +122,7 @@ class TestCacheInvalidation:
 
     def test_cache_cleared_on_add_resource(self) -> None:
         """Cache is cleared when add_resource is called."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # Warm up cache
@@ -140,7 +141,7 @@ class TestCacheInvalidation:
 
     def test_cache_cleared_on_add_function(self) -> None:
         """Cache is cleared when add_function is called."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # Warm up cache
@@ -160,7 +161,7 @@ class TestCacheInvalidation:
 
     def test_manual_cache_clear(self) -> None:
         """Manual cache clear works."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # Warm up cache
@@ -181,7 +182,7 @@ class TestCacheSize:
 
     def test_cache_size_limit(self) -> None:
         """Cache respects size limit."""
-        bundle = FluentBundle("en", enable_cache=True, cache_size=2)
+        bundle = FluentBundle("en", cache=CacheConfig(size=2))
         bundle.add_resource("msg1 = Message 1")
         bundle.add_resource("msg2 = Message 2")
         bundle.add_resource("msg3 = Message 3")
@@ -198,7 +199,7 @@ class TestCacheSize:
 
     def test_lru_eviction(self) -> None:
         """LRU eviction removes oldest entry."""
-        bundle = FluentBundle("en", enable_cache=True, cache_size=2)
+        bundle = FluentBundle("en", cache=CacheConfig(size=2))
         bundle.add_resource("msg1 = Message 1")
         bundle.add_resource("msg2 = Message 2")
         bundle.add_resource("msg3 = Message 3")
@@ -221,10 +222,10 @@ class TestCacheSize:
     def test_cache_size_validation(self) -> None:
         """Cache size must be positive."""
         with pytest.raises(ValueError, match="maxsize must be positive"):
-            FluentBundle("en", enable_cache=True, cache_size=0)
+            FluentBundle("en", cache=CacheConfig(size=0))
 
         with pytest.raises(ValueError, match="maxsize must be positive"):
-            FluentBundle("en", enable_cache=True, cache_size=-1)
+            FluentBundle("en", cache=CacheConfig(size=-1))
 
 
 class TestCacheStats:
@@ -232,7 +233,7 @@ class TestCacheStats:
 
     def test_hit_rate_calculation(self) -> None:
         """Hit rate is calculated correctly."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         # 1 miss
@@ -260,7 +261,7 @@ class TestCacheIntrospection:
 
     def test_cache_len(self) -> None:
         """__len__ returns cache size."""
-        bundle = FluentBundle("en", enable_cache=True, cache_size=10)
+        bundle = FluentBundle("en", cache=CacheConfig(size=10))
         bundle.add_resource("msg1 = Message 1\nmsg2 = Message 2")
 
         # Cache is empty initially
@@ -277,14 +278,14 @@ class TestCacheIntrospection:
 
     def test_cache_maxsize_property(self) -> None:
         """maxsize property returns configured max size."""
-        bundle = FluentBundle("en", enable_cache=True, cache_size=500)
+        bundle = FluentBundle("en", cache=CacheConfig(size=500))
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy
         assert cache.maxsize == 500
 
     def test_cache_hits_property(self) -> None:
         """hits property returns hit count."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy
@@ -306,7 +307,7 @@ class TestCacheIntrospection:
 
     def test_cache_misses_property(self) -> None:
         """misses property returns miss count."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy

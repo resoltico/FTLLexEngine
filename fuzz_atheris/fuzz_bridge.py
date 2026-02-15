@@ -232,6 +232,7 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.runtime.bundle import FluentBundle
+    from ftllexengine.runtime.cache_config import CacheConfig
     from ftllexengine.runtime.function_bridge import (
         FluentNumber,
         FunctionRegistry,
@@ -807,7 +808,7 @@ def _pattern_evil_objects(fdp: atheris.FuzzedDataProvider) -> None:
             var = None
 
     # Full FluentBundle resolution path with adversarial objects
-    bundle = FluentBundle("en-US", enable_cache=fdp.ConsumeBool())
+    bundle = FluentBundle("en-US", cache=CacheConfig() if fdp.ConsumeBool() else None)
     bundle.add_resource("msg = Value: { $var }\n")
     with contextlib.suppress(*_ALLOWED_EXCEPTIONS, FrozenFluentError):
         bundle.format_value("msg", {"var": var})  # type: ignore[dict-item]

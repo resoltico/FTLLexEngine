@@ -19,6 +19,7 @@ from ftllexengine import FluentBundle
 from ftllexengine.constants import DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
 from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.runtime.cache import IntegrityCache
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.validation import validate_resource
 
 # ============================================================================
@@ -355,7 +356,7 @@ class TestCacheEntrySizeLimit:
 
     def test_bundle_cache_uses_default_max_entry_weight(self) -> None:
         """FluentBundle's internal cache uses default max_entry_weight."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = { $data }")
 
         # Format with small data

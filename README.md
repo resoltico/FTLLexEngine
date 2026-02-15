@@ -20,16 +20,6 @@ RETRIEVAL_HINTS:
 
 **Declarative localization for Python. Bidirectional parsing, thread-safe formatting, and Decimal precision -- in `.ftl` files, not your code.**
 
-Meet **Alice** and **Bob**.
-
-**Alice** exports specialty coffee. Her invoices ship to buyers in Tokyo, Hamburg, and New York. Three languages, three currency formats, zero tolerance for rounding errors. "1 bag" in English, "1 Sack" in German, "1袋" in Japanese -- and Polish has four plural forms, Arabic has six. Her if-statements turned into spaghetti. Then she moved grammar rules to `.ftl` files and never looked back.
-
-**Bob** runs supply operations at Mars Colony 1. Personnel from Germany, Japan, and Colombia order provisions in their own locale. A German engineer types `"12.450,00 EUR"`. A Japanese technician enters `"￥1,245,000"`. Bob's system needs exact `Decimal` values from both. One parsing error on a cargo manifest means delayed shipments and cold brew for 200 colonists.
-
-FTLLexEngine keeps their systems coherent. Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe by default.
-
----
-
 ## Why FTLLexEngine?
 
 - **Bidirectional** -- Format data for display *and* parse user input back to Python types
@@ -38,6 +28,16 @@ FTLLexEngine keeps their systems coherent. Built on the [Fluent specification](h
 - **Introspectable** -- Query what variables a message needs before you call it
 - **Declarative grammar** -- Plurals, gender, cases in `.ftl` files. Code stays clean
 - **Decimal precision** -- `Decimal` throughout. No float math, no rounding surprises
+
+---
+
+Meet **Alice** and **Bob**.
+
+**Alice** exports specialty coffee. Her invoices ship to buyers in Tokyo, Hamburg, and New York. Three languages, three currency formats, zero tolerance for rounding errors. "1 bag" in English, "1 Sack" in German, "1袋" in Japanese -- and Polish has four plural forms, Arabic has six. She moved grammar rules to `.ftl` files and never looked back.
+
+**Bob** runs supply operations at Mars Colony 1. Personnel from Germany, Japan, and Colombia order provisions in their own locale. A German engineer types `"12.450,00 EUR"`. A Japanese technician enters `"￥1,245,000"`. Bob's system needs exact `Decimal` values from both. One parsing error on a cargo manifest means delayed shipments for 200 colonists.
+
+FTLLexEngine keeps their systems coherent. Built on the [Fluent specification](https://projectfluent.org/) that powers Firefox. 200+ locales via Unicode CLDR. Thread-safe by default.
 
 ---
 
@@ -69,28 +69,18 @@ if not errors:
     amount, currency = result  # (Decimal('12450.00'), 'EUR')
 ```
 
-```mermaid
-flowchart LR
-    A[Bob's Colonist<br/>Mars Colony 1] -- "12.450,00 EUR" --> B(FTLLexEngine<br/>Parser)
-    B -- "Decimal('12450.00')" --> C{Python<br/>Application}
-    C -- "Decimal('12450.00')" --> D(FTLLexEngine<br/>Formatter)
-    D -- "$12,450.00" --> E[Alice's Ledger<br/>Earth]
-
-    style B fill:#f9f,stroke:#333,stroke-width:2px
-    style D fill:#f9f,stroke:#333,stroke-width:2px
-```
-
 ---
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Alice Ships to Every Port on Two Planets](#alice-ships-to-every-port-on-two-planets)
-- [Bob Parses Every Input at Mars Colony 1](#bob-parses-every-input-at-mars-colony-1)
-- [Mission Control: 100 Threads, Zero Race Conditions](#mission-control-100-threads-zero-race-conditions)
-- [Pre-Flight Checks](#pre-flight-checks)
-- [Your Operation Spans Two Planets](#your-operation-spans-two-planets)
-- [Flight-Proven Engineering](#flight-proven-engineering)
+- [Multi-Locale Formatting — Alice Ships to Every Port](#multi-locale-formatting--alice-ships-to-every-port)
+- [Bidirectional Parsing — Bob Parses Every Input](#bidirectional-parsing--bob-parses-every-input)
+- [Thread-Safe Concurrency — 100 Threads, Zero Race Conditions](#thread-safe-concurrency--100-threads-zero-race-conditions)
+- [Message Introspection — Pre-Flight Checks](#message-introspection--pre-flight-checks)
+- [Currency and Fiscal Data — Operations Across Borders](#currency-and-fiscal-data--operations-across-borders)
+- [Testing and Reliability](#testing-and-reliability)
+- [Architecture at a Glance](#architecture-at-a-glance)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -135,7 +125,7 @@ Or: `pip install ftllexengine`
 
 ---
 
-## Alice Ships to Every Port on Two Planets
+## Multi-Locale Formatting — Alice Ships to Every Port
 
 Alice's invoices go to Tokyo, Hamburg, and New York. Same data, different languages, different number formats. She maintains one `.ftl` file per locale. Translators edit the files. Her trading platform ships features.
 
@@ -190,18 +180,18 @@ result, _ = bundle_de.format_pattern("invoice-total", {"amount": Decimal("187500
 bundle_ja = FluentBundle("ja_JP")
 bundle_ja.add_resource("""
 shipment-line = { $bags ->
-    [0]     No shipment
-   *[other] { $origin } beans: { $bags } bags
+    [0]     出荷なし
+   *[other] { $origin }豆 { $bags }袋
 }
 
-invoice-total = Total: { CURRENCY($amount, currency: "JPY") }
+invoice-total = 合計：{ CURRENCY($amount, currency: "JPY") }
 """)
 
-result, _ = bundle_ja.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
-# "Colombian beans: 500 bags"
+result, _ = bundle_ja.format_pattern("shipment-line", {"bags": 500, "origin": "コロンビア"})
+# "コロンビア豆 500袋"
 
 result, _ = bundle_ja.format_pattern("invoice-total", {"amount": Decimal("28125000")})
-# "Total: JPY 28,125,000"
+# "合計：￥28,125,000"
 ```
 
 Bob uses the same pattern at Mars Colony 1. Spanish for the Colombian agronomists? Add one `.ftl` file. Zero code changes.
@@ -210,7 +200,7 @@ Bob uses the same pattern at Mars Colony 1. Spanish for the Colombian agronomist
 
 ---
 
-## Bob Parses Every Input at Mars Colony 1
+## Bidirectional Parsing — Bob Parses Every Input
 
 Most libraries only format outbound data. That's a one-way trip.
 
@@ -233,6 +223,17 @@ if not errors:
 # Japanese technician enters a delivery date
 contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 # datetime.date(2026, 3, 15)
+```
+
+```mermaid
+flowchart LR
+    A["German Engineer<br/>Mars Colony 1"] -- "12.450,00 €" --> B["parse_currency()<br/>de_DE"]
+    B -- "Decimal('12450.00'), EUR" --> C["Inventory<br/>System"]
+    C -- "Decimal('12450.00'), EUR" --> D["CURRENCY()<br/>en_US"]
+    D -- "€12,450.00" --> E["Alice's Ledger<br/>New York"]
+
+    style B fill:#f9f,stroke:#333,stroke-width:2px
+    style D fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 **When parsing fails, you get structured errors -- not exceptions:**
@@ -300,7 +301,7 @@ except FormattingIntegrityError as e:
 
 ---
 
-## Mission Control: 100 Threads, Zero Race Conditions
+## Thread-Safe Concurrency — 100 Threads, Zero Race Conditions
 
 Alice's trading desk gets busy. Bids from Frankfurt, asks from Bogota, confirmations to Tokyo -- concurrent requests, each in a different locale. Bob's colony runs the same pattern: 200 settlers, simultaneous orders, mixed locales.
 
@@ -344,7 +345,7 @@ with ThreadPoolExecutor(max_workers=100) as executor:
 
 ---
 
-## Pre-Flight Checks
+## Message Introspection — Pre-Flight Checks
 
 Bob's systems generate cargo manifests. Before calling `format_pattern()`, they verify: *what variables does this message require? Are all of them available?*
 
@@ -384,7 +385,7 @@ info.requires_variable("price")
 
 ---
 
-## Your Operation Spans Two Planets
+## Currency and Fiscal Data — Operations Across Borders
 
 Alice sources beans from Colombia, Ethiopia, and Brazil. She sells to importers in Japan, Germany, and the US. Each country uses different currencies with different decimal places. Each has different fiscal years for compliance reporting.
 
@@ -451,14 +452,30 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 
 ---
 
-## Flight-Proven Engineering
+## Testing and Reliability
 
-"Mission critical" is an engineering standard, not a marketing claim. FTLLexEngine is built to survive environments where you cannot restart the server.
+FTLLexEngine is engineered for environments where silent failures and restarts are not an option.
 
 - **Property-Based Testing** -- Powered by Hypothesis. Roundtrip properties (`parse(format(x)) == x`) verified across thousands of locale and value combinations.
 - **Continuous Fuzzing** -- Atheris (libFuzzer) and HypoFuzz subject the parser to millions of random inputs per session. No panics, no hangs, no crashes.
 - **98%+ Branch Coverage** -- Every execution path is tested and illuminated.
 - **Immutable Error Data** -- `FrozenFluentError` instances are frozen dataclasses with BLAKE2b checksums. Errors cannot be silently modified after creation.
+
+---
+
+## Architecture at a Glance
+
+| Component | What It Does | Requires Babel? |
+|:----------|:-------------|:----------------|
+| **Syntax** — `ftllexengine.syntax` | FTL parser, AST, serializer, visitor pattern | No |
+| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (CURRENCY, DATETIME) | Yes |
+| **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains | Yes |
+| **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
+| **Fiscal** — `ftllexengine.parsing.fiscal` | Fiscal calendar arithmetic, quarter calculations | No |
+| **Introspection** — `ftllexengine.introspection` | Message variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
+| **Validation** — `ftllexengine.validation` | Cycle detection, reference validation, semantic checks | No |
+| **Diagnostics** — `ftllexengine.diagnostics` | Structured error types, error codes, formatting | No |
+| **Integrity** — `ftllexengine.integrity` | BLAKE2b checksums, strict mode, immutable exceptions | No |
 
 ---
 
@@ -514,5 +531,3 @@ MIT License - See [LICENSE](LICENSE).
 Implements the [Fluent Specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf) (Apache 2.0).
 
 **Legal**: [PATENTS.md](PATENTS.md) | [NOTICE](NOTICE)
-
-Alice ships invoices to three continents. Bob keeps a Mars colony fed. FTLLexEngine handles the localization so they can focus on the coffee.

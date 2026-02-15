@@ -28,6 +28,7 @@ from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
 from ftllexengine.diagnostics import ErrorCategory
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 
 # ============================================================================
 # COVERAGE: Lines 150-154 (Locale exceeding MAX_LOCALE_LENGTH_HARD_LIMIT)
@@ -488,32 +489,26 @@ class TestPropertyAccessEdgeCases:
 
     def test_cache_enabled_false_when_not_initialized(self) -> None:
         """cache_enabled returns False when caching not enabled."""
-        bundle = FluentBundle("en", enable_cache=False)
+        bundle = FluentBundle("en")
         assert bundle.cache_enabled is False
 
     def test_cache_enabled_true_when_initialized(self) -> None:
         """cache_enabled returns True when caching enabled."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         assert bundle.cache_enabled is True
 
     def test_cache_size_property_returns_configured_size(self) -> None:
-        """cache_size property returns configured size regardless of enable state."""
-        # Disabled cache still has configured size
-        bundle_disabled = FluentBundle("en", enable_cache=False, cache_size=500)
-        assert bundle_disabled.cache_size == 500
-        assert bundle_disabled.cache_enabled is False
-
-        # Enabled cache returns size
-        bundle_enabled = FluentBundle("en", enable_cache=True, cache_size=200)
-        assert bundle_enabled.cache_size == 200
-        assert bundle_enabled.cache_enabled is True
+        """cache_size returns configured size from CacheConfig."""
+        bundle = FluentBundle("en", cache=CacheConfig(size=200))
+        assert bundle.cache_size == 200
+        assert bundle.cache_enabled is True
 
     @given(st.integers(min_value=1, max_value=10000))
     def test_property_cache_size_reflects_initialization(self, size: int) -> None:
-        """Property: cache_size always reflects initialization parameter."""
+        """Property: cache_size always reflects CacheConfig parameter."""
         scale = "small" if size <= 100 else "large"
         event(f"boundary={scale}_cache")
-        bundle = FluentBundle("en", cache_size=size)
+        bundle = FluentBundle("en", cache=CacheConfig(size=size))
         assert bundle.cache_size == size
 
 

@@ -33,6 +33,7 @@ from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, invariant, rule
 
 from ftllexengine import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 from tests.strategies import ftl_identifiers, ftl_simple_text
 
 # =============================================================================
@@ -89,8 +90,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         """Initialize bundle with default settings."""
         self._fluent_bundle = FluentBundle(
             "en-US",
-            enable_cache=True,
-            cache_size=50,
+            cache=CacheConfig(size=50),
             use_isolating=False,
         )
         self.known_messages: dict[str, str] = {}  # msg_id -> expected_pattern

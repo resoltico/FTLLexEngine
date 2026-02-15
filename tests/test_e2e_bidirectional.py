@@ -41,6 +41,7 @@ from ftllexengine import (
     serialize_ftl,
 )
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax.ast import Junk, Message, Term
 
 # =============================================================================
@@ -674,7 +675,7 @@ class TestParseFormatWithCache:
         """Cache improves performance on repeated format calls."""
         ftl_source = "msg = Hello, { $name }!"
 
-        bundle = FluentBundle("en-US", use_isolating=False, enable_cache=True)
+        bundle = FluentBundle("en-US", use_isolating=False, cache=CacheConfig())
         bundle.add_resource(ftl_source)
 
         # First call - cache miss
@@ -693,7 +694,7 @@ class TestParseFormatWithCache:
         """Cache statistics are available when caching enabled."""
         ftl_source = "msg = Hello!"
 
-        bundle = FluentBundle("en-US", use_isolating=False, enable_cache=True)
+        bundle = FluentBundle("en-US", use_isolating=False, cache=CacheConfig())
         bundle.add_resource(ftl_source)
 
         bundle.format_pattern("msg")
@@ -707,7 +708,7 @@ class TestParseFormatWithCache:
         """Cache statistics are None when caching disabled."""
         ftl_source = "msg = Hello!"
 
-        bundle = FluentBundle("en-US", use_isolating=False, enable_cache=False)
+        bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(ftl_source)
 
         bundle.format_pattern("msg")
@@ -719,7 +720,7 @@ class TestParseFormatWithCache:
         """clear_cache() resets cache statistics."""
         ftl_source = "msg = Hello!"
 
-        bundle = FluentBundle("en-US", use_isolating=False, enable_cache=True)
+        bundle = FluentBundle("en-US", use_isolating=False, cache=CacheConfig())
         bundle.add_resource(ftl_source)
 
         bundle.format_pattern("msg")

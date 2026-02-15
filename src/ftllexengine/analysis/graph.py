@@ -9,7 +9,34 @@ Python 3.13+.
 from collections.abc import Mapping, Sequence
 from enum import Enum, auto
 
-__all__ = ["build_dependency_graph", "canonicalize_cycle", "detect_cycles", "make_cycle_key"]
+__all__ = [
+    "build_dependency_graph",
+    "canonicalize_cycle",
+    "detect_cycles",
+    "entry_dependency_set",
+    "make_cycle_key",
+]
+
+
+def entry_dependency_set(
+    message_refs: frozenset[str],
+    term_refs: frozenset[str],
+) -> set[str]:
+    """Build a namespace-prefixed dependency set from reference sets.
+
+    Combines message and term references into a single set with ``msg:``
+    and ``term:`` prefixes. This is the canonical key format used by
+    ``build_dependency_graph`` and ``detect_cycles`` for cross-namespace
+    cycle detection.
+
+    Args:
+        message_refs: Message IDs referenced by the entry.
+        term_refs: Term IDs referenced by the entry.
+
+    Returns:
+        Set of prefixed dependency keys (e.g., ``{"msg:welcome", "term:brand"}``).
+    """
+    return {f"msg:{r}" for r in message_refs} | {f"term:{r}" for r in term_refs}
 
 
 def canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:

@@ -323,7 +323,7 @@ class DiagnosticFormatter:
             parts.append(f"  = help: {hint}")
 
         if diagnostic.help_url:
-            parts.append(f"  = note: see {diagnostic.help_url}")
+            parts.append(f"  = note: see {self._escape_control_chars(diagnostic.help_url)}")
 
         return "\n".join(parts)
 
@@ -398,7 +398,13 @@ class DiagnosticFormatter:
         Returns:
             Text with control characters replaced by escape sequences
         """
-        return text.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
+        return (
+            text
+            .replace("\x1b", "\\x1b")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
 
     def _maybe_sanitize(self, text: str) -> str:
         """Truncate text if sanitization is enabled.

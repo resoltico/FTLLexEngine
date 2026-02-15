@@ -25,6 +25,7 @@ from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import ErrorCategory, ValidationError
 from ftllexengine.integrity import FormattingIntegrityError, SyntaxIntegrityError
 from ftllexengine.runtime import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import create_default_registry
 
@@ -62,18 +63,17 @@ class TestBundlePropertyAccessors:
 
     def test_cache_enabled_property(self) -> None:
         """cache_enabled property reflects configuration."""
-        assert FluentBundle("en", enable_cache=True).cache_enabled is True
-        assert FluentBundle("en", enable_cache=False).cache_enabled is False
+        assert FluentBundle("en", cache=CacheConfig()).cache_enabled is True
         assert FluentBundle("en").cache_enabled is False
 
     def test_cache_size_property(self) -> None:
         """cache_size property returns configured maximum."""
-        bundle = FluentBundle("en", enable_cache=True, cache_size=500)
+        bundle = FluentBundle("en", cache=CacheConfig(size=500))
         assert bundle.cache_size == 500
 
     def test_cache_usage_property_tracks_entries(self) -> None:
         """cache_usage property tracks current cached entries."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg1 = Hello\nmsg2 = World")
 
         assert bundle.cache_usage == 0
@@ -84,43 +84,43 @@ class TestBundlePropertyAccessors:
 
     def test_cache_usage_returns_zero_when_disabled(self) -> None:
         """cache_usage returns 0 when caching is disabled."""
-        bundle = FluentBundle("en", enable_cache=False)
+        bundle = FluentBundle("en")
         bundle.add_resource("msg = Hello")
         bundle.format_pattern("msg")
         assert bundle.cache_usage == 0
 
     def test_cache_write_once_property(self) -> None:
         """cache_write_once property returns configured boolean."""
-        on = FluentBundle("en", enable_cache=True, cache_write_once=True)
+        on = FluentBundle("en", cache=CacheConfig(write_once=True))
         assert on.cache_write_once is True
-        off = FluentBundle("en", enable_cache=True, cache_write_once=False)
+        off = FluentBundle("en", cache=CacheConfig(write_once=False))
         assert off.cache_write_once is False
 
     def test_cache_enable_audit_property(self) -> None:
         """cache_enable_audit property returns configured boolean."""
-        on = FluentBundle("en", enable_cache=True, cache_enable_audit=True)
+        on = FluentBundle("en", cache=CacheConfig(enable_audit=True))
         assert on.cache_enable_audit is True
-        off = FluentBundle("en", enable_cache=True, cache_enable_audit=False)
+        off = FluentBundle("en", cache=CacheConfig(enable_audit=False))
         assert off.cache_enable_audit is False
 
     def test_cache_max_audit_entries_property(self) -> None:
         """cache_max_audit_entries property returns configured maximum."""
         bundle = FluentBundle(
-            "en", enable_cache=True, cache_max_audit_entries=5000
+            "en", cache=CacheConfig(max_audit_entries=5000)
         )
         assert bundle.cache_max_audit_entries == 5000
 
     def test_cache_max_entry_weight_property(self) -> None:
         """cache_max_entry_weight property returns configured maximum."""
         bundle = FluentBundle(
-            "en", enable_cache=True, cache_max_entry_weight=8000
+            "en", cache=CacheConfig(max_entry_weight=8000)
         )
         assert bundle.cache_max_entry_weight == 8000
 
     def test_cache_max_errors_per_entry_property(self) -> None:
         """cache_max_errors_per_entry returns configured maximum."""
         bundle = FluentBundle(
-            "en", enable_cache=True, cache_max_errors_per_entry=25
+            "en", cache=CacheConfig(max_errors_per_entry=25)
         )
         assert bundle.cache_max_errors_per_entry == 25
 
@@ -217,7 +217,7 @@ class TestBundleSpecialMethods:
 
     def test_context_manager_exit_clears_cache_when_modified(self) -> None:
         """__exit__ clears cache when bundle was modified during context."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         with bundle:
             bundle.add_resource("msg = Hello")
             bundle.format_pattern("msg")
@@ -226,7 +226,7 @@ class TestBundleSpecialMethods:
 
     def test_context_manager_exit_preserves_cache_when_not_modified(self) -> None:
         """__exit__ preserves cache for read-only contexts."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
         bundle.format_pattern("msg")
         assert bundle.cache_usage == 1
@@ -237,7 +237,7 @@ class TestBundleSpecialMethods:
 
     def test_context_manager_exit_resets_modification_flag(self) -> None:
         """__exit__ resets modification flag for next context."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         with bundle:
             bundle.add_resource("msg1 = Hello")
         assert bundle.cache_usage == 0
@@ -265,7 +265,7 @@ class TestBundleSpecialMethods:
 
     def test_context_manager_exit_without_cache(self) -> None:
         """Context manager works when cache is disabled."""
-        bundle = FluentBundle("en", enable_cache=False)
+        bundle = FluentBundle("en")
         bundle.add_resource("msg = Test")
         with bundle:
             pass
@@ -298,8 +298,7 @@ class TestBundleForSystemLocale:
         ):
             bundle = FluentBundle.for_system_locale(
                 use_isolating=False,
-                enable_cache=True,
-                cache_size=2000,
+                cache=CacheConfig(size=2000),
                 strict=True,
                 max_source_size=500_000,
             )
@@ -423,7 +422,7 @@ class TestBundleResourceManagement:
 
     def test_add_resource_clears_cache(self) -> None:
         """add_resource clears cache when enabled."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("first = First")
         bundle.format_pattern("first")
         assert bundle.get_cache_stats()["size"] > 0  # type: ignore[index]
@@ -790,7 +789,7 @@ class TestBundleCacheManagement:
 
     def test_clear_cache_when_enabled(self) -> None:
         """clear_cache removes all cached format results."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg1 = Hello\nmsg2 = World")
         bundle.format_pattern("msg1")
         bundle.format_pattern("msg2")
@@ -800,13 +799,13 @@ class TestBundleCacheManagement:
 
     def test_clear_cache_when_disabled(self) -> None:
         """clear_cache succeeds when cache is disabled."""
-        bundle = FluentBundle("en", enable_cache=False)
+        bundle = FluentBundle("en")
         bundle.clear_cache()
         assert bundle.get_cache_stats() is None
 
     def test_clear_cache_marks_modified(self) -> None:
         """clear_cache marks bundle as modified for context manager."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
         with bundle:
             bundle.clear_cache()
@@ -814,7 +813,7 @@ class TestBundleCacheManagement:
 
     def test_get_cache_stats_returns_dict_when_enabled(self) -> None:
         """get_cache_stats returns dict with hits/misses when enabled."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
         bundle.format_pattern("msg", {})
         bundle.format_pattern("msg", {})
@@ -825,12 +824,12 @@ class TestBundleCacheManagement:
 
     def test_get_cache_stats_returns_none_when_disabled(self) -> None:
         """get_cache_stats returns None when caching is disabled."""
-        bundle = FluentBundle("en", enable_cache=False)
+        bundle = FluentBundle("en")
         assert bundle.get_cache_stats() is None
 
     def test_format_pattern_caches_result(self) -> None:
         """format_pattern caches results when cache enabled."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
         result1, _ = bundle.format_pattern("msg")
         stats1 = bundle.get_cache_stats()
@@ -1011,7 +1010,7 @@ class TestBundleCustomFunctions:
 
     def test_add_function_clears_cache(self) -> None:
         """add_function clears cache after registration."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
         bundle.format_pattern("msg")
         assert bundle.cache_usage == 1
@@ -1024,7 +1023,7 @@ class TestBundleCustomFunctions:
 
     def test_add_function_marks_modified(self) -> None:
         """add_function marks bundle as modified for context manager."""
-        bundle = FluentBundle("en", enable_cache=True)
+        bundle = FluentBundle("en", cache=CacheConfig())
 
         def CUSTOM(v: Any) -> str:  # noqa: N802
             return str(v)
@@ -1035,7 +1034,7 @@ class TestBundleCustomFunctions:
 
     def test_add_function_without_cache(self) -> None:
         """add_function works when cache is disabled."""
-        bundle = FluentBundle("en", enable_cache=False, use_isolating=False)
+        bundle = FluentBundle("en", use_isolating=False)
 
         def CUSTOM(val: str) -> str:  # noqa: N802
             return val.upper()
@@ -1308,7 +1307,7 @@ class TestBundleHypothesisProperties:
     ) -> None:
         """Strict mode raises FormattingIntegrityError on cached errors."""
         bundle = FluentBundle(
-            locale, strict=True, enable_cache=True
+            locale, strict=True, cache=CacheConfig()
         )
         bundle.add_resource(
             f"msg = Hello {{ ${missing_var_name} }}"
@@ -1352,7 +1351,7 @@ class TestBundleHypothesisProperties:
             safe = "Hello"
 
         bundle = FluentBundle(
-            locale, strict=True, enable_cache=True
+            locale, strict=True, cache=CacheConfig()
         )
         bundle.add_resource(f"msg = {safe}")
 
@@ -1416,7 +1415,7 @@ class TestBundleHypothesisProperties:
             event("boundary=medium")
         else:
             event("boundary=large")
-        bundle = FluentBundle("en", cache_size=cache_size)
+        bundle = FluentBundle("en", cache=CacheConfig(size=cache_size))
         assert bundle.cache_size == cache_size
 
     # --- Validation properties (from test_bundle_coverage, events added) ---

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.108.0"
 domain: "architecture"
-updated: "2026-01-31"
+updated: "2026-02-15"
 route: "/docs/data-integrity"
 ---
 
@@ -78,7 +78,7 @@ Some applications cannot tolerate silent fallbacks. A missing variable returning
 
 **Activation:**
 - `FluentBundle(..., strict=True)` - explicit opt-in
-- Combine with `enable_cache=True` for caching
+- Combine with `cache=CacheConfig()` for caching
 
 **Invariant:** When `strict=True`, NO formatting operation returns a fallback value. Every error path raises `FormattingIntegrityError`.
 

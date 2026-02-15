@@ -7,6 +7,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ftllexengine import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 class TestCacheConcurrency:
@@ -14,7 +15,7 @@ class TestCacheConcurrency:
 
     def test_concurrent_reads(self) -> None:
         """Concurrent reads are thread-safe."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         def format_message(name: str) -> str:
@@ -36,7 +37,7 @@ class TestCacheConcurrency:
 
     def test_concurrent_different_args(self) -> None:
         """Concurrent reads with different args are thread-safe."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         names = ["Alice", "Bob", "Charlie", "David"]
@@ -58,7 +59,7 @@ class TestCacheConcurrency:
 
     def test_concurrent_cache_clear(self) -> None:
         """Concurrent cache clear is thread-safe."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         errors = []
@@ -83,7 +84,7 @@ class TestCacheConcurrency:
 
     def test_concurrent_add_resource(self) -> None:
         """Concurrent add_resource with formatting is thread-safe."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         errors = []
@@ -121,7 +122,7 @@ class TestCacheRaceConditions:
 
     def test_no_race_on_lru_eviction(self) -> None:
         """No race condition during LRU eviction."""
-        bundle = FluentBundle("en", enable_cache=True, cache_size=10)
+        bundle = FluentBundle("en", cache=CacheConfig(size=10))
         bundle.add_resource(
             "\n".join([f"msg{i} = Message {i}" for i in range(20)])
         )
@@ -144,7 +145,7 @@ class TestCacheRaceConditions:
 
     def test_cache_stats_consistency(self) -> None:
         """Cache stats remain consistent under concurrent access."""
-        bundle = FluentBundle("en", enable_cache=True, use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
 
         def format_many() -> None:

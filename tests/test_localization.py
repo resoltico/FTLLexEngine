@@ -15,6 +15,7 @@ from ftllexengine.localization import (
     FluentLocalization,
     PathResourceLoader,
 )
+from ftllexengine.runtime.cache_config import CacheConfig
 
 
 class TestFluentLocalizationBasics:
@@ -481,7 +482,7 @@ class TestCacheConfiguration:
 
     def test_cache_enabled_with_parameter(self) -> None:
         """Cache can be enabled via constructor parameter."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         # Format twice - should hit cache on second call
@@ -499,7 +500,7 @@ class TestCacheConfiguration:
 
     def test_cache_size_configurable(self) -> None:
         """Cache size can be configured via constructor parameter."""
-        l10n = FluentLocalization(["en"], enable_cache=True, cache_size=500)
+        l10n = FluentLocalization(["en"], cache=CacheConfig(size=500))
         l10n.add_resource("en", "msg = Hello")
 
         # Format message
@@ -512,7 +513,7 @@ class TestCacheConfiguration:
 
     def test_cache_works_across_multiple_locales(self) -> None:
         """Cache enabled for all bundles in multi-locale setup."""
-        l10n = FluentLocalization(["lv", "en"], enable_cache=True)
+        l10n = FluentLocalization(["lv", "en"], cache=CacheConfig())
         l10n.add_resource("lv", "msg = Sveiki")
         l10n.add_resource("en", "msg = Hello")
 
@@ -528,7 +529,7 @@ class TestCacheConfiguration:
 
     def test_clear_cache_on_all_bundles(self) -> None:
         """clear_cache() clears cache on all bundles."""
-        l10n = FluentLocalization(["lv", "en"], enable_cache=True)
+        l10n = FluentLocalization(["lv", "en"], cache=CacheConfig())
         l10n.add_resource("lv", "msg = Sveiki")
         l10n.add_resource("en", "msg = Hello")
 
@@ -554,12 +555,12 @@ class TestCacheIntrospection:
 
     def test_cache_enabled_property_when_enabled(self) -> None:
         """cache_enabled property returns True when caching enabled."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         assert l10n.cache_enabled is True
 
     def test_cache_enabled_property_when_disabled(self) -> None:
         """cache_enabled property returns False when caching disabled."""
-        l10n = FluentLocalization(["en"], enable_cache=False)
+        l10n = FluentLocalization(["en"])
         assert l10n.cache_enabled is False
 
     def test_cache_enabled_property_default(self) -> None:
@@ -567,26 +568,20 @@ class TestCacheIntrospection:
         l10n = FluentLocalization(["en"])
         assert l10n.cache_enabled is False
 
-    def test_cache_size_property_when_enabled(self) -> None:
-        """cache_size property returns configured size when caching enabled."""
-        l10n = FluentLocalization(["en"], enable_cache=True, cache_size=500)
-        assert l10n.cache_size == 500
+    def test_cache_config_property_when_enabled(self) -> None:
+        """cache_config property returns CacheConfig when caching enabled."""
+        l10n = FluentLocalization(["en"], cache=CacheConfig(size=500))
+        assert l10n.cache_config is not None
+        assert l10n.cache_config.size == 500
 
-    def test_cache_size_property_when_disabled(self) -> None:
-        """cache_size returns configured limit even when caching disabled."""
-        l10n = FluentLocalization(["en"], enable_cache=False, cache_size=500)
-        # Returns configured limit (for introspection), not current usage
-        assert l10n.cache_size == 500
-
-    def test_cache_size_property_default(self) -> None:
-        """cache_size returns default limit (1000) even when cache disabled."""
+    def test_cache_config_property_when_disabled(self) -> None:
+        """cache_config returns None when caching disabled."""
         l10n = FluentLocalization(["en"])
-        # Default cache_size is 1000, returned regardless of enable_cache
-        assert l10n.cache_size == 1000
+        assert l10n.cache_config is None
 
     def test_bundle_cache_properties_reflect_localization_config(self) -> None:
         """Individual bundles reflect FluentLocalization cache config."""
-        l10n = FluentLocalization(["lv", "en"], enable_cache=True, cache_size=250)
+        l10n = FluentLocalization(["lv", "en"], cache=CacheConfig(size=250))
 
         # Check all bundles have matching config
         for bundle in l10n.get_bundles():

@@ -6,9 +6,10 @@ message/term reference graphs.
 Python 3.13+.
 """
 
-from .graph import build_dependency_graph, detect_cycles
+from .graph import build_dependency_graph, detect_cycles, entry_dependency_set
 
 __all__ = [
     "build_dependency_graph",
     "detect_cycles",
+    "entry_dependency_set",
 ]

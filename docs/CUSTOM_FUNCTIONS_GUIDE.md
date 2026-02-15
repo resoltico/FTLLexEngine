@@ -506,11 +506,11 @@ def CURRENCY_CORRECT(amount: float, *, currency_code: str = "USD", locale: str =
         return f"{currency_code} {amount}"
 
 # Benefits:
-# ✅ CLDR-compliant symbol placement
-# ✅ Currency-specific decimal places
-# ✅ Locale-specific grouping and separators
-# ✅ Supports all ISO 4217 currencies
-# ✅ Handles RTL languages (Arabic, Hebrew)
+# CLDR-compliant symbol placement
+# Currency-specific decimal places
+# Locale-specific grouping and separators
+# Supports all ISO 4217 currencies
+# Handles RTL languages (Arabic, Hebrew)
 ```
 
 ---
@@ -807,7 +807,7 @@ class TestFileSizeHypothesis:
 
 ## Best Practices and Pitfalls
 
-### ✅ Best Practices
+### Best Practices
 
 1. **Use `*` for keyword-only arguments**
    ```python
@@ -817,7 +817,7 @@ class TestFileSizeHypothesis:
 
 2. **Return type must be `str`**
    ```python
-   def CUSTOM(value: int) -> str:  # ✅ Returns str
+   def CUSTOM(value: int) -> str:  # Returns str
        return str(value)
    ```
 
@@ -827,7 +827,7 @@ class TestFileSizeHypothesis:
        try:
            return process(value)
        except Exception:
-           return value  # ✅ Graceful fallback
+           return value  # Graceful fallback
    ```
 
 4. **Use factory pattern for locale-aware functions**
@@ -884,7 +884,7 @@ class TestFileSizeHypothesis:
    # CORRECT
    def CUSTOM(value: int) -> str:
        if value < 0:
-           return "0"  # ✅ Graceful fallback
+           return "0"  # Graceful fallback
        return str(value)
    ```
 
@@ -895,7 +895,7 @@ class TestFileSizeHypothesis:
        ...
 
    # CORRECT
-   def CUSTOM(value: str, *, option: str = "default") -> str:  # ✅ Uses *
+   def CUSTOM(value: str, *, option: str = "default") -> str:  # Uses *
        ...
    ```
 
@@ -906,7 +906,7 @@ class TestFileSizeHypothesis:
        return value * 2
 
    # CORRECT
-   def CUSTOM(value: int) -> str:  # ✅ Returns str
+   def CUSTOM(value: int) -> str:  # Returns str
        return str(value * 2)
    ```
 
@@ -917,7 +917,7 @@ class TestFileSizeHypothesis:
        ...
 
    # CORRECT
-   def CUSTOM(value: str, *, format_style: str = "default") -> str:  # ✅ snake_case
+   def CUSTOM(value: str, *, format_style: str = "default") -> str:  # snake_case
        ...
    ```
 
@@ -944,7 +944,7 @@ class TestFileSizeHypothesis:
        try:
            return f"{float(bytes_count) / 1024:.2f} KB"
        except (ValueError, TypeError):
-           return f"{bytes_count} bytes"  # ✅ Fallback
+           return f"{bytes_count} bytes"  # Fallback
    ```
 
 7. **Ignoring thread safety**

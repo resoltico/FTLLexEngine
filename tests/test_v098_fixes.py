@@ -30,6 +30,7 @@ from ftllexengine.diagnostics.formatter import DiagnosticFormatter, OutputFormat
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.parsing.currency import _is_valid_iso_4217_format
 from ftllexengine.parsing.dates import _get_date_patterns, _get_datetime_patterns
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.rwlock import RWLock
 from ftllexengine.syntax.ast import (
@@ -241,7 +242,7 @@ class TestStrictModeCacheBeforeRaise:
 
     def test_error_result_cached_before_raise(self) -> None:
         """Error results are cached, so subsequent calls hit cache."""
-        bundle = FluentBundle("en", strict=True, enable_cache=True)
+        bundle = FluentBundle("en", strict=True, cache=CacheConfig())
         bundle.add_resource("msg = { $missing }")
 
         # First call: cache miss, resolves, caches, then raises

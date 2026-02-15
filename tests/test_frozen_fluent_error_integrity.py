@@ -1321,6 +1321,17 @@ class TestRichDiagnosticHashProperties:
 # =============================================================================
 
 
+def _escape_control_chars(text: str) -> str:
+    """Mirror DiagnosticFormatter._escape_control_chars for test assertions."""
+    return (
+        text
+        .replace("\x1b", "\\x1b")
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
+
+
 @pytest.mark.fuzz
 class TestDiagnosticFormatProperties:
     """Property tests for Diagnostic.format_error() output correctness.
@@ -1347,9 +1358,9 @@ class TestDiagnosticFormatProperties:
     def test_format_error_contains_message(
         self, diagnostic: Diagnostic
     ) -> None:
-        """Property: format_error() always contains the diagnostic message."""
+        """Property: format_error() always contains the escaped diagnostic message."""
         formatted = diagnostic.format_error()
-        assert diagnostic.message in formatted
+        assert _escape_control_chars(diagnostic.message) in formatted
         event(f"code={diagnostic.code.name}")
         event("outcome=format_contains_message")
 
@@ -1395,7 +1406,7 @@ class TestDiagnosticFormatProperties:
             assert col_str in formatted
             event("location=span")
         elif diagnostic.ftl_location is not None:
-            assert diagnostic.ftl_location in formatted
+            assert _escape_control_chars(diagnostic.ftl_location) in formatted
             event("location=ftl_location")
         else:
             assert "-->" not in formatted
@@ -1410,39 +1421,46 @@ class TestDiagnosticFormatProperties:
         formatted = diagnostic.format_error()
 
         if diagnostic.function_name:
-            fn_line = f"function: {diagnostic.function_name}"
+            escaped_fn = _escape_control_chars(diagnostic.function_name)
+            fn_line = f"function: {escaped_fn}"
             assert fn_line in formatted
             event("has_function=True")
         else:
             event("has_function=False")
 
         if diagnostic.argument_name:
-            arg_line = f"argument: {diagnostic.argument_name}"
+            escaped_arg = _escape_control_chars(diagnostic.argument_name)
+            arg_line = f"argument: {escaped_arg}"
             assert arg_line in formatted
 
         if diagnostic.expected_type:
-            exp_line = f"expected: {diagnostic.expected_type}"
+            escaped_exp = _escape_control_chars(diagnostic.expected_type)
+            exp_line = f"expected: {escaped_exp}"
             assert exp_line in formatted
 
         if diagnostic.received_type:
-            rcv_line = f"received: {diagnostic.received_type}"
+            escaped_rcv = _escape_control_chars(diagnostic.received_type)
+            rcv_line = f"received: {escaped_rcv}"
             assert rcv_line in formatted
 
         if diagnostic.resolution_path:
             path_str = " -> ".join(diagnostic.resolution_path)
-            assert path_str in formatted
+            escaped_path = _escape_control_chars(path_str)
+            assert escaped_path in formatted
             path_len = len(diagnostic.resolution_path)
             event(f"path_len={path_len}")
 
         if diagnostic.hint:
-            hint_line = f"help: {diagnostic.hint}"
+            escaped_hint = _escape_control_chars(diagnostic.hint)
+            hint_line = f"help: {escaped_hint}"
             assert hint_line in formatted
             event("has_hint=True")
         else:
             event("has_hint=False")
 
         if diagnostic.help_url:
-            url_line = f"note: see {diagnostic.help_url}"
+            escaped_url = _escape_control_chars(diagnostic.help_url)
+            url_line = f"note: see {escaped_url}"
             assert url_line in formatted
 
     @given(diagnostic=rich_diagnostics())

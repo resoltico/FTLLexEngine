@@ -12,6 +12,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-02-15
+
+### Changed (BREAKING)
+
+- **Cache configuration extracted to `CacheConfig` dataclass** (REFACTOR-CACHE-CONFIG-001):
+  - `FluentBundle.__init__` replaces 7 individual cache keyword arguments (`enable_cache`, `cache_size`, `cache_write_once`, `cache_enable_audit`, `cache_max_audit_entries`, `cache_max_entry_weight`, `cache_max_errors_per_entry`) with a single `cache: CacheConfig | None = None` parameter
+  - `FluentBundle.for_system_locale()` factory method updated with the same signature change
+  - `FluentLocalization.__init__` replaces `enable_cache` and `cache_size` with `cache: CacheConfig | None = None`
+  - `FluentLocalization.cache_size` property removed; replaced by `cache_config` property returning `CacheConfig | None`
+  - `CacheConfig` is a frozen dataclass with `size`, `write_once`, `enable_audit`, `max_audit_entries`, `max_entry_weight`, `max_errors_per_entry` fields
+  - `cache=None` (default) disables caching; `cache=CacheConfig()` enables caching with defaults
+  - Exported from top-level package: `from ftllexengine import CacheConfig`
+  - Location: `runtime/cache_config.py` (new), `runtime/bundle.py`, `localization.py`
+
+- **`LoadSummary` converted to computed-property architecture** (REFACTOR-LOAD-SUMMARY-001):
+  - `LoadSummary` changed from frozen dataclass with `object.__setattr__` workaround to `__slots__`-based immutable class
+  - `total_attempted`, `successful`, `not_found`, `errors`, `junk_count` changed from stored fields to computed `@property` methods derived from the `results` tuple
+  - `LoadSummary.error_count` property removed; use `LoadSummary.errors` instead (identical semantics, `error_count` was a trivial alias)
+  - Eliminates pre-computed field drift risk; all statistics always consistent with `results`
+  - Location: `localization.py`
+
+### Changed
+
+- **`FunctionSignature.param_dict` cached as frozen mapping** (PERF-FUNCTION-SIGNATURE-001):
+  - `FunctionSignature` now pre-computes `param_dict: MappingProxyType[str, str]` in `__post_init__` from the `params` tuple
+  - Eliminates repeated `dict()` construction on every function call during resolution
+  - Read-only `MappingProxyType` wrapper preserves the immutability invariant
+  - Location: `runtime/value_types.py`
+
+- **`entry_dependency_set()` extracted as public helper** (REFACTOR-DEPENDENCY-SET-001):
+  - `entry_dependency_set(entry)` computes the set of message/term identifiers referenced by a `Message` or `Term`
+  - Extracted from inline logic in `_build_dependency_graph()` in `validation/resource.py`
+  - Location: `analysis/graph.py`
+
+- **`_collect_pending_entries()` extracted from `_register_resource`** (REFACTOR-COLLECT-PENDING-001):
+  - Registration logic for collecting messages, terms, and junk from parsed resources extracted into standalone helper
+  - Reduces `_register_resource` complexity and improves testability
+  - Location: `runtime/bundle.py`
+
+### Fixed
+
+- **DiagnosticFormatter ANSI escape injection via user-controlled fields** (BUG-FORMATTER-ANSI-INJECTION-001):
+  - `_escape_control_chars()` did not escape `\x1b` (ESC), allowing user input in `ftl_location` or `help_url` fields to inject ANSI escape sequences into formatter output
+  - `help_url` field was not passed through `_escape_control_chars()` at all in `_format_rust()`
+  - Fix: `\x1b` now escaped as `\\x1b`; `help_url` field now escaped in Rust format output
+  - Location: `diagnostics/formatter.py`
+
+- **`PathResourceLoader._validate_resource_id` inconsistent error message** (BUG-VALIDATE-RESOURCE-MSG-001):
+  - Leading path separator rejection (backslash on non-Windows) used `"must not start with path separator"` instead of the `"not allowed in resource_id"` pattern used by the other three validation paths (absolute path, traversal, whitespace)
+  - Inconsistency caused programmatic `match=` assertions to miss this code path
+  - Fix: error message now uses `"Leading path separator not allowed in resource_id"` for consistency
+  - Location: `localization.py`
+
 ## [0.107.0] - 2026-02-14
 
 ### Changed (BREAKING)
@@ -3395,6 +3448,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.108.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.108.0
 [0.107.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.107.0
 [0.106.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.106.0
 [0.105.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.105.0

@@ -1,14 +1,47 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.108.0"
 domain: CORE
-updated: "2026-02-10"
+updated: "2026-02-15"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, cache_write_once, cache_enable_audit, IntegrityCache]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
 ---
 
 # Core API Reference
+
+---
+
+## `CacheConfig`
+
+`CacheConfig` is a frozen dataclass that encapsulates all cache configuration parameters for `FluentBundle` and `FluentLocalization`.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class CacheConfig:
+    size: int = 1000
+    write_once: bool = False
+    enable_audit: bool = False
+    max_audit_entries: int = 10000
+    max_entry_weight: int = 10000
+    max_errors_per_entry: int = 50
+```
+
+### Parameters
+| Field | Type | Default | Description |
+|:------|:-----|:--------|:------------|
+| `size` | `int` | 1000 | Maximum cache entries (LRU eviction). |
+| `write_once` | `bool` | False | Reject updates to existing keys (data race prevention). |
+| `enable_audit` | `bool` | False | Maintain audit log of cache operations. |
+| `max_audit_entries` | `int` | 10000 | Maximum audit log entries before oldest eviction. |
+| `max_entry_weight` | `int` | 10000 | Maximum memory weight for cached results. |
+| `max_errors_per_entry` | `int` | 50 | Maximum errors per cache entry. |
+
+### Constraints
+- Immutable: Frozen dataclass; fields cannot be modified after construction.
+- Import: `from ftllexengine import CacheConfig` or `from ftllexengine.runtime.cache_config import CacheConfig`.
+- Usage: Pass `cache=CacheConfig()` to enable caching with defaults; `cache=None` (default) disables caching.
 
 ---
 
@@ -23,13 +56,7 @@ class FluentBundle:
         /,
         *,
         use_isolating: bool = True,
-        enable_cache: bool = False,
-        cache_size: int = 1000,
-        cache_write_once: bool = False,
-        cache_enable_audit: bool = False,
-        cache_max_audit_entries: int = 10000,
-        cache_max_entry_weight: int = 10000,
-        cache_max_errors_per_entry: int = 50,
+        cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
@@ -43,13 +70,7 @@ class FluentBundle:
 |:----------|:-----|:----|:------------|
 | `locale` | `str` | Y | BCP 47 locale code (positional-only, ASCII alphanumeric only). |
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
-| `enable_cache` | `bool` | N | Enable format result caching. |
-| `cache_size` | `int` | N | Maximum cache entries. |
-| `cache_write_once` | `bool` | N | Reject updates to existing cache keys (data race prevention). |
-| `cache_enable_audit` | `bool` | N | Maintain audit log of all cache operations. |
-| `cache_max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
-| `cache_max_entry_weight` | `int` | N | Maximum memory weight for cached results. |
-| `cache_max_errors_per_entry` | `int` | N | Maximum errors per cache entry. |
+| `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables caching (default). `CacheConfig()` enables with defaults. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry (must be `FunctionRegistry`, not `dict`). |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
@@ -77,13 +98,7 @@ def for_system_locale(
     cls,
     *,
     use_isolating: bool = True,
-    enable_cache: bool = False,
-    cache_size: int = 1000,
-    cache_write_once: bool = False,
-    cache_enable_audit: bool = False,
-    cache_max_audit_entries: int = 10000,
-    cache_max_entry_weight: int = 10000,
-    cache_max_errors_per_entry: int = 50,
+    cache: CacheConfig | None = None,
     functions: FunctionRegistry | None = None,
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
@@ -96,13 +111,7 @@ def for_system_locale(
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
-| `enable_cache` | `bool` | N | Enable format result caching. |
-| `cache_size` | `int` | N | Maximum cache entries. |
-| `cache_write_once` | `bool` | N | Reject updates to existing cache keys (data race prevention). |
-| `cache_enable_audit` | `bool` | N | Maintain audit log of all cache operations. |
-| `cache_max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
-| `cache_max_entry_weight` | `int` | N | Maximum memory weight for cached results. |
-| `cache_max_errors_per_entry` | `int` | N | Maximum errors per cache entry. |
+| `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables (default). |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry (must be `FunctionRegistry`, not `dict`). |
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
@@ -524,6 +533,22 @@ def cache_enabled(self) -> bool:
 
 ---
 
+## `FluentBundle.cache_config`
+
+### Signature
+```python
+@property
+def cache_config(self) -> CacheConfig:
+```
+
+### Constraints
+- Return: The `CacheConfig` instance used by this bundle.
+- Raises: None.
+- State: Read-only property. When caching is disabled (`cache=None`), returns a default `CacheConfig()`.
+- Thread: Safe.
+
+---
+
 ## `FluentBundle.cache_size`
 
 ### Signature
@@ -533,9 +558,9 @@ def cache_size(self) -> int:
 ```
 
 ### Constraints
-- Return: Configured maximum cache entries.
+- Return: Configured maximum cache entries (delegates to `cache_config.size`).
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled.
+- State: Read-only property.
 - Thread: Safe.
 
 ---
@@ -549,11 +574,10 @@ def cache_write_once(self) -> bool:
 ```
 
 ### Constraints
-- Return: True if write-once mode is configured.
+- Return: True if write-once mode is configured (delegates to `cache_config.write_once`).
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled.
+- State: Read-only property.
 - Thread: Safe.
-- Purpose: Prevents data races in concurrent environments. Essential for financial applications.
 
 ---
 
@@ -566,11 +590,10 @@ def cache_enable_audit(self) -> bool:
 ```
 
 ### Constraints
-- Return: True if audit logging is configured.
+- Return: True if audit logging is configured (delegates to `cache_config.enable_audit`).
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled.
+- State: Read-only property.
 - Thread: Safe.
-- Purpose: Maintains history of cache operations for compliance and debugging.
 
 ---
 
@@ -583,9 +606,9 @@ def cache_max_audit_entries(self) -> int:
 ```
 
 ### Constraints
-- Return: Configured maximum audit log entries.
+- Return: Configured maximum audit log entries (delegates to `cache_config.max_audit_entries`).
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled or cache_enable_audit.
+- State: Read-only property.
 - Thread: Safe.
 
 ---
@@ -599,11 +622,10 @@ def cache_max_entry_weight(self) -> int:
 ```
 
 ### Constraints
-- Return: Configured maximum entry weight in approximate bytes.
+- Return: Configured maximum entry weight (delegates to `cache_config.max_entry_weight`).
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled.
+- State: Read-only property.
 - Thread: Safe.
-- Purpose: Prevents memory exhaustion from large formatted outputs.
 
 ---
 
@@ -616,11 +638,10 @@ def cache_max_errors_per_entry(self) -> int:
 ```
 
 ### Constraints
-- Return: Configured maximum errors per cache entry.
+- Return: Configured maximum errors per cache entry (delegates to `cache_config.max_errors_per_entry`).
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled.
+- State: Read-only property.
 - Thread: Safe.
-- Purpose: Prevents memory exhaustion from pathological error cases.
 
 ---
 
@@ -756,8 +777,7 @@ class FluentLocalization:
         resource_loader: ResourceLoader | None = None,
         *,
         use_isolating: bool = True,
-        enable_cache: bool = False,
-        cache_size: int = 1000,
+        cache: CacheConfig | None = None,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
         strict: bool = False,
     ) -> None: ...
@@ -770,8 +790,7 @@ class FluentLocalization:
 | `resource_ids` | `Iterable[ResourceId] \| None` | N | FTL files to auto-load. |
 | `resource_loader` | `ResourceLoader \| None` | N | Loader for FTL files. |
 | `use_isolating` | `bool` | N | Wrap interpolated values in bidi marks. |
-| `enable_cache` | `bool` | N | Enable format caching. |
-| `cache_size` | `int` | N | Max cache entries per bundle. |
+| `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables (default). |
 | `on_fallback` | `Callable[[FallbackInfo], None] \| None` | N | Callback on fallback locale resolution. |
 | `strict` | `bool` | N | Enable strict mode for all bundles. |
 
@@ -1228,18 +1247,18 @@ def cache_enabled(self) -> bool:
 
 ---
 
-## `FluentLocalization.cache_size`
+## `FluentLocalization.cache_config`
 
 ### Signature
 ```python
 @property
-def cache_size(self) -> int:
+def cache_config(self) -> CacheConfig | None:
 ```
 
 ### Constraints
-- Return: Configured maximum cache entries per bundle.
+- Return: The `CacheConfig` instance passed to this localization, or `None` if caching disabled.
 - Raises: None.
-- State: Read-only property. Returns configured value regardless of cache_enabled.
+- State: Read-only property.
 - Thread: Safe.
 
 ---

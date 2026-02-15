@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     # Type hints only - not imported at runtime to avoid Babel dependency
     from .localization import FluentLocalization as FluentLocalizationType
     from .runtime import FluentBundle as FluentBundleType
+    from .runtime.cache_config import CacheConfig as CacheConfigType
     from .runtime.value_types import FluentValue as FluentValueType
 
 # Lazy-loaded attributes that require Babel for CLDR locale data
@@ -90,12 +91,31 @@ _BABEL_REQUIRED_ATTRS = frozenset({
 # These are lazy-loaded to avoid runtime package initialization overhead,
 # not because of Babel dependency.
 _BABEL_INDEPENDENT_ATTRS = frozenset({
+    "CacheConfig",
     "FluentValue",
     "fluent_function",
 })
 
 # Cache for lazy-loaded modules
 _lazy_cache: dict[str, object] = {}
+
+
+def _load_babel_independent(name: str) -> object:
+    """Import a Babel-independent lazy attribute by name."""
+    if name == "CacheConfig":
+        from .runtime.cache_config import CacheConfig
+
+        return CacheConfig
+    if name == "FluentValue":
+        from .runtime.value_types import FluentValue
+
+        return FluentValue
+    if name == "fluent_function":
+        from .runtime.function_bridge import fluent_function
+
+        return fluent_function
+    msg = f"Unknown babel-independent attribute: {name!r}"
+    raise AssertionError(msg)
 
 
 def __getattr__(name: str) -> object:
@@ -110,16 +130,9 @@ def __getattr__(name: str) -> object:
         if name in _lazy_cache:
             return _lazy_cache[name]
 
-        if name == "FluentValue":
-            from .runtime.value_types import FluentValue
-
-            _lazy_cache[name] = FluentValue
-            return FluentValue
-        if name == "fluent_function":
-            from .runtime.function_bridge import fluent_function
-
-            _lazy_cache[name] = fluent_function
-            return fluent_function
+        obj = _load_babel_independent(name)
+        _lazy_cache[name] = obj
+        return obj
 
     # Babel-dependent components
     if name in _BABEL_REQUIRED_ATTRS:
@@ -230,6 +243,7 @@ __recommended_encoding__ = "UTF-8"  # Per spec: "The recommended encoding for Fl
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
     # Bundle and Localization (lazy-loaded, require Babel)
+    "CacheConfig",
     "FluentBundle",
     "FluentLocalization",
     "FluentValue",

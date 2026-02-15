@@ -44,6 +44,7 @@ from .integrity import (
 # Localization and runtime (requires Babel)
 from .localization import FluentLocalization as FluentLocalization
 from .runtime import FluentBundle as FluentBundle
+from .runtime.cache_config import CacheConfig as CacheConfig
 from .runtime.function_bridge import fluent_function as fluent_function
 from .runtime.value_types import FluentValue as FluentValue
 
@@ -67,6 +68,7 @@ __recommended_encoding__: str
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__: list[str] = [
     # Bundle and Localization (lazy-loaded, require Babel)
+    "CacheConfig",
     "FluentBundle",
     "FluentLocalization",
     "FluentValue",

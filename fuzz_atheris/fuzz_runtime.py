@@ -338,6 +338,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     )
     from ftllexengine.runtime.bundle import FluentBundle
     from ftllexengine.runtime.cache import IntegrityCacheEntry
+    from ftllexengine.runtime.cache_config import CacheConfig
 
 
 # --- Grammar-Aware FTL Construction ---
@@ -811,7 +812,7 @@ def _test_memory_exhaustion(fdp: atheris.FuzzedDataProvider) -> None:
 def _test_cache_poisoning(fdp: atheris.FuzzedDataProvider) -> None:
     """Test cache poisoning attack."""
     try:
-        bundle = FluentBundle("en", enable_cache=True, strict=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), strict=False)
         bundle.add_resource("msg = Hello { $name }\n")
 
         malicious_args = [
@@ -915,7 +916,7 @@ def _test_dag_expansion(fdp: atheris.FuzzedDataProvider) -> None:
     node budget in IntegrityCache._make_hashable().
     """
     try:
-        bundle = FluentBundle("en", enable_cache=True, strict=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), strict=False)
         bundle.add_resource("msg = Hello { $name }\n")
 
         # Build DAG: l = [l, l] repeated N times.
@@ -972,7 +973,7 @@ def _perform_differential_testing(
         alt_bundle = FluentBundle(
             alt_locale,
             strict=alt_strict,
-            enable_cache=alt_cache,
+            cache=CacheConfig() if alt_cache else None,
         )
 
         # Copy functions
@@ -1072,12 +1073,12 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
 
     try:
         try:
+            cache_cfg = CacheConfig(write_once=cache_write_once) if enable_cache else None
             bundle = FluentBundle(
                 locale,
                 strict=strict,
-                enable_cache=enable_cache,
+                cache=cache_cfg,
                 use_isolating=use_isolating,
-                cache_write_once=cache_write_once,
             )
             if fdp.ConsumeBool():
                 bundle.add_function("FUZZ_FUNC", _fuzzed_function)

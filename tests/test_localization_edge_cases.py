@@ -1,6 +1,6 @@
-"""Validation and edge case tests for localization.py.
+"""Edge case tests for localization.py.
 
-Unit tests and unique property tests for localization module:
+Unit tests for localization module edge cases:
 - LoadSummary junk entry handling
 - PathResourceLoader whitespace validation for resource IDs
 - FluentLocalization whitespace validation for locales
@@ -30,6 +30,7 @@ from ftllexengine.localization import (
     PathResourceLoader,
     ResourceLoadResult,
 )
+from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax.ast import Junk, Span
 
 
@@ -503,22 +504,23 @@ class TestFluentLocalizationCacheMethods:
 
     def test_cache_enabled_property_true(self) -> None:
         """cache_enabled property returns True when caching enabled."""
-        l10n = FluentLocalization(["en"], enable_cache=True)
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
         assert l10n.cache_enabled is True
 
     def test_cache_enabled_property_false(self) -> None:
         """cache_enabled property returns False when caching disabled."""
-        l10n = FluentLocalization(["en"], enable_cache=False)
+        l10n = FluentLocalization(["en"])
         assert l10n.cache_enabled is False
 
-    def test_cache_size_property_custom(self) -> None:
-        """cache_size property returns configured size."""
-        l10n = FluentLocalization(["en"], cache_size=500)
-        assert l10n.cache_size == 500
+    def test_cache_config_property_custom(self) -> None:
+        """cache_config property returns configured CacheConfig."""
+        l10n = FluentLocalization(["en"], cache=CacheConfig(size=500))
+        assert l10n.cache_config is not None
+        assert l10n.cache_config.size == 500
 
     def test_clear_cache_on_multiple_bundles(self) -> None:
         """clear_cache clears cache on all initialized bundles."""
-        l10n = FluentLocalization(["en", "de"], enable_cache=True)
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig())
         l10n.add_resource("en", "msg = test")
         l10n.add_resource("de", "msg = test")
 

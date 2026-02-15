@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.108.0"
 domain: INDEX
-updated: "2026-02-10"
+updated: "2026-02-15"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -18,6 +18,7 @@ from ftllexengine import (
     # Core API
     FluentBundle,
     FluentLocalization,
+    CacheConfig,       # Cache configuration dataclass
     parse_ftl,
     serialize_ftl,
     validate_resource,  # FTL resource validation (no Babel required)
