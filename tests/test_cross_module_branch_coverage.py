@@ -4,7 +4,6 @@ This module provides targeted tests for specific uncovered lines and branches
 identified via coverage analysis. Tests are organized by source module.
 
 Covered modules:
-- parsing/currency.py (line 290: double-check locking)
 - introspection.py (lines 261-262: nested Placeable)
 - runtime/function_bridge.py (lines 137, 147, 618-620)
 - runtime/locale_context.py (lines 143-144, 440)
@@ -19,14 +18,12 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import threading
 from datetime import UTC, datetime
 from typing import Any, Literal, get_args
 
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-import ftllexengine.parsing.currency as currency_module
 from ftllexengine.enums import CommentType
 from ftllexengine.introspection import extract_references, introspect_message
 from ftllexengine.runtime.function_bridge import (
@@ -67,60 +64,6 @@ from ftllexengine.validation.resource import (
     _detect_circular_references,
     validate_resource,
 )
-
-# ============================================================================
-# CURRENCY: functools.cache-based CLDR Loading
-# Note: The old double-check locking with CurrencyDataProvider was replaced
-# with @functools.cache which provides thread-safe lazy loading internally.
-# ============================================================================
-
-
-class TestCurrencyCachingBehavior:
-    """Test thread-safe caching via functools.cache."""
-
-    def test_concurrent_currency_maps_access(self) -> None:
-        """Concurrent calls to _get_currency_maps_full() return cached object.
-
-        functools.cache provides thread-safe cache access, but does NOT prevent
-        thundering herd on cold cache (multiple threads may compute simultaneously).
-        This test verifies that AFTER cache is populated, concurrent access
-        returns the same cached object.
-        """
-        # Pre-warm cache to ensure it's populated
-        _ = currency_module._get_currency_maps_full()
-
-        barrier = threading.Barrier(4)
-        results: list[object] = []
-
-        def get_with_barrier() -> None:
-            barrier.wait()  # Synchronize all threads
-            data = currency_module._get_currency_maps_full()
-            results.append(data)
-
-        threads = [threading.Thread(target=get_with_barrier) for _ in range(4)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        # All threads should get the exact same cached object (cache was pre-warmed)
-        assert len(results) == 4
-        assert all(r is results[0] for r in results)
-
-    def test_currency_maps_structure(self) -> None:
-        """Verify cached currency maps have expected structure."""
-        data = currency_module._get_currency_maps_full()
-
-        # Should be a 4-tuple
-        assert len(data) == 4
-        symbol_map, ambiguous, locale_to_currency, valid_codes = data
-
-        # Each component should be the right type
-        assert isinstance(symbol_map, dict)
-        assert isinstance(ambiguous, set)
-        assert isinstance(locale_to_currency, dict)
-        assert isinstance(valid_codes, frozenset)
-
 
 # ============================================================================
 # INTROSPECTION: Nested Placeable Coverage (lines 261-262)

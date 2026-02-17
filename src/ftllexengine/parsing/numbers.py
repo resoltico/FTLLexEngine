@@ -17,6 +17,7 @@ Python 3.13+.
 
 from decimal import Decimal, InvalidOperation
 
+from ftllexengine.core.babel_compat import require_babel
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
@@ -78,16 +79,10 @@ def parse_number(
     """
     errors: list[FrozenFluentError] = []
 
-    # Lazy import to support parser-only installations
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-        from babel.numbers import NumberFormatError  # noqa: PLC0415
-        from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
-    except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
-
-        feature = "parse_number"
-        raise BabelImportError(feature) from e
+    require_babel("parse_number")
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+    from babel.numbers import NumberFormatError  # noqa: PLC0415
+    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -180,16 +175,10 @@ def parse_decimal(
     """
     errors: list[FrozenFluentError] = []
 
-    # Lazy import to support parser-only installations
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-        from babel.numbers import NumberFormatError  # noqa: PLC0415
-        from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
-    except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
-
-        feature = "parse_decimal"
-        raise BabelImportError(feature) from e
+    require_babel("parse_decimal")
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+    from babel.numbers import NumberFormatError  # noqa: PLC0415
+    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))

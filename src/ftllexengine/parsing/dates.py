@@ -42,6 +42,7 @@ from functools import lru_cache
 from typing import Any
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
+from ftllexengine.core.babel_compat import require_babel
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
@@ -288,6 +289,36 @@ def parse_datetime(
     return (None, tuple(errors))
 
 
+def _extract_cldr_patterns(
+    format_dict: Any,
+    styles: tuple[str, ...],
+) -> list[tuple[str, bool]]:
+    """Extract strptime patterns from a Babel CLDR format dictionary.
+
+    Iterates CLDR format styles, converting each Babel pattern to a
+    (strptime_pattern, has_era) pair via _babel_to_strptime.
+
+    Args:
+        format_dict: Babel locale format dict (e.g., locale.date_formats).
+        styles: CLDR style names to try (e.g., ("short", "medium", "long", "full")).
+
+    Returns:
+        List of (strptime_pattern, has_era) tuples for styles that succeeded.
+    """
+    patterns: list[tuple[str, bool]] = []
+    for style in styles:
+        try:
+            fmt = format_dict[style]
+            babel_pattern = (
+                fmt.pattern if hasattr(fmt, "pattern") else str(fmt)
+            )
+            strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
+            patterns.append((strptime_pattern, has_era))
+        except (AttributeError, KeyError):
+            pass
+    return patterns
+
+
 @lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
 def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     """Get strptime date patterns for locale with era flag.
@@ -308,34 +339,14 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     Raises:
         BabelImportError: If Babel is not installed
     """
-    # Lazy import to support parser-only installations
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
-
-        feature = "parse_date"
-        raise BabelImportError(feature) from e
+    require_babel("parse_date")
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
-
-        # Get CLDR date patterns
-        patterns: list[tuple[str, bool]] = []
-
-        # Try CLDR format styles
-        for style in _DATE_PARSE_STYLES:
-            try:
-                fmt = locale.date_formats[style]
-                # Babel returns DateTimePattern (with .pattern) or plain str
-                babel_pattern = fmt.pattern if hasattr(fmt, "pattern") else str(fmt)
-                strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
-                patterns.append((strptime_pattern, has_era))
-            except (AttributeError, KeyError):
-                pass
-
-        return tuple(patterns)
-
+        return tuple(
+            _extract_cldr_patterns(locale.date_formats, _DATE_PARSE_STYLES),
+        )
     except (UnknownLocaleError, ValueError, RuntimeError):
         return ()
 
@@ -419,31 +430,15 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
     Raises:
         BabelImportError: If Babel is not installed
     """
-    # Lazy import to support parser-only installations
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
-
-        feature = "parse_datetime"
-        raise BabelImportError(feature) from e
+    require_babel("parse_datetime")
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
 
-        # Get CLDR datetime patterns
-        patterns: list[tuple[str, bool]] = []
-
-        # Try CLDR format styles for datetime
-        for style in _DATETIME_PARSE_STYLES:
-            try:
-                fmt = locale.datetime_formats[style]
-                # Babel returns DateTimePattern (with .pattern) or plain str
-                babel_pattern = fmt.pattern if hasattr(fmt, "pattern") else str(fmt)
-                strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
-                patterns.append((strptime_pattern, has_era))
-            except (AttributeError, KeyError):
-                pass
+        patterns = _extract_cldr_patterns(
+            locale.datetime_formats, _DATETIME_PARSE_STYLES,
+        )
 
         # Get date patterns and add time components for locale
         date_patterns = _get_date_patterns(locale_code)
@@ -726,17 +721,17 @@ def _get_localized_era_strings(locale_code: str) -> tuple[str, ...]:
         Tuple of localized era strings from Babel CLDR data.
         Empty tuple if Babel unavailable or locale invalid.
     """
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    except ImportError:
-        # Babel not installed
+    from ftllexengine.core.babel_compat import is_babel_available  # noqa: PLC0415
+
+    if not is_babel_available():
         return ()
+
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
 
     try:
         babel_locale = Locale.parse(locale_code)
         return tuple(_extract_era_strings_from_babel_locale(babel_locale))
     except (UnknownLocaleError, ValueError):
-        # Locale invalid or unknown
         return ()
 
 

@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.core.babel_compat import _check_babel_available
 from ftllexengine.parsing.dates import (
     _babel_to_strptime,
     _extract_era_strings_from_babel_locale,
@@ -330,6 +331,7 @@ class TestGetLocalizedEraStringsImportError:
     def test_returns_empty_tuple_without_babel(self) -> None:
         """Returns empty tuple when Babel is not available."""
         _get_localized_era_strings.cache_clear()
+        _check_babel_available.cache_clear()
 
         original_import = builtins.__import__
 
@@ -345,15 +347,21 @@ class TestGetLocalizedEraStringsImportError:
                 raise ImportError(msg)
             return original_import(name, globals_, locals_, fromlist, level)
 
-        with patch.object(builtins, "__import__", side_effect=mock_import):
-            result = _get_localized_era_strings("en_US")
+        try:
+            with patch.object(
+                builtins, "__import__", side_effect=mock_import
+            ):
+                result = _get_localized_era_strings("en_US")
 
-        assert result == ()
-        _get_localized_era_strings.cache_clear()
+            assert result == ()
+        finally:
+            _get_localized_era_strings.cache_clear()
+            _check_babel_available.cache_clear()
 
     def test_import_error_result_is_cached(self) -> None:
         """ImportError result is cached (only one import attempt)."""
         _get_localized_era_strings.cache_clear()
+        _check_babel_available.cache_clear()
 
         original_import = builtins.__import__
         import_call_count = 0
@@ -372,16 +380,19 @@ class TestGetLocalizedEraStringsImportError:
                 raise ImportError(msg)
             return original_import(name, globals_, locals_, fromlist, level)
 
-        with patch.object(
-            builtins, "__import__", side_effect=mock_import_counting
-        ):
-            result1 = _get_localized_era_strings("en_US")
-            result2 = _get_localized_era_strings("en_US")
+        try:
+            with patch.object(
+                builtins, "__import__", side_effect=mock_import_counting
+            ):
+                result1 = _get_localized_era_strings("en_US")
+                result2 = _get_localized_era_strings("en_US")
 
-        assert result1 == ()
-        assert result2 == ()
-        assert import_call_count == 1
-        _get_localized_era_strings.cache_clear()
+            assert result1 == ()
+            assert result2 == ()
+            assert import_call_count == 1
+        finally:
+            _get_localized_era_strings.cache_clear()
+            _check_babel_available.cache_clear()
 
     @given(
         locale_code=st.text(
@@ -402,6 +413,7 @@ class TestGetLocalizedEraStringsImportError:
         without raising exception.
         """
         _get_localized_era_strings.cache_clear()
+        _check_babel_available.cache_clear()
 
         has_separator = "_" in locale_code or "-" in locale_code
         event(f"has_separator={has_separator}")
@@ -420,11 +432,16 @@ class TestGetLocalizedEraStringsImportError:
                 raise ImportError(msg)
             return original_import(name, globals_, locals_, fromlist, level)
 
-        with patch.object(builtins, "__import__", side_effect=mock_import):
-            result = _get_localized_era_strings(locale_code)
+        try:
+            with patch.object(
+                builtins, "__import__", side_effect=mock_import
+            ):
+                result = _get_localized_era_strings(locale_code)
 
-        assert result == ()
-        _get_localized_era_strings.cache_clear()
+            assert result == ()
+        finally:
+            _get_localized_era_strings.cache_clear()
+            _check_babel_available.cache_clear()
 
 
 # ============================================================================

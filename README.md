@@ -226,15 +226,15 @@ contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 
 ```mermaid
 flowchart TB
-    A["German Engineer\n&lt;code&gt;12.450,00 EUR&lt;/code&gt;"] --> PA["parse_currency()\nde_DE"]
-    B["Colombian Agronomist\n&lt;code&gt;45.000.000 COP&lt;/code&gt;"] --> PB["parse_currency()\nes_CO"]
-    C["Japanese Technician\n&lt;code&gt;2026年3月15日&lt;/code&gt;"] --> PC["parse_date()\nja_JP"]
+    A["German Engineer<br>`12.450,00 EUR`"] --> PA["`parse_currency()`<br>de_DE"]
+    B["Colombian Agronomist<br>`45.000.000 COP`"] --> PB["`parse_currency()`<br>es_CO"]
+    C["Japanese Technician<br>`2026年3月15日`"] --> PC["`parse_date()`<br>ja_JP"]
 
-    PA --> RA["Decimal('12450.00'), EUR"]
-    PB --> RB["Decimal('45000000'), COP"]
-    PC --> RC["date(2026, 3, 15)"]
+    PA --> RA["`Decimal('12450.00')`<br>EUR"]
+    PB --> RB["`Decimal('45000000')`<br>COP"]
+    PC --> RC["`date(2026, 3, 15)`"]
 
-    RA & RB & RC --> SYS[("Inventory System\nExact Python types")]
+    RA & RB & RC --> SYS[("Inventory System<br>Exact Python types")]
 
     style PA fill:#f9f,stroke:#333,stroke-width:2px
     style PB fill:#f9f,stroke:#333,stroke-width:2px

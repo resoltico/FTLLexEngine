@@ -2,7 +2,6 @@
 
 Target Modules:
     - diagnostics/templates.py (lines 584-585)
-    - parsing/currency.py (lines 383-392)
     - runtime/locale_context.py (lines 150, 292-295, 449, 495, 518-521)
     - syntax/serializer.py (lines 97, 173, 220-222, 266)
 
@@ -12,7 +11,7 @@ Property-Based Testing: Uses Hypothesis where applicable.
 from __future__ import annotations
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from babel import numbers as babel_numbers
@@ -20,8 +19,6 @@ from babel import numbers as babel_numbers
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.diagnostics.templates import ErrorTemplate
-from ftllexengine.parsing import parse_currency
-from ftllexengine.parsing.currency import _get_currency_maps, _get_currency_pattern_full
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.syntax.ast import (
     Annotation,
@@ -55,58 +52,6 @@ class TestDiagnosticsTemplatesCoverage:
         assert "Unknown currency symbol" in diagnostic.message
         assert "XYZ" in diagnostic.message
         assert diagnostic.hint is not None
-
-
-class TestParsingCurrencyCoverage:
-    """Cover parsing/currency.py lines 383-392.
-
-    The path where mapped_currency is None (symbol in regex but not in symbol_map).
-    """
-
-    def test_symbol_in_regex_but_not_in_symbol_map(self) -> None:
-        """Lines 383-392: Defensive code when symbol is not in map.
-
-        Strategy:
-        1. First, ensure the pattern is built with original maps (includes €)
-        2. Then patch _get_currency_maps to return maps WITHOUT €
-        3. Don't rebuild the pattern - it still has € in regex
-        4. When parse_currency runs, regex matches €, but map lookup fails
-        """
-        # Clear caches to start fresh
-        _get_currency_maps.cache_clear()
-        _get_currency_pattern_full.cache_clear()
-
-        # Get the original maps and force pattern to be built with them
-        original_symbol_map, original_ambiguous, original_locale_map, original_valid_codes = (
-            _get_currency_maps()
-        )
-
-        # Build the regex pattern with original maps (includes €)
-        _ = _get_currency_pattern_full()
-
-        # Now create modified maps that DON'T include €
-        modified_map = {k: v for k, v in original_symbol_map.items() if k != "€"}
-
-        # Patch _get_currency_maps to return modified maps
-        # BUT don't clear the pattern cache - pattern still has € in regex
-        mock_return = (modified_map, original_ambiguous, original_locale_map, original_valid_codes)
-        with patch(
-            "ftllexengine.parsing.currency._get_currency_maps",
-            return_value=mock_return,
-        ):
-            # Now € is in the regex (built earlier) but NOT in the map (patched)
-            result, errors = parse_currency("€100.50", "en_US")
-
-            # Should return error since symbol is in regex but not in map
-            assert len(errors) > 0
-            assert result is None
-            # Error should mention unknown symbol
-            assert any("unknown" in str(e).lower() or "symbol" in str(e).lower()
-                       for e in errors)
-
-        # Clean up - restore caches
-        _get_currency_maps.cache_clear()
-        _get_currency_pattern_full.cache_clear()
 
 
 class TestLocaleContextCacheLimitCoverage:

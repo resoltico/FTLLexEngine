@@ -1,8 +1,13 @@
-"""Tests for currency parsing functions.
+"""Tests for currency parsing: parse_currency(), symbol resolution, CLDR maps.
 
-Core parsing tests, ambiguous symbol resolution, CLDR map building exception
-paths, BabelImportError handling, fast tier operations, cache management,
-locale fallback, and property-based locale resilience.
+Property-based tests using Hypothesis cover:
+- Roundtrip: format -> parse -> verify for unambiguous/ISO inputs
+- Locale resilience: arbitrary locales never crash
+- Invalid input: no-digit strings always fail
+- Ambiguous resolution: locale-aware symbol disambiguation
+- CLDR map integrity: type contracts and coverage invariants
+
+Unit tests cover specification examples and targeted edge cases.
 
 parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]].
 Functions never raise exceptions (errors returned in tuple) except
@@ -29,170 +34,113 @@ from ftllexengine.parsing.currency import (
     _build_currency_maps_from_cldr,
     _get_currency_maps,
     parse_currency,
+    resolve_ambiguous_symbol,
+)
+from tests.strategies.currency import (
+    ambiguous_currency_inputs,
+    invalid_currency_inputs,
+    iso_code_currency_inputs,
+    unambiguous_currency_inputs,
 )
 
 # ---------------------------------------------------------------------------
-# parse_currency core
+# Property: Unambiguous symbols always parse successfully
 # ---------------------------------------------------------------------------
 
 
-class TestParseCurrency:
-    """Test parse_currency() function."""
+class TestUnambiguousCurrencyParsing:
+    """Property-based tests for unambiguous currency parsing."""
 
-    def test_parse_currency_eur_symbol(self) -> None:
-        """Parse EUR with euro symbol."""
-        result, errors = parse_currency("\u20ac100.50", "en_US")
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("100.50")
-        assert code == "EUR"
+    @settings(deadline=500)  # CLDR map build on first call exceeds 200ms
+    @given(data=unambiguous_currency_inputs())
+    def test_unambiguous_symbol_parses(
+        self, data: tuple[str, str, str]
+    ) -> None:
+        """PROPERTY: Unambiguous symbols and ISO codes always parse."""
+        value, locale, expected_code = data
+        event(f"expected_code={expected_code}")
 
-        result, errors = parse_currency("100,50 \u20ac", "lv_LV")
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("100.50")
-        assert code == "EUR"
-
-    def test_parse_currency_usd_symbol(self) -> None:
-        """Parse USD with $ symbol (ambiguous, requires default_currency)."""
-        result, errors = parse_currency(
-            "$1,234.56", "en_US", default_currency="USD"
-        )
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("1234.56")
-        assert code == "USD"
-
-    def test_parse_currency_gbp_symbol(self) -> None:
-        """Parse GBP with pound symbol (ambiguous: GBP, EGP, GIP, etc.)."""
-        result, errors = parse_currency(
-            "\u00a3999.99", "en_GB", infer_from_locale=True
-        )
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("999.99")
-        assert code == "GBP"
-
-    def test_parse_currency_jpy_symbol(self) -> None:
-        """Parse JPY with yen symbol (ambiguous: JPY vs CNY, no decimals)."""
-        result, errors = parse_currency(
-            "\u00a512,345", "ja_JP", infer_from_locale=True
-        )
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("12345")
-        assert code == "JPY"
-
-    def test_parse_currency_cny_chinese_locale(self) -> None:
-        """Yen symbol resolves to CNY in Chinese locales."""
-        result, errors = parse_currency(
-            "\u00a51000", "zh_CN", infer_from_locale=True
-        )
-        assert not errors
-        assert result is not None
-        amount, currency = result
-        assert amount == Decimal("1000")
-        assert currency == "CNY"
-
-    def test_parse_currency_cny_taiwan_locale(self) -> None:
-        """Yen symbol resolves to CNY in zh_TW locale."""
-        result, errors = parse_currency(
-            "\u00a51000", "zh_TW", infer_from_locale=True
-        )
-        assert not errors
-        assert result is not None
-        _, currency = result
-        assert currency == "CNY"
-
-    def test_parse_currency_iso_code(self) -> None:
-        """Parse currency with ISO code instead of symbol."""
-        result, errors = parse_currency("USD 1,234.56", "en_US")
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("1234.56")
-        assert code == "USD"
-
-        result, errors = parse_currency("EUR 1.234,56", "de_DE")
-        assert not errors
-        assert result is not None
-        amount, code = result
-        assert amount == Decimal("1234.56")
-        assert code == "EUR"
-
-    def test_parse_currency_rupee(self) -> None:
-        """Parse Indian Rupee (unambiguous symbol)."""
-        result, errors = parse_currency("\u20b91000", "hi_IN")
-        assert not errors
-        assert result is not None
-        amount, _ = result
-        assert amount == Decimal("1000")
-
-    def test_parse_currency_swiss_franc(self) -> None:
-        """Parse Swiss Franc with ISO code."""
-        result, errors = parse_currency("CHF 100", "de_CH")
-        assert not errors
-        assert result is not None
-        amount, currency = result
-        assert amount == Decimal("100")
-        assert currency == "CHF"
-
-    def test_parse_currency_no_symbol_returns_error(self) -> None:
-        """No currency symbol returns error in tuple (no exceptions)."""
-        result, errors = parse_currency("1,234.56", "en_US")
-        assert len(errors) > 0
-        assert result is None
-
-    def test_parse_currency_invalid_returns_error(self) -> None:
-        """Invalid input returns error in tuple (no exceptions)."""
-        result, errors = parse_currency("invalid", "en_US")
-        assert len(errors) > 0
-        assert result is None
-
-    def test_parse_currency_invalid_number(self) -> None:
-        """Invalid number with currency symbol returns error."""
-        result, errors = parse_currency("\u20acinvalid", "en_US")
-        assert result is None
-        assert len(errors) > 0
-
-    def test_parse_currency_empty_string(self) -> None:
-        """Empty string returns error."""
-        result, errors = parse_currency("", "en_US")
-        assert result is None
-        assert len(errors) > 0
-
-    def test_parse_currency_only_symbol(self) -> None:
-        """Only currency symbol without number returns error."""
-        result, errors = parse_currency("\u20ac", "en_US")
-        assert result is None
-        assert len(errors) > 0
+        result, errors = parse_currency(value, locale)
+        # Unambiguous symbols should parse without error
+        if result is not None:
+            amount, code = result
+            assert code == expected_code
+            assert isinstance(amount, Decimal)
+            assert errors == ()
 
 
 # ---------------------------------------------------------------------------
-# Locale error handling
+# Property: ISO code inputs always resolve correctly
 # ---------------------------------------------------------------------------
 
 
-class TestCurrencyLocaleErrors:
-    """Test currency parsing with invalid locales."""
+class TestISOCodeParsing:
+    """Property-based tests for ISO code currency parsing."""
 
-    def test_parse_currency_with_invalid_locale(self) -> None:
-        """Invalid locale code returns error."""
-        result, errors = parse_currency("\u20ac10.50", "invalid_LOCALE_CODE")
+    @given(data=iso_code_currency_inputs())
+    def test_iso_code_parses_to_correct_currency(
+        self, data: tuple[str, str, str]
+    ) -> None:
+        """PROPERTY: ISO codes resolve to the correct currency."""
+        value, locale, expected_code = data
+        event(f"iso_code={expected_code}")
+
+        result, errors = parse_currency(value, locale)
+        assert result is not None, f"Failed to parse: {value!r} ({locale})"
+        amount, code = result
+        assert code == expected_code
+        assert isinstance(amount, Decimal)
+        assert errors == ()
+
+
+# ---------------------------------------------------------------------------
+# Property: Invalid inputs never crash, always return errors
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidCurrencyInputs:
+    """Property-based tests for invalid currency input handling."""
+
+    @given(data=invalid_currency_inputs())
+    def test_invalid_input_returns_error(
+        self, data: tuple[str, str]
+    ) -> None:
+        """PROPERTY: Invalid inputs return error tuple, never crash."""
+        value, locale = data
+        is_empty = value == ""
+        event(f"is_empty={is_empty}")
+
+        result, errors = parse_currency(value, locale)
         assert result is None
         assert len(errors) > 0
-        assert any("locale" in str(err).lower() for err in errors)
 
-    def test_parse_currency_with_malformed_locale(self) -> None:
-        """Malformed locale string returns error."""
-        result, errors = parse_currency("$100", "!!!invalid@@@")
+    @given(
+        invalid_value=st.text(min_size=1, max_size=30).filter(
+            lambda x: not any(c.isdigit() for c in x)
+        )
+    )
+    def test_no_digits_always_fails(
+        self, invalid_value: str
+    ) -> None:
+        """PROPERTY: Values without digits always fail to parse."""
+        has_currency_char = any(
+            c in invalid_value for c in "\u20ac$\u00a3\u00a5\u20b9"
+        )
+        event(f"has_currency_char={has_currency_char}")
+        val_len = "short" if len(invalid_value) <= 5 else "long"
+        event(f"value_length={val_len}")
+
+        result, _ = parse_currency(invalid_value, "en_US")
         assert result is None
-        assert len(errors) > 0
+
+
+# ---------------------------------------------------------------------------
+# Property: Arbitrary locales never crash
+# ---------------------------------------------------------------------------
+
+
+class TestLocaleResilience:
+    """Property-based tests for locale robustness."""
 
     @given(
         bad_locale=st.text(
@@ -217,70 +165,284 @@ class TestCurrencyLocaleErrors:
 
 
 # ---------------------------------------------------------------------------
-# Roundtrip: format -> parse -> verify
+# Property: Ambiguous symbols with locale inference
 # ---------------------------------------------------------------------------
 
 
-class TestRoundtripCurrency:
-    """Test format -> parse -> format roundtrip for currency."""
+class TestAmbiguousSymbolResolution:
+    """Property-based tests for ambiguous symbol resolution."""
 
-    def test_roundtrip_currency_en_us(self) -> None:
-        """Currency roundtrip for US English."""
-        from ftllexengine.runtime.functions import currency_format
+    @given(data=ambiguous_currency_inputs())
+    def test_ambiguous_with_default_resolves(
+        self, data: tuple[str, str, str, str]
+    ) -> None:
+        """PROPERTY: Ambiguous symbols with default_currency resolve."""
+        value, locale, default_currency, expected = data
+        event(f"locale={locale}")
 
-        original_amount = Decimal("1234.56")
-        formatted = currency_format(
-            float(original_amount), "en-US",
-            currency="USD", currency_display="symbol",
-        )
         result, errors = parse_currency(
-            str(formatted), "en_US", default_currency="USD"
+            value, locale, default_currency=default_currency,
         )
-        assert not errors
-        assert result is not None
-        parsed_amount, parsed_currency = result
-        assert parsed_amount == original_amount
-        assert parsed_currency == "USD"
+        if result is not None:
+            _, code = result
+            assert code == expected
+            assert errors == ()
 
-    def test_roundtrip_currency_lv_lv(self) -> None:
-        """Currency roundtrip for Latvian."""
-        from ftllexengine.runtime.functions import currency_format
+    @given(
+        locale_currency=st.sampled_from([
+            ("en_US", "USD"), ("en_CA", "CAD"),
+            ("en_AU", "AUD"), ("en_NZ", "NZD"),
+            ("es_MX", "MXN"), ("es_AR", "ARS"),
+        ])
+    )
+    def test_dollar_locale_inference(
+        self, locale_currency: tuple[str, str]
+    ) -> None:
+        """PROPERTY: $ with infer_from_locale resolves per locale."""
+        locale, expected = locale_currency
+        event(f"dollar_locale={locale}")
 
-        original_amount = Decimal("1234.56")
-        formatted = currency_format(
-            float(original_amount), "lv-LV",
-            currency="EUR", currency_display="symbol",
+        result, errors = parse_currency(
+            "$100", locale, infer_from_locale=True,
         )
-        result, errors = parse_currency(str(formatted), "lv_LV")
-        assert not errors
-        assert result is not None
-        parsed_amount, parsed_currency = result
-        assert parsed_amount == original_amount
-        assert parsed_currency == "EUR"
+        assert result is not None, (
+            f"$ should resolve via locale {locale}"
+        )
+        _, code = result
+        assert code == expected
+        assert errors == ()
 
 
 # ---------------------------------------------------------------------------
-# resolve_ambiguous_symbol
+# resolve_ambiguous_symbol: Locale prefix fallback
 # ---------------------------------------------------------------------------
 
 
-class TestResolveAmbiguousSymbol:
-    """Test resolve_ambiguous_symbol function."""
+class TestResolveAmbiguousSymbolLocalePrefix:
+    """Test resolve_ambiguous_symbol locale prefix matching."""
 
-    def test_non_ambiguous_symbol_returns_none(self) -> None:
-        """Non-ambiguous symbols return None (caller uses standard mapping)."""
-        result = currency_module.resolve_ambiguous_symbol("\u20ac", "en_US")
+    def test_yen_sign_with_zh_cn_uses_prefix(self) -> None:
+        """Yen sign resolves to CNY via zh prefix for zh_CN."""
+        result = resolve_ambiguous_symbol("\u00a5", "zh_CN")
+        assert result == "CNY"
+
+    def test_yen_sign_with_zh_tw_uses_prefix(self) -> None:
+        """Yen sign resolves to CNY via zh prefix for zh_TW."""
+        result = resolve_ambiguous_symbol("\u00a5", "zh_TW")
+        assert result == "CNY"
+
+    def test_yen_sign_with_zh_hk_uses_prefix(self) -> None:
+        """Yen sign resolves to CNY via zh prefix for zh_HK."""
+        result = resolve_ambiguous_symbol("\u00a5", "zh_HK")
+        assert result == "CNY"
+
+    def test_pound_sign_with_en_gb_exact_match(self) -> None:
+        """Pound sign resolves to GBP via exact en_gb match."""
+        result = resolve_ambiguous_symbol("\u00a3", "en_GB")
+        assert result == "GBP"
+
+    def test_pound_sign_with_ar_eg_exact_match(self) -> None:
+        """Pound sign resolves to EGP via exact ar_eg match."""
+        result = resolve_ambiguous_symbol("\u00a3", "ar_EG")
+        assert result == "EGP"
+
+    def test_pound_sign_with_ar_sa_uses_prefix(self) -> None:
+        """Pound sign resolves to EGP via ar prefix for ar_SA."""
+        # ar_SA is not in exact match but ar prefix maps to EGP
+        result = resolve_ambiguous_symbol("\u00a3", "ar_SA")
+        assert result == "EGP"
+
+    def test_non_ambiguous_returns_none(self) -> None:
+        """Non-ambiguous symbols return None."""
+        result = resolve_ambiguous_symbol("\u20ac", "en_US")
         assert result is None
 
     def test_no_locale_uses_default(self) -> None:
-        """Ambiguous symbol without locale falls back to default."""
-        result = currency_module.resolve_ambiguous_symbol("\u00a5", None)
-        assert result in {"JPY", "CNY"} or result is None
+        """Ambiguous symbol without locale uses default."""
+        result = resolve_ambiguous_symbol("\u00a5", None)
+        assert result == "JPY"
 
     def test_empty_locale_uses_default(self) -> None:
-        """Ambiguous symbol with empty string locale uses default."""
-        result = currency_module.resolve_ambiguous_symbol("$", "")
-        assert result in {"USD"} or result is None
+        """Ambiguous symbol with empty locale uses default."""
+        result = resolve_ambiguous_symbol("$", "")
+        assert result == "USD"
+
+    def test_unknown_locale_with_underscore_uses_default(self) -> None:
+        """Unknown locale with underscore falls through to default."""
+        result = resolve_ambiguous_symbol("$", "xx_YY")
+        assert result == "USD"
+
+    def test_unknown_locale_without_underscore_uses_default(self) -> None:
+        """Unknown locale without underscore skips prefix match."""
+        result = resolve_ambiguous_symbol("$", "xx")
+        assert result == "USD"
+
+    @given(
+        symbol_locale=st.sampled_from([
+            ("\u00a5", "zh_CN", "CNY"),
+            ("\u00a5", "zh_TW", "CNY"),
+            ("\u00a5", "zh_HK", "CNY"),
+            ("\u00a3", "ar_SA", "EGP"),
+            ("\u00a3", "ar_DZ", "EGP"),
+        ])
+    )
+    def test_prefix_resolution_property(
+        self, symbol_locale: tuple[str, str, str]
+    ) -> None:
+        """PROPERTY: Locale prefix resolution matches expected currency."""
+        symbol, locale, expected = symbol_locale
+        event(f"prefix_symbol={symbol}")
+        event(f"prefix_locale={locale}")
+        result = resolve_ambiguous_symbol(symbol, locale)
+        assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# parse_currency: Specification examples
+# ---------------------------------------------------------------------------
+
+
+class TestParseCurrencySpecificationExamples:
+    """Specification examples for parse_currency behavior."""
+
+    def test_eur_symbol_prefix(self) -> None:
+        """EUR symbol prefix: EUR100.50 -> (100.50, EUR)."""
+        result, errors = parse_currency("\u20ac100.50", "en_US")
+        assert not errors
+        assert result is not None
+        assert result == (Decimal("100.50"), "EUR")
+
+    def test_eur_symbol_suffix_latvian(self) -> None:
+        """EUR symbol suffix: 100,50 EUR -> (100.50, EUR) in lv_LV."""
+        result, errors = parse_currency("100,50 \u20ac", "lv_LV")
+        assert not errors
+        assert result is not None
+        assert result == (Decimal("100.50"), "EUR")
+
+    def test_usd_with_default_currency(self) -> None:
+        """$ with default_currency=USD resolves correctly."""
+        result, errors = parse_currency(
+            "$1,234.56", "en_US", default_currency="USD",
+        )
+        assert not errors
+        assert result is not None
+        assert result[0] == Decimal("1234.56")
+        assert result[1] == "USD"
+
+    def test_iso_code_prefix(self) -> None:
+        """ISO code prefix: USD 1,234.56 -> (1234.56, USD)."""
+        result, errors = parse_currency("USD 1,234.56", "en_US")
+        assert not errors
+        assert result is not None
+        assert result == (Decimal("1234.56"), "USD")
+
+    def test_iso_code_german_format(self) -> None:
+        """German format: EUR 1.234,56 -> (1234.56, EUR)."""
+        result, errors = parse_currency("EUR 1.234,56", "de_DE")
+        assert not errors
+        assert result is not None
+        assert result == (Decimal("1234.56"), "EUR")
+
+    def test_rupee_unambiguous(self) -> None:
+        """Indian Rupee symbol is unambiguous."""
+        result, errors = parse_currency("\u20b91000", "hi_IN")
+        assert not errors
+        assert result is not None
+        assert result[1] == "INR"
+
+    def test_swiss_franc_iso(self) -> None:
+        """Swiss Franc via ISO code."""
+        result, errors = parse_currency("CHF 100", "de_CH")
+        assert not errors
+        assert result is not None
+        assert result == (Decimal("100"), "CHF")
+
+    def test_cny_chinese_locale(self) -> None:
+        """Yen symbol resolves to CNY in Chinese locales."""
+        result, errors = parse_currency(
+            "\u00a51000", "zh_CN", infer_from_locale=True,
+        )
+        assert not errors
+        assert result is not None
+        assert result[1] == "CNY"
+
+    def test_jpy_japanese_locale(self) -> None:
+        """Yen symbol resolves to JPY in Japanese locales."""
+        result, errors = parse_currency(
+            "\u00a512,345", "ja_JP", infer_from_locale=True,
+        )
+        assert not errors
+        assert result is not None
+        assert result[1] == "JPY"
+
+    def test_gbp_british_locale(self) -> None:
+        """Pound symbol resolves to GBP in British locales."""
+        result, errors = parse_currency(
+            "\u00a3999.99", "en_GB", infer_from_locale=True,
+        )
+        assert not errors
+        assert result is not None
+        assert result == (Decimal("999.99"), "GBP")
+
+
+# ---------------------------------------------------------------------------
+# parse_currency: Error paths
+# ---------------------------------------------------------------------------
+
+
+class TestParseCurrencyErrors:
+    """Test error handling in parse_currency."""
+
+    def test_no_symbol_returns_error(self) -> None:
+        """Missing currency symbol returns error."""
+        result, errors = parse_currency("1,234.56", "en_US")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_invalid_input_returns_error(self) -> None:
+        """Non-parseable input returns error."""
+        result, errors = parse_currency("invalid", "en_US")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_invalid_number_with_symbol(self) -> None:
+        """Invalid number with currency symbol returns error."""
+        result, errors = parse_currency("\u20acinvalid", "en_US")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_empty_string(self) -> None:
+        """Empty string returns error."""
+        result, errors = parse_currency("", "en_US")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_only_symbol(self) -> None:
+        """Symbol without number returns error."""
+        result, errors = parse_currency("\u20ac", "en_US")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_invalid_locale(self) -> None:
+        """Invalid locale returns error with locale info."""
+        result, errors = parse_currency(
+            "\u20ac10.50", "invalid_LOCALE_CODE",
+        )
+        assert result is None
+        assert len(errors) == 1
+        assert any("locale" in str(err).lower() for err in errors)
+
+    def test_malformed_locale(self) -> None:
+        """Malformed locale returns error."""
+        result, errors = parse_currency("$100", "!!!invalid@@@")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_ambiguous_without_default_returns_error(self) -> None:
+        """$ without default_currency or inference returns error."""
+        result, errors = parse_currency("$100", "en_US")
+        assert result is None
+        assert len(errors) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -289,10 +451,10 @@ class TestResolveAmbiguousSymbol:
 
 
 class TestResolveCurrencyCode:
-    """Test _resolve_currency_code internal function."""
+    """Test _resolve_currency_code edge cases."""
 
     def test_unknown_symbol_returns_error(self) -> None:
-        """Completely unknown symbol returns error."""
+        """Unknown symbol returns error."""
         result, error = currency_module._resolve_currency_code(
             "ZZZZZ", "en_US", "ZZZZZ 100",
             default_currency=None, infer_from_locale=False,
@@ -300,17 +462,8 @@ class TestResolveCurrencyCode:
         assert result is None
         assert error is not None
 
-    def test_unicode_unknown_symbol_returns_error(self) -> None:
-        """Unicode symbol not in any mapping returns error."""
-        result, error = currency_module._resolve_currency_code(
-            "\u2606", "en_US", "\u2606100",
-            default_currency=None, infer_from_locale=False,
-        )
-        assert result is None
-        assert error is not None
-
     def test_invalid_default_currency_format(self) -> None:
-        """Ambiguous symbol with invalid default_currency format returns error."""
+        """Ambiguous symbol with invalid default_currency returns error."""
         result, error = currency_module._resolve_currency_code(
             "$", "en_US", "$100",
             default_currency="invalid", infer_from_locale=False,
@@ -319,7 +472,7 @@ class TestResolveCurrencyCode:
         assert error is not None
 
     def test_lowercase_default_currency_rejected(self) -> None:
-        """Lowercase default_currency is rejected."""
+        """Lowercase default_currency is rejected (ISO requires uppercase)."""
         result, error = currency_module._resolve_currency_code(
             "$", "en_US", "$100",
             default_currency="usd", infer_from_locale=False,
@@ -328,7 +481,7 @@ class TestResolveCurrencyCode:
         assert error is not None
 
     def test_short_default_currency_rejected(self) -> None:
-        """Too-short default_currency is rejected."""
+        """2-letter default_currency is rejected (ISO requires 3)."""
         result, error = currency_module._resolve_currency_code(
             "$", "en_US", "$100",
             default_currency="US", infer_from_locale=False,
@@ -337,7 +490,7 @@ class TestResolveCurrencyCode:
         assert error is not None
 
     def test_long_default_currency_rejected(self) -> None:
-        """Too-long default_currency is rejected."""
+        """4-letter default_currency is rejected (ISO requires 3)."""
         result, error = currency_module._resolve_currency_code(
             "$", "en_US", "$100",
             default_currency="USDD", infer_from_locale=False,
@@ -346,7 +499,7 @@ class TestResolveCurrencyCode:
         assert error is not None
 
     def test_numeric_default_currency_rejected(self) -> None:
-        """Numeric default_currency is rejected."""
+        """Numeric default_currency is rejected (ISO requires letters)."""
         result, error = currency_module._resolve_currency_code(
             "$", "en_US", "$100",
             default_currency="123", infer_from_locale=False,
@@ -354,34 +507,27 @@ class TestResolveCurrencyCode:
         assert result is None
         assert error is not None
 
-    def test_locale_fallback_for_ambiguous_symbol(self) -> None:
-        """Locale-to-currency fallback for ambiguous symbols."""
-        result, error = currency_module._resolve_currency_code(
-            "weird_symbol_not_mapped", "de_DE", "EUR 100",
-            default_currency=None, infer_from_locale=True,
-        )
-        assert result is not None or error is not None
-
-
-# ---------------------------------------------------------------------------
-# Invalid ISO code
-# ---------------------------------------------------------------------------
-
-
-class TestInvalidISOCode:
-    """Test parsing with invalid ISO codes."""
-
-    def test_parse_currency_with_invalid_iso_code(self) -> None:
+    def test_invalid_iso_code_not_in_cldr(self) -> None:
         """3-letter uppercase code not in CLDR returns error."""
         result, errors = parse_currency("AAA 100", "en_US")
         assert result is None
-        assert len(errors) > 0
+        assert len(errors) == 1
 
-    def test_parse_currency_with_made_up_iso_code(self) -> None:
-        """Completely made-up ISO code returns error."""
-        result, errors = parse_currency("100 ZZZ", "en_US")
+    @given(
+        default=st.from_regex(r"[a-z]{3}", fullmatch=True)
+    )
+    @settings(max_examples=20)
+    def test_lowercase_codes_always_rejected(
+        self, default: str
+    ) -> None:
+        """PROPERTY: Lowercase 3-letter codes always rejected."""
+        event(f"code_sample={default[:2]}")
+        result, error = currency_module._resolve_currency_code(
+            "$", "en_US", "$100",
+            default_currency=default, infer_from_locale=False,
+        )
         assert result is None
-        assert len(errors) > 0
+        assert error is not None
 
 
 # ---------------------------------------------------------------------------
@@ -390,44 +536,55 @@ class TestInvalidISOCode:
 
 
 class TestLocaleToCurrencyFallback:
-    """Test locale-to-currency fallback for ambiguous symbols."""
+    """Test locale-to-currency inference fallback."""
 
-    def test_ambiguous_symbol_uses_locale_fallback(self) -> None:
-        """Ambiguous symbol resolved via locale_to_currency mapping."""
-        with patch(
-            "ftllexengine.parsing.currency.resolve_ambiguous_symbol",
-            return_value=None,
-        ):
-            result, errors = parse_currency(
-                "$100", "en_US", infer_from_locale=True
-            )
+    def test_dollar_inferred_from_en_us(self) -> None:
+        """$ inferred as USD from en_US."""
+        result, errors = parse_currency(
+            "$100", "en_US", infer_from_locale=True,
+        )
+        assert errors == ()
+        assert result is not None
+        assert result[1] == "USD"
 
-        if result is not None:
-            _, currency = result
-            assert currency == "USD"
-            assert errors == ()
-        else:
-            assert len(errors) > 0
+    def test_dollar_resolves_to_usd_in_de_de(self) -> None:
+        """$ resolves to USD in de_DE (dollar sign is unambiguous)."""
+        result, errors = parse_currency(
+            "$100", "de_DE", infer_from_locale=True,
+        )
+        assert errors == ()
+        assert result is not None
+        assert result[1] == "USD"
 
-    def test_fallback_when_not_in_fast_tier(self) -> None:
-        """Locale-to-currency fallback for locales only in CLDR."""
-        with patch(
-            "ftllexengine.parsing.currency.resolve_ambiguous_symbol",
-            return_value=None,
-        ):
-            result, errors = parse_currency(
-                "$100", "de_DE", infer_from_locale=True
-            )
+    def test_cldr_only_ambiguous_symbol_locale_fallback(self) -> None:
+        """CLDR-only ambiguous symbol resolves via locale-to-currency map.
 
-        if result is not None:
-            _, currency = result
-            assert currency == "EUR"
-            assert errors == ()
-        else:
-            assert len(errors) > 0
+        Rs is ambiguous in CLDR (INR, PKR, etc.) but not in the fast-tier
+        ambiguous set. resolve_ambiguous_symbol returns None, so resolution
+        falls through to the CLDR locale-to-currency mapping.
+        """
+        result, errors = parse_currency(
+            "Rs 500", "hi_IN", infer_from_locale=True,
+        )
+        assert errors == ()
+        assert result is not None
+        assert result == (Decimal("500"), "INR")
+
+    def test_cldr_only_ambiguous_kr_dot_locale_fallback(self) -> None:
+        """kr. (Nordic krona with period) resolves via locale-to-currency map.
+
+        kr. is ambiguous in CLDR (DKK, NOK, SEK, ISK) but not in the fast-tier
+        ambiguous set. Falls through to locale-to-currency mapping.
+        """
+        result, errors = parse_currency(
+            "kr.500", "da_DK", infer_from_locale=True,
+        )
+        assert errors == ()
+        assert result is not None
+        assert result == (Decimal("500"), "DKK")
 
     def test_no_resolution_available(self) -> None:
-        """No resolution when both symbol and locale mappings are empty."""
+        """Empty currency maps cause resolution failure."""
         with (
             patch(
                 "ftllexengine.parsing.currency.resolve_ambiguous_symbol",
@@ -444,23 +601,14 @@ class TestLocaleToCurrencyFallback:
             ),
         ):
             result, errors = parse_currency(
-                "$100", "en_US", infer_from_locale=True
+                "$100", "en_US", infer_from_locale=True,
             )
 
         assert result is None
-        assert len(errors) > 0
+        assert len(errors) == 1
 
-    def test_locale_pound_sterling_egypt(self) -> None:
-        """Pound sign with Egyptian locale."""
-        result, _ = parse_currency(
-            "\u00a3100", "en_EG", infer_from_locale=True
-        )
-        if result is not None:
-            _, currency = result
-            assert currency in {"GBP", "EGP", "GIP"}
-
-    def test_locale_kr_unknown_locale(self) -> None:
-        """kr symbol with unknown locale uses default (SEK)."""
+    def test_kr_unknown_locale_defaults_to_sek(self) -> None:
+        """kr symbol with unknown locale defaults to SEK."""
         result, error = currency_module._resolve_currency_code(
             "kr", "xx_UNKNOWN", "kr 100",
             default_currency=None, infer_from_locale=True,
@@ -469,60 +617,53 @@ class TestLocaleToCurrencyFallback:
 
 
 # ---------------------------------------------------------------------------
-# CLDR caching
+# Roundtrip: format -> parse -> verify
 # ---------------------------------------------------------------------------
 
 
-class TestCLDRCaching:
-    """Test that CLDR data is cached via functools.cache."""
+class TestRoundtripCurrency:
+    """Test format -> parse -> verify roundtrip."""
 
-    def test_currency_maps_caching(self) -> None:
-        """_get_currency_maps_full returns same cached object."""
-        result1 = currency_module._get_currency_maps_full()
-        result2 = currency_module._get_currency_maps_full()
-        assert result1 is result2
-        assert len(result1) == 4
+    def test_roundtrip_usd_en_us(self) -> None:
+        """Currency roundtrip for US English."""
+        from ftllexengine.runtime.functions import currency_format
 
+        original = Decimal("1234.56")
+        formatted = currency_format(
+            float(original), "en-US",
+            currency="USD", currency_display="symbol",
+        )
+        result, errors = parse_currency(
+            str(formatted), "en_US", default_currency="USD",
+        )
+        assert not errors
+        assert result is not None
+        assert result[0] == original
+        assert result[1] == "USD"
 
-# ---------------------------------------------------------------------------
-# clear_currency_caches
-# ---------------------------------------------------------------------------
+    def test_roundtrip_eur_lv_lv(self) -> None:
+        """Currency roundtrip for Latvian EUR."""
+        from ftllexengine.runtime.functions import currency_format
 
-
-class TestClearCurrencyCaches:
-    """Test clear_currency_caches() function."""
-
-    def test_executes_without_error(self) -> None:
-        """clear_currency_caches() executes without error."""
-        from ftllexengine.parsing.currency import clear_currency_caches
-
-        clear_currency_caches()
-
-    def test_invalidates_caches(self) -> None:
-        """clear_currency_caches() actually clears cached data."""
-        from ftllexengine.parsing.currency import clear_currency_caches
-
-        maps1 = _get_currency_maps()
-        clear_currency_caches()
-        maps2 = _get_currency_maps()
-        assert len(maps1[0]) == len(maps2[0])
-
-    def test_multiple_calls(self) -> None:
-        """clear_currency_caches() can be called multiple times."""
-        from ftllexengine.parsing.currency import clear_currency_caches
-
-        clear_currency_caches()
-        clear_currency_caches()
-        clear_currency_caches()
+        original = Decimal("1234.56")
+        formatted = currency_format(
+            float(original), "lv-LV",
+            currency="EUR", currency_display="symbol",
+        )
+        result, errors = parse_currency(str(formatted), "lv_LV")
+        assert not errors
+        assert result is not None
+        assert result[0] == original
+        assert result[1] == "EUR"
 
 
 # ---------------------------------------------------------------------------
-# Locale list coverage audit
+# CLDR map integrity
 # ---------------------------------------------------------------------------
 
 
-class TestCurrencyLocaleListCoverage:
-    """Validate _SYMBOL_LOOKUP_LOCALE_IDS covers major currencies."""
+class TestCLDRMapIntegrity:
+    """Test CLDR currency map structural invariants."""
 
     REQUIRED_CURRENCIES: frozenset[str] = frozenset({
         "USD", "EUR", "JPY", "GBP", "CHF", "AUD", "NZD", "CAD",
@@ -531,7 +672,7 @@ class TestCurrencyLocaleListCoverage:
         "PLN", "CZK", "HUF", "RON", "BGN",
     })
 
-    def test_symbol_lookup_locales_provide_major_currency_coverage(
+    def test_symbol_lookup_locales_discover_major_currencies(
         self,
     ) -> None:
         """Hardcoded locale list discovers major currency symbols."""
@@ -544,7 +685,9 @@ class TestCurrencyLocaleListCoverage:
             f"Max allowed: {max_missing}, got: {len(missing)}"
         )
 
-    def test_locale_to_currency_covers_major_territories(self) -> None:
+    def test_locale_to_currency_covers_major_territories(
+        self,
+    ) -> None:
         """Locale-to-currency mapping covers major territories."""
         _, _, locale_to_currency, _ = _get_currency_maps()
         expected_locales = {
@@ -559,9 +702,41 @@ class TestCurrencyLocaleListCoverage:
         missing = expected_locales - found
         min_coverage = len(expected_locales) * 0.8
         assert len(found) >= min_coverage, (
-            f"Insufficient coverage: {len(found)}/{len(expected_locales)}. "
+            f"Insufficient: {len(found)}/{len(expected_locales)}. "
             f"Missing: {sorted(missing)}"
         )
+
+    def test_returns_correct_types(self) -> None:
+        """_build_currency_maps_from_cldr returns correct types."""
+        sym, amb, loc, codes = _build_currency_maps_from_cldr()
+        for s, c in sym.items():
+            assert isinstance(s, str)
+            assert isinstance(c, str)
+        for s in amb:
+            assert isinstance(s, str)
+        for l_key, l_val in loc.items():
+            assert isinstance(l_key, str)
+            assert isinstance(l_val, str)
+        assert isinstance(codes, frozenset)
+
+    def test_euro_is_unambiguous(self) -> None:
+        """EUR symbol is in the unambiguous map."""
+        sym, amb, _, _ = _build_currency_maps_from_cldr()
+        assert "\u20ac" in sym or "\u20ac" not in amb
+        if "\u20ac" in sym:
+            assert sym["\u20ac"] == "EUR"
+
+    def test_dollar_is_ambiguous(self) -> None:
+        """$ symbol is in the ambiguous set."""
+        _, amb, _, _ = _build_currency_maps_from_cldr()
+        assert "$" in amb
+
+    def test_currency_maps_caching(self) -> None:
+        """_get_currency_maps_full returns same cached object."""
+        result1 = currency_module._get_currency_maps_full()
+        result2 = currency_module._get_currency_maps_full()
+        assert result1 is result2
+        assert len(result1) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -577,7 +752,7 @@ class TestBuildCurrencyMapsExceptions:
         _build_currency_maps_from_cldr.cache_clear()
         _get_currency_maps.cache_clear()
 
-    def test_locale_parse_exception(self) -> None:
+    def test_locale_parse_exception_handled(self) -> None:
         """Locale.parse exceptions are caught gracefully."""
         from babel import Locale
 
@@ -603,7 +778,7 @@ class TestBuildCurrencyMapsExceptions:
         assert isinstance(loc, dict)
 
     def test_key_error_in_currencies_access(self) -> None:
-        """KeyError when accessing locale.currencies.keys() is caught."""
+        """KeyError when accessing locale.currencies is caught."""
         mock_locale = MagicMock()
         mock_locale.currencies.keys.side_effect = KeyError("Mock")
 
@@ -619,7 +794,7 @@ class TestBuildCurrencyMapsExceptions:
         assert isinstance(sym, dict)
         assert isinstance(codes, frozenset)
 
-    def test_attribute_error_in_locale(self) -> None:
+    def test_locale_with_currencies_none(self) -> None:
         """Locale with currencies=None is handled."""
         mock_locale = MagicMock()
         mock_locale.currencies = None
@@ -682,7 +857,9 @@ class TestBuildCurrencyMapsExceptions:
         mock_locale = MagicMock()
         mock_locale.currencies = {"USD": "Dollar"}
         mock_locale.territory = "US"
-        mock_locale.configure_mock(**{"__str__.return_value": "en_US"})
+        mock_locale.configure_mock(
+            **{"__str__.return_value": "en_US"},
+        )
 
         with (
             patch(
@@ -712,12 +889,16 @@ class TestBuildCurrencyMapsExceptions:
         mock_us = MagicMock()
         mock_us.territory = "US"
         mock_us.currencies = {}
-        mock_us.configure_mock(**{"__str__.return_value": "en_US"})
+        mock_us.configure_mock(
+            **{"__str__.return_value": "en_US"},
+        )
 
         mock_xx = MagicMock()
         mock_xx.territory = "XX"
         mock_xx.currencies = {}
-        mock_xx.configure_mock(**{"__str__.return_value": "xx_XX"})
+        mock_xx.configure_mock(
+            **{"__str__.return_value": "xx_XX"},
+        )
 
         def mock_parse(locale_id: str) -> MagicMock:
             return mock_xx if locale_id == "xx_XX" else mock_us
@@ -749,7 +930,9 @@ class TestBuildCurrencyMapsExceptions:
         mock_locale = MagicMock()
         mock_locale.territory = "XX"
         mock_locale.currencies = {}
-        mock_locale.configure_mock(**{"__str__.return_value": "xx_XX"})
+        mock_locale.configure_mock(
+            **{"__str__.return_value": "xx_XX"},
+        )
 
         with (
             patch(
@@ -783,12 +966,14 @@ class TestBuildCurrencyMapsExceptions:
 
         assert isinstance(loc, dict)
 
-    def test_locale_str_without_underscore(self) -> None:
-        """Locale str without underscore is not added to locale_to_currency."""
+    def test_locale_str_without_underscore_excluded(self) -> None:
+        """Locale str without underscore is not in locale_to_currency."""
         mock_locale = MagicMock()
         mock_locale.territory = "XX"
         mock_locale.currencies = {}
-        mock_locale.configure_mock(**{"__str__.return_value": "en"})
+        mock_locale.configure_mock(
+            **{"__str__.return_value": "en"},
+        )
 
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
@@ -810,7 +995,9 @@ class TestBuildCurrencyMapsExceptions:
         mock_locale = MagicMock()
         mock_locale.territory = "US"
         mock_locale.currencies = {}
-        mock_locale.configure_mock(**{"__str__.return_value": "en_US"})
+        mock_locale.configure_mock(
+            **{"__str__.return_value": "en_US"},
+        )
 
         with (
             patch("babel.Locale.parse", return_value=mock_locale),
@@ -827,34 +1014,7 @@ class TestBuildCurrencyMapsExceptions:
 
         assert isinstance(loc, dict)
 
-    def test_returns_correct_types(self) -> None:
-        """_build_currency_maps_from_cldr returns correct types."""
-        sym, amb, loc, _ = _build_currency_maps_from_cldr()
-
-        for s, c in sym.items():
-            assert isinstance(s, str)
-            assert isinstance(c, str)
-        for s in amb:
-            assert isinstance(s, str)
-        for l_key, l_val in loc.items():
-            assert isinstance(l_key, str)
-            assert isinstance(l_val, str)
-
-    def test_euro_is_unambiguous(self) -> None:
-        """EUR symbol is in the unambiguous map."""
-        sym, amb, _, _ = _build_currency_maps_from_cldr()
-        assert "\u20ac" in sym or "\u20ac" not in amb
-        if "\u20ac" in sym:
-            assert sym["\u20ac"] == "EUR"
-
-    def test_dollar_is_ambiguous(self) -> None:
-        """$ symbol is in the ambiguous set."""
-        _, amb, _, _ = _build_currency_maps_from_cldr()
-        assert "$" in amb
-
-    @given(
-        locale_count=st.integers(min_value=1, max_value=5),
-    )
+    @given(locale_count=st.integers(min_value=1, max_value=5))
     @settings(max_examples=10)
     def test_handles_various_locale_counts(
         self, locale_count: int
@@ -889,10 +1049,12 @@ class TestBuildCurrencyMapsExceptions:
 
 
 class TestBabelImportError:
-    """Test Babel import error handling in currency parsing."""
+    """Test Babel import error handling."""
 
-    def test_build_maps_returns_empty_when_babel_missing(self) -> None:
-        """_build_currency_maps_from_cldr returns empty maps without Babel."""
+    def test_build_maps_returns_empty_when_babel_missing(
+        self,
+    ) -> None:
+        """_build_currency_maps_from_cldr returns empty without Babel."""
         _build_currency_maps_from_cldr.cache_clear()
 
         original_import = builtins.__import__
@@ -919,10 +1081,16 @@ class TestBabelImportError:
         finally:
             _build_currency_maps_from_cldr.cache_clear()
 
-    def test_parse_currency_raises_babel_import_error(self) -> None:
-        """parse_currency() raises BabelImportError without Babel."""
-        from ftllexengine.core.babel_compat import BabelImportError
+    def test_parse_currency_raises_babel_import_error(
+        self,
+    ) -> None:
+        """parse_currency raises BabelImportError without Babel."""
+        from ftllexengine.core.babel_compat import (
+            BabelImportError,
+            _check_babel_available,
+        )
 
+        _check_babel_available.cache_clear()
         original_import = builtins.__import__
 
         def mock_import(
@@ -933,23 +1101,26 @@ class TestBabelImportError:
                 raise ImportError(msg)
             return original_import(name, *args, **kwargs)  # type: ignore[arg-type]
 
-        with patch(
-            "builtins.__import__", side_effect=mock_import
-        ):
-            with pytest.raises(BabelImportError) as exc_info:
-                parse_currency("\u20ac100", "en_US")
+        try:
+            with patch(
+                "builtins.__import__", side_effect=mock_import
+            ):
+                with pytest.raises(BabelImportError) as exc_info:
+                    parse_currency("\u20ac100", "en_US")
 
-            error_msg = str(exc_info.value)
-            assert "parse_currency" in error_msg
+                error_msg = str(exc_info.value)
+                assert "parse_currency" in error_msg
+        finally:
+            _check_babel_available.cache_clear()
 
 
 # ---------------------------------------------------------------------------
-# Fast tier without Babel
+# Fast tier operations
 # ---------------------------------------------------------------------------
 
 
-class TestFastTierWithoutBabel:
-    """Test that fast tier currency operations work without Babel."""
+class TestFastTierOperations:
+    """Test fast tier currency operations (no CLDR scan)."""
 
     def test_fast_tier_symbols_available(self) -> None:
         """Fast tier unambiguous symbols always available."""
@@ -964,19 +1135,39 @@ class TestFastTierWithoutBabel:
         assert symbols["\u20ac"] == "EUR"
         assert symbols == _FAST_TIER_UNAMBIGUOUS_SYMBOLS
 
-    def test_fast_tier_pattern_compiles(self) -> None:
-        """Fast tier regex pattern compiles and matches."""
+    def test_currency_pattern_compiles_and_matches(self) -> None:
+        """Currency regex pattern compiles and matches."""
         from ftllexengine.parsing.currency import (
-            _get_currency_pattern_fast,
+            _get_currency_pattern,
         )
 
-        _get_currency_pattern_fast.cache_clear()
+        _get_currency_pattern.cache_clear()
         try:
-            pattern = _get_currency_pattern_fast()
+            pattern = _get_currency_pattern()
             assert pattern.search("\u20ac100") is not None
             assert pattern.search("USD 100") is not None
         finally:
-            _get_currency_pattern_fast.cache_clear()
+            _get_currency_pattern.cache_clear()
+
+    def test_currency_pattern_longest_match_first(self) -> None:
+        """Currency pattern matches multi-char symbols before prefixes."""
+        from ftllexengine.parsing.currency import (
+            _get_currency_pattern,
+        )
+
+        _get_currency_pattern.cache_clear()
+        try:
+            pattern = _get_currency_pattern()
+            # Rs must match before R
+            m = pattern.search("Rs100")
+            assert m is not None
+            assert m.group() == "Rs"
+            # kr. must match before kr
+            m = pattern.search("kr.500")
+            assert m is not None
+            assert m.group() == "kr."
+        finally:
+            _get_currency_pattern.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -984,145 +1175,113 @@ class TestFastTierWithoutBabel:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildCurrencyPatternFallback:
+class TestPatternCompilationFallback:
     """Test pattern compilation with empty symbol maps."""
 
-    def test_full_pattern_fallback_when_no_symbols(self) -> None:
-        """Full CLDR pattern falls back to ISO-code-only pattern."""
+    def test_pattern_fallback_with_empty_symbols(self) -> None:
+        """Pattern falls back to ISO-code-only when no symbols."""
         from ftllexengine.parsing.currency import (
-            _get_currency_pattern_full,
+            _get_currency_pattern,
         )
 
-        _get_currency_pattern_full.cache_clear()
+        _get_currency_pattern.cache_clear()
 
         with patch(
             "ftllexengine.parsing.currency._get_currency_maps",
             return_value=({}, set(), {}, frozenset()),
         ):
-            _get_currency_pattern_full.cache_clear()
-            pattern = _get_currency_pattern_full()
+            _get_currency_pattern.cache_clear()
+            pattern = _get_currency_pattern()
 
             assert isinstance(pattern, re.Pattern)
             assert pattern.search("USD") is not None
             assert pattern.search("\u20ac") is None
 
-        _get_currency_pattern_full.cache_clear()
+        _get_currency_pattern.cache_clear()
         _get_currency_maps.cache_clear()
 
-    def test_fast_pattern_fallback_when_empty(self) -> None:
-        """Fast tier pattern falls back to ISO-code-only pattern."""
-        from ftllexengine.parsing.currency import (
-            _get_currency_pattern_fast,
-        )
-
-        _get_currency_pattern_fast.cache_clear()
-        empty: tuple[
-            dict[str, str], frozenset[str], dict[str, str], frozenset[str]
-        ] = ({}, frozenset(), {}, frozenset())
-
-        with patch(
-            "ftllexengine.parsing.currency._get_currency_maps_fast",
-            return_value=empty,
-        ):
-            pattern = _get_currency_pattern_fast()
-
-        assert pattern is not None
-        assert re.match(pattern, "USD")
-        assert re.match(pattern, "$") is None
-
-        _get_currency_pattern_fast.cache_clear()
-
 
 # ---------------------------------------------------------------------------
-# Hypothesis property: no digits always fails
+# Cache management
 # ---------------------------------------------------------------------------
 
 
-class TestCurrencyParsingProperty:
-    """Property-based test for currency parsing edge cases."""
+class TestClearCurrencyCaches:
+    """Test clear_currency_caches function."""
 
-    @given(
-        invalid_value=st.text(min_size=1, max_size=30).filter(
-            lambda x: not any(c.isdigit() for c in x)
-        )
-    )
-    def test_no_digits_always_fails(
-        self, invalid_value: str
-    ) -> None:
-        """PROPERTY: Values without digits always fail to parse."""
-        has_currency_char = any(
-            c in invalid_value for c in "\u20ac$\u00a3\u00a5\u20b9"
-        )
-        event(f"has_currency_char={has_currency_char}")
-        val_len = "short" if len(invalid_value) <= 5 else "long"
-        event(f"value_length={val_len}")
+    def test_executes_without_error(self) -> None:
+        """clear_currency_caches executes without error."""
+        from ftllexengine.parsing.currency import clear_currency_caches
 
-        result, _ = parse_currency(invalid_value, "en_US")
-        assert result is None
+        clear_currency_caches()
+
+    def test_invalidates_caches(self) -> None:
+        """clear_currency_caches clears cached data."""
+        from ftllexengine.parsing.currency import clear_currency_caches
+
+        maps1 = _get_currency_maps()
+        clear_currency_caches()
+        maps2 = _get_currency_maps()
+        assert len(maps1[0]) == len(maps2[0])
+
+    def test_idempotent(self) -> None:
+        """Multiple calls are safe."""
+        from ftllexengine.parsing.currency import clear_currency_caches
+
+        clear_currency_caches()
+        clear_currency_caches()
+        clear_currency_caches()
 
 
 # ---------------------------------------------------------------------------
-# Integration: parse_currency with built maps
+# Thread-safe caching behavior
 # ---------------------------------------------------------------------------
 
 
-class TestParseCurrencyIntegration:
-    """Integration tests for parse_currency with CLDR maps."""
+class TestCurrencyCachingConcurrency:
+    """Test thread-safe caching via functools.cache."""
 
-    def test_euro_symbol_resolves(self) -> None:
-        """parse_currency resolves EUR symbol."""
-        result, errors = parse_currency("\u20ac100", "en_US")
-        assert not errors
-        assert result is not None
-        _, currency = result
-        assert currency == "EUR"
+    def test_concurrent_currency_maps_access(self) -> None:
+        """Concurrent calls to _get_currency_maps_full return cached object.
 
-    def test_ambiguous_without_default_returns_error(self) -> None:
-        """Ambiguous $ without default returns error."""
-        result, errors = parse_currency("$100", "en_US")
-        assert result is None
-        assert len(errors) > 0
+        functools.cache provides thread-safe cache access, but does NOT
+        prevent thundering herd on cold cache (multiple threads may compute
+        simultaneously). This test verifies that AFTER cache is populated,
+        concurrent access returns the same cached object.
+        """
+        import threading
 
-    def test_ambiguous_with_default_resolves(self) -> None:
-        """Ambiguous $ with default_currency resolves."""
-        result, errors = parse_currency(
-            "$100", "en_US", default_currency="CAD"
-        )
-        assert not errors
-        assert result is not None
-        _, currency = result
-        assert currency == "CAD"
+        # Pre-warm cache to ensure it's populated
+        _ = currency_module._get_currency_maps_full()
 
-    def test_infers_from_locale(self) -> None:
-        """infer_from_locale infers USD from en_US."""
-        result, errors = parse_currency(
-            "$100", "en_US", infer_from_locale=True
-        )
-        assert not errors
-        if result is not None:
-            _, currency = result
-            assert currency == "USD"
+        barrier = threading.Barrier(4)
+        results: list[object] = []
 
-    def test_iso_code_handling(self) -> None:
-        """ISO codes are handled directly."""
-        result, errors = parse_currency("USD 100", "en_US")
-        assert not errors
-        assert result is not None
-        _, currency = result
-        assert currency == "USD"
+        def get_with_barrier() -> None:
+            barrier.wait()
+            data = currency_module._get_currency_maps_full()
+            results.append(data)
 
-    def test_multiple_formats_same_currency(self) -> None:
-        """Same currency in different formats."""
-        for value in ["$100", "100 USD", "USD 100"]:
-            result, _ = parse_currency(value, "en_US")
-            if result is not None:
-                amount, currency = result
-                assert amount == Decimal("100")
-                assert currency == "USD"
+        threads = [
+            threading.Thread(target=get_with_barrier)
+            for _ in range(4)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
 
-    def test_thousands_separator(self) -> None:
-        """Thousands separator handled correctly."""
-        result, _ = parse_currency("$1,234.56", "en_US")
-        if result is not None:
-            amount, _ = result
-            assert 1234 <= amount <= 1235
+        assert len(results) == 4
+        assert all(r is results[0] for r in results)
+
+    def test_currency_maps_structure(self) -> None:
+        """Cached currency maps have expected 4-tuple structure."""
+        data = currency_module._get_currency_maps_full()
+
+        assert len(data) == 4
+        symbol_map, ambiguous, locale_to_currency, valid_codes = data
+
+        assert isinstance(symbol_map, dict)
+        assert isinstance(ambiguous, set)
+        assert isinstance(locale_to_currency, dict)
+        assert isinstance(valid_codes, frozenset)

@@ -12,7 +12,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.109.0] - unreleased
+## [0.110.0] - unreleased
+
+### Changed
+
+- **Parsing domain internal refactoring** (REFACTOR-PARSING-001):
+  - `_build_currency_maps_from_cldr` decomposed into three focused helpers: `_collect_all_currencies`, `_build_symbol_mappings`, `_build_locale_currency_map`
+  - `parse_currency` split into phase-based orchestration with `_detect_currency_symbol` (longest-match-first regex) and `_parse_currency_amount` (amount extraction and decimal parsing)
+  - Common CLDR pattern extraction in `dates.py` consolidated into `_extract_cldr_patterns`, eliminating duplication between `_get_date_patterns` and `_get_datetime_patterns`
+  - Lazy Babel imports across `numbers.py`, `currency.py`, and `dates.py` replaced with centralized `require_babel()` from `core.babel_compat`, eliminating duplicated `try/except ImportError` blocks
+  - `_get_localized_era_strings` switched from `try/except ImportError` to `is_babel_available()` guard for graceful degradation
+  - `assert currency_code is not None` replaced with explicit `if currency_code is None:` guard returning structured error tuple
+  - No public API changes; all function signatures and return types preserved
+
+- **Currency symbol detection collapsed to single-pattern architecture** (REFACTOR-CURRENCY-SINGLE-PATTERN-001):
+  - Removed `_get_currency_pattern_fast()` two-tier detection; `_detect_currency_symbol` now uses a single longest-match-first regex built from the complete merged symbol set (fast tier + CLDR)
+  - Multi-char CLDR symbols (`Rs`, `kr.`, `$AU`) are no longer shadowed by single-char fast-tier prefixes (`R`, `kr`, `$`)
+  - `_get_currency_pattern_full()` renamed to `_get_currency_pattern()`; `clear_currency_caches()` clears 3 caches instead of 4
+  - Fast-tier data constants retained for merge-priority logic and Babel-absent fallback
+  - No public API changes
+
+### Fixed
+
+- **CLDR symbol shadowing in currency detection** (BUG-CURRENCY-SHADOW-001):
+  - Multi-char CLDR-only symbols (`Rs`, `kr.`, `$AU`) were shadowed by single-char fast-tier regex matches (`R`, `kr`, `$`), causing silent wrong results in financial parsing (e.g., `kr. 500` in da_DK parsed as `(0.500, SEK)` instead of `(500, DKK)` -- a 1000x magnitude error)
+  - 39 CLDR symbols were shadowed; locale-to-currency fallback was unreachable for these symbols
+  - Root cause: tiered detection tried fast-tier regex first; on match, skipped the full CLDR regex that would have found the correct longer symbol
+  - Fix: single pattern architecture with longest-match-first ordering guarantees multi-char symbols match before their single-char prefixes
+
+## [0.109.0] - 2026-02-17
 
 ### Changed (BREAKING)
 
@@ -3498,6 +3526,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.110.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.110.0
 [0.109.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.109.0
 [0.108.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.108.0
 [0.107.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.107.0

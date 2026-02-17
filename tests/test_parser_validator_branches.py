@@ -1,7 +1,6 @@
-"""Targeted tests for 100% coverage of currency.py, rules.py, and validator.py.
+"""Targeted branch coverage for rules.py and validator.py.
 
-Addresses the final uncovered lines and branches:
-- currency.py line 520: Empty symbols fallback in _get_currency_pattern_fast
+Addresses specific uncovered lines and branches:
 - rules.py line 885: parse_term_reference returning None in parse_argument_expression
 - validator.py lines 423-425: Decimal conversion exception in _variant_key_to_string
 - validator.py branches 157->exit, 246->exit: Match case exits for Junk and TextElement
@@ -12,13 +11,11 @@ Python 3.13+.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from unittest.mock import patch
 
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.enums import CommentType
-from ftllexengine.parsing.currency import _get_currency_pattern_fast
 from ftllexengine.syntax.ast import (
     Annotation,
     Comment,
@@ -43,72 +40,6 @@ from ftllexengine.syntax.parser.rules import (
     parse_argument_expression,
 )
 from ftllexengine.syntax.validator import SemanticValidator, validate
-
-
-class TestCurrencyLine520EmptySymbolsFallback:
-    """Test currency.py line 520: Empty symbols fallback pattern.
-
-    Line 520 is the else branch in _get_currency_pattern_fast() when
-    escaped_symbols is empty. Since the fast tier always has hardcoded
-    symbols, this branch requires mocking to test.
-    """
-
-    def test_empty_symbols_pattern_fallback(self) -> None:
-        """Test pattern generation when no currency symbols are available.
-
-        When _get_currency_maps_fast returns empty symbols, the function
-        falls back to ISO code-only pattern (line 520).
-        """
-        # Clear any cached patterns
-        _get_currency_pattern_fast.cache_clear()
-
-        # Mock _get_currency_maps_fast to return empty symbol maps.
-        # Tuple contains: symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes
-        empty_maps: tuple[
-            dict[str, str], frozenset[str], dict[str, str], frozenset[str]
-        ] = ({}, frozenset(), {}, frozenset({"USD", "EUR", "GBP"}))
-
-        with patch(
-            "ftllexengine.parsing.currency._get_currency_maps_fast",
-            return_value=empty_maps,
-        ):
-            # Call the actual function - this exercises line 520
-            pattern = _get_currency_pattern_fast()
-
-            # Verify the fallback pattern only matches ISO codes
-            assert pattern.match("USD") is not None
-            assert pattern.match("EUR") is not None
-            # Symbols should NOT match (only ISO codes)
-            assert pattern.match("$") is None
-            assert pattern.match("\u20ac") is None  # Euro sign
-
-        # Clear cache after test
-        _get_currency_pattern_fast.cache_clear()
-
-    def test_empty_symbols_iso_only_matching(self) -> None:
-        """Verify ISO-only pattern behavior with various inputs."""
-        _get_currency_pattern_fast.cache_clear()
-
-        empty_maps: tuple[
-            dict[str, str], frozenset[str], dict[str, str], frozenset[str]
-        ] = ({}, frozenset(), {}, frozenset({"USD", "EUR"}))
-
-        with patch(
-            "ftllexengine.parsing.currency._get_currency_maps_fast",
-            return_value=empty_maps,
-        ):
-            pattern = _get_currency_pattern_fast()
-
-            # Should match any 3-letter uppercase code
-            assert pattern.match("ABC") is not None
-            assert pattern.match("XYZ") is not None
-
-            # Should not match lowercase or wrong length (at start)
-            assert pattern.match("usd") is None
-            assert pattern.match("US") is None
-            # "USDD" does match because "USD" is at start (correct regex behavior)
-
-        _get_currency_pattern_fast.cache_clear()
 
 
 class TestRulesLine885TermReferenceFailure:

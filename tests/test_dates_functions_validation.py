@@ -1,7 +1,6 @@
-"""Targeted tests for coverage on non-parser module edge cases.
+"""Targeted tests for non-parser module edge cases.
 
 Covers specific uncovered lines in:
-- currency.py: pattern construction fallback
 - dates.py: quoted literal tokenization
 - function_bridge.py: leading underscore parameters
 - function_metadata.py: get_callable returns None
@@ -10,9 +9,6 @@ Covers specific uncovered lines in:
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
-from ftllexengine.parsing.currency import parse_currency
 from ftllexengine.parsing.dates import _tokenize_babel_pattern
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
@@ -21,30 +17,6 @@ from ftllexengine.validation.resource import (
     _extract_syntax_errors,
     validate_resource,
 )
-
-
-class TestCurrencyPatternFallback:
-    """Coverage for currency pattern construction fallback."""
-
-    def test_pattern_fallback_when_no_symbols(self) -> None:
-        """Pattern construction fallback when no symbols present."""
-        from ftllexengine.parsing.currency import (  # noqa: PLC0415
-            _get_currency_maps,
-            _get_currency_pattern_full,
-        )
-
-        _get_currency_pattern_full.cache_clear()
-
-        with patch(
-            "ftllexengine.parsing.currency._get_currency_maps",
-            return_value=({}, set(), {}, frozenset()),
-        ):
-            _get_currency_pattern_full.cache_clear()
-            result, errors = parse_currency("USD 100", "en_US")
-            assert result is not None or len(errors) > 0
-
-        _get_currency_pattern_full.cache_clear()
-        _get_currency_maps.cache_clear()
 
 
 class TestDatesQuotedLiteral:

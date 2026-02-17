@@ -7,6 +7,7 @@ across multiple test modules. Strategies are organized by domain:
 - fiscal: FiscalCalendar, FiscalDelta, and date strategies
 - iso: Territory codes, currency codes, and locale strategies
 - diagnostics: Diagnostic codes, errors, validation, and formatter strategies
+- currency: Currency parsing strategies (amounts, symbols, ISO codes)
 
 Usage:
     from tests.strategies import ftl_identifiers, territory_codes
@@ -14,6 +15,7 @@ Usage:
     from tests.strategies.iso import territory_codes, currency_codes
     from tests.strategies.ftl import ftl_message_nodes, ftl_patterns
     from tests.strategies.diagnostics import diagnostics, source_spans
+    from tests.strategies.currency import currency_amounts, ambiguous_currency_inputs
 
 Event-Emitting Strategies (HypoFuzz-Optimized):
     These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
@@ -23,10 +25,21 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - ftl_financial_numbers, ftl_attribute_nodes
     - fiscal_delta_by_magnitude, date_by_boundary, fiscal_calendar_by_type
     - currency_by_decimals, territory_by_region, locale_by_script
+    - currency_amounts, unambiguous_currency_inputs, ambiguous_currency_inputs
+    - iso_code_currency_inputs, invalid_currency_inputs
     - source_spans, frozen_error_contexts, diagnostics, diagnostic_codes
     - error_categories, validation_errors, validation_warnings
     - validation_results, diagnostic_formatters
 """
+
+# Currency parsing strategies
+from .currency import (
+    ambiguous_currency_inputs,
+    currency_amounts,
+    invalid_currency_inputs,
+    iso_code_currency_inputs,
+    unambiguous_currency_inputs,
+)
 
 # Diagnostics strategies
 from .diagnostics import (
@@ -328,6 +341,12 @@ __all__ = [
     "validation_warnings",
     "validation_results",
     "diagnostic_formatters",
+    # Currency parsing strategies
+    "currency_amounts",
+    "unambiguous_currency_inputs",
+    "ambiguous_currency_inputs",
+    "iso_code_currency_inputs",
+    "invalid_currency_inputs",
     # Localization strategies
     "locale_chains",
     "message_ids",

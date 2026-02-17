@@ -18,8 +18,7 @@ from ftllexengine.parsing import clear_currency_caches, clear_date_caches
 from ftllexengine.parsing.currency import (
     _build_currency_maps_from_cldr,
     _get_currency_maps,
-    _get_currency_pattern_fast,
-    _get_currency_pattern_full,
+    _get_currency_pattern,
 )
 from ftllexengine.parsing.dates import _get_date_patterns, _get_datetime_patterns
 
@@ -116,38 +115,37 @@ class TestCurrencyCachesClear:
         clear_currency_caches()
         clear_currency_caches()  # Multiple clears are safe
 
-    def test_clear_removes_fast_pattern_cache(self) -> None:
-        """Clearing cache removes fast tier pattern cache."""
-        # Populate fast pattern cache
-        _get_currency_pattern_fast()
+    def test_clear_removes_pattern_cache(self) -> None:
+        """Clearing cache removes currency pattern cache."""
+        # Populate pattern cache
+        _get_currency_pattern()
 
         # Verify cache is populated
-        fast_info = _get_currency_pattern_fast.cache_info()
-        assert fast_info.currsize >= 1
+        info = _get_currency_pattern.cache_info()
+        assert info.currsize >= 1
 
         # Clear caches
         clear_currency_caches()
 
         # Verify cache is empty
-        fast_info_after = _get_currency_pattern_fast.cache_info()
-        assert fast_info_after.currsize == 0
+        info_after = _get_currency_pattern.cache_info()
+        assert info_after.currsize == 0
 
     def test_clear_removes_all_currency_caches(self) -> None:
-        """Clearing removes all four currency cache layers."""
+        """Clearing removes all three currency cache layers."""
         # Populate all caches
-        _get_currency_pattern_fast()
+        _get_currency_pattern()
         _get_currency_maps()  # This triggers _build_currency_maps_from_cldr
 
         # Verify caches populated
-        assert _get_currency_pattern_fast.cache_info().currsize >= 1
+        assert _get_currency_pattern.cache_info().currsize >= 1
         assert _get_currency_maps.cache_info().currsize >= 1
 
         # Clear all
         clear_currency_caches()
 
         # Verify all caches empty
-        assert _get_currency_pattern_fast.cache_info().currsize == 0
-        assert _get_currency_pattern_full.cache_info().currsize == 0
+        assert _get_currency_pattern.cache_info().currsize == 0
         assert _get_currency_maps.cache_info().currsize == 0
         assert _build_currency_maps_from_cldr.cache_info().currsize == 0
 
@@ -189,14 +187,14 @@ class TestClearAllCaches:
     def test_clear_all_clears_currency_caches(self) -> None:
         """clear_all_caches() clears currency caches."""
         # Populate currency caches
-        _get_currency_pattern_fast()
-        assert _get_currency_pattern_fast.cache_info().currsize >= 1
+        _get_currency_pattern()
+        assert _get_currency_pattern.cache_info().currsize >= 1
 
         # Clear all
         ftllexengine.clear_all_caches()
 
         # Currency caches should be empty
-        assert _get_currency_pattern_fast.cache_info().currsize == 0
+        assert _get_currency_pattern.cache_info().currsize == 0
 
     def test_clear_all_clears_locale_context_cache(self) -> None:
         """clear_all_caches() clears LocaleContext cache."""
@@ -288,17 +286,17 @@ class TestCacheLifecycleIdempotency:
 
     def test_currency_clear_idempotent(self) -> None:
         """Multiple currency cache clears are equivalent to single clear."""
-        _get_currency_pattern_fast()
+        _get_currency_pattern()
         clear_currency_caches()
         clear_currency_caches()
         clear_currency_caches()
-        assert _get_currency_pattern_fast.cache_info().currsize == 0
+        assert _get_currency_pattern.cache_info().currsize == 0
 
     def test_clear_all_idempotent(self) -> None:
         """Multiple clear_all_caches calls are equivalent to single call."""
         get_babel_locale("en_US")
         _get_date_patterns("en_US")
-        _get_currency_pattern_fast()
+        _get_currency_pattern()
 
         ftllexengine.clear_all_caches()
         ftllexengine.clear_all_caches()
@@ -306,4 +304,4 @@ class TestCacheLifecycleIdempotency:
 
         assert get_babel_locale.cache_info().currsize == 0
         assert _get_date_patterns.cache_info().currsize == 0
-        assert _get_currency_pattern_fast.cache_info().currsize == 0
+        assert _get_currency_pattern.cache_info().currsize == 0

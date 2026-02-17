@@ -19,7 +19,10 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
-from ftllexengine.core.babel_compat import BabelImportError
+from ftllexengine.core.babel_compat import (
+    BabelImportError,
+    _check_babel_available,
+)
 
 
 @pytest.fixture
@@ -36,12 +39,16 @@ def mock_babel_unavailable() -> Generator[None]:
     for name in babel_modules:
         del sys.modules[name]
 
+    # Clear require_babel's availability cache
+    _check_babel_available.cache_clear()
+
     # Block babel from being imported
     with patch.dict(sys.modules, {"babel": None}):
         yield
 
     # Restore babel modules
     sys.modules.update(babel_modules)
+    _check_babel_available.cache_clear()
 
 
 def _make_import_blocker(blocked_prefix: str = "babel") -> Callable[..., object]:
@@ -80,8 +87,7 @@ class TestParseCurrencyBabelUnavailable:
 
         currency._build_currency_maps_from_cldr.cache_clear()
         currency._get_currency_maps.cache_clear()
-        currency._get_currency_pattern_fast.cache_clear()
-        currency._get_currency_pattern_full.cache_clear()
+        currency._get_currency_pattern.cache_clear()
 
         # Force re-import by removing from cache
         if "ftllexengine.parsing.currency" in sys.modules:
@@ -106,15 +112,13 @@ class TestBuildCurrencyMapsBabelUnavailable:
         from ftllexengine.parsing.currency import (
             _build_currency_maps_from_cldr,
             _get_currency_maps,
-            _get_currency_pattern_fast,
-            _get_currency_pattern_full,
+            _get_currency_pattern,
         )
 
         # Clear all caches before test
         _build_currency_maps_from_cldr.cache_clear()
         _get_currency_maps.cache_clear()
-        _get_currency_pattern_fast.cache_clear()
-        _get_currency_pattern_full.cache_clear()
+        _get_currency_pattern.cache_clear()
 
         mock_import = _make_import_blocker("babel")
 
@@ -128,8 +132,7 @@ class TestBuildCurrencyMapsBabelUnavailable:
             # Clear cache after test to prevent pollution
             _build_currency_maps_from_cldr.cache_clear()
             _get_currency_maps.cache_clear()
-            _get_currency_pattern_fast.cache_clear()
-            _get_currency_pattern_full.cache_clear()
+            _get_currency_pattern.cache_clear()
 
 
 class TestParseDateBabelUnavailable:
@@ -139,18 +142,21 @@ class TestParseDateBabelUnavailable:
         """_get_date_patterns raises BabelImportError when Babel unavailable."""
         from ftllexengine.parsing.dates import _get_date_patterns
 
-        # Clear cache
         _get_date_patterns.cache_clear()
+        _check_babel_available.cache_clear()
 
         mock_import = _make_import_blocker("babel")
 
-        with (
-            patch.object(builtins, "__import__", side_effect=mock_import),
-            pytest.raises(BabelImportError) as exc_info,
-        ):
-            _get_date_patterns("en_US")
+        try:
+            with (
+                patch.object(builtins, "__import__", side_effect=mock_import),
+                pytest.raises(BabelImportError) as exc_info,
+            ):
+                _get_date_patterns("en_US")
 
-        assert "parse_date" in str(exc_info.value)
+            assert "parse_date" in str(exc_info.value)
+        finally:
+            _check_babel_available.cache_clear()
 
 
 class TestParseDatetimeBabelUnavailable:
@@ -160,18 +166,21 @@ class TestParseDatetimeBabelUnavailable:
         """_get_datetime_patterns raises BabelImportError when Babel unavailable."""
         from ftllexengine.parsing.dates import _get_datetime_patterns
 
-        # Clear cache
         _get_datetime_patterns.cache_clear()
+        _check_babel_available.cache_clear()
 
         mock_import = _make_import_blocker("babel")
 
-        with (
-            patch.object(builtins, "__import__", side_effect=mock_import),
-            pytest.raises(BabelImportError) as exc_info,
-        ):
-            _get_datetime_patterns("en_US")
+        try:
+            with (
+                patch.object(builtins, "__import__", side_effect=mock_import),
+                pytest.raises(BabelImportError) as exc_info,
+            ):
+                _get_datetime_patterns("en_US")
 
-        assert "parse_datetime" in str(exc_info.value)
+            assert "parse_datetime" in str(exc_info.value)
+        finally:
+            _check_babel_available.cache_clear()
 
 
 class TestParseNumberBabelUnavailable:
@@ -181,15 +190,19 @@ class TestParseNumberBabelUnavailable:
         """parse_number raises BabelImportError when Babel unavailable."""
         from ftllexengine.parsing.numbers import parse_number
 
+        _check_babel_available.cache_clear()
         mock_import = _make_import_blocker("babel")
 
-        with (
-            patch.object(builtins, "__import__", side_effect=mock_import),
-            pytest.raises(BabelImportError) as exc_info,
-        ):
-            parse_number("1,234.56", "en_US")
+        try:
+            with (
+                patch.object(builtins, "__import__", side_effect=mock_import),
+                pytest.raises(BabelImportError) as exc_info,
+            ):
+                parse_number("1,234.56", "en_US")
 
-        assert "parse_number" in str(exc_info.value)
+            assert "parse_number" in str(exc_info.value)
+        finally:
+            _check_babel_available.cache_clear()
 
 
 class TestParseDecimalBabelUnavailable:
@@ -199,15 +212,19 @@ class TestParseDecimalBabelUnavailable:
         """parse_decimal raises BabelImportError when Babel unavailable."""
         from ftllexengine.parsing.numbers import parse_decimal
 
+        _check_babel_available.cache_clear()
         mock_import = _make_import_blocker("babel")
 
-        with (
-            patch.object(builtins, "__import__", side_effect=mock_import),
-            pytest.raises(BabelImportError) as exc_info,
-        ):
-            parse_decimal("1,234.56", "en_US")
+        try:
+            with (
+                patch.object(builtins, "__import__", side_effect=mock_import),
+                pytest.raises(BabelImportError) as exc_info,
+            ):
+                parse_decimal("1,234.56", "en_US")
 
-        assert "parse_decimal" in str(exc_info.value)
+            assert "parse_decimal" in str(exc_info.value)
+        finally:
+            _check_babel_available.cache_clear()
 
 
 class TestResolverPluralBabelUnavailable:

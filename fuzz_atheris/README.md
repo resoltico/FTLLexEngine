@@ -236,13 +236,13 @@ Target: `analysis.graph` -- `canonicalize_cycle`, `make_cycle_key`, `detect_cycl
 
 ## `fuzz_currency`
 
-Target: `parsing.currency.parse_currency` -- tiered loading, ambiguous symbol resolution, numeric extraction across locales.
+Target: `parsing.currency.parse_currency` -- longest-match-first symbol detection, ambiguous symbol resolution, numeric extraction across locales.
 
 ### Patterns
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `unambiguous_unicode` | 8 | Fast tier resolves unique symbols |
+| `unambiguous_unicode` | 8 | Unique symbols resolve unambiguously |
 | `ambiguous_dollar` | 8 | Locale disambiguates `$` |
 | `ambiguous_pound` | 7 | Locale disambiguates `£` |
 | `ambiguous_yen_yuan` | 7 | Locale disambiguates `¥` |

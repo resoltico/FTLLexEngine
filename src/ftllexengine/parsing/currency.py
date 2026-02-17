@@ -11,18 +11,17 @@ Babel Dependency:
     time to support parser-only installations. Clear error message provided when
     Babel is missing.
 
-Tiered Loading Strategy:
-    - Fast Tier: Common currencies with hardcoded unambiguous symbols (immediate)
+Data Architecture:
+    - Fast Tier: Hardcoded common currencies for merge-priority and Babel-absent fallback
     - Full Tier: Complete CLDR scan (lazy-loaded via @functools.cache on first access)
-    This provides sub-millisecond cold start for common currencies while maintaining
-    complete CLDR coverage for edge cases.
+    - Merged maps: Fast tier overrides full tier for unambiguous symbol assignments
 
-Performance:
-    Cold start latency for the full CLDR scan is approximately 200-500ms depending
-    on Babel version and the number of locales installed. This scan runs once per
-    process (via @functools.cache) and only triggers when encountering an ambiguous
-    currency symbol not resolvable in the fast tier. Most applications using common
-    currencies (EUR, USD, GBP, JPY, CNY, INR, etc.) will never trigger the full scan.
+Symbol Detection:
+    Uses a single regex pattern built from the complete merged symbol set (fast tier +
+    CLDR). Symbols are sorted longest-first to guarantee correct detection of multi-char
+    symbols (e.g., "Rs" before "R", "kr." before "kr", "$AU" before "$"). The CLDR scan
+    cost (~200-500ms) is incurred once per process on first parse_currency() call, then
+    cached via @functools.cache.
 
 Architecture:
     Uses @functools.cache for thread-safe, lazy-loaded CLDR data access.
@@ -36,7 +35,9 @@ Python 3.13+.
 import functools
 import re
 from decimal import Decimal
+from typing import Any
 
+from ftllexengine.core.babel_compat import require_babel
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.locale_utils import normalize_locale
@@ -243,6 +244,133 @@ def resolve_ambiguous_symbol(
     return _AMBIGUOUS_SYMBOL_DEFAULTS.get(symbol)
 
 
+def _collect_all_currencies(
+    locale_ids: list[str],
+    locale_parse: Any,
+    unknown_locale_error: type[Exception],
+) -> set[str]:
+    """Collect all currency codes from CLDR by scanning all locales.
+
+    Ensures complete currency coverage (JPY, KRW, CNY, etc.).
+
+    Args:
+        locale_ids: All available CLDR locale identifiers.
+        locale_parse: Babel's Locale.parse function.
+        unknown_locale_error: Babel's UnknownLocaleError class.
+
+    Returns:
+        Set of all ISO 4217 currency codes found in CLDR.
+    """
+    all_currencies: set[str] = set()
+    for locale_id in locale_ids:
+        try:
+            locale = locale_parse(locale_id)
+            if hasattr(locale, "currencies") and locale.currencies:
+                all_currencies.update(locale.currencies.keys())
+        except (unknown_locale_error, ValueError, AttributeError, KeyError):
+            continue
+    return all_currencies
+
+
+def _build_symbol_mappings(
+    all_currencies: set[str],
+    locale_ids: list[str],
+    locale_parse: Any,
+    unknown_locale_error: type[Exception],
+    get_currency_symbol: Any,
+) -> tuple[dict[str, str], set[str]]:
+    """Build symbol-to-currency mappings, separating ambiguous from unambiguous.
+
+    For each currency, finds all symbols it uses across a curated locale sample.
+    A symbol is ambiguous if multiple currencies use it.
+
+    Args:
+        all_currencies: All ISO 4217 codes from CLDR.
+        locale_ids: All available CLDR locale identifiers.
+        locale_parse: Babel's Locale.parse function.
+        unknown_locale_error: Babel's UnknownLocaleError class.
+        get_currency_symbol: Babel's get_currency_symbol function.
+
+    Returns:
+        Tuple of (unambiguous_map, ambiguous_set):
+        - unambiguous_map: Symbol -> single ISO 4217 code
+        - ambiguous_set: Symbols mapping to multiple currencies
+    """
+    symbol_to_codes: dict[str, set[str]] = {}
+
+    symbol_lookup_locales = [
+        locale_parse(lid) for lid in _SYMBOL_LOOKUP_LOCALE_IDS
+        if lid in locale_ids
+    ]
+
+    for currency_code in all_currencies:
+        for locale in symbol_lookup_locales:
+            try:
+                symbol = get_currency_symbol(
+                    currency_code, locale=locale,
+                )
+                is_iso_format = (
+                    len(symbol) == ISO_CURRENCY_CODE_LENGTH
+                    and symbol.isupper()
+                    and symbol.isalpha()
+                )
+                if symbol and symbol != currency_code and not is_iso_format:
+                    if symbol not in symbol_to_codes:
+                        symbol_to_codes[symbol] = set()
+                    symbol_to_codes[symbol].add(currency_code)
+            except (
+                unknown_locale_error, ValueError, AttributeError, KeyError,
+            ):
+                continue
+
+    unambiguous_map: dict[str, str] = {}
+    ambiguous_set: set[str] = set()
+    for symbol, codes in symbol_to_codes.items():
+        if len(codes) == 1:
+            unambiguous_map[symbol] = next(iter(codes))
+        else:
+            ambiguous_set.add(symbol)
+
+    return unambiguous_map, ambiguous_set
+
+
+def _build_locale_currency_map(
+    locale_ids: list[str],
+    locale_parse: Any,
+    unknown_locale_error: type[Exception],
+    get_territory_currencies: Any,
+) -> dict[str, str]:
+    """Build locale-to-default-currency mapping from CLDR territory data.
+
+    Args:
+        locale_ids: All available CLDR locale identifiers.
+        locale_parse: Babel's Locale.parse function.
+        unknown_locale_error: Babel's UnknownLocaleError class.
+        get_territory_currencies: Babel's get_territory_currencies function.
+
+    Returns:
+        Mapping of locale code -> default ISO 4217 currency code.
+    """
+    locale_to_currency: dict[str, str] = {}
+    for locale_id in locale_ids:
+        try:
+            locale = locale_parse(locale_id)
+            if not locale.territory:
+                continue
+            territory_currencies = get_territory_currencies(
+                locale.territory,
+            )
+            if territory_currencies:
+                locale_str = str(locale)
+                if "_" in locale_str:
+                    locale_to_currency[locale_str] = territory_currencies[0]
+        except (
+            unknown_locale_error, ValueError, AttributeError, KeyError,
+        ):
+            continue
+    return locale_to_currency
+
+
 @functools.cache
 def _build_currency_maps_from_cldr() -> tuple[
     dict[str, str], set[str], dict[str, str], frozenset[str]
@@ -252,17 +380,16 @@ def _build_currency_maps_from_cldr() -> tuple[
     Thread-safe via functools.cache internal locking.
     Called once per process lifetime; subsequent calls return cached result.
 
-    Scans all available locales and currencies in CLDR to build:
-    1. Symbol -> ISO code mapping (for unambiguous symbols)
-    2. Set of ambiguous symbols (symbols used by multiple currencies)
-    3. Locale -> default currency mapping (from territory data)
-    4. Set of all valid ISO 4217 currency codes (for validation)
+    Orchestrates three sub-operations:
+    1. Collect all currency codes from CLDR locale scan
+    2. Build symbol-to-currency mappings (unambiguous vs ambiguous)
+    3. Build locale-to-default-currency mapping from territory data
 
     Returns:
         Tuple of (symbol_to_code, ambiguous_symbols, locale_to_currency, valid_codes):
-        - symbol_to_code: Unambiguous currency symbol → ISO 4217 code
+        - symbol_to_code: Unambiguous currency symbol -> ISO 4217 code
         - ambiguous_symbols: Symbols that map to multiple currencies
-        - locale_to_currency: Locale code → default ISO 4217 currency code
+        - locale_to_currency: Locale code -> default ISO 4217 currency code
         - valid_codes: Frozenset of all valid ISO 4217 currency codes from CLDR
         Returns empty maps if Babel is not installed (fast tier still available).
     """
@@ -278,92 +405,26 @@ def _build_currency_maps_from_cldr() -> tuple[
         # Babel not installed - return empty maps, fast tier still available
         return ({}, set(), {}, frozenset())
 
-    # Step 1: Build symbol → currency codes mapping
-    # Key insight: A symbol is ambiguous if multiple currency codes use it
-    symbol_to_codes: dict[str, set[str]] = {}
-
-    # Get all currency codes from CLDR by scanning ALL locales
-    # This ensures complete currency coverage (JPY, KRW, CNY, etc.)
-    # Performance: This runs once at initialization, cached via functools.cache
-    all_currencies: set[str] = set()
     all_locale_ids = list(locale_identifiers())
 
-    for locale_id in all_locale_ids:
-        try:
-            locale = Locale.parse(locale_id)
-            if hasattr(locale, "currencies") and locale.currencies:
-                all_currencies.update(locale.currencies.keys())
-        except (UnknownLocaleError, ValueError, AttributeError, KeyError):
-            # Expected failures: invalid locale identifiers, missing currency data
-            continue
+    all_currencies = _collect_all_currencies(
+        all_locale_ids, Locale.parse, UnknownLocaleError,
+    )
 
-    # Step 2: For each currency, find all symbols it uses across locales
-    # Use curated locale sample for symbol lookup (performance + coverage)
-    symbol_lookup_locales = [
-        Locale.parse(lid) for lid in _SYMBOL_LOOKUP_LOCALE_IDS
-        if lid in all_locale_ids
-    ]
+    unambiguous_map, ambiguous_set = _build_symbol_mappings(
+        all_currencies, all_locale_ids,
+        Locale.parse, UnknownLocaleError, get_currency_symbol,
+    )
 
-    for currency_code in all_currencies:
-        for locale in symbol_lookup_locales:
-            try:
-                symbol = get_currency_symbol(currency_code, locale=locale)
+    locale_to_currency = _build_locale_currency_map(
+        all_locale_ids,
+        Locale.parse, UnknownLocaleError, get_territory_currencies,
+    )
 
-                # Only map real symbols (not the currency code itself)
-                # Filter out ISO 4217 codes (3-letter alphabetic) that are just the code itself
-                if (symbol and
-                    symbol != currency_code and
-                    not (len(symbol) == ISO_CURRENCY_CODE_LENGTH
-                         and symbol.isupper() and symbol.isalpha())):
-
-                    if symbol not in symbol_to_codes:
-                        symbol_to_codes[symbol] = set()
-                    symbol_to_codes[symbol].add(currency_code)
-            except (UnknownLocaleError, ValueError, AttributeError, KeyError):
-                # Expected failures: symbol not available for currency/locale combination
-                continue
-
-    # Step 3: Separate unambiguous vs ambiguous symbols
-    unambiguous_map: dict[str, str] = {}
-    ambiguous_set: set[str] = set()
-
-    for symbol, codes in symbol_to_codes.items():
-        if len(codes) == 1:
-            # Unambiguous: symbol maps to exactly one currency
-            unambiguous_map[symbol] = next(iter(codes))
-        else:
-            # Ambiguous: symbol used by multiple currencies
-            ambiguous_set.add(symbol)
-
-    # Step 4: Build locale → default currency mapping from territory data
-    locale_to_currency: dict[str, str] = {}
-
-    # Get all locales with territories
-    for locale_id in all_locale_ids:
-        try:
-            locale = Locale.parse(locale_id)
-            if not locale.territory:
-                continue
-
-            # Get active currencies for this territory
-            # Returns list of currency codes (e.g., ['USD'] for US)
-            territory_currencies = get_territory_currencies(locale.territory)
-
-            # Use first currency as default (typically the official/current one)
-            if territory_currencies and len(territory_currencies) > 0:
-                current_currency = territory_currencies[0]
-
-                # Normalize locale identifier to match our usage
-                # Convert from babel format (en_US) to our format
-                locale_str = str(locale)
-                if "_" in locale_str:  # Has territory
-                    locale_to_currency[locale_str] = current_currency
-
-        except (UnknownLocaleError, ValueError, AttributeError, KeyError):
-            # Expected failures: invalid locale identifiers, missing territory data
-            continue
-
-    return unambiguous_map, ambiguous_set, locale_to_currency, frozenset(all_currencies)
+    return (
+        unambiguous_map, ambiguous_set,
+        locale_to_currency, frozenset(all_currencies),
+    )
 
 
 def _get_currency_maps_fast() -> tuple[
@@ -527,48 +588,13 @@ def _resolve_currency_code(
 
 
 @functools.cache
-def _get_currency_pattern_fast() -> re.Pattern[str]:
-    """Compile fast-tier currency detection regex (no CLDR scan).
+def _get_currency_pattern() -> re.Pattern[str]:
+    """Compile currency detection regex from merged symbol maps.
 
-    Uses only fast-tier symbols for immediate pattern matching without
-    triggering the expensive CLDR scan. Most common currencies (EUR, USD,
-    GBP, JPY, etc.) are covered by the fast tier.
-
-    Thread-safe via functools.cache internal locking.
-
-    Returns:
-        Compiled regex pattern matching:
-        - ISO 4217 3-letter currency codes (e.g., EUR, USD, JPY) - matched first
-        - Fast tier symbols only (unambiguous and ambiguous)
-    """
-    # Use fast tier only - no CLDR scan triggered
-    fast_symbols, fast_ambiguous, _, _ = _get_currency_maps_fast()
-
-    # Collect all fast tier symbols
-    all_symbols: set[str] = set(fast_symbols.keys()) | fast_ambiguous
-
-    # Sort by length descending to match longer symbols first
-    sorted_symbols = sorted(all_symbols, key=len, reverse=True)
-
-    # Escape special regex characters in symbols
-    escaped_symbols = [re.escape(sym) for sym in sorted_symbols]
-
-    # Build pattern: ISO codes FIRST, then symbols
-    if escaped_symbols:
-        symbols_pattern = "|".join(escaped_symbols)
-        pattern = rf"([A-Z]{{{ISO_CURRENCY_CODE_LENGTH}}}|{symbols_pattern})"
-    else:
-        pattern = rf"([A-Z]{{{ISO_CURRENCY_CODE_LENGTH}}})"
-
-    return re.compile(pattern)
-
-
-@functools.cache
-def _get_currency_pattern_full() -> re.Pattern[str]:
-    """Compile full CLDR currency detection regex (lazy-loaded).
-
-    Constructs pattern from complete CLDR-derived symbol maps. Only called
-    when fast-tier pattern fails to match and full coverage is needed.
+    Builds a single pattern from the complete merged symbol set (fast tier +
+    CLDR). Symbols are sorted longest-first to guarantee correct detection of
+    multi-char symbols before their prefixes (e.g., "Rs" before "R", "kr."
+    before "kr", "$AU" before "$").
 
     Thread-safe via functools.cache internal locking.
     Called once per process lifetime; subsequent calls return cached result.
@@ -576,13 +602,13 @@ def _get_currency_pattern_full() -> re.Pattern[str]:
     Returns:
         Compiled regex pattern matching:
         - ISO 4217 3-letter currency codes (e.g., EUR, USD, JPY) - matched first
-        - All symbols from CLDR currency maps (unambiguous and ambiguous)
+        - All symbols from merged currency maps (unambiguous and ambiguous)
 
     Pattern Priority:
         1. ISO codes (3 uppercase ASCII letters) - matched first to avoid
            partial symbol matches (e.g., 'F' matching before 'FFF')
         2. Longer symbols matched before shorter to prevent partial matches
-           (e.g., "kr" before "k", "zl" as complete unit)
+           (e.g., "Rs" before "R", "kr." before "kr")
     """
     symbol_map, ambiguous, _, _ = _get_currency_maps()
 
@@ -590,7 +616,7 @@ def _get_currency_pattern_full() -> re.Pattern[str]:
     all_symbols: set[str] = set(symbol_map.keys()) | ambiguous
 
     # Sort by length descending to match longer symbols first
-    # This prevents "k" matching before "kr" or "Kc"
+    # This prevents "R" matching before "Rs" or "kr" before "kr."
     sorted_symbols = sorted(all_symbols, key=len, reverse=True)
 
     # Escape special regex characters in symbols
@@ -608,6 +634,98 @@ def _get_currency_pattern_full() -> re.Pattern[str]:
     return re.compile(pattern)
 
 
+def _detect_currency_symbol(
+    value: str,
+    locale_code: str,
+) -> tuple[re.Match[str] | None, FrozenFluentError | None]:
+    """Detect currency symbol or ISO code in input string.
+
+    Uses a single longest-match-first regex built from the complete merged
+    symbol set (fast tier + CLDR). This guarantees multi-char symbols are
+    matched before their single-char prefixes (e.g., "Rs" before "R").
+
+    Args:
+        value: Currency string to search.
+        locale_code: BCP 47 locale identifier (for error context).
+
+    Returns:
+        Tuple of (match, error) - exactly one is None.
+    """
+    pattern = _get_currency_pattern()
+    match = pattern.search(value)
+
+    if not match:
+        diagnostic = ErrorTemplate.parse_currency_failed(
+            value, locale_code, "No currency symbol or code found",
+        )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
+        )
+        error = FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        )
+        return (None, error)
+
+    return (match, None)
+
+
+def _parse_currency_amount(
+    value: str,
+    match: re.Match[str],
+    locale: Any,
+    locale_code: str,
+    parse_decimal_fn: Any,
+    number_format_error: type[Exception],
+) -> tuple[Decimal | None, FrozenFluentError | None]:
+    """Extract and parse the numeric amount from a currency string.
+
+    Removes the matched currency symbol/code and parses the remainder
+    as a locale-formatted number.
+
+    Args:
+        value: Original currency string.
+        match: Regex match containing the currency symbol/code.
+        locale: Babel Locale object.
+        locale_code: BCP 47 locale identifier (for error context).
+        parse_decimal_fn: Babel's parse_decimal function.
+        number_format_error: Babel's NumberFormatError class.
+
+    Returns:
+        Tuple of (amount, error) - exactly one is None.
+    """
+    # Remove ONLY the matched occurrence, not all instances.
+    # Prevents corruption if the symbol appears elsewhere in the string.
+    number_str = (
+        value[:match.start(1)] + value[match.end(1):]
+    ).strip()
+
+    try:
+        amount = parse_decimal_fn(number_str, locale=locale)
+    except number_format_error as e:
+        diagnostic = ErrorTemplate.parse_amount_invalid(
+            number_str, value, str(e),
+        )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
+        )
+        error = FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        )
+        return (None, error)
+
+    return (amount, None)
+
+
 def parse_currency(
     value: str,
     locale_code: str,
@@ -622,6 +740,12 @@ def parse_currency(
     Ambiguous currency symbols ($, kr) require explicit default_currency
     or infer_from_locale=True. This prevents silent misidentification
     in multi-currency applications.
+
+    Phases:
+        1. Validate inputs (type check, locale parse)
+        2. Detect currency symbol/code (longest-match-first regex)
+        3. Resolve symbol to ISO 4217 code
+        4. Parse numeric amount
 
     Args:
         value: Currency string (e.g., "100,50 EUR" for lv_LV, "$100" with default_currency)
@@ -638,21 +762,20 @@ def parse_currency(
         BabelImportError: If Babel is not installed
 
     Examples:
-        >>> result, errors = parse_currency("EUR100.50", "en_US")  # Unambiguous symbol
+        >>> result, errors = parse_currency("EUR100.50", "en_US")
         >>> result
         (Decimal('100.50'), 'EUR')
         >>> errors
         ()
 
-        >>> result, errors = parse_currency("100,50 EUR", "lv_LV")  # Unambiguous symbol
+        >>> result, errors = parse_currency("100,50 EUR", "lv_LV")
         >>> result
         (Decimal('100.50'), 'EUR')
 
-        >>> result, errors = parse_currency("USD 1,234.56", "en_US")  # ISO code
+        >>> result, errors = parse_currency("USD 1,234.56", "en_US")
         >>> result
         (Decimal('1234.56'), 'USD')
 
-        >>> # Ambiguous symbols require explicit currency
         >>> result, errors = parse_currency("$100", "en_US", default_currency="USD")
         >>> result
         (Decimal('100'), 'USD')
@@ -665,7 +788,6 @@ def parse_currency(
         >>> result
         (Decimal('100'), 'CAD')
 
-        >>> # Ambiguous symbols without default return error
         >>> result, errors = parse_currency("$100", "en_US")
         >>> result is None
         True
@@ -679,36 +801,28 @@ def parse_currency(
     Thread Safety:
         Thread-safe. Uses Babel (no global state).
     """
-    errors: list[FrozenFluentError] = []
+    # Phase 1: Validate inputs
+    require_babel("parse_currency")
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+    from babel.numbers import NumberFormatError, parse_decimal  # noqa: PLC0415
 
-    # Lazy import to support parser-only installations
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-        from babel.numbers import (  # noqa: PLC0415
-            NumberFormatError,
-            parse_decimal,
-        )
-    except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
-
-        feature = "parse_currency"
-        raise BabelImportError(feature) from e
-
-    # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):
         diagnostic = ErrorTemplate.parse_currency_failed(  # type: ignore[unreachable]
-            str(value), locale_code, f"Expected string, got {type(value).__name__}"
+            str(value),
+            locale_code,
+            f"Expected string, got {type(value).__name__}",
         )
         context = FrozenErrorContext(
             input_value=str(value),
             locale_code=locale_code,
             parse_type="currency",
         )
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
-        )
-        errors.append(error)
-        return (None, tuple(errors))
+        return (None, (FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        ),))
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -719,42 +833,38 @@ def parse_currency(
             locale_code=locale_code,
             parse_type="currency",
         )
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
-        )
-        errors.append(error)
-        return (None, tuple(errors))
+        return (None, (FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        ),))
 
-    # Extract currency symbol or code using tiered pattern matching.
-    # Try fast tier first (no CLDR scan), fall back to full tier if needed.
-    # This provides sub-millisecond cold start for common currencies.
-    fast_pattern = _get_currency_pattern_fast()
-    match = fast_pattern.search(value)
-
-    if not match:
-        # Fast tier didn't match - try full CLDR pattern
-        # This triggers the CLDR scan only when truly needed
-        full_pattern = _get_currency_pattern_full()
-        match = full_pattern.search(value)
-
-    if not match:
+    # Phase 2: Detect currency symbol/code
+    match, detect_error = _detect_currency_symbol(value, locale_code)
+    if detect_error is not None or match is None:
+        if detect_error is not None:
+            return (None, (detect_error,))
+        # Defensive: _detect_currency_symbol contract guarantees
+        # exactly one of (match, error) is non-None.
         diagnostic = ErrorTemplate.parse_currency_failed(
-            value, locale_code, "No currency symbol or code found"
+            value, locale_code, "No currency symbol or code found",
         )
         context = FrozenErrorContext(
             input_value=str(value),
             locale_code=locale_code,
             parse_type="currency",
         )
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
-        )
-        errors.append(error)
-        return (None, tuple(errors))
+        return (None, (FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        ),))
 
     currency_str = match.group(1)
 
-    # Resolve currency code from symbol or ISO code
+    # Phase 3: Resolve symbol to ISO 4217 code
     currency_code, resolution_error = _resolve_currency_code(
         currency_str,
         locale_code,
@@ -763,35 +873,55 @@ def parse_currency(
         infer_from_locale=infer_from_locale,
     )
     if resolution_error is not None:
-        errors.append(resolution_error)
-        return (None, tuple(errors))
-    # Type narrowing: resolution contract guarantees exactly one of (code, error) is None.
-    # At this point, resolution_error is None so currency_code is guaranteed non-None.
-    assert currency_code is not None  # nosec B101 - type narrowing, not runtime validation
-
-    # Remove currency symbol/code to extract number
-    # Use match position to remove ONLY the matched occurrence, not all instances.
-    # This prevents corruption if the symbol appears elsewhere in the string
-    # (e.g., "Price $100 ($5 tax)" should not become "Price 100 ( 5 tax)").
-    number_str = (value[:match.start(1)] + value[match.end(1):]).strip()
-
-    # Parse number using Babel
-    try:
-        amount = parse_decimal(number_str, locale=locale)
-    except NumberFormatError as e:
-        diagnostic = ErrorTemplate.parse_amount_invalid(number_str, value, str(e))
+        return (None, (resolution_error,))
+    if currency_code is None:
+        # Defensive: _resolve_currency_code contract guarantees
+        # exactly one of (code, error) is non-None.
+        diagnostic = ErrorTemplate.parse_currency_failed(
+            value, locale_code, "Currency resolution failed",
+        )
         context = FrozenErrorContext(
             input_value=str(value),
             locale_code=locale_code,
             parse_type="currency",
         )
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
-        )
-        errors.append(error)
-        return (None, tuple(errors))
+        return (None, (FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        ),))
 
-    return ((amount, currency_code), tuple(errors))
+    # Phase 4: Parse numeric amount
+    amount, amount_error = _parse_currency_amount(
+        value,
+        match,
+        locale,
+        locale_code,
+        parse_decimal,
+        NumberFormatError,
+    )
+    if amount_error is not None or amount is None:
+        if amount_error is not None:
+            return (None, (amount_error,))
+        # Defensive: _parse_currency_amount contract guarantees
+        # exactly one of (amount, error) is non-None.
+        diagnostic = ErrorTemplate.parse_currency_failed(
+            value, locale_code, "Amount parsing failed",
+        )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
+        )
+        return (None, (FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        ),))
+
+    return ((amount, currency_code), ())
 
 
 def clear_currency_caches() -> None:
@@ -800,8 +930,7 @@ def clear_currency_caches() -> None:
     Clears cached CLDR currency data from:
     - _build_currency_maps_from_cldr() - symbol-to-currency maps from CLDR scan
     - _get_currency_maps() - merged fast tier + full CLDR maps
-    - _get_currency_pattern_fast() - fast tier regex pattern
-    - _get_currency_pattern_full() - full CLDR regex pattern
+    - _get_currency_pattern() - currency detection regex pattern
 
     Useful for:
     - Memory reclamation in long-running applications
@@ -822,5 +951,4 @@ def clear_currency_caches() -> None:
     """
     _build_currency_maps_from_cldr.cache_clear()
     _get_currency_maps.cache_clear()
-    _get_currency_pattern_fast.cache_clear()
-    _get_currency_pattern_full.cache_clear()
+    _get_currency_pattern.cache_clear()

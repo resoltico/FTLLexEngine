@@ -1,7 +1,7 @@
 """Hypothesis-based property tests for currency parsing.
 
 Functions return tuple[value, errors]:
-- parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FluentParseError, ...]]
+- parse_currency() returns tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]
 - Functions never raise exceptions; errors returned in tuple
 
 Focus on financial precision and edge cases.
@@ -16,6 +16,10 @@ from hypothesis import strategies as st
 
 from ftllexengine.parsing import parse_currency
 from ftllexengine.parsing.currency import _get_currency_maps
+
+# Pre-compute CLDR symbol set for efficient strategy filtering.
+# Cached at import time (CLDR scan happens once per process).
+_CLDR_SYMBOLS: frozenset[str] = frozenset(_get_currency_maps()[0])
 
 
 class TestParseCurrencyHypothesis:
@@ -115,7 +119,7 @@ class TestParseCurrencyHypothesis:
         """Test defensive code: symbol in regex but not in mapping."""
         from unittest.mock import patch
 
-        from ftllexengine.parsing.currency import _get_currency_pattern_full
+        from ftllexengine.parsing.currency import _get_currency_pattern
 
         # Get original maps and create modified version missing € symbol
         original_symbol_map, original_ambiguous, original_locale_map, original_valid_codes = (
@@ -125,7 +129,7 @@ class TestParseCurrencyHypothesis:
         del modified_map["€"]
 
         # Clear pattern cache before test
-        _get_currency_pattern_full.cache_clear()
+        _get_currency_pattern.cache_clear()
 
         # Mock _get_currency_maps to return modified maps
         mock_return = (
@@ -136,7 +140,7 @@ class TestParseCurrencyHypothesis:
             return_value=mock_return,
         ):
             # Clear cache again after patching to force regeneration
-            _get_currency_pattern_full.cache_clear()
+            _get_currency_pattern.cache_clear()
 
             # Now € is in the regex but not in the map - should return error
             result, errors = parse_currency("€100.50", "en_US")
@@ -144,7 +148,7 @@ class TestParseCurrencyHypothesis:
             assert result is None
 
         # Clean up - restore cache
-        _get_currency_pattern_full.cache_clear()
+        _get_currency_pattern.cache_clear()
 
     @given(
         invalid_number=st.one_of(
@@ -280,7 +284,7 @@ class TestParseCurrencyHypothesis:
                 # Exclude CLDR-derived currency symbols (many single-letter symbols exist)
                 # e.g., 'F' -> FRF, 'R' -> ZAR, 'K' -> various currencies
                 and not any(
-                    symbol in x for symbol in _get_currency_maps()[0]
+                    symbol in x for symbol in _CLDR_SYMBOLS
                 )
             )
         ),
@@ -504,7 +508,7 @@ class TestCurrencyInferFromLocale:
     )
     @settings(max_examples=100)
     def test_infer_from_locale_with_us_dollar(self, amount: Decimal) -> None:
-        """COVERAGE: infer_from_locale=True infers USD from en_US."""
+        """infer_from_locale=True resolves $ to USD from en_US locale."""
         currency_str = f"${amount}"
 
         result, errors = parse_currency(currency_str, "en_US", infer_from_locale=True)
@@ -526,7 +530,7 @@ class TestCurrencyInferFromLocale:
     )
     @settings(max_examples=100)
     def test_infer_from_locale_with_canadian_dollar(self, amount: Decimal) -> None:
-        """COVERAGE: infer_from_locale=True infers CAD from en_CA."""
+        """infer_from_locale=True resolves $ to CAD from en_CA locale."""
         currency_str = f"${amount}"
 
         result, errors = parse_currency(currency_str, "en_CA", infer_from_locale=True)
@@ -537,10 +541,11 @@ class TestCurrencyInferFromLocale:
         assert currency_code == "CAD"
 
     def test_infer_from_locale_uses_default_for_ambiguous(self) -> None:
-        """COVERAGE: infer_from_locale with ambiguous symbol uses default.
+        """Language-only locale falls through to ambiguous symbol defaults.
 
-        Ambiguous symbols now have defaults in _AMBIGUOUS_SYMBOL_DEFAULTS.
-        When locale doesn't have a specific mapping, the default is used.
+        Locale "en" (no territory) has no exact or prefix match in
+        _AMBIGUOUS_SYMBOL_LOCALE_RESOLUTION, so falls through to
+        _AMBIGUOUS_SYMBOL_DEFAULTS["$"] = "USD".
         """
         currency_str = "$100.00"
 
@@ -554,7 +559,7 @@ class TestCurrencyInferFromLocale:
         assert result[1] == "USD"  # Falls back to default
 
     def test_ambiguous_symbol_no_default_returns_error(self) -> None:
-        """COVERAGE: Ambiguous symbol without default returns error."""
+        """Ambiguous symbol without default_currency or inference returns error."""
         currency_str = "$100.00"
 
         # No default_currency, no infer_from_locale - should return error
