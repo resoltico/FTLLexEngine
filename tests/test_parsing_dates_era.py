@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.core.babel_compat import _check_babel_available
+import ftllexengine.core.babel_compat as _bc
 from ftllexengine.parsing.dates import (
     _babel_to_strptime,
     _extract_era_strings_from_babel_locale,
@@ -331,7 +331,7 @@ class TestGetLocalizedEraStringsImportError:
     def test_returns_empty_tuple_without_babel(self) -> None:
         """Returns empty tuple when Babel is not available."""
         _get_localized_era_strings.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         original_import = builtins.__import__
 
@@ -356,12 +356,12 @@ class TestGetLocalizedEraStringsImportError:
             assert result == ()
         finally:
             _get_localized_era_strings.cache_clear()
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
     def test_import_error_result_is_cached(self) -> None:
         """ImportError result is cached (only one import attempt)."""
         _get_localized_era_strings.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         original_import = builtins.__import__
         import_call_count = 0
@@ -392,7 +392,7 @@ class TestGetLocalizedEraStringsImportError:
             assert import_call_count == 1
         finally:
             _get_localized_era_strings.cache_clear()
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
     @given(
         locale_code=st.text(
@@ -413,7 +413,7 @@ class TestGetLocalizedEraStringsImportError:
         without raising exception.
         """
         _get_localized_era_strings.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         has_separator = "_" in locale_code or "-" in locale_code
         event(f"has_separator={has_separator}")
@@ -441,7 +441,7 @@ class TestGetLocalizedEraStringsImportError:
             assert result == ()
         finally:
             _get_localized_era_strings.cache_clear()
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 # ============================================================================

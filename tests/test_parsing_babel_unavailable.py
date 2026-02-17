@@ -19,10 +19,8 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
-from ftllexengine.core.babel_compat import (
-    BabelImportError,
-    _check_babel_available,
-)
+import ftllexengine.core.babel_compat as _bc
+from ftllexengine.core.babel_compat import BabelImportError
 
 
 @pytest.fixture
@@ -40,7 +38,7 @@ def mock_babel_unavailable() -> Generator[None]:
         del sys.modules[name]
 
     # Clear require_babel's availability cache
-    _check_babel_available.cache_clear()
+    _bc._babel_available = None
 
     # Block babel from being imported
     with patch.dict(sys.modules, {"babel": None}):
@@ -48,7 +46,7 @@ def mock_babel_unavailable() -> Generator[None]:
 
     # Restore babel modules
     sys.modules.update(babel_modules)
-    _check_babel_available.cache_clear()
+    _bc._babel_available = None
 
 
 def _make_import_blocker(blocked_prefix: str = "babel") -> Callable[..., object]:
@@ -143,7 +141,7 @@ class TestParseDateBabelUnavailable:
         from ftllexengine.parsing.dates import _get_date_patterns
 
         _get_date_patterns.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         mock_import = _make_import_blocker("babel")
 
@@ -156,7 +154,7 @@ class TestParseDateBabelUnavailable:
 
             assert "parse_date" in str(exc_info.value)
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 class TestParseDatetimeBabelUnavailable:
@@ -167,7 +165,7 @@ class TestParseDatetimeBabelUnavailable:
         from ftllexengine.parsing.dates import _get_datetime_patterns
 
         _get_datetime_patterns.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         mock_import = _make_import_blocker("babel")
 
@@ -180,7 +178,7 @@ class TestParseDatetimeBabelUnavailable:
 
             assert "parse_datetime" in str(exc_info.value)
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 class TestParseNumberBabelUnavailable:
@@ -190,7 +188,7 @@ class TestParseNumberBabelUnavailable:
         """parse_number raises BabelImportError when Babel unavailable."""
         from ftllexengine.parsing.numbers import parse_number
 
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
         mock_import = _make_import_blocker("babel")
 
         try:
@@ -202,7 +200,7 @@ class TestParseNumberBabelUnavailable:
 
             assert "parse_number" in str(exc_info.value)
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 class TestParseDecimalBabelUnavailable:
@@ -212,7 +210,7 @@ class TestParseDecimalBabelUnavailable:
         """parse_decimal raises BabelImportError when Babel unavailable."""
         from ftllexengine.parsing.numbers import parse_decimal
 
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
         mock_import = _make_import_blocker("babel")
 
         try:
@@ -224,7 +222,7 @@ class TestParseDecimalBabelUnavailable:
 
             assert "parse_decimal" in str(exc_info.value)
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 class TestResolverPluralBabelUnavailable:

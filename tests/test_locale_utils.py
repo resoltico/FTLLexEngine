@@ -94,13 +94,11 @@ class TestGetBabelLocale:
         saved_babel = sys.modules.get("babel")
         saved_locale = sys.modules.get("babel.core")
 
-        # Clear lru_cache for get_babel_locale and babel_compat's _check_babel_available
+        # Clear caches to force re-evaluation
         get_babel_locale.cache_clear()
-        from ftllexengine.core.babel_compat import (  # noqa: PLC0415
-            _check_babel_available,
-        )
+        import ftllexengine.core.babel_compat as _bc  # noqa: PLC0415
 
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
             if name == "babel" or name.startswith("babel."):
@@ -131,9 +129,9 @@ class TestGetBabelLocale:
                 sys.modules["babel"] = saved_babel
             if saved_locale is not None:
                 sys.modules["babel.core"] = saved_locale
-            # Clear cache again to reset state
+            # Reset state for subsequent tests
             get_babel_locale.cache_clear()
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 class TestGetSystemLocale:

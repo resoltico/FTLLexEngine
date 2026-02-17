@@ -24,7 +24,7 @@ from babel import Locale
 from hypothesis import event, given
 from hypothesis import strategies as st
 
-from ftllexengine.core.babel_compat import _check_babel_available
+import ftllexengine.core.babel_compat as _bc
 from ftllexengine.parsing.dates import (
     _babel_to_strptime,
     _extract_datetime_separator,
@@ -429,7 +429,7 @@ class TestGetDatePatternsExceptions:
     def test_raises_babel_import_error_when_babel_missing(self) -> None:
         """Raises BabelImportError when Babel unavailable."""
         _get_date_patterns.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         original_import = builtins.__import__
 
@@ -456,12 +456,12 @@ class TestGetDatePatternsExceptions:
                 assert exc_info.typename == "BabelImportError"
                 assert "parse_date" in str(exc_info.value)
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
     def test_babel_import_error_feature_name(self) -> None:
         """BabelImportError contains correct feature name."""
         _get_date_patterns.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         babel_modules_backup = {}
         babel_keys = [
@@ -501,7 +501,7 @@ class TestGetDatePatternsExceptions:
                 if value is not None:
                     sys.modules[key] = value
             _get_date_patterns.cache_clear()
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 # ============================================================================
@@ -643,7 +643,7 @@ class TestGetDatetimePatternsExceptions:
         """Raises BabelImportError when Babel unavailable."""
         _get_datetime_patterns.cache_clear()
         _get_date_patterns.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         original_import = builtins.__import__
 
@@ -670,13 +670,13 @@ class TestGetDatetimePatternsExceptions:
                 assert exc_info.typename == "BabelImportError"
                 assert "parse_datetime" in str(exc_info.value)
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
     def test_babel_import_error_feature_name(self) -> None:
         """BabelImportError contains correct feature name."""
         _get_datetime_patterns.cache_clear()
         _get_date_patterns.cache_clear()
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
 
         babel_modules_backup = {}
         babel_keys = [
@@ -717,7 +717,7 @@ class TestGetDatetimePatternsExceptions:
                     sys.modules[key] = value
             _get_datetime_patterns.cache_clear()
             _get_date_patterns.cache_clear()
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 # ============================================================================

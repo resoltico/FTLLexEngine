@@ -1085,12 +1085,10 @@ class TestBabelImportError:
         self,
     ) -> None:
         """parse_currency raises BabelImportError without Babel."""
-        from ftllexengine.core.babel_compat import (
-            BabelImportError,
-            _check_babel_available,
-        )
+        import ftllexengine.core.babel_compat as _bc
+        from ftllexengine.core.babel_compat import BabelImportError
 
-        _check_babel_available.cache_clear()
+        _bc._babel_available = None
         original_import = builtins.__import__
 
         def mock_import(
@@ -1111,7 +1109,7 @@ class TestBabelImportError:
                 error_msg = str(exc_info.value)
                 assert "parse_currency" in error_msg
         finally:
-            _check_babel_available.cache_clear()
+            _bc._babel_available = None
 
 
 # ---------------------------------------------------------------------------

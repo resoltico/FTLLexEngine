@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.108.0"
+version: "0.111.0"
 domain: INDEX
-updated: "2026-02-15"
+updated: "2026-02-17"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -120,11 +120,11 @@ from ftllexengine.validation import validate_resource
 
 ### Core Utilities (`from ftllexengine.core import ...`)
 ```python
-from ftllexengine.core import (
-    DepthGuard, depth_clamp,               # Depth limiting
+from ftllexengine.core import DepthGuard, depth_clamp  # Depth limiting
+from ftllexengine.core.babel_compat import (
     BabelImportError, require_babel,        # Babel availability checking
-    ErrorCategory, FrozenErrorContext,       # Error types (re-exports)
-    FrozenFluentError,                      # Immutable error (re-export)
+    is_babel_available, get_locale_class,   # Babel introspection
+    get_cldr_version,                       # CLDR version
 )
 ```
 

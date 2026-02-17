@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.109.0"
+version: "0.111.0"
 domain: reference
-updated: "2026-02-16"
+updated: "2026-02-17"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -822,7 +822,7 @@ from ftllexengine import (
     ErrorCategory,            # Error classification: REFERENCE, RESOLUTION, CYCLIC, PARSE, FORMATTING
 )
 
-from ftllexengine.core import BabelImportError  # Raised when Babel not installed
+from ftllexengine.core.babel_compat import BabelImportError  # Raised when Babel not installed
 ```
 
 **Note**: `FrozenFluentError` instances are returned in the errors tuple, NOT raised. Use `error.category` to classify errors (e.g., `ErrorCategory.REFERENCE` for missing messages). `BabelImportError` is raised when parsing functions are called without Babel installed.

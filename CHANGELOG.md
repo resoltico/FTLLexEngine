@@ -5,14 +5,30 @@ RETRIEVAL_HINTS:
 -->
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.110.0] - unreleased
+## [0.111.0] - 2026-02-18
+
+### Changed (BREAKING)
+
+- **`core/` domain hardened** (REFACTOR-CORE-HARDEN-001):
+  - `DepthGuard` API reduced to two safe patterns: context manager (`with guard:`) and explicit `check()`. Removed `increment()`, `decrement()`, `reset()`, `is_exceeded()`, and `depth` property -- these bypassed safety invariants (increment without limit check, silent floor on decrement, mid-operation state reset)
+  - `babel_compat` dead production API removed: `BabelNumbersProtocol`, `BabelDatesProtocol`, `get_babel_numbers()`, `get_babel_dates()`, `get_unknown_locale_error()` -- zero production consumers; protocols typed modules as class instances
+  - `core/errors.py` re-export shim deleted -- zero consumers; all code imports directly from `ftllexengine.diagnostics`
+  - `core/__init__.py` exports reduced to `DepthGuard` and `depth_clamp` only
+  - `babel_compat._check_babel_available` changed from `lru_cache` to module-level sentinel -- callers that used `.cache_clear()` must now reset `_babel_available = None` directly
+  - Location: `core/depth_guard.py`, `core/babel_compat.py`, `core/__init__.py`
+
+### Fixed
+
+- **`DepthGuard.__post_init__` used `object.__setattr__` on non-frozen dataclass** (BUG-DEPTHGUARD-SETATTR-001):
+  - Cargo-culted from frozen dataclass pattern; replaced with plain attribute assignment
+  - Location: `core/depth_guard.py`
+
+## [0.110.0] - 2026-02-17
 
 ### Changed
 
@@ -3526,6 +3542,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.111.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.111.0
 [0.110.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.110.0
 [0.109.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.109.0
 [0.108.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.108.0

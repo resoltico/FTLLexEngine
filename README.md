@@ -226,13 +226,13 @@ contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 
 ```mermaid
 flowchart TB
-    A["German Engineer<br>`12.450,00 EUR`"] --> PA["`parse_currency()`<br>de_DE"]
-    B["Colombian Agronomist<br>`45.000.000 COP`"] --> PB["`parse_currency()`<br>es_CO"]
-    C["Japanese Technician<br>`2026年3月15日`"] --> PC["`parse_date()`<br>ja_JP"]
+    A["German Engineer<br>12.450,00 EUR"] --> PA["parse_currency()<br>de_DE"]
+    B["Colombian Agronomist<br>45.000.000 COP"] --> PB["parse_currency()<br>es_CO"]
+    C["Japanese Technician<br>2026年3月15日"] --> PC["parse_date()<br>ja_JP"]
 
-    PA --> RA["`Decimal('12450.00')`<br>EUR"]
-    PB --> RB["`Decimal('45000000')`<br>COP"]
-    PC --> RC["`date(2026, 3, 15)`"]
+    PA --> RA["Decimal('12450.00')<br>EUR"]
+    PB --> RB["Decimal('45000000')<br>COP"]
+    PC --> RC["date(2026, 3, 15)"]
 
     RA & RB & RC --> SYS[("Inventory System<br>Exact Python types")]
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.111.0"
 domain: ERRORS
-updated: "2026-02-10"
+updated: "2026-02-17"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -297,7 +297,7 @@ class BabelImportError(ImportError):
 - Purpose: Raised when Babel is required but not installed.
 - Behavior: Provides installation instructions in error message.
 - Raised by: `parse_number()`, `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`.
-- Import: `from ftllexengine.core import BabelImportError`
+- Import: `from ftllexengine.core.babel_compat import BabelImportError`
 
 ---
 
