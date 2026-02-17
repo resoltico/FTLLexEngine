@@ -2,7 +2,7 @@
 afad: "3.2"
 version: "0.104.0"
 domain: fuzzing
-updated: "2026-02-06"
+updated: "2026-02-16"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -707,7 +707,7 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 All fuzzers import shared infrastructure from `fuzz_common.py` (`BaseFuzzerState`, metrics, reporting) and compose domain-specific metrics via separate dataclasses:
 
 - `BaseFuzzerState` dataclass with bounded deques (shared via `fuzz_common`)
-- Domain metrics: `RoundtripMetrics`, `SerializerMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics`, `IntegrityMetrics`, `CacheMetrics`, `BuiltinsMetrics`, `BridgeMetrics`, `FiscalMetrics` (per-fuzzer)
+- Domain metrics: `RoundtripMetrics`, `SerializerMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics`, `IntegrityMetrics`, `CacheMetrics`, `BuiltinsMetrics`, `BridgeMetrics`, `FiscalMetrics`, `ISOMetrics`, `CurrencyMetrics`, `NumbersMetrics`, `OOMMetrics`, `PluralMetrics`, `ScopeMetrics` (per-fuzzer)
 - psutil RSS memory tracking with leak detection (quartile comparison)
 - Performance percentiles: min/mean/median/p95/p99/max
 - Per-pattern wall-time accumulation

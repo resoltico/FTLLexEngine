@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.108.0"
+version: "0.109.0"
 domain: "architecture"
-updated: "2026-02-15"
+updated: "2026-02-16"
 route: "/docs/data-integrity"
 ---
 
@@ -26,11 +26,12 @@ For financial applications, silent data corruption is catastrophic. The system i
 
 ```
 +------------------------------------------------------------------+
-|                        FluentBundle                               |
+|                   FluentBundle / FluentLocalization                |
 |  +------------------------------------------------------------+  |
 |  |                     Strict Mode Layer                       |  |
 |  |  Responsibility: Fail-fast on ANY formatting error         |  |
 |  |  Raises: FormattingIntegrityError                          |  |
+|  |  Scope: Both FluentBundle AND FluentLocalization            |  |
 |  +------------------------------------------------------------+  |
 |                               |                                   |
 |  +------------------------------------------------------------+  |
@@ -43,6 +44,7 @@ For financial applications, silent data corruption is catastrophic. The system i
 |  |                     Cache Layer                             |  |
 |  |  Responsibility: Checksum-verified format result caching   |  |
 |  |  Type: IntegrityCache (BLAKE2b-128, write-once option)     |  |
+|  |  Integrity: Independent of strict mode (always-on default) |  |
 |  +------------------------------------------------------------+  |
 |                               |                                   |
 |  +------------------------------------------------------------+  |
@@ -57,7 +59,7 @@ For financial applications, silent data corruption is catastrophic. The system i
 
 ### Strict Mode Layer
 
-**Responsibility:** Provide fail-fast behavior at bundle level.
+**Responsibility:** Provide fail-fast behavior at both bundle and localization levels.
 
 **Design Decision:** Strict mode is opt-in (`strict=False` default), not the only mode.
 
@@ -78,9 +80,24 @@ Some applications cannot tolerate silent fallbacks. A missing variable returning
 
 **Activation:**
 - `FluentBundle(..., strict=True)` - explicit opt-in
+- `FluentLocalization(..., strict=True)` - propagates to all bundles
 - Combine with `cache=CacheConfig()` for caching
 
-**Invariant:** When `strict=True`, NO formatting operation returns a fallback value. Every error path raises `FormattingIntegrityError`.
+**Invariant:** When `strict=True`, NO formatting operation returns a fallback value. Every error path raises `FormattingIntegrityError`. This invariant holds at both levels:
+- `FluentBundle.format_pattern()` - raises on resolver errors
+- `FluentLocalization.format_value()` / `format_pattern()` - raises on missing messages across all locales
+
+### Strict Mode vs Cache Integrity
+
+These are independent concerns controlled by separate parameters:
+
+| Parameter | Controls | Default |
+|:----------|:---------|:--------|
+| `FluentBundle(strict=...)` | Formatting error handling (raise vs return fallback) | `False` |
+| `FluentLocalization(strict=...)` | Propagated to each bundle | `False` |
+| `CacheConfig(integrity_strict=...)` | Cache corruption response (raise vs evict) | `True` |
+
+**Rationale:** Cache corruption is a system-level integrity failure independent of how an application handles formatting errors. A non-strict application (returning fallbacks for missing translations) should still detect and report cache corruption. The default `integrity_strict=True` ensures this.
 
 ### Error Layer (FrozenFluentError)
 
@@ -111,6 +128,8 @@ The BLAKE2b-128 content hash includes ALL error fields for complete audit trail 
 
 **Sentinel Bytes:** None values are distinguished from empty values using sentinel bytes, preventing collision between `span=None` and `span=SourceSpan(0, 0, 0, 0)`.
 
+**Freeze Ordering:** `Exception.__init__` is called before `_frozen` is set to `True`. This ensures compatibility with alternative Python runtimes (PyPy, free-threaded builds) where `Exception.__init__` may route through `__setattr__`.
+
 **Invariants:**
 - All attributes frozen after `__init__` completes
 - `verify_integrity()` always returns True for uncorrupted errors
@@ -131,10 +150,25 @@ The BLAKE2b-128 content hash includes ALL error fields for complete audit trail 
 |:---------|:----------|
 | BLAKE2b-128 checksums | Fast cryptographic hash, 16-byte overhead per entry |
 | Write-once option | Prevents data races from overwriting cached results |
-| Strict/non-strict modes | Fail-fast vs. silent eviction for different use cases |
+| Independent integrity_strict | Cache corruption detection decoupled from formatting strict mode |
 | Audit logging | Compliance and debugging for financial systems |
 | Sequence numbers | Monotonic ordering for audit trail integrity |
 | Idempotent write detection | Content-hash comparison for thundering herd tolerance |
+| Node budget protection | `_MAX_HASHABLE_NODES` prevents DAG expansion attacks on all paths |
+
+**Configuration via CacheConfig:**
+
+`CacheConfig` validates all parameters at construction time (fail-fast). Invalid values raise `ValueError` immediately rather than deferring to `IntegrityCache.__init__`.
+
+```python
+config = CacheConfig(
+    size=500,
+    write_once=True,
+    integrity_strict=True,   # Cache corruption: raise (default)
+    enable_audit=True,
+)
+bundle = FluentBundle("en", cache=config, strict=True)
+```
 
 **Checksum Composition:**
 
@@ -160,7 +194,7 @@ The cache computes a **content-only hash** (excluding metadata like `created_at`
 2. Cache computes content hash of new entry: `BLAKE2b-128(formatted, errors)`
 3. Compares with existing entry's content hash (constant-time via `hmac.compare_digest`)
 4. If identical: increment `idempotent_writes` counter, return silently (benign race)
-5. If different: TRUE conflict - raise `WriteConflictError` (strict) or log (non-strict)
+5. If different: TRUE conflict - raise `WriteConflictError` (integrity_strict) or log (non-strict)
 
 This allows write-once mode to work correctly under load without false-positive conflicts.
 
@@ -195,6 +229,7 @@ This defense-in-depth approach detects corruption at any level of the data hiera
 - Corrupted entries are never returned (either raise or evict)
 - Sequence numbers never decrease, even after `clear()`
 - Metadata tampering is detected by checksum verification
+- Node budget enforced on all recursive `_make_hashable` paths (including Mapping ABC)
 
 **Trade-offs:**
 - Checksum verification adds ~0.1 microseconds per `get()` - acceptable for financial correctness
@@ -214,15 +249,39 @@ This defense-in-depth approach detects corruption at any level of the data hiera
 **Hierarchy:**
 ```
 DataIntegrityError (base - immutable after construction)
-├── CacheCorruptionError       - Checksum mismatch detected
-├── FormattingIntegrityError   - Strict mode formatting failure
-├── ImmutabilityViolationError - Mutation attempt on frozen object
-├── IntegrityCheckFailedError  - Generic verification failure
-├── SyntaxIntegrityError       - Strict mode syntax error during resource loading
-└── WriteConflictError         - Write-once cache violation
++-- CacheCorruptionError       - Checksum mismatch detected
++-- FormattingIntegrityError   - Strict mode formatting failure
++-- ImmutabilityViolationError - Mutation attempt on frozen object
++-- IntegrityCheckFailedError  - Generic verification failure
++-- SyntaxIntegrityError       - Strict mode syntax error during resource loading
++-- WriteConflictError         - Write-once cache violation
 ```
 
 **Invariant:** All integrity exceptions carry `IntegrityContext` for post-mortem analysis.
+
+## Concurrency Model
+
+### Lock Architecture
+
+| Component | Lock Type | Rationale |
+|:----------|:----------|:----------|
+| `FluentBundle._rwlock` | Custom `RWLock` | High-concurrency format operations; read-heavy; writer-preference |
+| `FluentLocalization._lock` | Custom `RWLock` | Concurrent format reads; exclusive writes for add_resource/add_function |
+| `IntegrityCache._lock` | `threading.RLock` | Short operations; LRU requires mutation on every read hit |
+| `LocaleContext._cache_lock` | `threading.RLock` | Class-level LRU cache; infrequent writes |
+
+### Context Manager Semantics
+
+Both `FluentBundle` and `FluentLocalization` use identical context manager semantics: cache invalidation tracking.
+
+```python
+with bundle_or_l10n:
+    bundle_or_l10n.add_resource(...)   # Sets _modified_in_context = True
+    bundle_or_l10n.format_pattern(...) # Read-only, no flag change
+# On exit: caches cleared only if modified (conditional invalidation)
+```
+
+This avoids unnecessary cache invalidation for read-only contexts while ensuring consistency after mutations.
 
 ## Security Model
 
@@ -243,12 +302,14 @@ DataIntegrityError (base - immutable after construction)
 | Type confusion in cache keys | Type-tagging distinguishes `1` from `1.0` from `True` |
 | Decimal scale loss | `str(Decimal)` preserves scale for CLDR plural rules |
 | Nested error corruption | Recursive verification checks entry AND all contained errors |
+| DAG expansion in cache keys | Node budget (`_MAX_HASHABLE_NODES`) on all recursive paths |
 
 ### Trust Boundaries
 
 1. **External input** (FTL source, format arguments): Validated at parser/bundle boundary
 2. **Cached data**: Verified on every read via checksum
 3. **Error objects**: Immutable after construction
+4. **Configuration**: Validated at `CacheConfig` construction (fail-fast)
 
 ## Performance Characteristics
 
@@ -257,6 +318,7 @@ DataIntegrityError (base - immutable after construction)
 | Error hash computation | ~0.1 microseconds | One-time at construction |
 | Cache checksum verification | ~0.1 microseconds | Correctness over speed for financial |
 | Slots vs dict | ~200 bytes saved per error | Net memory reduction |
+| RWLock vs RLock | Negligible for writes, better for reads | Concurrent format operations scale linearly |
 
 ## References
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.108.0"
+version: "0.109.0"
 domain: RUNTIME
-updated: "2026-02-15"
+updated: "2026-02-16"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
@@ -1220,7 +1220,7 @@ class IntegrityCache:
 | `max_entry_weight` | `int` | N | Maximum memory weight per entry in approximate bytes. |
 | `max_errors_per_entry` | `int` | N | Maximum errors stored per entry. |
 | `write_once` | `bool` | N | Reject updates to existing keys (data race prevention). |
-| `strict` | `bool` | N | Raise exceptions on corruption instead of silent eviction. |
+| `strict` | `bool` | N | Raise on corruption/write conflicts. Sourced from `CacheConfig.integrity_strict`. |
 | `enable_audit` | `bool` | N | Maintain operation history for compliance. |
 | `max_audit_entries` | `int` | N | Maximum audit log entries before oldest eviction. |
 
@@ -1237,6 +1237,7 @@ class IntegrityCache:
   - Collections: Supports Sequence/Mapping ABCs (UserList, ChainMap) in addition to list/tuple/dict.
 - Idempotent Writes: When `write_once=True`, concurrent writes with identical content are treated as idempotent success (not conflict). Content comparison uses `IntegrityCacheEntry.content_hash` which excludes metadata (created_at, sequence).
 - Import: `from ftllexengine.runtime.cache import IntegrityCache`
+- Independence: `strict` controls cache corruption response independently of `FluentBundle.strict` (formatting behavior). Sourced from `CacheConfig.integrity_strict`.
 - Access: Typically accessed via FluentBundle cache parameters, not directly constructed.
 
 ---

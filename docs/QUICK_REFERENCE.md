@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.108.0"
+version: "0.109.0"
 domain: reference
-updated: "2026-02-15"
+updated: "2026-02-16"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -397,6 +397,7 @@ l10n.get_babel_locale() -> str
 **Properties**:
 ```python
 l10n.locales -> tuple[str, ...]  # Read-only
+l10n.strict -> bool  # Read-only
 l10n.cache_config -> CacheConfig | None  # Read-only
 l10n.cache_enabled -> bool  # Read-only
 ```
@@ -687,7 +688,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 ## Thread Safety
 
-**FluentBundle is always thread-safe**. All public methods are synchronized via internal RWLock (readers-writer lock). Multiple concurrent read operations execute in parallel; write operations acquire exclusive access.
+**FluentBundle and FluentLocalization are always thread-safe**. All public methods are synchronized via internal RWLock (readers-writer lock). Multiple concurrent read operations execute in parallel; write operations acquire exclusive access.
 
 ### Pattern 1: Shared Bundle (Recommended)
 

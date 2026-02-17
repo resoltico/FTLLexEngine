@@ -233,7 +233,7 @@ class TestWriteOnceStrictMode:
 
         assert "write-once violation" in str(exc_info.value).lower()
         assert exc_info.value.existing_seq == 1
-        assert exc_info.value.new_seq == 1  # Sequence before attempted put
+        assert exc_info.value.new_seq == 2  # Would-be sequence of rejected entry
 
     def test_write_once_preserves_original_value(self) -> None:
         """Write-once rejection preserves original cached value."""

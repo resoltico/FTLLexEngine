@@ -120,11 +120,16 @@ class FrozenFluentError(Exception):
         content_hash = self._compute_content_hash(message, category, diagnostic, context)
         object.__setattr__(self, "_content_hash", content_hash)
 
+        # Initialize Exception base class BEFORE freezing.
+        # Exception.__init__ sets self.args internally. On CPython this
+        # bypasses __setattr__, but alternative runtimes (PyPy,
+        # free-threaded builds) may route through Python-level
+        # __setattr__, which would raise ImmutabilityViolationError
+        # if _frozen were already True.
+        super().__init__(message)
+
         # Freeze the object - all subsequent mutations will raise
         object.__setattr__(self, "_frozen", True)
-
-        # Initialize Exception base class
-        super().__init__(message)
 
     @staticmethod
     def _hash_string(h: hashlib.blake2b, s: str) -> None:

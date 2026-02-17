@@ -644,7 +644,7 @@ class IntegrityCache:
                         msg,
                         context=context,
                         existing_seq=existing.sequence,
-                        new_seq=self._sequence,
+                        new_seq=self._sequence + 1,
                     )
                 return
 
@@ -943,12 +943,11 @@ class IntegrityCache:
                 # Must be after specific type checks (dict, list, tuple, str).
                 if isinstance(value, Mapping):
                     # Type-tag Mapping ABC to distinguish from dict.
-                    # str(ChainMap({"a": 1})) = "ChainMap({'a': 1})" vs str(dict) = "{'a': 1}"
                     return (
                         "__mapping__",
                         tuple(
                             sorted(
-                                (k, IntegrityCache._make_hashable(v, depth - 1))
+                                (k, _recurse(v))
                                 for k, v in value.items()
                             )
                         ),

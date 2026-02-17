@@ -24,6 +24,7 @@ import pytest
 from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.localization import (
     FluentLocalization,
     LoadStatus,
@@ -404,8 +405,80 @@ class TestIntrospectTerm:
 
 
 
+class TestStrictMode:
+    """Tests for FluentLocalization strict mode (fail-fast on errors)."""
+
+    def test_strict_property_reflects_constructor(self) -> None:
+        """strict property returns constructor value."""
+        l10n_strict = FluentLocalization(["en"], strict=True)
+        l10n_default = FluentLocalization(["en"])
+        assert l10n_strict.strict is True
+        assert l10n_default.strict is False
+
+    def test_strict_raises_on_missing_message(self) -> None:
+        """Strict mode raises FormattingIntegrityError for missing messages."""
+        l10n = FluentLocalization(["en"], strict=True)
+        l10n.add_resource("en", "hello = Hello\n")
+
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_value("nonexistent")
+
+        err = exc_info.value
+        assert err.message_id == "nonexistent"
+        assert err.fallback_value is not None
+        assert len(err.fluent_errors) == 1
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.component == "localization"
+        assert ctx.operation == "format_pattern"
+
+    def test_strict_raises_on_empty_message_id(self) -> None:
+        """Strict mode raises for empty/invalid message ID."""
+        l10n = FluentLocalization(["en"], strict=True)
+        l10n.add_resource("en", "hello = Hello\n")
+
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_value("")
+
+        err = exc_info.value
+        assert err.message_id == ""
+        assert len(err.fluent_errors) == 1
+
+    def test_strict_format_pattern_raises_on_missing(self) -> None:
+        """Strict mode raises via format_pattern path."""
+        l10n = FluentLocalization(["en"], strict=True)
+        l10n.add_resource("en", "hello = Hello\n")
+
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_pattern("nonexistent")
+
+        assert exc_info.value.message_id == "nonexistent"
+
+    def test_strict_error_context_fields(self) -> None:
+        """Strict error includes component, operation, and count metadata."""
+        l10n = FluentLocalization(["en"], strict=True)
+
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_value("missing")
+
+        err = exc_info.value
+        assert "failed:" in str(err)
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.actual == "<1 error>"
+        assert ctx.expected == "<no errors>"
+
+    def test_strict_non_strict_returns_fallback(self) -> None:
+        """Non-strict mode returns fallback value without raising."""
+        l10n = FluentLocalization(["en"], strict=False)
+
+        result, errors = l10n.format_value("nonexistent")
+        assert "nonexistent" in result
+        assert len(errors) == 1
+
+
 class TestContextManager:
-    """Tests for FluentLocalization context manager protocol."""
+    """Tests for FluentLocalization context manager cache tracking."""
 
     def test_enter_returns_self(self) -> None:
         """__enter__ returns the FluentLocalization instance."""
@@ -413,16 +486,16 @@ class TestContextManager:
         with l10n as ctx:
             assert ctx is l10n
 
-    def test_lock_held_inside_context(self) -> None:
-        """Lock is acquired inside context and released after."""
+    def test_usable_inside_context(self) -> None:
+        """Formatting works inside context manager."""
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "msg = Hello\n")
         with l10n:
             result, _ = l10n.format_value("msg")
             assert result == "Hello"
 
-    def test_lock_released_on_exception(self) -> None:
-        """Lock released even if exception occurs in context."""
+    def test_usable_after_exception_in_context(self) -> None:
+        """Localization remains usable after exception in context."""
         l10n = FluentLocalization(["en"])
         try:
             with l10n:
@@ -430,10 +503,78 @@ class TestContextManager:
                 raise ValueError(msg)
         except ValueError:
             pass
-        # Should not deadlock
         l10n.add_resource("en", "msg = Works\n")
         result, _ = l10n.format_value("msg")
         assert result == "Works"
+
+    def test_add_resource_in_context_clears_cache_on_exit(self) -> None:
+        """add_resource inside with block clears cache on __exit__."""
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
+        l10n.add_resource("en", "msg = Original\n")
+
+        # Warm cache
+        l10n.format_value("msg")
+        stats = l10n.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] > 0
+
+        with l10n:
+            l10n.add_resource("en", "msg2 = Added\n")
+        # Cache cleared on exit because localization was modified
+        stats_after = l10n.get_cache_stats()
+        assert stats_after is not None
+        assert stats_after["size"] == 0
+
+    def test_read_only_context_preserves_cache(self) -> None:
+        """Read-only operations inside with block preserve cache."""
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
+        l10n.add_resource("en", "msg = Hello\n")
+
+        # Warm cache
+        l10n.format_value("msg")
+        stats = l10n.get_cache_stats()
+        assert stats is not None
+        cached_size = stats["size"]
+        assert cached_size > 0
+
+        with l10n:
+            l10n.format_value("msg")
+        # Cache preserved (no modifications in context)
+        stats_after = l10n.get_cache_stats()
+        assert stats_after is not None
+        assert stats_after["size"] >= cached_size
+
+    def test_add_function_in_context_clears_cache_on_exit(self) -> None:
+        """add_function inside with block clears cache on __exit__."""
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
+        l10n.add_resource("en", "msg = Hello\n")
+
+        # Warm cache
+        l10n.format_value("msg")
+
+        with l10n:
+            def _custom(val: str) -> str:
+                return val.upper()
+            l10n.add_function("CUSTOM", _custom)
+        # Cache cleared on exit
+        stats_after = l10n.get_cache_stats()
+        assert stats_after is not None
+        assert stats_after["size"] == 0
+
+    def test_clear_cache_in_context_clears_cache_on_exit(self) -> None:
+        """clear_cache inside with block marks as modified."""
+        l10n = FluentLocalization(["en"], cache=CacheConfig())
+        l10n.add_resource("en", "msg = Hello\n")
+
+        # Warm cache
+        l10n.format_value("msg")
+
+        with l10n:
+            l10n.clear_cache()
+        # Cache cleared (clear_cache marks modified)
+        stats_after = l10n.get_cache_stats()
+        assert stats_after is not None
+        assert stats_after["size"] == 0
 
 
 

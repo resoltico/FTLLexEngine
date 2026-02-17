@@ -12,6 +12,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.109.0] - unreleased
+
+### Changed (BREAKING)
+
+- **Cache integrity strict decoupled from bundle strict** (REFACTOR-INTEGRITY-STRICT-001):
+  - `CacheConfig` gains `integrity_strict: bool = True` field controlling cache corruption and write-conflict behavior
+  - `IntegrityCache.strict` now sourced from `CacheConfig.integrity_strict` instead of `FluentBundle.strict`
+  - `FluentBundle.strict` controls formatting error behavior only (fail-fast vs fallback)
+  - `CacheConfig.integrity_strict` controls cache corruption response only (raise vs silent evict)
+  - `CacheConfig.__post_init__` validates all numeric fields are positive at construction time
+  - Location: `runtime/cache_config.py`, `runtime/bundle.py`, `runtime/cache.py`
+
+- **`FluentLocalization` upgraded from `RLock` to `RWLock`** (REFACTOR-L10N-RWLOCK-001):
+  - `FluentLocalization` internal lock changed from `threading.RLock` to `RWLock`
+  - Read operations (`format_value`, `format_pattern`, `has_message`, `get_cache_stats`) acquire read lock (concurrent)
+  - Write operations (`add_resource`, `add_function`, `clear_cache`) acquire write lock (exclusive)
+  - Location: `localization.py`
+
+- **Context manager semantics unified** (REFACTOR-CONTEXT-MANAGER-001):
+  - `FluentLocalization.__enter__`/`__exit__` now uses cache invalidation tracking (matching `FluentBundle`)
+  - Previous behavior: acquired/released internal lock on enter/exit
+  - New behavior: tracks modification state; clears cache on exit only if modified during context
+  - Both `FluentBundle` and `FluentLocalization` context managers now have identical semantics
+  - Location: `localization.py`
+
+### Fixed
+
+- **`FluentLocalization` strict mode contract breach** (BUG-L10N-STRICT-001):
+  - `_handle_message_not_found` returned fallback tuple regardless of `strict=True`
+  - `FluentLocalization(strict=True)` now raises `FormattingIntegrityError` on missing messages, matching `FluentBundle` behavior
+  - Added `strict` property and `_raise_strict_error` method to `FluentLocalization`
+  - Location: `localization.py`
+
+- **`IntegrityCache._make_hashable` Mapping ABC path bypassed node budget** (BUG-HASHABLE-NODE-BUDGET-001):
+  - `Mapping` ABC types (e.g., `ChainMap`) recursed via `IntegrityCache._make_hashable(v, depth - 1)` instead of `_recurse(v)`, bypassing the `_counter` node budget protection
+  - Malicious deeply-nested `Mapping` values could cause unbounded recursion
+  - Fix: Mapping ABC path now uses `_recurse(v)` consistent with other collection paths
+  - Location: `runtime/cache.py`
+
+- **`FrozenFluentError` freeze ordering** (BUG-FROZEN-ERROR-INIT-001):
+  - `super().__init__(message)` was called after `object.__setattr__(self, "_frozen", True)`, preventing `Exception.__init__` from setting `self.args`
+  - On CPython this worked due to implementation details, but could fail on PyPy or free-threaded builds
+  - Fix: `super().__init__(message)` now called before `_frozen = True`
+  - Location: `diagnostics/errors.py`
+
+- **`WriteConflictError.new_seq` reported stale sequence** (BUG-WRITE-CONFLICT-SEQ-001):
+  - `WriteConflictError` reported `new_seq=self._sequence` (current) instead of `new_seq=self._sequence + 1` (would-be next)
+  - Fix: reports the sequence number the conflicting write would have received
+  - Location: `runtime/cache.py`
+
 ## [0.108.0] - 2026-02-15
 
 ### Changed (BREAKING)
@@ -3448,6 +3498,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.109.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.109.0
 [0.108.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.108.0
 [0.107.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.107.0
 [0.106.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.106.0

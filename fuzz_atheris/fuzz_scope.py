@@ -35,160 +35,71 @@ from __future__ import annotations
 import argparse
 import atexit
 import contextlib
-import hashlib
-import heapq
-import json
+import gc
 import logging
-import os
 import pathlib
-import statistics
 import sys
 import time
-from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-# --- PEP 695 Type Aliases ---
-type FuzzStats = dict[str, int | str | float | list[Any]]
-type InterestingInput = tuple[float, str, str]  # (duration_ms, pattern, input_hash)
+# --- Dependency Checks ---
+_psutil_mod: Any = None
+_atheris_mod: Any = None
 
-# --- Dependency Checks with Clear Errors ---
-_MISSING_DEPS: list[str] = []
-
-try:
-    import psutil
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import psutil as _psutil_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("psutil")
-    psutil = None  # type: ignore[assignment]
+    pass
 
-try:
-    import atheris
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import atheris as _atheris_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("atheris")
-    atheris = None  # type: ignore[assignment]
+    pass
 
-if _MISSING_DEPS:
-    print("-" * 80, file=sys.stderr)
-    print("ERROR: Missing required dependencies for fuzzing:", file=sys.stderr)
-    for dep in _MISSING_DEPS:
-        print(f"  - {dep}", file=sys.stderr)
-    print("", file=sys.stderr)
-    print("Install with: uv sync --group atheris", file=sys.stderr)
-    print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
-    print("-" * 80, file=sys.stderr)
-    sys.exit(1)
+from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
+    GC_INTERVAL,
+    BaseFuzzerState,
+    build_base_stats_dict,
+    build_weighted_schedule,
+    check_dependencies,
+    emit_checkpoint_report,
+    emit_final_report,
+    get_process,
+    print_fuzzer_banner,
+    record_iteration_metrics,
+    record_memory,
+    run_fuzzer,
+    select_pattern_round_robin,
+)
 
+check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
 
-# --- Observability State ---
+import atheris  # noqa: E402  # pylint: disable=C0412,C0413
+
+# --- Domain Metrics ---
+
 @dataclass
-class FuzzerState:
-    """Global fuzzer state for observability and metrics."""
+class ScopeMetrics:
+    """Domain-specific metrics for scope fuzzer."""
 
-    # Core stats
-    iterations: int = 0
-    findings: int = 0
-    status: str = "incomplete"
-
-    # Performance tracking (bounded deques)
-    performance_history: deque[float] = field(
-        default_factory=lambda: deque(maxlen=10000)
-    )
-    memory_history: deque[float] = field(default_factory=lambda: deque(maxlen=1000))
-
-    # Pattern coverage
-    pattern_coverage: dict[str, int] = field(default_factory=dict)
-    error_counts: dict[str, int] = field(default_factory=dict)
-
-    # Interesting inputs (max-heap for slowest)
-    slowest_operations: list[InterestingInput] = field(default_factory=list)
-    seed_corpus: dict[str, bytes] = field(default_factory=dict)
-
-    # Memory baseline
-    initial_memory_mb: float = 0.0
-
-    # Corpus productivity
-    corpus_entries_added: int = 0
-
-    # Per-pattern wall time (ms)
-    pattern_wall_time: dict[str, float] = field(default_factory=dict)
-
-    # Configuration
-    checkpoint_interval: int = 500
-    seed_corpus_max_size: int = 100
+    term_isolation_tests: int = 0
+    shadowing_tests: int = 0
+    message_ref_tests: int = 0
+    depth_guard_tests: int = 0
+    adversarial_tests: int = 0
+    bidi_isolation_tests: int = 0
 
 
-# Global state instance
-_state = FuzzerState()
-_process: psutil.Process | None = None
+# --- Global State ---
 
+_state = BaseFuzzerState(
+    seed_corpus_max_size=500,
+    fuzzer_name="scope",
+    fuzzer_target="runtime.resolver (via FluentBundle)",
+)
+_domain = ScopeMetrics()
 
-def _get_process() -> psutil.Process:
-    """Lazy-initialize psutil process handle."""
-    global _process  # noqa: PLW0603  # pylint: disable=global-statement
-    if _process is None:
-        _process = psutil.Process(os.getpid())
-    return _process
-
-
-def _emit_final_report() -> None:
-    """Emit JSON report to stderr and file (crash-proof via atexit)."""
-    perf = list(_state.performance_history)
-    mem = list(_state.memory_history)
-
-    report: dict[str, Any] = {
-        "status": "complete" if _state.iterations > 0 else "incomplete",
-        "iterations": _state.iterations,
-        "findings": _state.findings,
-        "error_types": len(_state.error_counts),
-        "patterns_tested": len(_state.pattern_coverage),
-        "corpus_entries_added": _state.corpus_entries_added,
-        "seed_corpus_size": len(_state.seed_corpus),
-        "slowest_operations_tracked": len(_state.slowest_operations),
-    }
-
-    if perf:
-        sorted_perf = sorted(perf)
-        n = len(sorted_perf)
-        report.update({
-            "perf_min_ms": round(sorted_perf[0], 3),
-            "perf_mean_ms": round(statistics.mean(sorted_perf), 3),
-            "perf_median_ms": round(statistics.median(sorted_perf), 3),
-            "perf_p95_ms": round(sorted_perf[min(int(n * 0.95), n - 1)], 3),
-            "perf_p99_ms": round(sorted_perf[min(int(n * 0.99), n - 1)], 3),
-            "perf_max_ms": round(sorted_perf[-1], 3),
-        })
-
-    if mem:
-        report.update({
-            "memory_peak_mb": round(max(mem), 2),
-            "memory_mean_mb": round(statistics.mean(mem), 2),
-            "memory_delta_mb": round(max(mem) - min(mem), 2),
-            "memory_growth_mb": round(mem[-1] - mem[0], 2) if len(mem) > 1 else 0.0,
-            "memory_leak_detected": int(
-                len(mem) > 100
-                and statistics.mean(list(mem)[-25:])
-                > statistics.mean(list(mem)[:25]) * 1.1
-            ),
-        })
-
-    # Per-pattern coverage and wall time
-    for name, count in sorted(_state.pattern_coverage.items()):
-        report[f"pattern_{name}"] = count
-    for name, ms in sorted(_state.pattern_wall_time.items()):
-        report[f"wall_time_ms_{name}"] = round(ms, 1)
-
-    report_json = json.dumps(report)
-    print(f"\n[SUMMARY-JSON-BEGIN]{report_json}[SUMMARY-JSON-END]", file=sys.stderr)
-
-    # Write to corpus directory
-    corpus_dir = pathlib.Path(".fuzz_atheris_corpus") / "scope"
-    corpus_dir.mkdir(parents=True, exist_ok=True)
-    report_path = corpus_dir / "fuzz_scope_report.json"
-    with report_path.open("w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2)
-
-
-atexit.register(_emit_final_report)
 
 # --- Suppress logging and instrument imports ---
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
@@ -226,13 +137,13 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("adversarial_scope", 5),
 )
 
-_TOTAL_WEIGHT: int = sum(w for _, w in _PATTERN_WEIGHTS)
-
-# Pre-compute cumulative weights for O(1) pattern selection
-_CUMULATIVE_WEIGHTS: tuple[int, ...] = tuple(
-    sum(w for _, w in _PATTERN_WEIGHTS[: i + 1])
-    for i in range(len(_PATTERN_WEIGHTS))
+_PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
+    [name for name, _ in _PATTERN_WEIGHTS],
+    [weight for _, weight in _PATTERN_WEIGHTS],
 )
+
+# Register intended weights for skew detection
+_state.pattern_intended_weights = {name: float(weight) for name, weight in _PATTERN_WEIGHTS}
 
 # Allowed exceptions from scope operations
 _ALLOWED_EXCEPTIONS = (
@@ -293,6 +204,7 @@ def _pattern_term_arg_isolation(fdp: atheris.FuzzedDataProvider) -> None:
     Per Fluent spec, terms receive data from messages in which they are used,
     but ONLY through explicit parameterization like -term(arg: val).
     """
+    _domain.term_isolation_tests += 1
     var = _pick_var(fdp)
     outer_val = _gen_value(fdp)
     term_arg_val = _gen_value(fdp)
@@ -331,6 +243,7 @@ def _pattern_variable_shadowing(fdp: atheris.FuzzedDataProvider) -> None:
     Tests that the resolver correctly saves/restores the outer scope
     when entering and leaving a term's isolated scope.
     """
+    _domain.shadowing_tests += 1
     var = _pick_var(fdp)
     ext_val = _gen_value(fdp)
     term_val = _gen_value(fdp)
@@ -357,6 +270,7 @@ def _pattern_message_ref_scope(fdp: atheris.FuzzedDataProvider) -> None:
     Per Fluent spec, when a message references another message, the
     referenced message has access to the same external arguments.
     """
+    _domain.message_ref_tests += 1
     var = _pick_var(fdp)
     val = _gen_value(fdp)
     msg_a = _pick_id(fdp)
@@ -458,6 +372,7 @@ def _pattern_bidi_isolation(fdp: atheris.FuzzedDataProvider) -> None:
     use_isolating=True wraps values in FSI/PDI but the variable
     value itself must remain unchanged.
     """
+    _domain.bidi_isolation_tests += 1
     var = _pick_var(fdp)
     val = _gen_value(fdp)
     use_isolating = fdp.ConsumeBool()
@@ -629,6 +544,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
     Self-referencing messages and deep chains should hit the depth limit
     gracefully, producing errors rather than stack overflow.
     """
+    _domain.depth_guard_tests += 1
     variant = fdp.ConsumeIntInRange(0, 2)
 
     match variant:
@@ -673,6 +589,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
 
 def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
     """Adversarial scope scenarios: empty vars, missing refs, scope leaks."""
+    _domain.adversarial_tests += 1
     variant = fdp.ConsumeIntInRange(0, 3)
 
     match variant:
@@ -740,60 +657,68 @@ _PATTERN_DISPATCH: dict[str, Any] = {
 }
 
 
-def _track_slowest_operation(duration_ms: float, description: str) -> None:
-    """Track top 10 slowest operations using min-heap."""
-    if len(_state.slowest_operations) < 10:
-        heapq.heappush(
-            _state.slowest_operations, (duration_ms, description[:50], "")
-        )
-    elif duration_ms > _state.slowest_operations[0][0]:
-        heapq.heapreplace(
-            _state.slowest_operations, (duration_ms, description[:50], "")
-        )
+# --- Reporting ---
+
+_REPORT_DIR = pathlib.Path(".fuzz_atheris_corpus") / "scope"
+_REPORT_FILENAME = "fuzz_scope_report.json"
 
 
-def _track_seed_corpus(data: bytes, duration_ms: float) -> None:
-    """Track interesting inputs for seed corpus with FIFO eviction."""
-    is_interesting = duration_ms > 10.0
+def _build_stats_dict() -> dict[str, Any]:
+    """Build complete stats dictionary including domain metrics."""
+    stats = build_base_stats_dict(_state)
 
-    if is_interesting:
-        input_hash = hashlib.sha256(data).hexdigest()[:16]
-        if input_hash not in _state.seed_corpus:
-            if len(_state.seed_corpus) >= _state.seed_corpus_max_size:
-                oldest_key = next(iter(_state.seed_corpus))
-                del _state.seed_corpus[oldest_key]
-            _state.seed_corpus[input_hash] = data
-            _state.corpus_entries_added += 1
+    # Domain-specific metrics
+    stats["term_isolation_tests"] = _domain.term_isolation_tests
+    stats["shadowing_tests"] = _domain.shadowing_tests
+    stats["message_ref_tests"] = _domain.message_ref_tests
+    stats["depth_guard_tests"] = _domain.depth_guard_tests
+    stats["adversarial_tests"] = _domain.adversarial_tests
+    stats["bidi_isolation_tests"] = _domain.bidi_isolation_tests
+
+    return stats
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
+
+
+def _emit_report() -> None:
+    """Emit comprehensive final report (crash-proof)."""
+    stats = _build_stats_dict()
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
+
+
+atexit.register(_emit_report)
 
 
 def test_one_input(data: bytes) -> None:
     """Atheris entry point: Test variable scoping and resolution context."""
+    # Initialize memory baseline
     if _state.iterations == 0:
-        _state.initial_memory_mb = _get_process().memory_info().rss / (1024 * 1024)
+        _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
 
     _state.iterations += 1
     _state.status = "running"
 
+    # Periodic checkpoint
+    if _state.iterations % _state.checkpoint_interval == 0:
+        _emit_checkpoint()
+
+    start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
 
-    if fdp.remaining_bytes() < 4:
-        return
-
-    # Weighted pattern selection
-    choice = fdp.ConsumeIntInRange(0, _TOTAL_WEIGHT - 1)
-    pattern_name = _PATTERN_WEIGHTS[-1][0]  # Default to last
-    for i, cumulative in enumerate(_CUMULATIVE_WEIGHTS):
-        if choice < cumulative:
-            pattern_name = _PATTERN_WEIGHTS[i][0]
-            break
-
+    pattern_name = select_pattern_round_robin(_state, _PATTERN_SCHEDULE)
     _state.pattern_coverage[pattern_name] = (
         _state.pattern_coverage.get(pattern_name, 0) + 1
     )
 
+    if fdp.remaining_bytes() < 4:
+        return
+
     handler = _PATTERN_DISPATCH[pattern_name]
 
-    start = time.perf_counter()
     try:
         handler(fdp)
     except ScopeFuzzError:
@@ -809,25 +734,19 @@ def test_one_input(data: bytes) -> None:
             _state.error_counts[key] = _state.error_counts.get(key, 0) + 1
         raise
 
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    _state.performance_history.append(elapsed_ms)
+    finally:
+        is_interesting = (time.perf_counter() - start_time) * 1000 > 10.0
+        record_iteration_metrics(
+            _state, pattern_name, start_time, data, is_interesting=is_interesting,
+        )
 
-    # Per-pattern wall time
-    _state.pattern_wall_time[pattern_name] = (
-        _state.pattern_wall_time.get(pattern_name, 0.0) + elapsed_ms
-    )
+        # Break reference cycles in AST/error objects to prevent RSS growth
+        if _state.iterations % GC_INTERVAL == 0:
+            gc.collect()
 
-    _track_slowest_operation(elapsed_ms, pattern_name)
-    _track_seed_corpus(data, elapsed_ms)
-
-    # Memory tracking (every 100 iterations)
-    if _state.iterations % 100 == 0:
-        current_mb = _get_process().memory_info().rss / (1024 * 1024)
-        _state.memory_history.append(current_mb)
-
-    # Checkpoint (periodic report)
-    if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_final_report()
+        # Memory tracking (every 100 iterations)
+        if _state.iterations % 100 == 0:
+            record_memory(_state)
 
 
 def main() -> None:
@@ -844,29 +763,31 @@ def main() -> None:
     parser.add_argument(
         "--seed-corpus-size",
         type=int,
-        default=100,
-        help="Maximum seed corpus entries (FIFO eviction, default: 100)",
+        default=500,
+        help="Maximum seed corpus entries (FIFO eviction, default: 500)",
     )
 
     args, remaining = parser.parse_known_args()
     _state.checkpoint_interval = args.checkpoint_interval
     _state.seed_corpus_max_size = args.seed_corpus_size
 
+    # Inject -rss_limit_mb default if not already specified.
+    # Scope patterns are lightweight but deep chains can accumulate; 4096 MB
+    # provides headroom while still catching true leaks before system OOM-kill.
+    if not any(arg.startswith("-rss_limit_mb") for arg in remaining):
+        remaining.append("-rss_limit_mb=4096")
+
     sys.argv = [sys.argv[0], *remaining]
 
-    print("=" * 80)
-    print("Variable Scope & Resolution Context Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     runtime.resolver (via FluentBundle)")
-    print(f"Patterns:   {len(_PATTERN_WEIGHTS)}")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="Variable Scope & Resolution Context Fuzzer (Atheris)",
+        target="runtime.resolver (via FluentBundle)",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+        mutator="Byte mutation (scoping invariant patterns)",
+    )
 
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

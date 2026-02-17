@@ -71,10 +71,13 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
 )
 
@@ -139,7 +142,10 @@ class IntegrityMetrics:
 
 
 # --- Global State ---
-_state = BaseFuzzerState()
+_state = BaseFuzzerState(
+    fuzzer_name="integrity",
+    fuzzer_target="validate_resource, SemanticValidator, DataIntegrityError",
+)
 _domain = IntegrityMetrics()
 
 # --- Shared Parser (reused across iterations) ---
@@ -221,10 +227,21 @@ def _build_stats_dict() -> FuzzStats:
     return stats
 
 
+_REPORT_FILENAME = "fuzz_integrity_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
+
+
 def _emit_report() -> None:
     """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
-    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_integrity_report.json")
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
 
 
 atexit.register(_emit_report)
@@ -681,7 +698,7 @@ def test_one_input(data: bytes) -> None:
     _state.status = "running"
 
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -695,10 +712,6 @@ def test_one_input(data: bytes) -> None:
     try:
         handler = _PATTERN_DISPATCH[pattern]
         handler(fdp)
-
-    except KeyboardInterrupt:
-        _state.status = "stopped"
-        raise
 
     except ALLOWED_EXCEPTIONS:
         pass
@@ -747,28 +760,19 @@ def main() -> None:
     _state.checkpoint_interval = args.checkpoint_interval
     _state.seed_corpus_max_size = args.seed_corpus_size
 
+    if not any(arg.startswith("-rss_limit_mb") for arg in remaining):
+        remaining.append("-rss_limit_mb=4096")
+
     sys.argv = [sys.argv[0], *remaining]
 
-    # Inject RSS limit if not specified
-    if not any(arg.startswith("-rss_limit_mb") for arg in sys.argv):
-        sys.argv.append("-rss_limit_mb=4096")
+    print_fuzzer_banner(
+        title="Semantic Validation Fuzzer (Atheris)",
+        target="validate_resource, SemanticValidator, DataIntegrityError",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+    )
 
-    print()
-    print("=" * 80)
-    print("Semantic Validation and Data Integrity Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     validate_resource, SemanticValidator, DataIntegrityError")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
-    print(f"Routing:    Round-robin weighted schedule (length: {len(_PATTERN_SCHEDULE)})")
-    print(f"Patterns:   {len(_PATTERN_WEIGHTS)} (10 validation + 6 semantic + 5 strict + 4 cross)")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
-
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

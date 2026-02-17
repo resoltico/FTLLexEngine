@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.109.0"
 domain: architecture
-updated: "2026-01-31"
+updated: "2026-02-16"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -22,6 +22,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 | Component | Thread-Safe | Async-Safe | Notes |
 |:----------|:------------|:-----------|:------|
 | `FluentBundle` | Yes (all ops) | Yes | RWLock-protected reads and writes |
+| `FluentLocalization` | Yes (all ops) | Yes | RWLock-protected; concurrent format reads |
 | `FluentParserV1` | Yes | Yes | Stateless parsing |
 | `IntegrityCache` | Yes | Yes | RLock-protected |
 | `FunctionRegistry` | Copy-on-write | Copy-on-write | Copied on bundle init |
@@ -66,6 +67,31 @@ try:
 except TimeoutError:
     # Lock contention exceeded deadline
     ...
+```
+
+---
+
+## FluentLocalization Thread Safety
+
+`FluentLocalization` is **fully thread-safe** for all operations via internal RWLock.
+
+**Guarantees**:
+- All read operations (`format_value()`, `format_pattern()`, `has_message()`, `get_cache_stats()`) acquire read lock (concurrent)
+- All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
+- Lazy bundle creation via `_get_or_create_bundle()` acquires write lock (reentrant)
+- Context manager (`with l10n:`) tracks modifications and conditionally clears caches on exit
+
+**Context Manager Semantics**:
+Both `FluentBundle` and `FluentLocalization` use identical context manager behavior: cache invalidation tracking. Caches are cleared on `__exit__` only if the instance was modified during the context.
+
+```python
+with l10n:
+    l10n.add_resource("en", "msg = Hello\n")  # Marks modified
+# Caches cleared on exit (modified)
+
+with l10n:
+    result, errors = l10n.format_value("msg")  # Read-only
+# Caches preserved (not modified)
 ```
 
 ---

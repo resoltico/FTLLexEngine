@@ -79,7 +79,6 @@ if not errors:
 - [Thread-Safe Concurrency — 100 Threads, Zero Race Conditions](#thread-safe-concurrency--100-threads-zero-race-conditions)
 - [Message Introspection — Pre-Flight Checks](#message-introspection--pre-flight-checks)
 - [Currency and Fiscal Data — Operations Across Borders](#currency-and-fiscal-data--operations-across-borders)
-- [Testing and Reliability](#testing-and-reliability)
 - [Architecture at a Glance](#architecture-at-a-glance)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
@@ -226,14 +225,20 @@ contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 ```
 
 ```mermaid
-flowchart LR
-    A["German Engineer<br/>Mars Colony 1"] -- "12.450,00 €" --> B["parse_currency()<br/>de_DE"]
-    B -- "Decimal('12450.00'), EUR" --> C["Inventory<br/>System"]
-    C -- "Decimal('12450.00'), EUR" --> D["CURRENCY()<br/>en_US"]
-    D -- "€12,450.00" --> E["Alice's Ledger<br/>New York"]
+flowchart TB
+    A["German Engineer\n&lt;code&gt;12.450,00 EUR&lt;/code&gt;"] --> PA["parse_currency()\nde_DE"]
+    B["Colombian Agronomist\n&lt;code&gt;45.000.000 COP&lt;/code&gt;"] --> PB["parse_currency()\nes_CO"]
+    C["Japanese Technician\n&lt;code&gt;2026年3月15日&lt;/code&gt;"] --> PC["parse_date()\nja_JP"]
 
-    style B fill:#f9f,stroke:#333,stroke-width:2px
-    style D fill:#f9f,stroke:#333,stroke-width:2px
+    PA --> RA["Decimal('12450.00'), EUR"]
+    PB --> RB["Decimal('45000000'), COP"]
+    PC --> RC["date(2026, 3, 15)"]
+
+    RA & RB & RC --> SYS[("Inventory System\nExact Python types")]
+
+    style PA fill:#f9f,stroke:#333,stroke-width:2px
+    style PB fill:#f9f,stroke:#333,stroke-width:2px
+    style PC fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 **When parsing fails, you get structured errors -- not exceptions:**
@@ -272,7 +277,7 @@ if not errors:
 
 ### No Silent Failures in Space
 
-> [!WARNING]
+> [!NOTE]
 > A missing variable normally returns a fallback string like `"Contract: 500 bags at {!CURRENCY}/lb"`. In financial systems or mission-critical operations, displaying this to a user is unacceptable.
 
 Enable `strict=True`. FTLLexEngine raises immediately -- no bad data reaches the user.
@@ -281,9 +286,11 @@ Enable `strict=True`. FTLLexEngine raises immediately -- no bad data reaches the
 from decimal import Decimal
 from ftllexengine import FluentBundle
 from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.runtime.cache_config import CacheConfig
 
-# strict=True raises on ANY error instead of returning fallback
-bundle = FluentBundle("en_US", strict=True, enable_cache=True)
+# strict=True raises on ANY formatting error instead of returning fallback
+# integrity_strict=True (default) raises on cache corruption/write conflicts
+bundle = FluentBundle("en_US", strict=True, cache=CacheConfig())
 bundle.add_resource('confirm = Contract: { $bags } bags at { CURRENCY($price, currency: "USD") }/lb')
 
 # Works normally
@@ -338,7 +345,7 @@ with ThreadPoolExecutor(max_workers=100) as executor:
     # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]  (CLDR locale symbols)
 ```
 
-`FluentBundle` is thread-safe by design:
+`FluentBundle` and `FluentLocalization` are thread-safe by design:
 - Multiple threads can format messages simultaneously (read lock)
 - Adding resources or functions acquires exclusive access (write lock)
 - You don't manage any of this -- it just works
@@ -449,17 +456,6 @@ uk_calendar.quarter_end_date(2026, 4)
 ```
 
 Alice's compliance team in London, New York, and Tokyo each see the correct fiscal periods for their jurisdiction. Bob reports colony expenditures on all three calendars simultaneously.
-
----
-
-## Testing and Reliability
-
-FTLLexEngine is engineered for environments where silent failures and restarts are not an option.
-
-- **Property-Based Testing** -- Powered by Hypothesis. Roundtrip properties (`parse(format(x)) == x`) verified across thousands of locale and value combinations.
-- **Continuous Fuzzing** -- Atheris (libFuzzer) and HypoFuzz subject the parser to millions of random inputs per session. No panics, no hangs, no crashes.
-- **98%+ Branch Coverage** -- Every execution path is tested and illuminated.
-- **Immutable Error Data** -- `FrozenFluentError` instances are frozen dataclasses with BLAKE2b checksums. Errors cannot be silently modified after creation.
 
 ---
 

@@ -308,19 +308,21 @@ print("=" * 50)
 
 # Financial applications can use cache security features:
 # - write_once: Prevents cache overwrites (data race prevention)
+# - integrity_strict: Raise on cache corruption/write conflicts
 # - enable_audit: Maintains audit trail of cache operations
-# - strict: Raises exceptions on errors instead of fallbacks
+# - strict (bundle): Raises exceptions on formatting errors
 
 financial_bundle = FluentBundle(
     "en",
     use_isolating=False,
     cache=CacheConfig(
         write_once=True,            # Prevent data races
+        integrity_strict=True,      # Raise on corruption (default)
         enable_audit=True,          # Compliance audit trail
         max_entry_weight=5000,      # Memory protection
         max_errors_per_entry=10,    # Error bloat protection
     ),
-    strict=True,                    # Fail-fast on ANY error
+    strict=True,                    # Fail-fast on ANY formatting error
 )
 
 financial_bundle.add_resource("""
@@ -343,6 +345,7 @@ print(f"[FINANCIAL] {result}")
 print("\nCache security settings:")
 cfg = financial_bundle.cache_config
 print(f"  write_once: {cfg.write_once}")
+print(f"  integrity_strict: {cfg.integrity_strict}")
 print(f"  audit_enabled: {cfg.enable_audit}")
 print(f"  max_entry_weight: {cfg.max_entry_weight}")
 print(f"  max_errors_per_entry: {cfg.max_errors_per_entry}")

@@ -244,6 +244,7 @@ class TestDiagnosticConstruction:
 
         escaped = (
             message
+            .replace("\x1b", "\\x1b")
             .replace("\r", "\\r")
             .replace("\n", "\\n")
             .replace("\t", "\\t")
@@ -604,6 +605,7 @@ class TestDiagnosticFormatting:
         assert isinstance(formatted, str)
         escaped = (
             message
+            .replace("\x1b", "\\x1b")
             .replace("\r", "\\r")
             .replace("\n", "\\n")
             .replace("\t", "\\t")

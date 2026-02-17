@@ -328,45 +328,54 @@ class TestStrictModeWithCaching:
 
 
 class TestStrictModeCachePropagation:
-    """Test that bundle strict mode propagates to cache.
+    """Test that cache integrity_strict is independent of bundle strict.
 
-    When FluentBundle is created with strict=True and cache=CacheConfig(),
-    the internal IntegrityCache must also use strict=True so that cache
-    corruption raises CacheCorruptionError rather than silently evicting.
+    Cache integrity (checksum verification, corruption detection) is
+    controlled by CacheConfig.integrity_strict (default: True), NOT by
+    FluentBundle's strict parameter. This separation ensures cache
+    corruption is always detected regardless of formatting error handling.
     """
 
-    def test_strict_bundle_has_strict_cache(self) -> None:
-        """Bundle with strict=True creates cache with strict=True."""
+    def test_strict_bundle_has_strict_cache_by_default(self) -> None:
+        """Default CacheConfig has integrity_strict=True regardless of bundle strict."""
         bundle = FluentBundle("en", strict=True, cache=CacheConfig())
 
-        # Access internal cache to verify strict mode
         cache = bundle._cache  # pylint: disable=protected-access
         assert cache is not None
         assert cache.strict is True
 
-    def test_non_strict_bundle_has_non_strict_cache(self) -> None:
-        """Bundle with strict=False creates cache with strict=False."""
+    def test_non_strict_bundle_has_strict_cache_by_default(self) -> None:
+        """Non-strict bundle still gets integrity-strict cache by default."""
         bundle = FluentBundle("en", strict=False, cache=CacheConfig())
+
+        cache = bundle._cache  # pylint: disable=protected-access
+        assert cache is not None
+        assert cache.strict is True
+
+    def test_cache_integrity_strict_can_be_disabled(self) -> None:
+        """CacheConfig(integrity_strict=False) disables cache integrity checks."""
+        config = CacheConfig(integrity_strict=False)
+        bundle = FluentBundle("en", strict=True, cache=config)
 
         cache = bundle._cache  # pylint: disable=protected-access
         assert cache is not None
         assert cache.strict is False
 
     def test_strict_cache_stats_reflects_mode(self) -> None:
-        """Cache stats reflect strict mode setting."""
+        """Cache stats reflect integrity_strict setting."""
         bundle = FluentBundle("en", strict=True, cache=CacheConfig())
 
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["strict"] is True
 
-    def test_non_strict_cache_stats_reflects_mode(self) -> None:
-        """Non-strict bundle cache stats reflect strict=False."""
+    def test_non_strict_cache_stats_reflects_integrity_strict(self) -> None:
+        """Non-strict bundle cache stats reflect integrity_strict=True default."""
         bundle = FluentBundle("en", strict=False, cache=CacheConfig())
 
         stats = bundle.get_cache_stats()
         assert stats is not None
-        assert stats["strict"] is False
+        assert stats["strict"] is True
 
 
 # ============================================================================

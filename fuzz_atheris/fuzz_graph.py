@@ -17,13 +17,8 @@ preservation, determinism), cycle key deduplication, and dependency graph
 construction with namespace prefixing. Distinct from fuzz_integrity which
 exercises graph algorithms as a side effect of resource validation.
 
-Metrics:
-- Pattern coverage with weighted selection (12 patterns)
-- Performance profiling (min/mean/median/p95/p99/max)
-- Real memory usage (RSS via psutil)
-- Error distribution and contract violations
-- Seed corpus management
-- Per-pattern wall-time accumulation
+Shared infrastructure from fuzz_common (BaseFuzzerState, round-robin scheduling,
+stratified corpus, metrics). No domain-specific metrics beyond base state.
 
 Requires Python 3.13+ (uses PEP 695 type aliases).
 """
@@ -32,160 +27,116 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import contextlib
-import hashlib
-import heapq
-import json
+import gc
 import logging
-import os
 import pathlib
-import statistics
 import sys
 import time
-from collections import deque
-from dataclasses import dataclass, field
 from typing import Any
 
-# --- PEP 695 Type Aliases ---
-type FuzzStats = dict[str, int | str | float | list[Any]]
-type InterestingInput = tuple[float, str]  # (duration_ms, description)
+# --- Dependency Checks ---
+_psutil_mod: Any = None
+_atheris_mod: Any = None
 
-# --- Dependency Checks with Clear Errors ---
-_MISSING_DEPS: list[str] = []
-
-try:
-    import psutil
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import psutil as _psutil_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("psutil")
-    psutil = None  # type: ignore[assignment]
+    pass
 
-try:
-    import atheris
+try:  # noqa: SIM105 - need module ref for check_dependencies
+    import atheris as _atheris_mod  # type: ignore[no-redef]
 except ImportError:
-    _MISSING_DEPS.append("atheris")
-    atheris = None  # type: ignore[assignment]
+    pass
 
-if _MISSING_DEPS:
-    print(f"[FATAL] Missing dependencies: {', '.join(_MISSING_DEPS)}", file=sys.stderr)
-    print("Install: uv sync --group atheris", file=sys.stderr)
-    sys.exit(1)
+from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
+    GC_INTERVAL,
+    BaseFuzzerState,
+    build_base_stats_dict,
+    build_weighted_schedule,
+    check_dependencies,
+    emit_checkpoint_report,
+    emit_final_report,
+    get_process,
+    print_fuzzer_banner,
+    record_iteration_metrics,
+    record_memory,
+    run_fuzzer,
+    select_pattern_round_robin,
+)
+
+check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
+
+import atheris  # noqa: E402  # pylint: disable=C0412,C0413
+
+# --- Pattern weights ---
+# Ordered cheapest-first to counteract libFuzzer's small-byte bias:
+# ConsumeIntInRange skews toward low values, over-selecting early entries.
+
+_PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
+    # Cheap: pure algorithm, no allocation-heavy setup
+    ("canonicalize_idempotence", 12),
+    ("canonicalize_direction", 10),
+    ("make_cycle_key_consistency", 8),
+    ("canonicalize_edge_cases", 6),
+    ("detect_self_loops", 10),
+    ("detect_simple_cycles", 12),
+    ("detect_dag_no_cycles", 10),
+    ("detect_disconnected", 8),
+    # Moderate: larger graph construction
+    ("detect_dense_mesh", 8),
+    ("detect_deep_chain", 8),
+    ("build_dependency_graph", 10),
+    # Expensive: large adversarial graphs
+    ("adversarial_graph", 5),
+)
+
+_PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
+    [name for name, _ in _PATTERN_WEIGHTS],
+    [weight for _, weight in _PATTERN_WEIGHTS],
+)
 
 
-# --- FuzzerState ---
+# --- Module State ---
 
+_state = BaseFuzzerState(
+    checkpoint_interval=500,
+    seed_corpus_max_size=100,
+    fuzzer_name="graph",
+    fuzzer_target=(
+        "analysis.graph (detect_cycles, canonicalize_cycle,"
+        " make_cycle_key, build_dependency_graph)"
+    ),
+    pattern_intended_weights={name: float(weight) for name, weight in _PATTERN_WEIGHTS},
+)
 
-@dataclass
-class FuzzerState:
-    """Mutable fuzzer state with bounded memory."""
-
-    iterations: int = 0
-    findings: int = 0
-    status: str = "init"
-
-    # Performance tracking (bounded deques)
-    performance_history: deque[float] = field(default_factory=lambda: deque(maxlen=10000))
-    memory_history: deque[float] = field(default_factory=lambda: deque(maxlen=1000))
-
-    # Pattern coverage
-    pattern_coverage: dict[str, int] = field(default_factory=dict)
-    error_counts: dict[str, int] = field(default_factory=dict)
-
-    # Interesting inputs (max-heap for slowest)
-    slowest_operations: list[InterestingInput] = field(default_factory=list)
-    seed_corpus: dict[str, bytes] = field(default_factory=dict)
-
-    # Memory baseline
-    initial_memory_mb: float = 0.0
-
-    # Corpus productivity
-    corpus_entries_added: int = 0
-
-    # Per-pattern wall time (ms)
-    pattern_wall_time: dict[str, float] = field(default_factory=dict)
-
-    # Configuration
-    checkpoint_interval: int = 500
-    seed_corpus_max_size: int = 100
-
-
-# Global state instance
-_state = FuzzerState()
-_process: psutil.Process | None = None
-
-
-def _get_process() -> psutil.Process:
-    """Lazy-initialize psutil process handle."""
-    global _process  # noqa: PLW0603  # pylint: disable=global-statement
-    if _process is None:
-        _process = psutil.Process(os.getpid())
-    return _process
+_REPORT_DIR = pathlib.Path(".fuzz_atheris_corpus") / "graph"
+_REPORT_FILENAME = "fuzz_graph_report.json"
 
 
 # --- Reporting ---
 
 
-def _emit_final_report() -> None:
-    """Emit JSON summary on exit (crash-proof via atexit)."""
-    _state.status = "complete" if _state.status == "running" else _state.status
+def _build_stats_dict() -> dict[str, Any]:
+    """Build complete stats dictionary.
 
-    perf = _state.performance_history
-    mem = _state.memory_history
-
-    report: FuzzStats = {
-        "status": _state.status,
-        "iterations": _state.iterations,
-        "findings": _state.findings,
-        "error_types": len(_state.error_counts),
-        "patterns_tested": len(_state.pattern_coverage),
-        "corpus_entries_added": _state.corpus_entries_added,
-        "seed_corpus_size": len(_state.seed_corpus),
-        "slowest_operations_tracked": len(_state.slowest_operations),
-    }
-
-    # Performance stats
-    if perf:
-        sorted_perf = sorted(perf)
-        report["perf_min_ms"] = round(sorted_perf[0], 3)
-        report["perf_mean_ms"] = round(statistics.mean(perf), 3)
-        report["perf_median_ms"] = round(statistics.median(perf), 3)
-        report["perf_p95_ms"] = round(sorted_perf[int(len(sorted_perf) * 0.95)], 3)
-        report["perf_p99_ms"] = round(sorted_perf[int(len(sorted_perf) * 0.99)], 3)
-        report["perf_max_ms"] = round(sorted_perf[-1], 3)
-
-    # Memory stats
-    if mem:
-        report["memory_peak_mb"] = round(max(mem), 2)
-        report["memory_mean_mb"] = round(statistics.mean(mem), 2)
-        report["memory_delta_mb"] = round(max(mem) - _state.initial_memory_mb, 2)
-        # Leak detection: compare first and last quartiles
-        quarter = max(1, len(mem) // 4)
-        first_q = statistics.mean(list(mem)[:quarter])
-        last_q = statistics.mean(list(mem)[-quarter:])
-        growth = last_q - first_q
-        report["memory_growth_mb"] = round(growth, 2)
-        report["memory_leak_detected"] = int(growth > 50.0)
-
-    # Pattern coverage
-    for name, count in sorted(_state.pattern_coverage.items()):
-        report[f"pattern_{name}"] = count
-
-    # Per-pattern wall time
-    for name, wall_ms in sorted(_state.pattern_wall_time.items()):
-        report[f"wall_time_ms_{name}"] = round(wall_ms, 1)
-
-    report_json = json.dumps(report)
-    print(f"\n[SUMMARY-JSON-BEGIN]{report_json}[SUMMARY-JSON-END]", file=sys.stderr)
-
-    # Write to corpus directory
-    corpus_dir = pathlib.Path(".fuzz_atheris_corpus/graph")
-    with contextlib.suppress(OSError):
-        corpus_dir.mkdir(parents=True, exist_ok=True)
-        (corpus_dir / "fuzz_graph_report.json").write_text(
-            json.dumps(report, indent=2) + "\n"
-        )
+    No domain-specific metrics beyond BaseFuzzerState for graph algorithms.
+    """
+    return build_base_stats_dict(_state)
 
 
-atexit.register(_emit_final_report)
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
+
+
+def _emit_report() -> None:
+    """Emit crash-proof final report."""
+    stats = _build_stats_dict()
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
+
+
+atexit.register(_emit_report)
 
 # --- Suppress logging and instrument imports ---
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
@@ -259,53 +210,6 @@ def _build_random_graph(
 
     return deps
 
-
-# --- Observability helpers ---
-
-
-def _track_slowest_operation(duration_ms: float, description: str) -> None:
-    """Track top 10 slowest operations using min-heap."""
-    if len(_state.slowest_operations) < 10:
-        heapq.heappush(_state.slowest_operations, (duration_ms, description[:50]))
-    elif duration_ms > _state.slowest_operations[0][0]:
-        heapq.heapreplace(
-            _state.slowest_operations, (duration_ms, description[:50])
-        )
-
-
-def _track_seed_corpus(data: bytes, duration_ms: float) -> None:
-    """Track interesting inputs for seed corpus with FIFO eviction."""
-    if duration_ms > 10.0:
-        input_hash = hashlib.sha256(data).hexdigest()[:16]
-        if input_hash not in _state.seed_corpus:
-            if len(_state.seed_corpus) >= _state.seed_corpus_max_size:
-                oldest_key = next(iter(_state.seed_corpus))
-                del _state.seed_corpus[oldest_key]
-            _state.seed_corpus[input_hash] = data
-            _state.corpus_entries_added += 1
-
-
-# --- Pattern weights ---
-# Ordered cheapest-first to counteract libFuzzer's small-byte bias:
-# ConsumeIntInRange skews toward low values, over-selecting early entries.
-
-_PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
-    # Cheap: pure algorithm, no allocation-heavy setup
-    ("canonicalize_idempotence", 12),
-    ("canonicalize_direction", 10),
-    ("make_cycle_key_consistency", 8),
-    ("canonicalize_edge_cases", 6),
-    ("detect_self_loops", 10),
-    ("detect_simple_cycles", 12),
-    ("detect_dag_no_cycles", 10),
-    ("detect_disconnected", 8),
-    # Moderate: larger graph construction
-    ("detect_dense_mesh", 8),
-    ("detect_deep_chain", 8),
-    ("build_dependency_graph", 10),
-    # Expensive: large adversarial graphs
-    ("adversarial_graph", 5),
-)
 
 _ALLOWED_EXCEPTIONS = (
     ValueError, TypeError, OverflowError, RecursionError, MemoryError,
@@ -763,38 +667,23 @@ _PATTERN_DISPATCH: dict[str, Any] = {
 }
 
 
-def _select_pattern(fdp: atheris.FuzzedDataProvider) -> str:
-    """Select a weighted pattern."""
-    total = sum(w for _, w in _PATTERN_WEIGHTS)
-    choice = fdp.ConsumeIntInRange(0, total - 1)
-
-    cumulative = 0
-    for name, weight in _PATTERN_WEIGHTS:
-        cumulative += weight
-        if choice < cumulative:
-            return name
-
-    return _PATTERN_WEIGHTS[0][0]
-
-
 def test_one_input(data: bytes) -> None:
     """Atheris entry point: fuzz graph algorithms."""
-    # Initialize memory baseline
     if _state.iterations == 0:
-        _state.initial_memory_mb = _get_process().memory_info().rss / (1024 * 1024)
+        _state.initial_memory_mb = (
+            get_process().memory_info().rss / (1024 * 1024)
+        )
 
     _state.iterations += 1
     _state.status = "running"
 
-    # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_final_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
 
-    # Select pattern
-    pattern_name = _select_pattern(fdp)
+    pattern_name = select_pattern_round_robin(_state, _PATTERN_SCHEDULE)
     _state.pattern_coverage[pattern_name] = (
         _state.pattern_coverage.get(pattern_name, 0) + 1
     )
@@ -807,37 +696,32 @@ def test_one_input(data: bytes) -> None:
         _state.findings += 1
         raise
 
-    except KeyboardInterrupt:
-        _state.status = "stopped"
-        raise
-
     except _ALLOWED_EXCEPTIONS:
         pass  # Expected for adversarial inputs
 
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception as e:  # pylint: disable=broad-exception-caught
         _state.findings += 1
-        error_type = sys.exc_info()[0]
-        if error_type is not None:
-            key = error_type.__name__[:50]
-            _state.error_counts[key] = _state.error_counts.get(key, 0) + 1
+        error_key = f"{type(e).__name__}_{str(e)[:30]}"
+        _state.error_counts[error_key] = (
+            _state.error_counts.get(error_key, 0) + 1
+        )
         raise
 
     finally:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        _state.performance_history.append(elapsed_ms)
-
-        # Per-pattern wall time
-        _state.pattern_wall_time[pattern_name] = (
-            _state.pattern_wall_time.get(pattern_name, 0.0) + elapsed_ms
+        is_interesting = (
+            pattern_name in ("adversarial_graph", "detect_deep_chain", "detect_dense_mesh")
+            or ((time.perf_counter() - start_time) * 1000 > 10.0)
+        )
+        record_iteration_metrics(
+            _state, pattern_name, start_time, data,
+            is_interesting=is_interesting,
         )
 
-        _track_slowest_operation(elapsed_ms, pattern_name)
-        _track_seed_corpus(data, elapsed_ms)
+        if _state.iterations % GC_INTERVAL == 0:
+            gc.collect()
 
-        # Memory tracking (every 100 iterations)
         if _state.iterations % 100 == 0:
-            current_mb = _get_process().memory_info().rss / (1024 * 1024)
-            _state.memory_history.append(current_mb)
+            record_memory(_state)
 
 
 def main() -> None:
@@ -856,21 +740,20 @@ def main() -> None:
     _state.checkpoint_interval = args.checkpoint_interval
     _state.seed_corpus_max_size = args.seed_corpus_size
 
+    if not any(arg.startswith("-rss_limit_mb") for arg in remaining):
+        remaining.append("-rss_limit_mb=4096")
+
     sys.argv = [sys.argv[0], *remaining]
 
-    print("=" * 80)
-    print("Dependency Graph Algorithm Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     analysis.graph")
-    print(f"Patterns:   {len(_PATTERN_WEIGHTS)}")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="Dependency Graph Algorithm Fuzzer (Atheris)",
+        target="analysis.graph",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+        mutator="Byte mutation (libFuzzer default)",
+    )
 
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

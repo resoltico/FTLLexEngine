@@ -29,6 +29,11 @@ class CacheConfig:
         size: Maximum cache entries (default: 1000).
         write_once: Reject updates to existing cache keys (default: False).
             Enables data-race detection in concurrent environments.
+        integrity_strict: If True, raise CacheCorruptionError on checksum
+            mismatch and WriteConflictError on write-once violations
+            (default: True). If False, silently evict corrupted entries
+            and ignore write conflicts. Independent of FluentBundle's
+            ``strict`` parameter which controls formatting error behavior.
         enable_audit: Maintain audit log of all cache operations (default: False).
         max_audit_entries: Maximum audit log entries before oldest eviction
             (default: 10000). Only relevant when ``enable_audit=True``.
@@ -50,6 +55,7 @@ class CacheConfig:
     Example - Financial application:
         >>> config = CacheConfig(
         ...     write_once=True,
+        ...     integrity_strict=True,
         ...     enable_audit=True,
         ...     max_audit_entries=50000,
         ... )
@@ -58,7 +64,28 @@ class CacheConfig:
 
     size: int = DEFAULT_CACHE_SIZE
     write_once: bool = False
+    integrity_strict: bool = True
     enable_audit: bool = False
     max_audit_entries: int = 10000
     max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE
     max_errors_per_entry: int = 50
+
+    def __post_init__(self) -> None:
+        """Validate configuration values at construction time.
+
+        Raises:
+            ValueError: If size, max_entry_weight, or max_errors_per_entry
+                is not positive, or if max_audit_entries is not positive.
+        """
+        if self.size <= 0:
+            msg = "size must be positive"
+            raise ValueError(msg)
+        if self.max_entry_weight <= 0:
+            msg = "max_entry_weight must be positive"
+            raise ValueError(msg)
+        if self.max_errors_per_entry <= 0:
+            msg = "max_errors_per_entry must be positive"
+            raise ValueError(msg)
+        if self.max_audit_entries <= 0:
+            msg = "max_audit_entries must be positive"
+            raise ValueError(msg)

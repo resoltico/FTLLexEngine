@@ -81,10 +81,13 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
 )
 
@@ -119,7 +122,11 @@ class CacheMetrics:
 
 # --- Global State ---
 
-_state = BaseFuzzerState(seed_corpus_max_size=500)
+_state = BaseFuzzerState(
+    seed_corpus_max_size=500,
+    fuzzer_name="cache",
+    fuzzer_target="FormatCache race & integrity",
+)
 _domain = CacheMetrics()
 
 # Pattern weights: (name, weight)
@@ -194,10 +201,21 @@ def _build_stats_dict() -> dict[str, Any]:
     return stats
 
 
+_REPORT_FILENAME = "fuzz_cache_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
+
+
 def _emit_report() -> None:
     """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
-    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_cache_report.json")
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
 
 
 atexit.register(_emit_report)
@@ -553,7 +571,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     _state.status = "running"
 
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -615,10 +633,6 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         _state.findings += 1
         raise
 
-    except KeyboardInterrupt:
-        _state.status = "stopped"
-        raise
-
     except (*ALLOWED_EXCEPTIONS, FrozenFluentError, DataIntegrityError, CacheCorruptionError):
         pass
 
@@ -667,22 +681,15 @@ def main() -> None:
 
     sys.argv = [sys.argv[0], *remaining]
 
-    print()
-    print("=" * 80)
-    print("Cache Race & Integrity Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     ftllexengine.runtime.cache (via FluentBundle)")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
-    print(f"Patterns:   {len(_PATTERN_WEIGHTS)} (weighted round-robin)")
-    print("Threads:    2-8 concurrent workers per iteration")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="Cache Race & Integrity Fuzzer (Atheris)",
+        target="ftllexengine.runtime.cache (via FluentBundle)",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+        extra_lines=("Threads:    2-8 concurrent workers per iteration",),
+    )
 
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

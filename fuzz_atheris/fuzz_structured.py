@@ -55,15 +55,10 @@ from __future__ import annotations
 import argparse
 import atexit
 import contextlib
-import datetime
 import gc
-import hashlib
-import json
 import logging
-import os
 import pathlib
 import random
-import string
 import sys
 import time
 from dataclasses import dataclass
@@ -93,11 +88,17 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
+    gen_ftl_identifier,
+    gen_ftl_value,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
+    write_finding_artifact,
 )
 
 check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
@@ -120,22 +121,16 @@ class StructuredMetrics:
 
 # --- Global State ---
 
-_state = BaseFuzzerState(seed_corpus_max_size=1000)
+_state = BaseFuzzerState(
+    seed_corpus_max_size=1000,
+    fuzzer_name="structured",
+    fuzzer_target="FluentParserV1, FluentSerializer",
+)
 _domain = StructuredMetrics()
 
 
 # Exception contract
 ALLOWED_EXCEPTIONS = (ValueError, RecursionError, MemoryError, EOFError)
-
-# Character sets for FTL generation per spec
-IDENTIFIER_FIRST = string.ascii_letters
-IDENTIFIER_REST = string.ascii_letters + string.digits + "-_"
-TEXT_CHARS = string.ascii_letters + string.digits + " .,!?'-"
-# Inline-safe special chars: exclude newlines and control chars that break parsing
-# Tabs are allowed in patterns; zero-width chars are edge cases worth testing
-INLINE_SPECIAL_CHARS = "\t\u200b\u00a0"  # tab, zero-width space, nbsp
-# Chars that require escaping or break FTL syntax
-FTL_SYNTAX_CHARS = "{}[]*.#$-\n\r"
 
 # Pattern weights: (name, weight)
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
@@ -187,6 +182,17 @@ def _build_stats_dict() -> dict[str, Any]:
     return stats
 
 
+_REPORT_FILENAME = "fuzz_structured_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
+
+
 def _emit_report() -> None:
     """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
@@ -199,86 +205,15 @@ def _emit_report() -> None:
             flush=True,
         )
 
-    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_structured_report.json")
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
 
 
 atexit.register(_emit_report)
 
 
-# --- Finding Artifacts ---
+# --- Finding Artifacts (delegated to fuzz_common) ---
 
 _FINDINGS_DIR = _REPORT_DIR / "findings"
-
-
-def _write_finding_artifact(
-    *,
-    source: str,
-    s1: str,
-    s2: str,
-    pattern: str,
-    entry_count_1: int,
-    entry_count_2: int,
-) -> None:
-    """Write human-readable finding artifacts to disk for post-mortem debugging.
-
-    Artifacts are plain text files that can be inspected without Atheris and
-    used as regression test inputs. All I/O errors are suppressed to avoid
-    masking the StructuredFuzzError that triggered the write. Includes PID
-    in filename prefix to prevent collisions when libFuzzer runs multiple
-    forked workers.
-    """
-    try:
-        _FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
-        _state.finding_counter += 1
-        pid = os.getpid()
-        prefix = f"finding_p{pid}_{_state.finding_counter:04d}"
-
-        # Source FTL
-        (_FINDINGS_DIR / f"{prefix}_source.ftl").write_text(source, encoding="utf-8")
-
-        # Serialized outputs
-        (_FINDINGS_DIR / f"{prefix}_s1.ftl").write_text(s1, encoding="utf-8")
-        (_FINDINGS_DIR / f"{prefix}_s2.ftl").write_text(s2, encoding="utf-8")
-
-        # Compute first diff position
-        diff_pos = next(
-            (i for i, (a, b) in enumerate(zip(s1, s2, strict=False)) if a != b),
-            min(len(s1), len(s2)),
-        )
-
-        # Metadata
-        meta = {
-            "iteration": _state.iterations,
-            "pattern": pattern,
-            "timestamp": datetime.datetime.now(tz=datetime.UTC).isoformat(),
-            "source_len": len(source),
-            "s1_len": len(s1),
-            "s2_len": len(s2),
-            "source_hash": hashlib.sha256(
-                source.encode("utf-8", errors="surrogatepass"),
-            ).hexdigest(),
-            "s1_hash": hashlib.sha256(
-                s1.encode("utf-8", errors="surrogatepass"),
-            ).hexdigest(),
-            "s2_hash": hashlib.sha256(
-                s2.encode("utf-8", errors="surrogatepass"),
-            ).hexdigest(),
-            "entries_parse1": entry_count_1,
-            "entries_parse2": entry_count_2,
-            "diff_offset": diff_pos,
-        }
-        (_FINDINGS_DIR / f"{prefix}_meta.json").write_text(
-            json.dumps(meta, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-
-        print(
-            f"\n[FINDING] Artifacts written to {_FINDINGS_DIR / prefix}_*.ftl",
-            file=sys.stderr,
-            flush=True,
-        )
-    except OSError:
-        pass  # Finding artifacts are best-effort; StructuredFuzzError is primary signal
 
 
 # --- Suppress logging and instrument imports ---
@@ -311,69 +246,8 @@ _serializer = FluentSerializer()
 _PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
 
 
-# --- FTL Generators ---
-
-
-def _generate_identifier(fdp: atheris.FuzzedDataProvider, max_len: int = 20) -> str:
-    """Generate a valid FTL identifier using fuzzer decisions."""
-    if not fdp.remaining_bytes():
-        return "msg"
-
-    first = IDENTIFIER_FIRST[fdp.ConsumeIntInRange(0, len(IDENTIFIER_FIRST) - 1)]
-    rest_len = fdp.ConsumeIntInRange(0, max_len)
-
-    rest_chars = []
-    for _ in range(rest_len):
-        if not fdp.remaining_bytes():
-            break
-        idx = fdp.ConsumeIntInRange(0, len(IDENTIFIER_REST) - 1)
-        rest_chars.append(IDENTIFIER_REST[idx])
-
-    return first + "".join(rest_chars)
-
-
-def _generate_text(fdp: atheris.FuzzedDataProvider, max_len: int = 50) -> str:
-    """Generate FTL-safe inline text content with Unicode support.
-
-    Produces text valid for FTL pattern values (no unescaped syntax chars).
-    Uses 90% safe chars, 8% Unicode, 2% inline-safe special chars to
-    minimize junk while still exercising edge cases.
-    """
-    if not fdp.remaining_bytes():
-        return "value"
-
-    length = fdp.ConsumeIntInRange(1, max_len)
-    chars: list[str] = []
-
-    for _ in range(length):
-        if not fdp.remaining_bytes():
-            break
-
-        choice = fdp.ConsumeIntInRange(0, 99)
-
-        if choice < 90:
-            # 90%: safe ASCII text
-            idx = fdp.ConsumeIntInRange(0, len(TEXT_CHARS) - 1)
-            chars.append(TEXT_CHARS[idx])
-        elif choice < 98:
-            # 8%: Unicode (filtered to remove syntax chars)
-            if fdp.remaining_bytes() >= 2:
-                uc = fdp.ConsumeUnicodeNoSurrogates(1)
-                if uc and uc not in FTL_SYNTAX_CHARS:
-                    chars.append(uc)
-                else:
-                    chars.append(TEXT_CHARS[fdp.ConsumeIntInRange(0, len(TEXT_CHARS) - 1)])
-            else:
-                chars.append("x")
-        else:
-            # 2%: inline-safe special chars (tabs, zero-width)
-            idx = fdp.ConsumeIntInRange(0, len(INLINE_SPECIAL_CHARS) - 1)
-            chars.append(INLINE_SPECIAL_CHARS[idx])
-
-    result = "".join(chars)
-    # Final safety filter: ensure no FTL syntax breakers
-    result = "".join(c for c in result if c not in FTL_SYNTAX_CHARS)
-    return result if result else "value"
+# --- FTL Generation Helpers (delegated to fuzz_common) ---
+# gen_ftl_identifier, gen_ftl_value imported from fuzz_common
 
 
 def _generate_variant_key(fdp: atheris.FuzzedDataProvider) -> str:
@@ -396,43 +270,43 @@ def _generate_variant_key(fdp: atheris.FuzzedDataProvider) -> str:
             num_str = f"-{num_str}"
         return num_str
 
-    return _generate_identifier(fdp, max_len=10)
+    return gen_ftl_identifier(fdp)
 
 
 def _generate_simple_message(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate: msg-id = text value."""
-    msg_id = _generate_identifier(fdp)
-    value = _generate_text(fdp)
+    msg_id = gen_ftl_identifier(fdp)
+    value = gen_ftl_value(fdp)
     return f"{msg_id} = {value}"
 
 
 def _generate_variable_message(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate: msg-id = prefix { $var } suffix."""
-    msg_id = _generate_identifier(fdp)
-    var_name = _generate_identifier(fdp, max_len=10)
-    prefix = _generate_text(fdp, max_len=20)
-    suffix = _generate_text(fdp, max_len=20)
+    msg_id = gen_ftl_identifier(fdp)
+    var_name = gen_ftl_identifier(fdp)
+    prefix = gen_ftl_value(fdp, max_length=20)
+    suffix = gen_ftl_value(fdp, max_length=20)
     return f"{msg_id} = {prefix} {{ ${var_name} }} {suffix}"
 
 
 def _generate_term(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate: -term-id = value."""
-    term_id = _generate_identifier(fdp)
-    value = _generate_text(fdp)
+    term_id = gen_ftl_identifier(fdp)
+    value = gen_ftl_value(fdp)
     return f"-{term_id} = {value}"
 
 
 def _generate_attribute_message(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate message with attributes."""
-    msg_id = _generate_identifier(fdp)
-    value = _generate_text(fdp)
+    msg_id = gen_ftl_identifier(fdp)
+    value = gen_ftl_value(fdp)
     num_attrs = fdp.ConsumeIntInRange(1, 4) if fdp.remaining_bytes() else 1
     attrs = []
     for _ in range(num_attrs):
         if not fdp.remaining_bytes():
             break
-        attr_name = _generate_identifier(fdp, max_len=10)
-        attr_value = _generate_text(fdp, max_len=30)
+        attr_name = gen_ftl_identifier(fdp)
+        attr_value = gen_ftl_value(fdp, max_length=30)
         attrs.append(f"    .{attr_name} = {attr_value}")
     attr_block = "\n".join(attrs)
     return f"{msg_id} = {value}\n{attr_block}"
@@ -440,8 +314,8 @@ def _generate_attribute_message(fdp: atheris.FuzzedDataProvider) -> str:
 
 def _generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate message with select expression."""
-    msg_id = _generate_identifier(fdp)
-    var_name = _generate_identifier(fdp, max_len=10)
+    msg_id = gen_ftl_identifier(fdp)
+    var_name = gen_ftl_identifier(fdp)
 
     num_variants = fdp.ConsumeIntInRange(2, 5) if fdp.remaining_bytes() else 2
     default_idx = (
@@ -453,7 +327,7 @@ def _generate_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
         if not fdp.remaining_bytes():
             break
         key = _generate_variant_key(fdp)
-        val = _generate_text(fdp, max_len=30)
+        val = gen_ftl_value(fdp, max_length=30)
         prefix = "*" if i == default_idx else " "
         variants.append(f"   {prefix}[{key}] {val}")
 
@@ -465,7 +339,7 @@ def _generate_comment(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate FTL comment (single, group, or resource)."""
     level = fdp.ConsumeIntInRange(1, 3) if fdp.remaining_bytes() else 1
     prefix = "#" * level
-    content = _generate_text(fdp, max_len=40)
+    content = gen_ftl_value(fdp, max_length=40)
     return f"{prefix} {content}"
 
 
@@ -501,11 +375,11 @@ def _generate_ftl_resource(fdp: atheris.FuzzedDataProvider) -> str:
 
 def _generate_deep_nesting(fdp: atheris.FuzzedDataProvider) -> str:
     """Generate deeply nested placeables and references."""
-    msg_id = _generate_identifier(fdp)
+    msg_id = gen_ftl_identifier(fdp)
     depth = fdp.ConsumeIntInRange(3, 15) if fdp.remaining_bytes() else 5
 
     # Nested placeables: { { { $var } } }
-    var_name = _generate_identifier(fdp, max_len=10)
+    var_name = gen_ftl_identifier(fdp)
     expr = f"${var_name}"
     for _ in range(depth):
         expr = f"{{ {expr} }}"
@@ -660,13 +534,16 @@ def _verify_roundtrip(source: str, parser: FluentParserV1) -> None:
         # Entry count must match
         if len(result.entries) != len(reparsed.entries):
             _domain.roundtrip_mismatches += 1
-            _write_finding_artifact(
-                source=source,
-                s1=serialized,
+            write_finding_artifact(
+                findings_dir=_FINDINGS_DIR, state=_state,
+                source=source, s1=serialized,
                 s2="<entry count mismatch -- S2 not computed>",
                 pattern="roundtrip_verify",
-                entry_count_1=len(result.entries),
-                entry_count_2=len(reparsed.entries),
+                extra_meta={
+                    "failure_type": "entry_count_mismatch",
+                    "entries_parse1": len(result.entries),
+                    "entries_parse2": len(reparsed.entries),
+                },
             )
             msg = (
                 f"Round-trip entry count mismatch: "
@@ -680,28 +557,17 @@ def _verify_roundtrip(source: str, parser: FluentParserV1) -> None:
         reserialized = _serializer.serialize(reparsed)
         if serialized != reserialized:
             _domain.roundtrip_mismatches += 1
-            diff_pos = next(
-                (
-                    i for i, (a, b)
-                    in enumerate(zip(serialized, reserialized, strict=False))
-                    if a != b
-                ),
-                min(len(serialized), len(reserialized)),
-            )
-            _write_finding_artifact(
-                source=source,
-                s1=serialized,
-                s2=reserialized,
+            write_finding_artifact(
+                findings_dir=_FINDINGS_DIR, state=_state,
+                source=source, s1=serialized, s2=reserialized,
                 pattern="roundtrip_verify",
-                entry_count_1=len(result.entries),
-                entry_count_2=len(reparsed.entries),
+                extra_meta={"failure_type": "convergence_failure"},
             )
             msg = (
                 f"Round-trip convergence failure: S(P(S(P(x)))) != S(P(x))\n"
                 f"Source ({len(source)} chars): {source[:300]!r}\n"
                 f"S1 ({len(serialized)} chars): {serialized[:300]!r}\n"
-                f"S2 ({len(reserialized)} chars): {reserialized[:300]!r}\n"
-                f"First diff at byte {diff_pos}"
+                f"S2 ({len(reserialized)} chars): {reserialized[:300]!r}"
             )
             raise StructuredFuzzError(msg)
 
@@ -775,7 +641,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
 
     # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -802,7 +668,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
             case "term_definitions":
                 source = _generate_term(fdp)
                 # Add a referencing message so term is exercised
-                ref_id = _generate_identifier(fdp)
+                ref_id = gen_ftl_identifier(fdp)
                 term_name = source.split("=", maxsplit=1)[0].strip()
                 source += f"\n{ref_id} = {{ {term_name} }}"
                 _parse_and_check(source, parser)
@@ -923,22 +789,18 @@ def main() -> None:
 
     sys.argv = [sys.argv[0], *remaining]
 
-    print()
-    print("=" * 80)
-    print("Structure-Aware Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     FluentParserV1, FluentSerializer (grammar-aware construction)")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
-    print(f"Routing:    Round-robin weighted schedule (length: {len(_PATTERN_SCHEDULE)})")
-    print("Mutator:    Custom (AST mutation + byte mutation)")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="Structure-Aware Fuzzer (Atheris)",
+        target="FluentParserV1, FluentSerializer",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+    )
 
-    atheris.Setup(sys.argv, test_one_input, custom_mutator=_custom_mutator)
-    atheris.Fuzz()
+    run_fuzzer(
+        _state,
+        test_one_input=test_one_input,
+        custom_mutator=_custom_mutator,
+    )
 
 
 if __name__ == "__main__":

@@ -323,7 +323,7 @@ class FluentBundle:
                 max_entry_weight=cache.max_entry_weight,
                 max_errors_per_entry=cache.max_errors_per_entry,
                 write_once=cache.write_once,
-                strict=self._strict,
+                strict=cache.integrity_strict,
                 enable_audit=cache.enable_audit,
                 max_audit_entries=cache.max_audit_entries,
             )

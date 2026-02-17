@@ -61,10 +61,13 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
 )
 
@@ -86,7 +89,10 @@ class LockMetrics:
 
 # --- Global State ---
 
-_state = BaseFuzzerState()
+_state = BaseFuzzerState(
+    fuzzer_name="lock",
+    fuzzer_target="RWLock concurrency",
+)
 _domain = LockMetrics()
 
 # Thread join timeout (seconds) -- triggers deadlock detection
@@ -157,10 +163,21 @@ def _build_stats_dict() -> dict[str, Any]:
     return stats
 
 
+_REPORT_FILENAME = "fuzz_lock_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
+
+
 def _emit_report() -> None:
     """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
-    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_lock_report.json")
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
 
 
 atexit.register(_emit_report)
@@ -872,7 +889,7 @@ def test_one_input(data: bytes) -> None:
 
     # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -886,10 +903,6 @@ def test_one_input(data: bytes) -> None:
 
     except LockFuzzError:
         _state.findings += 1
-        raise
-
-    except KeyboardInterrupt:
-        _state.status = "stopped"
         raise
 
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -944,22 +957,14 @@ def main() -> None:
     if not any(arg.startswith("-rss_limit_mb") for arg in sys.argv):
         sys.argv.append("-rss_limit_mb=4096")
 
-    print()
-    print("=" * 80)
-    print("RWLock Contention Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     RWLock, with_read_lock, with_write_lock")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
-    print(f"Routing:    Round-robin weighted schedule (length: {len(_PATTERN_SCHEDULE)})")
-    print(f"Patterns:   {len(_PATTERN_WEIGHTS)}")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="RWLock Contention Fuzzer (Atheris)",
+        target="RWLock, with_read_lock, with_write_lock",
+        state=_state,
+        schedule_len=len(_PATTERN_SCHEDULE),
+    )
 
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

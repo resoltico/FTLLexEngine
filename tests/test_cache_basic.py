@@ -1,11 +1,14 @@
 """Basic caching functionality tests.
 
-Validates FormatCache and FluentBundle caching behavior.
+Validates CacheConfig construction, validation, and FluentBundle caching behavior.
 """
 
 import pytest
+from hypothesis import event, given
+from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE
 from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.cache_config import CacheConfig
 
@@ -220,12 +223,125 @@ class TestCacheSize:
         assert stats["hits"] == 0
 
     def test_cache_size_validation(self) -> None:
-        """Cache size must be positive."""
-        with pytest.raises(ValueError, match="maxsize must be positive"):
-            FluentBundle("en", cache=CacheConfig(size=0))
+        """Cache size must be positive (validated at CacheConfig construction)."""
+        with pytest.raises(ValueError, match="size must be positive"):
+            CacheConfig(size=0)
 
-        with pytest.raises(ValueError, match="maxsize must be positive"):
-            FluentBundle("en", cache=CacheConfig(size=-1))
+        with pytest.raises(ValueError, match="size must be positive"):
+            CacheConfig(size=-1)
+
+
+class TestCacheConfigValidation:
+    """CacheConfig frozen dataclass: validation, immutability, defaults."""
+
+    @given(value=st.integers(max_value=0))
+    def test_size_rejects_non_positive(self, value: int) -> None:
+        """size <= 0 raises ValueError at construction."""
+        with pytest.raises(ValueError, match="size must be positive"):
+            CacheConfig(size=value)
+        event(f"size={value}")
+
+    @given(value=st.integers(max_value=0))
+    def test_max_entry_weight_rejects_non_positive(
+        self, value: int
+    ) -> None:
+        """max_entry_weight <= 0 raises ValueError at construction."""
+        with pytest.raises(
+            ValueError, match="max_entry_weight must be positive"
+        ):
+            CacheConfig(max_entry_weight=value)
+        event(f"max_entry_weight={value}")
+
+    @given(value=st.integers(max_value=0))
+    def test_max_errors_per_entry_rejects_non_positive(
+        self, value: int
+    ) -> None:
+        """max_errors_per_entry <= 0 raises ValueError at construction."""
+        with pytest.raises(
+            ValueError, match="max_errors_per_entry must be positive"
+        ):
+            CacheConfig(max_errors_per_entry=value)
+        event(f"max_errors_per_entry={value}")
+
+    @given(value=st.integers(max_value=0))
+    def test_max_audit_entries_rejects_non_positive(
+        self, value: int
+    ) -> None:
+        """max_audit_entries <= 0 raises ValueError at construction."""
+        with pytest.raises(
+            ValueError, match="max_audit_entries must be positive"
+        ):
+            CacheConfig(max_audit_entries=value)
+        event(f"max_audit_entries={value}")
+
+    @given(
+        size=st.integers(min_value=1, max_value=100_000),
+        max_entry_weight=st.integers(min_value=1, max_value=100_000),
+        max_errors_per_entry=st.integers(min_value=1, max_value=1000),
+        max_audit_entries=st.integers(min_value=1, max_value=100_000),
+        write_once=st.booleans(),
+        integrity_strict=st.booleans(),
+        enable_audit=st.booleans(),
+    )
+    def test_valid_construction_preserves_all_fields(
+        self,
+        size: int,
+        max_entry_weight: int,
+        max_errors_per_entry: int,
+        max_audit_entries: int,
+        write_once: bool,
+        integrity_strict: bool,
+        enable_audit: bool,
+    ) -> None:
+        """All positive numeric fields and any boolean combination succeeds."""
+        cfg = CacheConfig(
+            size=size,
+            write_once=write_once,
+            integrity_strict=integrity_strict,
+            enable_audit=enable_audit,
+            max_audit_entries=max_audit_entries,
+            max_entry_weight=max_entry_weight,
+            max_errors_per_entry=max_errors_per_entry,
+        )
+        assert cfg.size == size
+        assert cfg.write_once is write_once
+        assert cfg.integrity_strict is integrity_strict
+        assert cfg.enable_audit is enable_audit
+        assert cfg.max_audit_entries == max_audit_entries
+        assert cfg.max_entry_weight == max_entry_weight
+        assert cfg.max_errors_per_entry == max_errors_per_entry
+        strict_label = "strict" if integrity_strict else "lenient"
+        event(f"outcome={strict_label}")
+
+    def test_defaults_match_constants(self) -> None:
+        """Default CacheConfig() uses documented constant defaults."""
+        cfg = CacheConfig()
+        assert cfg.size == DEFAULT_CACHE_SIZE
+        assert cfg.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert cfg.write_once is False
+        assert cfg.integrity_strict is True
+        assert cfg.enable_audit is False
+        assert cfg.max_audit_entries == 10_000
+        assert cfg.max_errors_per_entry == 50
+
+    def test_immutability_enforced(self) -> None:
+        """Frozen dataclass rejects field mutation."""
+        cfg = CacheConfig()
+        with pytest.raises(AttributeError):
+            cfg.size = 999  # type: ignore[misc]
+        with pytest.raises(AttributeError):
+            cfg.write_once = True  # type: ignore[misc]
+        with pytest.raises(AttributeError):
+            cfg.integrity_strict = False  # type: ignore[misc]
+
+    def test_equality_and_identity(self) -> None:
+        """Equal configs compare equal; different configs compare unequal."""
+        a = CacheConfig(size=500, write_once=True)
+        b = CacheConfig(size=500, write_once=True)
+        c = CacheConfig(size=500, write_once=False)
+        assert a == b
+        assert a is not b
+        assert a != c
 
 
 class TestCacheStats:

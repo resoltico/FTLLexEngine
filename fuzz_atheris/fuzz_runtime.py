@@ -66,10 +66,13 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
 )
 
@@ -102,7 +105,11 @@ class RuntimeMetrics:
 
 # --- Global State ---
 
-_state = BaseFuzzerState(seed_corpus_max_size=500)
+_state = BaseFuzzerState(
+    seed_corpus_max_size=500,
+    fuzzer_name="runtime",
+    fuzzer_target="FluentBundle, IntegrityCache, Resolver, Strict Mode",
+)
 _domain = RuntimeMetrics()
 
 
@@ -313,10 +320,21 @@ def _build_stats_dict() -> dict[str, Any]:
     return stats
 
 
+_REPORT_FILENAME = "fuzz_runtime_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = _build_stats_dict()
+    emit_checkpoint_report(
+        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+    )
+
+
 def _emit_report() -> None:
     """Emit comprehensive final report (crash-proof)."""
     stats = _build_stats_dict()
-    emit_final_report(_state, stats, _REPORT_DIR, "fuzz_runtime_report.json")
+    emit_final_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
 
 
 atexit.register(_emit_report)
@@ -1042,7 +1060,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
 
     # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -1112,10 +1130,6 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
         _state.findings += 1
         raise
 
-    except KeyboardInterrupt:
-        _state.status = "stopped"
-        raise
-
     except Exception as e:  # pylint: disable=broad-exception-caught
         error_key = f"{type(e).__name__}_{str(e)[:30]}"
         _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
@@ -1175,22 +1189,15 @@ def main() -> None:
 
     sys.argv = [sys.argv[0], *remaining]
 
-    print()
-    print("=" * 80)
-    print("Runtime End-to-End Fuzzer (Atheris)")
-    print("=" * 80)
-    print("Target:     FluentBundle, IntegrityCache, Resolver, Strict Mode")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print(f"Recursion:  {args.recursion_limit} limit")
-    print(f"GC Cycle:   Every {GC_INTERVAL} iterations")
-    print(f"Routing:    Round-robin weighted schedule (length: {len(_SCENARIO_SCHEDULE)})")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
+    print_fuzzer_banner(
+        title="Runtime End-to-End Fuzzer (Atheris)",
+        target="FluentBundle, IntegrityCache, Resolver, Strict Mode",
+        state=_state,
+        schedule_len=len(_SCENARIO_SCHEDULE),
+        extra_lines=[f"Recursion:  {args.recursion_limit} limit"],
+    )
 
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

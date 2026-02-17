@@ -54,10 +54,13 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
+    emit_checkpoint_report,
     emit_final_report,
     get_process,
+    print_fuzzer_banner,
     record_iteration_metrics,
     record_memory,
+    run_fuzzer,
     select_pattern_round_robin,
 )
 
@@ -134,6 +137,8 @@ _SCHEDULE = build_weighted_schedule(_PATTERNS, _PATTERN_WEIGHTS)
 _state = BaseFuzzerState(
     checkpoint_interval=500,
     seed_corpus_max_size=500,
+    fuzzer_name="fiscal",
+    fuzzer_target="FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy",
     pattern_intended_weights=dict(
         zip(_PATTERNS, _PATTERN_WEIGHTS, strict=True),
     ),
@@ -142,6 +147,22 @@ _domain = FiscalMetrics()
 
 _REPORT_DIR = pathlib.Path(".fuzz_atheris_corpus") / "fiscal"
 _REPORT_FILE = "fuzz_fiscal_report.json"
+
+
+def _emit_checkpoint() -> None:
+    """Emit periodic checkpoint (uses checkpoint markers)."""
+    stats = build_base_stats_dict(_state)
+    stats["calendar_invariant_checks"] = _domain.calendar_invariant_checks
+    stats["quarter_boundary_checks"] = _domain.quarter_boundary_checks
+    stats["calendar_identity_checks"] = _domain.calendar_identity_checks
+    stats["delta_add_subtract_checks"] = _domain.delta_add_subtract_checks
+    stats["delta_algebra_checks"] = _domain.delta_algebra_checks
+    stats["policy_cross_checks"] = _domain.policy_cross_checks
+    stats["delta_validation_checks"] = _domain.delta_validation_checks
+    stats["period_contract_checks"] = _domain.period_contract_checks
+    stats["convenience_oracle_checks"] = _domain.convenience_oracle_checks
+    stats["boundary_stress_checks"] = _domain.boundary_stress_checks
+    emit_checkpoint_report(_state, stats, _REPORT_DIR, _REPORT_FILE)
 
 
 def _emit_report() -> None:
@@ -952,7 +973,7 @@ def test_one_input(data: bytes) -> None:
     _state.status = "running"
 
     if _state.iterations % _state.checkpoint_interval == 0:
-        _emit_report()
+        _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
@@ -1037,23 +1058,15 @@ def main() -> None:
 
     sys.argv = [sys.argv[0], *remaining]
 
-    print()
-    print("=" * 80)
-    print("Fiscal Calendar Fuzzer (Atheris)")
-    print("=" * 80)
-    print(
-        "Target:     FiscalCalendar, FiscalDelta, FiscalPeriod, "
-        "MonthEndPolicy, convenience functions",
+    print_fuzzer_banner(
+        title="Fiscal Calendar Fuzzer (Atheris)",
+        target="FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, convenience functions",
+        state=_state,
+        schedule_len=len(_SCHEDULE),
+        extra_lines=[f"Patterns:   {len(_PATTERNS)} ({sum(_PATTERN_WEIGHTS)} weighted slots)"],
     )
-    print(f"Patterns:   {len(_PATTERNS)} ({sum(_PATTERN_WEIGHTS)} weighted slots)")
-    print(f"Checkpoint: Every {_state.checkpoint_interval} iterations")
-    print(f"Corpus Max: {_state.seed_corpus_max_size} entries")
-    print("Stopping:   Press Ctrl+C (findings auto-saved)")
-    print("=" * 80)
-    print()
 
-    atheris.Setup(sys.argv, test_one_input)
-    atheris.Fuzz()
+    run_fuzzer(_state, test_one_input=test_one_input)
 
 
 if __name__ == "__main__":

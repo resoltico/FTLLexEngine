@@ -28,16 +28,11 @@ from ftllexengine.diagnostics import (
     SourceSpan,
 )
 from ftllexengine.integrity import ImmutabilityViolationError
+from tests.strategies.diagnostics import error_categories
 
 # =============================================================================
 # Strategies for generating test data
 # =============================================================================
-
-
-@st.composite
-def error_categories(draw: st.DrawFn) -> ErrorCategory:
-    """Generate random ErrorCategory values."""
-    return draw(st.sampled_from(list(ErrorCategory)))
 
 
 @st.composite

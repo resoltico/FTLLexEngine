@@ -33,18 +33,20 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import threading
+import time
 from collections.abc import Callable, Generator, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, NoReturn, Protocol
 
 from .constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
 from .diagnostics.codes import Diagnostic, DiagnosticCode
 from .diagnostics.errors import ErrorCategory, FrozenFluentError
+from .integrity import FormattingIntegrityError, IntegrityContext
 from .runtime.bundle import FluentBundle
 from .runtime.cache_config import CacheConfig
+from .runtime.rwlock import RWLock
 from .runtime.value_types import FluentValue
 from .syntax import Junk
 
@@ -561,6 +563,7 @@ class FluentLocalization:
         "_load_results",
         "_locales",
         "_lock",
+        "_modified_in_context",
         "_on_fallback",
         "_pending_functions",
         "_resource_ids",
@@ -646,8 +649,14 @@ class FluentLocalization:
         # Functions are applied to bundles when they are first accessed
         self._pending_functions: dict[str, Callable[..., FluentValue]] = {}
 
-        # Thread safety: always enabled via RLock
-        self._lock = threading.RLock()
+        # Thread safety: RWLock allows concurrent format_value/format_pattern
+        # calls (readers) while serializing add_resource/add_function (writers).
+        self._lock = RWLock()
+
+        # Context manager state tracking (cache invalidation optimization).
+        # Mirrors FluentBundle's context manager semantics: cache is cleared
+        # on __exit__ only if the localization was modified during the context.
+        self._modified_in_context = False
 
         # Resource loading is EAGER by design:
         # - Fail-fast: Critical errors (parse, permission) raised at construction
@@ -671,7 +680,8 @@ class FluentLocalization:
         When a new bundle is created, any pending functions (registered via
         add_function before the bundle was accessed) are automatically applied.
 
-        Thread-safe via internal RLock.
+        Thread-safe via internal RWLock (acquires write lock since it may
+        create a new bundle).
 
         Args:
             locale: Locale code (must be in _locales tuple)
@@ -679,7 +689,7 @@ class FluentLocalization:
         Returns:
             FluentBundle instance for the locale
         """
-        with self._lock:
+        with self._lock.write():
             if locale in self._bundles:
                 return self._bundles[locale]
 
@@ -827,6 +837,18 @@ class FluentLocalization:
         """
         return self._cache_config
 
+    @property
+    def strict(self) -> bool:
+        """Get whether strict mode is enabled (read-only).
+
+        When strict mode is enabled, formatting errors and missing messages
+        raise FormattingIntegrityError instead of returning fallback values.
+
+        Returns:
+            bool: True if strict mode is enabled, False otherwise
+        """
+        return self._strict
+
     def __repr__(self) -> str:
         """Return string representation for debugging.
 
@@ -851,7 +873,7 @@ class FluentLocalization:
 
         Allows dynamic resource loading without ResourceLoader.
 
-        Thread-safe via internal RLock.
+        Thread-safe via internal RWLock.
 
         Args:
             locale: Locale code (must be in fallback chain, no leading/trailing whitespace)
@@ -873,12 +895,15 @@ class FluentLocalization:
             )
             raise ValueError(msg)
 
-        with self._lock:
+        with self._lock.write():
             if locale not in self._locales:
                 msg = f"Locale '{locale}' not in fallback chain {self._locales}"
                 raise ValueError(msg)
 
+            # _get_or_create_bundle also acquires write lock; RWLock is
+            # reentrant for same-thread write re-acquisition.
             bundle = self._get_or_create_bundle(locale)
+            self._modified_in_context = True
             return bundle.add_resource(ftl_source)
 
     def _handle_message_not_found(
@@ -891,16 +916,23 @@ class FluentLocalization:
         Uses pattern matching to distinguish between empty/invalid message IDs
         and valid IDs that simply weren't found in any locale.
 
+        In strict mode, raises FormattingIntegrityError instead of returning
+        a fallback value. Financial applications must never silently display
+        placeholder text like ``{message_id}`` to end users.
+
         Args:
             message_id: The message ID that was not found
             errors: Mutable error list to append to
 
         Returns:
             Tuple of (fallback_value, errors_tuple)
+
+        Raises:
+            FormattingIntegrityError: In strict mode, always raised
         """
         match message_id:
             case str() if message_id:
-                # Valid but not found - return ID wrapped in braces (Fluent convention)
+                # Valid but not found
                 diagnostic = Diagnostic(
                     code=DiagnosticCode.MESSAGE_NOT_FOUND,
                     message=f"Message '{message_id}' not found in any locale",
@@ -909,7 +941,7 @@ class FluentLocalization:
                     str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
                 )
                 errors.append(error)
-                return (FALLBACK_MISSING_MESSAGE.format(id=message_id), tuple(errors))
+                fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
             case _:
                 # Empty or invalid message ID
                 diagnostic = Diagnostic(
@@ -920,7 +952,51 @@ class FluentLocalization:
                     str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
                 )
                 errors.append(error)
-                return (FALLBACK_INVALID, tuple(errors))
+                fallback = FALLBACK_INVALID
+
+        errors_tuple = tuple(errors)
+
+        if self._strict:
+            self._raise_strict_error(message_id, fallback, error)
+
+        return (fallback, errors_tuple)
+
+    def _raise_strict_error(
+        self,
+        message_id: MessageId,
+        fallback_value: str,
+        error: FrozenFluentError,
+    ) -> NoReturn:
+        """Raise FormattingIntegrityError for strict mode.
+
+        Called from _handle_message_not_found which produces exactly one
+        error (message not found or invalid message ID).
+
+        Args:
+            message_id: The message ID that failed
+            fallback_value: Value that would be returned in non-strict mode
+            error: The FrozenFluentError describing the failure
+
+        Raises:
+            FormattingIntegrityError: Always raised with error details
+        """
+        context = IntegrityContext(
+            component="localization",
+            operation="format_pattern",
+            key=str(message_id),
+            expected="<no errors>",
+            actual="<1 error>",
+            timestamp=time.monotonic(),
+        )
+
+        msg = f"Strict mode: '{message_id}' failed: {error}"
+        raise FormattingIntegrityError(
+            msg,
+            context=context,
+            fluent_errors=(error,),
+            fallback_value=fallback_value,
+            message_id=str(message_id),
+        )
 
     def format_value(
         self, message_id: MessageId, args: Mapping[str, FluentValue] | None = None
@@ -928,7 +1004,6 @@ class FluentLocalization:
         """Format message with fallback chain.
 
         Tries each locale in priority order until message is found.
-        Uses Python 3.13 pattern matching for elegant fallback logic.
 
         Args:
             message_id: Message identifier (e.g., 'welcome', 'error-404')
@@ -938,6 +1013,10 @@ class FluentLocalization:
             Tuple of (formatted_value, errors)
             - If message found: Returns formatted result from first bundle with message
             - If not found: Returns ({message_id}, (error,))
+
+        Raises:
+            FormattingIntegrityError: In strict mode, raised when formatting
+                produces errors or when the message is not found in any locale.
 
         Example:
             >>> l10n = FluentLocalization(['lv', 'en'])
@@ -1025,6 +1104,10 @@ class FluentLocalization:
         Returns:
             Tuple of (formatted_value, errors)
 
+        Raises:
+            FormattingIntegrityError: In strict mode, raised when formatting
+                produces errors or when the message is not found in any locale.
+
         Example:
             >>> l10n = FluentLocalization(['lv', 'en'])
             >>> l10n.add_resource('lv', '''
@@ -1095,7 +1178,7 @@ class FluentLocalization:
         and stored for deferred application to bundles created later.
         This preserves lazy bundle initialization.
 
-        Thread-safe via internal RLock.
+        Thread-safe via internal RWLock.
 
         Args:
             name: Function name (UPPERCASE by convention)
@@ -1111,9 +1194,10 @@ class FluentLocalization:
             >>> result
             'HELLO'
         """
-        with self._lock:
+        with self._lock.write():
             # Store for future bundle creation (lazy loading support)
             self._pending_functions[name] = func
+            self._modified_in_context = True
 
             # Apply to any already-created bundles
             for bundle in self._bundles.values():
@@ -1245,8 +1329,25 @@ class FluentLocalization:
         return None
 
     def __enter__(self) -> FluentLocalization:
-        """Enter context manager, acquire lock."""
-        self._lock.acquire()
+        """Enter context manager for cache invalidation tracking.
+
+        Clears all bundle caches on exit only if the localization was
+        modified during the context (add_resource, add_function, or
+        clear_cache called). For read-only operations, caches are
+        preserved for better performance.
+
+        Semantics match FluentBundle's context manager: both track
+        modifications and conditionally clear caches on exit.
+
+        Returns:
+            Self (the FluentLocalization instance)
+
+        Example:
+            >>> with FluentLocalization(['en'], cache=CacheConfig()) as l10n:
+            ...     l10n.add_resource('en', 'hello = Hello')
+            ... # Caches cleared (localization was modified)
+        """
+        self._modified_in_context = False
         return self
 
     def __exit__(
@@ -1255,8 +1356,21 @@ class FluentLocalization:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        """Exit context manager, release lock."""
-        self._lock.release()
+        """Exit context manager with conditional cache cleanup.
+
+        Clears all bundle caches only if the localization was modified
+        during the context. Does not suppress exceptions.
+
+        Args:
+            exc_type: Exception type (if any)
+            exc_val: Exception value (if any)
+            exc_tb: Exception traceback (if any)
+        """
+        if self._modified_in_context:
+            with self._lock.write():
+                for bundle in self._bundles.values():
+                    bundle.clear_cache()
+        self._modified_in_context = False
 
     def get_babel_locale(self) -> str:
         """Get Babel locale identifier from primary bundle.
@@ -1304,9 +1418,10 @@ class FluentLocalization:
         Calls clear_cache() on each bundle that has been created.
         Does not create new bundles.
 
-        Thread-safe via internal RLock.
+        Thread-safe via internal RWLock.
         """
-        with self._lock:
+        with self._lock.write():
+            self._modified_in_context = True
             for bundle in self._bundles.values():
                 bundle.clear_cache()
 
@@ -1327,7 +1442,7 @@ class FluentLocalization:
             - unhashable_skips (int): Total uncacheable argument skips
             - bundle_count (int): Number of initialized bundles
 
-        Thread-safe via internal RLock.
+        Thread-safe via internal RWLock (read lock).
 
         Example:
             >>> l10n = FluentLocalization(['en', 'de'], cache=CacheConfig())
@@ -1343,7 +1458,7 @@ class FluentLocalization:
         if self._cache_config is None:
             return None
 
-        with self._lock:
+        with self._lock.read():
             total_size = 0
             total_maxsize = 0
             total_hits = 0
