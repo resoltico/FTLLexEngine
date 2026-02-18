@@ -1,4 +1,4 @@
-"""Comprehensive tests for locale-specific NUMBER and DATETIME formatting.
+"""Tests for locale-specific NUMBER and DATETIME formatting across 30 locales.
 
 Validates that all 30 supported locales work correctly with Babel for:
 - Number formatting (grouping separators, decimal separators)

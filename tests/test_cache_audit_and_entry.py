@@ -1,12 +1,8 @@
-"""Tests to achieve 100% coverage for IntegrityCache.
+"""Tests for IntegrityCache audit logging, entry content hashing, and property access.
 
-This test module specifically targets uncovered lines to achieve complete
-coverage of src/ftllexengine/runtime/cache.py.
-
-Target lines:
-- Line 178: error.content_hash handling in _compute_checksum
-- Lines 567-570: get_audit_log() when audit disabled
-- Lines 749-750, 755, 760: Property getters (corruption_detected, write_once, strict)
+Covers error.content_hash handling in checksum computation, audit log retrieval
+when disabled, and configuration property getters (corruption_detected, write_once,
+strict).
 """
 
 from __future__ import annotations

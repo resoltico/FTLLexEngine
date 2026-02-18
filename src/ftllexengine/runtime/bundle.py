@@ -87,8 +87,8 @@ class _PendingRegistration:
     def __init__(self) -> None:
         self.messages: dict[str, Message] = {}
         self.terms: dict[str, Term] = {}
-        self.msg_deps: dict[str, set[str]] = {}
-        self.term_deps: dict[str, set[str]] = {}
+        self.msg_deps: dict[str, frozenset[str]] = {}
+        self.term_deps: dict[str, frozenset[str]] = {}
         self.junk: list[Junk] = []
         self.overwrite_warnings: list[tuple[str, str]] = []
 
@@ -158,6 +158,7 @@ class FluentBundle:
         "_msg_deps",
         "_owns_registry",
         "_parser",
+        "_resolver",
         "_rwlock",
         "_strict",
         "_term_deps",
@@ -281,8 +282,8 @@ class FluentBundle:
         # Dependency tracking for cross-resource cycle detection.
         # Maps entry ID to set of (type-prefixed) dependencies.
         # E.g., {"greeting": {"msg:welcome", "term:brand"}}
-        self._msg_deps: dict[str, set[str]] = {}
-        self._term_deps: dict[str, set[str]] = {}
+        self._msg_deps: dict[str, frozenset[str]] = {}
+        self._term_deps: dict[str, frozenset[str]] = {}
 
         # Parser security configuration
         self._max_source_size = max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
@@ -327,6 +328,9 @@ class FluentBundle:
                 enable_audit=cache.enable_audit,
                 max_audit_entries=cache.max_audit_entries,
             )
+
+        # Cached resolver (lazily created, invalidated on mutation)
+        self._resolver: FluentResolver | None = None
 
         # Context manager state tracking (cache invalidation optimization)
         self._modified_in_context = False
@@ -1088,6 +1092,35 @@ class FluentBundle:
             message_id=message_id,
         )
 
+    def _get_resolver(self) -> FluentResolver:
+        """Get or create the cached FluentResolver (assumes read lock held).
+
+        The resolver is stateless: all per-call state lives in ResolutionContext.
+        It references self._messages and self._terms dicts directly, so dict
+        mutations from add_resource are visible without re-creation. Invalidated
+        only when function_registry or formatting config changes.
+        """
+        if self._resolver is None:
+            self._resolver = FluentResolver(
+                locale=self._locale,
+                messages=self._messages,
+                terms=self._terms,
+                function_registry=self._function_registry,
+                use_isolating=self._use_isolating,
+                max_nesting_depth=self._max_nesting_depth,
+                max_expansion_size=self._max_expansion_size,
+            )
+        return self._resolver
+
+    def _invalidate_resolver(self) -> None:
+        """Invalidate the cached resolver (assumes write lock held).
+
+        Called when function_registry changes. Not needed for add_resource
+        because the resolver references self._messages/self._terms dicts
+        directly (mutations are visible through the shared reference).
+        """
+        self._resolver = None
+
     def _format_pattern_impl(
         self,
         message_id: str,
@@ -1101,7 +1134,7 @@ class FluentBundle:
                 message_id, args, attribute, self._locale, self._use_isolating
             )
             if cached_entry is not None:
-                result, errors_tuple = cached_entry.to_tuple()
+                result, errors_tuple = cached_entry.as_result()
                 if errors_tuple and self._strict:
                     self._raise_strict_error(message_id, result, errors_tuple)
                 return (result, errors_tuple)
@@ -1170,16 +1203,12 @@ class FluentBundle:
 
         message = self._messages[message_id]
 
-        # Create resolver
-        resolver = FluentResolver(
-            locale=self._locale,
-            messages=self._messages,
-            terms=self._terms,
-            function_registry=self._function_registry,
-            use_isolating=self._use_isolating,
-            max_nesting_depth=self._max_nesting_depth,
-            max_expansion_size=self._max_expansion_size,
-        )
+        # Reuse cached resolver (invalidated on add_resource/add_function).
+        # The resolver is stateless: all per-call state lives in ResolutionContext.
+        # It holds references to self._messages and self._terms dicts directly,
+        # so mutations are visible without re-creation. The resolver is only
+        # invalidated when function_registry, locale, or config changes.
+        resolver = self._get_resolver()
 
         # Resolve message (resolver handles all errors internally including cycles)
         # Note: No try-except here. The resolver is designed to collect all expected
@@ -1446,6 +1475,9 @@ class FluentBundle:
 
             self._function_registry.register(func, ftl_name=name)
             logger.debug("Added custom function: %s", name)
+
+            # Invalidate resolver (function registry changed)
+            self._invalidate_resolver()
 
             # Invalidate cache (functions changed)
             if self._cache is not None:

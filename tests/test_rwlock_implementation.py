@@ -1,4 +1,4 @@
-"""Comprehensive tests for RWLock readers-writer lock implementation.
+"""Tests for RWLock readers-writer lock implementation.
 
 Tests verify:
 - Multiple concurrent readers

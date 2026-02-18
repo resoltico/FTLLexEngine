@@ -1,7 +1,7 @@
-"""Comprehensive tests for runtime.resolver module.
+"""Property-based tests for runtime.resolver module.
 
-Property-based tests for Fluent message resolver ensuring correct pattern
-resolution, depth limiting, error handling, and Babel integration fallbacks.
+Covers Fluent message resolution, depth limiting, error handling, and
+Babel integration fallbacks.
 
 Coverage Focus:
     - GlobalDepthGuard depth limiting (line 111)

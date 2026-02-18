@@ -1,6 +1,6 @@
-"""Targeted tests for 100% coverage of runtime resolver module.
-
-Covers specific uncovered lines identified by coverage analysis.
+"""Tests for placeable resolution, numeric variant matching, fallback variant
+selection, select expression fallback paths, term named arguments, and
+FluentNumber variant matching.
 Focuses on pattern resolution, variant matching, and fallback logic.
 """
 

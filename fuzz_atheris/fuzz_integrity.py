@@ -579,7 +579,7 @@ def _pattern_cross_cycle(fdp: atheris.FuzzedDataProvider) -> None:
         ftl2,
         parser=_parser,
         known_messages=frozenset([f"msg_{idx}_a"]),
-        known_msg_deps={f"msg_{idx}_a": {f"msg:msg_{idx}_b"}},
+        known_msg_deps={f"msg_{idx}_a": frozenset({f"msg:msg_{idx}_b"})},
     )
     _track_validation_result(result)
     # Check for circular reference
@@ -616,9 +616,9 @@ def _pattern_cross_chain_depth(fdp: atheris.FuzzedDataProvider) -> None:
 
     # Simulate existing chain of MAX_DEPTH-5 in known deps
     existing_depth = MAX_DEPTH - 5
-    known_deps: dict[str, set[str]] = {}
+    known_deps: dict[str, frozenset[str]] = {}
     for i in range(existing_depth):
-        known_deps[f"chain_{idx}_{i}"] = {f"msg:chain_{idx}_{i + 1}"}
+        known_deps[f"chain_{idx}_{i}"] = frozenset({f"msg:chain_{idx}_{i + 1}"})
 
     # New resource adds 10 more levels -> exceeds MAX_DEPTH
     new_chain = [f"ext_{idx}_{i} = {{ ext_{idx}_{i + 1} }}" for i in range(10)]

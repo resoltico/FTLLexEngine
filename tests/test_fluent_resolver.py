@@ -1,4 +1,4 @@
-"""Comprehensive tests for FluentResolver (Phase 3: Infrastructure/i18n)."""
+"""Tests for FluentResolver message and term resolution."""
 
 from typing import Any
 

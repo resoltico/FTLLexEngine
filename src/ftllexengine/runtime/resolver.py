@@ -272,9 +272,9 @@ class FluentResolver:
 
         for element in pattern.elements:
             # Check expansion budget before each element to stop early
-            if context._total_chars > context.max_expansion_size:
+            if context.total_chars > context.max_expansion_size:
                 diag = ErrorTemplate.expansion_budget_exceeded(
-                    context._total_chars, context.max_expansion_size
+                    context.total_chars, context.max_expansion_size
                 )
                 errors.append(
                     FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)

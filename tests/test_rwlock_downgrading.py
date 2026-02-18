@@ -1,4 +1,4 @@
-"""Comprehensive tests for RWLock lock downgrading feature.
+"""Tests for RWLock lock downgrading feature.
 
 Tests verify:
 - Writer can acquire read locks without blocking (lock downgrading)

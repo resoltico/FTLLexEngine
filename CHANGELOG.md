@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-02-18
+
+### Changed (BREAKING)
+
+- **`analysis/` domain hardened** (REFACTOR-ANALYSIS-HARDEN-001):
+  - `build_dependency_graph` removed -- dead production code; `validation/resource.py` maintains its own private `_build_dependency_graph` which is the sole consumer of graph construction logic
+  - `canonicalize_cycle` made private (`_canonicalize_cycle`) -- internal deduplication detail, not a public analysis primitive
+  - `entry_dependency_set` return type changed from `set[str]` to `frozenset[str]` -- enforces immutability at API boundary; cascading type change through `FluentBundle._msg_deps`/`_term_deps` and `validate_resource` known deps parameters (`Mapping[str, frozenset[str]]`)
+  - `detect_cycles` cycle deduplication changed from string keys to canonical tuple keys -- eliminates redundant string construction and arrow-join overhead during detection
+  - `_NodeState` enum replaced with bool constants (`_ENTERING`/`_EXITING`) -- two-member enums with no associated data are overengineered; bool comparison is a single CPU instruction
+  - Defensive `pragma: no cover` / `pragma: no branch` guards removed from unreachable code paths -- masking dead code behind coverage pragmas violates auditability
+  - Public API surface: `detect_cycles`, `entry_dependency_set`, `make_cycle_key`
+  - Location: `analysis/graph.py`, `analysis/__init__.py`, `runtime/bundle.py`, `validation/resource.py`
+
+- **`runtime/` domain hardened** (REFACTOR-RUNTIME-HARDEN-001):
+  - `IntegrityCacheEntry.to_tuple()` renamed to `as_result()`
+  - `ResolutionContext._total_chars` encapsulated behind `total_chars` read-only property; resolver uses public API instead of private attribute access
+  - `fluent_function` decorator no longer wraps callables when `inject_locale=False` -- returns the original function unchanged, eliminating unnecessary indirection
+  - `LocaleContext._factory_token` excluded from dataclass `repr`, `compare`, and `hash` via `field()` metadata -- sentinel no longer leaks into equality semantics
+  - `FluentResolver` cached on `FluentBundle` instance instead of per-call allocation; invalidated on `add_function()`, transparent to `add_resource()` (resolver references mutable dicts directly)
+  - Location: `runtime/cache.py`, `runtime/resolution_context.py`, `runtime/function_bridge.py`, `runtime/locale_context.py`, `runtime/bundle.py`, `runtime/resolver.py`
+
+### Fixed
+
+- **`format_number` crashes on `Decimal` infinity/NaN** (BUG-DECIMAL-SPECIAL-001):
+  - `math.isinf()` and `math.isnan()` raise `TypeError` when called with `Decimal` arguments; special-value detection now uses type-aware predicates (`Decimal.is_finite()` for Decimal, `math.isinf()`/`math.isnan()` for float)
+  - Applications passing `Decimal('Infinity')` or `Decimal('NaN')` through locale formatting no longer crash
+  - Location: `runtime/locale_context.py`
+
+- **Silent exception swallowing in `NUMBER`/`CURRENCY` pattern parsing** (BUG-SILENT-EXCEPT-001):
+  - Bare `except Exception: pass` in `number_format` and `currency_format` replaced with `logger.debug()` calls, providing observability for parse failures that silently disable precision capping
+  - Location: `runtime/functions.py`
+
 ## [0.111.0] - 2026-02-18
 
 ### Changed (BREAKING)
@@ -3542,6 +3575,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.112.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.112.0
 [0.111.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.111.0
 [0.110.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.110.0
 [0.109.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.109.0

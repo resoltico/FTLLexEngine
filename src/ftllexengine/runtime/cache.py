@@ -285,11 +285,11 @@ class IntegrityCacheEntry:
                 return False
         return True
 
-    def to_tuple(self) -> _CacheValue:
-        """Convert to legacy tuple format for backwards compatibility.
+    def as_result(self) -> _CacheValue:
+        """Extract formatted result and errors as a tuple.
 
         Returns:
-            (formatted, errors) tuple matching FormatCache return type
+            (formatted, errors) pair for resolver consumption.
         """
         return (self.formatted, self.errors)
 
@@ -404,7 +404,7 @@ class IntegrityCache:
         >>> entry = cache.get("msg", None, None, "en_US", False)
         >>> assert entry is not None
         >>> assert entry.verify()  # Integrity check
-        >>> result, errors = entry.to_tuple()  # Legacy format
+        >>> result, errors = entry.as_result()
     """
 
     __slots__ = (

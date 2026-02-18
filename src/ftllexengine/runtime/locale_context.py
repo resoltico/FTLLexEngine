@@ -35,7 +35,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from threading import RLock
@@ -115,7 +115,9 @@ class LocaleContext:
     locale_code: str
     _babel_locale: Locale
     is_fallback: bool = False
-    _factory_token: object = None
+    _factory_token: object = field(
+        default=None, repr=False, compare=False, hash=False
+    )
 
     def __post_init__(self) -> None:
         """Validate construction came from factory method."""
@@ -452,10 +454,17 @@ class LocaleContext:
                 optional = "#" * (maximum_fraction_digits - minimum_fraction_digits)
                 format_pattern = f"{integer_part}.{required}{optional}"
 
-            # Quantize value with ROUND_HALF_UP for consistent rounding
-            # Skip quantization for special values (inf, -inf, NaN) that cannot be quantized
+            # Quantize value with ROUND_HALF_UP for consistent rounding.
+            # Skip quantization for special values (inf, -inf, NaN) that cannot
+            # be quantized. Decimal has its own special-value predicates; math.isinf
+            # and math.isnan raise TypeError on Decimal inputs.
+            is_special = False
+            if isinstance(value, Decimal):
+                is_special = not value.is_finite()
+            elif isinstance(value, float):
+                is_special = math.isinf(value) or math.isnan(value)
             # Keep as Decimal to preserve precision (Babel format_decimal accepts Decimal)
-            if not (math.isinf(value) or math.isnan(value)):
+            if not is_special:
                 value = Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
 
             # Format using Babel

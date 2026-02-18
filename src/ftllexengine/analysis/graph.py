@@ -1,139 +1,108 @@
 """Graph algorithms for dependency analysis.
 
-Provides cycle detection using depth-first search for validating
+Provides cycle detection using iterative depth-first search and
+namespace-prefixed dependency set construction for validating
 message/term reference graphs in FTL resources.
 
 Python 3.13+.
 """
 
+from __future__ import annotations
+
 from collections.abc import Mapping, Sequence
-from enum import Enum, auto
 
 __all__ = [
-    "build_dependency_graph",
-    "canonicalize_cycle",
     "detect_cycles",
     "entry_dependency_set",
     "make_cycle_key",
 ]
 
+_ENTERING = True
+_EXITING = False
+
 
 def entry_dependency_set(
     message_refs: frozenset[str],
     term_refs: frozenset[str],
-) -> set[str]:
+) -> frozenset[str]:
     """Build a namespace-prefixed dependency set from reference sets.
 
-    Combines message and term references into a single set with ``msg:``
-    and ``term:`` prefixes. This is the canonical key format used by
-    ``build_dependency_graph`` and ``detect_cycles`` for cross-namespace
-    cycle detection.
+    Combines message and term references into a single frozenset with
+    ``msg:`` and ``term:`` prefixes. This is the canonical key format
+    used by ``detect_cycles`` for cross-namespace cycle detection.
 
     Args:
         message_refs: Message IDs referenced by the entry.
         term_refs: Term IDs referenced by the entry.
 
     Returns:
-        Set of prefixed dependency keys (e.g., ``{"msg:welcome", "term:brand"}``).
+        Frozenset of prefixed dependency keys
+        (e.g., ``frozenset({"msg:welcome", "term:brand"})``).
     """
-    return {f"msg:{r}" for r in message_refs} | {f"term:{r}" for r in term_refs}
+    return frozenset(
+        {f"msg:{r}" for r in message_refs}
+        | {f"term:{r}" for r in term_refs}
+    )
 
 
-def canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:
+def _canonicalize_cycle(cycle: Sequence[str]) -> tuple[str, ...]:
     """Canonicalize a cycle path by rotating to start with smallest element.
 
-    This preserves directional information (A->B->C vs A->C->B remain distinct)
+    Preserves directional information (A->B->C vs A->C->B remain distinct)
     while normalizing the starting point for deduplication.
 
-    The input cycle is expected to have the format [A, B, C, A] where the
-    last element repeats the first to close the cycle.
+    The input cycle has the format ``[A, B, C, A]`` where the last element
+    repeats the first to close the cycle.
 
     Args:
-        cycle: Cycle path as sequence of node IDs, with last element
-               repeating the first (e.g., ["A", "B", "C", "A"]).
+        cycle: Cycle path with closing repeat
+               (e.g., ``["A", "B", "C", "A"]``).
 
     Returns:
-        Canonicalized cycle as tuple, rotated to start with lexicographically
-        smallest element. The closing repeat is preserved.
-
-    Examples:
-        >>> canonicalize_cycle(["B", "C", "A", "B"])
-        ('A', 'B', 'C', 'A')
-
-        >>> canonicalize_cycle(["C", "B", "A", "C"])
-        ('A', 'C', 'B', 'A')
-
-        >>> # Different directions produce different canonical forms
-        >>> canonicalize_cycle(["A", "B", "C", "A"])
-        ('A', 'B', 'C', 'A')
-        >>> canonicalize_cycle(["A", "C", "B", "A"])
-        ('A', 'C', 'B', 'A')
+        Canonicalized cycle as tuple, rotated to start with
+        lexicographically smallest element. Closing repeat preserved.
     """
     if len(cycle) <= 1:
         return tuple(cycle)
 
-    # Exclude the closing element (which repeats the first)
     nodes = list(cycle[:-1])
-    if not nodes:  # pragma: no cover
-        # Defensive: unreachable since len(cycle) > 1 implies cycle[:-1] non-empty
-        return tuple(cycle)
-
-    # Find the index of the lexicographically smallest element
     min_idx = nodes.index(min(nodes))
-
-    # Rotate the cycle to start with the smallest element
     rotated = nodes[min_idx:] + nodes[:min_idx]
-
-    # Add the closing element (repeat of first)
     return (*rotated, rotated[0])
 
 
 def make_cycle_key(cycle: Sequence[str]) -> str:
-    """Create a canonical string key from a cycle for deduplication.
+    """Create a canonical string key from a cycle for display.
 
     Args:
         cycle: Cycle path as sequence of node IDs.
 
     Returns:
-        Canonical string key in format "A -> B -> C -> A".
+        Canonical string key in format ``"A -> B -> C -> A"``.
     """
-    canonical = canonicalize_cycle(cycle)
+    canonical = _canonicalize_cycle(cycle)
     return " -> ".join(canonical)
-
-
-class _NodeState(Enum):
-    """DFS node visitation state for iterative cycle detection."""
-
-    ENTER = auto()  # First visit to node
-    EXIT = auto()  # Returning from node (all neighbors processed)
 
 
 def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
     """Detect all cycles in a dependency graph using iterative DFS.
 
     Implements iterative DFS with explicit stack to avoid RecursionError
-    on deep graphs (>1000 nodes in linear chain). Uses Tarjan-style
-    cycle detection with explicit stack tracking.
+    on deep graphs (>1000 nodes in linear chain).
 
     Args:
         dependencies: Mapping from node ID to set of referenced node IDs.
-                     Example: {"a": {"b", "c"}, "b": {"c"}, "c": {"a"}}
+                     Example: ``{"a": {"b", "c"}, "b": {"c"}, "c": {"a"}}``
 
     Returns:
         List of cycles, where each cycle is a list of node IDs forming
-        the cycle path. Empty list if no cycles detected.
-
-    Example:
-        >>> deps = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
-        >>> cycles = detect_cycles(deps)
-        >>> len(cycles)
-        1
-        >>> "a" in cycles[0] and "b" in cycles[0] and "c" in cycles[0]
-        True
+        the cycle path (closed: last element repeats first). Empty list
+        if no cycles detected. Cycles are deduplicated via canonical
+        tuple form.
 
     Complexity:
-        Time: O(V + E) where V = nodes, E = edges
-        Space: O(V) for visited/recursion tracking
+        Time: O(V + E) where V = nodes, E = edges.
+        Space: O(V) for visited/recursion tracking.
 
     Security:
         Uses iterative DFS to prevent stack overflow attacks via
@@ -141,136 +110,50 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
     """
     visited: set[str] = set()
     cycles: list[list[str]] = []
-    seen_cycle_keys: set[str] = set()
+    seen_canonical: set[tuple[str, ...]] = set()
 
-    # Process each connected component
     for start_node in dependencies:
         if start_node in visited:
             continue
 
-        # Iterative DFS using explicit stack
-        # Stack entries: (node, state, iterator)
-        # - ENTER state: first visit, add to path and rec_stack
-        # - EXIT state: done with neighbors, remove from path and rec_stack
         path: list[str] = []
         rec_stack: set[str] = set()
 
-        # Stack holds (node, state, neighbor_iterator)
-        # neighbor_iterator is used to resume iteration after processing a neighbor
-        stack: list[tuple[str, _NodeState, list[str]]] = [
-            (start_node, _NodeState.ENTER, list(dependencies.get(start_node, set())))
+        stack: list[tuple[str, bool, list[str]]] = [
+            (start_node, _ENTERING, list(dependencies.get(start_node, set())))
         ]
 
         while stack:
-            node, state, neighbors = stack.pop()
+            node, entering, neighbors = stack.pop()
 
-            if state == _NodeState.ENTER:
+            if entering:
                 if node in visited:
-                    # Already fully processed in another traversal
                     continue
 
                 visited.add(node)
                 rec_stack.add(node)
                 path.append(node)
 
-                # Push exit marker (will be processed after all neighbors)
-                stack.append((node, _NodeState.EXIT, []))
+                stack.append((node, _EXITING, []))
 
-                # Process neighbors
                 for neighbor in neighbors:
                     if neighbor not in visited:
-                        # Push neighbor for exploration
-                        stack.append(
-                            (
-                                neighbor,
-                                _NodeState.ENTER,
-                                list(dependencies.get(neighbor, set())),
-                            )
-                        )
+                        stack.append((
+                            neighbor,
+                            _ENTERING,
+                            list(dependencies.get(neighbor, set())),
+                        ))
                     elif neighbor in rec_stack:
-                        # Found cycle - extract cycle path
                         cycle_start = path.index(neighbor)
                         cycle = [*path[cycle_start:], neighbor]
 
-                        # Deduplicate cycles using canonical form that preserves direction
-                        # Unlike sorted(set()), this distinguishes A->B->C from A->C->B
-                        cycle_key = make_cycle_key(cycle)
-                        if cycle_key not in seen_cycle_keys:  # pragma: no branch
-                            # Note: False branch is theoretically possible if same cycle
-                            # found multiple times, but canonical key deduplication
-                            # ensures each unique cycle is only reported once.
-                            seen_cycle_keys.add(cycle_key)
+                        canonical = _canonicalize_cycle(cycle)
+                        if canonical not in seen_canonical:
+                            seen_canonical.add(canonical)
                             cycles.append(cycle)
 
-            else:  # EXIT state
-                # Done processing this node's subtree
-                if path and path[-1] == node:  # pragma: no branch
-                    # Note: False branch (path empty or path[-1] != node) is defensive.
-                    # In normal operation, EXIT is always paired with ENTER which adds
-                    # node to path, so this condition should always be True.
-                    path.pop()
+            else:
+                path.pop()
                 rec_stack.discard(node)
 
     return cycles
-
-
-def build_dependency_graph(
-    message_entries: Mapping[str, tuple[set[str], set[str]]],
-    term_entries: Mapping[str, tuple[set[str], set[str]]] | None = None,
-) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """Build separate message and term dependency graphs with namespace prefixes.
-
-    Uses prefixed keys in term_deps to prevent collisions between messages and
-    terms with the same identifier. For example, message "brand" and term "-brand"
-    both have identifier "brand" but are stored with different prefixes:
-    - "msg:brand" for message->term references
-    - "term:brand" for term->term references
-
-    Args:
-        message_entries: Mapping from message ID to (message_refs, term_refs) tuple.
-        term_entries: Mapping from term ID to (message_refs, term_refs) tuple.
-                     Term IDs should NOT include the "-" prefix.
-
-    Returns:
-        Tuple of (message_deps, term_deps) where:
-        - message_deps: Maps message IDs to sets of referenced message IDs
-        - term_deps: Maps prefixed keys to sets of prefixed term IDs
-          - Keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs
-          - Values format: Prefixed term IDs like "term:{id}" for cycle detection
-
-    Example:
-        >>> message_entries = {
-        ...     "welcome": ({"greeting"}, {"brand"}),
-        ...     "greeting": (set(), set()),
-        ... }
-        >>> term_entries = {
-        ...     "brand": (set(), set()),
-        ... }
-        >>> msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
-        >>> msg_deps["welcome"]
-        {'greeting'}
-        >>> term_deps["msg:welcome"]
-        {'term:brand'}
-        >>> term_deps["term:brand"]
-        set()
-    """
-    message_deps: dict[str, set[str]] = {}
-    term_deps: dict[str, set[str]] = {}
-
-    # Process message entries
-    for entry_id, (msg_refs, trm_refs) in message_entries.items():
-        # Messages can reference other messages
-        message_deps[entry_id] = msg_refs.copy()
-        # Track term references from messages with "msg:" prefix
-        # Prefix term IDs in values to match key format for cycle detection
-        term_deps[f"msg:{entry_id}"] = {f"term:{t}" for t in trm_refs}
-
-    # Process term entries
-    if term_entries:
-        for entry_id, (_msg_refs, trm_refs) in term_entries.items():
-            # Terms can reference other terms (term-to-term dependencies)
-            # Use "term:" prefix to distinguish from message->term refs
-            # Prefix term IDs in values to match key format for cycle detection
-            term_deps[f"term:{entry_id}"] = {f"term:{t}" for t in trm_refs}
-
-    return message_deps, term_deps

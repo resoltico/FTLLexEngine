@@ -1,6 +1,4 @@
-"""Ultimate coverage tests for the last 2 uncovered branches in resolver.py.
-
-Branches:
+"""Tests for placeable formatting error fallback and number literal variant matching.
 - 390->386: Placeable case with FrozenFluentError (FORMATTING category) exception
 - 616->611: NumberLiteral case with non-matching numeric value (fall-through)
 """

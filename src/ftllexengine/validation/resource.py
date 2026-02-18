@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
@@ -560,7 +561,7 @@ def _add_entry_nodes(
 def _add_known_entries(
     known_ids: frozenset[str] | None,
     prefix: str,
-    known_deps: dict[str, set[str]] | None,
+    known_deps: Mapping[str, frozenset[str]] | None,
     graph: dict[str, set[str]],
 ) -> None:
     """Add known (pre-existing) entries to the graph.
@@ -577,7 +578,7 @@ def _add_known_entries(
         node_key = f"{prefix}:{known_id}"
         if node_key not in graph:
             if known_deps and known_id in known_deps:
-                graph[node_key] = known_deps[known_id].copy()
+                graph[node_key] = set(known_deps[known_id])
             else:
                 graph[node_key] = set()
 
@@ -588,8 +589,8 @@ def _build_dependency_graph(
     *,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
-    known_msg_deps: dict[str, set[str]] | None = None,
-    known_term_deps: dict[str, set[str]] | None = None,
+    known_msg_deps: Mapping[str, frozenset[str]] | None = None,
+    known_term_deps: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, set[str]]:
     """Build unified dependency graph for messages and terms.
 
@@ -602,7 +603,7 @@ def _build_dependency_graph(
         known_messages: Optional set of message IDs already in bundle
         known_terms: Optional set of term IDs already in bundle
         known_msg_deps: Optional dependency map for known messages. Maps message ID
-            to set of prefixed dependencies (e.g., {"msg:foo", "term:bar"}).
+            to frozenset of prefixed dependencies (e.g., {"msg:foo", "term:bar"}).
         known_term_deps: Optional dependency map for known terms.
 
     Returns:
@@ -753,8 +754,8 @@ def validate_resource(
     parser: FluentParserV1 | None = None,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
-    known_msg_deps: dict[str, set[str]] | None = None,
-    known_term_deps: dict[str, set[str]] | None = None,
+    known_msg_deps: Mapping[str, frozenset[str]] | None = None,
+    known_term_deps: Mapping[str, frozenset[str]] | None = None,
 ) -> ValidationResult:
     """Validate FTL resource without adding to a bundle.
 
@@ -777,10 +778,11 @@ def validate_resource(
         known_terms: Optional set of term IDs already in bundle (for
             cross-resource reference validation)
         known_msg_deps: Optional dependency graph for known messages. Maps message
-            ID to set of dependencies (prefixed: "msg:name", "term:name"). Enables
-            detection of cross-resource cycles involving dependencies OF known entries.
+            ID to frozenset of dependencies (prefixed: "msg:name", "term:name").
+            Enables detection of cross-resource cycles involving dependencies OF
+            known entries.
         known_term_deps: Optional dependency graph for known terms. Maps term ID
-            to set of dependencies (prefixed: "msg:name", "term:name").
+            to frozenset of dependencies (prefixed: "msg:name", "term:name").
 
     Returns:
         ValidationResult with parse errors and semantic warnings

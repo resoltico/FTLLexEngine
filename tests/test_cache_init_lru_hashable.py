@@ -1,6 +1,8 @@
-"""Complete coverage tests for IntegrityCache.
+"""Tests for IntegrityCache initialization, LRU eviction, and hashable conversion.
 
-Covers lines in src/ftllexengine/runtime/cache.py.
+Covers parameter validation, unhashable argument handling, error bloat protection,
+LRU ordering, make_hashable depth limits, type-tagged conversions, and key
+robustness properties.
 """
 
 from __future__ import annotations
@@ -161,7 +163,7 @@ class TestIntegrityCacheErrorBloatProtection:
         # Verify retrieval
         cached = cache.get("msg", None, None, "en", True)
         assert cached is not None
-        assert cached.to_tuple() == ("formatted text", tuple(errors))
+        assert cached.as_result() == ("formatted text", tuple(errors))
 
 
 class TestIntegrityCacheLRUBehavior:
@@ -192,11 +194,11 @@ class TestIntegrityCacheLRUBehavior:
         entry3 = cache.get("msg3", None, None, "en", True)
         entry4 = cache.get("msg4", None, None, "en", True)
         assert entry1 is not None
-        assert entry1.to_tuple() == ("updated1", ())
+        assert entry1.as_result() == ("updated1", ())
         assert entry3 is not None
-        assert entry3.to_tuple() == ("result3", ())
+        assert entry3.as_result() == ("result3", ())
         assert entry4 is not None
-        assert entry4.to_tuple() == ("result4", ())
+        assert entry4.as_result() == ("result4", ())
 
     def test_put_evicts_lru_when_full(self) -> None:
         """put() evicts LRU entry when cache is full."""
@@ -216,9 +218,9 @@ class TestIntegrityCacheLRUBehavior:
         entry2 = cache.get("msg2", None, None, "en", True)
         entry3 = cache.get("msg3", None, None, "en", True)
         assert entry2 is not None
-        assert entry2.to_tuple() == ("result2", ())
+        assert entry2.as_result() == ("result2", ())
         assert entry3 is not None
-        assert entry3.to_tuple() == ("result3", ())
+        assert entry3.as_result() == ("result3", ())
 
 
 class TestIntegrityCacheMakeHashableDepth:
@@ -538,29 +540,29 @@ class TestIntegrityCacheHypothesisProperties:
         cache.put("msg", {"text": text}, None, "en", True, "result", ())
         entry = cache.get("msg", {"text": text}, None, "en", True)
         assert entry is not None
-        assert entry.to_tuple() == ("result", ())
+        assert entry.as_result() == ("result", ())
 
         # Integer
         cache.put("msg", {"num": 42}, None, "en", True, "result", ())
         entry = cache.get("msg", {"num": 42}, None, "en", True)
         assert entry is not None
-        assert entry.to_tuple() == ("result", ())
+        assert entry.as_result() == ("result", ())
 
         # Float
         cache.put("msg", {"float": 3.14}, None, "en", True, "result", ())
         entry = cache.get("msg", {"float": 3.14}, None, "en", True)
         assert entry is not None
-        assert entry.to_tuple() == ("result", ())
+        assert entry.as_result() == ("result", ())
 
         # Bool
         cache.put("msg", {"bool": True}, None, "en", True, "result", ())
         entry = cache.get("msg", {"bool": True}, None, "en", True)
         assert entry is not None
-        assert entry.to_tuple() == ("result", ())
+        assert entry.as_result() == ("result", ())
 
         # None
         cache.put("msg", {"val": None}, None, "en", True, "result", ())
         entry = cache.get("msg", {"val": None}, None, "en", True)
         assert entry is not None
-        assert entry.to_tuple() == ("result", ())
+        assert entry.as_result() == ("result", ())
         event(f"text_len={len(text)}")

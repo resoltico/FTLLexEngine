@@ -1,6 +1,5 @@
-"""Comprehensive property-based tests for runtime.functions module.
+"""Property-based tests for NUMBER, DATETIME, and CURRENCY built-in functions.
 
-Tests formatting behavior for NUMBER, DATETIME, and CURRENCY functions.
 LocaleContext.create() always succeeds with en_US fallback.
 """
 

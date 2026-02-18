@@ -203,6 +203,14 @@ class ResolutionContext:
         return self._expression_guard
 
     @property
+    def total_chars(self) -> int:
+        """Running count of resolved characters (read-only).
+
+        Used by the resolver to check expansion budget before each element.
+        """
+        return self._total_chars
+
+    @property
     def expression_depth(self) -> int:
         """Current expression nesting depth (read-only, delegates to guard)."""
         return self._expression_guard.current_depth

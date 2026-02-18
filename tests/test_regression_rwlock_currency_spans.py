@@ -1,13 +1,6 @@
-"""Tests for v0.95.0 issue resolutions.
-
-Covers:
-- ARCH-RWLOCK-DEAD-004: RWLock write-to-read lock downgrading
-- API-CURR-TYPE-003: CURRENCY returns FluentNumber
-- FTL-B-001: Identifier and Attribute spans in parser
-- FTL-D-001: Message attributes in function arguments
-- DOCS-CACHE-WEIGHT-006: IntegrityCache docstring accuracy
-- DEBT-PLURAL-ROUND-005: Explicit rounding mode in plural rules
-- FTL-C-001: StringLiteral.guard() method
+"""Regression tests for RWLock write-to-read downgrade, CURRENCY returning
+FluentNumber, identifier/attribute spans, message attributes in arguments,
+plural rounding mode, and StringLiteral guard method.
 """
 
 from __future__ import annotations

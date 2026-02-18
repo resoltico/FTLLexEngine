@@ -207,7 +207,11 @@ def number_format(
             # Malformed pattern: fall back to uncapped counting.
             # Babel format_number already handled the pattern successfully,
             # so parse_pattern failure is unexpected but not fatal.
-            pass
+            logger.debug(
+                "parse_pattern failed for NUMBER pattern %r; "
+                "precision capping disabled",
+                pattern,
+            )
 
     precision = _compute_visible_precision(
         formatted, decimal_symbol, max_fraction_digits=max_frac
@@ -374,7 +378,11 @@ def currency_format(
             parsed = parse_pattern(pattern)
             max_frac = parsed.frac_prec[1]
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            logger.debug(
+                "parse_pattern failed for CURRENCY pattern %r; "
+                "precision capping disabled",
+                pattern,
+            )
 
     precision = _compute_visible_precision(
         formatted, decimal_symbol, max_fraction_digits=max_frac

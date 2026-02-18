@@ -1,7 +1,6 @@
-"""Comprehensive property-based tests for runtime.function_bridge module.
+"""Property-based tests for runtime.function_bridge module.
 
-Tests the Python ↔ FTL function calling convention bridge.
-
+Tests the Python-FTL function calling convention bridge.
 """
 
 import inspect

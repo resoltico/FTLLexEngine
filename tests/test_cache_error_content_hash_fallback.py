@@ -1,9 +1,7 @@
-"""Test IntegrityCache error content_hash fallback for 100% coverage.
+"""Tests for IntegrityCache checksum fallback with non-standard error objects.
 
 Covers the fallback path in _compute_checksum and _compute_content_hash
 when error objects lack a proper content_hash bytes attribute.
-
-Target: Lines 246-251 and 326-328 in cache.py
 """
 
 from __future__ import annotations

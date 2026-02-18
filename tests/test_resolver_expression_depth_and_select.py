@@ -1,6 +1,4 @@
-"""Final coverage tests for runtime/resolver.py achieving 100%.
-
-Covers remaining uncovered lines: expression_depth property and edge case branches.
+"""Tests for ResolutionContext expression depth and select expression edge cases.
 
 Python 3.13+.
 """

@@ -1,7 +1,6 @@
-"""Comprehensive property-based tests for function_metadata module.
+"""Property-based tests for function_metadata module.
 
 Tests metadata system for built-in Fluent functions.
-
 """
 
 import pytest

@@ -53,7 +53,7 @@ class TestResolutionContextTrackExpansion:
 
         # Fill budget to just under limit
         context.track_expansion(99)
-        assert context._total_chars == 99
+        assert context.total_chars == 99
 
         # Exceed budget with next call
         with pytest.raises(FrozenFluentError) as exc_info:  # FrozenFluentError
@@ -71,7 +71,7 @@ class TestResolutionContextTrackExpansion:
 
         # Reach exact limit
         context.track_expansion(100)
-        assert context._total_chars == 100
+        assert context.total_chars == 100
 
         # Next character exceeds
         with pytest.raises(FrozenFluentError) as exc_info:  # FrozenFluentError
@@ -102,7 +102,7 @@ class TestResolutionContextTrackExpansion:
             event("boundary=under_budget")
             context.track_expansion(first_chunk)
             # Verify internal state
-            assert context._total_chars == first_chunk
+            assert context.total_chars == first_chunk
 
             # Try to exceed
             excess = budget - first_chunk + 1
@@ -121,19 +121,18 @@ class TestResolutionContextTrackExpansion:
 class TestPatternLoopEarlyExit:
     """Tests for pattern loop early-exit when budget exceeded (lines 444-450).
 
-    The pattern loop checks context._total_chars BEFORE processing each element.
+    The pattern loop checks context.total_chars BEFORE processing each element.
     This catches the case where budget was exceeded during previous element
     processing but the error wasn't raised (e.g., the element itself didn't
     call track_expansion).
     """
 
     def test_pattern_loop_defensive_check_with_context_over_budget(self) -> None:
-        """Pattern loop defensive check triggers when context._total_chars > budget.
+        """Pattern loop defensive check triggers when total_chars > budget.
 
-        This tests the defensive check at lines 444-450 that guards against
-        _total_chars exceeding the budget without raising an exception.
-        This is a belt-and-suspenders check that shouldn't normally trigger
-        in production, but ensures robustness.
+        Tests the defensive check that guards against total_chars exceeding
+        the budget without raising an exception. Belt-and-suspenders check
+        that ensures robustness.
         """
         pattern = Pattern(
             elements=(
@@ -175,8 +174,8 @@ class TestPatternLoopEarlyExit:
     def test_pattern_loop_exits_when_budget_already_exceeded(self) -> None:
         """Pattern loop exits early if budget already exceeded before next element.
 
-        This tests the specific check at lines 444-450 where the pattern loop
-        inspects context._total_chars before processing the next element.
+        Tests the pattern loop check where it inspects context.total_chars
+        before processing the next element.
         """
         # Create a pattern with multiple text elements
         pattern = Pattern(
@@ -217,7 +216,7 @@ class TestPatternLoopEarlyExit:
         assert "C" not in result  # Third element never processed
 
     def test_pattern_loop_early_exit_on_boundary(self) -> None:
-        """Pattern loop exits when context._total_chars exactly equals budget."""
+        """Pattern loop exits when total_chars exactly equals budget."""
         pattern = Pattern(
             elements=(
                 TextElement(value="X" * 10),

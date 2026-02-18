@@ -1,6 +1,5 @@
-"""Comprehensive coverage tests for runtime/resolver.py.
-
-Targets remaining uncovered branches and defensive code paths.
+"""Tests for nested placeables, unknown expression types, format_value fallback,
+term reference arguments, and number literal variant matching.
 """
 
 from __future__ import annotations

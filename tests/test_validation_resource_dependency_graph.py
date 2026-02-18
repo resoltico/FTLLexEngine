@@ -351,8 +351,8 @@ class TestKnownMessageDependencies:
         known_messages = frozenset({"known_a", "known_b"})
 
         # known_a has dependencies on known_b and a term
-        known_msg_deps = {
-            "known_a": {"msg:known_b", "term:some_term"},
+        known_msg_deps: dict[str, frozenset[str]] = {
+            "known_a": frozenset({"msg:known_b", "term:some_term"}),
         }
 
         graph = _build_dependency_graph(
@@ -383,7 +383,9 @@ class TestKnownMessageDependencies:
         known_messages = frozenset({"known_orphan"})
 
         # known_msg_deps exists but doesn't contain "known_orphan"
-        known_msg_deps = {"some_other_msg": {"msg:dependency"}}
+        known_msg_deps: dict[str, frozenset[str]] = {
+            "some_other_msg": frozenset({"msg:dependency"}),
+        }
 
         graph = _build_dependency_graph(
             messages_dict,
@@ -424,7 +426,9 @@ class TestKnownMessageDependencies:
         known_messages = frozenset({"shared"})  # "shared" is also in known
 
         # known_msg_deps says "shared" depends on something else
-        known_msg_deps = {"shared": {"msg:different_dependency"}}
+        known_msg_deps: dict[str, frozenset[str]] = {
+            "shared": frozenset({"msg:different_dependency"}),
+        }
 
         graph = _build_dependency_graph(
             messages_dict,
@@ -461,8 +465,8 @@ class TestKnownTermDependencies:
         known_terms = frozenset({"known_term_a", "known_term_b"})
 
         # known_term_a has dependencies
-        known_term_deps = {
-            "known_term_a": {"term:known_term_b", "msg:some_msg"},
+        known_term_deps: dict[str, frozenset[str]] = {
+            "known_term_a": frozenset({"term:known_term_b", "msg:some_msg"}),
         }
 
         graph = _build_dependency_graph(
@@ -493,7 +497,9 @@ class TestKnownTermDependencies:
         known_terms = frozenset({"known_orphan_term"})
 
         # known_term_deps exists but doesn't contain "known_orphan_term"
-        known_term_deps = {"some_other_term": {"term:dependency"}}
+        known_term_deps: dict[str, frozenset[str]] = {
+            "some_other_term": frozenset({"term:dependency"}),
+        }
 
         graph = _build_dependency_graph(
             messages_dict,
@@ -534,7 +540,9 @@ class TestKnownTermDependencies:
         known_terms = frozenset({"shared_term"})  # "shared_term" is also in known
 
         # known_term_deps says "shared_term" depends on something else
-        known_term_deps = {"shared_term": {"term:different_dependency"}}
+        known_term_deps: dict[str, frozenset[str]] = {
+            "shared_term": frozenset({"term:different_dependency"}),
+        }
 
         graph = _build_dependency_graph(
             messages_dict,
@@ -576,7 +584,9 @@ class TestCrossResourceCycleDetectionWithDependencies:
         known_messages = frozenset({"b"})
 
         # Known message "b" references "a" (creating cycle: a -> b -> a)
-        known_msg_deps = {"b": {"msg:a"}}
+        known_msg_deps: dict[str, frozenset[str]] = {
+            "b": frozenset({"msg:a"}),
+        }
 
         graph = _build_dependency_graph(
             messages_dict,

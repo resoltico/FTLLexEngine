@@ -1,6 +1,5 @@
-"""Absolute coverage tests for runtime resolver module.
-
-Tests for specific branches to achieve 100% line and branch coverage.
+"""Tests for global depth guard edge cases, multi-placeable patterns, malformed
+variant matching, and placeable depth protection fallback.
 Targets uncovered branches identified by coverage analysis:
 - GlobalDepthGuard edge cases
 - Pattern resolution edge cases

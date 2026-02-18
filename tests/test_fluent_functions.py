@@ -1,6 +1,6 @@
-"""Comprehensive tests for Fluent built-in functions (Phase 3: Infrastructure/i18n).
+"""Tests for number_format() and datetime_format() built-in functions.
 
-Tests number_format() and datetime_format() functions with various parameters and edge cases.
+Covers various parameter combinations and edge cases for locale-aware formatting.
 """
 
 import locale

@@ -250,6 +250,10 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "l10n_loader_type=": "l10n_resource_loaders",
     "l10n_attr_count=": "l10n_messages_with_attributes",
     "l10n_term_count=": "l10n_messages_with_terms",
+    # graph.py strategies
+    "strategy=graph_": "dependency_graphs",
+    "strategy=cycle_": "cycle_paths",
+    "strategy=refs_": "namespace_ref_pairs",
 }
 
 # Known strategy weight distributions (intended weights)
@@ -484,6 +488,25 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "2": 1 / 3,
         "3": 1 / 3,
     },
+    # Graph strategies
+    "strategy=graph_": {
+        "empty": 0.20,
+        "linear": 0.20,
+        "ring": 0.20,
+        "star": 0.20,
+        "dag": 0.20,
+    },
+    "strategy=cycle_": {
+        "self_loop": 1 / 3,
+        "pair": 1 / 3,
+        "ring": 1 / 3,
+    },
+    "strategy=refs_": {
+        "mixed": 0.25,
+        "msg_only": 0.25,
+        "term_only": 0.25,
+        "empty": 0.25,
+    },
 }
 
 # Expected event categories (for coverage gap detection)
@@ -645,6 +668,19 @@ EXPECTED_EVENTS: set[str] = {
     "l10n_term_count=1",
     "l10n_term_count=2",
     "l10n_term_count=3",
+    # Graph analysis strategy events
+    "strategy=graph_empty",
+    "strategy=graph_linear",
+    "strategy=graph_ring",
+    "strategy=graph_star",
+    "strategy=graph_dag",
+    "strategy=cycle_self_loop",
+    "strategy=cycle_pair",
+    "strategy=cycle_ring",
+    "strategy=refs_mixed",
+    "strategy=refs_msg_only",
+    "strategy=refs_term_only",
+    "strategy=refs_empty",
 }
 
 

@@ -6,8 +6,8 @@
 # FUZZ_PLUGIN_HEADER_END
 """Dependency Graph Algorithm Fuzzer (Atheris).
 
-Targets: ftllexengine.analysis.graph (detect_cycles, canonicalize_cycle,
-make_cycle_key, build_dependency_graph)
+Targets: ftllexengine.analysis.graph (detect_cycles, make_cycle_key,
+entry_dependency_set)
 
 Concern boundary: This fuzzer stress-tests the graph algorithms used for
 dependency analysis in FTL resource validation. Tests cycle detection with
@@ -85,7 +85,7 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     # Moderate: larger graph construction
     ("detect_dense_mesh", 8),
     ("detect_deep_chain", 8),
-    ("build_dependency_graph", 10),
+    ("entry_dependency_set", 10),
     # Expensive: large adversarial graphs
     ("adversarial_graph", 5),
 )
@@ -103,8 +103,8 @@ _state = BaseFuzzerState(
     seed_corpus_max_size=100,
     fuzzer_name="graph",
     fuzzer_target=(
-        "analysis.graph (detect_cycles, canonicalize_cycle,"
-        " make_cycle_key, build_dependency_graph)"
+        "analysis.graph (detect_cycles, make_cycle_key,"
+        " entry_dependency_set)"
     ),
     pattern_intended_weights={name: float(weight) for name, weight in _PATTERN_WEIGHTS},
 )
@@ -143,9 +143,9 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.analysis.graph import (
-        build_dependency_graph,
-        canonicalize_cycle,
+        _canonicalize_cycle,
         detect_cycles,
+        entry_dependency_set,
         make_cycle_key,
     )
 
@@ -226,8 +226,8 @@ def _pattern_canonicalize_idempotence(fdp: atheris.FuzzedDataProvider) -> None:
     # Close the cycle
     cycle = [*nodes, nodes[0]]
 
-    c1 = canonicalize_cycle(cycle)
-    c2 = canonicalize_cycle(list(c1))
+    c1 = _canonicalize_cycle(cycle)
+    c2 = _canonicalize_cycle(list(c1))
 
     if c1 != c2:
         msg = f"canonicalize_cycle not idempotent: {c1} != {c2}"
@@ -253,8 +253,8 @@ def _pattern_canonicalize_direction(fdp: atheris.FuzzedDataProvider) -> None:
     forward = [*nodes, nodes[0]]
     backward = [*reversed(nodes), nodes[-1]]
 
-    c_fwd = canonicalize_cycle(forward)
-    c_bwd = canonicalize_cycle(list(backward))
+    c_fwd = _canonicalize_cycle(forward)
+    c_bwd = _canonicalize_cycle(list(backward))
 
     # Both should be valid tuples
     if not isinstance(c_fwd, tuple) or not isinstance(c_bwd, tuple):
@@ -279,13 +279,13 @@ def _pattern_canonicalize_direction(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _pattern_make_cycle_key_consistency(fdp: atheris.FuzzedDataProvider) -> None:
-    """make_cycle_key uses canonicalize_cycle internally -- verify consistency."""
+    """make_cycle_key uses _canonicalize_cycle internally -- verify consistency."""
     n = fdp.ConsumeIntInRange(2, 6)
     nodes = [_gen_node_id(fdp) for _ in range(n)]
     cycle = [*nodes, nodes[0]]
 
     key = make_cycle_key(cycle)
-    canonical = canonicalize_cycle(cycle)
+    canonical = _canonicalize_cycle(cycle)
     expected_key = " -> ".join(canonical)
 
     if key != expected_key:
@@ -317,7 +317,7 @@ def _pattern_canonicalize_edge_cases(fdp: atheris.FuzzedDataProvider) -> None:
     match variant:
         case 0:
             # Empty sequence
-            result = canonicalize_cycle([])
+            result = _canonicalize_cycle([])
             if result != ():
                 msg = f"Empty cycle should give (): got {result}"
                 raise GraphFuzzError(msg)
@@ -325,7 +325,7 @@ def _pattern_canonicalize_edge_cases(fdp: atheris.FuzzedDataProvider) -> None:
         case 1:
             # Single element
             node = _gen_node_id(fdp)
-            result = canonicalize_cycle([node])
+            result = _canonicalize_cycle([node])
             if result != (node,):
                 msg = f"Single element: expected ({node},), got {result}"
                 raise GraphFuzzError(msg)
@@ -333,7 +333,7 @@ def _pattern_canonicalize_edge_cases(fdp: atheris.FuzzedDataProvider) -> None:
         case 2:
             # Self-loop: [A, A]
             node = _gen_node_id(fdp)
-            result = canonicalize_cycle([node, node])
+            result = _canonicalize_cycle([node, node])
             if result != (node, node):
                 msg = f"Self-loop: expected ({node}, {node}), got {result}"
                 raise GraphFuzzError(msg)
@@ -341,7 +341,7 @@ def _pattern_canonicalize_edge_cases(fdp: atheris.FuzzedDataProvider) -> None:
         case _:
             # Two-node cycle: [A, B, A]
             a, b = _gen_node_id(fdp), _gen_node_id(fdp)
-            result = canonicalize_cycle([a, b, a])
+            result = _canonicalize_cycle([a, b, a])
             if len(result) != 3:
                 msg = f"Two-node cycle length: expected 3, got {len(result)}"
                 raise GraphFuzzError(msg)
@@ -512,71 +512,45 @@ def _pattern_detect_deep_chain(fdp: atheris.FuzzedDataProvider) -> None:
         raise GraphFuzzError(msg)
 
 
-def _pattern_build_dependency_graph(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912
-    """build_dependency_graph: namespace prefixing and output structure."""
-    num_msgs = fdp.ConsumeIntInRange(1, 10)
-    num_terms = fdp.ConsumeIntInRange(0, 5)
+def _pattern_entry_dependency_set(fdp: atheris.FuzzedDataProvider) -> None:
+    """entry_dependency_set: namespace prefixing and frozenset output."""
+    num_msg_refs = fdp.ConsumeIntInRange(0, 5)
+    num_term_refs = fdp.ConsumeIntInRange(0, 5)
 
-    message_entries: dict[str, tuple[set[str], set[str]]] = {}
-    for _ in range(num_msgs):
-        msg_id = _gen_node_id(fdp)
-        msg_refs: set[str] = set()
-        term_refs: set[str] = set()
-        for _ in range(fdp.ConsumeIntInRange(0, 3)):
-            if fdp.ConsumeBool():
-                msg_refs.add(_gen_node_id(fdp))
-            else:
-                term_refs.add(_gen_term_id(fdp))
-        message_entries[msg_id] = (msg_refs, term_refs)
+    msg_refs = frozenset(_gen_node_id(fdp) for _ in range(num_msg_refs))
+    term_refs = frozenset(_gen_term_id(fdp) for _ in range(num_term_refs))
 
-    term_entries: dict[str, tuple[set[str], set[str]]] | None = None
-    if num_terms > 0:
-        term_entries = {}
-        for _ in range(num_terms):
-            term_id = _gen_term_id(fdp)
-            t_msg_refs: set[str] = set()
-            t_term_refs: set[str] = set()
-            for _ in range(fdp.ConsumeIntInRange(0, 2)):
-                t_term_refs.add(_gen_term_id(fdp))
-            term_entries[term_id] = (t_msg_refs, t_term_refs)
+    result = entry_dependency_set(msg_refs, term_refs)
 
-    msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
+    # Invariant: output is frozenset
+    if not isinstance(result, frozenset):
+        msg = f"Expected frozenset, got {type(result)}"
+        raise GraphFuzzError(msg)
 
-    # Invariant: msg_deps keys match message_entries keys
-    for msg_id in message_entries:
-        if msg_id not in msg_deps:
-            msg = f"msg_deps missing key: {msg_id}"
+    # Invariant: output size equals sum of input sizes
+    if len(result) != len(msg_refs) + len(term_refs):
+        msg = f"Size mismatch: {len(result)} != {len(msg_refs)} + {len(term_refs)}"
+        raise GraphFuzzError(msg)
+
+    # Invariant: all elements are prefixed
+    for dep in result:
+        if not dep.startswith(("msg:", "term:")):
+            msg = f"Unprefixed dependency: {dep}"
             raise GraphFuzzError(msg)
 
-    # Invariant: msg_deps values are sets of message IDs (no prefixes)
-    for key, refs in msg_deps.items():
-        for ref in refs:
-            if ref.startswith(("msg:", "term:")):
-                msg = f"msg_deps value has prefix: {key} -> {ref}"
-                raise GraphFuzzError(msg)
-
-    # Invariant: term_deps keys have "msg:" or "term:" prefix
-    for key in term_deps:
-        if not key.startswith(("msg:", "term:")):
-            msg = f"term_deps key missing prefix: {key}"
-            raise GraphFuzzError(msg)
-
-    # Invariant: term_deps values have "term:" prefix
-    for key, refs in term_deps.items():
-        for ref in refs:
-            if not ref.startswith("term:"):
-                msg = f"term_deps value missing 'term:' prefix: {key} -> {ref}"
-                raise GraphFuzzError(msg)
-
-    # Invariant: msg_deps values are copies (not aliases)
-    for msg_id, (orig_refs, _) in message_entries.items():
-        if msg_deps[msg_id] is orig_refs:
-            msg = f"msg_deps[{msg_id}] is same object as input (not copied)"
-            raise GraphFuzzError(msg)
-
-    # Feed into detect_cycles for integration check
-    detect_cycles(msg_deps)
-    detect_cycles(term_deps)
+    # Invariant: stripping prefix recovers originals
+    recovered_msgs = frozenset(
+        d.removeprefix("msg:") for d in result if d.startswith("msg:")
+    )
+    recovered_terms = frozenset(
+        d.removeprefix("term:") for d in result if d.startswith("term:")
+    )
+    if recovered_msgs != msg_refs:
+        msg = f"Msg refs not recovered: {recovered_msgs} != {msg_refs}"
+        raise GraphFuzzError(msg)
+    if recovered_terms != term_refs:
+        msg = f"Term refs not recovered: {recovered_terms} != {term_refs}"
+        raise GraphFuzzError(msg)
 
 
 def _pattern_adversarial_graph(fdp: atheris.FuzzedDataProvider) -> None:
@@ -662,7 +636,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "detect_disconnected": _pattern_detect_disconnected,
     "detect_dense_mesh": _pattern_detect_dense_mesh,
     "detect_deep_chain": _pattern_detect_deep_chain,
-    "build_dependency_graph": _pattern_build_dependency_graph,
+    "entry_dependency_set": _pattern_entry_dependency_set,
     "adversarial_graph": _pattern_adversarial_graph,
 }
 

@@ -1,12 +1,7 @@
-"""Final coverage tests for runtime/function_bridge.py.
+"""Tests for FunctionRegistry frozen state, parameter collision, and freeze/frozen.
 
-Targets specific uncovered lines to achieve 100% coverage:
-- Lines 160-164: TypeError when registering on frozen registry
-- Lines 188-193: ValueError on parameter name collision
-- Line 285: freeze() method setting _frozen = True
-- Line 294: frozen property getter
-
-Python 3.13+.
+Covers TypeError on registration of frozen registry, ValueError on parameter
+name collision, freeze() mutation, and frozen property getter.
 """
 
 from __future__ import annotations

@@ -102,7 +102,7 @@ class TestCacheInvariants:
         entry = cache.get(msg_id, args, attr, locale, True)
 
         assert entry is not None
-        assert entry.to_tuple() == value
+        assert entry.as_result() == value
         has_args = args is not None
         event(f"has_args={has_args}")
 
@@ -291,7 +291,7 @@ class TestCacheKeyHandling:
         entry = cache.get(msg_id, None, None, locale, True)
 
         assert entry is not None
-        assert entry.to_tuple() == value
+        assert entry.as_result() == value
         event(f"locale={locale}")
 
     @given(
@@ -381,7 +381,7 @@ class TestCacheKeyHandling:
 
         # Should hit cache (dict key normalized)
         assert entry is not None
-        assert entry.to_tuple() == value
+        assert entry.as_result() == value
         event(f"locale={locale}")
 
 
@@ -420,7 +420,7 @@ class TestCacheRobustness:
             entry = cache.get("msg", args, None, "en_US", True)
             # If put succeeded, get should return the value
             if entry is not None:
-                assert entry.to_tuple() == ("result", ())
+                assert entry.as_result() == ("result", ())
         except (TypeError, ValueError):
             # Some types may not be hashable - acceptable
             pass

@@ -1,15 +1,5 @@
-"""Complete coverage tests for FluentBundle to achieve 100% coverage.
-
-This test module targets specific uncovered lines in bundle.py identified by
-coverage analysis. Each test class corresponds to a specific coverage gap.
-
-Missing coverage (92.24% -> 100%):
-- Lines 150-154: Locale exceeding MAX_LOCALE_LENGTH_HARD_LIMIT
-- Line 674: Term overwriting warning
-- Line 701->652: Comment entry handling branch
-- Line 863: Error summary with >3 errors in strict mode
-- Lines 919-932: Invalid args type validation
-- Lines 936-949: Invalid attribute type validation
+"""Tests for FluentBundle locale validation, term overwriting, comment handling,
+strict mode error summaries, and format_pattern argument type validation.
 
 Property-based tests use Hypothesis where applicable. Unit tests are used for
 specific error paths that require precise input construction.

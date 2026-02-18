@@ -1,18 +1,6 @@
-"""Tests for issue-specific implementations and bug fixes.
-
-Tests verify:
-- PARSE-DEPTH-VAL-001: Parser depth validation
-- L10N-SUM-JUNK-001: LoadSummary.all_successful vs all_clean
-- FTL-AST-SPAN-001: AST node span fields
-- PERF-PARSER-MEM-RED-001: CRLF normalization optimization
-- L10N-SUM-001: get_load_summary() scope documentation
-- L10N-LAZY-001: Bundle initialization docs
-- L10N-DUPLICATE-LOCALE-001: Locale deduplication
-- RES-NUM-ROUNDING-001: CLDR half-up rounding
-- PERF-VAL-GRAPH-REDUNDANT-001: Dependency graph built once
-- INTRO-CACHE-001: Introspection cache race condition documented
-- FTL-PAR-THREADLOCAL-001: Thread-local storage documented
-- PERF-BUNDLE-LOCK-CONTENTION-001: RWLock implementation (tested separately)
+"""Regression tests for parser depth validation, localization summaries,
+AST span fields, CRLF normalization, locale deduplication, CLDR half-up
+rounding, dependency graph optimization, and introspection caching.
 """
 
 import sys

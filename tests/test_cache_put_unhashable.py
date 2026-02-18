@@ -1,4 +1,4 @@
-"""Test coverage for cache.py put() with unhashable args (lines 135-137)."""
+"""Tests for IntegrityCache put() graceful handling of unhashable arguments."""
 
 from ftllexengine.runtime.cache import IntegrityCache
 
@@ -7,7 +7,7 @@ class TestCachePutUnhashable:
     """Test put() method with unhashable arguments."""
 
     def test_put_with_circular_reference_increments_skip_counter(self) -> None:
-        """Test put() with circular reference increments unhashable_skips (lines 135-137)."""
+        """Circular reference in args increments unhashable_skips and skips storage."""
         cache = IntegrityCache(strict=False, maxsize=100)
 
         # Create circular reference that causes RecursionError

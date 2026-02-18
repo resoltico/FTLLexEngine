@@ -1,10 +1,8 @@
-"""Comprehensive tests for runtime.cache argument handling.
+"""Tests for IntegrityCache hashable conversion and unhashable argument handling.
 
-Tests IntegrityCache behavior with various argument types including hashable
-conversions (lists, dicts, sets) and truly unhashable objects.
-
-Lists, dicts, and sets are converted to hashable equivalents
-(tuples/frozensets) for caching.
+Verifies type-tagged conversion of lists, dicts, sets, and tuples to hashable
+equivalents, nested structure handling, and graceful skip behavior for truly
+unhashable custom objects.
 """
 
 from typing import NoReturn
@@ -41,7 +39,7 @@ class TestCacheBasicOperations:
         cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted_text", ())
+        assert cached.as_result() == ("formatted_text", ())
         assert cache.hits == 1
         assert cache.misses == 0
 
@@ -62,7 +60,7 @@ class TestCacheBasicOperations:
         # Get should return updated value
         cached = cache.get("msg-id", args, None, "en-US", True)
         assert cached is not None
-        assert cached.to_tuple() == ("text2", ())
+        assert cached.as_result() == ("text2", ())
 
     def test_put_evicts_lru_when_full(self) -> None:
         """Verify put() evicts LRU entry when cache is full (line 146)."""
@@ -122,7 +120,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -137,7 +135,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -153,7 +151,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -305,7 +303,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -321,7 +319,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -339,7 +337,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert cache.unhashable_skips == 0
         event(f"tuple_len={len(tuple_value)}")
 
@@ -355,7 +353,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert cache.unhashable_skips == 0
         event(f"list_len={len(list_value)}")
 
@@ -388,7 +386,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert cache.unhashable_skips == 0
 
     def test_empty_list_cacheable(self) -> None:
@@ -401,7 +399,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
 
     def test_empty_dict_cacheable(self) -> None:
@@ -414,7 +412,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
 
         assert cached is not None
-        assert cached.to_tuple() == ("formatted", ())
+        assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
 
 

@@ -65,11 +65,11 @@ class TestChecksumComputation:
         entry = IntegrityCacheEntry.create("Hello", (), sequence=1)
         assert entry.verify() is True
 
-    def test_entry_to_tuple_preserves_content(self) -> None:
-        """to_tuple() returns correct (formatted, errors) pair."""
+    def test_entry_as_result_preserves_content(self) -> None:
+        """as_result() returns correct (formatted, errors) pair."""
         errors = (FrozenFluentError("Test", ErrorCategory.REFERENCE),)
         entry = IntegrityCacheEntry.create("Hello", errors, sequence=1)
-        assert entry.to_tuple() == ("Hello", errors)
+        assert entry.as_result() == ("Hello", errors)
 
     @given(st.text(min_size=0, max_size=1000))
     @settings(max_examples=50)

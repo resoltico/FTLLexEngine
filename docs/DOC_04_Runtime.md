@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.109.0"
+version: "0.112.0"
 domain: RUNTIME
-updated: "2026-02-16"
+updated: "2026-02-18"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?"]
 ---
 
 # Runtime Reference
@@ -573,8 +573,8 @@ def validate_resource(
     parser: FluentParserV1 | None = None,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
-    known_msg_deps: dict[str, set[str]] | None = None,
-    known_term_deps: dict[str, set[str]] | None = None,
+    known_msg_deps: Mapping[str, frozenset[str]] | None = None,
+    known_term_deps: Mapping[str, frozenset[str]] | None = None,
 ) -> ValidationResult:
 ```
 
@@ -585,8 +585,8 @@ def validate_resource(
 | `parser` | `FluentParserV1 \| None` | N | Parser instance (creates default if not provided). |
 | `known_messages` | `frozenset[str] \| None` | N | Message IDs from other resources (cross-resource validation). |
 | `known_terms` | `frozenset[str] \| None` | N | Term IDs from other resources (cross-resource validation). |
-| `known_msg_deps` | `dict[str, set[str]] \| None` | N | Dependency graph for known messages (prefixed: "msg:name", "term:name"). |
-| `known_term_deps` | `dict[str, set[str]] \| None` | N | Dependency graph for known terms (prefixed: "msg:name", "term:name"). |
+| `known_msg_deps` | `Mapping[str, frozenset[str]] \| None` | N | Dependency graph for known messages (prefixed: "msg:name", "term:name"). |
+| `known_term_deps` | `Mapping[str, frozenset[str]] \| None` | N | Dependency graph for known terms (prefixed: "msg:name", "term:name"). |
 
 ### Constraints
 - Return: ValidationResult with errors, warnings, and semantic annotations.
@@ -622,6 +622,8 @@ class ResolutionContext:
     def contains(self, key: str) -> bool: ...
     def track_expansion(self, char_count: int) -> None: ...
     @property
+    def total_chars(self) -> int: ...
+    @property
     def expression_guard(self) -> DepthGuard: ...
     @property
     def expression_depth(self) -> int: ...
@@ -639,14 +641,14 @@ class ResolutionContext:
 | `max_depth` | `int` | Maximum resolution depth (default: MAX_DEPTH=100). |
 | `max_expression_depth` | `int` | Maximum expression depth (default: MAX_DEPTH=100). |
 | `max_expansion_size` | `int` | Maximum total output characters (default: 1M). Prevents Billion Laughs. |
-| `_total_chars` | `int` | Running character count (internal). |
+| `_total_chars` | `int` | Running character count (internal; use `total_chars` property). |
 | `_expression_guard` | `DepthGuard` | Internal depth guard (init=False). |
 
 ### Constraints
 - Thread: Safe (explicit parameter passing, no global state).
 - Purpose: Replaces thread-local state for async/concurrent compatibility.
 - Complexity: contains() is O(1) via _seen set.
-- Expansion: track_expansion() raises EXPANSION_BUDGET_EXCEEDED when _total_chars exceeds max_expansion_size.
+- Expansion: track_expansion() raises EXPANSION_BUDGET_EXCEEDED when total_chars exceeds max_expansion_size.
 - Import: `from ftllexengine.runtime import ResolutionContext`
 - Constants: `MAX_DEPTH`, `DEFAULT_MAX_EXPANSION_SIZE` from `ftllexengine.constants`
 
@@ -704,6 +706,21 @@ def contains(self, key: str) -> bool:
 - Return: True if key is in resolution stack (cycle detected).
 - Complexity: O(1) via _seen set lookup.
 - State: Read-only.
+
+---
+
+## `ResolutionContext.total_chars`
+
+### Signature
+```python
+@property
+def total_chars(self) -> int:
+```
+
+### Constraints
+- Return: Running count of resolved characters.
+- State: Read-only property over internal `_total_chars`.
+- Usage: Preferred over direct `_total_chars` access for encapsulation.
 
 ---
 
@@ -1064,8 +1081,6 @@ class RWLock:
 - Upgrade Limitation: Read-to-write lock upgrades are prohibited. Thread holding read lock cannot acquire write lock (raises RuntimeError).
 - Usage: FluentBundle uses RWLock internally for concurrent format operations.
 - Import: `from ftllexengine.runtime.rwlock import RWLock`
-- Version: Added timeout support in v0.100.0.
-
 ---
 
 ## `RWLock.read`
@@ -1122,40 +1137,67 @@ def write(self, timeout: float | None = None) -> Generator[None, None, None]:
 
 ---
 
-## `build_dependency_graph`
+## `entry_dependency_set`
 
-Function that builds separate message and term dependency graphs with namespace prefixes.
+Function that builds a namespace-prefixed dependency frozenset from reference sets.
 
 ### Signature
 ```python
-def build_dependency_graph(
-    message_entries: Mapping[str, tuple[set[str], set[str]]],
-    term_entries: Mapping[str, tuple[set[str], set[str]]] | None = None,
-) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+def entry_dependency_set(
+    message_refs: frozenset[str],
+    term_refs: frozenset[str],
+) -> frozenset[str]:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Semantics |
 |:----------|:-----|:----|:----------|
-| `message_entries` | `Mapping[str, tuple[set[str], set[str]]]` | Y | Message ID to (msg_refs, term_refs) tuple |
-| `term_entries` | `Mapping[str, tuple[set[str], set[str]]] \| None` | N | Term ID to (msg_refs, term_refs) tuple (IDs without "-" prefix) |
+| `message_refs` | `frozenset[str]` | Y | Message IDs referenced by entry |
+| `term_refs` | `frozenset[str]` | Y | Term IDs referenced by entry |
 
 ### Constraints
-- Return: Tuple of (message_deps, term_deps) where message_deps maps message IDs to referenced message IDs, and term_deps maps prefixed keys to referenced term IDs. Prefixed keys format: "msg:{id}" for message->term refs, "term:{id}" for term->term refs. References are attribute-qualified (e.g., "msg.attr") when the reference targets a specific attribute.
+- Return: Frozenset of prefixed dependency keys (e.g., `frozenset({"msg:welcome", "term:brand"})`).
 - Raises: Never.
 - State: None (pure function).
 - Thread: Safe.
-- Namespace: Uses prefixed keys to prevent collisions between messages and terms with same identifier (e.g., message "brand" and term "-brand" both have identifier "brand").
-- Complexity: O(N) where N = total entries.
-- Import: `from ftllexengine.analysis import build_dependency_graph`
+- Namespace: `msg:` prefix for message refs, `term:` prefix for term refs. Prevents collisions between same-name messages and terms.
+- Complexity: O(N) where N = total references.
+- Import: `from ftllexengine.analysis import entry_dependency_set`
 
 ### Example
 ```python
-msg_entries = {"welcome": ({"greeting"}, {"brand"}), "greeting": (set(), set())}
-term_entries = {"brand": (set(), set())}
-msg_deps, term_deps = build_dependency_graph(msg_entries, term_entries)
-# msg_deps: {"welcome": {"greeting"}, "greeting": set()}
-# term_deps: {"msg:welcome": {"brand"}, "term:brand": set()}
+deps = entry_dependency_set(frozenset({"greeting"}), frozenset({"brand"}))
+# deps: frozenset({"msg:greeting", "term:brand"})
+```
+
+---
+
+## `make_cycle_key`
+
+Function that creates a canonical display string from a cycle path.
+
+### Signature
+```python
+def make_cycle_key(cycle: Sequence[str]) -> str:
+```
+
+### Parameters
+| Parameter | Type | Req | Semantics |
+|:----------|:-----|:----|:----------|
+| `cycle` | `Sequence[str]` | Y | Cycle path with closing repeat |
+
+### Constraints
+- Return: Canonical arrow-separated string (e.g., `"A -> B -> C -> A"`). Empty string for empty input.
+- Raises: Never.
+- State: None (pure function).
+- Thread: Safe.
+- Canonical: Rotates cycle to start with lexicographically smallest node. All rotations of the same cycle produce identical keys.
+- Import: `from ftllexengine.analysis import make_cycle_key`
+
+### Example
+```python
+key = make_cycle_key(["B", "C", "A", "B"])
+# key: "A -> B -> C -> A"
 ```
 
 ---
@@ -1175,11 +1217,11 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
 | `dependencies` | `Mapping[str, set[str]]` | Y | Node ID to set of referenced node IDs |
 
 ### Constraints
-- Return: List of cycles where each cycle is a list of node IDs forming the cycle path. Empty list if no cycles detected. Cycles are deduplicated using canonical form.
+- Return: List of cycles where each cycle is a list of node IDs forming the cycle path (closed: last element repeats first). Empty list if no cycles detected. Cycles are deduplicated via canonical tuple form.
 - Raises: Never.
 - State: None (pure function).
 - Thread: Safe.
-- Algorithm: Iterative DFS with Tarjan-style cycle detection. Prevents RecursionError on deep graphs (>1000 nodes in linear chain).
+- Algorithm: Iterative DFS with explicit stack. Prevents RecursionError on deep graphs (>1000 nodes in linear chain).
 - Complexity: O(V + E) time, O(V) space where V = nodes, E = edges.
 - Security: Uses iterative DFS to prevent stack overflow attacks via deeply nested dependency chains in untrusted FTL resources.
 - Import: `from ftllexengine.analysis import detect_cycles`
@@ -1188,7 +1230,7 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
 ```python
 deps = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
 cycles = detect_cycles(deps)
-# cycles: [['a', 'b', 'c', 'a']] (or canonical rotation)
+# cycles: [['a', 'b', 'c', 'a']] (canonical rotation)
 ```
 
 ---

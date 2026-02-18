@@ -1,10 +1,9 @@
-"""Tests for ftllexengine.analysis.graph module.
+"""Property-based and unit tests for ``ftllexengine.analysis.graph``.
 
-Comprehensive tests for graph algorithms used in dependency analysis:
-- canonicalize_cycle: Cycle path normalization
-- make_cycle_key: Canonical key generation for deduplication
-- detect_cycles: Iterative DFS cycle detection
-- build_dependency_graph: Dependency graph construction
+Covers the public API surface:
+- ``entry_dependency_set``: Namespace-prefixed dependency construction
+- ``make_cycle_key``: Canonical cycle display key
+- ``detect_cycles``: Iterative DFS cycle detection
 
 Python 3.13+.
 """
@@ -15,587 +14,388 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.analysis.graph import (
-    build_dependency_graph,
-    canonicalize_cycle,
     detect_cycles,
+    entry_dependency_set,
     make_cycle_key,
+)
+from tests.strategies.graph import (
+    cycle_paths,
+    dependency_graphs,
+    namespace_ref_pairs,
+    node_names,
 )
 
 # ============================================================================
-# UNIT TESTS - canonicalize_cycle
+# entry_dependency_set
 # ============================================================================
 
 
-class TestCanonicalizeCycle:
-    """Tests for canonicalize_cycle function."""
+class TestEntryDependencySet:
+    """Tests for entry_dependency_set namespace prefixing."""
 
-    def test_empty_cycle_returns_empty_tuple(self) -> None:
-        """Empty sequence returns empty tuple."""
-        result = canonicalize_cycle([])
-        assert result == ()
+    def test_empty_refs_yield_empty_frozenset(self) -> None:
+        """No references produce an empty frozenset."""
+        result = entry_dependency_set(frozenset(), frozenset())
+        assert result == frozenset()
+        assert isinstance(result, frozenset)
 
-    def test_single_element_returns_single_tuple(self) -> None:
-        """Single element returns tuple with that element."""
-        result = canonicalize_cycle(["A"])
-        assert result == ("A",)
+    def test_message_refs_prefixed_with_msg(self) -> None:
+        """Message references receive ``msg:`` prefix."""
+        result = entry_dependency_set(frozenset({"welcome"}), frozenset())
+        assert result == frozenset({"msg:welcome"})
 
-    def test_two_element_self_closing_cycle(self) -> None:
-        """Two-element cycle ["A", "A"] returns ("A", "A")."""
-        result = canonicalize_cycle(["A", "A"])
-        assert result == ("A", "A")
+    def test_term_refs_prefixed_with_term(self) -> None:
+        """Term references receive ``term:`` prefix."""
+        result = entry_dependency_set(frozenset(), frozenset({"brand"}))
+        assert result == frozenset({"term:brand"})
 
-    def test_rotation_to_smallest_element(self) -> None:
-        """Cycle rotates to start with lexicographically smallest element."""
-        result = canonicalize_cycle(["B", "C", "A", "B"])
-        assert result == ("A", "B", "C", "A")
+    def test_mixed_refs_combined(self) -> None:
+        """Both namespaces combine into single frozenset."""
+        result = entry_dependency_set(
+            frozenset({"greeting"}), frozenset({"brand"})
+        )
+        assert result == frozenset({"msg:greeting", "term:brand"})
 
-    def test_rotation_preserves_direction(self) -> None:
-        """Different directions produce different canonical forms."""
-        # A -> B -> C -> A
-        forward = canonicalize_cycle(["A", "B", "C", "A"])
-        # A -> C -> B -> A (reverse direction)
-        reverse = canonicalize_cycle(["A", "C", "B", "A"])
+    def test_multiple_refs_per_namespace(self) -> None:
+        """Multiple references per namespace all get prefixed."""
+        result = entry_dependency_set(
+            frozenset({"a", "b"}), frozenset({"x", "y"})
+        )
+        assert result == frozenset({"msg:a", "msg:b", "term:x", "term:y"})
 
-        assert forward == ("A", "B", "C", "A")
-        assert reverse == ("A", "C", "B", "A")
-        assert forward != reverse
+    @given(refs=namespace_ref_pairs())
+    @settings(max_examples=200)
+    def test_property_output_count_equals_input_count(
+        self, refs: tuple[frozenset[str], frozenset[str]]
+    ) -> None:
+        """PROPERTY: Output size equals sum of input sizes."""
+        msg_refs, term_refs = refs
+        event(f"msg_count={len(msg_refs)}")
+        event(f"term_count={len(term_refs)}")
 
-    def test_already_canonical_unchanged(self) -> None:
-        """Already canonical cycle remains unchanged."""
-        result = canonicalize_cycle(["A", "B", "C", "A"])
-        assert result == ("A", "B", "C", "A")
+        result = entry_dependency_set(msg_refs, term_refs)
+        assert len(result) == len(msg_refs) + len(term_refs)
 
-    def test_rotation_from_middle(self) -> None:
-        """Cycle starting from middle element rotates correctly."""
-        result = canonicalize_cycle(["C", "B", "A", "C"])
-        assert result == ("A", "C", "B", "A")
+    @given(refs=namespace_ref_pairs())
+    @settings(max_examples=200)
+    def test_property_all_elements_prefixed(
+        self, refs: tuple[frozenset[str], frozenset[str]]
+    ) -> None:
+        """PROPERTY: Every element starts with ``msg:`` or ``term:``."""
+        msg_refs, term_refs = refs
+        event(f"total_refs={len(msg_refs) + len(term_refs)}")
 
-    def test_numeric_string_ordering(self) -> None:
-        """Numeric strings use lexicographic ordering."""
-        # "10" < "2" lexicographically
-        result = canonicalize_cycle(["2", "10", "3", "2"])
-        assert result == ("10", "3", "2", "10")
+        result = entry_dependency_set(msg_refs, term_refs)
+        for dep in result:
+            assert dep.startswith(("msg:", "term:"))
+
+    @given(refs=namespace_ref_pairs())
+    @settings(max_examples=200)
+    def test_property_returns_frozenset(
+        self, refs: tuple[frozenset[str], frozenset[str]]
+    ) -> None:
+        """PROPERTY: Return type is always frozenset (immutable)."""
+        msg_refs, term_refs = refs
+        event(f"total_refs={len(msg_refs) + len(term_refs)}")
+        result = entry_dependency_set(msg_refs, term_refs)
+        assert isinstance(result, frozenset)
+
+    @given(refs=namespace_ref_pairs())
+    @settings(max_examples=200)
+    def test_property_prefix_preserves_identity(
+        self, refs: tuple[frozenset[str], frozenset[str]]
+    ) -> None:
+        """PROPERTY: Stripping prefix recovers original refs."""
+        msg_refs, term_refs = refs
+        result = entry_dependency_set(msg_refs, term_refs)
+
+        recovered_msgs = frozenset(
+            d.removeprefix("msg:") for d in result if d.startswith("msg:")
+        )
+        recovered_terms = frozenset(
+            d.removeprefix("term:") for d in result if d.startswith("term:")
+        )
+        event(f"recovered_msgs={len(recovered_msgs)}")
+        event(f"recovered_terms={len(recovered_terms)}")
+        assert recovered_msgs == msg_refs
+        assert recovered_terms == term_refs
 
 
 # ============================================================================
-# UNIT TESTS - make_cycle_key
+# make_cycle_key
 # ============================================================================
 
 
 class TestMakeCycleKey:
-    """Tests for make_cycle_key function."""
+    """Tests for make_cycle_key canonical display format."""
 
-    def test_simple_cycle_key(self) -> None:
-        """Simple cycle produces arrow-separated key."""
-        key = make_cycle_key(["A", "B", "C", "A"])
-        assert key == "A -> B -> C -> A"
+    def test_empty_cycle_yields_empty_string(self) -> None:
+        """Empty input produces empty key."""
+        assert make_cycle_key([]) == ""
 
-    def test_cycle_key_canonical(self) -> None:
-        """Key is canonical regardless of start position."""
+    def test_single_element_key(self) -> None:
+        """Single-element input produces that element as key."""
+        assert make_cycle_key(["A"]) == "A"
+
+    def test_self_loop_key(self) -> None:
+        """Self-loop ``[A, A]`` produces ``A -> A``."""
+        assert make_cycle_key(["A", "A"]) == "A -> A"
+
+    def test_simple_cycle_arrow_format(self) -> None:
+        """Three-node cycle produces arrow-separated key."""
+        assert make_cycle_key(["A", "B", "C", "A"]) == "A -> B -> C -> A"
+
+    def test_canonical_across_rotations(self) -> None:
+        """All rotations of same cycle produce identical key."""
         key1 = make_cycle_key(["A", "B", "C", "A"])
         key2 = make_cycle_key(["B", "C", "A", "B"])
         key3 = make_cycle_key(["C", "A", "B", "C"])
-
         assert key1 == key2 == key3
 
-    def test_different_directions_different_keys(self) -> None:
-        """Different directions produce different keys."""
+    def test_direction_preserved(self) -> None:
+        """Different traversal directions produce different keys."""
         forward = make_cycle_key(["A", "B", "C", "A"])
         reverse = make_cycle_key(["A", "C", "B", "A"])
-
         assert forward != reverse
 
-    def test_empty_cycle_key(self) -> None:
-        """Empty cycle produces empty key."""
-        key = make_cycle_key([])
-        assert key == ""
+    @given(path=cycle_paths())
+    @settings(max_examples=200)
+    def test_property_key_is_idempotent_through_format(
+        self, path: list[str]
+    ) -> None:
+        """PROPERTY: Same cycle always produces same key."""
+        event(f"cycle_len={len(path)}")
+        key1 = make_cycle_key(path)
+        key2 = make_cycle_key(path)
+        assert key1 == key2
 
-    def test_single_element_key(self) -> None:
-        """Single element produces simple key."""
-        key = make_cycle_key(["A"])
-        assert key == "A"
+    @given(
+        nodes=st.lists(node_names, min_size=2, max_size=5, unique=True),
+        rotation=st.integers(min_value=0, max_value=10),
+    )
+    @settings(max_examples=200)
+    def test_property_rotation_invariance(
+        self, nodes: list[str], rotation: int
+    ) -> None:
+        """PROPERTY: All rotations of same cycle yield same key."""
+        rotation = rotation % len(nodes)
+        rotated = nodes[rotation:] + nodes[:rotation]
+        event(f"rotation={rotation}")
+        event(f"node_count={len(nodes)}")
+
+        key_original = make_cycle_key([*nodes, nodes[0]])
+        key_rotated = make_cycle_key([*rotated, rotated[0]])
+        assert key_original == key_rotated
+
+    @given(path=cycle_paths())
+    @settings(max_examples=200)
+    def test_property_key_starts_with_smallest_node(
+        self, path: list[str]
+    ) -> None:
+        """PROPERTY: Canonical key starts with lexicographically smallest."""
+        event(f"cycle_len={len(path)}")
+        key = make_cycle_key(path)
+        if len(path) >= 2:
+            body = path[:-1]
+            smallest = min(body)
+            assert key.startswith(smallest)
 
 
 # ============================================================================
-# UNIT TESTS - detect_cycles
+# detect_cycles
 # ============================================================================
 
 
-class TestDetectCyclesBasic:
-    """Basic unit tests for detect_cycles function."""
+class TestDetectCyclesUnit:
+    """Unit tests for detect_cycles covering specific topologies."""
 
-    def test_empty_graph_no_cycles(self) -> None:
+    def test_empty_graph(self) -> None:
         """Empty graph has no cycles."""
-        deps: dict[str, set[str]] = {}
-        cycles = detect_cycles(deps)
-        assert cycles == []
+        assert detect_cycles({}) == []
 
-    def test_single_node_no_deps_no_cycles(self) -> None:
-        """Single node with no dependencies has no cycles."""
-        deps: dict[str, set[str]] = {"a": set()}
-        cycles = detect_cycles(deps)
-        assert cycles == []
+    def test_single_node_no_edges(self) -> None:
+        """Isolated node has no cycles."""
+        assert detect_cycles({"a": set()}) == []
 
-    def test_self_referencing_node_is_cycle(self) -> None:
-        """Node referencing itself is a cycle."""
-        deps = {"a": {"a"}}
-        cycles = detect_cycles(deps)
+    def test_self_loop(self) -> None:
+        """Self-referencing node is a cycle."""
+        cycles = detect_cycles({"a": {"a"}})
         assert len(cycles) == 1
         assert "a" in cycles[0]
 
-    def test_two_node_cycle(self) -> None:
-        """Two nodes referencing each other form a cycle."""
-        deps = {"a": {"b"}, "b": {"a"}}
-        cycles = detect_cycles(deps)
+    def test_two_node_mutual(self) -> None:
+        """Mutual reference forms a cycle."""
+        cycles = detect_cycles({"a": {"b"}, "b": {"a"}})
         assert len(cycles) == 1
-        assert "a" in cycles[0]
-        assert "b" in cycles[0]
+        assert set(cycles[0][:-1]) == {"a", "b"}
 
-    def test_three_node_cycle(self) -> None:
-        """Three nodes A -> B -> C -> A form a cycle."""
-        deps = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
-        cycles = detect_cycles(deps)
+    def test_three_node_ring(self) -> None:
+        """A -> B -> C -> A forms exactly one cycle."""
+        cycles = detect_cycles({"a": {"b"}, "b": {"c"}, "c": {"a"}})
         assert len(cycles) == 1
-        assert "a" in cycles[0]
-        assert "b" in cycles[0]
-        assert "c" in cycles[0]
+        assert {"a", "b", "c"} <= set(cycles[0])
 
     def test_linear_chain_no_cycle(self) -> None:
-        """Linear chain A -> B -> C has no cycles."""
-        deps = {"a": {"b"}, "b": {"c"}, "c": set()}
-        cycles = detect_cycles(deps)
-        assert cycles == []
+        """A -> B -> C (no back-edge) has no cycles."""
+        assert detect_cycles({"a": {"b"}, "b": {"c"}, "c": set()}) == []
 
     def test_diamond_no_cycle(self) -> None:
-        """Diamond pattern A -> B, A -> C, B -> D, C -> D has no cycles."""
+        """Diamond DAG has no cycles."""
         deps = {"a": {"b", "c"}, "b": {"d"}, "c": {"d"}, "d": set()}
-        cycles = detect_cycles(deps)
-        assert cycles == []
+        assert detect_cycles(deps) == []
 
-    def test_multiple_independent_cycles(self) -> None:
-        """Multiple independent cycles are all detected."""
+    def test_independent_cycles_both_detected(self) -> None:
+        """Two disjoint cycles are both found."""
         deps = {
-            "a": {"b"},
-            "b": {"a"},  # Cycle 1: a <-> b
-            "x": {"y"},
-            "y": {"z"},
-            "z": {"x"},  # Cycle 2: x -> y -> z -> x
+            "a": {"b"}, "b": {"a"},
+            "x": {"y"}, "y": {"z"}, "z": {"x"},
         }
         cycles = detect_cycles(deps)
         assert len(cycles) == 2
 
-    def test_node_with_missing_target_no_crash(self) -> None:
-        """References to undefined nodes don't crash."""
-        deps = {"a": {"undefined"}}
-        cycles = detect_cycles(deps)
-        assert cycles == []
+    def test_reference_to_undefined_node(self) -> None:
+        """Edge to non-existent node does not crash."""
+        assert detect_cycles({"a": {"missing"}}) == []
 
-
-class TestDetectCyclesDeduplication:
-    """Tests for cycle deduplication behavior."""
-
-    def test_cycle_not_duplicated_from_different_start(self) -> None:
-        """Same cycle detected from different start nodes is deduplicated."""
+    def test_cycle_deduplication(self) -> None:
+        """Same cycle reachable from multiple starts is reported once."""
         deps = {"a": {"b"}, "b": {"c"}, "c": {"a"}}
         cycles = detect_cycles(deps)
-        # Should only report cycle once, not three times (once per start node)
         assert len(cycles) == 1
 
-    def test_overlapping_cycles_unique_keys(self) -> None:
-        """Graph with overlapping cycles reports each unique cycle once."""
+    def test_shared_sink_no_false_positive(self) -> None:
+        """Multiple paths to shared sink do not produce false cycles."""
+        deps = {
+            "A": {"B"}, "B": set(),
+            "C": {"B"},
+        }
+        assert detect_cycles(deps) == []
+
+    def test_complex_multi_component(self) -> None:
+        """Mixed graph with cycles, chains, and isolated nodes."""
+        deps = {
+            "A": {"B"}, "B": {"C"}, "C": set(),
+            "D": {"E"}, "E": {"F"}, "F": {"D"},
+            "G": {"C"},
+            "H": {"H"},
+        }
+        cycles = detect_cycles(deps)
+        assert len(cycles) >= 2
+
+    def test_namespace_prefixed_term_cycle(self) -> None:
+        """Prefixed term keys produce detectable cycles."""
+        deps = {
+            "term:a": {"term:b"},
+            "term:b": {"term:a"},
+        }
+        cycles = detect_cycles(deps)
+        assert len(cycles) == 1
+        assert "term:a" in cycles[0]
+        assert "term:b" in cycles[0]
+
+    def test_cross_namespace_chain_no_cycle(self) -> None:
+        """msg -> term chain without back-edge has no cycle."""
+        deps = {
+            "msg:welcome": {"term:brand"},
+            "term:brand": set(),
+        }
+        assert detect_cycles(deps) == []
+
+    def test_overlapping_cycles_all_unique(self) -> None:
+        """Fully connected graph reports each unique cycle once."""
         deps = {
             "A": {"B", "C"},
             "B": {"A", "C"},
             "C": {"A", "B"},
         }
         cycles = detect_cycles(deps)
-
-        # All cycles should be unique (no duplicates)
-        cycle_keys = [make_cycle_key(cycle) for cycle in cycles]
-        assert len(cycle_keys) == len(set(cycle_keys))
-
-
-class TestDetectCyclesSharedNodes:
-    """Tests for graphs with shared nodes between components."""
-
-    def test_node_visited_in_previous_component(self) -> None:
-        """Node encountered again after being fully processed is skipped.
-
-        Create a graph with disconnected components that share a node:
-        - Component 1: A -> B
-        - Component 2: C -> B
-
-        When DFS starts from A, it visits B and marks it as visited.
-        When DFS starts from C, it encounters B again but B is already visited.
-        """
-        deps = {
-            "A": {"B"},  # A references B
-            "B": set(),  # B has no dependencies
-            "C": {"B"},  # C also references B
-        }
-        cycles = detect_cycles(deps)
-        assert len(cycles) == 0
-
-    def test_diamond_shared_destination(self) -> None:
-        """Diamond-shaped graph where node is reached via multiple paths.
-
-        Graph: A -> B -> D
-               A -> C -> D
-
-        When exploring from A, we visit D through one path, then encounter
-        it again through another path.
-        """
-        deps = {
-            "A": {"B", "C"},
-            "B": {"D"},
-            "C": {"D"},
-            "D": set(),
-        }
-        cycles = detect_cycles(deps)
-        assert len(cycles) == 0
-
-    def test_complex_shared_subgraph(self) -> None:
-        """Complex graph with shared subgraph and separate component."""
-        deps = {
-            "A": {"B"},
-            "B": {"C", "D"},
-            "C": {"E"},
-            "D": {"E"},  # Both C and D reference E
-            "E": set(),
-            "F": {"E"},  # F also references E (separate entry point)
-        }
-        cycles = detect_cycles(deps)
-        assert len(cycles) == 0
-
-
-class TestDetectCyclesComplexGraphs:
-    """Tests for complex graph structures."""
-
-    def test_large_graph_multiple_components(self) -> None:
-        """Large graph with multiple disconnected components and cycles."""
-        deps = {
-            # Component 1: Linear chain (no cycle)
-            "A": {"B"},
-            "B": {"C"},
-            "C": set(),
-            # Component 2: Cycle D -> E -> F -> D
-            "D": {"E"},
-            "E": {"F"},
-            "F": {"D"},
-            # Component 3: References shared node C
-            "G": {"C"},
-            # Component 4: Self-loop
-            "H": {"H"},
-        }
-        cycles = detect_cycles(deps)
-        # Should find at least 2 cycles (D-E-F and H)
-        assert len(cycles) >= 2
-
-    def test_cycle_with_branch(self) -> None:
-        """Cycle with additional non-cyclic branch."""
-        deps = {
-            "A": {"B", "C"},
-            "B": {"D"},
-            "C": {"D"},
-            "D": {"A"},  # Creates cycle A -> ... -> D -> A
-            "E": {"D"},  # Branch that joins the cycle
-        }
-        cycles = detect_cycles(deps)
-        assert len(cycles) >= 1
-
-
-# ============================================================================
-# UNIT TESTS - build_dependency_graph
-# ============================================================================
-
-
-class TestBuildDependencyGraph:
-    """Tests for build_dependency_graph function."""
-
-    def test_empty_entries(self) -> None:
-        """Empty entries produce empty graphs."""
-        message_entries: dict[str, tuple[set[str], set[str]]] = {}
-        msg_deps, term_deps = build_dependency_graph(message_entries)
-        assert msg_deps == {}
-        assert term_deps == {}
-
-    def test_single_entry_with_message_ref(self) -> None:
-        """Single message entry with message reference."""
-        message_entries: dict[str, tuple[set[str], set[str]]] = {
-            "welcome": ({"greeting"}, set())
-        }
-        msg_deps, term_deps = build_dependency_graph(message_entries)
-        assert msg_deps == {"welcome": {"greeting"}}
-        assert term_deps == {"msg:welcome": set()}
-
-    def test_single_entry_with_term_ref(self) -> None:
-        """Single message entry with term reference."""
-        message_entries: dict[str, tuple[set[str], set[str]]] = {
-            "welcome": (set(), {"brand"})
-        }
-        msg_deps, term_deps = build_dependency_graph(message_entries)
-        assert msg_deps == {"welcome": set()}
-        assert term_deps == {"msg:welcome": {"term:brand"}}
-
-    def test_multiple_entries_mixed_refs(self) -> None:
-        """Multiple entries with mixed references."""
-        message_entries: dict[str, tuple[set[str], set[str]]] = {
-            "msg1": ({"msg2"}, {"term1"}),
-            "msg2": (set(), set()),
-        }
-        term_entries: dict[str, tuple[set[str], set[str]]] = {
-            "term1": (set(), {"term2"}),
-        }
-        msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
-        assert msg_deps["msg1"] == {"msg2"}
-        assert msg_deps["msg2"] == set()
-        assert term_deps["msg:msg1"] == {"term:term1"}
-        assert term_deps["term:term1"] == {"term:term2"}
-
-    def test_refs_are_copied(self) -> None:
-        """Returned refs are copies, not original sets."""
-        original_msg_refs: set[str] = {"greeting"}
-        original_term_refs: set[str] = {"brand"}
-        message_entries = {"welcome": (original_msg_refs, original_term_refs)}
-
-        msg_deps, term_deps = build_dependency_graph(message_entries)
-
-        # Modify returned sets
-        msg_deps["welcome"].add("new_msg")
-        term_deps["msg:welcome"].add("new_term")
-
-        # Original sets should be unchanged
-        assert "new_msg" not in original_msg_refs
-        assert "new_term" not in original_term_refs
-
-    def test_namespace_separation(self) -> None:
-        """Messages and terms with same ID are handled correctly.
-
-        Tests the fix for namespace collision where a resource has both a
-        message and term with the same identifier (e.g., "brand" message
-        and "-brand" term).
-        """
-        # Message "brand" references message "name"
-        message_entries: dict[str, tuple[set[str], set[str]]] = {
-            "brand": ({"name"}, set()),
-            "name": (set(), set()),
-        }
-        # Term "brand" references term "company"
-        term_entries: dict[str, tuple[set[str], set[str]]] = {
-            "brand": (set(), {"company"}),
-            "company": (set(), set()),
-        }
-
-        msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
-
-        # Message "brand" appears in message_deps only
-        assert "brand" in msg_deps
-        assert msg_deps["brand"] == {"name"}
-
-        # Message "brand" term refs appear with "msg:" prefix
-        assert "msg:brand" in term_deps
-        assert term_deps["msg:brand"] == set()
-
-        # Term "brand" appears in term_deps with "term:" prefix
-        assert "term:brand" in term_deps
-        assert term_deps["term:brand"] == {"term:company"}
-
-        # Both namespaces are distinct - no collision
-        assert "name" in msg_deps
-        assert "msg:name" in term_deps
-        assert "term:company" in term_deps
-
-    def test_term_cycle_detection(self) -> None:
-        """Term-to-term cycles are detected when term IDs are prefixed correctly.
-
-        Tests the fix for LOGIC-GRAPH-DEPENDENCY-001 where term references
-        in dependency graph values must be prefixed with "term:" to match
-        the key format for cycle detection.
-        """
-        # Create a term cycle: A -> B -> A
-        term_entries: dict[str, tuple[set[str], set[str]]] = {
-            "termA": (set(), {"termB"}),
-            "termB": (set(), {"termA"}),
-        }
-
-        _msg_deps, term_deps = build_dependency_graph({}, term_entries)
-
-        # Verify term dependencies are prefixed correctly
-        assert term_deps["term:termA"] == {"term:termB"}
-        assert term_deps["term:termB"] == {"term:termA"}
-
-        # Verify detect_cycles can find the term cycle
-        cycles = detect_cycles(term_deps)
-        assert len(cycles) == 1
-
-        # Cycle should involve both terms with "term:" prefix
-        cycle_path = cycles[0]
-        assert "term:termA" in cycle_path
-        assert "term:termB" in cycle_path
-
-    def test_cross_type_cycle_msg_term_term_msg(self) -> None:
-        """Cross-type cycles (msg->term->term->msg) are detected with prefixing.
-
-        Tests the fix for LOGIC-GRAPH-DEPENDENCY-001 where term references
-        must be prefixed to enable cross-namespace cycle detection.
-        """
-        # Create a cross-type cycle: msg1 -> term1 -> term2 (which somehow back to msg1)
-        # Note: In reality terms can't directly reference messages, but we can test
-        # the graph structure. Let's test a more realistic pattern:
-        # msg1 -> term1 -> term2, and msg2 -> term2 -> term1 (creating term cycle)
-        message_entries: dict[str, tuple[set[str], set[str]]] = {
-            "msg1": (set(), {"term1"}),
-            "msg2": (set(), {"term2"}),
-        }
-        term_entries: dict[str, tuple[set[str], set[str]]] = {
-            "term1": (set(), {"term2"}),
-            "term2": (set(), {"term1"}),
-        }
-
-        _msg_deps, term_deps = build_dependency_graph(message_entries, term_entries)
-
-        # Verify all term references are prefixed
-        assert term_deps["msg:msg1"] == {"term:term1"}
-        assert term_deps["msg:msg2"] == {"term:term2"}
-        assert term_deps["term:term1"] == {"term:term2"}
-        assert term_deps["term:term2"] == {"term:term1"}
-
-        # Verify detect_cycles finds the term cycle
-        cycles = detect_cycles(term_deps)
-        assert len(cycles) == 1
-
-        # The cycle should be between term1 and term2 with prefixes
-        cycle_path = cycles[0]
-        assert "term:term1" in cycle_path
-        assert "term:term2" in cycle_path
-
-
-# ============================================================================
-# PROPERTY-BASED TESTS
-# ============================================================================
-
-
-# Strategy for generating node names
-node_names = st.text(
-    alphabet=st.sampled_from("abcdefghij"),
-    min_size=1,
-    max_size=3,
-)
+        keys = [make_cycle_key(c) for c in cycles]
+        assert len(keys) == len(set(keys))
 
 
 class TestDetectCyclesProperties:
     """Property-based tests for detect_cycles."""
 
+    @given(graph=dependency_graphs(allow_cycles=False))
+    @settings(max_examples=200)
+    def test_acyclic_graph_no_cycles(
+        self, graph: dict[str, set[str]]
+    ) -> None:
+        """PROPERTY: Acyclic graphs produce no cycles."""
+        event(f"node_count={len(graph)}")
+        edge_count = sum(len(v) for v in graph.values())
+        event(f"edge_count={edge_count}")
+        cycles = detect_cycles(graph)
+        assert cycles == []
+
+    @given(ring=st.lists(node_names, min_size=2, max_size=6, unique=True))
+    @settings(max_examples=200)
+    def test_ring_has_exactly_one_cycle(self, ring: list[str]) -> None:
+        """PROPERTY: Ring topology produces exactly one cycle."""
+        event(f"ring_size={len(ring)}")
+        deps: dict[str, set[str]] = {}
+        for i, node in enumerate(ring):
+            deps[node] = {ring[(i + 1) % len(ring)]}
+
+        cycles = detect_cycles(deps)
+        assert len(cycles) == 1
+        assert set(ring) <= set(cycles[0])
+
+    @given(graph=dependency_graphs())
+    @settings(max_examples=300)
+    def test_cycles_are_unique(self, graph: dict[str, set[str]]) -> None:
+        """PROPERTY: No duplicate cycles in output."""
+        event(f"node_count={len(graph)}")
+        cycles = detect_cycles(graph)
+        keys = [make_cycle_key(c) for c in cycles]
+        event(f"cycle_count={len(cycles)}")
+        assert len(keys) == len(set(keys))
+
+    @given(graph=dependency_graphs())
+    @settings(max_examples=300)
+    def test_cycle_nodes_exist_in_graph(
+        self, graph: dict[str, set[str]]
+    ) -> None:
+        """PROPERTY: Every node in a cycle is reachable from the graph."""
+        event(f"node_count={len(graph)}")
+        cycles = detect_cycles(graph)
+        all_nodes = set(graph.keys())
+        for neighbor_set in graph.values():
+            all_nodes |= neighbor_set
+        for cycle in cycles:
+            for node in cycle:
+                assert node in all_nodes
+
+    @given(graph=dependency_graphs())
+    @settings(max_examples=300)
+    def test_cycles_are_closed(self, graph: dict[str, set[str]]) -> None:
+        """PROPERTY: Each cycle's last element equals its first."""
+        event(f"node_count={len(graph)}")
+        cycles = detect_cycles(graph)
+        event(f"cycle_count={len(cycles)}")
+        for cycle in cycles:
+            assert len(cycle) >= 2
+            assert cycle[0] == cycle[-1]
+
     @given(
         nodes=st.lists(node_names, min_size=1, max_size=5, unique=True),
     )
-    @settings(max_examples=100)
-    def test_no_edges_no_cycles(self, nodes: list[str]) -> None:
+    @settings(max_examples=200)
+    def test_edgeless_graph_no_cycles(self, nodes: list[str]) -> None:
         """PROPERTY: Graph with no edges has no cycles."""
         event(f"node_count={len(nodes)}")
-        deps: dict[str, set[str]] = {node: set() for node in nodes}
-        cycles = detect_cycles(deps)
-        assert cycles == []
+        deps: dict[str, set[str]] = {n: set() for n in nodes}
+        assert detect_cycles(deps) == []
 
     @given(
         chain=st.lists(node_names, min_size=2, max_size=6, unique=True),
     )
-    @settings(max_examples=100)
-    def test_linear_chain_no_cycles(self, chain: list[str]) -> None:
-        """PROPERTY: Linear chain has no cycles."""
+    @settings(max_examples=200)
+    def test_linear_chain_property(self, chain: list[str]) -> None:
+        """PROPERTY: Linear chain (DAG) has no cycles."""
         event(f"chain_length={len(chain)}")
         deps: dict[str, set[str]] = {}
         for i, node in enumerate(chain[:-1]):
             deps[node] = {chain[i + 1]}
-        deps[chain[-1]] = set()  # Last node has no deps
-
-        cycles = detect_cycles(deps)
-        assert cycles == []
-
-    @given(
-        ring=st.lists(node_names, min_size=2, max_size=6, unique=True),
-    )
-    @settings(max_examples=100)
-    def test_ring_has_one_cycle(self, ring: list[str]) -> None:
-        """PROPERTY: Ring topology has exactly one cycle."""
-        event(f"ring_size={len(ring)}")
-        deps: dict[str, set[str]] = {}
-        for i, node in enumerate(ring):
-            next_node = ring[(i + 1) % len(ring)]
-            deps[node] = {next_node}
-
-        cycles = detect_cycles(deps)
-        assert len(cycles) == 1
-        # All nodes in the ring should be in the cycle
-        cycle_nodes = set(cycles[0])
-        for node in ring:
-            assert node in cycle_nodes
-
-
-class TestCanonicalizeCycleProperties:
-    """Property-based tests for canonicalize_cycle."""
-
-    @given(
-        nodes=st.lists(
-            st.text(alphabet="ABC", min_size=1, max_size=2),
-            min_size=2,
-            max_size=5,
-            unique=True,
-        ),
-    )
-    @settings(max_examples=100)
-    def test_canonical_starts_with_minimum(self, nodes: list[str]) -> None:
-        """PROPERTY: Canonical cycle starts with lexicographically smallest."""
-        event(f"node_count={len(nodes)}")
-        # Create a cycle: nodes + [nodes[0]]
-        cycle = [*nodes, nodes[0]]
-        canonical = canonicalize_cycle(cycle)
-
-        if len(canonical) > 1:
-            # First element (excluding closing repeat) should be minimum
-            cycle_body = canonical[:-1]
-            assert canonical[0] == min(cycle_body)
-
-    @given(
-        nodes=st.lists(
-            st.text(alphabet="ABC", min_size=1, max_size=2),
-            min_size=2,
-            max_size=5,
-            unique=True,
-        ),
-    )
-    @settings(max_examples=100)
-    def test_canonical_is_idempotent(self, nodes: list[str]) -> None:
-        """PROPERTY: Canonicalizing twice gives same result."""
-        event(f"node_count={len(nodes)}")
-        cycle = [*nodes, nodes[0]]
-        once = canonicalize_cycle(cycle)
-        twice = canonicalize_cycle(once)
-
-        assert once == twice
-
-    @given(
-        nodes=st.lists(
-            st.text(alphabet="ABC", min_size=1, max_size=2),
-            min_size=2,
-            max_size=5,
-            unique=True,
-        ),
-        rotation=st.integers(min_value=0, max_value=10),
-    )
-    @settings(max_examples=100)
-    def test_all_rotations_same_canonical(self, nodes: list[str], rotation: int) -> None:
-        """PROPERTY: All rotations of same cycle produce same canonical form."""
-        event(f"node_count={len(nodes)}")
-        event(f"rotation={rotation % len(nodes)}")
-        # Rotate the cycle
-        rotation = rotation % len(nodes)
-        rotated_nodes = nodes[rotation:] + nodes[:rotation]
-
-        original_cycle = [*nodes, nodes[0]]
-        rotated_cycle = [*rotated_nodes, rotated_nodes[0]]
-
-        canonical_original = canonicalize_cycle(original_cycle)
-        canonical_rotated = canonicalize_cycle(rotated_cycle)
-
-        assert canonical_original == canonical_rotated
+        deps[chain[-1]] = set()
+        assert detect_cycles(deps) == []

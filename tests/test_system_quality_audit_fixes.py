@@ -305,7 +305,7 @@ class TestCacheEntrySizeLimit:
         # Retrieve
         cached = cache.get("msg", None, None, "en", True)
         assert cached is not None
-        assert cached.to_tuple() == ("x" * 100, ())
+        assert cached.as_result() == ("x" * 100, ())
 
     def test_large_entries_not_cached(self) -> None:
         """Entries exceeding max_entry_weight are not cached."""

@@ -1,6 +1,5 @@
-"""Final tests to achieve 100% branch coverage for resolver.py.
-
-Targets the last 2 uncovered branches:
+"""Tests for pattern loop continuation and numeric variant selector with
+non-numeric values.
 - 390->386: Pattern loop continuation after non-exception Placeable
 - 616->611: NumberLiteral variant key with non-numeric selector
 """

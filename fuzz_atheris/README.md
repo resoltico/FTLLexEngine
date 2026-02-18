@@ -1,8 +1,8 @@
 ---
 afad: "3.2"
-version: "0.104.0"
+version: "0.112.0"
 domain: fuzzing
-updated: "2026-02-16"
+updated: "2026-02-18"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -209,7 +209,7 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ## `fuzz_graph`
 
-Target: `analysis.graph` -- `canonicalize_cycle`, `make_cycle_key`, `detect_cycles`, `build_dependency_graph`. Validates cycle detection correctness, canonicalization invariants, and dependency graph construction with namespace prefixing.
+Target: `analysis.graph` -- `_canonicalize_cycle`, `make_cycle_key`, `detect_cycles`, `entry_dependency_set`. Validates cycle detection correctness, canonicalization invariants, and namespace-prefixed dependency set construction.
 
 ### Patterns
 
@@ -225,7 +225,7 @@ Target: `analysis.graph` -- `canonicalize_cycle`, `make_cycle_key`, `detect_cycl
 | `detect_disconnected` | 8 | Independent components each detect their own cycles |
 | `detect_dense_mesh` | 8 | Complete graph cycle detection stability |
 | `detect_deep_chain` | 8 | Long chain (up to 200 nodes) with back-edge cycle detection |
-| `build_dependency_graph` | 10 | Namespace prefixing, key/value structure, msg_deps unprefixed |
+| `entry_dependency_set` | 10 | Namespace prefixing, frozenset return, count preservation |
 | `adversarial_graph` | 5 | Unicode node IDs, empty strings, whitespace-only identifiers |
 
 ### Allowed Exceptions

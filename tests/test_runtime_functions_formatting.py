@@ -1,9 +1,8 @@
-"""Complete coverage tests for runtime.functions module.
+"""Tests for runtime.functions formatting precision and error handling.
 
-Achieves 100% line and branch coverage by testing:
-- _compute_visible_precision with max_fraction_digits capping
-- Exception handling in number_format and currency_format for malformed patterns
-- is_builtin_with_locale_requirement function
+Covers _compute_visible_precision with max_fraction_digits capping,
+exception handling in number_format and currency_format for malformed patterns,
+and is_builtin_with_locale_requirement function.
 - get_shared_registry and _create_shared_registry functions
 - FluentBundle functions parameter validation (dict rejection)
 - NaN/Infinity graceful handling in plural category selection

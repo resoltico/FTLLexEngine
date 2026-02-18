@@ -1,8 +1,5 @@
-"""Tests for v0.94.0 currency consistency and validation fixes.
-
-Tests the following issues:
-- LOGIC-CURRENCY-INCONSISTENCY-001: Currency format uses ISO 4217 decimals
-- VAL-REDUNDANT-REPORTS-001: Validation reports all chains exceeding max_depth
+"""Regression tests for ISO 4217 currency decimal consistency and validation
+chain depth reporting.
 """
 
 from __future__ import annotations

@@ -30,6 +30,7 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - source_spans, frozen_error_contexts, diagnostics, diagnostic_codes
     - error_categories, validation_errors, validation_warnings
     - validation_results, diagnostic_formatters
+    - dependency_graphs, cycle_paths, namespace_ref_pairs
 """
 
 # Currency parsing strategies
@@ -158,6 +159,14 @@ from .ftl import (
     variable_indent_multiline_pattern,
     variant_key_with_whitespace,
     wide_resource,
+)
+
+# Graph analysis strategies
+from .graph import (
+    cycle_paths,
+    dependency_graphs,
+    namespace_ref_pairs,
+    node_names,
 )
 
 # ISO standards strategies
@@ -359,4 +368,9 @@ __all__ = [
     "l10n_message_ids",
     "DictResourceLoader",
     "FailingResourceLoader",
+    # Graph analysis strategies
+    "node_names",
+    "dependency_graphs",
+    "cycle_paths",
+    "namespace_ref_pairs",
 ]

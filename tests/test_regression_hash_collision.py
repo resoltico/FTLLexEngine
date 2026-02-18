@@ -1,10 +1,6 @@
-"""Tests for v0.94.0 hash integrity and type-tagging fixes.
-
-Tests the following issues:
-- SEC-CACHE-COLLISION-001: dict/ChainMap cache key collision prevention
-- TYPE-CACHE-FROZENSET-001: frozenset cache key handling
-- SEC-HASH-AMBIGUITY-CACHE-001: Type markers in hash composition
-- SEC-HASH-AMBIGUITY-ERROR-001: Section markers in FrozenFluentError hash
+"""Regression tests for cache key collision prevention, frozenset handling,
+type marker disambiguation in hash composition, and FrozenFluentError
+section markers.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-"""Targeted tests to achieve 100% coverage for resolver.py.
-
-Covers the 4 remaining gaps:
+"""Tests for placeable branching, nested placeables, term attribute resolution,
+unknown expression fallback, cyclic term references, term max depth, empty
+patterns, number literal selectors, and pattern element loop behavior.
 - Line 142->138: Placeable branch in _resolve_pattern
 - Line 190: Nested Placeable in _resolve_expression
 - Line 232: Term attribute resolution

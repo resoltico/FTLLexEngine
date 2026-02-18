@@ -1,20 +1,8 @@
-"""Tests for recently resolved issues.
+"""Regression tests for depth limit enforcement, memory bounding, and security.
 
-This module verifies fixes for security and architectural issues.
-
-Resolution Groups:
-    RG-RECURSION-PROTECTION: Unified depth limit enforcement
-        - ARCH-DEPTH-BYPASS-001: FluentResolver depth propagation
-        - ARCH-VALIDATION-RECURSION-001: Serializer validation depth guards
-        - ARCH-VALIDATOR-DEPTH-001: Validator call argument depth tracking
-
-    RG-MEMORY-BOUNDING: Memory exhaustion prevention
-        - SEC-LOCALE-UNBOUNDED-001: Locale code length validation (35 chars)
-        - SEC-CACHE-ERROR-BLOAT-001: Error collection memory bounding
-
-    STANDALONE:
-        - CONC-RWLOCK-DEADLOCK-001: Write reentrancy and upgrade rejection
-          (tested in test_rwlock_implementation.py)
+Covers resolver depth propagation, serializer validation depth guards,
+validator call argument depth tracking, locale code length validation,
+and cache error collection memory bounding.
 """
 
 import pytest
@@ -275,7 +263,7 @@ class TestSecCacheErrorBloat001:
         # Verify it was cached
         cached = cache.get("msg", None, None, "en", True)
         assert cached is not None
-        assert cached.to_tuple() == ("formatted text", few_errors)
+        assert cached.as_result() == ("formatted text", few_errors)
 
         # No error bloat skips
         stats = cache.get_stats()

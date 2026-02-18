@@ -1,4 +1,4 @@
-"""Comprehensive tests for FluentBundle (Phase 3: Infrastructure/i18n)."""
+"""Tests for FluentBundle resource loading, message formatting, and i18n."""
 
 from typing import Any
 from unittest.mock import Mock, patch

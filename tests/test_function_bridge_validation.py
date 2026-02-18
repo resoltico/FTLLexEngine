@@ -1,13 +1,14 @@
-"""Tests for runtime/function_bridge.py to achieve 100% coverage.
+"""Tests for FunctionRegistry parameter inspection skip logic.
 
-Focuses on parameter skip logic for 'self', '/', and '*' (line 106).
+Verifies that special parameter names ('self', '/', '*') are correctly
+excluded during function signature introspection.
 """
 
 from ftllexengine.runtime.function_bridge import FluentFunction, FunctionRegistry
 
 
 class TestParameterSkipLogic:
-    """Test that special parameter names are skipped (line 106)."""
+    """Test that special parameter names are skipped during introspection."""
 
     def test_register_function_with_self_parameter(self):
         """Test registering an unbound method with 'self' parameter."""

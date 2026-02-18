@@ -123,15 +123,20 @@ def fluent_function[F: Callable[..., FluentValue]](
     """
 
     def decorator(fn: F) -> F:
-        @wraps(fn)
-        def wrapper(*args: object, **kwargs: object) -> FluentValue:
-            return fn(*args, **kwargs)
-
-        # Set locale injection marker if requested
         if inject_locale:
-            setattr(wrapper, _FTL_REQUIRES_LOCALE_ATTR, True)
+            # Only create wrapper when we need to attach the locale marker.
+            # Wrapping is required because setattr on built-in functions or
+            # C-level callables may fail without a Python wrapper.
+            @wraps(fn)
+            def wrapper(*args: object, **kwargs: object) -> FluentValue:
+                return fn(*args, **kwargs)
 
-        return wrapper  # type: ignore[return-value]  # wrapper preserves F signature
+            setattr(wrapper, _FTL_REQUIRES_LOCALE_ATTR, True)
+            return wrapper  # type: ignore[return-value]  # wrapper preserves F signature
+
+        # No locale injection: return the original function unchanged,
+        # avoiding call-dispatch overhead on every invocation.
+        return fn
 
     # Handle both @fluent_function and @fluent_function() usage
     if func is not None:

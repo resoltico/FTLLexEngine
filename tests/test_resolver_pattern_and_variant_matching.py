@@ -1,6 +1,4 @@
-"""Branch coverage tests for resolver.py to achieve 100% coverage.
-
-Tests specifically designed to cover uncovered branches:
+"""Tests for pattern resolution branching and variant matching logic.
 - 404->400: Loop continuation after TextElement in _resolve_pattern
 - 634->629: Loop continuation in _find_exact_variant for NumberLiteral case
 """
