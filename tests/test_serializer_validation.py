@@ -44,12 +44,12 @@ from ftllexengine.syntax.serializer import (
 )
 
 # ============================================================================
-# Validation Tests - Lines 61-72, 77-79, 84-93, 107-121, 165
+# SelectExpression Constructor Invariants
 # ============================================================================
 
 
-class TestValidateSelectExpression:
-    """Test _validate_select_expression (lines 61-72)."""
+class TestSelectExpressionConstructorInvariant:
+    """SelectExpression enforces the default-variant invariant at construction time."""
 
     def test_no_default_variant_raises_error(self) -> None:
         """SelectExpression with no default variant raises ValueError at construction."""
@@ -91,10 +91,10 @@ class TestValidateSelectExpression:
 
 
 class TestValidatePattern:
-    """Test _validate_pattern (lines 77-79)."""
+    """Serializer validates patterns containing placeables with select expressions."""
 
     def test_validate_pattern_with_placeable(self) -> None:
-        """COVERAGE: Lines 77-79 - Pattern containing placeable is validated."""
+        """Pattern containing a valid select expression serializes without error."""
         # Valid pattern with placeable containing valid select
         select = SelectExpression(
             selector=VariableReference(id=Identifier(name="x")),
@@ -120,10 +120,10 @@ class TestValidatePattern:
 
 
 class TestValidateExpression:
-    """Test _validate_expression (lines 84-93)."""
+    """Serializer validates expressions recursively, including nested selects."""
 
     def test_validate_nested_select_in_variant(self) -> None:
-        """COVERAGE: Lines 88-89 - Validate patterns within variants."""
+        """Nested select expression inside a variant value serializes without error."""
         # Nested select expression in variant value
         inner_select = SelectExpression(
             selector=VariableReference(id=Identifier(name="inner")),
@@ -159,7 +159,7 @@ class TestValidateExpression:
         assert "msg" in result
 
     def test_validate_nested_placeable(self) -> None:
-        """COVERAGE: Lines 90-91 - Validate nested Placeable."""
+        """Nested Placeable containing a select expression serializes without error."""
         # Nested Placeable containing select
         inner_select = SelectExpression(
             selector=VariableReference(id=Identifier(name="x")),
@@ -186,7 +186,7 @@ class TestValidateExpression:
         assert "msg" in result
 
     def test_validate_other_expression_types(self) -> None:
-        """COVERAGE: Lines 92-93 - Other expressions pass without validation."""
+        """Non-select expressions (VariableReference, etc.) require no extra validation."""
         # Variable reference doesn't need validation
         message = Message(
             id=Identifier(name="msg"),
@@ -203,10 +203,10 @@ class TestValidateExpression:
 
 
 class TestValidateResource:
-    """Test _validate_resource (lines 107-121)."""
+    """Serializer validates message values, attributes, and term values in a resource."""
 
     def test_validate_message_value(self) -> None:
-        """COVERAGE: Lines 109-112 - Validate message value."""
+        """Message value containing a select expression validates and serializes."""
         select = SelectExpression(
             selector=VariableReference(id=Identifier(name="x")),
             variants=(
@@ -229,7 +229,7 @@ class TestValidateResource:
         assert "msg" in result
 
     def test_validate_message_attributes(self) -> None:
-        """COVERAGE: Lines 113-114 - Validate message attributes."""
+        """Message attribute containing a select expression validates and serializes."""
         select = SelectExpression(
             selector=VariableReference(id=Identifier(name="x")),
             variants=(
@@ -257,7 +257,7 @@ class TestValidateResource:
         assert ".attr" in result
 
     def test_validate_term(self) -> None:
-        """COVERAGE: Lines 115-119 - Validate term value and attributes."""
+        """Term value and attributes containing select expressions validate and serialize."""
         select = SelectExpression(
             selector=VariableReference(id=Identifier(name="x")),
             variants=(
@@ -285,7 +285,7 @@ class TestValidateResource:
         assert "-term" in result
 
     def test_validate_comments_and_junk_skip(self) -> None:
-        """COVERAGE: Lines 120-121 - Comments don't need validation."""
+        """Comments are skipped during resource validation (no expressions to validate)."""
         from ftllexengine.syntax.ast import (  # noqa: PLC0415
             CommentType,
         )
@@ -299,10 +299,10 @@ class TestValidateResource:
 
 
 class TestSerializeWithValidation:
-    """Test serialize() with validate=True (line 165)."""
+    """serialize() with validate=True runs the full validation pass."""
 
     def test_serialize_with_validation_enabled(self) -> None:
-        """COVERAGE: Line 165 - Validation is called when enabled."""
+        """Simple message with validate=True serializes correctly."""
         message = Message(
             id=Identifier(name="simple"),
             value=Pattern(elements=(TextElement(value="Hello"),)),
@@ -316,15 +316,15 @@ class TestSerializeWithValidation:
 
 
 # ============================================================================
-# Nested Placeable Serialization - Lines 324-326
+# Nested Placeable Serialization
 # ============================================================================
 
 
 class TestNestedPlaceableSerialization:
-    """Test nested Placeable serialization (lines 324-326)."""
+    """Serializer emits correct braces for nested Placeable nodes."""
 
     def test_serialize_nested_placeable(self) -> None:
-        """COVERAGE: Lines 324-326 - Nested Placeable with braces."""
+        """Nested placeable { { $var } } serializes with both levels of braces."""
         # Nested placeable: { { $var } }
         inner = VariableReference(id=Identifier(name="var"))
         outer = Placeable(expression=Placeable(expression=inner))
@@ -342,7 +342,7 @@ class TestNestedPlaceableSerialization:
         assert "{ { $var } }" in result
 
     def test_serialize_deeply_nested_placeable(self) -> None:
-        """COVERAGE: Lines 324-326 - Multiple levels of nesting."""
+        """Triple nested placeable { { { $x } } } serializes with all three levels."""
         # Triple nested: { { { $x } } }
         inner = VariableReference(id=Identifier(name="x"))
         mid = Placeable(expression=Placeable(expression=inner))
@@ -362,15 +362,15 @@ class TestNestedPlaceableSerialization:
 
 
 # ============================================================================
-# NumberLiteral in Variant Key - Lines 370-371
+# NumberLiteral in Variant Key
 # ============================================================================
 
 
 class TestNumberLiteralVariantKey:
-    """Test NumberLiteral as variant key (lines 370-371)."""
+    """Serializer emits correct syntax for NumberLiteral variant keys."""
 
     def test_serialize_number_literal_variant_key(self) -> None:
-        """COVERAGE: Lines 370-371 - NumberLiteral variant key."""
+        """Integer NumberLiteral variant keys serialize with the raw numeric string."""
         select = SelectExpression(
             selector=VariableReference(id=Identifier(name="count")),
             variants=(
@@ -406,7 +406,7 @@ class TestNumberLiteralVariantKey:
         assert "*[other] Many" in result
 
     def test_serialize_float_literal_variant_key(self) -> None:
-        """COVERAGE: Lines 370-371 - Float NumberLiteral variant key."""
+        """Decimal NumberLiteral variant key serializes with the raw decimal string."""
         select = SelectExpression(
             selector=VariableReference(id=Identifier(name="price")),
             variants=(

@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.111.0"
+version: "0.114.0"
 domain: ERRORS
-updated: "2026-02-17"
+updated: "2026-02-19"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -315,7 +315,7 @@ class SerializationValidationError(ValueError): ...
 ### Constraints
 - Purpose: AST validation errors during serialization.
 - Raised: When `serialize(validate=True)` detects invalid AST.
-- Common: SelectExpression without exactly one default variant, duplicate named argument names, named argument values not StringLiteral or NumberLiteral.
+- Common: Identifier names violating `[a-zA-Z][a-zA-Z0-9_-]*`, duplicate named argument names, named argument values not StringLiteral or NumberLiteral.
 - Import: `from ftllexengine.syntax import SerializationValidationError`
 
 ---

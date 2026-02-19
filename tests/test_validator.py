@@ -673,10 +673,11 @@ msg = { $count ->
             )
 
     def test_select_without_variants_validator_defensive_check(self) -> None:
-        """Validator defensively checks for select without variants.
+        """Validator catches empty-variants SelectExpression constructed via object.__new__.
 
-        Tests lines 397-399 (defensive validation even though AST prevents it).
-        This ensures validator catches errors if AST validation is bypassed.
+        SelectExpression.__post_init__ enforces non-empty variants at construction.
+        The validator's check is intentional defense-in-depth for ASTs that bypass
+        __post_init__ (e.g., via object.__new__ + object.__setattr__).
         """
         # Create SelectExpression bypassing __post_init__ validation
         select = object.__new__(SelectExpression)
@@ -722,10 +723,11 @@ msg = { $count ->
             )
 
     def test_select_with_zero_defaults_validator_defensive_check(self) -> None:
-        """Validator defensively checks default variant count.
+        """Validator catches zero-default SelectExpression constructed via object.__new__.
 
-        Tests lines 402-411 (default count check).
-        Even though AST prevents zero or multiple defaults, validator checks.
+        SelectExpression.__post_init__ enforces exactly one default at construction.
+        The validator's check is intentional defense-in-depth for ASTs that bypass
+        __post_init__ (e.g., via object.__new__ + object.__setattr__).
         """
         # Create SelectExpression with zero defaults (bypassing __post_init__)
         variant = object.__new__(Variant)

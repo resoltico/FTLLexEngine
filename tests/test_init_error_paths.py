@@ -22,6 +22,125 @@ if TYPE_CHECKING:
     from ftllexengine.runtime.function_bridge import FluentValue
 
 
+class TestLazyImportCacheConfig:
+    """Tests for CacheConfig lazy import (lines 105-108 in _load_babel_independent)."""
+
+    def test_cache_config_lazy_import(self) -> None:
+        """CacheConfig is lazily imported from runtime.cache_config."""
+        import ftllexengine
+
+        # Access CacheConfig via __getattr__ (lazy load path)
+        if "CacheConfig" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
+            del ftllexengine._lazy_cache["CacheConfig"]  # type: ignore[attr-defined]
+
+        cache_config_cls = ftllexengine.CacheConfig
+
+        assert cache_config_cls is not None
+        from ftllexengine.runtime.cache_config import CacheConfig as Direct
+
+        assert cache_config_cls is Direct
+
+    def test_cache_config_cached_on_second_access(self) -> None:
+        """CacheConfig is cached after first access."""
+        import ftllexengine
+
+        if "CacheConfig" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
+            del ftllexengine._lazy_cache["CacheConfig"]  # type: ignore[attr-defined]
+
+        first = ftllexengine.CacheConfig
+        second = ftllexengine.CacheConfig
+        assert first is second
+        assert "CacheConfig" in ftllexengine._lazy_cache  # type: ignore[attr-defined]
+
+
+class TestLoadBabelIndependentAssertionError:
+    """Tests for the AssertionError branch in _load_babel_independent (lines 117-118)."""
+
+    def test_unknown_babel_independent_name_raises_assertion_error(self) -> None:
+        """_load_babel_independent raises AssertionError for unknown names."""
+        # Call internal function directly with an unknown name
+        # This exercises the unreachable AssertionError branch (defensive coding)
+        from ftllexengine import _load_babel_independent  # type: ignore[attr-defined]
+
+        with pytest.raises(AssertionError, match="unhandled Babel-independent attribute"):
+            _load_babel_independent("UnknownBabelIndependentName")
+
+
+class TestLazyImportFluentLocalization:
+    """Tests for FluentLocalization lazy import (lines 148-152 in __getattr__)."""
+
+    def test_fluent_localization_lazy_import(self) -> None:
+        """FluentLocalization is lazily imported from localization module."""
+        import ftllexengine
+
+        if "FluentLocalization" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
+            del ftllexengine._lazy_cache["FluentLocalization"]  # type: ignore[attr-defined]
+
+        localization_cls = ftllexengine.FluentLocalization
+
+        assert localization_cls is not None
+        from ftllexengine.localization import FluentLocalization as Direct
+
+        assert localization_cls is Direct
+
+    def test_fluent_localization_cached_on_second_access(self) -> None:
+        """FluentLocalization is cached after first access."""
+        import ftllexengine
+
+        if "FluentLocalization" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
+            del ftllexengine._lazy_cache["FluentLocalization"]  # type: ignore[attr-defined]
+
+        first = ftllexengine.FluentLocalization
+        second = ftllexengine.FluentLocalization
+        assert first is second
+        assert "FluentLocalization" in ftllexengine._lazy_cache  # type: ignore[attr-defined]
+
+
+class TestBabelRequiredCacheHit:
+    """Tests for cache hit path in __getattr__ for Babel-required attrs (line 140)."""
+
+    def test_fluent_bundle_cache_hit_returns_same_object(self) -> None:
+        """Second access to FluentBundle returns cached object (line 140)."""
+        import ftllexengine
+
+        # Ensure FluentBundle is loaded first
+        first = ftllexengine.FluentBundle
+        # Second access exercises the cache-hit branch (line 140)
+        second = ftllexengine.FluentBundle
+        assert first is second
+
+    def test_fluent_localization_cache_hit_returns_same_object(self) -> None:
+        """Second access to FluentLocalization returns cached object (line 140)."""
+        import ftllexengine
+
+        first = ftllexengine.FluentLocalization
+        second = ftllexengine.FluentLocalization
+        assert first is second
+
+    def test_babel_required_unhandled_attr_raises_assertion_error(self) -> None:
+        """Attr in _BABEL_REQUIRED_ATTRS with no match/case arm raises AssertionError.
+
+        This covers the exhaustive case _: branch in the match/case dispatch inside
+        __getattr__. A name registered in _BABEL_REQUIRED_ATTRS without a corresponding
+        case arm is an internal invariant violation, not a legitimate attribute error.
+        AssertionError distinguishes this from AttributeError at the API boundary.
+        """
+        import ftllexengine
+
+        original_attrs = ftllexengine._BABEL_REQUIRED_ATTRS  # type: ignore[attr-defined]
+        # Temporarily extend to include a fake Babel-required attribute
+        ftllexengine._BABEL_REQUIRED_ATTRS = frozenset(  # type: ignore[attr-defined]
+            {"FluentBundle", "FluentLocalization", "_FakeBabelRequiredAttr"}
+        )
+        try:
+            # _FakeBabelRequiredAttr is in _BABEL_REQUIRED_ATTRS but has no case arm
+            # -> hits case _: raise AssertionError (internal invariant violation)
+            with pytest.raises(AssertionError, match="unhandled Babel-required attribute"):
+                _ = ftllexengine._FakeBabelRequiredAttr  # type: ignore[attr-defined]
+        finally:
+            ftllexengine._BABEL_REQUIRED_ATTRS = original_attrs  # type: ignore[attr-defined]
+
+
 class TestLazyImportFluentValue:
     """Tests for FluentValue lazy import (lines 90-93)."""
 

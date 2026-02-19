@@ -19,6 +19,7 @@ from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.parsing.currency import _is_valid_iso_4217_format
 from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import currency_format
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -455,6 +456,52 @@ class TestCurrencyHypothesis:
         result1 = currency_format(amount, "en-US", currency="USD")
         result2 = currency_format(amount, "en-US", currency="USD")
         assert result1 == result2
+
+
+class TestISO4217FormatValidation:
+    """ISO 4217 currency code format validation.
+
+    ISO 4217 codes must be exactly 3 ASCII uppercase letters (A-Z).
+    Non-ASCII characters that visually resemble Latin letters (Cyrillic,
+    Greek) must be rejected to prevent currency code spoofing attacks.
+    """
+
+    def test_cyrillic_uppercase_rejected(self) -> None:
+        """Cyrillic uppercase letters are not valid ISO 4217 codes."""
+        # U+0410..U+0412 look like Latin A/B/V but are not ASCII
+        assert _is_valid_iso_4217_format("\u0410\u0411\u0412") is False
+
+    def test_greek_uppercase_rejected(self) -> None:
+        """Greek uppercase letters are not valid ISO 4217 codes."""
+        assert _is_valid_iso_4217_format("\u0391\u0392\u0393") is False
+
+    def test_valid_ascii_accepted(self) -> None:
+        """Standard ASCII uppercase passes validation."""
+        assert _is_valid_iso_4217_format("USD") is True
+        assert _is_valid_iso_4217_format("EUR") is True
+        assert _is_valid_iso_4217_format("JPY") is True
+
+    def test_lowercase_rejected(self) -> None:
+        """Lowercase ASCII is rejected (ISO 4217 requires uppercase)."""
+        assert _is_valid_iso_4217_format("usd") is False
+
+    def test_wrong_length_rejected(self) -> None:
+        """Non-3-character strings are rejected (ISO 4217 is exactly 3 chars)."""
+        assert _is_valid_iso_4217_format("US") is False
+        assert _is_valid_iso_4217_format("USDX") is False
+
+    @given(
+        st.text(
+            alphabet=st.characters(min_codepoint=0x0100, max_codepoint=0x024F),
+            min_size=3,
+            max_size=3,
+        )
+    )
+    @settings(max_examples=100)
+    def test_non_ascii_always_rejected(self, code: str) -> None:
+        """Property: Non-ASCII 3-char strings are always rejected as ISO 4217 codes."""
+        event(f"codepoint_start={ord(code[0])}")
+        assert _is_valid_iso_4217_format(code) is False
 
 
 class TestCurrencyEdgeCases:

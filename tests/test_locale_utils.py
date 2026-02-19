@@ -17,6 +17,7 @@ from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.locale_utils import (
+    clear_locale_cache,
     get_babel_locale,
     get_system_locale,
     normalize_locale,
@@ -49,6 +50,41 @@ class TestNormalizeLocale:
     def test_multiple_hyphens(self) -> None:
         """Multiple hyphens all converted to underscores and lowercased."""
         assert normalize_locale("zh-Hans-CN") == "zh_hans_cn"
+
+
+class TestClearLocaleCache:
+    """Test clear_locale_cache function."""
+
+    def test_clear_locale_cache_runs_without_error(self) -> None:
+        """clear_locale_cache() clears lru_cache without errors."""
+        # Populate cache first
+        get_babel_locale("en_us")
+        get_babel_locale("de_de")
+
+        # Cache info should show hits
+        info_before = get_babel_locale.cache_info()
+        assert info_before.currsize > 0
+
+        # Clear the cache
+        clear_locale_cache()
+
+        # Cache should be empty
+        info_after = get_babel_locale.cache_info()
+        assert info_after.currsize == 0
+
+    def test_clear_locale_cache_idempotent(self) -> None:
+        """clear_locale_cache() can be called multiple times safely."""
+        clear_locale_cache()
+        clear_locale_cache()
+        info = get_babel_locale.cache_info()
+        assert info.currsize == 0
+
+    def test_clear_locale_cache_when_empty(self) -> None:
+        """clear_locale_cache() works on an already-empty cache."""
+        get_babel_locale.cache_clear()  # Ensure empty
+        clear_locale_cache()  # Should not raise
+        info = get_babel_locale.cache_info()
+        assert info.currsize == 0
 
 
 class TestGetBabelLocale:

@@ -1,11 +1,11 @@
 ---
 afad: "3.1"
-version: "0.110.0"
+version: "0.114.0"
 domain: PARSING
-updated: "2026-02-17"
+updated: "2026-02-19"
 route:
-  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal]
-  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?"]
+  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
+  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
 ---
 
 # Parsing Reference
@@ -54,10 +54,10 @@ def serialize(
 ### Constraints
 - Return: FTL source string.
 - Raises: `SerializationValidationError` when `validate=True` and AST invalid:
-  - SelectExpression without default variant
   - Identifier names violating grammar `[a-zA-Z][a-zA-Z0-9_-]*`
   - Duplicate named argument names within CallArguments
   - Named argument values not StringLiteral or NumberLiteral per FTL EBNF
+- Note: `SelectExpression` with wrong default-variant count raises `ValueError` at construction (enforced by `SelectExpression.__post_init__`), not by the serializer.
 - Raises: `SerializationDepthError` when AST exceeds `max_depth` during validation or serialization.
 - State: None.
 - Thread: Safe.
@@ -686,6 +686,135 @@ Patterns have leading/trailing blank lines trimmed.
 - Continuation: Multi-line patterns joined with newline (`\n`), not space.
 - Implementation: `_trim_pattern_blank_lines()` post-processes pattern elements.
 - Rationale: Per Fluent spec whitespace handling rules.
+
+---
+
+## Source Position Utilities
+
+Character-offset-to-line/column conversion for FTL error reporting. All positions are character-based (Unicode code points, not bytes). Import: `from ftllexengine.syntax.position import ...`
+
+---
+
+## `line_offset`
+
+### Signature
+```python
+def line_offset(source: str, pos: int) -> int:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `source` | `str` | Y | Complete FTL source text. |
+| `pos` | `int` | Y | Character offset (0-indexed). |
+
+### Constraints
+- Return: 0-based line number at `pos`.
+- Raises: `ValueError` if `pos < 0`.
+- State: None.
+- Thread: Safe.
+- Clamping: `pos` clamped to `len(source)` before counting.
+- Complexity: O(pos) — counts `\n` chars in range.
+- Import: `from ftllexengine.syntax.position import line_offset`
+
+---
+
+## `column_offset`
+
+### Signature
+```python
+def column_offset(source: str, pos: int) -> int:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `source` | `str` | Y | Complete FTL source text. |
+| `pos` | `int` | Y | Character offset (0-indexed). |
+
+### Constraints
+- Return: 0-based column number at `pos` (characters since last `\n`).
+- Raises: `ValueError` if `pos < 0`.
+- State: None.
+- Thread: Safe.
+- Clamping: `pos` clamped to `len(source)` before computing.
+- Import: `from ftllexengine.syntax.position import column_offset`
+
+---
+
+## `format_position`
+
+### Signature
+```python
+def format_position(source: str, pos: int, zero_based: bool = True) -> str:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `source` | `str` | Y | Complete FTL source text. |
+| `pos` | `int` | Y | Character offset (0-indexed). |
+| `zero_based` | `bool` | N | Use 0-based indexing (default: True). |
+
+### Constraints
+- Return: `"line:col"` string (e.g., `"2:5"` zero-based, `"3:6"` one-based).
+- Raises: `ValueError` if `pos < 0`.
+- State: None.
+- Thread: Safe.
+- Import: `from ftllexengine.syntax.position import format_position`
+
+---
+
+## `get_line_content`
+
+### Signature
+```python
+def get_line_content(source: str, line_number: int, zero_based: bool = True) -> str:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `source` | `str` | Y | Complete FTL source text. |
+| `line_number` | `int` | Y | Line to extract. |
+| `zero_based` | `bool` | N | Line number is 0-based (default: True). |
+
+### Constraints
+- Return: Content of requested line without trailing newline.
+- Raises: `ValueError` if `line_number < 0` or `line_number >= len(lines)`.
+- State: None.
+- Thread: Safe.
+- Import: `from ftllexengine.syntax.position import get_line_content`
+
+---
+
+## `get_error_context`
+
+### Signature
+```python
+def get_error_context(
+    source: str,
+    pos: int,
+    context_lines: int = 2,
+    marker: str = "^",
+) -> str:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `source` | `str` | Y | Complete FTL source text. |
+| `pos` | `int` | Y | Character offset of error (0-indexed). |
+| `context_lines` | `int` | N | Lines of context before/after error (default: 2). |
+| `marker` | `str` | N | Character for error marker line (default: `"^"`). |
+
+### Constraints
+- Return: Multi-line string with context lines and marker pointing to error column.
+- Raises: `ValueError` if `pos < 0`.
+- State: None.
+- Thread: Safe.
+- EOF: If `pos` points past the last line, emits an empty line with marker.
+- Import: `from ftllexengine.syntax.position import get_error_context`
 
 ---
 

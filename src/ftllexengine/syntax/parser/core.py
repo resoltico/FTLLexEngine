@@ -54,6 +54,10 @@ from ftllexengine.syntax.parser.rules import (
 )
 from ftllexengine.syntax.parser.whitespace import skip_blank
 
+__all__ = ["FluentParserV1"]
+
+logger = logging.getLogger(__name__)
+
 
 def _has_blank_line_between(source: str, start: int, end: int) -> bool:
     """Check if the region contains a blank line (empty line or whitespace-only line).
@@ -157,10 +161,6 @@ class _CommentAccumulator:
             new_span = self.last_span
 
         return Comment(content=merged_content, type=self.type, span=new_span)
-
-__all__ = ["FluentParserV1"]
-
-logger = logging.getLogger(__name__)
 
 
 class FluentParserV1:

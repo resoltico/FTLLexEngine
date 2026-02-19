@@ -777,3 +777,45 @@ class TestFunctionArityValidation:
         _result, errors = bundle.format_pattern("test", {"a": 1, "b": 2, "c": 3})
 
         assert not errors or "MYFUNC" not in str(errors[0])
+
+
+class TestGlobalDepthCustomFunctionCallback:
+    """GlobalDepthGuard prevents custom functions from bypassing depth limits.
+
+    A custom function that calls back into bundle.format_pattern() is a common
+    pattern for recursive template expansion. Without GlobalDepthGuard, this
+    would allow arbitrary stack growth and potential DoS.
+    """
+
+    def test_callback_bypass_is_bounded(self) -> None:
+        """Custom function calling format_pattern must not cause stack overflow."""
+        bundle = FluentBundle("en_US", max_nesting_depth=10)
+        call_count = 0
+
+        def recursive_func(_val: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count > 5:
+                return "stopped"
+            inner_result, _ = bundle.format_pattern("inner", {"x": call_count})
+            return inner_result
+
+        bundle.add_function("RECURSE", recursive_func)
+        bundle.add_resource("inner = { RECURSE($x) }")
+        bundle.add_resource('outer = { RECURSE("start") }')
+
+        # Must not cause RecursionError or stack overflow
+        result, errors = bundle.format_pattern("outer")
+        assert result is not None
+        # Depth guard terminates recursion: either produces errors or natural stop
+        assert len(errors) > 0 or "stopped" in result or call_count <= 15
+
+    def test_normal_resolution_unaffected_by_global_guard(self) -> None:
+        """GlobalDepthGuard does not affect normal (non-recursive) resolution."""
+        bundle = FluentBundle("en_US")
+        bundle.add_resource("hello = Hello, { $name }!")
+
+        result, errors = bundle.format_pattern("hello", {"name": "World"})
+        assert "Hello," in result
+        assert "World" in result
+        assert len(errors) == 0

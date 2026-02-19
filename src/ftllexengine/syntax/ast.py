@@ -214,7 +214,6 @@ class Term:
 class Attribute:
     """Message or term attribute.
 
-
     Example:
         login = Sign In
             .tooltip = Click here to sign in  ← attribute
@@ -227,9 +226,7 @@ class Attribute:
 
 @dataclass(frozen=True, slots=True)
 class Comment:
-    """Comment (# single, ## group, ### resource).
-
-    """
+    """Comment (# single, ## group, ### resource)."""
 
     content: str
     type: CommentType
@@ -386,9 +383,7 @@ class SelectExpression:
 
 @dataclass(frozen=True, slots=True)
 class Variant:
-    """Single variant in select expression.
-
-    """
+    """Single variant in select expression."""
 
     key: VariantKey
     value: Pattern

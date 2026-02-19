@@ -31,7 +31,7 @@ Pattern Reference:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ftllexengine.diagnostics import ErrorTemplate
 
@@ -573,7 +573,7 @@ class ParseError:
 
     message: str
     cursor: Cursor
-    expected: tuple[str, ...] = field(default_factory=tuple)
+    expected: tuple[str, ...] = ()
 
     def format_error(self) -> str:
         """Format error with line:column.

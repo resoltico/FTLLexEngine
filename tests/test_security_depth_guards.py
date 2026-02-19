@@ -313,3 +313,88 @@ class TestDeadCodeRemoval:
 
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) >= 1
+
+
+class TestSelectorExpressionDepthGuard:
+    """Selector expression depth guard prevents DoS via malformed nested selectors.
+
+    SelectExpression depth is tracked via the expression guard. A malformed AST
+    that uses SelectExpression as the selector of another SelectExpression (invalid
+    per the Fluent grammar, but possible via the API) must not cause a stack overflow.
+    """
+
+    def test_normal_select_with_variable_selector(self) -> None:
+        """Well-formed select expression with variable selector resolves correctly."""
+        bundle = FluentBundle("en_US", max_nesting_depth=10)
+        bundle.add_resource(
+            "count =\n"
+            "    { $num ->\n"
+            "        [one] One item\n"
+            "       *[other] { $num } items\n"
+            "    }\n"
+        )
+        result, errors = bundle.format_pattern("count", {"num": 5})
+        assert "5" in result or "items" in result
+        assert len(errors) == 0
+
+    def test_deeply_nested_selector_does_not_stackoverflow(self) -> None:
+        """Malformed deeply-nested SelectExpression as its own selector is bounded."""
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+            Identifier,
+            Message,
+            NumberLiteral,
+            Pattern,
+            Placeable,
+            SelectExpression,
+            TextElement,
+            VariableReference,
+            Variant,
+        )
+
+        def make_nested_select(depth: int) -> SelectExpression:
+            if depth == 0:
+                return SelectExpression(
+                    selector=VariableReference(id=Identifier("x")),
+                    variants=(
+                        Variant(
+                            key=NumberLiteral(raw="1", value=1),
+                            value=Pattern(elements=(TextElement("A"),)),
+                            default=False,
+                        ),
+                        Variant(
+                            key=Identifier("other"),
+                            value=Pattern(elements=(TextElement("B"),)),
+                            default=True,
+                        ),
+                    ),
+                )
+            inner = make_nested_select(depth - 1)
+            # Intentionally malformed: SelectExpression used as selector
+            return SelectExpression(
+                selector=inner,  # type: ignore[arg-type]
+                variants=(
+                    Variant(
+                        key=Identifier("a"),
+                        value=Pattern(elements=(TextElement("A"),)),
+                        default=False,
+                    ),
+                    Variant(
+                        key=Identifier("other"),
+                        value=Pattern(elements=(TextElement("B"),)),
+                        default=True,
+                    ),
+                ),
+            )
+
+        nested = make_nested_select(60)
+        msg = Message(
+            id=Identifier("msg"),
+            value=Pattern(elements=(Placeable(expression=nested),)),
+            attributes=(),
+        )
+        bundle = FluentBundle("en_US", max_nesting_depth=50)
+        bundle._messages["msg"] = msg  # pylint: disable=protected-access
+
+        # Must not raise RecursionError; may return error or fallback
+        result, _ = bundle.format_pattern("msg", {"x": 1})
+        assert result is not None

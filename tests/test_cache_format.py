@@ -915,3 +915,27 @@ class TestCacheRaceConditions:
         assert stats is not None
         assert stats["hits"] + stats["misses"] == 500  # 100 * 5 threads
         assert stats["hits"] >= 495  # At least 495 hits (first 5 are misses)
+
+
+class TestCLDRStyleCoverage:
+    """CLDR date/datetime pattern functions cover all four named styles.
+
+    The CLDR defines four named styles: short, medium, long, full.
+    All four must be present to allow callers to use the full CLDR style vocabulary.
+    """
+
+    def test_date_patterns_include_all_four_styles(self) -> None:
+        """_get_date_patterns returns at least 4 patterns (short/medium/long/full)."""
+        _get_date_patterns.cache_clear()
+        patterns = _get_date_patterns("en_US")
+        assert len(patterns) >= 4, (
+            f"Expected at least 4 CLDR date styles, got {len(patterns)}: {patterns}"
+        )
+
+    def test_datetime_patterns_include_all_four_styles(self) -> None:
+        """_get_datetime_patterns returns at least 4 patterns (short/medium/long/full)."""
+        _get_datetime_patterns.cache_clear()
+        patterns = _get_datetime_patterns("en_US")
+        assert len(patterns) >= 4, (
+            f"Expected at least 4 CLDR datetime styles, got {len(patterns)}: {patterns}"
+        )

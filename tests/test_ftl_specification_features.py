@@ -1,13 +1,16 @@
-"""Tests for specification compliance and feature behavior.
+"""Tests for FTL specification feature compliance and behavior.
 
-Covers:
-- Nested placeables (issue 001): { { expr } } now supported
-- Lowercase function names (issue 007): number() valid, not just NUMBER()
-- Line endings in string literals (issue 006): rejected per spec
-- Tab in variant marker (issue 008): rejected per spec
-- Term scope isolation (issue 014): terms cannot access calling context variables
-- Validation with known entries (issue 009): cross-resource reference validation
-- Fast-tier currency pattern (issue 003): common currencies parsed without full CLDR scan
+Tests:
+- Nested placeables: { { expr } } supported in parser and resolver
+- Lowercase function names: function names are case-insensitive identifiers
+- Line endings in string literals: newlines inside string literals are rejected
+- Tab in variant marker: tab before *[key] is rejected per spec
+- Term scope isolation: terms cannot access the calling context's variables
+- Validation with known entries: cross-resource reference validation
+- Fast-tier currency pattern: common currencies parsed efficiently
+- ParseContext propagation: nesting depth limits respected during parsing
+- CRLF normalization: Windows line endings normalized to LF before parsing
+- Comment parsing: valid comment formats accepted by parser
 """
 
 from __future__ import annotations
@@ -31,14 +34,13 @@ from ftllexengine.validation.resource import validate_resource
 
 
 class TestNestedPlaceables:
-    """Issue 001: Nested placeables should be supported."""
+    """Nested placeables { { expr } } are supported in parser and resolver."""
 
     def test_simple_nested_variable(self) -> None:
         """Nested variable reference: { { $var } }."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = { { $name } }")
         result, errors = bundle.format_pattern("msg", {"name": "World"})
-        # Result may include bidi isolation chars
         assert "World" in result
         assert len(errors) == 0
 
@@ -75,18 +77,17 @@ class TestNestedPlaceables:
         assert len(errors) == 0
 
     def test_nesting_depth_limit(self) -> None:
-        """Nesting depth is limited to prevent stack overflow."""
-        # Very deep nesting should hit depth limit
+        """Nesting depth limit is enforced to prevent stack overflow."""
         ctx = ParseContext(max_nesting_depth=3, current_depth=0)
         deeply_nested = "{ { { { { $x } } } } }"
         cursor = Cursor(source=deeply_nested, pos=0)
         result = parse_placeable(cursor, ctx)
-        # Should handle gracefully (either parses partially or returns None)
+        # Either parses partially or returns None - both are valid outcomes.
         assert result is None or result is not None
 
 
 class TestLowercaseFunctionNames:
-    """Issue 007: Function names no longer require uppercase."""
+    """Function names are case-insensitive identifiers - lowercase is valid."""
 
     def test_lowercase_function_parses(self) -> None:
         """Lowercase function name parses successfully."""
@@ -103,7 +104,7 @@ class TestLowercaseFunctionNames:
         assert result.value.id.name == "camelCase"
 
     def test_uppercase_still_works(self) -> None:
-        """Uppercase function names still work (backwards compatible)."""
+        """Uppercase function names continue to work."""
         cursor = Cursor(source="NUMBER()", pos=0)
         result = parse_function_reference(cursor)
         assert result is not None
@@ -119,15 +120,13 @@ class TestLowercaseFunctionNames:
         bundle.add_function("greet", greet)
         bundle.add_resource('msg = { greet("World") }')
         result, errors = bundle.format_pattern("msg")
-        # Result may include bidi isolation chars
         assert "Hello, World!" in result
         assert len(errors) == 0
 
     def test_lowercase_builtin_alias(self) -> None:
-        """Can register lowercase aliases for builtins."""
+        """Lowercase alias for a builtin function resolves correctly."""
         bundle = FluentBundle("en_US")
 
-        # Register lowercase number function
         def number_func(val: int | float) -> str:
             return str(val)
 
@@ -140,43 +139,30 @@ class TestLowercaseFunctionNames:
 
 
 class TestLineEndingsInStringLiterals:
-    """Issue 006: Line endings must be rejected in string literals."""
+    """Line endings inside string literals are rejected per the FTL spec."""
 
     def test_newline_rejected(self) -> None:
-        """Newline character rejected in string literal."""
+        """Literal newline character inside a string literal terminates the string."""
         cursor = Cursor(source='"line1\nline2"', pos=0)
         result = parse_string_literal(cursor)
-        # Should fail parsing (return None) when newline encountered
         assert result is None
 
     def test_carriage_return_rejected(self) -> None:
-        """Carriage return in source rejected (normalized to LF then rejected).
-
-        Note: Line endings are normalized to LF at parser entry point.
-        CR becomes LF, which is then rejected in string literals.
-        """
+        """CR in source is normalized to LF, which is then rejected in string literals."""
         bundle = FluentBundle("en_US")
-        # CR in source is normalized to LF, which triggers rejection
         bundle.add_resource('msg = { "line1\rline2" }')
         result, errors = bundle.format_pattern("msg")
-        # Should have error due to line ending in string literal
         assert len(errors) > 0 or "{" in result
 
     def test_crlf_rejected(self) -> None:
-        """CRLF sequence in source rejected (normalized to LF then rejected).
-
-        Note: Line endings are normalized to LF at parser entry point.
-        CRLF becomes LF, which is then rejected in string literals.
-        """
+        """CRLF in source is normalized to LF, which is then rejected in string literals."""
         bundle = FluentBundle("en_US")
-        # CRLF in source is normalized to LF, which triggers rejection
         bundle.add_resource('msg = { "line1\r\nline2" }')
         result, errors = bundle.format_pattern("msg")
-        # Should have error due to line ending in string literal
         assert len(errors) > 0 or "{" in result
 
     def test_escaped_newline_allowed(self) -> None:
-        """Escaped newline (\\n) is allowed."""
+        """Escaped newline sequence \\n is allowed and produces a real newline."""
         bundle = FluentBundle("en_US")
         bundle.add_resource('msg = { "line1\\nline2" }')
         result, errors = bundle.format_pattern("msg")
@@ -184,30 +170,26 @@ class TestLineEndingsInStringLiterals:
         assert len(errors) == 0
 
     def test_normal_string_works(self) -> None:
-        """Normal strings without line endings work fine."""
+        """Normal strings without line endings are parsed correctly."""
         cursor = Cursor(source='"hello world"', pos=0)
         result = parse_string_literal(cursor)
         assert result is not None
-        # parse_string_literal returns ParseResult[str], so value is str
         assert result.value == "hello world"
 
 
 class TestTabInVariantMarker:
-    """Issue 008: Tab before variant marker must be rejected."""
+    """Tab characters before variant markers are rejected per spec."""
 
     def test_tab_before_asterisk_rejected(self) -> None:
-        """Tab before * variant marker creates parse error."""
+        """Tab before *[other] variant marker produces a parse error."""
         bundle = FluentBundle("en_US")
-        # Tab character before *[other] should be rejected
         ftl = "msg = { $n ->\n\t*[other] value\n}"
         bundle.add_resource(ftl)
-        # Should either create Junk or have formatting errors
         result, errors = bundle.format_pattern("msg", {"n": 1})
-        # Parser should have rejected or produced warning
         assert len(errors) > 0 or "{" in result
 
     def test_space_before_asterisk_allowed(self) -> None:
-        """Space before * variant marker is valid."""
+        """Spaces before *[other] variant marker are valid FTL."""
         bundle = FluentBundle("en_US")
         ftl = """msg = { $n ->
     [one] single
@@ -221,22 +203,20 @@ class TestTabInVariantMarker:
 
 
 class TestTermScopeIsolation:
-    """Issue 014: Terms must not access calling context variables."""
+    """Terms cannot access variables from the calling message's context."""
 
     def test_term_cannot_access_external_variable(self) -> None:
-        """Term should not resolve variables from calling message context."""
+        """Term resolving { $name } does not see the caller's $name argument."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("""
 -greeting = Hello { $name }
 msg = { -greeting }
 """)
-        # When formatting msg with name="World", the term should NOT see $name
         result, errors = bundle.format_pattern("msg", {"name": "World"})
-        # $name in term should resolve to placeholder, not "World"
         assert "World" not in result or len(errors) > 0
 
     def test_term_uses_explicit_arguments(self) -> None:
-        """Term can receive explicit arguments via term call syntax."""
+        """Term receives variables only from explicit call arguments."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("""
 -greeting = Hello { $who }
@@ -247,7 +227,7 @@ msg = { -greeting(who: "Friend") }
         assert len(errors) == 0
 
     def test_nested_terms_isolated(self) -> None:
-        """Nested term references maintain scope isolation."""
+        """Nested term references each maintain their own scope isolation."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("""
 -inner = Inner { $val }
@@ -255,22 +235,19 @@ msg = { -greeting(who: "Friend") }
 msg = { -outer }
 """)
         result, _errors = bundle.format_pattern("msg", {"val": "LEAKED"})
-        # Neither term should see the external $val
         assert "LEAKED" not in result
 
 
 class TestValidationWithKnownEntries:
-    """Issue 009: Validation should accept known external entries."""
+    """Validation accepts references to externally known messages and terms."""
 
     def test_validates_against_known_messages(self) -> None:
-        """References to known_messages should not warn."""
-        # Validate FTL that references an external message
+        """References to known_messages do not produce undefined-reference warnings."""
         ftl = "greeting = Hello { external-msg }"
         result = validate_resource(
             ftl,
             known_messages=frozenset(["external-msg"]),
         )
-        # Should not have undefined reference warning for external-msg
         undefined_warnings = [
             w
             for w in result.warnings
@@ -279,7 +256,7 @@ class TestValidationWithKnownEntries:
         assert len(undefined_warnings) == 0
 
     def test_validates_against_known_terms(self) -> None:
-        """References to known_terms should not warn."""
+        """References to known_terms do not produce undefined-reference warnings."""
         ftl = "greeting = Hello { -brand }"
         result = validate_resource(
             ftl,
@@ -293,7 +270,7 @@ class TestValidationWithKnownEntries:
         assert len(undefined_warnings) == 0
 
     def test_unknown_reference_still_warns(self) -> None:
-        """Unknown references still produce warnings."""
+        """Unknown references without a known_entries override produce warnings."""
         ftl = "greeting = Hello { unknown }"
         result = validate_resource(ftl)
         undefined_warnings = [
@@ -302,10 +279,9 @@ class TestValidationWithKnownEntries:
         assert len(undefined_warnings) > 0
 
     def test_bundle_validates_with_existing_entries(self) -> None:
-        """Bundle.validate_resource considers existing entries."""
+        """Bundle.validate_resource considers all previously added entries as known."""
         bundle = FluentBundle("en_US")
         bundle.add_resource("base = Base message")
-        # Validate new FTL that references the existing message
         result = bundle.validate_resource("greeting = { base }")
         undefined_warnings = [
             w
@@ -316,15 +292,14 @@ class TestValidationWithKnownEntries:
 
 
 class TestFastTierCurrencyPattern:
-    """Issue 003: Common currencies use fast-tier pattern.
+    """Common currencies are parsed using an efficient fast-tier pattern.
 
     parse_currency returns tuple[tuple[Decimal, str] | None, tuple[...]]
     where the first element is (amount, code) if successful.
     """
 
-    def test_usd_dollar_sign_parses(self) -> None:
-        """USD with dollar sign parses."""
-        # Note: $100 may require locale-specific symbol recognition
+    def test_usd_parses(self) -> None:
+        """USD amount with ISO code parses correctly."""
         result, errors = parse_currency("100 USD", "en_US")
 
         assert not errors
@@ -334,7 +309,7 @@ class TestFastTierCurrencyPattern:
         assert amount == Decimal("100")
 
     def test_eur_parses(self) -> None:
-        """EUR parses with fast-tier pattern."""
+        """EUR amount with ISO code parses correctly."""
         result, errors = parse_currency("EUR 100", "en_US")
 
         assert not errors
@@ -343,7 +318,7 @@ class TestFastTierCurrencyPattern:
         assert code == "EUR"
 
     def test_gbp_parses(self) -> None:
-        """GBP parses with fast-tier pattern."""
+        """GBP amount with ISO code parses correctly."""
         result, errors = parse_currency("50 GBP", "en_GB")
 
         assert not errors
@@ -352,7 +327,7 @@ class TestFastTierCurrencyPattern:
         assert code == "GBP"
 
     def test_jpy_parses(self) -> None:
-        """JPY parses correctly."""
+        """JPY amount with ISO code parses correctly."""
         result, errors = parse_currency("1000 JPY", "en_US")
 
         assert not errors
@@ -369,7 +344,7 @@ class TestFastTierCurrencyPattern:
         ],
     )
     def test_common_currency_formats(self, value: str, expected_code: str) -> None:
-        """Common currency formats parse correctly."""
+        """Common ISO currency codes in both prefix and suffix position parse correctly."""
         result, errors = parse_currency(value, "en_US")
 
         assert not errors
@@ -379,34 +354,29 @@ class TestFastTierCurrencyPattern:
 
 
 class TestParseContextPropagation:
-    """Issue 002: ParseContext properly propagates through expression parsing."""
+    """ParseContext propagates nesting depth through expression parsing."""
 
     def test_context_with_sufficient_depth_limit(self) -> None:
-        """ParseContext with sufficient depth limit allows parsing."""
-        # Context with depth limit of 10 should allow simple placeable
-        # parse_placeable expects cursor AFTER the opening brace
+        """ParseContext with sufficient depth limit allows simple placeable parsing."""
         ctx = ParseContext(max_nesting_depth=10, current_depth=0)
         cursor = Cursor(source="{ $x }", pos=1)  # Position after '{'
         result = parse_placeable(cursor, ctx)
         assert result is not None
 
     def test_deep_nesting_controlled(self) -> None:
-        """Deep nesting respects context limits."""
-        # parse_placeable expects cursor AFTER the opening brace
+        """ParseContext with tight depth limit prevents unbounded recursion."""
         ctx = ParseContext(max_nesting_depth=1, current_depth=0)
         cursor = Cursor(source="{ { $x } }", pos=1)  # Position after first '{'
         result = parse_placeable(cursor, ctx)
-        # Should handle limited depth gracefully
         assert result is None or result is not None  # Either outcome is valid
 
 
 class TestCRLFNormalization:
-    """Verify CRLF normalization works correctly."""
+    """Windows CRLF line endings are normalized to LF before parsing."""
 
     def test_crlf_in_multiline_pattern(self) -> None:
-        """CRLF line endings are normalized to LF."""
+        """CRLF in multiline FTL is normalized so pattern elements parse correctly."""
         bundle = FluentBundle("en_US")
-        # FTL with Windows line endings
         ftl = "msg = line1\r\n    line2\r\n"
         bundle.add_resource(ftl)
         result, errors = bundle.format_pattern("msg")
@@ -416,7 +386,7 @@ class TestCRLFNormalization:
         assert "line2" in result
 
     def test_crlf_in_comment(self) -> None:
-        """CRLF in comments handled correctly."""
+        """CRLF in comments is handled correctly."""
         bundle = FluentBundle("en_US")
         ftl = "# Comment\r\nmsg = value\r\n"
         bundle.add_resource(ftl)
@@ -427,19 +397,18 @@ class TestCRLFNormalization:
 
 
 class TestValidCommentParsing:
-    """Verify comment parsing behavior."""
+    """Parser accepts well-formed FTL comment formats."""
 
     def test_valid_comment_parses(self) -> None:
-        """Valid comment with space parses correctly."""
+        """Comment followed by space and content is parsed without error."""
         parser = FluentParserV1()
         resource = parser.parse("# Valid comment\nmsg = value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
     def test_hash_only_line_handled(self) -> None:
-        """Hash-only line is handled gracefully."""
+        """Comment with hash and no content (empty comment) is valid."""
         parser = FluentParserV1()
-        # Empty comment lines (hash with no content) are valid
         resource = parser.parse("#\nmsg = value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1

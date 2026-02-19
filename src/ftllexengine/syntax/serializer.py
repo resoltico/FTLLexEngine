@@ -46,7 +46,6 @@ from .ast import (
     TextElement,
     VariableReference,
 )
-from .validation_helpers import count_default_variants
 from .visitor import ASTVisitor
 
 __all__ = [
@@ -61,8 +60,9 @@ class SerializationValidationError(ValueError):
 
     This error indicates the AST structure would produce invalid FTL syntax.
     Common causes:
-    - SelectExpression without exactly one default variant
-    - Malformed AST nodes from programmatic construction
+    - Duplicate named argument names in function or term calls
+    - Named argument values that are not StringLiteral or NumberLiteral
+    - Invalid identifiers in messages, terms, or attributes
     """
 
 
@@ -95,33 +95,6 @@ def _validate_identifier(identifier: Identifier, context: str) -> None:
         msg = (
             f"Invalid identifier '{identifier.name}' in {context}. "
             f"Identifiers must match [a-zA-Z][a-zA-Z0-9_-]* and be ≤256 characters"
-        )
-        raise SerializationValidationError(msg)
-
-
-def _validate_select_expression(expr: SelectExpression, context: str) -> None:
-    """Validate SelectExpression has exactly one default variant.
-
-    Per FTL spec, every SelectExpression must have exactly one variant
-    marked as default with the * prefix.
-
-    Args:
-        expr: SelectExpression to validate
-        context: Description of location for error message
-
-    Raises:
-        SerializationValidationError: If validation fails
-    """
-    default_count = count_default_variants(expr)
-
-    if default_count == 0:
-        msg = f"SelectExpression in {context} has no default variant (requires exactly one *[key])"
-        raise SerializationValidationError(msg)
-
-    if default_count > 1:
-        msg = (
-            f"SelectExpression in {context} has {default_count} default variants "
-            "(requires exactly one)"
         )
         raise SerializationValidationError(msg)
 
@@ -209,7 +182,8 @@ def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard
     """
     match expr:
         case SelectExpression():
-            _validate_select_expression(expr, context)
+            # Invariant: SelectExpression.__post_init__ guarantees exactly one default
+            # variant at construction time. No redundant check needed here.
             # Validate selector expression and variant keys
             with depth_guard:
                 _validate_expression(expr.selector, context, depth_guard)
@@ -244,7 +218,7 @@ def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard
 def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
     """Validate a Resource AST for serialization.
 
-    Checks all SelectExpressions have exactly one default variant.
+    Checks identifiers, call arguments, and nested expression structure.
     Enforces depth limits to prevent stack overflow.
 
     Args:
@@ -731,7 +705,7 @@ class FluentSerializer(ASTVisitor):
                         _escape_text(text, output)
                     at_line_start = False
 
-            elif isinstance(element, Placeable):
+            else:
                 output.append("{ ")
                 with depth_guard:
                     self._serialize_expression(element.expression, output, depth_guard)

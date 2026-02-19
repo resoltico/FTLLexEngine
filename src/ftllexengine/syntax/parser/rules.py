@@ -112,7 +112,7 @@ class ParseContext:
         """Initialize mutable depth exceeded flag if not provided."""
         if self._depth_exceeded_flag is None:
             # Create mutable flag container shared across all nested contexts
-            object.__setattr__(self, "_depth_exceeded_flag", [False])
+            self._depth_exceeded_flag = [False]
 
     def is_depth_exceeded(self) -> bool:
         """Check if maximum nesting depth has been exceeded."""

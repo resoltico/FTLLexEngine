@@ -1,34 +1,29 @@
-"""Parser boundary condition tests to kill survived mutations.
+"""Parser boundary condition tests for variants, patterns, identifiers, and whitespace.
 
-This module targets specific mutation survivors identified in mutation testing:
-- Empty variant lists
-- Single variant scenarios
-- Boundary conditions in loops and conditionals
-- Edge cases at limits
-
-Target: Kill ~60 parser-related mutations
-Phase: 1 (High-Impact Quick Wins)
+Tests:
+- Variant count boundaries: single variant, two variants, empty variant key rejection
+- Pattern element boundaries: empty pattern, single element, whitespace-only
+- String literal boundaries: empty, single character, unterminated
+- Number literal boundaries: zero, negative, single digit, decimal
+- Identifier boundaries: single character, hyphenated, invalid start character
+- Term reference boundaries: single character name, reference inside pattern
+- Attribute boundaries: single character name, zero and one attributes
+- Whitespace continuation boundaries: minimum indent, no indent, single space
+- Comment boundaries: empty comment, single character comment
+- Cursor advancement boundaries: EOF, single newline, multiple newlines
+- Character comparison boundaries: missing brackets, missing braces
 """
 
-import pytest
 
 from ftllexengine.syntax.ast import Junk, Message, Pattern, Resource, SelectExpression, TextElement
 from ftllexengine.syntax.parser import FluentParserV1
 
 
 class TestVariantBoundaryConditions:
-    """Test boundary conditions in variant parsing.
+    """Variant count boundary conditions in select expression parsing."""
 
-    Targets mutations like:
-    - if len(variants) > 0 → if len(variants) > 1
-    - if len(variants) >= 1 → if len(variants) >= 2
-    """
-
-    def test_single_variant_select(self):
-        """Kills: len(variants) > 0 → len(variants) > 1 mutation.
-
-        Ensures exactly one variant (the default) is allowed.
-        """
+    def test_single_variant_select(self) -> None:
+        """Select expression with exactly one (default) variant parses successfully."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = { $count ->
@@ -39,11 +34,8 @@ msg = { $count ->
         assert len(messages) == 1
         assert isinstance(messages[0].value, Pattern)
 
-    def test_two_variants_select(self):
-        """Kills: len(variants) >= 1 → len(variants) >= 2 mutation.
-
-        Ensures exactly two variants are allowed.
-        """
+    def test_two_variants_select(self) -> None:
+        """Select expression with two variants (one, other) parses successfully."""
         from ftllexengine.syntax.ast import Placeable  # noqa: PLC0415
 
         parser = FluentParserV1()
@@ -55,7 +47,6 @@ msg = { $count ->
 """)
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
-        # Verify we have a select expression with 2 variants
         pattern = messages[0].value
         assert isinstance(pattern, Pattern)
         assert len(pattern.elements) == 1
@@ -65,11 +56,8 @@ msg = { $count ->
         assert isinstance(select, SelectExpression)
         assert len(select.variants) == 2
 
-    def test_empty_variant_key_rejected(self):
-        """Kills: len(key) > 0 → len(key) > 1 mutation.
-
-        Empty variant keys should be rejected.
-        """
+    def test_empty_variant_key_rejected(self) -> None:
+        """Select expression with [] (empty variant key) produces a parse error."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = { $count ->
@@ -77,15 +65,11 @@ msg = { $count ->
     *[other] Other
 }
 """)
-        # Should produce Junk for invalid syntax
         junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
         assert len(junk_entries) >= 1
 
-    def test_single_char_variant_key_allowed(self):
-        """Kills: len(key) > 1 → len(key) > 2 mutation.
-
-        Single character variant keys should be allowed.
-        """
+    def test_single_char_variant_key_allowed(self) -> None:
+        """Single character variant keys [a] and [b] are valid."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = { $count ->
@@ -98,28 +82,17 @@ msg = { $count ->
 
 
 class TestPatternBoundaryConditions:
-    """Test boundary conditions in pattern parsing.
+    """Pattern element boundary conditions in message parsing."""
 
-    Targets mutations in pattern element handling.
-    """
-
-    def test_empty_pattern_not_allowed_without_attributes(self):
-        """Per Fluent spec: Message must have Pattern OR Attribute.
-
-        Empty pattern with no attributes creates Junk (parse error).
-        """
+    def test_empty_pattern_not_allowed_without_attributes(self) -> None:
+        """Per FTL spec, message must have a Pattern or at least one Attribute."""
         parser = FluentParserV1()
         resource = parser.parse("msg = ")
-        # Per spec: Message ::= ID "=" ((Pattern Attribute*) | (Attribute+))
-        # Empty pattern with no attributes is invalid
         junks = [e for e in resource.entries if isinstance(e, Junk)]
-        assert len(junks) == 1  # Parse error creates Junk
+        assert len(junks) == 1
 
-    def test_single_element_pattern(self):
-        """Kills: len(elements) > 1 mutations.
-
-        Single element patterns should work.
-        """
+    def test_single_element_pattern(self) -> None:
+        """Pattern with a single TextElement is valid."""
         parser = FluentParserV1()
         resource = parser.parse("msg = Text")
         messages = [e for e in resource.entries if isinstance(e, Message)]
@@ -128,49 +101,33 @@ class TestPatternBoundaryConditions:
         assert len(messages[0].value.elements) == 1
         assert isinstance(messages[0].value.elements[0], TextElement)
 
-    def test_pattern_with_only_whitespace(self):
-        """Per Fluent spec: Whitespace-only pattern with no attributes is invalid.
-
-        Pattern with only spaces/tabs creates Junk (parse error).
-        """
+    def test_pattern_with_only_whitespace(self) -> None:
+        """Whitespace-only pattern with no attributes is invalid per FTL spec."""
         parser = FluentParserV1()
         resource = parser.parse("msg =    ")
-        # Per spec: Empty pattern with no attributes is invalid
         junks = [e for e in resource.entries if isinstance(e, Junk)]
         assert len(junks) == 1
 
 
 class TestStringLiteralBoundaries:
-    """Test boundary conditions in string literal parsing.
+    """String literal boundary conditions in expression parsing."""
 
-    Targets mutations in string handling.
-    """
-
-    def test_empty_string_literal(self):
-        """Kills: len(string) > 0 mutations.
-
-        Empty string literals should be valid.
-        """
+    def test_empty_string_literal(self) -> None:
+        """Empty string literal \"\" is a valid expression."""
         parser = FluentParserV1()
         resource = parser.parse('msg = { "" }')
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_single_char_string_literal(self):
-        """Kills: len(string) > 1 mutations.
-
-        Single character strings should work.
-        """
+    def test_single_char_string_literal(self) -> None:
+        """Single character string literal \"a\" is valid."""
         parser = FluentParserV1()
         resource = parser.parse('msg = { "a" }')
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_unterminated_string_literal(self):
-        """Kills: string termination check mutations.
-
-        Unterminated strings should produce Junk.
-        """
+    def test_unterminated_string_literal(self) -> None:
+        """Unterminated string literal produces a parse error (Junk)."""
         parser = FluentParserV1()
         resource = parser.parse('msg = { "unterminated')
         junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
@@ -178,46 +135,31 @@ class TestStringLiteralBoundaries:
 
 
 class TestNumberLiteralBoundaries:
-    """Test boundary conditions in number literal parsing.
+    """Number literal boundary conditions in expression parsing."""
 
-    Targets mutations in number handling.
-    """
-
-    def test_zero_number(self):
-        """Kills: num > 0 → num >= 0 mutations.
-
-        Zero should be a valid number.
-        """
+    def test_zero_number(self) -> None:
+        """Zero literal { 0 } is a valid number expression."""
         parser = FluentParserV1()
         resource = parser.parse("msg = { 0 }")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_negative_number(self):
-        """Kills: num >= 0 mutations.
-
-        Negative numbers should be valid.
-        """
+    def test_negative_number(self) -> None:
+        """Negative number literal { -42 } is valid."""
         parser = FluentParserV1()
         resource = parser.parse("msg = { -42 }")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_single_digit_number(self):
-        """Kills: number length boundary mutations.
-
-        Single digit numbers should work.
-        """
+    def test_single_digit_number(self) -> None:
+        """Single digit number literal { 7 } is valid."""
         parser = FluentParserV1()
         resource = parser.parse("msg = { 7 }")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_decimal_with_zero_fractional(self):
-        """Kills: fractional part boundary mutations.
-
-        Numbers like 5.0 should be valid.
-        """
+    def test_decimal_with_zero_fractional(self) -> None:
+        """Decimal number { 5.0 } with zero fractional part is valid."""
         parser = FluentParserV1()
         resource = parser.parse("msg = { 5.0 }")
         messages = [e for e in resource.entries if isinstance(e, Message)]
@@ -225,67 +167,44 @@ class TestNumberLiteralBoundaries:
 
 
 class TestIdentifierBoundaries:
-    """Test boundary conditions in identifier parsing.
+    """Identifier boundary conditions in message and term parsing."""
 
-    Targets mutations in identifier validation.
-    """
-
-    def test_single_char_identifier(self):
-        """Kills: len(identifier) > 1 mutations.
-
-        Single character identifiers should be valid.
-        """
+    def test_single_char_identifier(self) -> None:
+        """Single character message identifier is valid."""
         parser = FluentParserV1()
         resource = parser.parse("a = Value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
         assert messages[0].id.name == "a"
 
-    def test_identifier_with_single_hyphen(self):
-        """Kills: identifier boundary mutations.
-
-        Identifiers like a-b should work.
-        """
+    def test_identifier_with_single_hyphen(self) -> None:
+        """Hyphenated identifier a-b is valid."""
         parser = FluentParserV1()
         resource = parser.parse("a-b = Value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
         assert messages[0].id.name == "a-b"
 
-    def test_identifier_starting_boundary(self):
-        """Kills: identifier start character mutations.
-
-        Identifiers must start with letter.
-        """
+    def test_identifier_starting_with_digit_rejected(self) -> None:
+        """Identifier starting with a digit is rejected (Junk)."""
         parser = FluentParserV1()
-        # Invalid: starts with digit
         resource = parser.parse("1abc = Value")
         junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
         assert len(junk_entries) >= 1
 
 
 class TestTermReferenceBoundaries:
-    """Test boundary conditions in term reference parsing.
+    """Term reference boundary conditions in term and message parsing."""
 
-    Targets mutations in term handling.
-    """
-
-    def test_single_char_term_name(self):
-        """Kills: term name length boundary mutations.
-
-        Single character term names should work.
-        """
+    def test_single_char_term_name(self) -> None:
+        """Single character term name -t is valid."""
         parser = FluentParserV1()
         resource = parser.parse("-t = Term")
-        # Should parse successfully (term or junk)
         assert isinstance(resource, Resource)
         assert len(resource.entries) >= 1
 
-    def test_term_reference_in_pattern(self):
-        """Kills: term reference parsing mutations.
-
-        Term references should parse correctly.
-        """
+    def test_term_reference_in_pattern(self) -> None:
+        """Term reference { -brand } inside a message pattern parses correctly."""
         parser = FluentParserV1()
         resource = parser.parse("""
 -brand = Firefox
@@ -296,16 +215,10 @@ msg = { -brand }
 
 
 class TestAttributeBoundaries:
-    """Test boundary conditions in attribute parsing.
+    """Attribute boundary conditions in message parsing."""
 
-    Targets mutations in attribute handling.
-    """
-
-    def test_single_char_attribute_name(self):
-        """Kills: attribute name length mutations.
-
-        Single character attribute names should work.
-        """
+    def test_single_char_attribute_name(self) -> None:
+        """Single character attribute name .a is valid."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = Value
@@ -315,22 +228,16 @@ msg = Value
         assert len(messages) == 1
         assert len(messages[0].attributes) == 1
 
-    def test_message_with_zero_attributes(self):
-        """Kills: len(attributes) > 0 mutations.
-
-        Messages without attributes should work.
-        """
+    def test_message_with_zero_attributes(self) -> None:
+        """Message without attributes is valid."""
         parser = FluentParserV1()
         resource = parser.parse("msg = Value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
         assert len(messages[0].attributes) == 0
 
-    def test_message_with_one_attribute(self):
-        """Kills: len(attributes) > 1 mutations.
-
-        Messages with exactly one attribute should work.
-        """
+    def test_message_with_one_attribute(self) -> None:
+        """Message with exactly one attribute is valid."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = Value
@@ -342,16 +249,10 @@ msg = Value
 
 
 class TestWhitespaceBoundaries:
-    """Test boundary conditions in whitespace handling.
+    """Whitespace and indentation boundary conditions in continuation line parsing."""
 
-    Targets mutations in whitespace/indentation logic.
-    """
-
-    def test_minimum_indent_for_continuation(self):
-        """Kills: indent boundary mutations.
-
-        Minimum valid indent should work.
-        """
+    def test_minimum_indent_for_continuation(self) -> None:
+        """Four-space indented continuation line is parsed correctly."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg =
@@ -360,24 +261,17 @@ msg =
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_no_indent_breaks_continuation(self):
-        """Kills: indent > 0 → indent > 1 mutations.
-
-        Zero indent should break continuation.
-        """
+    def test_no_indent_breaks_continuation(self) -> None:
+        """Unindented line after message breaks the continuation (treated as new entry)."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg =
 Line
 """)
-        # "Line" should be treated as new entry, not continuation
         assert len(resource.entries) >= 1
 
-    def test_single_space_indent(self):
-        """Kills: indent boundary at 1 space.
-
-        Single space indent should work for continuations.
-        """
+    def test_single_space_indent(self) -> None:
+        """Single space indented continuation line is valid."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg =
@@ -388,26 +282,17 @@ msg =
 
 
 class TestCommentBoundaries:
-    """Test boundary conditions in comment parsing.
+    """Comment boundary conditions in FTL comment parsing."""
 
-    Targets mutations in comment handling.
-    """
-
-    def test_empty_comment(self):
-        """Kills: comment content length mutations.
-
-        Empty comments should be valid.
-        """
+    def test_empty_comment(self) -> None:
+        """Hash-only line (# with no content) is a valid empty comment."""
         parser = FluentParserV1()
         resource = parser.parse("#\nmsg = Value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_single_char_comment(self):
-        """Kills: comment length > 1 mutations.
-
-        Single character comments should work.
-        """
+    def test_single_char_comment(self) -> None:
+        """Comment with a single character content is valid."""
         parser = FluentParserV1()
         resource = parser.parse("# x\nmsg = Value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
@@ -415,36 +300,24 @@ class TestCommentBoundaries:
 
 
 class TestCursorAdvancementBoundaries:
-    """Test boundary conditions in cursor advancement.
+    """Cursor advancement boundary conditions at EOF and with empty input."""
 
-    Targets off-by-one errors in cursor movement.
-    """
-
-    def test_parse_at_eof(self):
-        """Kills: EOF boundary check mutations.
-
-        Parsing at exactly EOF should handle correctly.
-        """
+    def test_parse_at_eof(self) -> None:
+        """Parsing a message at exactly EOF produces a valid message entry."""
         parser = FluentParserV1()
         resource = parser.parse("msg = Value")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
 
-    def test_parse_single_newline(self):
-        """Kills: newline handling boundary mutations.
-
-        Single newline should parse correctly.
-        """
+    def test_parse_single_newline(self) -> None:
+        """Single newline produces an empty resource with no entries."""
         parser = FluentParserV1()
         resource = parser.parse("\n")
         assert isinstance(resource, Resource)
         assert len(resource.entries) == 0
 
-    def test_parse_multiple_consecutive_newlines(self):
-        """Kills: newline counting mutations.
-
-        Multiple newlines should be handled.
-        """
+    def test_parse_multiple_consecutive_newlines(self) -> None:
+        """Multiple consecutive newlines produce an empty resource."""
         parser = FluentParserV1()
         resource = parser.parse("\n\n\n")
         assert isinstance(resource, Resource)
@@ -452,16 +325,10 @@ class TestCursorAdvancementBoundaries:
 
 
 class TestCharacterComparisonBoundaries:
-    """Test character comparison mutations.
+    """Character comparison boundary conditions for bracket and brace matching."""
 
-    Targets mutations like '[' → ']' in comparisons.
-    """
-
-    def test_variant_missing_opening_bracket(self):
-        """Kills: '[' → ']' mutation.
-
-        Missing [ should produce error.
-        """
+    def test_variant_missing_opening_bracket(self) -> None:
+        """Missing [ before variant key produces a parse error."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = { $x ->
@@ -472,11 +339,8 @@ msg = { $x ->
         junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
         assert len(junk_entries) >= 1
 
-    def test_variant_missing_closing_bracket(self):
-        """Kills: ']' → '[' mutation.
-
-        Missing ] should produce error.
-        """
+    def test_variant_missing_closing_bracket(self) -> None:
+        """Missing ] after variant key produces a parse error."""
         parser = FluentParserV1()
         resource = parser.parse("""
 msg = { $x ->
@@ -487,29 +351,17 @@ msg = { $x ->
         junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
         assert len(junk_entries) >= 1
 
-    def test_placeable_missing_opening_brace(self):
-        """Kills: '{' → '}' mutation.
-
-        Missing { before variable should produce text, not placeable.
-        """
+    def test_placeable_missing_opening_brace(self) -> None:
+        """$var } without { is treated as literal text, not a variable reference."""
         parser = FluentParserV1()
-        # This is valid FTL - $var } is just text (not a placeable)
         resource = parser.parse("msg = $var }")
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
-        # Verify it's treated as text, not a variable reference
         assert isinstance(messages[0].value, Pattern)
 
-    def test_placeable_missing_closing_brace(self):
-        """Kills: '}' → '{' mutation.
-
-        Missing } should produce error.
-        """
+    def test_placeable_missing_closing_brace(self) -> None:
+        """{ $var without } produces a parse error."""
         parser = FluentParserV1()
         resource = parser.parse("msg = { $var")
         junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
         assert len(junk_entries) >= 1
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

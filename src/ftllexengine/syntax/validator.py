@@ -399,21 +399,30 @@ class SemanticValidator:
         """Validate select expression.
 
         Per spec:
-        - Must have at least one variant
-        - Must have exactly one default variant (marked with *)
-        - Variant keys must be unique
+        - Must have at least one variant (defense-in-depth; enforced at construction)
+        - Must have exactly one default variant (defense-in-depth; enforced at construction)
+        - Variant keys must be unique (semantic check; not enforced at construction)
+
+        Defense-in-Depth (Architectural Decision):
+        `SelectExpression.__post_init__` enforces the first two invariants at construction
+        time. Under normal construction paths they cannot be violated. However, ASTs can be
+        created via `object.__new__` + `object.__setattr__` to bypass `__post_init__`
+        (e.g., deserialization, test fixtures, adversarial input). This validator is the
+        last defense before invalid FTL is emitted. The checks are intentional and permanent.
         """
         # Validate selector using the general dispatcher so that nested SelectExpressions
         # (e.g., from direct AST construction) are handled gracefully rather than
         # falling through to the exhaustiveness-guard raise in _validate_inline_expression.
         self._validate_expression(select.selector, errors, "select_selector", depth_guard)
 
-        # Check: must have at least one variant
+        # Defense-in-depth: __post_init__ enforces non-empty variants at construction.
+        # Guards against object.__new__ bypass (deserialization or adversarial construction).
         if not select.variants:
             self._add_error(errors, DiagnosticCode.VALIDATION_SELECT_NO_VARIANTS)
             return
 
-        # Check: exactly one default variant
+        # Defense-in-depth: __post_init__ enforces exactly one default at construction.
+        # Guards against object.__new__ bypass (deserialization or adversarial construction).
         default_count = count_default_variants(select)
         if default_count != 1:
             self._add_error(

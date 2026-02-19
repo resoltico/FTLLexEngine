@@ -12,7 +12,13 @@ References:
 - Fluent spec errors.md: lineOffset and columnOffset helpers
 """
 
-__all__ = ["column_offset", "line_offset"]
+__all__ = [
+    "column_offset",
+    "format_position",
+    "get_error_context",
+    "get_line_content",
+    "line_offset",
+]
 
 
 def line_offset(source: str, pos: int) -> int:

@@ -1417,3 +1417,92 @@ class TestDefensiveReRaises:
 
         with pytest.raises(FrozenFluentError, match="serialize non-resolution"):
             serialize(resource, validate=False)
+
+
+class TestSerializerSelectorDepthGuard:
+    """Serializer wraps SelectExpression selector in depth guard.
+
+    A well-formed SelectExpression with a variable selector serializes normally.
+    A malformed AST where SelectExpression is nested as its own selector (impossible
+    in parsed FTL, but constructible via the API) must raise SerializationDepthError
+    before triggering a RecursionError.
+    """
+
+    def test_valid_select_expression_serializes(self) -> None:
+        """SelectExpression with variable selector serializes to valid FTL."""
+        from ftllexengine.syntax import serialize  # noqa: PLC0415
+
+        select = SelectExpression(
+            selector=VariableReference(id=Identifier("x")),
+            variants=(
+                Variant(
+                    key=NumberLiteral(raw="1", value=1),
+                    value=Pattern(elements=(TextElement("One"),)),
+                    default=False,
+                ),
+                Variant(
+                    key=Identifier("other"),
+                    value=Pattern(elements=(TextElement("Other"),)),
+                    default=True,
+                ),
+            ),
+        )
+        msg = Message(
+            id=Identifier("msg"),
+            value=Pattern(elements=(Placeable(expression=select),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+        result = serialize(resource)
+        assert "msg" in result
+        assert "$x ->" in result
+
+    def test_deeply_nested_selector_raises_depth_error(self) -> None:
+        """Malformed deeply-nested SelectExpression selector raises SerializationDepthError."""
+        from ftllexengine.syntax import serialize  # noqa: PLC0415
+
+        def make_nested_select(depth: int) -> SelectExpression:
+            if depth == 0:
+                return SelectExpression(
+                    selector=VariableReference(id=Identifier("x")),
+                    variants=(
+                        Variant(
+                            key=Identifier("a"),
+                            value=Pattern(elements=(TextElement("A"),)),
+                            default=False,
+                        ),
+                        Variant(
+                            key=Identifier("other"),
+                            value=Pattern(elements=(TextElement("B"),)),
+                            default=True,
+                        ),
+                    ),
+                )
+            inner = make_nested_select(depth - 1)
+            # Intentionally malformed: SelectExpression as its own selector
+            return SelectExpression(
+                selector=inner,  # type: ignore[arg-type]
+                variants=(
+                    Variant(
+                        key=Identifier("a"),
+                        value=Pattern(elements=(TextElement("A"),)),
+                        default=False,
+                    ),
+                    Variant(
+                        key=Identifier("other"),
+                        value=Pattern(elements=(TextElement("B"),)),
+                        default=True,
+                    ),
+                ),
+            )
+
+        nested = make_nested_select(150)
+        msg = Message(
+            id=Identifier("msg"),
+            value=Pattern(elements=(Placeable(expression=nested),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(msg,))
+
+        with pytest.raises(SerializationDepthError):
+            serialize(resource, max_depth=50)

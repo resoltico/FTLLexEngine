@@ -8,6 +8,7 @@ Per spec: "The validation process may reject syntax which is well-formed."
 """
 
 
+from ftllexengine import FluentBundle
 from ftllexengine.diagnostics import ValidationResult
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.validator import SemanticValidator, validate
@@ -449,3 +450,44 @@ class TestValidationErrorCodes:
             assert isinstance(code, DiagnosticCode), f"{code} should be DiagnosticCode"
             assert len(message) > 5, f"Message for {code.name} should be descriptive"
             assert message[0].isupper(), f"Message for {code.name} should start with uppercase"
+
+
+class TestAttributeGranularCycleDetection:
+    """Attribute-granular cycle detection prevents false positives.
+
+    A message referencing its own attribute (msg = { msg.tooltip }) is NOT a cycle.
+    Only true self-references (msg = { msg }) or cross-message cycles are cyclic.
+    This distinction prevents spurious warnings for common FTL patterns.
+    """
+
+    def test_cross_attribute_reference_not_cyclic(self) -> None:
+        """Message value referencing its own attribute is not a circular reference."""
+        bundle = FluentBundle("en")
+        ftl = "msg = { msg.tooltip }\n    .tooltip = Tooltip text\n"
+        result = bundle.validate_resource(ftl)
+        circular_warnings = [w for w in result.warnings if "ircular" in w.message]
+        assert len(circular_warnings) == 0
+
+    def test_true_self_reference_detected(self) -> None:
+        """Message value referencing itself is a circular reference."""
+        bundle = FluentBundle("en")
+        ftl = "msg = { msg }\n"
+        result = bundle.validate_resource(ftl)
+        circular_warnings = [w for w in result.warnings if "ircular" in w.message]
+        assert len(circular_warnings) > 0
+
+    def test_term_attribute_self_reference_detected(self) -> None:
+        """Term attribute referencing itself is a circular reference."""
+        bundle = FluentBundle("en")
+        ftl = "-term = Value\n    .attr = { -term.attr }\n"
+        result = bundle.validate_resource(ftl)
+        circular_warnings = [w for w in result.warnings if "ircular" in w.message]
+        assert len(circular_warnings) > 0
+
+    def test_cross_term_cycle_detected(self) -> None:
+        """Cross-term mutual references produce a circular reference warning."""
+        bundle = FluentBundle("en")
+        ftl = "-a = { -b }\n-b = { -a }\n"
+        result = bundle.validate_resource(ftl)
+        circular_warnings = [w for w in result.warnings if "ircular" in w.message]
+        assert len(circular_warnings) > 0

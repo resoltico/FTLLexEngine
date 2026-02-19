@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-02-19
+
+### Changed (BREAKING)
+
+- **`syntax/` domain hardened** (REFACTOR-SYNTAX-HARDEN-001):
+  - `syntax/ast.py`: trailing blank lines removed from `Attribute`, `Comment`, and `Variant` class docstrings; docstrings now conform to single-line closing-quote form
+  - `syntax/cursor.py`: unused `field` import removed from `dataclasses` import; `ParseError.expected` field default changed from `field(default_factory=tuple)` to `= ()` — `tuple()` is not a mutable default, `field(default_factory=...)` was unnecessary overhead
+  - `syntax/parser/core.py`: `__all__` and `logger` module-level declarations moved above `_has_blank_line_between` to satisfy Pylint C0103/C0301 ordering; declarations now precede all module-level code they document
+  - `syntax/parser/rules.py`: `ParseContext.__post_init__` replaced `object.__setattr__(self, ...)` with direct attribute assignment `self._depth_exceeded_flag = [False]`; `ParseContext` is not frozen, so `object.__setattr__` bypass was redundant
+  - `syntax/position.py`: `__all__` expanded from `["column_offset", "line_offset"]` to include `format_position`, `get_error_context`, and `get_line_content`; the three omitted public functions were exported from the package but absent from `__all__`, creating an inconsistency between the module's declared surface and its actual exports
+  - `syntax/serializer.py`: `_validate_select_expression` function removed — `SelectExpression.__post_init__` enforces the default-variant invariant at construction time, making the serializer's redundant post-construction re-check dead code; `SerializationValidationError` docstring updated to reflect the actual error cases (duplicate named args, invalid argument value types, invalid identifiers); the `isinstance(element, Placeable)` guard in `_serialize_pattern` replaced with bare `else` — after the `isinstance(element, TextElement)` branch, the only remaining type is `Placeable` (union is closed), so the redundant type check was removed; `_validate_resource` docstring updated to reflect current behavior (identifiers, call arguments, expression depth — not default-variant counting)
+  - `syntax/serializer.py`: removed import of `count_default_variants` from `validation_helpers` (no longer needed after `_validate_select_expression` removal)
+  - Location: `syntax/ast.py`, `syntax/cursor.py`, `syntax/parser/core.py`, `syntax/parser/rules.py`, `syntax/position.py`, `syntax/serializer.py`
+
+### Changed
+
+- **`syntax/validator.py` defensive checks documented as intentional architectural pattern** (REFACTOR-VALIDATOR-DEFENSE-IN-DEPTH-001):
+  - `_validate_select_expression` previously validated `not select.variants` and `count_default_variants(select) != 1` without explaining why these checks exist alongside `SelectExpression.__post_init__` which enforces the same invariants at construction time
+  - Docstring updated to explicitly document these as defense-in-depth checks: ASTs can be constructed via `object.__new__` + `object.__setattr__` to bypass `__post_init__` (e.g., deserialization, test fixtures, adversarial input); the validator is the last line of defense before invalid FTL is emitted
+  - Inline comments updated: each check now states "Defense-in-depth: __post_init__ enforces X at construction. Guards against object.__new__ bypass."
+  - This is a permanent architectural pattern — the diagnostic codes `VALIDATION_SELECT_NO_VARIANTS` and `VALIDATION_SELECT_NO_DEFAULT` remain reachable via the bypass scenario and their presence is correct
+  - `test_select_without_variants_validator_defensive_check` and `test_select_with_zero_defaults_validator_defensive_check` docstrings updated to remove line-number references and state the defense-in-depth intent explicitly
+  - Location: `syntax/validator.py`, `tests/test_validator.py`
+
+- **`__init__.py` lazy-load dispatch converted to `match/case` with exhaustive guards** (REFACTOR-INIT-DISPATCH-001):
+  - `_load_babel_independent` and the Babel-required block in `__getattr__` both used sequential `if name ==` chains; converted to `match/case` per the primary dispatch mechanism mandate
+  - Added exhaustive `case _: raise AssertionError(f"__getattr__: unhandled Babel-... attribute {name!r}")` arms to both dispatch blocks; previously, adding a name to `_BABEL_REQUIRED_ATTRS` or `_BABEL_INDEPENDENT_ATTRS` without a corresponding handler caused a silent fallthrough to `raise AttributeError`, producing a misleading "module has no attribute" error instead of exposing the internal invariant violation
+  - `AssertionError` is semantically correct here: the condition indicates a programming error in the library (frozenset and case arms are out of sync), not a legitimate caller attribute error
+  - Public API behavior is unchanged; `AttributeError` is still raised for genuinely unknown attributes at line 171
+  - `test_babel_required_fallthrough_to_attribute_error` renamed to `test_babel_required_unhandled_attr_raises_assertion_error` and updated to assert `AssertionError` with match `"unhandled Babel-required attribute"`; the test exercises the `case _:` arm by temporarily injecting a fake attribute into `_BABEL_REQUIRED_ATTRS`
+  - Location: `src/ftllexengine/__init__.py`, `tests/test_init_error_paths.py`
+
 ## [0.113.0] - 2026-02-19
 
 ### Changed (BREAKING)
@@ -3606,6 +3638,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.114.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.114.0
 [0.113.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.113.0
 [0.112.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.112.0
 [0.111.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.111.0

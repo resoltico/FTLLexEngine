@@ -34,8 +34,10 @@ from ftllexengine.integrity import (
     ImmutabilityViolationError,
     IntegrityCheckFailedError,
     IntegrityContext,
+    SyntaxIntegrityError,
     WriteConflictError,
 )
+from ftllexengine.syntax.ast import Junk
 
 # =============================================================================
 # Strategies for generating test data
@@ -630,6 +632,136 @@ class TestFormattingIntegrityError:
 
 
 # =============================================================================
+# SyntaxIntegrityError Tests
+# =============================================================================
+
+
+class TestSyntaxIntegrityError:
+    """Test SyntaxIntegrityError final class for strict mode resource loading."""
+
+    @given(message=error_messages())
+    @settings(max_examples=50)
+    def test_construction_defaults(self, message: str) -> None:
+        """Property: SyntaxIntegrityError has sensible defaults."""
+        error = SyntaxIntegrityError(message)
+        event(f"msg_len={len(message)}")
+        assert isinstance(error, DataIntegrityError)
+        assert isinstance(error, SyntaxIntegrityError)
+        assert error.junk_entries == ()
+        assert error.source_path is None
+
+    @given(message=error_messages())
+    @settings(max_examples=50)
+    def test_construction_with_junk_entries(self, message: str) -> None:
+        """Property: SyntaxIntegrityError stores junk_entries as immutable tuple."""
+        junk1 = Junk(content="invalid { syntax")
+        junk2 = Junk(content="another = { broken")
+        # Pass a list to verify defensive tuple() conversion
+        error = SyntaxIntegrityError(message, junk_entries=(junk1, junk2))
+        event(f"junk_count={len(error.junk_entries)}")
+        assert len(error.junk_entries) == 2
+        assert error.junk_entries[0] is junk1
+        assert error.junk_entries[1] is junk2
+
+    @given(
+        message=error_messages(),
+        path=st.text(min_size=1, max_size=100),
+    )
+    @settings(max_examples=50)
+    def test_construction_with_source_path(self, message: str, path: str) -> None:
+        """Property: SyntaxIntegrityError stores source_path correctly."""
+        error = SyntaxIntegrityError(message, source_path=path)
+        event(f"path_len={len(path)}")
+        assert error.source_path == path
+
+    @given(
+        message=error_messages(),
+        context=integrity_contexts(),
+        path=st.one_of(st.none(), st.text(min_size=1, max_size=100)),
+    )
+    @settings(max_examples=50)
+    def test_construction_with_all_fields(
+        self, message: str, context: IntegrityContext, path: str | None
+    ) -> None:
+        """Property: SyntaxIntegrityError supports context and source_path."""
+        junk = Junk(content="bad = { syntax")
+        error = SyntaxIntegrityError(
+            message,
+            context=context,
+            junk_entries=(junk,),
+            source_path=path,
+        )
+        has_path = path is not None
+        event(f"has_source_path={has_path}")
+        assert error.context is context
+        assert len(error.junk_entries) == 1
+        assert error.source_path == path
+
+    @given(
+        message=error_messages(),
+        path=st.one_of(st.none(), st.text(min_size=1, max_size=60)),
+    )
+    @settings(max_examples=50)
+    def test_repr_includes_path_and_junk_count(
+        self, message: str, path: str | None
+    ) -> None:
+        """Property: __repr__ includes source_path and junk_count."""
+        junk = Junk(content="invalid")
+        error = SyntaxIntegrityError(
+            message,
+            junk_entries=(junk,),
+            source_path=path,
+        )
+        r = repr(error)
+        has_path = path is not None
+        event(f"repr_has_path={has_path}")
+        assert "SyntaxIntegrityError" in r
+        assert "junk_count=1" in r
+        assert f"source_path={path!r}" in r
+
+    def test_final_decorator_type_hint(self) -> None:
+        """SyntaxIntegrityError is @final (type checker enforcement only)."""
+        # pylint: disable=unused-variable,subclassed-final-class
+        class TestSubclassError(SyntaxIntegrityError):  # type: ignore[misc]
+            pass
+
+        assert hasattr(SyntaxIntegrityError, "__final__")
+
+    @given(message=error_messages())
+    @settings(max_examples=50)
+    def test_immutability_with_special_fields(self, message: str) -> None:
+        """Property: SyntaxIntegrityError special fields are immutable."""
+        error = SyntaxIntegrityError(message)
+        event(f"msg_len={len(message)}")
+
+        with pytest.raises(ImmutabilityViolationError):
+            error._junk_entries = ()
+
+        with pytest.raises(ImmutabilityViolationError):
+            error._source_path = "modified"
+
+    def test_empty_junk_entries_tuple(self) -> None:
+        """SyntaxIntegrityError handles empty junk_entries tuple."""
+        error = SyntaxIntegrityError("test", junk_entries=())
+        assert error.junk_entries == ()
+
+    def test_can_be_raised_and_caught_as_data_integrity_error(self) -> None:
+        """SyntaxIntegrityError can be caught as DataIntegrityError."""
+        junk = Junk(content="invalid syntax here")
+        error = SyntaxIntegrityError(
+            "Strict mode: syntax errors detected",
+            junk_entries=(junk,),
+            source_path="locales/en/main.ftl",
+        )
+        with pytest.raises(DataIntegrityError) as exc_info:
+            raise error
+        caught = exc_info.value
+        assert isinstance(caught, SyntaxIntegrityError)
+        assert caught.source_path == "locales/en/main.ftl"
+        assert len(caught.junk_entries) == 1
+
+
+# =============================================================================
 # Exception Hierarchy Tests
 # =============================================================================
 
@@ -649,6 +781,7 @@ class TestExceptionHierarchy:
             IntegrityCheckFailedError,
             WriteConflictError,
             FormattingIntegrityError,
+            SyntaxIntegrityError,
         ]
 
         # Verify all subclasses have __final__ attribute for type checkers
@@ -663,6 +796,7 @@ class TestExceptionHierarchy:
             IntegrityCheckFailedError,
             WriteConflictError,
             FormattingIntegrityError,
+            SyntaxIntegrityError,
         ]
 
         for error_class in error_classes:
@@ -678,6 +812,7 @@ class TestExceptionHierarchy:
             IntegrityCheckFailedError("test"),
             WriteConflictError("test"),
             FormattingIntegrityError("test"),
+            SyntaxIntegrityError("test"),
         ]
 
         for error in errors:
@@ -701,6 +836,7 @@ class TestEdgeCases:
         assert str(IntegrityCheckFailedError("")) == ""
         assert str(WriteConflictError("")) == ""
         assert str(FormattingIntegrityError("")) == ""
+        assert str(SyntaxIntegrityError("")) == ""
 
     def test_unicode_messages(self) -> None:
         """All exceptions handle Unicode messages."""
@@ -708,6 +844,7 @@ class TestEdgeCases:
         assert str(DataIntegrityError(msg)) == msg
         assert str(CacheCorruptionError(msg)) == msg
         assert str(FormattingIntegrityError(msg)) == msg
+        assert str(SyntaxIntegrityError(msg)) == msg
 
     def test_very_long_messages(self) -> None:
         """All exceptions handle very long messages."""

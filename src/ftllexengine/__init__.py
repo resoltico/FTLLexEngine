@@ -102,20 +102,22 @@ _lazy_cache: dict[str, object] = {}
 
 def _load_babel_independent(name: str) -> object:
     """Import a Babel-independent lazy attribute by name."""
-    if name == "CacheConfig":
-        from .runtime.cache_config import CacheConfig
+    match name:
+        case "CacheConfig":
+            from .runtime.cache_config import CacheConfig
 
-        return CacheConfig
-    if name == "FluentValue":
-        from .runtime.value_types import FluentValue
+            return CacheConfig
+        case "FluentValue":
+            from .runtime.value_types import FluentValue
 
-        return FluentValue
-    if name == "fluent_function":
-        from .runtime.function_bridge import fluent_function
+            return FluentValue
+        case "fluent_function":
+            from .runtime.function_bridge import fluent_function
 
-        return fluent_function
-    msg = f"Unknown babel-independent attribute: {name!r}"
-    raise AssertionError(msg)
+            return fluent_function
+        case _:
+            msg = f"__getattr__: unhandled Babel-independent attribute {name!r}"
+            raise AssertionError(msg)
 
 
 def __getattr__(name: str) -> object:
@@ -140,16 +142,20 @@ def __getattr__(name: str) -> object:
             return _lazy_cache[name]
 
         try:
-            if name == "FluentBundle":
-                from .runtime import FluentBundle
+            match name:
+                case "FluentBundle":
+                    from .runtime import FluentBundle
 
-                _lazy_cache[name] = FluentBundle
-                return FluentBundle
-            if name == "FluentLocalization":
-                from .localization import FluentLocalization
+                    _lazy_cache[name] = FluentBundle
+                    return FluentBundle
+                case "FluentLocalization":
+                    from .localization import FluentLocalization
 
-                _lazy_cache[name] = FluentLocalization
-                return FluentLocalization
+                    _lazy_cache[name] = FluentLocalization
+                    return FluentLocalization
+                case _:
+                    msg = f"__getattr__: unhandled Babel-required attribute {name!r}"
+                    raise AssertionError(msg)
         except ImportError as e:
             if "babel" in str(e).lower() or "No module named 'babel'" in str(e):
                 msg = (

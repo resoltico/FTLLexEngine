@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.113.0"
+version: "0.114.0"
 domain: INDEX
 updated: "2026-02-19"
 route:
