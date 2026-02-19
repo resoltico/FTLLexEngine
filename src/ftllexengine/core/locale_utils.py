@@ -24,6 +24,8 @@ import functools
 import os
 from typing import TYPE_CHECKING
 
+from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
+
 if TYPE_CHECKING:
     from babel import Locale
 
@@ -68,7 +70,7 @@ def normalize_locale(locale_code: str) -> str:
     return locale_code.replace("-", "_").lower()
 
 
-@functools.lru_cache(maxsize=128)
+@functools.lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
 def get_babel_locale(locale_code: str) -> Locale:
     """Get a Babel Locale object with caching.
 
@@ -128,11 +130,11 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 
     Args:
         raise_on_failure: If True, raise RuntimeError when locale cannot be
-            determined. If False (default), return "en_US" as fallback.
+            determined. If False (default), return "en_us" as fallback.
 
     Returns:
-        Detected locale code in POSIX format.
-        Returns "en_US" if not determinable and raise_on_failure is False.
+        Detected locale code in POSIX format (lowercase, underscores).
+        Returns "en_us" if not determinable and raise_on_failure is False.
 
     Raises:
         RuntimeError: If raise_on_failure is True and locale cannot be determined.
@@ -141,11 +143,14 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
         >>> import os
         >>> os.environ['LANG'] = 'de_DE.UTF-8'
         >>> get_system_locale()
-        'de_DE'
+        'de_de'
 
         >>> get_system_locale(raise_on_failure=True)  # May raise if no locale set
-        'de_DE'
+        'de_de'
     """
+    # stdlib locale module deferred: has significant initialization overhead
+    # (~5ms on some platforms). Deferring to call-time avoids penalizing the
+    # parser-only import path which never calls get_system_locale().
     import locale as locale_module  # noqa: PLC0415
 
     # Try OS-level locale detection first
@@ -176,8 +181,8 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
         )
         raise RuntimeError(msg)
 
-    # Default fallback
-    return "en_US"
+    # Default fallback — normalized for consistent cache keys
+    return normalize_locale("en_US")
 
 
 def clear_locale_cache() -> None:
@@ -196,7 +201,7 @@ def clear_locale_cache() -> None:
         regardless of whether Babel is installed.
 
     Example:
-        >>> from ftllexengine.locale_utils import clear_locale_cache
+        >>> from ftllexengine.core.locale_utils import clear_locale_cache
         >>> clear_locale_cache()  # Clears all cached Locale objects
     """
     get_babel_locale.cache_clear()

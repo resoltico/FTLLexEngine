@@ -163,7 +163,7 @@ class TestLocaleContextCacheManagement:
 
     def test_cache_double_check_pattern(self) -> None:
         """Cache double-check pattern returns existing instance."""
-        from ftllexengine.locale_utils import (  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import (  # noqa: PLC0415
             normalize_locale,
         )
         from ftllexengine.runtime.locale_context import (  # noqa: PLC0415

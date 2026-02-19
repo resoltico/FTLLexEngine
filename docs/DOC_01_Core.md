@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.109.0"
+version: "0.115.0"
 domain: CORE
 updated: "2026-02-16"
 route:
@@ -1404,6 +1404,7 @@ class PathResourceLoader:
 ```python
 class ResourceLoader(Protocol):
     def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource: ...
+    def describe_path(self, locale: LocaleCode, resource_id: ResourceId) -> str: ...
 ```
 
 ### Parameters
@@ -1413,7 +1414,8 @@ class ResourceLoader(Protocol):
 | `resource_id` | `ResourceId` | Y | Resource identifier. |
 
 ### Constraints
-- Return: FTL source string.
+- Return (`load`): FTL source string.
+- Return (`describe_path`): Human-readable path string for diagnostics; default `"{locale}/{resource_id}"`.
 - Raises: Implementation-dependent.
 - State: Protocol. No implementation.
 - Thread: Implementation-dependent.
@@ -1437,7 +1439,7 @@ def normalize_locale(locale_code: str) -> str:
 - State: None. Pure function.
 - Thread: Safe.
 - Babel: NOT required. Pure string manipulation.
-- Import: `from ftllexengine.locale_utils import normalize_locale`
+- Import: `from ftllexengine.core.locale_utils import normalize_locale`
 
 ---
 
@@ -1461,7 +1463,7 @@ def get_babel_locale(locale_code: str) -> Locale:
 - State: None. Cached pure function.
 - Thread: Safe (lru_cache internal locking).
 - Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
-- Import: `from ftllexengine.locale_utils import get_babel_locale`
+- Import: `from ftllexengine.core.locale_utils import get_babel_locale`
 
 ---
 
@@ -1478,12 +1480,12 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 | `raise_on_failure` | `bool` | N | Raise RuntimeError if locale cannot be determined. |
 
 ### Constraints
-- Return: Detected locale code in POSIX format, or "en_US" if not determinable.
+- Return: Detected locale code in normalized POSIX format (lowercase), or "en_us" if not determinable.
 - Raises: `RuntimeError` if raise_on_failure=True and locale cannot be determined.
 - State: Reads OS locale via locale.getlocale() and env vars LC_ALL, LC_MESSAGES, LANG.
 - Thread: Safe.
 - Babel: NOT required. Uses only stdlib.
-- Import: `from ftllexengine.locale_utils import get_system_locale`
+- Import: `from ftllexengine.core.locale_utils import get_system_locale`
 
 ---
 
@@ -1521,6 +1523,6 @@ def clear_locale_cache() -> None:
 - State: Clears `get_babel_locale` functools.cache.
 - Thread: Safe (functools.cache internal locking).
 - Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
-- Import: `from ftllexengine.locale_utils import clear_locale_cache`
+- Import: `from ftllexengine.core.locale_utils import clear_locale_cache`
 
 ---

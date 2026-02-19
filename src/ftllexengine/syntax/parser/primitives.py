@@ -42,11 +42,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ftllexengine.constants import (
-    _MAX_IDENTIFIER_LENGTH,
-    _MAX_NUMBER_LENGTH,
-    _MAX_STRING_LITERAL_LENGTH,
-)
+from ftllexengine.constants import MAX_IDENTIFIER_LENGTH
 from ftllexengine.core.identifier_validation import (
     is_identifier_char,
     is_identifier_start,
@@ -89,9 +85,19 @@ _HEX_DIGITS: frozenset[str] = frozenset("0123456789abcdefABCDEF")
 # str.isdigit() returns True for Unicode digits which causes int() to fail.
 _ASCII_DIGITS: str = "0123456789"
 
-# Token length limits imported from ftllexengine.constants:
-# _MAX_IDENTIFIER_LENGTH, _MAX_NUMBER_LENGTH, _MAX_STRING_LITERAL_LENGTH
-# See constants.py for documentation on these DoS prevention limits.
+# Token length limits for DoS prevention. MAX_IDENTIFIER_LENGTH is defined in
+# constants.py (cross-module: also used by core/identifier_validation.py).
+# _MAX_NUMBER_LENGTH and _MAX_STRING_LITERAL_LENGTH are parser-local limits.
+
+# Maximum number literal length (1000 chars including sign and decimal point).
+# Covers any practical numeric value (Python's arbitrary precision int/float).
+# A 1000-digit number is ~3KB and already beyond practical use.
+_MAX_NUMBER_LENGTH: int = 1000
+
+# Maximum string literal length (1 million chars).
+# FTL strings may contain long text blocks (e.g., legal disclaimers, terms).
+# 1M characters (~2-4MB with Unicode) is generous while preventing abuse.
+_MAX_STRING_LITERAL_LENGTH: int = 1_000_000
 
 # Identifier validation functions imported from ftllexengine.core.identifier_validation:
 # is_identifier_start, is_identifier_char
@@ -200,9 +206,9 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
             cursor = cursor.advance()
             # Check length limit after consuming character
             current_length = cursor.pos - start_pos
-            if current_length > _MAX_IDENTIFIER_LENGTH:
+            if current_length > MAX_IDENTIFIER_LENGTH:
                 _set_parse_error(
-                    f"Identifier exceeds maximum length ({_MAX_IDENTIFIER_LENGTH} chars)",
+                    f"Identifier exceeds maximum length ({MAX_IDENTIFIER_LENGTH} chars)",
                     cursor.pos,
                 )
                 return None

@@ -20,6 +20,7 @@ from ftllexengine.constants import (
     MAX_SOURCE_SIZE,
 )
 from ftllexengine.core.depth_guard import depth_clamp
+from ftllexengine.core.locale_utils import get_system_locale
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -34,7 +35,6 @@ from ftllexengine.integrity import (
     SyntaxIntegrityError,
 )
 from ftllexengine.introspection import extract_variables, introspect_message
-from ftllexengine.locale_utils import get_system_locale
 from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry

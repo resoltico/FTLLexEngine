@@ -10,6 +10,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-02-19
+
+### Changed (BREAKING)
+
+- **`core/` package introduced; `locale_utils.py` promoted to `core/locale_utils.py`** (REFACTOR-CORE-LOCALE-001):
+  - `ftllexengine.locale_utils` module removed; all functionality now lives in `ftllexengine.core.locale_utils`
+  - Callers importing `get_system_locale`, `normalize_locale`, `get_babel_locale`, `clear_locale_cache` must update import paths to `ftllexengine.core.locale_utils`
+  - `ftllexengine.core` package created as the home for cross-cutting utilities shared by both `syntax/` and `runtime/` domains
+  - Location: `core/__init__.py`, `core/locale_utils.py` (new); `locale_utils.py` (removed)
+
+- **`localization.py` split into `localization/` package** (REFACTOR-LOCALIZATION-SPLIT-001):
+  - `ftllexengine.localization` is now a package (`localization/__init__.py`) instead of a single module; all public exports are re-exported from `__init__.py` — no import-path changes required for consumers
+  - Internal structure: `localization/types.py` (PEP 695 type aliases), `localization/loading.py` (`ResourceLoader` protocol, `PathResourceLoader`, `LoadSummary`, `ResourceLoadResult`, `FallbackInfo`), `localization/orchestrator.py` (`FluentLocalization` class)
+  - `LoadSummary` converted from manual frozen-object pattern (`object.__setattr__` + custom `__setattr__`/`__delattr__`) to `@dataclass(frozen=True, slots=True)` — raises `FrozenInstanceError` (subclass of `AttributeError`) on mutation attempts instead of the previous custom error
+  - `ResourceLoader` protocol gains a `describe_path(locale, resource_id) -> str` method with a default implementation (`return f"{locale}/{resource_id}"`); `PathResourceLoader` overrides it to return the actual filesystem path; callers implementing `ResourceLoader` as a structural subtype must add `describe_path` to their class
+  - `_check_mapping_arg` extracted as a `@staticmethod` on `FluentLocalization`; previously duplicated verbatim in both `format_value` and `format_pattern`
+  - Location: `localization/__init__.py`, `localization/types.py`, `localization/loading.py`, `localization/orchestrator.py` (new); `localization.py` (removed)
+
+- **`LoadStatus` moved to `ftllexengine.enums`** (REFACTOR-LOADSTATUS-ENUMS-001):
+  - `LoadStatus` was defined in `localization.py`; now defined in `enums.py` and re-exported from `localization/__init__.py`
+  - Callers importing `LoadStatus` from `ftllexengine.localization` are unaffected; callers importing from `ftllexengine.enums` gain access without a localization import
+  - Location: `enums.py` (definition), `localization/__init__.py` (re-export)
+
+- **Parser-only constants removed from `constants.py`** (REFACTOR-CONSTANTS-LOCALITY-001):
+  - `MAX_PARSE_ERRORS` renamed to `_MAX_PARSE_ERRORS` and moved to `syntax/parser/core.py` — implementation detail private to the parser
+  - `MAX_LOOKAHEAD_CHARS` renamed to `_MAX_LOOKAHEAD_CHARS` and moved to `syntax/parser/rules.py` — implementation detail private to the rule engine
+  - `_MAX_IDENTIFIER_LENGTH` renamed to `MAX_IDENTIFIER_LENGTH` (public constant, cross-package security bound); `_MAX_NUMBER_LENGTH` and `_MAX_STRING_LITERAL_LENGTH` remain in `syntax/parser/primitives.py` as private parser-local constants
+  - Callers importing `MAX_PARSE_ERRORS` or `MAX_LOOKAHEAD_CHARS` from `ftllexengine.constants` must update their imports; `MAX_IDENTIFIER_LENGTH` is now the public spelling (no leading underscore)
+  - Location: `constants.py`, `syntax/parser/core.py`, `syntax/parser/rules.py`, `syntax/parser/primitives.py`
+
+### Fixed
+
+- **`get_system_locale()` default fallback not normalized** (BUG-LOCALE-NORMALIZE-FALLBACK-001):
+  - The hardcoded fallback `"en_US"` bypassed `normalize_locale()`, returning a mixed-case string inconsistent with normalized locale codes (all lowercase)
+  - Fixed: fallback is now `normalize_locale("en_US")` = `"en_us"`
+  - Location: `core/locale_utils.py`
+
+- **`clear_all_caches()` called `locale_utils.clear_locale_cache()` unconditionally** (BUG-CLEAR-CACHES-BABEL-GUARD-001):
+  - `clear_all_caches()` in `__init__.py` called into `locale_utils` (now `core.locale_utils`) via the Babel-independent path; the call was missing from the post-move import chain and would fail in parser-only installations
+  - Fixed: `clear_all_caches()` imports and calls `core.locale_utils.clear_locale_cache()` under the correct Babel-independent guard
+  - Location: `src/ftllexengine/__init__.py`
+
+- **`clear_all_caches()` docstring exposed private API `bundle._cache.clear()`** (BUG-INIT-PRIVATE-API-DOC-001):
+  - Public docstring instructed callers to invoke `bundle._cache.clear()` (private attribute) for bundle-specific cache eviction, leaking an implementation detail through the public interface
+  - Fixed: docstring updated to recommend recreating the `FluentBundle` instance instead
+  - Location: `src/ftllexengine/__init__.py`
+
+- **`tests/strategies/__init__.py` docstring caused preflight false positive** (BUG-PREFLIGHT-FALSE-POSITIVE-001):
+  - The phrase `hypothesis.event() calls` in the module docstring matched the preflight event-counting regex `(?<![a-zA-Z_])event\(` because `.` before `event(` is not in the lookbehind character class; `strategies/__init__.py` was incorrectly reported as having 1 event (expected: 0 — re-export module, no tests)
+  - Fixed: changed `hypothesis.event() calls` to `hypothesis.event calls` (removed parentheses to break the regex match)
+  - Location: `tests/strategies/__init__.py`
+
 ## [0.114.0] - 2026-02-19
 
 ### Changed (BREAKING)
@@ -3638,6 +3690,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.116.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.116.0
+[0.115.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.115.0
 [0.114.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.114.0
 [0.113.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.113.0
 [0.112.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.112.0

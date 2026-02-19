@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 import ftllexengine
 from ftllexengine import FluentBundle
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE
-from ftllexengine.locale_utils import clear_locale_cache, get_babel_locale
+from ftllexengine.core.locale_utils import clear_locale_cache, get_babel_locale
 from ftllexengine.parsing import clear_currency_caches, clear_date_caches
 from ftllexengine.parsing.currency import (
     _build_currency_maps_from_cldr,
@@ -708,8 +708,8 @@ class TestCacheLifecycleExport:
         assert callable(clear_date_caches)
 
     def test_clear_locale_cache_importable(self) -> None:
-        """clear_locale_cache is importable from locale_utils."""
-        from ftllexengine.locale_utils import clear_locale_cache
+        """clear_locale_cache is importable from core.locale_utils."""
+        from ftllexengine.core.locale_utils import clear_locale_cache
 
         assert callable(clear_locale_cache)
 

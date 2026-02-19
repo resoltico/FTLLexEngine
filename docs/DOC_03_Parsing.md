@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.114.0"
+version: "0.115.0"
 domain: PARSING
 updated: "2026-02-19"
 route:
@@ -610,24 +610,6 @@ MAX_DEPTH: int = 100
 - Purpose: Unified depth limit for parser, resolver, serializer, and validators.
 - Usage: Default for ParseContext.max_nesting_depth, FluentParserV1, serialize(max_depth=...).
 - Security: Prevents DoS via deeply nested placeables and stack overflow from adversarial ASTs.
-
----
-
-### `MAX_PARSE_ERRORS`
-
-```python
-MAX_PARSE_ERRORS: int = 100
-```
-
-| Attribute | Value |
-|:----------|:------|
-| Type | `int` |
-| Value | 100 |
-| Location | `ftllexengine.constants` |
-
-- Purpose: Maximum Junk entries before parser aborts to prevent memory exhaustion.
-- Usage: Default for FluentParserV1.max_parse_errors. Set to 0 to disable limit.
-- Security: Prevents DoS via malformed input generating excessive errors.
 
 ---
 

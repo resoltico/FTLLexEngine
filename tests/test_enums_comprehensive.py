@@ -141,5 +141,5 @@ class TestEnumsModuleExports:
         assert "ReferenceKind" in enums.__all__
 
     def test_exports_count(self) -> None:
-        """Property: __all__ exports exactly 3 items."""
-        assert len(enums.__all__) == 3
+        """Property: __all__ exports exactly 4 items."""
+        assert len(enums.__all__) == 4

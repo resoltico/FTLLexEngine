@@ -1,12 +1,13 @@
-"""Error path coverage for __init__.py module.
+"""Tests for the ftllexengine package __init__.py module.
 
-This module tests:
-- Lazy import handlers for Babel-dependent components
-- Exception handlers for package metadata and import failures
-- Unknown attribute access handling
-
-These are edge cases that rarely occur in production but must be tested
-to achieve 100% coverage.
+Covers the full lifecycle of the package entry point:
+- Lazy attribute loading (Babel-independent and Babel-required)
+- Module-level cache behavior (hit/miss/population)
+- Exhaustiveness guards for unregistered attribute names
+- AttributeError for genuinely unknown attributes
+- Babel ImportError with actionable diagnostic message
+- Fallback version when package metadata is unavailable
+- __all__ integrity: every exported name is accessible
 """
 
 from __future__ import annotations
@@ -19,17 +20,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 if TYPE_CHECKING:
-    from ftllexengine.runtime.function_bridge import FluentValue
+    pass
 
 
 class TestLazyImportCacheConfig:
-    """Tests for CacheConfig lazy import (lines 105-108 in _load_babel_independent)."""
+    """CacheConfig is lazily imported from runtime.cache_config."""
 
     def test_cache_config_lazy_import(self) -> None:
-        """CacheConfig is lazily imported from runtime.cache_config."""
+        """CacheConfig resolves to the class in runtime.cache_config."""
         import ftllexengine
 
-        # Access CacheConfig via __getattr__ (lazy load path)
         if "CacheConfig" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
             del ftllexengine._lazy_cache["CacheConfig"]  # type: ignore[attr-defined]
 
@@ -41,7 +41,7 @@ class TestLazyImportCacheConfig:
         assert cache_config_cls is Direct
 
     def test_cache_config_cached_on_second_access(self) -> None:
-        """CacheConfig is cached after first access."""
+        """CacheConfig is cached after first access; subsequent accesses return the same object."""
         import ftllexengine
 
         if "CacheConfig" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
@@ -54,12 +54,15 @@ class TestLazyImportCacheConfig:
 
 
 class TestLoadBabelIndependentAssertionError:
-    """Tests for the AssertionError branch in _load_babel_independent (lines 117-118)."""
+    """_load_babel_independent raises AssertionError for names not in its dispatch table."""
 
     def test_unknown_babel_independent_name_raises_assertion_error(self) -> None:
-        """_load_babel_independent raises AssertionError for unknown names."""
-        # Call internal function directly with an unknown name
-        # This exercises the unreachable AssertionError branch (defensive coding)
+        """_load_babel_independent raises AssertionError for unknown names.
+
+        The exhaustiveness guard in the match/case dispatch distinguishes
+        an internal invariant violation (frozenset and case arms out of sync)
+        from a legitimate caller attribute error.
+        """
         from ftllexengine import _load_babel_independent  # type: ignore[attr-defined]
 
         with pytest.raises(AssertionError, match="unhandled Babel-independent attribute"):
@@ -67,10 +70,10 @@ class TestLoadBabelIndependentAssertionError:
 
 
 class TestLazyImportFluentLocalization:
-    """Tests for FluentLocalization lazy import (lines 148-152 in __getattr__)."""
+    """FluentLocalization is lazily imported from the localization package."""
 
     def test_fluent_localization_lazy_import(self) -> None:
-        """FluentLocalization is lazily imported from localization module."""
+        """FluentLocalization resolves to the class in the localization package."""
         import ftllexengine
 
         if "FluentLocalization" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
@@ -97,20 +100,18 @@ class TestLazyImportFluentLocalization:
 
 
 class TestBabelRequiredCacheHit:
-    """Tests for cache hit path in __getattr__ for Babel-required attrs (line 140)."""
+    """Cache hit path for Babel-required attributes returns the cached object."""
 
     def test_fluent_bundle_cache_hit_returns_same_object(self) -> None:
-        """Second access to FluentBundle returns cached object (line 140)."""
+        """Second access to FluentBundle returns the cached class object."""
         import ftllexengine
 
-        # Ensure FluentBundle is loaded first
         first = ftllexengine.FluentBundle
-        # Second access exercises the cache-hit branch (line 140)
         second = ftllexengine.FluentBundle
         assert first is second
 
     def test_fluent_localization_cache_hit_returns_same_object(self) -> None:
-        """Second access to FluentLocalization returns cached object (line 140)."""
+        """Second access to FluentLocalization returns the cached class object."""
         import ftllexengine
 
         first = ftllexengine.FluentLocalization
@@ -120,21 +121,18 @@ class TestBabelRequiredCacheHit:
     def test_babel_required_unhandled_attr_raises_assertion_error(self) -> None:
         """Attr in _BABEL_REQUIRED_ATTRS with no match/case arm raises AssertionError.
 
-        This covers the exhaustive case _: branch in the match/case dispatch inside
-        __getattr__. A name registered in _BABEL_REQUIRED_ATTRS without a corresponding
-        case arm is an internal invariant violation, not a legitimate attribute error.
-        AssertionError distinguishes this from AttributeError at the API boundary.
+        A name registered in _BABEL_REQUIRED_ATTRS without a corresponding case arm
+        is an internal invariant violation. AssertionError distinguishes this from
+        AttributeError at the API boundary and makes frozenset/case-arm drift
+        immediately visible during development.
         """
         import ftllexengine
 
         original_attrs = ftllexengine._BABEL_REQUIRED_ATTRS  # type: ignore[attr-defined]
-        # Temporarily extend to include a fake Babel-required attribute
         ftllexengine._BABEL_REQUIRED_ATTRS = frozenset(  # type: ignore[attr-defined]
             {"FluentBundle", "FluentLocalization", "_FakeBabelRequiredAttr"}
         )
         try:
-            # _FakeBabelRequiredAttr is in _BABEL_REQUIRED_ATTRS but has no case arm
-            # -> hits case _: raise AssertionError (internal invariant violation)
             with pytest.raises(AssertionError, match="unhandled Babel-required attribute"):
                 _ = ftllexengine._FakeBabelRequiredAttr  # type: ignore[attr-defined]
         finally:
@@ -142,18 +140,15 @@ class TestBabelRequiredCacheHit:
 
 
 class TestLazyImportFluentValue:
-    """Tests for FluentValue lazy import (lines 90-93)."""
+    """FluentValue is lazily imported from runtime.value_types."""
 
     def test_fluent_value_lazy_import(self) -> None:
-        """FluentValue is lazily imported from function_bridge."""
+        """FluentValue resolves to the type alias in runtime.value_types."""
         import ftllexengine
 
-        # Access FluentValue via __getattr__
         fluent_value_type = ftllexengine.FluentValue
 
-        # Verify it's the correct type alias
         assert fluent_value_type is not None
-        # FluentValue is a type alias, we can verify it's importable
         from ftllexengine.runtime.function_bridge import FluentValue as Direct
 
         assert fluent_value_type is Direct
@@ -162,13 +157,10 @@ class TestLazyImportFluentValue:
         """FluentValue is cached after first access."""
         import ftllexengine
 
-        # Clear cache to test fresh import (testing internal API)
         if "FluentValue" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
             del ftllexengine._lazy_cache["FluentValue"]  # type: ignore[attr-defined]
 
-        # First access
         first = ftllexengine.FluentValue
-        # Second access should use cache
         second = ftllexengine.FluentValue
 
         assert first is second
@@ -176,16 +168,14 @@ class TestLazyImportFluentValue:
 
 
 class TestLazyImportFluentFunction:
-    """Tests for fluent_function lazy import (lines 94-97)."""
+    """fluent_function is lazily imported from runtime.function_bridge."""
 
     def test_fluent_function_lazy_import(self) -> None:
-        """fluent_function is lazily imported from function_bridge."""
+        """fluent_function resolves to the decorator in runtime.function_bridge."""
         import ftllexengine
 
-        # Access fluent_function via __getattr__
         decorator = ftllexengine.fluent_function
 
-        # Verify it's the correct decorator
         assert callable(decorator)
         from ftllexengine.runtime.function_bridge import (
             fluent_function as fluent_func_ref,
@@ -197,13 +187,10 @@ class TestLazyImportFluentFunction:
         """fluent_function is cached after first access."""
         import ftllexengine
 
-        # Clear cache to test fresh import (testing internal API)
         if "fluent_function" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
             del ftllexengine._lazy_cache["fluent_function"]  # type: ignore[attr-defined]
 
-        # First access
         first = ftllexengine.fluent_function
-        # Second access should use cache
         second = ftllexengine.fluent_function
 
         assert first is second
@@ -211,10 +198,10 @@ class TestLazyImportFluentFunction:
 
 
 class TestUnknownAttributeError:
-    """Tests for unknown attribute access (lines 110-111)."""
+    """Accessing attributes not registered in any dispatch table raises AttributeError."""
 
     def test_unknown_attribute_raises_attribute_error(self) -> None:
-        """Accessing unknown attribute raises AttributeError with clear message."""
+        """Accessing an unknown attribute raises AttributeError with a clear message."""
         import ftllexengine
 
         with pytest.raises(
@@ -224,10 +211,9 @@ class TestUnknownAttributeError:
             _ = ftllexengine.NonExistentAttribute  # type: ignore[attr-defined]
 
     def test_unknown_attribute_not_in_babel_required(self) -> None:
-        """Unknown attributes not in BABEL_REQUIRED_ATTRS raise AttributeError."""
+        """Attributes outside all dispatch sets raise AttributeError directly."""
         import ftllexengine
 
-        # These are not Babel-required, should raise AttributeError directly
         with pytest.raises(AttributeError):
             _ = ftllexengine.some_random_name  # type: ignore[attr-defined]
 
@@ -239,14 +225,15 @@ class TestUnknownAttributeError:
 
 
 class TestBabelImportErrorPath:
-    """Tests for Babel import error handling (lines 98-108).
+    """Babel import failures produce an actionable error message.
 
-    Note: These tests simulate Babel being unavailable by mocking the import.
-    In a real scenario without Babel, the error message guides users to install it.
+    Simulates Babel unavailability by mocking builtins.__import__ to raise
+    ImportError for runtime imports. In a real parser-only installation the
+    same code path is triggered when Babel is not installed.
     """
 
     def test_babel_import_error_message_for_fluent_bundle(self) -> None:
-        """ImportError for FluentBundle provides helpful message."""
+        """ImportError for FluentBundle provides an install-command hint."""
         saved_modules = {
             name: module
             for name, module in sys.modules.items()
@@ -254,18 +241,16 @@ class TestBabelImportErrorPath:
         }
 
         try:
-            # Remove ftllexengine modules
             for module_name in list(saved_modules.keys()):
                 if module_name in sys.modules:
                     del sys.modules[module_name]
 
-            # Clear the lazy cache by reimporting
+            import builtins
             import importlib
 
-            # We need to mock the runtime import to fail with babel error
-            # Note: Relative imports use level>0, so "from .runtime" passes name="runtime"
+            original_import = builtins.__import__
+
             def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
-                # Handle both absolute and relative imports to runtime
                 is_runtime_import = (
                     name == "ftllexengine.runtime"
                     or (name.startswith("ftllexengine") and "runtime" in name)
@@ -275,11 +260,6 @@ class TestBabelImportErrorPath:
                     raise ImportError("No module named 'babel'")
                 return original_import(name, globs, locs, fromlist, level)
 
-            import builtins
-
-            original_import = builtins.__import__
-
-            # Import ftllexengine first (this works since core imports don't need Babel)
             ftllexengine = importlib.import_module("ftllexengine")
             ftllexengine._lazy_cache.clear()
 
@@ -294,7 +274,6 @@ class TestBabelImportErrorPath:
                 builtins.__import__ = original_import
 
         finally:
-            # Cleanup
             all_ftl_modules = [
                 n for n in sys.modules if n == "ftllexengine" or n.startswith("ftllexengine.")
             ]
@@ -303,7 +282,7 @@ class TestBabelImportErrorPath:
             sys.modules.update(saved_modules)
 
     def test_non_babel_import_error_is_reraised(self) -> None:
-        """Non-Babel ImportErrors are re-raised unchanged (line 108)."""
+        """Non-Babel ImportErrors are re-raised unchanged (not wrapped)."""
         saved_modules = {
             name: module
             for name, module in sys.modules.items()
@@ -311,7 +290,6 @@ class TestBabelImportErrorPath:
         }
 
         try:
-            # Remove ftllexengine modules
             for module_name in list(saved_modules.keys()):
                 if module_name in sys.modules:
                     del sys.modules[module_name]
@@ -321,8 +299,6 @@ class TestBabelImportErrorPath:
 
             original_import = builtins.__import__
 
-            # Mock to raise a non-Babel ImportError
-            # Note: Relative imports use level>0, so "from .runtime" passes name="runtime"
             def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
                 is_runtime_import = (
                     name == "ftllexengine.runtime"
@@ -330,24 +306,20 @@ class TestBabelImportErrorPath:
                     or (level > 0 and "runtime" in name)
                 )
                 if is_runtime_import:
-                    # Raise error that does NOT mention babel
                     raise ImportError("Circular import detected in some_other_module")
                 return original_import(name, globs, locs, fromlist, level)
 
-            # Import ftllexengine first
             ftllexengine = importlib.import_module("ftllexengine")
             ftllexengine._lazy_cache.clear()
 
             builtins.__import__ = mock_import
             try:
-                # Should re-raise the original ImportError (not wrap it)
                 with pytest.raises(ImportError, match=r"Circular import"):
                     _ = ftllexengine.FluentBundle
             finally:
                 builtins.__import__ = original_import
 
         finally:
-            # Cleanup
             all_ftl_modules = [
                 n for n in sys.modules if n == "ftllexengine" or n.startswith("ftllexengine.")
             ]
@@ -356,18 +328,13 @@ class TestBabelImportErrorPath:
             sys.modules.update(saved_modules)
 
 
-# Note: importlib.metadata availability test removed - Python 3.13+ guarantees it
+def test_package_not_found_error() -> None:
+    """PackageNotFoundError during metadata lookup sets __version__ to the dev fallback.
 
-
-def test_package_not_found_error():
-    """Test PackageNotFoundError handling when package is not installed.
-
-    This tests lines 148-151 in __init__.py.
-
-    Scenario: importlib.metadata.version() raises PackageNotFoundError
-    Expected: __version__ defaults to '0.0.0+dev'
+    Covers the except branch in the version detection block: when
+    importlib.metadata.version() raises PackageNotFoundError (e.g. development
+    checkout without a pip install), __version__ defaults to '0.0.0+dev'.
     """
-    # Save ALL ftllexengine.* modules before manipulation
     saved_modules = {
         name: module
         for name, module in sys.modules.items()
@@ -375,16 +342,13 @@ def test_package_not_found_error():
     }
 
     try:
-        # Remove all ftllexengine modules to force re-import
         for module_name in list(saved_modules.keys()):
             if module_name in sys.modules:
                 del sys.modules[module_name]
 
-        # Mock importlib.metadata.version to raise PackageNotFoundError
         mock_version = MagicMock(side_effect=PackageNotFoundError("ftllexengine"))
 
         with patch("importlib.metadata.version", mock_version):
-            # Import should succeed with fallback version
             import ftllexengine
 
             assert ftllexengine.__version__ == "0.0.0+dev", (
@@ -392,7 +356,6 @@ def test_package_not_found_error():
                 f"got {ftllexengine.__version__!r}"
             )
     finally:
-        # Complete cleanup: remove ALL ftllexengine modules (including any newly created)
         all_ftllexengine_modules = [
             name
             for name in sys.modules
@@ -401,68 +364,75 @@ def test_package_not_found_error():
         for module_name in all_ftllexengine_modules:
             del sys.modules[module_name]
 
-        # Restore ALL original modules
         sys.modules.update(saved_modules)
 
 
-def test_package_not_found_hypothesis_strategy():
-    """Property-based test: PackageNotFoundError always sets dev version.
+class TestInitModuleExports:
+    """__all__ integrity: every exported name must be accessible from ftllexengine."""
 
-    Uses Hypothesis to ensure the fallback version is deterministic
-    regardless of package name or error message.
+    def test_all_exports_are_accessible(self) -> None:
+        """Every name in ftllexengine.__all__ resolves without error."""
+        import ftllexengine
 
-    Note: This test uses a nested @given decorator due to the complex
-    sys.modules manipulation required for each example. HypoFuzz cannot
-    discover nested @given tests, but the test runs during normal pytest.
-    """
-    from hypothesis import event, given
-    from hypothesis import strategies as st
+        for name in ftllexengine.__all__:
+            assert hasattr(ftllexengine, name), (
+                f"ftllexengine.__all__ contains {name!r} but "
+                f"ftllexengine.{name} raises AttributeError"
+            )
 
-    # Save ALL ftllexengine.* modules before manipulation
-    saved_modules = {
-        name: module
-        for name, module in sys.modules.items()
-        if name == "ftllexengine" or name.startswith("ftllexengine.")
-    }
+    def test_all_exports_count(self) -> None:
+        """__all__ contains exactly the expected number of public exports.
 
-    try:
-        from hypothesis import settings
+        This acts as a tripwire: if a symbol is added or removed from __all__
+        without updating this test, the test fails immediately. The count
+        must be updated alongside any __all__ change.
+        """
+        import ftllexengine
 
-        @settings(deadline=None)
-        @given(package_name=st.text(min_size=1, max_size=50))
-        def property_test(package_name):
-            name_len = len(package_name)
-            event(f"input_len={name_len}")
-            # Remove all ftllexengine modules for each test run
-            all_ftllexengine_modules = [
-                name
-                for name in list(sys.modules.keys())
-                if name == "ftllexengine" or name.startswith("ftllexengine.")
-            ]
-            for module_name in all_ftllexengine_modules:
-                del sys.modules[module_name]
+        assert len(ftllexengine.__all__) == 24
 
-            # Mock with varying package names
-            mock_version = MagicMock(side_effect=PackageNotFoundError(package_name))
+    def test_lazy_exports_are_in_all(self) -> None:
+        """Lazy-loaded symbols (FluentBundle, FluentLocalization, etc.) are in __all__."""
+        import ftllexengine
 
-            with patch("importlib.metadata.version", mock_version):
-                import ftllexengine
+        for name in ("FluentBundle", "FluentLocalization", "CacheConfig", "FluentValue",
+                     "fluent_function"):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
 
-                # Invariant: dev version is always '0.0.0+dev'
-                assert ftllexengine.__version__ == "0.0.0+dev"
+    def test_error_types_are_in_all(self) -> None:
+        """Immutable error types are exported from ftllexengine.__all__."""
+        import ftllexengine
 
-        # Run property test - Hypothesis provides the argument via @given decorator
-        property_test()  # pylint: disable=no-value-for-parameter
+        for name in ("FrozenFluentError", "ErrorCategory", "FrozenErrorContext"):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
 
-    finally:
-        # Complete cleanup after all Hypothesis runs
-        all_ftllexengine_modules = [
-            name
-            for name in sys.modules
-            if name == "ftllexengine" or name.startswith("ftllexengine.")
-        ]
-        for module_name in all_ftllexengine_modules:
-            del sys.modules[module_name]
+    def test_integrity_errors_are_in_all(self) -> None:
+        """Data integrity error classes are exported from ftllexengine.__all__."""
+        import ftllexengine
 
-        # Restore ALL original modules
-        sys.modules.update(saved_modules)
+        for name in (
+            "DataIntegrityError",
+            "CacheCorruptionError",
+            "FormattingIntegrityError",
+            "ImmutabilityViolationError",
+            "IntegrityCheckFailedError",
+            "IntegrityContext",
+            "SyntaxIntegrityError",
+            "WriteConflictError",
+        ):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+    def test_parsing_api_is_in_all(self) -> None:
+        """parse_ftl, serialize_ftl, and validate_resource are in ftllexengine.__all__."""
+        import ftllexengine
+
+        for name in ("parse_ftl", "serialize_ftl", "validate_resource"):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+    def test_metadata_is_in_all(self) -> None:
+        """Version and spec metadata symbols are in ftllexengine.__all__."""
+        import ftllexengine
+
+        for name in ("__version__", "__fluent_spec_version__", "__spec_url__",
+                     "__recommended_encoding__"):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"

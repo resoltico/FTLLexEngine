@@ -25,6 +25,35 @@ class CommentType(StrEnum):
     """Resource comment: ### Resource Description"""
 
 
+class LoadStatus(StrEnum):
+    """Status of a resource load attempt in FluentLocalization.
+
+    StrEnum provides automatic string conversion: str(LoadStatus.SUCCESS) == "success"
+    """
+
+    SUCCESS = "success"
+    """Resource loaded and parsed successfully."""
+
+    NOT_FOUND = "not_found"
+    """Resource file not found (expected for optional locales)."""
+
+    ERROR = "error"
+    """Resource load failed with an I/O or path-traversal error."""
+
+
+class ReferenceKind(StrEnum):
+    """Kind of reference (message or term).
+
+    StrEnum provides automatic string conversion: str(ReferenceKind.MESSAGE) == "message"
+    """
+
+    MESSAGE = "message"
+    """Reference to a message: { message-id }"""
+
+    TERM = "term"
+    """Reference to a term: { -term-id }"""
+
+
 class VariableContext(StrEnum):
     """Context where a variable reference appears.
 
@@ -44,21 +73,9 @@ class VariableContext(StrEnum):
     """Variable in function argument: { NUMBER($value) }"""
 
 
-class ReferenceKind(StrEnum):
-    """Kind of reference (message or term).
-
-    StrEnum provides automatic string conversion: str(ReferenceKind.MESSAGE) == "message"
-    """
-
-    MESSAGE = "message"
-    """Reference to a message: { message-id }"""
-
-    TERM = "term"
-    """Reference to a term: { -term-id }"""
-
-
 __all__ = [
     "CommentType",
+    "LoadStatus",
     "ReferenceKind",
     "VariableContext",
 ]

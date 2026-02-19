@@ -16,7 +16,7 @@ from babel import Locale
 from hypothesis import event, given
 from hypothesis import strategies as st
 
-from ftllexengine.locale_utils import (
+from ftllexengine.core.locale_utils import (
     clear_locale_cache,
     get_babel_locale,
     get_system_locale,
@@ -288,11 +288,11 @@ class TestGetSystemLocale:
                 assert result == "pt_br"
 
     def test_no_locale_default_fallback(self) -> None:
-        """No locale detected returns en_US fallback by default."""
+        """No locale detected returns normalized en_us fallback by default."""
         with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
             with patch.dict(os.environ, {}, clear=True):
                 result = get_system_locale()
-                assert result == "en_US"
+                assert result == "en_us"
 
     def test_no_locale_raise_on_failure_true(self) -> None:
         """raise_on_failure=True raises RuntimeError when no locale."""
@@ -305,11 +305,11 @@ class TestGetSystemLocale:
                 assert "LC_ALL" in str(exc_info.value)
 
     def test_raise_on_failure_false_returns_default(self) -> None:
-        """raise_on_failure=False returns en_US when no locale."""
+        """raise_on_failure=False returns normalized en_us when no locale."""
         with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
             with patch.dict(os.environ, {}, clear=True):
                 result = get_system_locale(raise_on_failure=False)
-                assert result == "en_US"
+                assert result == "en_us"
 
 
 # Hypothesis property-based tests

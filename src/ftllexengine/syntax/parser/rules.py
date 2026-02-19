@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ftllexengine.constants import MAX_DEPTH, MAX_LOOKAHEAD_CHARS
+from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     Attribute,
@@ -75,6 +75,12 @@ from ftllexengine.syntax.parser.whitespace import (
 )
 
 __all__ = ["ParseContext", "parse_comment", "parse_message", "parse_term"]
+
+# Maximum lookahead distance for variant marker detection.
+# Must accommodate: '[' + optional_spaces + identifier (up to MAX_IDENTIFIER_LENGTH chars)
+# + optional_spaces + ']'. Value of 300 ensures variant keys with maximum-length
+# identifiers parse correctly while bounding lookahead on adversarial inputs.
+_MAX_LOOKAHEAD_CHARS: int = 300
 
 
 @dataclass(slots=True)
@@ -261,9 +267,9 @@ def _is_variant_marker(cursor: Cursor) -> bool:
         PLR0911 waiver: Multiple returns are intentional for early-exit
         pattern matching, which is clearer than nested conditionals.
     """
-    # Use centralized lookahead limit - variant keys are short (identifiers/numbers)
+    # Use bounded lookahead limit - variant keys are short (identifiers/numbers).
     # This prevents O(N^2) worst-case on adversarial input like [[[[...
-    max_lookahead = MAX_LOOKAHEAD_CHARS
+    max_lookahead = _MAX_LOOKAHEAD_CHARS
 
     if cursor.is_eof:
         return False

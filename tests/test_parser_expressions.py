@@ -18,7 +18,6 @@ import pytest
 from hypothesis import event, example, given
 from hypothesis import strategies as st
 
-from ftllexengine.constants import MAX_LOOKAHEAD_CHARS
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.syntax.ast import (
     Attribute,
@@ -36,6 +35,7 @@ from ftllexengine.syntax.ast import (
     Variant,
 )
 from ftllexengine.syntax.cursor import Cursor
+from ftllexengine.syntax.parser.rules import _MAX_LOOKAHEAD_CHARS as MAX_LOOKAHEAD_CHARS
 from ftllexengine.syntax.parser.rules import (
     ParseContext,
     _is_valid_variant_key_char,

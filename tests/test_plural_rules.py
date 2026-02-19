@@ -530,7 +530,7 @@ class TestUltimateFallback:
 
         This is defensive programming - should never happen with valid Babel installation.
         """
-        with patch("ftllexengine.locale_utils.get_babel_locale") as mock_get:
+        with patch("ftllexengine.core.locale_utils.get_babel_locale") as mock_get:
             mock_get.side_effect = UnknownLocaleError("mocked failure")
 
             result = select_plural_category(42, "completely_invalid_locale")
@@ -538,7 +538,7 @@ class TestUltimateFallback:
 
     def test_ultimate_fallback_with_value_error(self) -> None:
         """Return 'other' when get_babel_locale raises ValueError (lines 83-87)."""
-        with patch("ftllexengine.locale_utils.get_babel_locale") as mock_get:
+        with patch("ftllexengine.core.locale_utils.get_babel_locale") as mock_get:
             mock_get.side_effect = ValueError("mocked failure")
 
             result = select_plural_category(1, "invalid")

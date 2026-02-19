@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.111.0"
+version: "0.115.0"
 domain: reference
 updated: "2026-02-17"
 route:
@@ -732,7 +732,7 @@ clear_all_caches()
 
 **Individual Cache Clear Functions**:
 ```python
-from ftllexengine.locale_utils import clear_locale_cache
+from ftllexengine.core.locale_utils import clear_locale_cache
 from ftllexengine.parsing import clear_date_caches, clear_currency_caches
 from ftllexengine.introspection import clear_introspection_cache, clear_iso_cache
 from ftllexengine.runtime.locale_context import LocaleContext

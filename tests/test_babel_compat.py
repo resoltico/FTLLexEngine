@@ -18,7 +18,7 @@ from ftllexengine.core.babel_compat import (
     is_babel_available,
     require_babel,
 )
-from ftllexengine.locale_utils import get_babel_locale
+from ftllexengine.core.locale_utils import get_babel_locale
 
 # ============================================================================
 # Availability
@@ -245,9 +245,9 @@ class TestBabelCompatModuleExports:
         assert not hasattr(babel_compat, "get_babel_locale")
         assert "get_babel_locale" not in babel_compat.__all__
 
-    def test_get_babel_locale_available_from_locale_utils(self) -> None:
-        """get_babel_locale is available from canonical location."""
-        from ftllexengine.locale_utils import (
+    def test_get_babel_locale_available_from_core_locale_utils(self) -> None:
+        """get_babel_locale is available from canonical location in core."""
+        from ftllexengine.core.locale_utils import (
             get_babel_locale as canonical_get_babel_locale,
         )
 

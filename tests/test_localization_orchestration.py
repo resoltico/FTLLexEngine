@@ -182,15 +182,15 @@ class TestLoadSummaryStatistics:
         assert summary.all_clean is True
 
     def test_setattr_raises_attribute_error(self) -> None:
-        """LoadSummary rejects attribute mutation."""
+        """LoadSummary rejects attribute mutation (frozen dataclass)."""
         summary = self._make_summary()
-        with pytest.raises(AttributeError, match="immutable"):
-            summary.results = ()
+        with pytest.raises(AttributeError):
+            summary.results = ()  # type: ignore[misc]
 
     def test_delattr_raises_attribute_error(self) -> None:
-        """LoadSummary rejects attribute deletion."""
+        """LoadSummary rejects attribute deletion (frozen dataclass)."""
         summary = self._make_summary()
-        with pytest.raises(AttributeError, match="immutable"):
+        with pytest.raises(AttributeError):
             del summary.results
 
     def test_eq_same_results_tuple(self) -> None:
@@ -205,9 +205,9 @@ class TestLoadSummaryStatistics:
     def test_eq_not_implemented_for_other_types(self) -> None:
         """LoadSummary equality returns NotImplemented for non-LoadSummary."""
         summary = self._make_summary()
-        assert summary != "not a summary"
+        assert summary != "not a summary"  # type: ignore[comparison-overlap]
         # Direct dunder call required to test NotImplemented sentinel
-        result = LoadSummary.__eq__(summary, "not a summary")  # pylint: disable=unnecessary-dunder-call
+        result = LoadSummary.__eq__(summary, "not a summary")  # pylint: disable=unnecessary-dunder-call  # type: ignore[arg-type]
         assert result is NotImplemented
 
     def test_hash_consistent_with_eq(self) -> None:
@@ -589,6 +589,9 @@ class TestResourceLoadingErrors:
             def load(self, locale: str, _resource_id: str) -> str:
                 return f"msg = Hello from {locale}\n"
 
+            def describe_path(self, locale: str, resource_id: str) -> str:
+                return f"{locale}/{resource_id}"
+
         l10n = FluentLocalization(
             ["en", "de"], ["main.ftl"], DictLoader(),
         )
@@ -608,6 +611,9 @@ class TestResourceLoadingErrors:
                 msg = "Permission denied"
                 raise OSError(msg)
 
+            def describe_path(self, locale: str, resource_id: str) -> str:
+                return f"{locale}/{resource_id}"
+
         l10n = FluentLocalization(["en"], ["main.ftl"], FailLoader())
         summary = l10n.get_load_summary()
         assert summary.errors == 1
@@ -623,6 +629,9 @@ class TestResourceLoadingErrors:
                 msg = "Path traversal"
                 raise ValueError(msg)
 
+            def describe_path(self, locale: str, resource_id: str) -> str:
+                return f"{locale}/{resource_id}"
+
         l10n = FluentLocalization(["en"], ["main.ftl"], FailLoader())
         summary = l10n.get_load_summary()
         assert summary.errors == 1
@@ -637,6 +646,9 @@ class TestResourceLoadingErrors:
             ) -> str:
                 msg = "Not found"
                 raise FileNotFoundError(msg)
+
+            def describe_path(self, locale: str, resource_id: str) -> str:
+                return f"{locale}/{resource_id}"
 
         l10n = FluentLocalization(["en"], ["main.ftl"], MissingLoader())
         summary = l10n.get_load_summary()

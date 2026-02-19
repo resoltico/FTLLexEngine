@@ -43,9 +43,9 @@ from typing import Any
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.core.babel_compat import require_babel
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
-from ftllexengine.locale_utils import normalize_locale
 
 __all__ = ["clear_date_caches", "parse_date", "parse_datetime"]
 

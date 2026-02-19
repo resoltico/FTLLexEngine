@@ -88,7 +88,7 @@ def select_plural_category(
         feature = "select_plural_category"
         raise BabelImportError(feature) from e
 
-    from ftllexengine.locale_utils import get_babel_locale  # noqa: PLC0415
+    from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415
 
     try:
         # Use cached locale parsing for performance

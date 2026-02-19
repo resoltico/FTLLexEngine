@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 
-from ftllexengine.constants import _MAX_IDENTIFIER_LENGTH
+from ftllexengine.constants import MAX_IDENTIFIER_LENGTH
 
 __all__ = [
     "is_identifier_char",
@@ -118,7 +118,7 @@ def is_valid_identifier(name: str) -> bool:
         - Must not be empty
         - First character must be ASCII letter (a-zA-Z)
         - Remaining characters must be ASCII alphanumeric, hyphen, or underscore
-        - Length must not exceed _MAX_IDENTIFIER_LENGTH (256 characters)
+        - Length must not exceed MAX_IDENTIFIER_LENGTH (256 characters)
 
     Example:
         >>> is_valid_identifier("message-id")
@@ -137,7 +137,7 @@ def is_valid_identifier(name: str) -> bool:
         return False
 
     # Length check (DoS prevention)
-    if len(name) > _MAX_IDENTIFIER_LENGTH:
+    if len(name) > MAX_IDENTIFIER_LENGTH:
         return False
 
     # First character must be ASCII letter

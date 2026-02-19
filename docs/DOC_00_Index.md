@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.114.0"
+version: "0.115.0"
 domain: INDEX
 updated: "2026-02-19"
 route:
@@ -187,11 +187,14 @@ from ftllexengine.parsing import (
 ```
 ftllexengine/
   __init__.py              # Public API exports
-  constants.py             # MAX_DEPTH, MAX_PARSE_ERRORS, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
-  enums.py                 # CommentType, VariableContext, ReferenceKind
+  constants.py             # MAX_DEPTH, MAX_IDENTIFIER_LENGTH, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
+  enums.py                 # CommentType, VariableContext, ReferenceKind, LoadStatus
   integrity.py             # DataIntegrityError hierarchy, IntegrityContext
-  locale_utils.py          # Locale normalization and validation utilities
-  localization.py          # FluentLocalization, PathResourceLoader
+  localization/
+    __init__.py            # FluentLocalization, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
+    types.py               # PEP 695 type aliases: MessageId, LocaleCode, ResourceId, FTLSource
+    loading.py             # ResourceLoader protocol, PathResourceLoader, LoadSummary, ResourceLoadResult, FallbackInfo
+    orchestrator.py        # FluentLocalization class
   introspection/
     __init__.py            # Introspection API exports (message + ISO)
     message.py             # MessageIntrospection, introspect_message, extract_variables, extract_references, extract_references_by_attribute
@@ -202,6 +205,7 @@ ftllexengine/
     depth_guard.py         # DepthGuard, depth_clamp
     errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
     identifier_validation.py  # FTL identifier validation utilities
+    locale_utils.py        # get_system_locale, normalize_locale, get_babel_locale, clear_locale_cache
   analysis/
     __init__.py            # Analysis API exports
     graph.py               # detect_cycles, entry_dependency_set, make_cycle_key

@@ -32,7 +32,7 @@ import logging
 import re
 import sys
 
-from ftllexengine.constants import MAX_DEPTH, MAX_PARSE_ERRORS, MAX_SOURCE_SIZE
+from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
@@ -55,6 +55,11 @@ from ftllexengine.syntax.parser.rules import (
 from ftllexengine.syntax.parser.whitespace import skip_blank
 
 __all__ = ["FluentParserV1"]
+
+# Maximum number of Junk (error) entries before the parser aborts.
+# Prevents memory exhaustion from malformed input that generates excessive errors.
+# 100 errors is generous for legitimate debugging while blocking amplification attacks.
+_MAX_PARSE_ERRORS: int = 100
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +228,7 @@ class FluentParserV1:
         )
 
         self._max_parse_errors = (
-            max_parse_errors if max_parse_errors is not None else MAX_PARSE_ERRORS
+            max_parse_errors if max_parse_errors is not None else _MAX_PARSE_ERRORS
         )
 
         # Calculate desired depth

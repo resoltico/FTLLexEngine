@@ -290,6 +290,10 @@ class DictResourceLoader:
             raise FileNotFoundError(msg)
         return locale_resources[resource_id]
 
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        """Return in-memory path description."""
+        return f"{locale}/{resource_id}"
+
 
 class FailingResourceLoader:
     """Resource loader that raises errors for testing error paths."""
@@ -305,6 +309,10 @@ class FailingResourceLoader:
     def load(self, locale: str, resource_id: str) -> str:  # noqa: ARG002
         """Always raises the configured error type."""
         raise self._error_type(self._message)
+
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        """Return path description for failing loader."""
+        return f"{locale}/{resource_id}"
 
 
 @st.composite

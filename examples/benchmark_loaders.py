@@ -111,6 +111,10 @@ class InMemoryLoader:
             raise FileNotFoundError(msg)
         return self._storage[key]
 
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        """Return in-memory path description."""
+        return f"memory:{locale}/{resource_id}"
+
 
 class SimulatedDatabaseLoader:
     """Simulated database loader with cache (realistic production pattern)."""
@@ -176,6 +180,10 @@ class SimulatedDatabaseLoader:
         self.cache_hits = 0
         self.db_hits = 0
         self.total_loads = 0
+
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        """Return simulated database path description."""
+        return f"db:{locale}/{resource_id}"
 
 
 def benchmark_loader_initialization(

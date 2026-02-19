@@ -12,13 +12,11 @@ from __future__ import annotations
 from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
-from ftllexengine.constants import (
-    _MAX_IDENTIFIER_LENGTH,
-    _MAX_NUMBER_LENGTH,
-    _MAX_STRING_LITERAL_LENGTH,
-)
+from ftllexengine.constants import MAX_IDENTIFIER_LENGTH as _MAX_IDENTIFIER_LENGTH
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser.primitives import (
+    _MAX_NUMBER_LENGTH,
+    _MAX_STRING_LITERAL_LENGTH,
     clear_parse_error,
     get_last_parse_error,
     is_identifier_char,

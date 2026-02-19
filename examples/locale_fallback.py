@@ -210,6 +210,10 @@ def example_4_custom_loader() -> None:
                 raise FileNotFoundError(msg)
             return self.resources[key]
 
+        def describe_path(self, locale: str, resource_id: str) -> str:
+            """Return in-memory path description."""
+            return f"memory:{locale}/{resource_id}"
+
     # Create loader and populate
     loader = InMemoryLoader()
 
@@ -309,6 +313,10 @@ error-network = Network connection lost
                 msg = f"Resource not found in database: {locale}/{resource_id}"
                 raise FileNotFoundError(msg)
             return self._storage[key]
+
+        def describe_path(self, locale: str, resource_id: str) -> str:
+            """Return database path description."""
+            return f"db:{locale}/{resource_id}"
 
     # Initialize loader and seed database
     loader = DatabaseResourceLoader()

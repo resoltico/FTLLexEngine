@@ -35,492 +35,31 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Generator, Iterable, Mapping
-from dataclasses import dataclass, field
-from enum import StrEnum
-from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn, Protocol
+from typing import TYPE_CHECKING, NoReturn
 
-from .constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
-from .diagnostics.codes import Diagnostic, DiagnosticCode
-from .diagnostics.errors import ErrorCategory, FrozenFluentError
-from .integrity import FormattingIntegrityError, IntegrityContext
-from .runtime.bundle import FluentBundle
-from .runtime.cache_config import CacheConfig
-from .runtime.rwlock import RWLock
-from .runtime.value_types import FluentValue
-from .syntax import Junk
+from ftllexengine.constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
+from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode
+from ftllexengine.diagnostics.errors import ErrorCategory, FrozenFluentError
+from ftllexengine.enums import LoadStatus
+from ftllexengine.integrity import FormattingIntegrityError, IntegrityContext
+from ftllexengine.localization.loading import (
+    FallbackInfo,
+    LoadSummary,
+    ResourceLoader,
+    ResourceLoadResult,
+)
+from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
+from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache_config import CacheConfig
+from ftllexengine.runtime.rwlock import RWLock
+from ftllexengine.runtime.value_types import FluentValue
+from ftllexengine.syntax import Junk
 
 if TYPE_CHECKING:
-    from .diagnostics import ValidationResult
-    from .introspection import MessageIntrospection
+    from ftllexengine.diagnostics import ValidationResult
+    from ftllexengine.introspection import MessageIntrospection
 
-# Type aliases using Python 3.13 type keyword
-type MessageId = str
-type LocaleCode = str
-type ResourceId = str
-type FTLSource = str
-
-
-class LoadStatus(StrEnum):
-    """Status of a resource load attempt."""
-
-    SUCCESS = "success"  # Resource loaded successfully
-    NOT_FOUND = "not_found"  # Resource file not found (expected for optional locales)
-    ERROR = "error"  # Resource load failed with error
-
-
-@dataclass(frozen=True, slots=True)
-class FallbackInfo:
-    """Information about a locale fallback event.
-
-    Provided to the on_fallback callback when FluentLocalization resolves
-    a message using a fallback locale instead of the primary locale.
-
-    Attributes:
-        requested_locale: The primary (first) locale in the chain
-        resolved_locale: The locale that actually contained the message
-        message_id: The message identifier that was resolved
-
-    Example:
-        >>> def log_fallback(info: FallbackInfo) -> None:
-        ...     print(f"Fallback: {info.message_id} resolved from "
-        ...           f"{info.resolved_locale} (requested {info.requested_locale})")
-        >>> l10n = FluentLocalization(['lv', 'en'], on_fallback=log_fallback)
-    """
-
-    requested_locale: LocaleCode
-    resolved_locale: LocaleCode
-    message_id: MessageId
-
-
-@dataclass(frozen=True, slots=True)
-class ResourceLoadResult:
-    """Result of loading a single FTL resource.
-
-    Tracks the outcome of loading a resource for a specific locale,
-    including any errors encountered and any Junk entries from parsing.
-
-    Attributes:
-        locale: Locale code for this resource
-        resource_id: Resource identifier (e.g., 'main.ftl')
-        status: Load status (success, not_found, error)
-        error: Exception if status is ERROR, None otherwise
-        source_path: Full path to resource (if available)
-        junk_entries: Junk entries from parsing (unparseable content)
-    """
-
-    locale: LocaleCode
-    resource_id: ResourceId
-    status: LoadStatus
-    error: Exception | None = None
-    source_path: str | None = None
-    junk_entries: tuple[Junk, ...] = ()
-
-    @property
-    def is_success(self) -> bool:
-        """Check if resource loaded successfully."""
-        return self.status == LoadStatus.SUCCESS
-
-    @property
-    def is_not_found(self) -> bool:
-        """Check if resource was not found (expected for optional locales)."""
-        return self.status == LoadStatus.NOT_FOUND
-
-    @property
-    def is_error(self) -> bool:
-        """Check if resource load failed with an error."""
-        return self.status == LoadStatus.ERROR
-
-    @property
-    def has_junk(self) -> bool:
-        """Check if resource had unparseable content (Junk entries)."""
-        return len(self.junk_entries) > 0
-
-
-class LoadSummary:
-    """Summary of all resource load attempts during initialization.
-
-    Provides aggregated information about resource loading success/failure
-    across all locales. Use this to diagnose missing resources or loading errors.
-
-    All statistics are computed properties derived from ``results``. This
-    avoids ``object.__setattr__`` workarounds on frozen dataclasses while
-    keeping the class fully immutable (``results`` is set once in ``__init__``
-    and stored in a slot).
-
-    Attributes:
-        results: All individual load results (immutable tuple)
-
-    Example:
-        >>> l10n = FluentLocalization(['en', 'de'], ['ui.ftl'], loader)
-        >>> summary = l10n.get_load_summary()
-        >>> if summary.errors > 0:
-        ...     for result in summary.get_errors():
-        ...         print(f"Failed: {result.locale}/{result.resource_id}: {result.error}")
-        >>> if summary.has_junk:
-        ...     for result in summary.get_with_junk():
-        ...         print(f"Junk in {result.source_path}: {len(result.junk_entries)} entries")
-    """
-
-    __slots__ = ("results",)
-    results: tuple[ResourceLoadResult, ...]
-
-    def __init__(self, results: tuple[ResourceLoadResult, ...]) -> None:
-        """Initialize with immutable results tuple."""
-        object.__setattr__(self, "results", results)
-
-    def __setattr__(self, name: str, value: object) -> None:
-        """Prevent mutation after construction."""
-        msg = f"LoadSummary is immutable: cannot set '{name}'"
-        raise AttributeError(msg)
-
-    def __delattr__(self, name: str) -> None:
-        """Prevent attribute deletion."""
-        msg = f"LoadSummary is immutable: cannot delete '{name}'"
-        raise AttributeError(msg)
-
-    def __eq__(self, other: object) -> bool:
-        """Equality based on results tuple."""
-        if not isinstance(other, LoadSummary):
-            return NotImplemented
-        return self.results == other.results
-
-    def __hash__(self) -> int:
-        """Hash based on results tuple."""
-        return hash(self.results)
-
-    def __repr__(self) -> str:
-        """Return string representation for debugging."""
-        return (
-            f"LoadSummary(total={self.total_attempted}, "
-            f"ok={self.successful}, "
-            f"not_found={self.not_found}, "
-            f"errors={self.errors}, "
-            f"junk={self.junk_count})"
-        )
-
-    @property
-    def total_attempted(self) -> int:
-        """Total number of load attempts."""
-        return len(self.results)
-
-    @property
-    def successful(self) -> int:
-        """Number of successful loads."""
-        return sum(1 for r in self.results if r.is_success)
-
-    @property
-    def not_found(self) -> int:
-        """Number of resources not found."""
-        return sum(1 for r in self.results if r.is_not_found)
-
-    @property
-    def errors(self) -> int:
-        """Number of load errors."""
-        return sum(1 for r in self.results if r.is_error)
-
-    @property
-    def junk_count(self) -> int:
-        """Total number of Junk entries across all resources."""
-        return sum(len(r.junk_entries) for r in self.results)
-
-    def get_errors(self) -> tuple[ResourceLoadResult, ...]:
-        """Get all results with errors."""
-        return tuple(r for r in self.results if r.is_error)
-
-    def get_not_found(self) -> tuple[ResourceLoadResult, ...]:
-        """Get all results where resource was not found."""
-        return tuple(r for r in self.results if r.is_not_found)
-
-    def get_successful(self) -> tuple[ResourceLoadResult, ...]:
-        """Get all successful load results."""
-        return tuple(r for r in self.results if r.is_success)
-
-    def get_by_locale(self, locale: LocaleCode) -> tuple[ResourceLoadResult, ...]:
-        """Get all results for a specific locale."""
-        return tuple(r for r in self.results if r.locale == locale)
-
-    def get_with_junk(self) -> tuple[ResourceLoadResult, ...]:
-        """Get all results with Junk entries (unparseable content)."""
-        return tuple(r for r in self.results if r.has_junk)
-
-    def get_all_junk(self) -> tuple[Junk, ...]:
-        """Get all Junk entries across all resources.
-
-        Returns:
-            Flattened tuple of all Junk entries from all resources.
-        """
-        junk_list: list[Junk] = []
-        for result in self.results:
-            junk_list.extend(result.junk_entries)
-        return tuple(junk_list)
-
-    @property
-    def has_errors(self) -> bool:
-        """Check if any resources failed to load with errors."""
-        return self.errors > 0
-
-    @property
-    def has_junk(self) -> bool:
-        """Check if any resources had Junk entries (unparseable content)."""
-        return self.junk_count > 0
-
-    @property
-    def all_successful(self) -> bool:
-        """Check if all attempted resources loaded successfully.
-
-        Success means no I/O errors and all files were found. Resources with
-        Junk entries (unparseable content) are still considered "successful"
-        because the parse operation completed.
-
-        For stricter validation that also checks for Junk, use all_clean.
-
-        Returns:
-            True if errors == 0 and not_found == 0, regardless of junk_count
-        """
-        return self.errors == 0 and self.not_found == 0
-
-    @property
-    def all_clean(self) -> bool:
-        """Check if all resources loaded successfully without any Junk entries.
-
-        Stricter than all_successful: requires no errors, all files found,
-        AND zero Junk entries. Use this for validation workflows where
-        unparseable content should be treated as a failure.
-
-        Returns:
-            True if errors == 0 and not_found == 0 and junk_count == 0
-        """
-        return self.errors == 0 and self.not_found == 0 and self.junk_count == 0
-
-
-class ResourceLoader(Protocol):
-    """Protocol for loading FTL resources for specific locales.
-
-    Implementations must provide a load() method that retrieves FTL source
-    for a given locale and resource identifier.
-
-    This is a Protocol (structural typing) rather than ABC to allow
-    maximum flexibility for users implementing custom loaders.
-
-    Example:
-        >>> class DiskLoader:
-        ...     def load(self, locale: str, resource_id: str) -> str:
-        ...         path = Path(f"locales/{locale}/{resource_id}")
-        ...         return path.read_text(encoding="utf-8")
-        ...
-        >>> loader = DiskLoader()
-        >>> l10n = FluentLocalization(['en', 'fr'], ['main.ftl'], loader)
-    """
-
-    def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource:
-        """Load FTL resource for given locale.
-
-        Args:
-            locale: Locale code (e.g., 'en', 'fr', 'lv')
-            resource_id: Resource identifier (e.g., 'main.ftl', 'errors.ftl')
-
-        Returns:
-            FTL source code as string
-
-        Raises:
-            FileNotFoundError: If resource doesn't exist for this locale
-            OSError: If file cannot be read
-        """
-
-
-@dataclass(frozen=True, slots=True)
-class PathResourceLoader:
-    """File system resource loader using path templates.
-
-    Implements ResourceLoader protocol for loading FTL files from disk.
-    Uses {locale} placeholder in path template for locale substitution.
-
-    Uses Python 3.13 frozen dataclass with slots for low memory overhead.
-
-    Security:
-        Validates both locale and resource_id to prevent directory traversal attacks.
-        Locale codes containing path separators or ".." are rejected.
-        Resource IDs containing ".." or absolute paths are rejected.
-        All resolved paths are validated against a fixed root directory.
-
-    Example:
-        >>> loader = PathResourceLoader("locales/{locale}")
-        >>> ftl = loader.load("en", "main.ftl")
-        # Loads from: locales/en/main.ftl
-
-    Attributes:
-        base_path: Path template with {locale} placeholder
-        root_dir: Fixed root directory for path traversal validation.
-                  Defaults to parent of base_path if not specified.
-    """
-
-    base_path: str
-    root_dir: str | None = None
-    _resolved_root: Path = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        """Cache resolved root directory and validate template at initialization.
-
-        Raises:
-            ValueError: If base_path does not contain {locale} placeholder
-        """
-        # Fail-fast validation: Require {locale} placeholder in path template
-        # Without this placeholder, all locales would load from the same path,
-        # causing silent data corruption where wrong locale files are loaded.
-        if "{locale}" not in self.base_path:
-            msg = (
-                f"base_path must contain '{{locale}}' placeholder for locale substitution, "
-                f"got: '{self.base_path}'"
-            )
-            raise ValueError(msg)
-
-        if self.root_dir is not None:
-            resolved = Path(self.root_dir).resolve()
-        else:
-            # Extract static prefix from base_path template
-            # e.g., "locales/{locale}" -> "locales"
-            # Note: split() always returns non-empty list, so template_parts[0] always exists
-            template_parts = self.base_path.split("{locale}")
-            static_prefix = template_parts[0].rstrip("/\\")
-            resolved = Path(static_prefix).resolve() if static_prefix else Path.cwd().resolve()
-        object.__setattr__(self, "_resolved_root", resolved)
-
-    @staticmethod
-    def _validate_locale(locale: LocaleCode) -> None:
-        """Validate locale code for path traversal attacks.
-
-        Args:
-            locale: Locale code to validate
-
-        Raises:
-            ValueError: If locale contains unsafe path components
-        """
-        # Reject path traversal sequences
-        if ".." in locale:
-            msg = f"Path traversal sequences not allowed in locale: '{locale}'"
-            raise ValueError(msg)
-
-        # Reject path separators
-        if "/" in locale or "\\" in locale:
-            msg = f"Path separators not allowed in locale: '{locale}'"
-            raise ValueError(msg)
-
-        # Reject empty locale
-        if not locale:
-            msg = "Locale code cannot be empty"
-            raise ValueError(msg)
-
-    def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource:
-        """Load FTL file from disk.
-
-        Args:
-            locale: Locale code to substitute in path template
-            resource_id: FTL filename (e.g., 'main.ftl')
-
-        Returns:
-            FTL source code
-
-        Raises:
-            ValueError: If locale or resource_id contains path traversal sequences
-            FileNotFoundError: If file doesn't exist
-            OSError: If file cannot be read
-
-        Security:
-            Validates both locale and resource_id to prevent directory traversal.
-            All resolved paths are verified against a fixed root directory.
-        """
-        # Security: Validate locale against path traversal attacks
-        self._validate_locale(locale)
-
-        # Security: Validate resource_id against path traversal attacks
-        self._validate_resource_id(resource_id)
-
-        # Use cached root directory (cannot be influenced by locale)
-
-        # Substitute {locale} in path template
-        # Use replace() instead of format() to avoid KeyError if template
-        # contains other braces like "{version}" for future extensibility
-        locale_path = self.base_path.replace("{locale}", locale)
-        base_dir = Path(locale_path).resolve()
-        full_path = (base_dir / resource_id).resolve()
-
-        # Security: Verify resolved path is within FIXED root directory
-        # This prevents locale manipulation from escaping the intended directory
-        if not self._is_safe_path(self._resolved_root, full_path):
-            msg = (
-                f"Path traversal detected: resolved path escapes root directory. "
-                f"locale='{locale}', resource_id='{resource_id}'"
-            )
-            raise ValueError(msg)
-
-        return full_path.read_text(encoding="utf-8")
-
-    @staticmethod
-    def _validate_resource_id(resource_id: ResourceId) -> None:
-        """Validate resource_id for path traversal attacks and whitespace.
-
-        Args:
-            resource_id: Resource identifier to validate
-
-        Raises:
-            ValueError: If resource_id contains unsafe path components or
-                       leading/trailing whitespace
-        """
-        # Reject leading/trailing whitespace (common source of path bugs)
-        # Explicit rejection ensures fail-fast behavior for copy-paste errors
-        stripped = resource_id.strip()
-        if stripped != resource_id:
-            msg = (
-                f"Resource ID contains leading/trailing whitespace: {resource_id!r}. "
-                f"Stripped would be: {stripped!r}"
-            )
-            raise ValueError(msg)
-
-        # Reject absolute paths
-        if Path(resource_id).is_absolute():
-            msg = f"Absolute paths not allowed in resource_id: '{resource_id}'"
-            raise ValueError(msg)
-
-        # Reject parent directory references
-        if ".." in resource_id:
-            msg = f"Path traversal sequences not allowed in resource_id: '{resource_id}'"
-            raise ValueError(msg)
-
-        # Reject paths starting with / or \
-        if resource_id.startswith(("/", "\\")):
-            msg = f"Leading path separator not allowed in resource_id: '{resource_id}'"
-            raise ValueError(msg)
-
-    @staticmethod
-    def _is_safe_path(base_dir: Path, full_path: Path) -> bool:
-        """Check if full_path is safely within base_dir.
-
-        Security Note:
-            Explicitly resolves both paths before comparison to prevent
-            path manipulation attacks. This follows defense-in-depth:
-            even if caller provides un-resolved paths, this method
-            canonicalizes them before the security check.
-
-        Args:
-            base_dir: Base directory (will be resolved)
-            full_path: Full path to check (will be resolved)
-
-        Returns:
-            True if resolved full_path is within resolved base_dir
-        """
-        try:
-            # Defense-in-depth: resolve() both paths to canonicalize
-            # This follows symlinks and normalizes path components
-            resolved_base = base_dir.resolve()
-            resolved_path = full_path.resolve()
-
-            # Python 3.9+ method - check if full_path is relative to base_dir
-            resolved_path.relative_to(resolved_base)
-            return True
-        except ValueError:
-            # full_path is not within base_dir
-            return False
+__all__ = ["FluentLocalization"]
 
 
 class FluentLocalization:
@@ -608,7 +147,6 @@ class FluentLocalization:
             ValueError: If locales is empty
             ValueError: If resource_ids provided but no resource_loader
         """
-        # Validate inputs
         locale_list = list(locales)
         if not locale_list:
             msg = "At least one locale is required"
@@ -618,7 +156,6 @@ class FluentLocalization:
             msg = "resource_loader required when resource_ids provided"
             raise ValueError(msg)
 
-        # Store immutable locale chain with deduplication (preserves order)
         # dict.fromkeys() removes duplicates while maintaining insertion order
         self._locales: tuple[LocaleCode, ...] = tuple(dict.fromkeys(locale_list))
 
@@ -693,7 +230,6 @@ class FluentLocalization:
             if locale in self._bundles:
                 return self._bundles[locale]
 
-            # Create new bundle
             bundle = FluentBundle(
                 locale,
                 use_isolating=self._use_isolating,
@@ -725,12 +261,11 @@ class FluentLocalization:
         Returns:
             ResourceLoadResult indicating success, not_found, or error
         """
-        # Construct source path for diagnostics
-        if isinstance(resource_loader, PathResourceLoader):
-            locale_path = resource_loader.base_path.replace("{locale}", locale)
-            source_path = f"{locale_path}/{resource_id}"
-        else:
-            source_path = f"{locale}/{resource_id}"
+        # Delegate path description to loader via protocol method.
+        # ResourceLoader.describe_path() returns a human-readable path string.
+        # PathResourceLoader overrides this with the actual locale-substituted path.
+        # Custom loaders use the default "{locale}/{resource_id}" implementation.
+        source_path = resource_loader.describe_path(locale, resource_id)
 
         try:
             ftl_source = resource_loader.load(locale, resource_id)
@@ -761,6 +296,37 @@ class FluentLocalization:
                 error=e,
                 source_path=source_path,
             )
+
+    @staticmethod
+    def _check_mapping_arg(
+        args: Mapping[str, FluentValue] | None,
+        errors: list[FrozenFluentError],
+    ) -> bool:
+        """Validate that args is None or a Mapping (defensive runtime check).
+
+        Callers annotate args as Mapping | None, but external callers may
+        violate the contract at runtime. This static method provides the
+        shared guard used by both format_value() and format_pattern().
+
+        Args:
+            args: The args argument from format_value or format_pattern
+            errors: Mutable error list; an error is appended if args is invalid
+
+        Returns:
+            True if args is valid (None or Mapping), False otherwise
+        """
+        if args is not None and not isinstance(args, Mapping):
+            diagnostic = Diagnostic(  # type: ignore[unreachable]
+                code=DiagnosticCode.INVALID_ARGUMENT,
+                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
+            )
+            errors.append(
+                FrozenFluentError(
+                    str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
+                )
+            )
+            return False
+        return True
 
     @property
     def locales(self) -> tuple[LocaleCode, ...]:
@@ -852,16 +418,14 @@ class FluentLocalization:
     def __repr__(self) -> str:
         """Return string representation for debugging.
 
-
         Returns:
-            String representation showing locales and resource count
+            String representation showing locales and bundle count
 
         Example:
             >>> l10n = FluentLocalization(['lv', 'en'])
             >>> repr(l10n)
-            "FluentLocalization(locales=('lv', 'en'), bundles=2)"
+            "FluentLocalization(locales=('lv', 'en'), bundles=0/2)"
         """
-        # Count initialized bundles vs total locales
         initialized = len(self._bundles)
         total = len(self._locales)
         return f"FluentLocalization(locales={self._locales!r}, bundles={initialized}/{total})"
@@ -886,7 +450,6 @@ class FluentLocalization:
         Raises:
             ValueError: If locale not in fallback chain or contains whitespace.
         """
-        # Validate locale for leading/trailing whitespace (fail-fast)
         stripped = locale.strip()
         if stripped != locale:
             msg = (
@@ -1028,31 +591,18 @@ class FluentLocalization:
         """
         errors: list[FrozenFluentError] = []
 
-        # Validate args is None or a Mapping (defensive check)
-        if args is not None and not isinstance(args, Mapping):
-            diagnostic = Diagnostic(  # type: ignore[unreachable]
-                code=DiagnosticCode.INVALID_ARGUMENT,
-                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
-            )
-            errors.append(
-                FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
-            )
+        if not self._check_mapping_arg(args, errors):
             return (FALLBACK_INVALID, tuple(errors))
 
         primary_locale = self._locales[0] if self._locales else None
 
-        # Try each locale in priority order (fallback chain)
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
 
-            # Check if this bundle has the message
             if bundle.has_message(message_id):
-                # Message exists in this locale - format it
                 value, bundle_errors = bundle.format_pattern(message_id, args)
-                # FluentBundle.format_pattern returns tuple[FluentError, ...]
                 errors.extend(bundle_errors)
 
-                # Invoke fallback callback if message resolved from non-primary locale
                 if (
                     self._on_fallback is not None
                     and primary_locale is not None
@@ -1067,7 +617,6 @@ class FluentLocalization:
 
                 return (value, tuple(errors))
 
-        # No locale had the message - delegate to helper for consistent handling
         return self._handle_message_not_found(message_id, errors)
 
     def has_message(self, message_id: MessageId) -> bool:
@@ -1120,15 +669,7 @@ class FluentLocalization:
         """
         errors: list[FrozenFluentError] = []
 
-        # Validate args is None or a Mapping (defensive check)
-        if args is not None and not isinstance(args, Mapping):
-            diagnostic = Diagnostic(  # type: ignore[unreachable]
-                code=DiagnosticCode.INVALID_ARGUMENT,
-                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
-            )
-            errors.append(
-                FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
-            )
+        if not self._check_mapping_arg(args, errors):
             return (FALLBACK_INVALID, tuple(errors))
 
         # Validate attribute is None or a string
@@ -1139,13 +680,14 @@ class FluentLocalization:
                 message=f"Invalid attribute type: expected str or None, got {attr_type}",
             )
             errors.append(
-                FrozenFluentError(str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic)
+                FrozenFluentError(
+                    str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
+                )
             )
             return (FALLBACK_INVALID, tuple(errors))
 
         primary_locale = self._locales[0] if self._locales else None
 
-        # Try each locale in fallback order
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
 
@@ -1153,7 +695,6 @@ class FluentLocalization:
                 value, bundle_errors = bundle.format_pattern(message_id, args, attribute=attribute)
                 errors.extend(bundle_errors)
 
-                # Invoke fallback callback if message resolved from non-primary locale
                 if (
                     self._on_fallback is not None
                     and primary_locale is not None
@@ -1168,7 +709,6 @@ class FluentLocalization:
 
                 return (value, tuple(errors))
 
-        # Not found - delegate to helper for consistent handling
         return self._handle_message_not_found(message_id, errors)
 
     def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
@@ -1204,7 +744,8 @@ class FluentLocalization:
                 bundle.add_function(name, func)
 
     def introspect_message(
-        self, message_id: MessageId,
+        self,
+        message_id: MessageId,
     ) -> MessageIntrospection | None:
         """Get message introspection from first bundle with message.
 
@@ -1221,7 +762,9 @@ class FluentLocalization:
         return None
 
     def has_attribute(
-        self, message_id: MessageId, attribute: str,
+        self,
+        message_id: MessageId,
+        attribute: str,
     ) -> bool:
         """Check if message has specific attribute in any locale.
 
@@ -1262,7 +805,8 @@ class FluentLocalization:
         return result
 
     def get_message_variables(
-        self, message_id: MessageId,
+        self,
+        message_id: MessageId,
     ) -> frozenset[str]:
         """Get variables required by a message.
 
@@ -1285,9 +829,7 @@ class FluentLocalization:
         msg = f"Message '{message_id}' not found in any locale"
         raise KeyError(msg)
 
-    def get_all_message_variables(
-        self,
-    ) -> dict[str, frozenset[str]]:
+    def get_all_message_variables(self) -> dict[str, frozenset[str]]:
         """Get variables for all messages across all locales.
 
         Merges variables from all bundles. For messages present in
@@ -1300,15 +842,14 @@ class FluentLocalization:
         result: dict[str, frozenset[str]] = {}
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
-            for msg_id, variables in (
-                bundle.get_all_message_variables().items()
-            ):
+            for msg_id, variables in bundle.get_all_message_variables().items():
                 if msg_id not in result:
                     result[msg_id] = variables
         return result
 
     def introspect_term(
-        self, term_id: str,
+        self,
+        term_id: str,
     ) -> MessageIntrospection | None:
         """Get term introspection from first bundle with term.
 
@@ -1498,23 +1039,3 @@ class FluentLocalization:
             FluentBundle instances in locale priority order
         """
         yield from (self._get_or_create_bundle(locale) for locale in self._locales)
-
-
-# ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
-__all__ = [
-    # Main classes
-    "FluentLocalization",
-    "PathResourceLoader",
-    "ResourceLoader",
-    # Load tracking (eager loading diagnostics)
-    "LoadStatus",
-    "LoadSummary",
-    "ResourceLoadResult",
-    # Fallback observability
-    "FallbackInfo",
-    # Type aliases for user code type annotations
-    "MessageId",
-    "LocaleCode",
-    "ResourceId",
-    "FTLSource",
-]

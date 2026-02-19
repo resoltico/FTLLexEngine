@@ -14,9 +14,9 @@ import pytest
 from hypothesis import event, given, settings
 
 from ftllexengine import FluentBundle
+from ftllexengine.constants import MAX_IDENTIFIER_LENGTH as _MAX_IDENTIFIER_LENGTH
 from ftllexengine.syntax.ast import Junk, Message
 from ftllexengine.syntax.parser import FluentParserV1
-from ftllexengine.syntax.parser.primitives import _MAX_IDENTIFIER_LENGTH
 from ftllexengine.validation import validate_resource
 
 from .strategies import (

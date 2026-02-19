@@ -20,7 +20,7 @@ Usage:
     from tests.strategies.validation import validation_resource_sources
 
 Event-Emitting Strategies (HypoFuzz-Optimized):
-    These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
+    These strategies emit hypothesis.event calls for coverage-guided fuzzing:
     - ftl_chaos_source, ftl_pathological_nesting, ftl_multiline_chaos_source
     - ftl_boundary_depth_placeables, ftl_reference_placeables
     - ftl_circular_references, ftl_semantically_broken, ftl_invalid_ftl

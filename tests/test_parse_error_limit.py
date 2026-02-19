@@ -15,10 +15,10 @@ Python 3.13+. Uses pytest.
 
 from __future__ import annotations
 
-from ftllexengine.constants import MAX_PARSE_ERRORS
 from ftllexengine.syntax import parse as parse_ftl
 from ftllexengine.syntax.ast import Junk, Message
 from ftllexengine.syntax.parser import FluentParserV1
+from ftllexengine.syntax.parser.core import _MAX_PARSE_ERRORS as MAX_PARSE_ERRORS
 
 
 class TestParseErrorLimit:

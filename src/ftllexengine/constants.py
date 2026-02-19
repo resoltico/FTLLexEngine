@@ -29,9 +29,8 @@ __all__ = [
     "MAX_SOURCE_SIZE",
     "MAX_LOCALE_CODE_LENGTH",
     "MAX_LOCALE_LENGTH_HARD_LIMIT",
-    # Parser limits
-    "MAX_LOOKAHEAD_CHARS",
-    "MAX_PARSE_ERRORS",
+    # Identifier limit (cross-module: parser primitives and core/identifier_validation)
+    "MAX_IDENTIFIER_LENGTH",
     # Format limits
     "MAX_FORMAT_DIGITS",
     # Resolution limits
@@ -160,44 +159,21 @@ MAX_LOCALE_CODE_LENGTH: int = 35
 MAX_LOCALE_LENGTH_HARD_LIMIT: int = 1000
 
 # ============================================================================
-# PARSER LIMITS
+# IDENTIFIER LENGTH LIMIT
 # ============================================================================
-
-# Maximum lookahead distance for variant marker detection.
-# Used by _is_variant_marker() to distinguish variant keys [x] from literal text.
-# Bounded lookahead prevents O(N^2) parsing on pathological inputs.
-# Must accommodate: '[' + optional_spaces + identifier (up to 256 chars) + optional_spaces + ']'
-# Value of 300 ensures variant keys with maximum-length identifiers parse correctly.
-# Dependency: Must exceed _MAX_IDENTIFIER_LENGTH (256) plus bracket/whitespace overhead.
-MAX_LOOKAHEAD_CHARS: int = 300
-
-# Maximum number of Junk (error) entries before parser aborts.
-# Prevents memory exhaustion from malformed input that generates excessive errors.
-# 100 errors is generous for legitimate debugging while blocking amplification attacks.
-# Real-world FTL files rarely exceed 10 errors; 100 provides 10x margin.
-MAX_PARSE_ERRORS: int = 100
-
-# ----------------------------------------------------------------------------
-# Token Length Limits (DoS Prevention)
-# ----------------------------------------------------------------------------
-# Maximum lengths prevent denial-of-service attacks via extremely long tokens.
-# These limits are intentionally generous for legitimate use while blocking abuse.
-# Private (not exported) - used only by parser primitives.
+#
+# Cross-module constant used by:
+# - syntax/parser/primitives.py (parse_identifier DoS guard)
+# - core/identifier_validation.py (is_valid_identifier length check)
+#
+# Parser-local limits (_MAX_NUMBER_LENGTH, _MAX_STRING_LITERAL_LENGTH) and
+# parser-only limits (MAX_LOOKAHEAD_CHARS, MAX_PARSE_ERRORS) are defined in
+# the parser modules that own them, per the locality principle.
 
 # Maximum identifier length (256 chars).
 # Real-world identifiers rarely exceed 50 characters. 256 provides ample margin
 # while preventing memory exhaustion from million-character "identifiers".
-_MAX_IDENTIFIER_LENGTH: int = 256
-
-# Maximum number literal length (1000 chars including sign and decimal point).
-# Covers any practical numeric value (Python's arbitrary precision int/float).
-# A 1000-digit number is ~3KB and already beyond practical use.
-_MAX_NUMBER_LENGTH: int = 1000
-
-# Maximum string literal length (1 million chars).
-# FTL strings may contain long text blocks (e.g., legal disclaimers, terms).
-# 1M characters (~2-4MB with Unicode) is generous while preventing abuse.
-_MAX_STRING_LITERAL_LENGTH: int = 1_000_000
+MAX_IDENTIFIER_LENGTH: int = 256
 
 # ============================================================================
 # FORMAT LIMITS

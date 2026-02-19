@@ -196,31 +196,45 @@ def clear_all_caches() -> None:
         haven't been populated yet are simply no-ops.
 
         FluentBundle instances maintain their own FormatCache which is NOT
-        cleared by this function. To clear bundle-specific caches, use
-        bundle._cache.clear() on each bundle instance.
+        cleared by this function. To clear bundle-specific caches, recreate
+        the FluentBundle instance.
 
     Example:
         >>> import ftllexengine
         >>> ftllexengine.clear_all_caches()  # Reclaim memory from all caches
     """
-    # Import and clear each cache module
-    # Order: parsing caches first (depend on locale cache), then locale, then introspection
+    # Import and clear each cache module.
+    # Order: parsing caches first (depend on locale cache), then locale, then introspection.
+    # Parsing and runtime caches are conditionally cleared: they are Babel-dependent and
+    # may not have been imported in parser-only installations. Skipping an unimported module
+    # is semantically correct — an unimported module has no populated cache to clear.
 
-    # 1. Parsing caches (use locale_utils internally)
-    from .parsing.currency import clear_currency_caches
-    from .parsing.dates import clear_date_caches
+    # 1. Parsing caches (Babel-dependent: only present in full-runtime installations)
+    try:
+        from .parsing.currency import clear_currency_caches
+        clear_currency_caches()
+    except ImportError:
+        pass  # Parser-only installation; parsing.currency never imported
 
-    clear_currency_caches()
-    clear_date_caches()
+    try:
+        from .parsing.dates import clear_date_caches
+        clear_date_caches()
+    except ImportError:
+        pass  # Parser-only installation; parsing.dates never imported
 
-    # 2. Locale caches
-    from .locale_utils import clear_locale_cache
-    from .runtime.locale_context import LocaleContext
+    # 2. Locale caches (always present: core.locale_utils has no Babel dep at module level)
+    from .core.locale_utils import clear_locale_cache
 
     clear_locale_cache()
-    LocaleContext.clear_cache()
 
-    # 3. Introspection caches (message introspection + ISO standards data)
+    # 3. Runtime locale context (Babel-dependent)
+    try:
+        from .runtime.locale_context import LocaleContext
+        LocaleContext.clear_cache()
+    except ImportError:
+        pass  # Parser-only installation; runtime.locale_context never imported
+
+    # 4. Introspection caches (message introspection + ISO standards data)
     from .introspection import clear_introspection_cache, clear_iso_cache
 
     clear_introspection_cache()

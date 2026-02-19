@@ -26,7 +26,7 @@ from ftllexengine.constants import (
     MAX_TERRITORY_CACHE_SIZE,
 )
 from ftllexengine.core.babel_compat import BabelImportError
-from ftllexengine.locale_utils import normalize_locale
+from ftllexengine.core.locale_utils import normalize_locale
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [

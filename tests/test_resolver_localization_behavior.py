@@ -22,6 +22,9 @@ class TestLocalizationNonPathLoader:
                 """Return FTL source for testing."""
                 return "test = Test message"
 
+            def describe_path(self, locale: str, resource_id: str) -> str:
+                return f"{locale}/{resource_id}"
+
         loader = CustomLoader()
         loc = FluentLocalization(["en"], ["test.ftl"], loader)
 

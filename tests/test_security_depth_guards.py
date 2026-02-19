@@ -223,7 +223,7 @@ class TestLocaleUtilsLazyImport:
 
     def test_normalize_locale_no_babel_required(self) -> None:
         """normalize_locale() should work without Babel."""
-        from ftllexengine.locale_utils import normalize_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import normalize_locale  # noqa: PLC0415
 
         # Pure string manipulation, no Babel needed
         assert normalize_locale("en-US") == "en_us"
@@ -232,7 +232,7 @@ class TestLocaleUtilsLazyImport:
 
     def test_get_system_locale_no_babel_required(self) -> None:
         """get_system_locale() should work without Babel."""
-        from ftllexengine.locale_utils import get_system_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import get_system_locale  # noqa: PLC0415
 
         # Uses only stdlib locale module
         result = get_system_locale()
@@ -246,7 +246,7 @@ class TestLocaleUtilsLazyImport:
         Note: This test assumes Babel IS installed in dev environment.
         It verifies the function works, not that it fails without Babel.
         """
-        from ftllexengine.locale_utils import get_babel_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415
 
         # Should work with Babel installed
         locale = get_babel_locale("en-US")
@@ -255,7 +255,7 @@ class TestLocaleUtilsLazyImport:
 
     def test_get_babel_locale_caches_result(self) -> None:
         """get_babel_locale() should cache Locale objects."""
-        from ftllexengine.locale_utils import get_babel_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415
 
         # Call twice with same locale
         locale1 = get_babel_locale("de-DE")

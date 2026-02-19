@@ -47,9 +47,9 @@ from ftllexengine.constants import (
     MAX_LOCALE_CACHE_SIZE,
     MAX_LOCALE_CODE_LENGTH,
 )
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
-from ftllexengine.locale_utils import normalize_locale
 
 if TYPE_CHECKING:
     from babel import Locale
