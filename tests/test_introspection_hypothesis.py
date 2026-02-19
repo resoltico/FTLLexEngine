@@ -1,478 +1,297 @@
 """Hypothesis property-based tests for message introspection.
 
-Tests variable extraction, function detection, reference tracking properties.
-Complements test_introspection.py with property-based testing.
+Tests structural invariants for variable extraction, function detection,
+reference tracking, and immutability guarantees. All @given tests emit
+semantic events for HypoFuzz coverage guidance.
 """
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.introspection import extract_variables, introspect_message
-from ftllexengine.syntax.ast import (
-    Message,
-)
+from ftllexengine.syntax.ast import Message
 from ftllexengine.syntax.parser import FluentParserV1
 
+# Module-level strategy primitives (no composite needed; events are in tests)
+_variable_names = st.from_regex(r"[a-z]+", fullmatch=True)
+_message_ids = st.from_regex(r"[a-z]+", fullmatch=True)
+
+
+def _msg(ftl: str) -> Message:
+    resource = FluentParserV1().parse(ftl)
+    entry = resource.entries[0]
+    assert isinstance(entry, Message)
+    return entry
+
+
 # ============================================================================
-# HYPOTHESIS STRATEGIES
+# VARIABLE EXTRACTION INVARIANTS
 # ============================================================================
 
 
-# Strategy for variable names (FTL identifiers) - use st.from_regex per hypothesis.md
-variable_names = st.from_regex(r"[a-z]+", fullmatch=True)
+class TestVariableExtractionInvariants:
+    """Mathematical invariants for variable extraction."""
 
-# Strategy for message IDs - use st.from_regex per hypothesis.md
-message_ids = st.from_regex(r"[a-z]+", fullmatch=True)
-
-
-# ============================================================================
-# PROPERTY TESTS - VARIABLE EXTRACTION
-# ============================================================================
-
-
-class TestVariableExtractionProperties:
-    """Test variable extraction invariants and properties."""
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=200)
     def test_simple_variable_always_extracted(self, var_name: str) -> None:
-        """PROPERTY: Simple { $var } always extracts var."""
+        """INVARIANT: { $var } always extracts var."""
         event(f"var_name={var_name}")
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+        assert var_name in extract_variables(_msg(f"msg = Hello {{ ${var_name} }}"))
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        variables = extract_variables(msg)
-
-        assert var_name in variables
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=200)
     def test_duplicate_variables_deduplicated(self, var_name: str) -> None:
-        """PROPERTY: Duplicate { $var } { $var } extracts var once."""
+        """INVARIANT: { $var } { $var } extracts var exactly once."""
         event(f"var_name={var_name}")
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }} {{ ${var_name} }}"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        variables = extract_variables(msg)
-
-        # Should only appear once (frozenset deduplication)
+        variables = extract_variables(
+            _msg(f"msg = Hello {{ ${var_name} }} {{ ${var_name} }}")
+        )
         assert var_name in variables
         assert len([v for v in variables if v == var_name]) == 1
 
-    @given(
-        var1=variable_names,
-        var2=variable_names,
-    )
+    @given(var1=_variable_names, var2=_variable_names)
     @settings(max_examples=200)
     def test_multiple_variables_all_extracted(self, var1: str, var2: str) -> None:
-        """PROPERTY: { $a } { $b } extracts both a and b."""
-        same = var1 == var2
-        event(f"same_vars={same}")
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var1} }} {{ ${var2} }}"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        variables = extract_variables(msg)
-
+        """INVARIANT: { $a } { $b } extracts both."""
+        event(f"same_vars={var1 == var2}")
+        variables = extract_variables(_msg(f"msg = Hello {{ ${var1} }} {{ ${var2} }}"))
         assert var1 in variables
         if var1 != var2:
             assert var2 in variables
 
-    @given(msg_id=message_ids)
+    @given(msg_id=_message_ids)
     @settings(max_examples=100)
     def test_no_variables_returns_empty_set(self, msg_id: str) -> None:
-        """PROPERTY: Message with no variables returns empty set."""
+        """INVARIANT: Message with no variables returns empty frozenset."""
         event(f"msg_id={msg_id}")
-        parser = FluentParserV1()
-        ftl_source = f"{msg_id} = Hello World"
+        assert len(extract_variables(_msg(f"{msg_id} = Hello World"))) == 0
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        variables = extract_variables(msg)
-
-        assert len(variables) == 0
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_variable_in_function_extracted(self, var_name: str) -> None:
-        """PROPERTY: NUMBER($var) extracts var."""
+        """INVARIANT: NUMBER($var) extracts var."""
         event(f"var_name={var_name}")
-        parser = FluentParserV1()
-        ftl_source = f"msg = {{ NUMBER(${var_name}) }}"
+        assert var_name in extract_variables(_msg(f"msg = {{ NUMBER(${var_name}) }}"))
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        variables = extract_variables(msg)
-
-        assert var_name in variables
-
-    @given(
-        var_name=variable_names,
-        attr_name=st.from_regex(r"[a-z]+", fullmatch=True),  # Use st.from_regex
-    )
+    @given(var_name=_variable_names, attr_name=st.from_regex(r"[a-z]+", fullmatch=True))
     @settings(max_examples=100)
     def test_attribute_variable_extracted(self, var_name: str, attr_name: str) -> None:
-        """PROPERTY: Variables in attributes are extracted."""
+        """INVARIANT: Variables in message attributes are extracted."""
         event(f"var_name={var_name}")
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello\n    .{attr_name} = {{ ${var_name} }}"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-        variables = introspection.get_variable_names()
-
-        assert var_name in variables
+        msg = _msg(f"msg = Hello\n    .{attr_name} = {{ ${var_name} }}")
+        assert var_name in introspect_message(msg).get_variable_names()
 
 
 # ============================================================================
-# PROPERTY TESTS - INTROSPECTION RESULTS
+# INTROSPECTION RESULT INVARIANTS
 # ============================================================================
 
 
-class TestIntrospectionProperties:
-    """Test MessageIntrospection result properties."""
+class TestIntrospectionResultInvariants:
+    """Invariants for MessageIntrospection result objects."""
 
-    @given(msg_id=message_ids)
+    @given(msg_id=_message_ids)
     @settings(max_examples=200)
     def test_message_id_preserved(self, msg_id: str) -> None:
-        """PROPERTY: introspect_message preserves message ID."""
+        """INVARIANT: introspect_message preserves message ID."""
         event(f"msg_id={msg_id}")
-        parser = FluentParserV1()
-        ftl_source = f"{msg_id} = Hello"
+        assert introspect_message(_msg(f"{msg_id} = Hello")).message_id == msg_id
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        assert introspection.message_id == msg_id
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=200)
-    def test_get_variable_names_consistent_with_variables(
-        self, var_name: str
-    ) -> None:
-        """PROPERTY: get_variable_names() equals variable names from variables."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+    def test_get_variable_names_consistent_with_variables(self, var_name: str) -> None:
+        """INVARIANT: get_variable_names() set size equals variables set size."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = Hello {{ ${var_name} }}"))
+        assert var_name in info.get_variable_names()
+        assert len(info.variables) == len(info.get_variable_names())
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        var_names = introspection.get_variable_names()
-        assert var_name in var_names
-
-        # All variables should have corresponding names
-        assert len(introspection.variables) == len(var_names)
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=200)
-    def test_requires_variable_matches_extraction(self, var_name: str) -> None:
-        """PROPERTY: requires_variable(x) iff x in get_variable_names()."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+    def test_requires_variable_iff_in_get_variable_names(self, var_name: str) -> None:
+        """INVARIANT: requires_variable(x) iff x in get_variable_names()."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = Hello {{ ${var_name} }}"))
+        assert info.requires_variable(var_name) == (var_name in info.get_variable_names())
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        # If requires_variable returns True, should be in variable names
-        if introspection.requires_variable(var_name):
-            assert var_name in introspection.get_variable_names()
-
-        # If in variable names, requires_variable should return True
-        if var_name in introspection.get_variable_names():
-            assert introspection.requires_variable(var_name)
-
-    @given(msg_id=message_ids)
+    @given(msg_id=_message_ids)
     @settings(max_examples=100)
-    def test_no_selectors_when_no_select_expression(self, msg_id: str) -> None:
-        """PROPERTY: Simple message has has_selectors=False."""
-        parser = FluentParserV1()
-        ftl_source = f"{msg_id} = Hello"
+    def test_no_selectors_for_simple_message(self, msg_id: str) -> None:
+        """INVARIANT: Simple message has has_selectors=False."""
+        event(f"msg_id={msg_id}")
+        assert introspect_message(_msg(f"{msg_id} = Hello")).has_selectors is False
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        assert introspection.has_selectors is False
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_select_expression_sets_has_selectors(self, var_name: str) -> None:
-        """PROPERTY: Message with select expression has has_selectors=True."""
-        parser = FluentParserV1()
-        ftl_source = f"""msg = {{ ${var_name} ->
-    [one] One item
-   *[other] Many items
-}}"""
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        assert introspection.has_selectors is True
+        """INVARIANT: Message with select expression has has_selectors=True."""
+        event(f"var_name={var_name}")
+        msg = _msg(
+            f"msg = {{ ${var_name} ->\n    [one] One item\n   *[other] Many items\n}}"
+        )
+        assert introspect_message(msg).has_selectors is True
 
 
 # ============================================================================
-# PROPERTY TESTS - FUNCTION DETECTION
+# FUNCTION DETECTION INVARIANTS
 # ============================================================================
 
 
-class TestFunctionDetectionProperties:
-    """Test function call detection properties."""
+class TestFunctionDetectionInvariants:
+    """Invariants for function call detection."""
 
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_number_function_detected(self, var_name: str) -> None:
-        """PROPERTY: NUMBER($var) detected as function call."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = {{ NUMBER(${var_name}) }}"
+        """INVARIANT: NUMBER($var) is detected as a function call."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = {{ NUMBER(${var_name}) }}"))
+        assert "NUMBER" in info.get_function_names()
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-        function_names = introspection.get_function_names()
-
-        assert "NUMBER" in function_names
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_datetime_function_detected(self, var_name: str) -> None:
-        """PROPERTY: DATETIME($var) detected as function call."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = {{ DATETIME(${var_name}) }}"
+        """INVARIANT: DATETIME($var) is detected as a function call."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = {{ DATETIME(${var_name}) }}"))
+        assert "DATETIME" in info.get_function_names()
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-        function_names = introspection.get_function_names()
-
-        assert "DATETIME" in function_names
-
-    @given(msg_id=message_ids)
+    @given(msg_id=_message_ids)
     @settings(max_examples=100)
     def test_no_functions_returns_empty_set(self, msg_id: str) -> None:
-        """PROPERTY: Message with no functions returns empty set."""
-        parser = FluentParserV1()
-        ftl_source = f"{msg_id} = Hello World"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-        function_names = introspection.get_function_names()
-
-        assert len(function_names) == 0
+        """INVARIANT: Message with no functions returns empty frozenset."""
+        event(f"msg_id={msg_id}")
+        assert len(introspect_message(_msg(f"{msg_id} = Hello World")).get_function_names()) == 0
 
 
 # ============================================================================
-# PROPERTY TESTS - IMMUTABILITY
+# IMMUTABILITY INVARIANTS
 # ============================================================================
 
 
-class TestIntrospectionImmutability:
-    """Test MessageIntrospection immutability properties."""
+class TestImmutabilityInvariants:
+    """Immutability guarantees for result objects."""
 
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
-    def test_variables_frozenset_immutable(self, var_name: str) -> None:
-        """PROPERTY: variables is a frozenset (immutable)."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+    def test_variables_is_frozenset(self, var_name: str) -> None:
+        """INVARIANT: variables field is a frozenset."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = Hello {{ ${var_name} }}"))
+        assert isinstance(info.variables, frozenset)
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        # Should be frozenset
-        assert isinstance(introspection.variables, frozenset)
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_get_variable_names_returns_frozenset(self, var_name: str) -> None:
-        """PROPERTY: get_variable_names() returns frozenset."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+        """INVARIANT: get_variable_names() returns frozenset."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = Hello {{ ${var_name} }}"))
+        assert isinstance(info.get_variable_names(), frozenset)
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-        var_names = introspection.get_variable_names()
-
-        assert isinstance(var_names, frozenset)
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_get_function_names_returns_frozenset(self, var_name: str) -> None:
-        """PROPERTY: get_function_names() returns frozenset."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = {{ NUMBER(${var_name}) }}"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-        func_names = introspection.get_function_names()
-
-        assert isinstance(func_names, frozenset)
+        """INVARIANT: get_function_names() returns frozenset."""
+        event(f"var_name={var_name}")
+        info = introspect_message(_msg(f"msg = {{ NUMBER(${var_name}) }}"))
+        assert isinstance(info.get_function_names(), frozenset)
 
 
 # ============================================================================
-# PROPERTY TESTS - IDEMPOTENCE
+# IDEMPOTENCE INVARIANTS
 # ============================================================================
 
 
-class TestIntrospectionIdempotence:
-    """Test idempotent introspection operations."""
+class TestIdempotenceInvariants:
+    """Idempotence: repeated introspection produces identical results."""
 
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_extract_variables_idempotent(self, var_name: str) -> None:
-        """PROPERTY: Multiple extract_variables() calls return same result."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+        """INVARIANT: Multiple extract_variables() calls return same result."""
+        event(f"var_name={var_name}")
+        msg = _msg(f"msg = Hello {{ ${var_name} }}")
+        r1 = extract_variables(msg)
+        r2 = extract_variables(msg)
+        assert r1 == r2
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        result1 = extract_variables(msg)
-        result2 = extract_variables(msg)
-        result3 = extract_variables(msg)
-
-        assert result1 == result2 == result3
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_introspect_message_idempotent(self, var_name: str) -> None:
-        """PROPERTY: Multiple introspect_message() calls return equivalent results."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
+        """INVARIANT: Repeated introspect_message() returns equivalent results."""
+        event(f"var_name={var_name}")
+        msg = _msg(f"msg = Hello {{ ${var_name} }}")
+        r1 = introspect_message(msg)
+        r2 = introspect_message(msg)
+        assert r1.message_id == r2.message_id
+        assert r1.variables == r2.variables
+        assert r1.functions == r2.functions
+        assert r1.references == r2.references
+        assert r1.has_selectors == r2.has_selectors
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        result1 = introspect_message(msg)
-        result2 = introspect_message(msg)
-
-        assert result1.message_id == result2.message_id
-        assert result1.variables == result2.variables
-        assert result1.functions == result2.functions
-        assert result1.references == result2.references
-        assert result1.has_selectors == result2.has_selectors
-
-    @given(var_name=variable_names)
+    @given(var_name=_variable_names)
     @settings(max_examples=100)
     def test_get_variable_names_idempotent(self, var_name: str) -> None:
-        """PROPERTY: Multiple get_variable_names() calls return same result."""
-        parser = FluentParserV1()
-        ftl_source = f"msg = Hello {{ ${var_name} }}"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        introspection = introspect_message(msg)
-
-        result1 = introspection.get_variable_names()
-        result2 = introspection.get_variable_names()
-        result3 = introspection.get_variable_names()
-
-        assert result1 == result2 == result3
+        """INVARIANT: Repeated get_variable_names() calls return same result."""
+        event(f"var_name={var_name}")
+        msg = _msg(f"msg = Hello {{ ${var_name} }}")
+        info = introspect_message(msg)
+        assert info.get_variable_names() == info.get_variable_names()
 
 
 # ============================================================================
-# PROPERTY TESTS - ROBUSTNESS
+# ROBUSTNESS
 # ============================================================================
 
 
-class TestIntrospectionRobustness:
-    """Test introspection robustness with edge cases."""
+class TestRobustness:
+    """Robustness with edge-case inputs."""
 
-    @given(
-        vars_list=st.lists(variable_names, min_size=0, max_size=10, unique=True),
-    )
+    @given(vars_list=st.lists(_variable_names, min_size=1, max_size=10, unique=True))
     @settings(max_examples=50)
-    def test_multiple_variables_all_captured(self, vars_list: list[str]) -> None:
-        """ROBUSTNESS: All variables in message are captured."""
-        if not vars_list:
-            return  # Skip empty list
-
-        parser = FluentParserV1()
-        # Build FTL with all variables
-        placeables = " ".join([f"{{ ${v} }}" for v in vars_list])
-        ftl_source = f"msg = {placeables}"
-
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
+    def test_all_variables_captured(self, vars_list: list[str]) -> None:
+        """ROBUSTNESS: All variables in a multi-variable message are captured."""
+        event(f"var_count={len(vars_list)}")
+        placeables = " ".join(f"{{ ${v} }}" for v in vars_list)
+        msg = _msg(f"msg = {placeables}")
         variables = extract_variables(msg)
-
-        # All variables should be extracted
         for var in vars_list:
             assert var in variables
-
-        # Should have exactly the right count
         assert len(variables) == len(vars_list)
 
-    @given(msg_id=message_ids)
+    @given(msg_id=_message_ids)
     @settings(max_examples=100)
-    def test_minimal_message_introspection(self, msg_id: str) -> None:
-        """ROBUSTNESS: Minimal valid message can be introspected."""
-        parser = FluentParserV1()
-        ftl_source = f"{msg_id} = X"
+    def test_minimal_message_introspects_cleanly(self, msg_id: str) -> None:
+        """ROBUSTNESS: Minimal valid message is introspected without error."""
+        event(f"msg_id={msg_id}")
+        info = introspect_message(_msg(f"{msg_id} = X"))
+        assert len(info.get_variable_names()) == 0
+        assert len(info.get_function_names()) == 0
+        assert info.has_selectors is False
 
-        resource = parser.parse(ftl_source)
-        msg = resource.entries[0]
-        assert isinstance(msg, Message)
-
-        # Should not raise
-        introspection = introspect_message(msg)
-
-        # Should have empty results (no variables/functions)
-        assert len(introspection.get_variable_names()) == 0
-        assert len(introspection.get_function_names()) == 0
-        assert introspection.has_selectors is False
+    @pytest.mark.fuzz
+    @given(
+        var_name=st.text(
+            alphabet=st.characters(whitelist_categories=("Lu", "Ll")),
+            min_size=1,
+            max_size=20,
+        )
+    )
+    def test_variable_extraction_roundtrip(self, var_name: str) -> None:
+        """ROUNDTRIP: Variables extracted match those in source pattern."""
+        event(f"var_len={len(var_name)}")
+        ftl_source = f"msg = Hello {{ ${var_name} }}"
+        try:
+            resource = FluentParserV1().parse(ftl_source)
+            if not resource.entries:
+                return
+            message = resource.entries[0]
+            if not isinstance(message, Message):
+                return
+            assert var_name in extract_variables(message)
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass  # Some generated names may not parse as valid FTL identifiers

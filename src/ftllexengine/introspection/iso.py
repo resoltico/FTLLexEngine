@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING, TypeIs
+from typing import TypeIs
 
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
@@ -27,9 +27,6 @@ from ftllexengine.constants import (
 )
 from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.locale_utils import normalize_locale
-
-if TYPE_CHECKING:
-    pass
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
@@ -142,7 +139,7 @@ def _get_babel_territories(locale_str: str) -> dict[str, str]:
         try:
             from babel.core import UnknownLocaleError  # noqa: PLC0415
         except ImportError:
-            raise exc from exc  # Babel unavailable; propagate original error
+            raise exc from None  # Babel unavailable; propagate original error
         if isinstance(exc, UnknownLocaleError):
             return {}
         raise  # Re-raise unexpected errors (logic bugs)
@@ -182,7 +179,7 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
         try:
             from babel.core import UnknownLocaleError  # noqa: PLC0415
         except ImportError:
-            raise exc from exc  # Babel unavailable; propagate original error
+            raise exc from None  # Babel unavailable; propagate original error
         if isinstance(exc, UnknownLocaleError):
             return None
         raise  # Re-raise unexpected errors (logic bugs)
@@ -206,7 +203,7 @@ def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
         try:
             from babel.core import UnknownLocaleError  # noqa: PLC0415
         except ImportError:
-            raise exc from exc  # Babel unavailable; propagate original error
+            raise exc from None  # Babel unavailable; propagate original error
         if isinstance(exc, UnknownLocaleError):
             return code
         raise  # Re-raise unexpected errors (logic bugs)

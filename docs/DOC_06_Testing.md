@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.107.0"
+version: "0.113.0"
 domain: TESTING
-updated: "2026-02-06"
+updated: "2026-02-19"
 route:
   keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh, metrics]
   questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?", "how to see strategy metrics?"]
@@ -453,7 +453,7 @@ pytest tests/fuzz/test_bundle_oracle.py
 ### Constraints
 - Logic location: `tests/conftest.py:pytest_collection_modifyitems`.
 - Bypass: Target file explicitly or use `-m fuzz`.
-- Fuzz patterns: `_fuzzing`, `test_concurrent`, `test_resolver_cycles`, and `tests/fuzz/` files.
+- Fuzz patterns: `_fuzzing`, `test_concurrent`, `test_resolver_depth_cycles`, and `tests/fuzz/` files.
 
 ---
 

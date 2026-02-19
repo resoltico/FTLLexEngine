@@ -576,47 +576,25 @@ class TestEdgeCases:
         assert xau is not None
 
     def test_invalid_locale_territory(self) -> None:
-        """get_territory handles invalid locales gracefully."""
-        # Invalid locales should raise or degrade gracefully
-        # Babel may raise various exceptions for malformed locales
-        try:
-            result = get_territory("US", locale="invalid_LOCALE_123")
-            # If it doesn't raise, it should still return a valid result or None
-            assert result is None or isinstance(result, TerritoryInfo)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Various Babel exceptions are acceptable
-            pass
+        """get_territory returns None for invalid locales."""
+        result = get_territory("US", locale="invalid_LOCALE_123")
+        assert result is None
 
     def test_invalid_locale_currency(self) -> None:
-        """get_currency handles invalid locales gracefully."""
-        # Invalid locales should raise or degrade gracefully
-        try:
-            result = get_currency("USD", locale="invalid_LOCALE_123")
-            # If it doesn't raise, it should still return a valid result or None
-            assert result is None or isinstance(result, CurrencyInfo)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Various Babel exceptions are acceptable
-            pass
+        """get_currency returns None for invalid locales."""
+        result = get_currency("USD", locale="invalid_LOCALE_123")
+        assert result is None
 
     def test_malformed_locale_list_territories(self) -> None:
-        """list_territories handles malformed locales."""
-        # Malformed locales should raise or degrade gracefully
-        try:
-            result = list_territories(locale="xxx_YYY")
-            assert isinstance(result, frozenset)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Various Babel exceptions are acceptable
-            pass
+        """list_territories returns empty frozenset for malformed locales."""
+        result = list_territories(locale="xxx_YYY")
+        assert isinstance(result, frozenset)
+        assert len(result) == 0
 
     def test_malformed_locale_list_currencies(self) -> None:
-        """list_currencies handles malformed locales."""
-        # Malformed locales should raise or degrade gracefully
-        try:
-            result = list_currencies(locale="xxx_YYY")
-            assert isinstance(result, frozenset)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Various Babel exceptions are acceptable
-            pass
+        """list_currencies returns frozenset for malformed locales."""
+        result = list_currencies(locale="xxx_YYY")
+        assert isinstance(result, frozenset)
 
     def test_currency_symbol_fallback(self) -> None:
         """get_currency returns code as symbol fallback for unknown/problematic currencies."""
@@ -689,25 +667,15 @@ class TestBabelExceptionHandling:
         assert result_aq == ()
 
     def test_get_currency_with_very_rare_locale(self) -> None:
-        """get_currency degrades gracefully with very rare locales."""
-        # Test with a locale that has minimal CLDR data
-        try:
-            result = get_currency("USD", locale="ii")  # Sichuan Yi
-            # Should either work or return None
-            assert result is None or isinstance(result, CurrencyInfo)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Some locales might trigger Babel errors
-            pass
+        """get_currency handles a locale with minimal CLDR data."""
+        # Sichuan Yi (ii) is a valid but rare locale with limited data
+        result = get_currency("USD", locale="ii")
+        assert result is None or isinstance(result, CurrencyInfo)
 
     def test_get_territory_with_deprecated_locale_format(self) -> None:
-        """get_territory handles deprecated locale formats."""
-        # Test with deprecated/unusual locale format
-        try:
-            result = get_territory("US", locale="en_US_POSIX")
-            assert result is None or isinstance(result, TerritoryInfo)
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Babel may reject this format
-            pass
+        """get_territory handles POSIX locale format variant."""
+        result = get_territory("US", locale="en_US_POSIX")
+        assert result is None or isinstance(result, TerritoryInfo)
 
     def test_babel_import_error_propagation(self) -> None:
         """BabelImportError is raised when Babel is not available."""
@@ -755,15 +723,9 @@ class TestPrivateBabelWrappers:
         assert result2 is None
 
     def test_get_babel_currency_name_with_problematic_locale(self) -> None:
-        """_get_babel_currency_name handles problematic locales."""
-        # Test with a malformed locale that might trigger exceptions
-        try:
-            result = _get_babel_currency_name("USD", "invalid_LOCALE_123")
-            # Should return None for malformed locales
-            assert result is None
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Babel may raise various exceptions
-            pass
+        """_get_babel_currency_name returns None for malformed locales."""
+        result = _get_babel_currency_name("USD", "invalid_LOCALE_123")
+        assert result is None
 
     def test_get_babel_currency_symbol_with_unknown_code(self) -> None:
         """_get_babel_currency_symbol returns code as fallback for unknown codes."""
@@ -773,15 +735,9 @@ class TestPrivateBabelWrappers:
         assert result == "ZZZ" or len(result) > 0
 
     def test_get_babel_currency_symbol_with_problematic_locale(self) -> None:
-        """_get_babel_currency_symbol handles problematic locales."""
-        # Test with malformed locale
-        try:
-            result = _get_babel_currency_symbol("USD", "xxx_YYY_ZZZ")
-            # Should either work or fall back to code
-            assert result == "USD" or len(result) > 0
-        except Exception:  # pylint: disable=broad-exception-caught
-            # Babel may raise various exceptions
-            pass
+        """_get_babel_currency_symbol falls back to currency code for malformed locales."""
+        result = _get_babel_currency_symbol("USD", "xxx_YYY_ZZZ")
+        assert result == "USD"  # Falls back to code
 
     def test_get_babel_territory_currencies_with_invalid_territory(self) -> None:
         """_get_babel_territory_currencies returns empty list for invalid territories."""
@@ -904,7 +860,7 @@ class TestPrivateBabelWrappers:
 
 
 class TestLocaleNormalization:
-    """Tests for locale input normalization (SEC-DOS-UNBOUNDED-ISO-001 fix)."""
+    """Tests for locale input normalization."""
 
     def setup_method(self) -> None:
         """Clear cache before each test."""
@@ -986,7 +942,7 @@ class TestLocaleNormalization:
 
 
 class TestBoundedCache:
-    """Tests for bounded LRU cache (SEC-DOS-UNBOUNDED-ISO-001 fix)."""
+    """Tests for bounded LRU cache."""
 
     def setup_method(self) -> None:
         """Clear cache before each test."""
@@ -1046,7 +1002,7 @@ class TestBoundedCache:
 
 
 class TestExceptionNarrowing:
-    """Tests for narrowed exception handling (ROBUST-ISO-EXCEPTIONS-001 fix)."""
+    """Tests for narrowed exception handling in Babel wrappers."""
 
     def setup_method(self) -> None:
         """Clear cache before each test."""
@@ -1080,23 +1036,21 @@ class TestExceptionNarrowing:
         result2 = get_currency("ZZZ")  # Unknown currency
         assert result2 is None
 
-    def test_name_error_would_propagate(self) -> None:
-        """NameError (logic bug) should NOT be caught - verify via documentation.
+    def test_name_error_propagates(self) -> None:
+        """NameError (programming bug) propagates rather than being suppressed.
 
-        This test verifies the design intent. Actual NameError testing would
-        require injecting bugs into the code, which is not practical.
-        The narrowed exception list excludes NameError, TypeError, MemoryError.
+        The narrowed exception catch list (ValueError, LookupError, KeyError,
+        AttributeError) excludes NameError; it must propagate uncaught.
         """
-        # Read the source to verify exception types
-        import inspect  # noqa: PLC0415
+        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+            msg = "name 'undefined_var' is not defined"
+            raise NameError(msg)
 
-        from ftllexengine.introspection import iso  # noqa: PLC0415
-
-        source = inspect.getsource(iso._get_babel_currency_name)
-
-        # Verify we're catching specific exceptions, not Exception
-        assert "except (ValueError, LookupError, KeyError, AttributeError):" in source
-        assert "except Exception:" not in source
+        with (
+            patch("babel.Locale.parse", side_effect=mock_locale_parse),
+            pytest.raises(NameError),
+        ):
+            _get_babel_currency_name("USD", "en")
 
 
 class TestUnknownLocaleErrorHandling:
@@ -1188,7 +1142,7 @@ class TestUnknownLocaleErrorHandling:
 
 
 class TestClearAllCachesIntegration:
-    """Tests for clear_all_caches integration (MAINT-CACHE-MISSING-001 fix)."""
+    """Tests for clear_all_caches integration with ISO caches."""
 
     def test_clear_all_caches_includes_iso_cache(self) -> None:
         """clear_all_caches should clear ISO introspection caches."""
@@ -1217,7 +1171,7 @@ class TestClearAllCachesIntegration:
 
 
 class TestListCurrenciesConsistency:
-    """Tests for list_currencies() consistency across locales (v0.89.0 fix)."""
+    """Tests for list_currencies() consistency across locales."""
 
     def setup_method(self) -> None:
         """Clear cache before each test."""
@@ -1226,8 +1180,8 @@ class TestListCurrenciesConsistency:
     def test_same_currency_count_across_locales(self) -> None:
         """list_currencies returns same number of currencies for all locales.
 
-        Prior to v0.89.0, currencies without localized names in a target locale
-        were excluded from results. This caused inconsistent result sets.
+        Currencies without localized names fall back to English names rather
+        than being excluded, ensuring consistent result sets across locales.
         """
         result_en = list_currencies(locale="en")
         result_de = list_currencies(locale="de")
@@ -1242,9 +1196,9 @@ class TestListCurrenciesConsistency:
         )
 
     def test_same_currency_codes_across_locales(self) -> None:
-        """list_currencies returns same currency codes for all locales.
+        """list_currencies returns same currency codes regardless of locale.
 
-        The code set should be identical; only names/symbols may differ.
+        The code set is identical across locales; only names/symbols differ.
         """
         codes_en = {c.code for c in list_currencies(locale="en")}
         codes_de = {c.code for c in list_currencies(locale="de")}
@@ -1270,7 +1224,7 @@ class TestListCurrenciesConsistency:
 
 
 class TestTerritoryCacheSize:
-    """Tests for territory cache using MAX_TERRITORY_CACHE_SIZE (v0.89.0 fix)."""
+    """Tests for territory cache bounded by MAX_TERRITORY_CACHE_SIZE."""
 
     def setup_method(self) -> None:
         """Clear cache before each test."""

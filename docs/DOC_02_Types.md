@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.108.0"
+version: "0.113.0"
 domain: TYPES
-updated: "2026-02-15"
+updated: "2026-02-19"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -754,6 +754,69 @@ def extract_variables(message: Message | Term) -> frozenset[str]:
 - State: Delegates to introspect_message (uses cache).
 - Thread: Safe.
 - Import: `from ftllexengine.introspection import extract_variables`
+
+---
+
+## `extract_references`
+
+Function that extracts message and term references from a Message or Term.
+
+### Signature
+```python
+def extract_references(entry: Message | Term) -> tuple[frozenset[str], frozenset[str]]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `entry` | `Message \| Term` | Y | AST node to analyze. |
+
+### Constraints
+- Return: `(message_refs, term_refs)` — two frozen sets. `message_refs` may be attribute-qualified (e.g., `"msg.tooltip"`). `term_refs` are bare IDs (e.g., `"brand"`).
+- Raises: Never.
+- State: No cache. Traverses the AST on every call.
+- Thread: Safe (no shared mutable state).
+- Import: `from ftllexengine.introspection import extract_references`
+
+```python
+resource = parse_ftl("msg = { welcome } uses { -brand }")
+msg_refs, term_refs = extract_references(resource.entries[0])
+# msg_refs == frozenset({"welcome"})
+# term_refs == frozenset({"brand"})
+```
+
+---
+
+## `extract_references_by_attribute`
+
+Function that extracts references per source attribute for attribute-granular analysis.
+
+### Signature
+```python
+def extract_references_by_attribute(
+    entry: Message | Term,
+) -> dict[str | None, tuple[frozenset[str], frozenset[str]]]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `entry` | `Message \| Term` | Y | AST node to analyze. |
+
+### Constraints
+- Return: `{key: (message_refs, term_refs)}`. Key is `None` for the value pattern, or the attribute name string (e.g., `"tooltip"`).
+- Raises: Never.
+- State: No cache. Traverses the AST on every call.
+- Thread: Safe.
+- Use case: Attribute-granular dependency cycle detection. Finer-grained than `extract_references`.
+- Import: `from ftllexengine.introspection import extract_references_by_attribute`
+
+```python
+resource = parse_ftl("btn = Click\n    .label = { -brand } button")
+refs = extract_references_by_attribute(resource.entries[0])
+# refs[None] == (frozenset(), frozenset())          # value pattern
+# refs["label"] == (frozenset(), frozenset({"brand"}))  # attribute
+```
 
 ---
 

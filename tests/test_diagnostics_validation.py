@@ -16,7 +16,6 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
@@ -39,9 +38,6 @@ from tests.strategies.diagnostics import (
 from tests.strategies.diagnostics import (
     validation_warnings as validation_warning_strategy,
 )
-
-pytestmark = pytest.mark.fuzz
-
 
 # ============================================================================
 # PROPERTY TESTS: ValidationError

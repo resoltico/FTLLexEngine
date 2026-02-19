@@ -10,7 +10,6 @@ Critical areas tested:
 
 from __future__ import annotations
 
-import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
@@ -21,8 +20,6 @@ from ftllexengine.diagnostics import (
     FrozenFluentError,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode, SourceSpan
-
-pytestmark = pytest.mark.fuzz
 
 # ============================================================================
 # HYPOTHESIS STRATEGIES

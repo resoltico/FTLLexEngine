@@ -8,6 +8,7 @@ across multiple test modules. Strategies are organized by domain:
 - iso: Territory codes, currency codes, and locale strategies
 - diagnostics: Diagnostic codes, errors, validation, and formatter strategies
 - currency: Currency parsing strategies (amounts, symbols, ISO codes)
+- validation: FTL validation scenario and SemanticValidator strategies
 
 Usage:
     from tests.strategies import ftl_identifiers, territory_codes
@@ -16,6 +17,7 @@ Usage:
     from tests.strategies.ftl import ftl_message_nodes, ftl_patterns
     from tests.strategies.diagnostics import diagnostics, source_spans
     from tests.strategies.currency import currency_amounts, ambiguous_currency_inputs
+    from tests.strategies.validation import validation_resource_sources
 
 Event-Emitting Strategies (HypoFuzz-Optimized):
     These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
@@ -29,8 +31,9 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - iso_code_currency_inputs, invalid_currency_inputs
     - source_spans, frozen_error_contexts, diagnostics, diagnostic_codes
     - error_categories, validation_errors, validation_warnings
-    - validation_results, diagnostic_formatters
+    - validation_results, diagnostic_formatters, frozen_fluent_errors
     - dependency_graphs, cycle_paths, namespace_ref_pairs
+    - validation_resource_sources, semantic_validation_resources
 """
 
 # Currency parsing strategies
@@ -50,6 +53,7 @@ from .diagnostics import (
     diagnostics,
     error_categories,
     frozen_error_contexts,
+    frozen_fluent_errors,
     source_spans,
     validation_errors,
     validation_results,
@@ -204,6 +208,12 @@ from .localization import (
     resource_loaders,
 )
 
+# Validation domain strategies
+from .validation import (
+    semantic_validation_resources,
+    validation_resource_sources,
+)
+
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
     # FTL Constants
@@ -350,6 +360,7 @@ __all__ = [
     "validation_warnings",
     "validation_results",
     "diagnostic_formatters",
+    "frozen_fluent_errors",
     # Currency parsing strategies
     "currency_amounts",
     "unambiguous_currency_inputs",
@@ -373,4 +384,7 @@ __all__ = [
     "dependency_graphs",
     "cycle_paths",
     "namespace_ref_pairs",
+    # Validation domain strategies
+    "validation_resource_sources",
+    "semantic_validation_resources",
 ]

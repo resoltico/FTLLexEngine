@@ -3,7 +3,7 @@
 Provides reusable, event-emitting strategies for generating diagnostic
 data structures: SourceSpan, FrozenErrorContext, Diagnostic, ErrorCategory,
 DiagnosticCode, ValidationError, ValidationWarning, ValidationResult,
-and DiagnosticFormatter.
+DiagnosticFormatter, and FrozenFluentError.
 
 Event-Emitting Strategies (HypoFuzz-Optimized):
     These strategies emit hypothesis.event() calls for coverage-guided fuzzing:
@@ -18,6 +18,7 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - diag_vresult_valid: ValidationResult validity
     - diag_fmt_format: DiagnosticFormatter output format (rust|simple|json)
     - diag_fmt_sanitize: DiagnosticFormatter sanitize mode (off|truncate|redact)
+    - diag_frozen_error_variant: FrozenFluentError variant (plain|with_diag|with_ctx|full)
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from ftllexengine.diagnostics.codes import (
     FrozenErrorContext,
     SourceSpan,
 )
+from ftllexengine.diagnostics.errors import FrozenFluentError
 from ftllexengine.diagnostics.formatter import (
     DiagnosticFormatter,
     OutputFormat,
@@ -373,3 +375,38 @@ def diagnostic_formatters(
         color=color,
         max_content_length=max_len,
     )
+
+
+@st.composite
+def frozen_fluent_errors(
+    draw: st.DrawFn,
+) -> FrozenFluentError:
+    """Generate FrozenFluentError instances with varied constructor combinations.
+
+    Bucket-first: draws variant category then generates matching arguments,
+    ensuring uniform distribution across all constructor parameter combinations.
+
+    Events emitted:
+    - diag_frozen_error_variant={plain|with_diag|with_ctx|full}: Constructor variant
+    """
+    message = draw(st.text(min_size=1, max_size=200))
+    category = draw(error_categories())
+    variant = draw(
+        st.sampled_from(["plain", "with_diag", "with_ctx", "full"])
+    )
+    event(f"diag_frozen_error_variant={variant}")
+    match variant:
+        case "plain":
+            return FrozenFluentError(message, category)
+        case "with_diag":
+            diag = draw(diagnostics())
+            return FrozenFluentError(message, category, diagnostic=diag)
+        case "with_ctx":
+            ctx = draw(frozen_error_contexts())
+            return FrozenFluentError(message, category, context=ctx)
+        case _:  # full
+            diag = draw(diagnostics())
+            ctx = draw(frozen_error_contexts())
+            return FrozenFluentError(
+                message, category, diagnostic=diag, context=ctx
+            )

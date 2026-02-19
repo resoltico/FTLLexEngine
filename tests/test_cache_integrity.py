@@ -1,10 +1,16 @@
-"""Tests for IntegrityCache checksum verification, write-once, and audit logging.
+"""Tests for IntegrityCache checksum verification, write-once, audit logging,
+error content hash handling, error weight estimation, and property getters.
 
 Financial-grade integrity verification tests:
 - BLAKE2b-128 checksum computation and verification
 - Corruption detection (strict/non-strict modes)
 - Write-once semantics (strict/non-strict modes)
 - Audit logging operations
+- error.content_hash usage in checksum computation
+- Fallback hashing for non-standard error objects
+- _estimate_error_weight with context, diagnostic, and resolution path
+- IntegrityCacheEntry.verify() defense-in-depth against corrupted errors
+- Property getters (corruption_detected, write_once, strict)
 """
 
 from __future__ import annotations
@@ -18,9 +24,20 @@ import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.diagnostics import (
+    Diagnostic,
+    DiagnosticCode,
+    ErrorCategory,
+    FrozenErrorContext,
+    FrozenFluentError,
+)
 from ftllexengine.integrity import CacheCorruptionError, WriteConflictError
-from ftllexengine.runtime.cache import IntegrityCache, IntegrityCacheEntry, WriteLogEntry
+from ftllexengine.runtime.cache import (
+    IntegrityCache,
+    IntegrityCacheEntry,
+    WriteLogEntry,
+    _estimate_error_weight,
+)
 
 # ============================================================================
 # CHECKSUM VERIFICATION TESTS
@@ -962,3 +979,696 @@ class TestSequenceMappingABCSupport:
         result = IntegrityCache._make_hashable((1, 2))
         assert isinstance(result, tuple)
         assert result[0] == "__tuple__"
+
+
+# ============================================================================
+# ENTRY CONTENT HASH AND CHECKSUM COMPUTATION
+# ============================================================================
+
+
+class TestIntegrityCacheEntryContentHash:
+    """Test IntegrityCacheEntry checksum computation with error.content_hash."""
+
+    def test_compute_checksum_uses_error_content_hash(self) -> None:
+        """_compute_checksum uses error.content_hash when available."""
+        error = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
+        entry = IntegrityCacheEntry.create("formatted text", (error,), sequence=1)
+        assert entry.checksum is not None
+        assert len(entry.checksum) == 16  # BLAKE2b-128
+        assert entry.verify() is True
+
+    def test_compute_checksum_without_content_hash(self) -> None:
+        """_compute_checksum handles errors without content_hash via str() fallback."""
+
+        class CustomError(Exception):
+            def __init__(self, message: str) -> None:
+                super().__init__(message)
+                self.message = message
+
+            def __str__(self) -> str:
+                return self.message
+
+        custom_error = CustomError("Custom error message")
+        entry = IntegrityCacheEntry.create(
+            "formatted text", (custom_error,), sequence=1  # type: ignore[arg-type]
+        )
+        assert entry.checksum is not None
+        assert len(entry.checksum) == 16
+        assert entry.verify() is True
+
+    def test_compute_checksum_with_multiple_errors_content_hash(self) -> None:
+        """_compute_checksum uses content_hash for multiple errors."""
+        errors = (
+            FrozenFluentError("Error 1", ErrorCategory.REFERENCE),
+            FrozenFluentError("Error 2", ErrorCategory.RESOLUTION),
+            FrozenFluentError("Error 3", ErrorCategory.CYCLIC),
+        )
+        entry = IntegrityCacheEntry.create("formatted text", errors, sequence=1)
+        assert entry.checksum is not None
+        assert entry.verify() is True
+
+    @given(st.integers(min_value=1, max_value=10))
+    @settings(max_examples=50)
+    def test_property_checksum_deterministic_with_errors(self, error_count: int) -> None:
+        """PROPERTY: Checksum is deterministic; each entry validates against itself.
+
+        Checksums include metadata (created_at, sequence) for complete audit trail
+        integrity, so two independently created entries with the same content will
+        have different checksums. Each entry does self-validate correctly.
+        """
+        errors = tuple(
+            FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
+            for i in range(error_count)
+        )
+        entry = IntegrityCacheEntry.create("formatted", errors, sequence=1)
+        assert entry.verify() is True
+        entry2 = IntegrityCacheEntry.create("formatted", errors, sequence=1)
+        assert entry2.verify() is True
+        event(f"error_count={error_count}")
+
+    def test_cache_put_get_with_frozen_errors(self) -> None:
+        """Cache operations work correctly with FrozenFluentError.content_hash."""
+        cache = IntegrityCache(strict=False)
+        errors = (
+            FrozenFluentError("Reference error", ErrorCategory.REFERENCE),
+            FrozenFluentError("Resolution error", ErrorCategory.RESOLUTION),
+        )
+        cache.put("msg", None, None, "en", True, "formatted text", errors)
+        entry = cache.get("msg", None, None, "en", True)
+        assert entry is not None
+        assert entry.formatted == "formatted text"
+        assert entry.errors == errors
+        assert entry.verify() is True
+
+
+# ============================================================================
+# AUDIT LOG PUBLIC API (get_audit_log)
+# ============================================================================
+
+
+class TestIntegrityCacheAuditLogDisabled:
+    """Test get_audit_log() returns empty tuple when audit logging is disabled."""
+
+    def test_get_audit_log_returns_empty_when_disabled_by_default(self) -> None:
+        """get_audit_log() returns empty tuple when audit disabled (default)."""
+        cache = IntegrityCache(strict=False)
+        cache.put("msg1", None, None, "en", True, "result1", ())
+        cache.get("msg1", None, None, "en", True)
+        cache.put("msg2", None, None, "en", True, "result2", ())
+        audit_log = cache.get_audit_log()
+        assert audit_log == ()
+        assert isinstance(audit_log, tuple)
+
+    def test_get_audit_log_returns_empty_when_disabled_explicit(self) -> None:
+        """get_audit_log() returns empty tuple when enable_audit=False explicitly."""
+        cache = IntegrityCache(enable_audit=False, strict=False)
+        cache.put("msg", None, None, "en", True, "result", ())
+        cache.get("msg", None, None, "en", True)
+        assert cache.get_audit_log() == ()
+
+    @given(
+        st.integers(min_value=1, max_value=20),
+        st.integers(min_value=1, max_value=10),
+    )
+    @settings(max_examples=30)
+    def test_property_audit_log_always_empty_when_disabled(
+        self, put_count: int, get_count: int
+    ) -> None:
+        """PROPERTY: get_audit_log() always returns empty tuple when disabled."""
+        cache = IntegrityCache(enable_audit=False, strict=False)
+        for i in range(put_count):
+            cache.put(f"msg{i}", None, None, "en", True, f"result{i}", ())
+        for i in range(get_count):
+            cache.get(f"msg{i % put_count}", None, None, "en", True)
+        audit_log = cache.get_audit_log()
+        assert audit_log == ()
+        assert len(audit_log) == 0
+        event(f"put_count={put_count}")
+
+
+class TestIntegrityCacheAuditLogEnabled:
+    """Test get_audit_log() returns tuple of entries when audit logging is enabled."""
+
+    def test_get_audit_log_returns_tuple_when_enabled(self) -> None:
+        """get_audit_log() returns tuple with entries when enable_audit=True."""
+        cache = IntegrityCache(enable_audit=True, strict=False)
+        cache.put("msg1", None, None, "en", True, "result1", ())
+        cache.get("msg1", None, None, "en", True)
+        cache.get("msg2", None, None, "en", True)  # Miss
+        audit_log = cache.get_audit_log()
+        assert isinstance(audit_log, tuple)
+        assert len(audit_log) >= 3  # PUT + HIT + MISS
+
+    @given(st.integers(min_value=1, max_value=10))
+    @settings(max_examples=20)
+    def test_property_audit_log_returns_tuple_when_enabled(self, op_count: int) -> None:
+        """PROPERTY: get_audit_log() returns tuple of at least op_count entries."""
+        cache = IntegrityCache(enable_audit=True, strict=False)
+        for i in range(op_count):
+            cache.put(f"msg{i}", None, None, "en", True, f"result{i}", ())
+        audit_log = cache.get_audit_log()
+        assert isinstance(audit_log, tuple)
+        assert len(audit_log) >= op_count
+        event(f"op_count={op_count}")
+
+
+# ============================================================================
+# PROPERTY GETTERS (corruption_detected, write_once, strict)
+# ============================================================================
+
+
+class TestIntegrityCachePropertyGetters:
+    """Test property getters for complete coverage."""
+
+    def test_corruption_detected_property(self) -> None:
+        """corruption_detected property reflects detected corruption count."""
+        cache = IntegrityCache(strict=False)
+        assert cache.corruption_detected == 0
+
+        cache.put("msg", None, None, "en", True, "Hello", ())
+        key = next(iter(cache._cache.keys()))
+        original_entry = cache._cache[key]
+        corrupted = IntegrityCacheEntry(
+            formatted="Corrupted!",
+            errors=original_entry.errors,
+            checksum=original_entry.checksum,
+            created_at=original_entry.created_at,
+            sequence=original_entry.sequence,
+        )
+        cache._cache[key] = corrupted
+        cache.get("msg", None, None, "en", True)
+        assert cache.corruption_detected == 1
+
+    def test_write_once_property(self) -> None:
+        """write_once property reflects constructor argument."""
+        assert IntegrityCache(write_once=False, strict=False).write_once is False
+        assert IntegrityCache(write_once=True, strict=False).write_once is True
+
+    def test_strict_property(self) -> None:
+        """strict property reflects constructor argument."""
+        assert IntegrityCache(strict=False).strict is False
+        assert IntegrityCache(strict=True).strict is True
+
+    @given(st.booleans(), st.booleans())
+    @settings(max_examples=4)
+    def test_property_write_once_strict_reflect_constructor(
+        self, write_once: bool, strict: bool
+    ) -> None:
+        """PROPERTY: write_once and strict properties reflect constructor args."""
+        cache = IntegrityCache(write_once=write_once, strict=strict)
+        assert cache.write_once == write_once
+        assert cache.strict == strict
+        wo = "write_once" if write_once else "normal"
+        event(f"mode={wo}")
+
+    def test_corruption_detected_accumulates_across_multiple(self) -> None:
+        """corruption_detected accumulates across multiple corruption events."""
+        cache = IntegrityCache(strict=False)
+        cache.put("msg1", None, None, "en", True, "One", ())
+        cache.put("msg2", None, None, "en", True, "Two", ())
+        cache.put("msg3", None, None, "en", True, "Three", ())
+        for key in list(cache._cache.keys()):
+            entry = cache._cache[key]
+            cache._cache[key] = IntegrityCacheEntry(
+                formatted="Corrupted",
+                errors=entry.errors,
+                checksum=entry.checksum,
+                created_at=entry.created_at,
+                sequence=entry.sequence,
+            )
+        cache.get("msg1", None, None, "en", True)
+        assert cache.corruption_detected == 1
+        cache.get("msg2", None, None, "en", True)
+        assert cache.corruption_detected == 2
+        cache.get("msg3", None, None, "en", True)
+        assert cache.corruption_detected == 3
+
+
+class TestIntegrityCacheEdgeCases:
+    """Additional edge cases for complete coverage."""
+
+    def test_entry_with_empty_errors_differs_from_entry_with_error(self) -> None:
+        """Entries with empty vs non-empty errors tuples have distinct checksums."""
+        error = FrozenFluentError("Test", ErrorCategory.REFERENCE)
+        entry1 = IntegrityCacheEntry.create("text", (), sequence=1)
+        entry2 = IntegrityCacheEntry.create("text", (error,), sequence=2)
+        assert entry1.checksum != entry2.checksum
+
+    def test_cache_stats_includes_all_integrity_fields(self) -> None:
+        """get_stats() includes corruption_detected, write_once, strict, audit_enabled."""
+        cache = IntegrityCache(write_once=True, strict=True, enable_audit=False)
+        stats = cache.get_stats()
+        assert "corruption_detected" in stats
+        assert "write_once" in stats
+        assert "strict" in stats
+        assert "audit_enabled" in stats
+        assert stats["corruption_detected"] == 0
+        assert stats["write_once"] is True
+        assert stats["strict"] is True
+        assert stats["audit_enabled"] is False
+
+    def test_multiple_operations_exercise_all_properties(self) -> None:
+        """Exercise all properties through multiple cache operations."""
+        cache = IntegrityCache(
+            maxsize=10, write_once=False, strict=False, enable_audit=False
+        )
+        for i in range(5):
+            cache.put(f"msg{i}", None, None, "en", True, f"result{i}", ())
+        assert cache.size == 5
+        assert cache.maxsize == 10
+        assert cache.hits == 0
+        assert cache.misses == 0
+        assert cache.corruption_detected == 0
+        assert cache.write_once is False
+        assert cache.strict is False
+        for i in range(5):
+            entry = cache.get(f"msg{i}", None, None, "en", True)
+            assert entry is not None
+        assert cache.hits == 5
+        assert cache.get_audit_log() == ()
+
+
+# ============================================================================
+# NON-STANDARD ERROR OBJECT FALLBACK (content_hash attribute variants)
+# ============================================================================
+
+
+class _ErrorWithoutContentHash:
+    """Mock error object without content_hash attribute."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.diagnostic = None
+        self.context = None
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class _ErrorWithNonBytesContentHash:
+    """Mock error object with content_hash attribute that is not bytes."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.content_hash = "not-bytes-string"
+        self.diagnostic = None
+        self.context = None
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class _ErrorWithNoneContentHash:
+    """Mock error object with content_hash=None."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        self.content_hash = None
+        self.diagnostic = None
+        self.context = None
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class TestErrorContentHashFallback:
+    """Test fallback path for errors without proper content_hash bytes attribute.
+
+    _compute_checksum and _compute_content_hash fall back to str(error).encode()
+    when error.content_hash is missing, None, or not bytes.
+    """
+
+    def test_entry_create_with_error_without_content_hash(self) -> None:
+        """IntegrityCacheEntry.create() handles errors without content_hash attribute."""
+        error = _ErrorWithoutContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        assert entry.formatted == "formatted"
+        assert entry.errors == (error,)  # type: ignore[comparison-overlap]
+        assert len(entry.checksum) == 16
+
+    def test_entry_create_with_non_bytes_content_hash(self) -> None:
+        """IntegrityCacheEntry.create() handles non-bytes content_hash via fallback."""
+        error = _ErrorWithNonBytesContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        assert entry.formatted == "formatted"
+        assert len(entry.checksum) == 16
+
+    def test_entry_create_with_none_content_hash(self) -> None:
+        """IntegrityCacheEntry.create() handles content_hash=None via fallback."""
+        error = _ErrorWithNoneContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        assert entry.formatted == "formatted"
+        assert len(entry.checksum) == 16
+
+    def test_content_hash_property_without_content_hash_attr(self) -> None:
+        """content_hash property handles errors without content_hash attribute."""
+        error = _ErrorWithoutContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        content_hash = entry.content_hash
+        assert content_hash is not None
+        assert len(content_hash) == 16
+
+    def test_content_hash_property_with_non_bytes_content_hash(self) -> None:
+        """content_hash property handles non-bytes content_hash via fallback."""
+        error = _ErrorWithNonBytesContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        content_hash = entry.content_hash
+        assert content_hash is not None
+        assert len(content_hash) == 16
+
+    def test_content_hash_property_with_none_content_hash(self) -> None:
+        """content_hash property handles content_hash=None via fallback."""
+        error = _ErrorWithNoneContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        content_hash = entry.content_hash
+        assert content_hash is not None
+        assert len(content_hash) == 16
+
+    def test_cache_roundtrip_with_error_without_content_hash(self) -> None:
+        """Cache roundtrip works with errors lacking content_hash."""
+        cache = IntegrityCache(strict=False)
+        error = _ErrorWithoutContentHash("Test error")
+        cache.put("msg", None, None, "en", True, "formatted", (error,))  # type: ignore[arg-type]
+        entry = cache.get("msg", None, None, "en", True)
+        assert entry is not None
+        assert entry.formatted == "formatted"
+        assert entry.verify()
+
+    def test_different_error_strings_produce_different_checksums(self) -> None:
+        """Errors without content_hash produce different checksums when str() differs."""
+        error1 = _ErrorWithoutContentHash("Error 1")
+        error2 = _ErrorWithoutContentHash("Error 2")
+        entry1 = IntegrityCacheEntry.create(
+            "formatted", (error1,), sequence=1  # type: ignore[arg-type]
+        )
+        entry2 = IntegrityCacheEntry.create(
+            "formatted", (error2,), sequence=1  # type: ignore[arg-type]
+        )
+        assert entry1.checksum != entry2.checksum
+        assert entry1.content_hash != entry2.content_hash
+
+    def test_same_error_string_produces_same_content_hash(self) -> None:
+        """Errors with same str() produce same content_hash despite different sequences."""
+        error1 = _ErrorWithoutContentHash("Same message")
+        error2 = _ErrorWithoutContentHash("Same message")
+        entry1 = IntegrityCacheEntry.create(
+            "formatted", (error1,), sequence=1  # type: ignore[arg-type]
+        )
+        entry2 = IntegrityCacheEntry.create(
+            "formatted", (error2,), sequence=2  # type: ignore[arg-type]
+        )
+        assert entry1.content_hash == entry2.content_hash
+        assert entry1.checksum != entry2.checksum  # Sequences differ
+
+    def test_verify_skips_errors_without_verify_integrity_method(self) -> None:
+        """verify() skips recursive verification for errors without verify_integrity."""
+        error = _ErrorWithoutContentHash("Test error")
+        entry = IntegrityCacheEntry.create(
+            "formatted", (error,), sequence=1  # type: ignore[arg-type]
+        )
+        assert entry.verify() is True
+
+    def test_mixed_error_types_all_handled(self) -> None:
+        """Mix of standard and non-standard errors all handled correctly."""
+        standard_error = FrozenFluentError("Standard", ErrorCategory.REFERENCE)
+        no_hash_error = _ErrorWithoutContentHash("No hash")
+        wrong_type_error = _ErrorWithNonBytesContentHash("Wrong type")
+        errors = (standard_error, no_hash_error, wrong_type_error)
+        entry = IntegrityCacheEntry.create(
+            "formatted", errors, sequence=1  # type: ignore[arg-type]
+        )
+        assert entry.formatted == "formatted"
+        assert len(entry.checksum) == 16
+        assert len(entry.content_hash) == 16
+        assert entry.verify() is True
+
+
+# ============================================================================
+# ERROR WEIGHT ESTIMATION
+# ============================================================================
+
+
+class TestEstimateErrorWeightWithContext:
+    """Test _estimate_error_weight with errors containing FrozenErrorContext.
+
+    Covers the branch where error.context fields are processed.
+    """
+
+    def test_error_weight_with_context(self) -> None:
+        """Error with context includes all context field lengths in weight."""
+        context = FrozenErrorContext(
+            input_value="test_input_value",
+            locale_code="en_US",
+            parse_type="number",
+            fallback_value="{!NUMBER}",
+        )
+        error = FrozenFluentError(
+            "Parse error", ErrorCategory.FORMATTING, context=context
+        )
+        weight = _estimate_error_weight(error)
+        expected_weight = (
+            100  # _ERROR_BASE_OVERHEAD
+            + len("Parse error")
+            + len("test_input_value")
+            + len("en_US")
+            + len("number")
+            + len("{!NUMBER}")
+        )
+        assert weight == expected_weight
+
+    def test_error_weight_without_context(self) -> None:
+        """Error without context only includes base overhead plus message length."""
+        error = FrozenFluentError("Simple error", ErrorCategory.REFERENCE)
+        weight = _estimate_error_weight(error)
+        assert weight == 100 + len("Simple error")
+
+    @given(
+        input_val=st.text(min_size=0, max_size=100),
+        locale=st.text(min_size=0, max_size=20),
+        parse_type=st.text(min_size=0, max_size=30),
+        fallback=st.text(min_size=0, max_size=50),
+    )
+    @settings(max_examples=50)
+    def test_property_error_weight_accounts_for_all_context_fields(
+        self, input_val: str, locale: str, parse_type: str, fallback: str
+    ) -> None:
+        """PROPERTY: Error weight correctly accounts for all context field lengths."""
+        context = FrozenErrorContext(
+            input_value=input_val,
+            locale_code=locale,
+            parse_type=parse_type,
+            fallback_value=fallback,
+        )
+        error = FrozenFluentError("Test", ErrorCategory.FORMATTING, context=context)
+        weight = _estimate_error_weight(error)
+        expected = (
+            100
+            + len("Test")
+            + len(input_val)
+            + len(locale)
+            + len(parse_type)
+            + len(fallback)
+        )
+        assert weight == expected
+        event(f"context_len={len(input_val) + len(locale)}")
+
+
+class TestEstimateErrorWeightDiagnosticBranches:
+    """Test _estimate_error_weight with diagnostic fields including resolution_path."""
+
+    def test_error_weight_diagnostic_without_resolution_path(self) -> None:
+        """Error with diagnostic but no resolution_path skips path length processing."""
+        diagnostic = Diagnostic(
+            code=DiagnosticCode.MESSAGE_NOT_FOUND,
+            message="Reference error",
+        )
+        error = FrozenFluentError(
+            "Message not found", ErrorCategory.REFERENCE, diagnostic=diagnostic
+        )
+        weight = _estimate_error_weight(error)
+        expected = 100 + len("Message not found") + len("Reference error")
+        assert weight == expected
+
+    def test_error_weight_diagnostic_with_resolution_path(self) -> None:
+        """Error with diagnostic and resolution_path includes path element lengths."""
+        diagnostic = Diagnostic(
+            code=DiagnosticCode.CYCLIC_REFERENCE,
+            message="Reference error",
+            resolution_path=("message1", "term1", "message2"),
+        )
+        error = FrozenFluentError(
+            "Circular reference", ErrorCategory.CYCLIC, diagnostic=diagnostic
+        )
+        weight = _estimate_error_weight(error)
+        expected = (
+            100
+            + len("Circular reference")
+            + len("Reference error")
+            + len("message1")
+            + len("term1")
+            + len("message2")
+        )
+        assert weight == expected
+
+    def test_error_weight_diagnostic_with_all_optional_fields(self) -> None:
+        """Error with diagnostic containing all optional fields includes them in weight."""
+        diagnostic = Diagnostic(
+            code=DiagnosticCode.INVALID_ARGUMENT,
+            message="Invalid argument",
+            hint="Use NUMBER() function",
+            help_url="https://example.com/help",
+            function_name="CURRENCY",
+            argument_name="minimumFractionDigits",
+            expected_type="int",
+            received_type="str",
+            ftl_location="message.ftl:42",
+        )
+        error = FrozenFluentError(
+            "Function call error", ErrorCategory.FORMATTING, diagnostic=diagnostic
+        )
+        weight = _estimate_error_weight(error)
+        expected = (
+            100
+            + len("Function call error")
+            + len("Invalid argument")
+            + len("Use NUMBER() function")
+            + len("https://example.com/help")
+            + len("CURRENCY")
+            + len("minimumFractionDigits")
+            + len("int")
+            + len("str")
+            + len("message.ftl:42")
+        )
+        assert weight == expected
+
+
+class TestCacheEntryVerifyWithCorruptedError:
+    """Test IntegrityCacheEntry.verify() when error.verify_integrity() returns False.
+
+    Exercises the defense-in-depth check where entry verification recurses into
+    each contained error's own verify_integrity() method.
+    """
+
+    def test_verify_returns_false_when_error_message_corrupted(self) -> None:
+        """IntegrityCacheEntry.verify() returns False when error is memory-corrupted.
+
+        Simulates memory corruption: error._message is changed without updating
+        the stored _content_hash, causing verify_integrity() to return False.
+        """
+        error = FrozenFluentError("Test error 2", ErrorCategory.REFERENCE)
+        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1)
+        object.__setattr__(error, "_frozen", False)
+        object.__setattr__(error, "_message", "corrupted message")
+        object.__setattr__(error, "_frozen", True)
+        assert error.verify_integrity() is False
+        assert entry.verify() is False
+
+    def test_verify_detects_corruption_defense_in_depth(self) -> None:
+        """IntegrityCacheEntry.verify() provides defense-in-depth error verification."""
+        error = FrozenFluentError("Original message", ErrorCategory.REFERENCE)
+        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1)
+        assert entry.verify() is True
+        object.__setattr__(error, "_frozen", False)
+        object.__setattr__(error, "_message", "Corrupted by memory error")
+        object.__setattr__(error, "_frozen", True)
+        assert error.verify_integrity() is False
+        assert entry.verify() is False
+
+    def test_verify_returns_true_when_all_errors_valid(self) -> None:
+        """IntegrityCacheEntry.verify() returns True when all errors pass integrity."""
+        errors = (
+            FrozenFluentError("Error 1", ErrorCategory.REFERENCE),
+            FrozenFluentError("Error 2", ErrorCategory.FORMATTING),
+            FrozenFluentError("Error 3", ErrorCategory.CYCLIC),
+        )
+        entry = IntegrityCacheEntry.create("Result", errors, sequence=1)
+        assert entry.verify() is True
+
+    def test_verify_returns_false_if_any_error_corrupted(self) -> None:
+        """IntegrityCacheEntry.verify() returns False if any single error is corrupted."""
+        error1 = FrozenFluentError("Error 1", ErrorCategory.REFERENCE)
+        error2 = FrozenFluentError("Error 2", ErrorCategory.FORMATTING)
+        error3 = FrozenFluentError("Error 3", ErrorCategory.CYCLIC)
+        entry = IntegrityCacheEntry.create("Result", (error1, error2, error3), sequence=1)
+        object.__setattr__(error2, "_frozen", False)
+        object.__setattr__(error2, "_content_hash", b"bad_hash_xxxxxxx")
+        object.__setattr__(error2, "_frozen", True)
+        assert entry.verify() is False
+
+
+class TestErrorWeightAndVerifyIntegration:
+    """Integration tests combining error weight estimation and verification."""
+
+    def test_large_error_with_context_and_diagnostic(self) -> None:
+        """Error with both context and diagnostic computes correct weight."""
+        context = FrozenErrorContext(
+            input_value="very long input value that would increase weight significantly",
+            locale_code="en_US",
+            parse_type="currency",
+            fallback_value="{!CURRENCY}",
+        )
+        diagnostic = Diagnostic(
+            code=DiagnosticCode.PARSE_NUMBER_FAILED,
+            message="Failed to parse number",
+            hint="Check number format",
+            resolution_path=("step1", "step2", "step3"),
+        )
+        error = FrozenFluentError(
+            "Complex error message",
+            ErrorCategory.FORMATTING,
+            diagnostic=diagnostic,
+            context=context,
+        )
+        weight = _estimate_error_weight(error)
+        expected = (
+            100
+            + len("Complex error message")
+            + len("Failed to parse number")
+            + len("Check number format")
+            + len("step1") + len("step2") + len("step3")
+            + len("very long input value that would increase weight significantly")
+            + len("en_US")
+            + len("currency")
+            + len("{!CURRENCY}")
+        )
+        assert weight == expected
+        assert error.verify_integrity() is True
+        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1)
+        assert entry.verify() is True
+
+    @given(
+        message=st.text(min_size=1, max_size=100),
+        input_val=st.text(min_size=0, max_size=50),
+        locale=st.text(min_size=0, max_size=10),
+    )
+    @settings(max_examples=50)
+    def test_property_weight_estimation_deterministic(
+        self, message: str, input_val: str, locale: str
+    ) -> None:
+        """PROPERTY: Weight estimation is deterministic and positive."""
+        context = FrozenErrorContext(
+            input_value=input_val,
+            locale_code=locale,
+            parse_type="test",
+            fallback_value="fallback",
+        )
+        error = FrozenFluentError(message, ErrorCategory.FORMATTING, context=context)
+        weight1 = _estimate_error_weight(error)
+        weight2 = _estimate_error_weight(error)
+        assert weight1 == weight2
+        assert weight1 > 0
+        min_weight = len(message) + len(input_val) + len(locale) + len("test") + len("fallback")
+        assert weight1 >= min_weight
+        event(f"weight={weight1}")

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import weakref
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.enums import ReferenceKind, VariableContext
@@ -48,6 +48,7 @@ __all__ = [
     "VariableInfo",
     "clear_introspection_cache",
     "extract_references",
+    "extract_references_by_attribute",
     "extract_variables",
     "introspect_message",
     # Internal (accessible for testing, not re-exported from package)
@@ -300,6 +301,11 @@ class IntrospectionVisitor(ASTVisitor[None]):
                 # Track depth to prevent stack overflow on deep nesting
                 with self._depth_guard:
                     self._visit_expression(expr)
+            case _ as unreachable:
+                # PatternElement is a closed union: TextElement | Placeable.
+                # This branch is unreachable for FTL spec-compliant ASTs;
+                # assert_never() provides a type-checked exhaustiveness guard.
+                assert_never(unreachable)
 
     def _visit_expression(self, expr: Expression | InlineExpression) -> None:
         """Visit an expression and extract metadata using pattern matching."""
@@ -372,34 +378,33 @@ class IntrospectionVisitor(ASTVisitor[None]):
         positional: list[str] = []
         named: set[str] = set()
 
-        if func.arguments:
-            # Extract positional arguments - recursively visit all expression types
-            for pos_arg in func.arguments.positional:
-                # Unwrap Placeable if present (handles {$var} in function args)
-                unwrapped_arg = pos_arg.expression if Placeable.guard(pos_arg) else pos_arg
+        # Extract positional arguments - recursively visit all expression types
+        for pos_arg in func.arguments.positional:
+            # Unwrap Placeable if present (handles {$var} in function args)
+            unwrapped_arg = pos_arg.expression if Placeable.guard(pos_arg) else pos_arg
 
-                # Track variable names for positional args metadata
-                if VariableReference.guard(unwrapped_arg):
-                    positional.append(unwrapped_arg.id.name)
+            # Track variable names for positional args metadata
+            if VariableReference.guard(unwrapped_arg):
+                positional.append(unwrapped_arg.id.name)
 
-                # Recursively visit to extract all nested dependencies
-                # This handles: VariableReference, MessageReference, TermReference,
-                # nested FunctionReference, SelectExpression, etc.
-                old_context = self._context
-                self._context = VariableContext.FUNCTION_ARG
-                with self._depth_guard:
-                    self._visit_expression(pos_arg)
-                self._context = old_context
+            # Recursively visit to extract all nested dependencies
+            # This handles: VariableReference, MessageReference, TermReference,
+            # nested FunctionReference, SelectExpression, etc.
+            old_context = self._context
+            self._context = VariableContext.FUNCTION_ARG
+            with self._depth_guard:
+                self._visit_expression(pos_arg)
+            self._context = old_context
 
-            # Extract named argument keys and recursively visit values
-            for named_arg in func.arguments.named:
-                named.add(named_arg.name.name)
-                # Recursively visit value expression for all nested dependencies
-                old_context = self._context
-                self._context = VariableContext.FUNCTION_ARG
-                with self._depth_guard:
-                    self._visit_expression(named_arg.value)
-                self._context = old_context
+        # Extract named argument keys and recursively visit values
+        for named_arg in func.arguments.named:
+            named.add(named_arg.name.name)
+            # Recursively visit value expression for all nested dependencies
+            old_context = self._context
+            self._context = VariableContext.FUNCTION_ARG
+            with self._depth_guard:
+                self._visit_expression(named_arg.value)
+            self._context = old_context
 
         func_info = FunctionCallInfo(
             name=func.id.name,
@@ -606,7 +611,7 @@ def introspect_message(
 
     # Visit message value pattern via proper dispatch
     # (allows subclass customization via visit() override)
-    if message.value:
+    if message.value is not None:
         visitor.visit(message.value)
 
     # Visit attribute patterns via proper dispatch

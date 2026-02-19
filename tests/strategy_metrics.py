@@ -236,6 +236,7 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "diag_verr_location=": "diag_validation_errors",
     "diag_vwarn_severity=": "diag_validation_warnings",
     "diag_vresult_valid=": "diag_validation_results",
+    "diag_frozen_error_variant=": "diag_frozen_fluent_errors",
     # currency.py strategies
     "currency_amount_magnitude=": "currency_amounts",
     "currency_input_type=": "currency_input_type",
@@ -254,6 +255,10 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "strategy=graph_": "dependency_graphs",
     "strategy=cycle_": "cycle_paths",
     "strategy=refs_": "namespace_ref_pairs",
+    # validation.py strategies
+    "val_scenario=": "validation_resource_sources",
+    "val_entry_kind=": "validation_resource_sources",
+    "val_semantic_variant=": "semantic_validation_resources",
 }
 
 # Known strategy weight distributions (intended weights)
@@ -416,6 +421,12 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "True": 0.50,
         "False": 0.50,
     },
+    "diag_frozen_error_variant=": {
+        "plain": 0.25,
+        "with_diag": 0.25,
+        "with_ctx": 0.25,
+        "full": 0.25,
+    },
     # Currency parsing strategies
     "currency_amount_magnitude=": {
         "micro": 0.20,
@@ -506,6 +517,47 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "msg_only": 0.25,
         "term_only": 0.25,
         "empty": 0.25,
+    },
+    # Validation domain strategies
+    "val_scenario=": {
+        "valid": 1 / 7,
+        "syntax_error": 1 / 7,
+        "duplicate_id": 1 / 7,
+        "undefined_ref": 1 / 7,
+        "circular": 1 / 7,
+        "deep_chain": 1 / 7,
+        "mixed_issues": 1 / 7,
+    },
+    # val_entry_kind weights derive from conditional sampling within val_scenario.
+    # Single-scenario events: junk=3/21, duplicate=3/21, chain=3/21.
+    # Three-way splits: msg_only=1/21, term_only=1/21, msg_ref=1/21, term_ref=1/21,
+    #   both=1/21, msg_cycle=1/21, term_cycle=1/21, cross_cycle=1/21.
+    # mixed: 4/21 (appears in both valid (1/21) and mixed_issues (3/21)).
+    "val_entry_kind=": {
+        "msg_only": 1 / 21,
+        "term_only": 1 / 21,
+        "mixed": 4 / 21,
+        "junk": 3 / 21,
+        "duplicate": 3 / 21,
+        "msg_ref": 1 / 21,
+        "term_ref": 1 / 21,
+        "both": 1 / 21,
+        "msg_cycle": 1 / 21,
+        "term_cycle": 1 / 21,
+        "cross_cycle": 1 / 21,
+        "chain": 3 / 21,
+    },
+    "val_semantic_variant=": {
+        "valid_message": 0.10,
+        "valid_term": 0.10,
+        "valid_select": 0.10,
+        "select_duplicate_key_numeric": 0.10,
+        "select_duplicate_key_identifier": 0.10,
+        "function_dup_named_arg": 0.10,
+        "term_positional_args": 0.10,
+        "term_named_args_only": 0.10,
+        "nested_placeable": 0.10,
+        "empty_resource": 0.10,
     },
 }
 
@@ -620,6 +672,10 @@ EXPECTED_EVENTS: set[str] = {
     "diag_vwarn_severity=info",
     "diag_vresult_valid=True",
     "diag_vresult_valid=False",
+    "diag_frozen_error_variant=plain",
+    "diag_frozen_error_variant=with_diag",
+    "diag_frozen_error_variant=with_ctx",
+    "diag_frozen_error_variant=full",
     # Currency parsing strategy events
     "currency_amount_magnitude=micro",
     "currency_amount_magnitude=small",
@@ -681,6 +737,36 @@ EXPECTED_EVENTS: set[str] = {
     "strategy=refs_msg_only",
     "strategy=refs_term_only",
     "strategy=refs_empty",
+    # Validation domain strategy events
+    "val_scenario=valid",
+    "val_scenario=syntax_error",
+    "val_scenario=duplicate_id",
+    "val_scenario=undefined_ref",
+    "val_scenario=circular",
+    "val_scenario=deep_chain",
+    "val_scenario=mixed_issues",
+    "val_entry_kind=msg_only",
+    "val_entry_kind=term_only",
+    "val_entry_kind=mixed",
+    "val_entry_kind=junk",
+    "val_entry_kind=duplicate",
+    "val_entry_kind=msg_ref",
+    "val_entry_kind=term_ref",
+    "val_entry_kind=both",
+    "val_entry_kind=msg_cycle",
+    "val_entry_kind=term_cycle",
+    "val_entry_kind=cross_cycle",
+    "val_entry_kind=chain",
+    "val_semantic_variant=valid_message",
+    "val_semantic_variant=valid_term",
+    "val_semantic_variant=valid_select",
+    "val_semantic_variant=select_duplicate_key_numeric",
+    "val_semantic_variant=select_duplicate_key_identifier",
+    "val_semantic_variant=function_dup_named_arg",
+    "val_semantic_variant=term_positional_args",
+    "val_semantic_variant=term_named_args_only",
+    "val_semantic_variant=nested_placeable",
+    "val_semantic_variant=empty_resource",
 }
 
 

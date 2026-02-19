@@ -90,7 +90,7 @@ class DiagnosticFormatter:
                 return self._format_simple(diagnostic)
             case OutputFormat.JSON:
                 return self._format_json(diagnostic)
-            case _:
+            case _:  # pragma: no cover
                 assert_never(self.output_format)
 
     def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:

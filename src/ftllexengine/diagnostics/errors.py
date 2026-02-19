@@ -16,12 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import TYPE_CHECKING, final
+from typing import final
 
 from .codes import Diagnostic, ErrorCategory, FrozenErrorContext
-
-if TYPE_CHECKING:
-    pass
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
@@ -277,7 +274,10 @@ class FrozenFluentError(Exception):
 
             msg = f"Cannot modify frozen error attribute: {name}"
             raise ImmutabilityViolationError(msg)
-        object.__setattr__(self, name, value)
+        # Pre-freeze assignment path: reached on non-CPython runtimes where
+        # Exception.__init__ routes through Python-level __setattr__.
+        # On CPython, __init__ uses object.__setattr__ directly (unreachable here).
+        object.__setattr__(self, name, value)  # pragma: no cover
 
     def __delattr__(self, name: str) -> None:
         """Reject all attribute deletions.

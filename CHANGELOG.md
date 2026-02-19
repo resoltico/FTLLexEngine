@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-02-19
+
+### Changed (BREAKING)
+
+- **`diagnostics/` domain hardened** (REFACTOR-DIAGNOSTICS-HARDEN-001):
+  - `DiagnosticCode` enum values reordered to strict numeric sequence within each range (1000–1099, 2000–2999, 3000–3999, 4000–4999, 5000–5199): `MAX_DEPTH_EXCEEDED` (2010) was previously positioned out of order between `CYCLIC_REFERENCE` (2001) and `NO_VARIANTS` (2002); now placed after `PATTERN_INVALID` (2009), matching its integer value
+  - Numeric values themselves are unchanged — this is a source-order fix only, not a value change; all integer codes remain API-stable
+  - Dead code removed from `diagnostics/errors.py`:`if TYPE_CHECKING: pass` block (lines 23-24) was imported and immediately discarded with no effect; removed entirely
+  - Unreachable branch annotated in `diagnostics/formatter.py`: `assert_never(self.output_format)` exhaustiveness guard marked `# pragma: no cover`; unreachable by construction (all `OutputFormat` members handled above)
+  - Unreachable branch annotated in `diagnostics/errors.py`: Pre-freeze `object.__setattr__` path in `__setattr__` marked `# pragma: no cover`; unreachable on CPython because `__init__` uses `object.__setattr__` directly and `Exception.__init__` bypasses Python-level `__setattr__` on CPython
+
+- **`introspection/` domain hardened** (REFACTOR-INTROSPECTION-HARDEN-001):
+  - `extract_references_by_attribute` was exported from `introspection/__init__.py` but missing from `message.__all__`; inconsistency resolved by adding to `__all__`
+  - `_visit_pattern_element` match/case lacked exhaustiveness guard; `assert_never` added for the closed `TextElement | Placeable` union, turning silent misses into immediate `AssertionError`
+  - `if message.value:` truthiness check in `introspect_message` replaced with `if message.value is not None:`; `Pattern` is a dataclass with no `__bool__` override and is always truthy, making the False branch permanently dead when the condition was a truthiness test
+  - Dead `if func.arguments:` guard removed from `_extract_function_call`; `arguments: CallArguments` is typed non-nullable and `CallArguments` has no `__bool__` override so the guard was always True; argument loops are empty no-ops when `positional=()` and `named=()`, making the guard redundant
+  - `introspection/iso.py`: removed useless `if TYPE_CHECKING: pass` block and accompanying unused `TYPE_CHECKING` import
+  - `introspection/iso.py`: three self-referential `raise exc from exc` chains corrected to `raise exc from None` (suppresses implicit `ImportError` context that polluted the exception chain)
+  - Location: `introspection/message.py`, `introspection/iso.py`
+
+- **`syntax/validator.py` hardened with exhaustiveness guards** (REFACTOR-VALIDATOR-HARDEN-001):
+  - `_validate_entry`, `_validate_pattern_element`, `_validate_inline_expression` lacked `case _:` exhaustiveness guards; unknown AST node types silently bypassed validation; `raise TypeError(...)` guards added to all three dispatch methods
+  - Location: `syntax/validator.py`
+
+### Fixed
+
+- **`_validate_select_expression` crashes on nested `SelectExpression` selectors** (BUG-VALIDATOR-SELECTOR-DISPATCH-001):
+  - Selector was validated via `_validate_inline_expression` directly; `SelectExpression` is not an `InlineExpression`, so directly-constructed ASTs with a `SelectExpression` as the outer selector raised `TypeError` at the exhaustiveness guard
+  - Changed to `_validate_expression` (general dispatcher), routing both `SelectExpression` and `InlineExpression` selectors correctly
+  - Location: `syntax/validator.py`
+
 ## [0.112.0] - 2026-02-18
 
 ### Changed (BREAKING)
@@ -3575,6 +3606,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.113.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.113.0
 [0.112.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.112.0
 [0.111.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.111.0
 [0.110.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.110.0

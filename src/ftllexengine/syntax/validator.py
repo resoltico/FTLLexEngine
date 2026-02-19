@@ -157,6 +157,11 @@ class SemanticValidator:
                 pass  # Comments don't need validation
             case Junk():
                 pass  # Junk already represents invalid syntax
+            case _:
+                # Inline f-string required: splitting into a variable assignment
+                # causes MyPy to flag raise as unreachable in exhausted
+                # match/case union branches (a MyPy analysis limitation).
+                raise TypeError(f"Unexpected entry type: {type(entry)}")  # noqa: EM102
 
     def _validate_message(
         self, message: Message, errors: list[Annotation], depth_guard: DepthGuard
@@ -248,6 +253,10 @@ class SemanticValidator:
                 # Track depth to prevent stack overflow on deep nesting
                 with depth_guard:
                     self._validate_expression(element.expression, errors, context, depth_guard)
+            case _:
+                raise TypeError(
+                    f"Unexpected pattern element type: {type(element)}"  # noqa: EM102
+                )
 
     # ========================================================================
     # EXPRESSION VALIDATION
@@ -293,6 +302,10 @@ class SemanticValidator:
                 # Track depth for nested Placeables
                 with depth_guard:
                     self._validate_expression(expr.expression, errors, context, depth_guard)
+            case _:
+                raise TypeError(
+                    f"Unexpected inline expression type: {type(expr)}"  # noqa: EM102
+                )
 
     def _validate_term_reference(
         self,
@@ -390,8 +403,10 @@ class SemanticValidator:
         - Must have exactly one default variant (marked with *)
         - Variant keys must be unique
         """
-        # Validate selector
-        self._validate_inline_expression(select.selector, errors, "select_selector", depth_guard)
+        # Validate selector using the general dispatcher so that nested SelectExpressions
+        # (e.g., from direct AST construction) are handled gracefully rather than
+        # falling through to the exhaustiveness-guard raise in _validate_inline_expression.
+        self._validate_expression(select.selector, errors, "select_selector", depth_guard)
 
         # Check: must have at least one variant
         if not select.variants:

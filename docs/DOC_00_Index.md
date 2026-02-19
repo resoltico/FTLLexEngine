@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.112.0"
+version: "0.113.0"
 domain: INDEX
-updated: "2026-02-18"
+updated: "2026-02-19"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -177,7 +177,7 @@ from ftllexengine.parsing import (
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, entry_dependency_set, make_cycle_key, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
-| extract_references, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
+| extract_variables, extract_references, extract_references_by_attribute, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
 | TerritoryInfo, CurrencyInfo, get_territory, get_currency, ISO 3166, ISO 4217 | [DOC_02_Types.md](DOC_02_Types.md) | ISO Introspection |
 
 ---
@@ -194,7 +194,7 @@ ftllexengine/
   localization.py          # FluentLocalization, PathResourceLoader
   introspection/
     __init__.py            # Introspection API exports (message + ISO)
-    message.py             # MessageIntrospection, introspect_message, extract_references
+    message.py             # MessageIntrospection, introspect_message, extract_variables, extract_references, extract_references_by_attribute
     iso.py                 # TerritoryInfo, CurrencyInfo, get_territory, get_currency (requires Babel)
   core/
     __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError)

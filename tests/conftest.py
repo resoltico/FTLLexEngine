@@ -158,7 +158,7 @@ def pytest_collection_modifyitems(
     for arg in args:
         arg_str = str(arg)
         # Match all fuzz-related test files by common patterns
-        fuzz_patterns = ("_fuzzing", "test_concurrent", "test_resolver_cycles")
+        fuzz_patterns = ("_fuzzing", "test_concurrent", "test_resolver_depth_cycles")
         if any(p in arg_str for p in fuzz_patterns):
             return
 

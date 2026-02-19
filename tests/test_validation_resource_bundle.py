@@ -1,12 +1,11 @@
-"""Test semantic validation in FluentBundle.validate_resource().
+"""Integration tests for validation pipeline via FluentBundle.validate_resource().
 
-Tests for:
-- Undefined message references
-- Undefined term references
-- Circular message references
-- Circular term references
+Tests the full validate_resource() pipeline as invoked through the FluentBundle
+public API, covering all six validation passes in the context of bundle state:
+- Undefined message/term references (with bundle cross-resource context)
+- Circular message/term references (single and cross-resource)
 - Duplicate ID detection
-- Messages without values
+- Shadow warnings when adding to existing bundle
 
 Python 3.13+.
 """

@@ -22,7 +22,6 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
@@ -42,9 +41,6 @@ from tests.strategies.diagnostics import (
 from tests.strategies.diagnostics import (
     source_spans as source_span_strategy,
 )
-
-pytestmark = pytest.mark.fuzz
-
 
 # ============================================================================
 # PROPERTY TESTS: ErrorCategory
