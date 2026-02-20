@@ -1,8 +1,8 @@
 ---
 afad: "3.1"
-version: "0.109.0"
+version: "0.116.0"
 domain: architecture
-updated: "2026-02-16"
+updated: "2026-02-19"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -78,7 +78,7 @@ except TimeoutError:
 **Guarantees**:
 - All read operations (`format_value()`, `format_pattern()`, `has_message()`, `get_cache_stats()`) acquire read lock (concurrent)
 - All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
-- Lazy bundle creation via `_get_or_create_bundle()` acquires write lock (reentrant)
+- Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers holding the write lock use RWLock downgrading semantics
 - Context manager (`with l10n:`) tracks modifications and conditionally clears caches on exit
 
 **Context Manager Semantics**:

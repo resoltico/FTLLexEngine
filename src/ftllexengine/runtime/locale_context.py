@@ -239,11 +239,11 @@ class LocaleContext:
 
         # Lazy import to support parser-only installations
         try:
-            from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+            from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
         except ImportError as e:
-            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415 - circular
 
-            raise BabelImportError("LocaleContext.create") from e  # noqa: EM101
+            raise BabelImportError("LocaleContext.create") from e  # noqa: EM101 - ID
 
         # Create new instance (Locale.parse is thread-safe)
         used_fallback = False
@@ -324,11 +324,11 @@ class LocaleContext:
         """
         # Lazy import to support parser-only installations
         try:
-            from babel import Locale, UnknownLocaleError  # noqa: PLC0415
+            from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
         except ImportError as e:
-            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415 - circular
 
-            raise BabelImportError("LocaleContext.create_or_raise") from e  # noqa: EM101
+            raise BabelImportError("LocaleContext.create_or_raise") from e  # noqa: EM101 - ID
 
         try:
             normalized = normalize_locale(locale_code)
@@ -413,7 +413,7 @@ class LocaleContext:
             raise ValueError(msg)
 
         # Lazy import to support parser-only installations
-        from babel import numbers as babel_numbers  # noqa: PLC0415
+        from babel import numbers as babel_numbers  # noqa: PLC0415 - Babel-optional
 
         try:
             # Use custom pattern if provided
@@ -540,7 +540,7 @@ class LocaleContext:
             Matches Intl.DateTimeFormat behavior in JavaScript.
         """
         # Lazy import to support parser-only installations
-        from babel import dates as babel_dates  # noqa: PLC0415
+        from babel import dates as babel_dates  # noqa: PLC0415 - Babel-optional
 
         # Type narrowing: convert str to datetime
         dt_value: datetime
@@ -693,7 +693,7 @@ class LocaleContext:
             - Most others: 2 decimals
         """
         # Lazy import to support parser-only installations
-        from babel import numbers as babel_numbers  # noqa: PLC0415
+        from babel import numbers as babel_numbers  # noqa: PLC0415 - Babel-optional
 
         try:
             # Use custom pattern if provided (overrides currency_display)

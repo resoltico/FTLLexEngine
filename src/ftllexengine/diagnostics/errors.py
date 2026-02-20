@@ -270,7 +270,9 @@ class FrozenFluentError(Exception):
             object.__setattr__(self, name, value)
             return
         if getattr(self, "_frozen", False):
-            from ftllexengine.integrity import ImmutabilityViolationError  # noqa: PLC0415
+            from ftllexengine.integrity import (  # noqa: PLC0415 - circular
+                ImmutabilityViolationError,
+            )
 
             msg = f"Cannot modify frozen error attribute: {name}"
             raise ImmutabilityViolationError(msg)
@@ -286,7 +288,7 @@ class FrozenFluentError(Exception):
             ImmutabilityViolationError: Always
         """
 
-        from ftllexengine.integrity import ImmutabilityViolationError  # noqa: PLC0415
+        from ftllexengine.integrity import ImmutabilityViolationError  # noqa: PLC0415 - circular
 
         msg = f"Cannot delete frozen error attribute: {name}"
         raise ImmutabilityViolationError(msg)

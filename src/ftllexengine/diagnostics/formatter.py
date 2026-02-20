@@ -6,6 +6,7 @@ Python 3.13+. Zero external dependencies.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -14,20 +15,37 @@ from typing import TYPE_CHECKING, assert_never
 from .codes import Diagnostic
 
 if TYPE_CHECKING:
-    from .validation import ValidationResult
+    from .validation import ValidationError, ValidationResult, ValidationWarning
 
 __all__ = [
     "DiagnosticFormatter",
     "OutputFormat",
 ]
 
+# Control character escape table: maps every ASCII control character (0x00-0x1f
+# and 0x7f) to a visible escape-sequence representation. Used by
+# _escape_control_chars to prevent log injection via embedded newlines, NUL
+# bytes, ANSI codes, or other non-printable characters in diagnostic fields.
+_CONTROL_ESCAPE: dict[int, str] = {
+    c: f"\\x{c:02x}" for c in range(0x20)
+} | {0x7F: "\\x7f"}
+
+# Override the four most common cases with conventional escape notation for
+# readability in log output (e.g. "\n" is clearer than "\x0a").
+_CONTROL_ESCAPE[0x1B] = "\\x1b"   # ESC — ANSI escape sequences
+_CONTROL_ESCAPE[0x0D] = "\\r"     # CR
+_CONTROL_ESCAPE[0x0A] = "\\n"     # LF
+_CONTROL_ESCAPE[0x09] = "\\t"     # HT
+
+_CONTROL_TRANSLATE = str.maketrans(_CONTROL_ESCAPE)
+
 
 class OutputFormat(StrEnum):
     """Output format options for diagnostic formatting."""
 
-    RUST = "rust"  # Rust compiler-style output (default)
+    RUST = "rust"    # Rust compiler-style output (default)
     SIMPLE = "simple"  # Single-line format
-    JSON = "json"  # JSON format for tooling integration
+    JSON = "json"    # JSON format for tooling integration
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,33 +176,28 @@ class DiagnosticFormatter:
 
         return "\n".join(parts)
 
-    def format_error(self, error: object) -> str:
+    def format_error(self, error: ValidationError) -> str:
         """Format a ValidationError object.
 
         Central formatting method for ValidationError. Called by
         ValidationError.format() to ensure consistent output.
 
         Args:
-            error: ValidationError-like object with code, message, content, line, column
+            error: ValidationError to format
 
         Returns:
             Formatted error string with location and content
         """
-        # Direct attribute access for known type; getattr fallback for duck typing
-        from .validation import ValidationError  # noqa: PLC0415
+        from .validation import ValidationError as _ValidationError  # noqa: PLC0415 - circular
 
-        if isinstance(error, ValidationError):
-            code = error.code
-            message = error.message
-            content: str | None = error.content
-            line = error.line
-            column = error.column
-        else:
-            code = getattr(error, "code", "UNKNOWN")
-            message = getattr(error, "message", str(error))
-            content = getattr(error, "content", None)
-            line = getattr(error, "line", None)
-            column = getattr(error, "column", None)
+        # Mypy requires isinstance guard for TYPE_CHECKING imports.
+        assert isinstance(error, _ValidationError)
+
+        code_name = error.code.name
+        message = error.message
+        content: str | None = error.content
+        line = error.line
+        column = error.column
 
         # Build location string
         location = ""
@@ -199,35 +212,30 @@ class DiagnosticFormatter:
             content_display = self._maybe_sanitize_content(content)
             content_str = f" (content: {content_display!r})"
 
-        return f"[{code}]{location}: {message}{content_str}"
+        return f"[{code_name}]{location}: {message}{content_str}"
 
-    def format_warning(self, warning: object) -> str:
+    def format_warning(self, warning: ValidationWarning) -> str:
         """Format a ValidationWarning object.
 
         Central formatting method for ValidationWarning. Called by
         ValidationWarning.format() to ensure consistent output.
 
         Args:
-            warning: ValidationWarning-like object with code, message, context, line, column
+            warning: ValidationWarning to format
 
         Returns:
             Formatted warning string with location and context
         """
-        # Direct attribute access for known type; getattr fallback for duck typing
-        from .validation import ValidationWarning  # noqa: PLC0415
+        from .validation import ValidationWarning as _ValidationWarning  # noqa: PLC0415 - circular
 
-        if isinstance(warning, ValidationWarning):
-            code = warning.code
-            message = warning.message
-            context = warning.context
-            line = warning.line
-            column = warning.column
-        else:
-            code = getattr(warning, "code", "UNKNOWN")
-            message = getattr(warning, "message", str(warning))
-            context = getattr(warning, "context", None)
-            line = getattr(warning, "line", None)
-            column = getattr(warning, "column", None)
+        # Mypy requires isinstance guard for TYPE_CHECKING imports.
+        assert isinstance(warning, _ValidationWarning)
+
+        code_name = warning.code.name
+        message = warning.message
+        context = warning.context
+        line = warning.line
+        column = warning.column
 
         # Build location string
         location = ""
@@ -236,10 +244,15 @@ class DiagnosticFormatter:
             if column is not None:
                 location += f", column {column}"
 
-        # Build context string
-        context_str = f" (context: {context!r})" if context else ""
+        # Build context string with optional sanitization
+        context_str = ""
+        if context:
+            context_display = self._maybe_sanitize(context) if self.sanitize else context
+            if self.sanitize and self.redact_content:
+                context_display = "[content redacted]"
+            context_str = f" (context: {context_display!r})"
 
-        return f"[{code}]{location}: {message}{context_str}"
+        return f"[{code_name}]{location}: {message}{context_str}"
 
     def _format_annotation(self, annotation: object) -> str:
         """Format an AST Annotation object.
@@ -255,7 +268,7 @@ class DiagnosticFormatter:
         arguments = getattr(annotation, "arguments", None)
 
         # Sanitize and escape message to prevent log injection
-        message = self._escape_control_chars(self._maybe_sanitize(message))
+        message = _escape_control_chars(self._maybe_sanitize(message))
 
         # Include arguments tuple if present
         if arguments:
@@ -287,43 +300,44 @@ class DiagnosticFormatter:
               = help: Check that the message is defined
               = note: see https://projectfluent.org/fluent/guide/messages.html
         """
-        severity = diagnostic.severity if diagnostic.severity == "warning" else "error"
+        severity = diagnostic.severity
         severity_str = self._severity_str(severity)
 
         # Escape control characters in all user-influenced fields to prevent
-        # log injection (fake diagnostic lines via embedded newlines)
-        message = self._escape_control_chars(diagnostic.message)
+        # log injection (fake diagnostic lines via embedded newlines or other
+        # control characters in user-supplied message identifiers or values)
+        message = _escape_control_chars(diagnostic.message)
         parts = [f"{severity_str}[{diagnostic.code.name}]: {message}"]
 
         if diagnostic.span:
             parts.append(f"  --> line {diagnostic.span.line}, column {diagnostic.span.column}")
         elif diagnostic.ftl_location:
-            parts.append(f"  --> {self._escape_control_chars(diagnostic.ftl_location)}")
+            parts.append(f"  --> {_escape_control_chars(diagnostic.ftl_location)}")
 
         if diagnostic.function_name:
-            parts.append(f"  = function: {self._escape_control_chars(diagnostic.function_name)}")
+            parts.append(f"  = function: {_escape_control_chars(diagnostic.function_name)}")
 
         if diagnostic.argument_name:
-            parts.append(f"  = argument: {self._escape_control_chars(diagnostic.argument_name)}")
+            parts.append(f"  = argument: {_escape_control_chars(diagnostic.argument_name)}")
 
         if diagnostic.expected_type:
-            parts.append(f"  = expected: {self._escape_control_chars(diagnostic.expected_type)}")
+            parts.append(f"  = expected: {_escape_control_chars(diagnostic.expected_type)}")
 
         if diagnostic.received_type:
-            parts.append(f"  = received: {self._escape_control_chars(diagnostic.received_type)}")
+            parts.append(f"  = received: {_escape_control_chars(diagnostic.received_type)}")
 
         if diagnostic.resolution_path:
             path_str = " -> ".join(diagnostic.resolution_path)
             parts.append(
-                f"  = resolution path: {self._escape_control_chars(path_str)}"
+                f"  = resolution path: {_escape_control_chars(path_str)}"
             )
 
         if diagnostic.hint:
-            hint = self._escape_control_chars(self._maybe_sanitize(diagnostic.hint))
+            hint = _escape_control_chars(self._maybe_sanitize(diagnostic.hint))
             parts.append(f"  = help: {hint}")
 
         if diagnostic.help_url:
-            parts.append(f"  = note: see {self._escape_control_chars(diagnostic.help_url)}")
+            parts.append(f"  = note: see {_escape_control_chars(diagnostic.help_url)}")
 
         return "\n".join(parts)
 
@@ -333,7 +347,7 @@ class DiagnosticFormatter:
         Example output:
             MESSAGE_NOT_FOUND: Message 'hello' not found
         """
-        message = self._escape_control_chars(self._maybe_sanitize(diagnostic.message))
+        message = _escape_control_chars(self._maybe_sanitize(diagnostic.message))
         return f"{diagnostic.code.name}: {message}"
 
     def _format_json(self, diagnostic: Diagnostic) -> str:
@@ -342,8 +356,6 @@ class DiagnosticFormatter:
         Example output:
             {"code": "MESSAGE_NOT_FOUND", "message": "...", "severity": "error"}
         """
-        import json  # noqa: PLC0415
-
         data: dict[str, str | int | list[str] | None] = {
             "code": diagnostic.code.name,
             "code_value": diagnostic.code.value,
@@ -384,28 +396,6 @@ class DiagnosticFormatter:
 
         return json.dumps(data, ensure_ascii=False)
 
-    @staticmethod
-    def _escape_control_chars(text: str) -> str:
-        """Escape control characters to prevent log injection.
-
-        Newlines, carriage returns, and tabs in diagnostic fields can inject
-        fake diagnostic lines into structured text output. This escapes them
-        to their visible escape-sequence representations.
-
-        Args:
-            text: Text to escape
-
-        Returns:
-            Text with control characters replaced by escape sequences
-        """
-        return (
-            text
-            .replace("\x1b", "\\x1b")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n")
-            .replace("\t", "\\t")
-        )
-
     def _maybe_sanitize(self, text: str) -> str:
         """Truncate text if sanitization is enabled.
 
@@ -440,3 +430,23 @@ class DiagnosticFormatter:
             return content[: self.max_content_length] + "..."
 
         return content
+
+
+def _escape_control_chars(text: str) -> str:
+    """Escape all ASCII control characters to prevent log injection.
+
+    Translates every character in the C0 control range (0x00-0x1f) and DEL
+    (0x7f) to a visible escape-sequence representation. The four most common
+    control characters use conventional notation (\\r, \\n, \\t, \\x1b); all
+    others use \\xNN hex notation.
+
+    This function is a module-level helper because it contains no formatter
+    state and is called from multiple methods.
+
+    Args:
+        text: Text to escape
+
+    Returns:
+        Text with all control characters replaced by escape sequences
+    """
+    return text.translate(_CONTROL_TRANSLATE)

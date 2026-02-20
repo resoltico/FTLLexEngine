@@ -14,10 +14,13 @@ How Hypothesis failures work:
 - This script provides verbose output and @example extraction
 
 Usage:
-    uv run python scripts/fuzz_hypofuzz_repro.py test_parser_hypothesis::test_roundtrip
-    uv run python scripts/fuzz_hypofuzz_repro.py test_parser_hypothesis
-    uv run python scripts/fuzz_hypofuzz_repro.py --verbose test_parser_hypothesis::test_roundtrip
-    uv run python scripts/fuzz_hypofuzz_repro.py --example test_parser_hypothesis::test_roundtrip
+    uv run python scripts/fuzz_hypofuzz_repro.py tests/fuzz/test_syntax_parser_property.py
+    uv run python scripts/fuzz_hypofuzz_repro.py \
+        tests/fuzz/test_syntax_parser_property.py::test_roundtrip
+    uv run python scripts/fuzz_hypofuzz_repro.py --verbose \
+        tests/fuzz/test_syntax_parser_property.py::test_roundtrip
+    uv run python scripts/fuzz_hypofuzz_repro.py --example \
+        tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 
 Flags:
     --verbose   Show full pytest output with Hypothesis verbosity
@@ -26,7 +29,7 @@ Flags:
 
 JSON Output Format (--json):
     {
-      "test_path": "tests/test_parser_hypothesis.py::test_roundtrip",
+      "test_path": "tests/fuzz/test_syntax_parser_property.py::test_roundtrip",
       "status": "fail",
       "exit_code": 1,
       "timestamp": "2026-02-04T10:30:00+00:00",
@@ -79,8 +82,8 @@ def parse_test_path(test_spec: str) -> tuple[str, str | None]:
     """Parse test specification into module and optional function.
 
     Args:
-        test_spec: Test path like "test_parser_hypothesis::test_roundtrip"
-            or "test_parser_hypothesis"
+        test_spec: Test path like "tests/fuzz/test_syntax_parser_property.py::test_roundtrip"
+            or "tests/fuzz/test_syntax_parser_property.py"
 
     Returns:
         Tuple of (module_name, function_name or None)
@@ -95,18 +98,22 @@ def build_pytest_path(module: str, function: str | None) -> str:
     """Build pytest path from module and function.
 
     Args:
-        module: Module name (with or without .py extension)
+        module: Module name or path (with or without .py extension).
+            May be a bare name like "test_foo" or a full path like
+            "tests/fuzz/test_syntax_parser_property.py".
         function: Optional function name
 
     Returns:
-        Pytest path like "tests/test_parser_hypothesis.py::test_roundtrip"
+        Pytest path like "tests/fuzz/test_syntax_parser_property.py::test_roundtrip"
     """
     # Strip .py if present
     if module.endswith(".py"):
         module = module[:-3]
 
-    # Build path
-    path = f"tests/{module}.py"
+    # If already a rooted path (starts with tests/), use as-is; otherwise
+    # assume a bare module name and prepend the tests/ root.
+    path = f"{module}.py" if module.startswith("tests/") else f"tests/{module}.py"
+
     if function:
         path += f"::{function}"
 
@@ -449,16 +456,19 @@ def main() -> int:
         epilog="""
 Examples:
   # Reproduce a failing test with verbose output:
-  uv run python scripts/fuzz_hypofuzz_repro.py --verbose test_parser_hypothesis::test_roundtrip
+  uv run python scripts/fuzz_hypofuzz_repro.py --verbose \\
+      tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 
   # Extract @example decorator from failure:
-  uv run python scripts/fuzz_hypofuzz_repro.py --example test_parser_hypothesis::test_roundtrip
+  uv run python scripts/fuzz_hypofuzz_repro.py --example \\
+      tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 
   # Run all tests in a module:
-  uv run python scripts/fuzz_hypofuzz_repro.py test_parser_hypothesis
+  uv run python scripts/fuzz_hypofuzz_repro.py tests/fuzz/test_syntax_parser_property.py
 
   # JSON output for automation:
-  uv run python scripts/fuzz_hypofuzz_repro.py --json test_parser_hypothesis::test_roundtrip
+  uv run python scripts/fuzz_hypofuzz_repro.py --json \\
+      tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 """,
     )
     parser.add_argument(

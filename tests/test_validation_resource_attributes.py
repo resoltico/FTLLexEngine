@@ -37,7 +37,7 @@ msg =
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
             and "msg" in w.message
             and "attr" in w.message
         ]
@@ -58,7 +58,7 @@ msg =
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
             and "term" in w.message
             and "attr" in w.message
         ]
@@ -81,7 +81,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
             and "msg" in w.message
         ]
         # Should have warnings for both attr1 and attr2
@@ -107,7 +107,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
             and "term" in w.message
         ]
         # Should have warnings for both attr1 and attr2
@@ -132,7 +132,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
         ]
         assert len(dup_warnings) == 0
 
@@ -150,7 +150,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
         ]
         assert len(dup_warnings) == 0
 
@@ -181,7 +181,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
         ]
 
         # Should have exactly num_duplicates warnings
@@ -203,7 +203,7 @@ msg2 = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
         ]
         # No warnings - same attribute name in different messages is OK
         assert len(dup_warnings) == 0
@@ -224,7 +224,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
         ]
         # No warnings - message and term attributes are in separate namespaces
         assert len(dup_warnings) == 0
@@ -243,7 +243,7 @@ msg = value
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
             and "attr" in w.message
         ]
         # Should warn for second and third occurrences
@@ -276,7 +276,7 @@ msg = value
             w
             for w in result.warnings
             if w.code
-            == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name
+            == DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE
         ]
         assert len(dup_warnings) >= 1
         assert any(

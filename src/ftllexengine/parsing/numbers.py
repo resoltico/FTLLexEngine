@@ -80,9 +80,9 @@ def parse_number(
     errors: list[FrozenFluentError] = []
 
     require_babel("parse_number")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    from babel.numbers import NumberFormatError  # noqa: PLC0415
-    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import NumberFormatError  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415 - Babel-optional
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))
@@ -176,9 +176,9 @@ def parse_decimal(
     errors: list[FrozenFluentError] = []
 
     require_babel("parse_decimal")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    from babel.numbers import NumberFormatError  # noqa: PLC0415
-    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import NumberFormatError  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415 - Babel-optional
 
     try:
         locale = Locale.parse(normalize_locale(locale_code))

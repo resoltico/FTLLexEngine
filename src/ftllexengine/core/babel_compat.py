@@ -123,7 +123,7 @@ def get_locale_class() -> type[Locale]:
         BabelImportError: If Babel is not installed
     """
     require_babel("get_locale_class")
-    from babel import Locale  # noqa: PLC0415
+    from babel import Locale  # noqa: PLC0415 - Babel-optional
 
     return Locale
 
@@ -145,7 +145,7 @@ def get_cldr_version() -> str:
         Thread-safe. No mutable state.
     """
     require_babel("get_cldr_version")
-    from babel.core import (  # noqa: PLC0415
+    from babel.core import (  # noqa: PLC0415 - Babel-optional
         get_cldr_version as babel_get_cldr_version,
     )
 

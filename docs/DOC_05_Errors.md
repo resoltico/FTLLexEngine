@@ -1,6 +1,6 @@
 ---
 afad: "3.1"
-version: "0.114.0"
+version: "0.116.0"
 domain: ERRORS
 updated: "2026-02-19"
 route:
@@ -409,7 +409,7 @@ def format(
 ```python
 @dataclass(frozen=True, slots=True)
 class ValidationError:
-    code: str
+    code: DiagnosticCode
     message: str
     content: str
     line: int | None = None
@@ -419,7 +419,7 @@ class ValidationError:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `code` | `str` | Y | Error code (e.g., "parse-error"). |
+| `code` | `DiagnosticCode` | Y | Structured error code. |
 | `message` | `str` | Y | Error message. |
 | `content` | `str` | Y | Unparseable FTL content. |
 | `line` | `int \| None` | N | Line number (1-indexed). |
@@ -428,6 +428,7 @@ class ValidationError:
 ### Constraints
 - Return: Immutable error record.
 - State: Frozen dataclass.
+- Code: `DiagnosticCode` enum, not a string. Use `.name` for the string form.
 
 ---
 
@@ -487,20 +488,25 @@ class WarningSeverity(StrEnum):
 ```python
 @dataclass(frozen=True, slots=True)
 class ValidationWarning:
-    code: str
+    code: DiagnosticCode
     message: str
     context: str | None = None
     line: int | None = None
     column: int | None = None
     severity: WarningSeverity = WarningSeverity.WARNING
 
-    def format(self) -> str: ...
+    def format(
+        self,
+        *,
+        sanitize: bool = False,
+        redact_content: bool = False,
+    ) -> str: ...
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `code` | `str` | Y | Warning code (e.g., "duplicate-id"). |
+| `code` | `DiagnosticCode` | Y | Structured warning code. |
 | `message` | `str` | Y | Warning message. |
 | `context` | `str \| None` | N | Additional context. |
 | `line` | `int \| None` | N | Line number (1-indexed). |
@@ -510,6 +516,7 @@ class ValidationWarning:
 ### Constraints
 - Return: Immutable warning record.
 - State: Frozen dataclass.
+- Code: `DiagnosticCode` enum, not a string. Use `.name` for the string form.
 - IDE: Line/column fields enable IDE/LSP integration for warning display.
 - Severity: Enables filtering by importance (CRITICAL > WARNING > INFO).
 
@@ -519,16 +526,24 @@ class ValidationWarning:
 
 ### Signature
 ```python
-def format(self) -> str:
+def format(
+    self,
+    *,
+    sanitize: bool = False,
+    redact_content: bool = False,
+) -> str:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
+| `sanitize` | `bool` | N | Truncate context to prevent information leakage. |
+| `redact_content` | `bool` | N | Completely redact context (requires sanitize=True). |
 
 ### Constraints
-- Return: Formatted warning string with location (if available).
+- Return: Formatted warning string with location and optional context.
 - Format: `[code] at line N, column M: message (context: 'ctx')`
+- Security: Set sanitize=True for multi-tenant applications.
 
 ---
 
@@ -564,8 +579,7 @@ class DiagnosticCode(Enum):
 
     # Syntax errors (3000-3999)
     UNEXPECTED_EOF = 3001
-    INVALID_CHARACTER = 3002
-    EXPECTED_TOKEN = 3003
+    # 3002, 3003: not assigned — character/token-level errors are AST Annotation codes
     PARSE_JUNK = 3004
     PARSE_NESTING_DEPTH_EXCEEDED = 3005
 
@@ -713,12 +727,15 @@ class OutputFormat(StrEnum):
 class DiagnosticFormatter:
     output_format: OutputFormat = OutputFormat.RUST
     sanitize: bool = False
+    redact_content: bool = False
     color: bool = False
     max_content_length: int = 100
 
     def format(self, diagnostic: Diagnostic) -> str: ...
     def format_all(self, diagnostics: Iterable[Diagnostic]) -> str: ...
     def format_validation_result(self, result: ValidationResult) -> str: ...
+    def format_error(self, error: ValidationError) -> str: ...
+    def format_warning(self, warning: ValidationWarning) -> str: ...
 ```
 
 ### Parameters
@@ -726,6 +743,7 @@ class DiagnosticFormatter:
 |:------|:-----|:------------|
 | `output_format` | `OutputFormat` | Output style (rust, simple, json). |
 | `sanitize` | `bool` | Truncate content to prevent information leakage. |
+| `redact_content` | `bool` | Completely redact content (requires sanitize=True). |
 | `color` | `bool` | Enable ANSI color codes (for terminal output). |
 | `max_content_length` | `int` | Maximum content length when sanitizing. |
 
@@ -733,7 +751,7 @@ class DiagnosticFormatter:
 - Return: Immutable formatter instance.
 - State: Frozen dataclass.
 - Thread: Safe.
-- Security: All formatted output passes through `_escape_control_chars()` to prevent log injection via control characters in diagnostic messages.
+- Security: All formatted output passes through `_escape_control_chars()` (full C0 range 0x00–0x1f and DEL 0x7f) to prevent log injection via embedded control characters in diagnostic messages.
 - Import: `from ftllexengine.diagnostics import DiagnosticFormatter`
 
 ---

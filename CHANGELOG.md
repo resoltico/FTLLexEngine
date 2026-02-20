@@ -10,6 +10,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-02-20
+
+### Changed (BREAKING)
+
+- **`ValidationError.code` and `ValidationWarning.code` changed from `str` to `DiagnosticCode`** (ARCH-DIAG-CODE-TYPE-001):
+  - Both fields were typed as bare `str`, requiring callers to manage raw string codes with no type safety; `Diagnostic.code` was already `DiagnosticCode`, making the two validation types incoherent with the rest of the diagnostics domain
+  - Both fields are now `DiagnosticCode`; all construction sites in `validation/resource.py` updated; the new `_annotation_to_diagnostic_code()` helper promotes `Annotation.code: str` → `DiagnosticCode` using `DiagnosticCode[code]` with `PARSE_JUNK` as the fallback for unknown annotation codes
+  - Callers comparing `error.code` or `warning.code` against string literals must update to `DiagnosticCode` enum members or use `.name` for string comparison
+  - Location: `diagnostics/validation.py`, `validation/resource.py`
+
+- **`DiagnosticCode.INVALID_CHARACTER` (3002) and `DiagnosticCode.EXPECTED_TOKEN` (3003) removed** (ARCH-DIAG-DEAD-CODES-001):
+  - Both enum values were never referenced in production code; character-level and token-level errors are carried as raw strings in `Annotation.code` (the parser AST type), not as `DiagnosticCode` values; the enum members were unreachable dead code
+  - `_annotation_to_diagnostic_code()` maps any `Annotation.code` string not matching a `DiagnosticCode` name (including `"INVALID_CHARACTER"` and `"EXPECTED_TOKEN"`) to `DiagnosticCode.PARSE_JUNK`, the canonical parse error code
+  - Callers holding references to `DiagnosticCode.INVALID_CHARACTER` or `DiagnosticCode.EXPECTED_TOKEN` must migrate to `DiagnosticCode.PARSE_JUNK`
+  - Location: `diagnostics/codes.py`
+
+- **`DiagnosticFormatter.format_error` and `format_warning` are now strictly typed** (ARCH-DIAG-DUCK-TYPING-001):
+  - Both methods previously accepted `object` with `getattr` fallbacks, allowing duck-typed callers to pass arbitrary objects; this pattern bypassed the domain type system and concealed misuse
+  - Both methods now accept `ValidationError` and `ValidationWarning` respectively; an `isinstance` guard enforces the type at the entry point, raising `AssertionError` on violation
+  - Duck-typed callers passing arbitrary objects with matching attribute names must migrate to proper `ValidationError` or `ValidationWarning` instances
+  - Location: `diagnostics/formatter.py`
+
+- **`_escape_control_chars` promoted from `DiagnosticFormatter` class method to module-level function** (ARCH-DIAG-ESCAPE-PROMOTE-001):
+  - The function contains no formatter state and is called from multiple formatter methods; keeping it as a class method was an incorrect structural classification
+  - It is now a module-level function in `diagnostics/formatter.py` and exported for test use; `DiagnosticFormatter._escape_control_chars(text)` no longer exists
+  - Callers using `DiagnosticFormatter._escape_control_chars(text)` must update to `from ftllexengine.diagnostics.formatter import _escape_control_chars`
+  - Location: `diagnostics/formatter.py`
+
+- **`ValidationWarning.format()` gains `sanitize` and `redact_content` parameters** (FEAT-DIAG-WARNING-SANITIZE-001):
+  - `ValidationError.format(sanitize=False, redact_content=False)` already supported sanitization; `ValidationWarning.format()` had no equivalent, leaving warning context strings always rendered raw
+  - `ValidationWarning.format()` now accepts the same signature: `format(sanitize: bool = False, redact_content: bool = False)`; both methods delegate to `DiagnosticFormatter` for consistent output
+  - Default values preserve existing behavior; callers not passing the new arguments are unaffected
+  - Location: `diagnostics/validation.py`
+
+- **`MessageIntrospection._variable_names` and `_function_names` removed from constructor** (ARCH-INTROSPECT-DERIVED-FIELDS-001):
+  - Both fields are internal caches derived from `variables` and `functions`; declaring them with `init=True` (the default) allowed external callers to construct `MessageIntrospection` with inconsistent derived state, where `_variable_names` could differ from `frozenset(v.name for v in variables)`
+  - Both fields changed to `field(init=False, repr=False, compare=False, hash=False)`; `__post_init__` computes them from the authoritative public fields using `object.__setattr__` (required for frozen dataclass mutation); consistency is now enforced by construction
+  - Callers explicitly passing `_variable_names` or `_function_names` as keyword arguments must remove those arguments; callers using `introspect_message()` to obtain instances are unaffected
+  - Location: `introspection/message.py`
+
+### Changed
+
+- **`IntrospectionVisitor._visit_expression` converted to `match/case`** (REFACTOR-INTROSPECT-VISIT-MATCH-001):
+  - The method dispatched on expression types using six `if/elif isinstance()` branches with TypeIs guards, while every other dispatch site in the codebase uses structural pattern matching
+  - Converted to a single exhaustive `match/case` block; semantics unchanged; cyclomatic complexity reduced from 7 to 1
+  - Location: `introspection/message.py`
+
+- **`IntrospectionVisitor._extract_function_call` context save/restore restructured** (REFACTOR-INTROSPECT-FUNC-LOOP-001):
+  - Context was saved and restored inside both the `positional` and `named` argument loops, performing O(n) redundant save/restore operations per function call
+  - Context is now saved once before both loops and restored once after via `try/finally`; semantics unchanged; per-iteration allocation overhead eliminated
+  - Location: `introspection/message.py`
+
+- **`_get_babel_currencies()` result cached across all locale lookups** (PERF-INTROSPECT-ISO-CURRENCIES-CACHE-001):
+  - The function returns English CLDR currency name data (invariant across all locales) but carried no cache; every call to `_list_currencies_impl` for a new locale triggered a full Babel round-trip to obtain the same English currency map
+  - `@lru_cache(maxsize=1)` applied; `_get_babel_currencies.cache_clear()` added to `clear_iso_cache()` to maintain cache coherence
+  - Location: `introspection/iso.py`
+
+- **Repeated `UnknownLocaleError` detection extracted to `_is_unknown_locale_error` helper** (REFACTOR-INTROSPECT-ISO-UNKNOWN-LOCALE-001):
+  - The same 8-line `except Exception` block (lazy-import of `UnknownLocaleError`, `isinstance` check, fallback or re-raise) was duplicated verbatim in `_get_babel_territories`, `_get_babel_currency_name`, and `_get_babel_currency_symbol`
+  - Extracted to a module-level `_is_unknown_locale_error(exc: Exception) -> bool` helper; all three sites reduced to a single-line conditional; one maintenance point if Babel's exception hierarchy changes
+  - Location: `introspection/iso.py`
+
+### Fixed
+
+- **`_escape_control_chars` escaped only 4 of 33 C0 control characters** (SEC-DIAG-ESCAPE-COVERAGE-001):
+  - The original implementation replaced only `\x1b` (ESC), `\r`, `\n`, `\t`; the remaining 29 C0 characters (0x00–0x08, 0x0b–0x0c, 0x0e–0x1a, 0x1c–0x1f) and DEL (0x7f) passed through unescaped into diagnostic output and log streams
+  - Any of those characters embedded in message identifiers or user-supplied values could inject fake diagnostic lines into structured log output (log injection)
+  - Fixed: a `str.maketrans` / `str.translate` table covering the full C0 range (0x00–0x1f) and 0x7f performs the mapping in a single O(n) pass; `\n`, `\r`, `\t`, and `\x1b` retain their conventional escape notation for readability
+  - Location: `diagnostics/formatter.py`
+
+- **`import json` in `DiagnosticFormatter._format_json` was suppressed without justification** (ARCH-DIAG-JSON-IMPORT-001):
+  - The function-level `import json` carried `# noqa: PLC0415` (import outside top-level) without a documented circular-dependency justification; `json` is a stdlib module with no dependency on `diagnostics/`
+  - Fixed: `import json` moved to module-level; the suppression removed
+  - Location: `diagnostics/formatter.py`
+
+- **`FluentLocalization._get_or_create_bundle` held write lock for all bundle accesses** (BUG-LOCALIZATION-BUNDLE-WRITELOCK-001):
+  - Every public `FluentLocalization` method (`format_value`, `format_pattern`, `has_message`, etc.) routes through `_get_or_create_bundle`, which acquired the exclusive write lock for all accesses — including plain dict lookups on already-initialized bundles
+  - After bundle initialization, all concurrent format operations serialized through the write lock, rendering the readers-writer lock ineffective and silently negating the concurrency guarantees documented in the public API
+  - Fixed: `_get_or_create_bundle` now uses double-checked locking — read lock for the common already-initialized case (allows concurrent format operations); write lock acquired only when creating a new bundle, with a double-check after write-lock acquisition. Callers already holding the write lock (`add_resource`, `add_function`) use RWLock downgrading semantics (`_acquire_read` short-circuits via `_writer_held_reads`)
+  - Location: `localization/orchestrator.py`
+
+- **`FluentLocalization._resources_loaded` was dead state** (BUG-LOCALIZATION-RESOURCES-LOADED-DEAD-001):
+  - `_resources_loaded: set[LocaleCode]` was declared in `__slots__`, initialized as an empty set in `__init__`, and populated in `_load_single_resource` via `.add(locale)`, but was never read by any method in the class
+  - The unreachable set consumed memory proportional to the number of locales and provided zero observable behavior
+  - Fixed: `_resources_loaded` removed from `__slots__`, `__init__`, and `_load_single_resource`
+  - Location: `localization/orchestrator.py`
+
+- **`FallbackInfo.message_id` typed as bare `str` instead of `MessageId`** (BUG-LOCALIZATION-FALLBACKINFO-MESSAGE-ID-TYPE-001):
+  - The `message_id` field on `FallbackInfo` was annotated `str` while all other identifier fields across the localization domain use the `MessageId` semantic type alias; the inconsistency silently broke domain-level type contracts
+  - Fixed: `message_id` field type changed to `MessageId`; `MessageId` added to the import from `ftllexengine.localization.types`
+  - Location: `localization/loading.py`
+
+- **`LoadSummary.get_all_junk` accumulated results in a mutable intermediate list** (BUG-LOCALIZATION-GETALLJUNK-MUTABLE-INTERMEDIATE-001):
+  - The method built a mutable `list[Junk]` via `.extend()` then converted to `tuple` at return, introducing unnecessary heap allocation and contradicting the immutability principle governing the localization domain
+  - Fixed: replaced with a generator expression passed directly to `tuple()`, eliminating the intermediate mutable container
+  - Location: `localization/loading.py`
+
+- **`IntrospectionVisitor` context state corrupted on `DepthGuard` exception** (BUG-INTROSPECT-CONTEXT-SAFETY-001):
+  - Three context save/restore sites in `_visit_expression` (SelectExpression branch) and `_extract_function_call` (both argument loops) restored `self._context` only on the normal path; if `DepthGuard` raised `FrozenFluentError` mid-visit, `self._context` was left at the mutated value, corrupting subsequent visits on the same visitor instance
+  - All three sites wrapped in `try/finally`; `self._context` is restored regardless of whether `DepthGuard` raises; `_visit_variant` hardened with `try/finally` for consistent defensive posture
+  - Location: `introspection/message.py`
+
 ## [0.115.0] - 2026-02-19
 
 ### Changed (BREAKING)
@@ -56,11 +158,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Public docstring instructed callers to invoke `bundle._cache.clear()` (private attribute) for bundle-specific cache eviction, leaking an implementation detail through the public interface
   - Fixed: docstring updated to recommend recreating the `FluentBundle` instance instead
   - Location: `src/ftllexengine/__init__.py`
-
-- **`tests/strategies/__init__.py` docstring caused preflight false positive** (BUG-PREFLIGHT-FALSE-POSITIVE-001):
-  - The phrase `hypothesis.event() calls` in the module docstring matched the preflight event-counting regex `(?<![a-zA-Z_])event\(` because `.` before `event(` is not in the lookbehind character class; `strategies/__init__.py` was incorrectly reported as having 1 event (expected: 0 — re-export module, no tests)
-  - Fixed: changed `hypothesis.event() calls` to `hypothesis.event calls` (removed parentheses to break the regex match)
-  - Location: `tests/strategies/__init__.py`
 
 ## [0.114.0] - 2026-02-19
 

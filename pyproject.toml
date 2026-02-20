@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.115.0"
+version = "0.116.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -77,8 +77,8 @@ dev = [
     "pytest-cov>=7.0.0",
     "hypothesis>=6.151.9",
     "mypy>=1.19.1",
-    "pylint>=4.0.4",
-    "ruff>=0.15.1",
+    "pylint>=4.0.5",
+    "ruff>=0.15.2",
     "pytest-benchmark>=5.2.3",
     "pytest-xdist>=3.8.0",
     "pytest-sugar>=1.1.1",
@@ -299,42 +299,36 @@ ignore = [
 "examples/**/*.py" = ["N802", "E501", "ERA001", "PLC0415"]
 
 # TESTS - Minimal architectural pattern suppressions
-"tests/test_visitor.py" = ["N802"]
-"tests/test_visitor_transformer.py" = ["N802"]
-"tests/test_visitor_hypothesis.py" = ["N802", "ARG002"]
-"tests/test_ast_tooling.py" = ["N802", "ARG002"]
-"tests/test_ast_edge_cases.py" = ["N801", "N802", "PLC0415"]
-"tests/test_api_consistency_contracts.py" = ["PLC0415"]
-"tests/test_fluent_bundle.py" = ["N802", "N806"]
-"tests/test_fluent_resolver.py" = ["N802", "EM101"]
-"tests/test_function_registry_integration.py" = ["N802"]
-"tests/test_cache_basic.py" = ["N802"]
-"tests/test_cache_properties.py" = ["E501"]
+"tests/test_syntax_visitor.py" = ["N802"]
+"tests/test_syntax_visitor_transformer.py" = ["N802", "ARG002"]
+"tests/test_syntax_visitor_property.py" = ["N802", "ARG002"]
+"tests/test_syntax_ast_tooling.py" = ["N802", "ARG002"]
+"tests/test_api_contracts.py" = ["PLC0415"]
+"tests/test_runtime_bundle.py" = ["N802", "N806"]
+"tests/test_runtime_resolver.py" = ["N802", "EM101"]
+"tests/test_runtime_function_registry_integration.py" = ["N802"]
 "tests/test_parsing_dates.py" = ["DTZ001"]
 "tests/test_parsing_*.py" = ["PLC0415"]
-"tests/test_spec_conformance.py" = ["ARG002", "PLC0415"]
-"tests/test_systematic_error_paths.py" = ["ARG002"]
-"tests/test_multiline_hypothesis.py" = ["E721", "E501"]
-# Fuzzing: pytestmark must precede imports for file-level marker application
-"tests/test_grammar_based_fuzzing.py" = ["E402"]
-"tests/test_whitespace_fuzzing.py" = ["E402"]
-"tests/test_semantic_validation.py" = ["PLC0415"]
-"tests/test_span_attachment.py" = ["PLC0415"]
-"tests/test_ast_validation_coverage.py" = ["PLC0415"]
-"tests/test_properties.py" = ["PLC0415", "SIM105"]
-"tests/test_function_bridge_validation.py" = ["PLC0415"]
-"tests/test_validation_resource_comprehensive.py" = ["PLC0415"]
+"tests/test_syntax_spec_conformance.py" = ["ARG002", "PLC0415"]
+"tests/test_syntax_parser_systematic.py" = ["ARG002"]
+"tests/test_syntax_parser_multiline_property.py" = ["E721", "E501"]
+"tests/test_syntax_cursor_span.py" = ["PLC0415"]
+"tests/test_runtime_function_bridge_validation.py" = ["PLC0415"]
 "tests/test_init_module.py" = ["PLC0415", "EM101"]
-"tests/test_metamorphic_properties.py" = ["PLC0415"]
+"tests/test_runtime_metamorphic_property.py" = ["PLC0415"]
 "tests/test_regression_parser_l10n_rounding.py" = ["PLC0415"]
-"tests/test_rwlock_implementation.py" = ["PLC0415"]
-"tests/test_transformer_validation.py" = ["N802", "ARG002"]
+"tests/test_rwlock_core.py" = ["PLC0415"]
 "tests/conftest.py" = ["PLC0415"]
 "tests/helpers/type_assertions.py" = ["PLC0415"]
-"tests/test_fluent_parser_*.py" = ["PT018"]
-"tests/test_edge_case_validation.py" = ["PLC0415"]
-"tests/test_babel_compat.py" = ["PLC0415"]
-"tests/test_resolver_module_exports.py" = ["PLC0415"]
+"tests/test_syntax_parser_*.py" = ["PT018"]
+"tests/test_parsing_babel_compat.py" = ["PLC0415"]
+"tests/test_integration_coverage.py" = ["N802", "PLC0415"]
+"tests/test_syntax_validator.py" = ["PLC0415"]
+"tests/test_validation_resource.py" = ["PLC0415"]
+# Fuzzing: pytestmark precedes later imports for file-level marker application
+"tests/fuzz/test_syntax_parser_grammar.py" = ["E402"]
+"tests/fuzz/test_syntax_parser_whitespace.py" = ["E402"]
+"tests/fuzz/test_parsing_numbers_property.py" = ["PLC0415"]
 
 # FUZZING - Atheris fuzzers with invariant comments that look like code
 "fuzz_atheris/**/*.py" = ["ERA001"]

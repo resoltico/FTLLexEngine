@@ -126,7 +126,7 @@ missing-ref = Uses { -undefined-term }
     result = validate_resource(invalid_ftl)
     print(f"Invalid FTL: is_valid={result.is_valid}, warnings={result.warning_count}")
     for warning in result.warnings:
-        print(f"  - {warning.code}: {warning.message}")
+        print(f"  - {warning.code.name}: {warning.message}")
 
     print()
 

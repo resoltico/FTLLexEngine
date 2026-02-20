@@ -48,7 +48,7 @@ class TestJunkWithoutAnnotations:
         errors = _extract_syntax_errors(resource, line_cache)
 
         assert len(errors) == 1
-        assert errors[0].code == DiagnosticCode.VALIDATION_PARSE_ERROR.name
+        assert errors[0].code == DiagnosticCode.VALIDATION_PARSE_ERROR
         assert errors[0].message == "Failed to parse FTL content"
         assert errors[0].line == 1
 
@@ -67,7 +67,7 @@ class TestJunkWithoutAnnotations:
         errors = _extract_syntax_errors(resource, line_cache)
 
         assert len(errors) == 1
-        assert errors[0].code == DiagnosticCode.VALIDATION_PARSE_ERROR.name
+        assert errors[0].code == DiagnosticCode.VALIDATION_PARSE_ERROR
         assert errors[0].line is None
         assert errors[0].column is None
 
@@ -87,7 +87,7 @@ class TestAnnotationSpanFallback:
 
         # Annotation has its own span
         annotation = Annotation(
-            code=DiagnosticCode.INVALID_CHARACTER.name,
+            code="INVALID_CHARACTER",
             message="Invalid character",
             span=Span(start=20, end=25),  # Points to specific position
         )
@@ -101,7 +101,7 @@ class TestAnnotationSpanFallback:
         errors = _extract_syntax_errors(resource, line_cache)
 
         assert len(errors) == 1
-        assert errors[0].code == DiagnosticCode.INVALID_CHARACTER.name
+        assert errors[0].code == DiagnosticCode.PARSE_JUNK
         # Should use annotation's span
         assert errors[0].line == 2
         assert errors[0].column is not None
@@ -113,7 +113,7 @@ class TestAnnotationSpanFallback:
 
         # Annotation has no span
         annotation = Annotation(
-            code=DiagnosticCode.INVALID_CHARACTER.name,
+            code="INVALID_CHARACTER",
             message="Invalid character",
             span=None,
         )
@@ -127,7 +127,7 @@ class TestAnnotationSpanFallback:
         errors = _extract_syntax_errors(resource, line_cache)
 
         assert len(errors) == 1
-        assert errors[0].code == DiagnosticCode.INVALID_CHARACTER.name
+        assert errors[0].code == DiagnosticCode.PARSE_JUNK
         # Should use Junk's span as fallback
         assert errors[0].line is not None
         assert errors[0].column is not None
@@ -138,7 +138,7 @@ class TestAnnotationSpanFallback:
         line_cache = LineOffsetCache(source)
 
         annotation = Annotation(
-            code=DiagnosticCode.INVALID_CHARACTER.name,
+            code="INVALID_CHARACTER",
             message="Invalid character",
             span=None,
         )
@@ -152,7 +152,7 @@ class TestAnnotationSpanFallback:
         errors = _extract_syntax_errors(resource, line_cache)
 
         assert len(errors) == 1
-        assert errors[0].code == DiagnosticCode.INVALID_CHARACTER.name
+        assert errors[0].code == DiagnosticCode.PARSE_JUNK
         assert errors[0].line is None
         assert errors[0].column is None
 
@@ -172,12 +172,12 @@ class TestMultipleAnnotations:
 
         # Create Junk with two annotations
         annotation1 = Annotation(
-            code=DiagnosticCode.INVALID_CHARACTER.name,
+            code="INVALID_CHARACTER",
             message="Invalid character",
             span=Span(start=0, end=7),
         )
         annotation2 = Annotation(
-            code=DiagnosticCode.EXPECTED_TOKEN.name,
+            code="EXPECTED_TOKEN",
             message="Expected token",
             span=Span(start=8, end=15),
         )
@@ -192,8 +192,8 @@ class TestMultipleAnnotations:
 
         # Should have two errors (one per annotation)
         assert len(errors) == 2
-        assert errors[0].code == DiagnosticCode.INVALID_CHARACTER.name
-        assert errors[1].code == DiagnosticCode.EXPECTED_TOKEN.name
+        assert errors[0].code == DiagnosticCode.PARSE_JUNK
+        assert errors[1].code == DiagnosticCode.PARSE_JUNK
 
     def test_multiple_junk_entries_create_separate_errors(self) -> None:
         """Multiple Junk entries each produce their own errors."""
@@ -204,7 +204,7 @@ class TestMultipleAnnotations:
             content="first invalid",
             annotations=(
                 Annotation(
-                    code=DiagnosticCode.INVALID_CHARACTER.name,
+                    code="INVALID_CHARACTER",
                     message="First error",
                     span=Span(start=0, end=13),
                 ),
@@ -215,7 +215,7 @@ class TestMultipleAnnotations:
             content="second invalid",
             annotations=(
                 Annotation(
-                    code=DiagnosticCode.EXPECTED_TOKEN.name,
+                    code="EXPECTED_TOKEN",
                     message="Second error",
                     span=Span(start=14, end=28),
                 ),
@@ -228,8 +228,8 @@ class TestMultipleAnnotations:
 
         # Should have two errors (one per Junk)
         assert len(errors) == 2
-        assert errors[0].code == DiagnosticCode.INVALID_CHARACTER.name
-        assert errors[1].code == DiagnosticCode.EXPECTED_TOKEN.name
+        assert errors[0].code == DiagnosticCode.PARSE_JUNK
+        assert errors[1].code == DiagnosticCode.PARSE_JUNK
 
 
 # ============================================================================
@@ -313,7 +313,7 @@ class TestJunkEdgeCases:
 
         # Should create generic error
         assert len(errors) == 1
-        assert errors[0].code == DiagnosticCode.VALIDATION_PARSE_ERROR.name
+        assert errors[0].code == DiagnosticCode.VALIDATION_PARSE_ERROR
 
     def test_junk_with_whitespace_only_content(self) -> None:
         """Junk with whitespace-only content is handled."""
@@ -341,7 +341,7 @@ class TestJunkEdgeCases:
             content="@@@invalid1",
             annotations=(
                 Annotation(
-                    code=DiagnosticCode.INVALID_CHARACTER.name,
+                    code="INVALID_CHARACTER",
                     message="Error 1",
                     span=Span(start=0, end=11),
                 ),
@@ -352,7 +352,7 @@ class TestJunkEdgeCases:
             content="@@@invalid2",
             annotations=(
                 Annotation(
-                    code=DiagnosticCode.INVALID_CHARACTER.name,
+                    code="INVALID_CHARACTER",
                     message="Error 2",
                     span=Span(start=12, end=23),
                 ),

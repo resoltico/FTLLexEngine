@@ -323,10 +323,56 @@ run_plugins() {
     unset LINT_PLUGIN_MODE
 }
 
+# [SECTION: NOQA AUDIT]
+# Rationale: A lint suppression without a justification comment is indistinguishable from
+# an accidental suppression. Suppressions fall into two categories:
+#   (a) Permanent architectural exceptions: the rule fires on code that is CORRECT by
+#       design and cannot be changed without breaking the design (e.g. visitor method
+#       naming, grammar-derived dispatch complexity). These are permanent and must be
+#       documented with the architectural reason.
+#   (b) Deferred fixes disguised as suppressions: the rule fires on code that SHOULD be
+#       fixed but was silenced to make the build pass. These are technical debt.
+# A rationale comment makes (a) visible and auditable, and makes (b) impossible to hide.
+# Without enforcement, suppressions accumulate silently and the distinction between
+# "this is intentional" and "this was never fixed" disappears entirely.
+# Required format: # noqa: RULE - explanation  OR  # noqa: RULE  # explanation
+run_noqa_audit() {
+    log_group_start "Audit: Bare noqa suppression rationale"
+
+    # Pattern: # noqa: followed by rule code(s) with nothing after (whitespace only to EOL).
+    # Matches bare: # noqa: PLC0415
+    # Does NOT match: # noqa: PLC0415 - Babel-optional  OR  # noqa: PLC0415  # comment
+    local bare_pattern="# noqa: [A-Z][A-Z0-9]+(, ?[A-Z][A-Z0-9]+)*[[:space:]]*$"
+
+    local found=0
+    local output_file
+    output_file=$(mktemp)
+
+    set +e
+    grep -rEn --include="*.py" "$bare_pattern" src/ > "$output_file" 2>/dev/null
+    found=$(wc -l < "$output_file" | tr -d '[:space:]')
+    set -e
+
+    if [[ "$found" -gt 0 ]]; then
+        log_fail "Bare # noqa suppressions found ($found). Each must include a rationale."
+        log_fail "Required format: # noqa: RULE - explanation  OR  # noqa: RULE  # explanation"
+        cat "$output_file"
+        rm -f "$output_file"
+        record_result "noqa-audit" "src" "fail" "0" "$found"
+        return 1
+    else
+        log_pass "noqa-audit: all suppression comments include rationale."
+        rm -f "$output_file"
+        record_result "noqa-audit" "src" "pass" "0" "0"
+        return 0
+    fi
+}
+
 # Execution
 run_ruff || true
 run_mypy || true
 run_pylint || true
+run_noqa_audit || true
 run_plugins || true
 
 # [SECTION: REPORT]

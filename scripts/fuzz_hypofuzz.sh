@@ -131,10 +131,10 @@ EXAMPLES:
     ./scripts/fuzz_hypofuzz.sh --deep --metrics
 
     # Reproduce a specific failing test
-    ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip
+    ./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 
     # Reproduce all tests in a module
-    ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis
+    ./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py
 
 NOTE:
     Hypothesis automatically stores and replays failing examples from
@@ -825,8 +825,8 @@ run_repro() {
         echo "Usage: ./scripts/fuzz_hypofuzz.sh --repro <test_module::test_function>"
         echo ""
         echo "Examples:"
-        echo "  ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip"
-        echo "  ./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis"
+        echo "  ./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py::test_roundtrip"
+        echo "  ./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py"
         return 1
     fi
 

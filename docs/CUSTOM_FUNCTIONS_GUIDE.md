@@ -986,7 +986,7 @@ class TestFileSizeHypothesis:
 
 **For More Examples**:
 - See [examples/custom_functions.py](../examples/custom_functions.py) for complete working code
-- See [tests/test_custom_functions_fuzzing.py](../tests/test_custom_functions_fuzzing.py) for test patterns
+- See [tests/fuzz/test_runtime_bundle_functions.py](../tests/fuzz/test_runtime_bundle_functions.py) for fuzz test patterns
 
 **Questions?**
 - Open an issue: https://github.com/resoltico/ftllexengine/issues

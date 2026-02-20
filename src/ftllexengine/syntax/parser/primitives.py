@@ -302,7 +302,7 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
     return ParseResult(number_str, cursor)
 
 
-def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa: PLR0911
+def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa: PLR0911 - escape
     """Parse escape sequence after backslash in string.
 
     Helper method extracted from parse_string_literal to reduce complexity.

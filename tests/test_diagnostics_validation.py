@@ -19,6 +19,7 @@ from __future__ import annotations
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.diagnostics.validation import (
     ValidationError,
     ValidationResult,
@@ -56,7 +57,7 @@ class TestValidationErrorProperties:
         event(f"has_location={has_location}")
         # Attempt to modify should raise FrozenInstanceError
         try:
-            error.code = "modified"  # type: ignore[misc]
+            error.code = "modified"  # type: ignore[misc,assignment]
             assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
         except AttributeError:
             pass  # Expected
@@ -74,8 +75,8 @@ class TestValidationErrorProperties:
     def test_property_format_contains_code(self, error: ValidationError) -> None:
         """PROPERTY: Formatted output contains error code."""
         formatted = error.format()
-        assert error.code in formatted or f"[{error.code}]" in formatted
-        event(f"code_len={len(error.code)}")
+        assert error.code.name in formatted or f"[{error.code.name}]" in formatted
+        event(f"code_len={len(error.code.name)}")
 
     @given(error=validation_error_strategy())
     def test_property_format_sanitize_bounds_content(
@@ -131,7 +132,7 @@ class TestValidationWarningProperties:
     ) -> None:
         """PROPERTY: ValidationWarning instances are immutable (frozen dataclass)."""
         try:
-            warning.code = "modified"  # type: ignore[misc]
+            warning.code = "modified"  # type: ignore[misc,assignment]
             assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
         except AttributeError:
             pass  # Expected
@@ -152,9 +153,9 @@ class TestValidationWarningProperties:
     ) -> None:
         """PROPERTY: Formatted output contains code and message."""
         formatted = warning.format()
-        assert warning.code in formatted or f"[{warning.code}]" in formatted
+        assert warning.code.name in formatted or f"[{warning.code.name}]" in formatted
         assert warning.message in formatted
-        event(f"code_len={len(warning.code)}")
+        event(f"code_len={len(warning.code.name)}")
 
     @given(warning=validation_warning_strategy())
     def test_property_format_includes_context_when_present(
@@ -396,7 +397,11 @@ class TestValidationErrorFormat:
     def test_format_with_location_includes_line_and_column(self) -> None:
         """format() includes line and column when provided."""
         error = ValidationError(
-            code="test-error", message="Test message", content="test", line=5, column=10
+            code=DiagnosticCode.PARSE_JUNK,
+            message="Test message",
+            content="test",
+            line=5,
+            column=10,
         )
         formatted = error.format()
         assert "line 5" in formatted
@@ -405,7 +410,7 @@ class TestValidationErrorFormat:
     def test_format_without_location_no_line_column(self) -> None:
         """format() does not include location when None."""
         error = ValidationError(
-            code="test-error", message="Test message", content="test"
+            code=DiagnosticCode.PARSE_JUNK, message="Test message", content="test"
         )
         formatted = error.format()
         assert "line" not in formatted.lower() or "baseline" in formatted.lower()
@@ -417,7 +422,7 @@ class TestValidationWarningFormat:
     def test_format_with_all_fields(self) -> None:
         """format() includes all fields when provided."""
         warning = ValidationWarning(
-            code="warn-code",
+            code=DiagnosticCode.VALIDATION_DUPLICATE_ID,
             message="Warning message",
             context="context-info",
             line=3,
@@ -425,34 +430,38 @@ class TestValidationWarningFormat:
             severity=WarningSeverity.CRITICAL,
         )
         formatted = warning.format()
-        assert "warn-code" in formatted
+        assert DiagnosticCode.VALIDATION_DUPLICATE_ID.name in formatted
         assert "Warning message" in formatted
         assert "context-info" in formatted
 
     def test_format_without_context(self) -> None:
         """format() works without context field."""
-        warning = ValidationWarning(code="warn", message="Message")
+        warning = ValidationWarning(
+            code=DiagnosticCode.VALIDATION_PARSE_ERROR, message="Message"
+        )
         formatted = warning.format()
-        assert "warn" in formatted
+        assert DiagnosticCode.VALIDATION_PARSE_ERROR.name in formatted
         assert "Message" in formatted
 
     def test_format_critical_severity(self) -> None:
         """format() handles CRITICAL severity."""
         warning = ValidationWarning(
-            code="critical-warn",
+            code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE,
             message="Critical warning",
             severity=WarningSeverity.CRITICAL,
         )
         formatted = warning.format()
-        assert "critical-warn" in formatted
+        assert DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name in formatted
 
     def test_format_info_severity(self) -> None:
         """format() handles INFO severity."""
         warning = ValidationWarning(
-            code="info-warn", message="Info warning", severity=WarningSeverity.INFO
+            code=DiagnosticCode.VALIDATION_SHADOW_WARNING,
+            message="Info warning",
+            severity=WarningSeverity.INFO,
         )
         formatted = warning.format()
-        assert "info-warn" in formatted
+        assert DiagnosticCode.VALIDATION_SHADOW_WARNING.name in formatted
 
 
 class TestValidationResultFormat:
@@ -466,7 +475,9 @@ class TestValidationResultFormat:
 
     def test_format_with_warnings_excluded(self) -> None:
         """format(include_warnings=False) excludes warnings section."""
-        warning = ValidationWarning(code="warn", message="Warning")
+        warning = ValidationWarning(
+            code=DiagnosticCode.VALIDATION_PARSE_ERROR, message="Warning"
+        )
         result = ValidationResult(errors=(), warnings=(warning,), annotations=())
         formatted = result.format(include_warnings=False)
         # Should not include warning section
@@ -474,12 +485,16 @@ class TestValidationResultFormat:
 
     def test_format_with_errors_and_warnings(self) -> None:
         """format() includes both errors and warnings."""
-        error = ValidationError(code="err", message="Error", content="x")
-        warning = ValidationWarning(code="warn", message="Warning")
+        error = ValidationError(
+            code=DiagnosticCode.PARSE_JUNK, message="Error", content="x"
+        )
+        warning = ValidationWarning(
+            code=DiagnosticCode.VALIDATION_PARSE_ERROR, message="Warning"
+        )
         result = ValidationResult(errors=(error,), warnings=(warning,), annotations=())
         formatted = result.format()
-        assert "err" in formatted
-        assert "warn" in formatted
+        assert DiagnosticCode.PARSE_JUNK.name in formatted
+        assert DiagnosticCode.VALIDATION_PARSE_ERROR.name in formatted
 
 
 class TestWarningSeverityEnum:

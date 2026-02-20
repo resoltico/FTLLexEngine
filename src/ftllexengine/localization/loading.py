@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from ftllexengine.enums import LoadStatus
-from ftllexengine.localization.types import FTLSource, LocaleCode, ResourceId
+from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
 
 if TYPE_CHECKING:
     from ftllexengine.syntax.ast import Junk
@@ -299,7 +299,7 @@ class FallbackInfo:
 
     requested_locale: LocaleCode
     resolved_locale: LocaleCode
-    message_id: str
+    message_id: MessageId
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,10 +431,7 @@ class LoadSummary:
         Returns:
             Flattened tuple of all Junk entries from all resources.
         """
-        junk_list: list[Junk] = []
-        for result in self.results:
-            junk_list.extend(result.junk_entries)
-        return tuple(junk_list)
+        return tuple(j for r in self.results for j in r.junk_entries)
 
     @property
     def has_errors(self) -> bool:

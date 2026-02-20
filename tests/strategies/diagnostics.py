@@ -23,6 +23,8 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
 
 from __future__ import annotations
 
+from typing import Literal
+
 from hypothesis import event
 from hypothesis import strategies as st
 
@@ -205,7 +207,9 @@ def diagnostics(draw: st.DrawFn) -> Diagnostic:
     ftl_location = draw(
         st.none() | st.text(min_size=1, max_size=100)
     )
-    severity = draw(st.sampled_from(["error", "warning"]))
+    severity: Literal["error", "warning"] = draw(
+        st.sampled_from(["error", "warning"])
+    )
     resolution_path = draw(
         st.none()
         | st.lists(
@@ -226,7 +230,7 @@ def diagnostics(draw: st.DrawFn) -> Diagnostic:
         expected_type=expected_type,
         received_type=received_type,
         ftl_location=ftl_location,
-        severity=severity,  # type: ignore[arg-type]
+        severity=severity,
         resolution_path=resolution_path,
     )
 
@@ -238,7 +242,7 @@ def validation_errors(draw: st.DrawFn) -> ValidationError:
     Events emitted:
     - diag_verr_location={with|without}: Whether location fields present
     """
-    code = draw(st.text(min_size=1, max_size=50))
+    code = draw(st.sampled_from(list(DiagnosticCode)))
     message = draw(st.text(min_size=1, max_size=200))
     content = draw(st.text(min_size=0, max_size=500))
     line = draw(st.none() | st.integers(min_value=1, max_value=10000))
@@ -263,7 +267,7 @@ def validation_warnings(draw: st.DrawFn) -> ValidationWarning:
     Events emitted:
     - diag_vwarn_severity={critical|warning|info}: Warning severity
     """
-    code = draw(st.text(min_size=1, max_size=50))
+    code = draw(st.sampled_from(list(DiagnosticCode)))
     message = draw(st.text(min_size=1, max_size=200))
     context = draw(st.none() | st.text(min_size=0, max_size=100))
     line = draw(st.none() | st.integers(min_value=1, max_value=10000))

@@ -101,13 +101,13 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
-    from ftllexengine.core.babel_compat import (  # noqa: PLC0415
+    from ftllexengine.core.babel_compat import (  # noqa: PLC0415 - circular
         get_locale_class,
         require_babel,
     )
 
     require_babel("get_babel_locale")
-    BabelLocale = get_locale_class()  # noqa: N806
+    BabelLocale = get_locale_class()  # noqa: N806 - class alias, PascalCase by convention
 
     normalized = normalize_locale(locale_code)
     return BabelLocale.parse(normalized)
@@ -151,7 +151,7 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
     # stdlib locale module deferred: has significant initialization overhead
     # (~5ms on some platforms). Deferring to call-time avoids penalizing the
     # parser-only import path which never calls get_system_locale().
-    import locale as locale_module  # noqa: PLC0415
+    import locale as locale_module  # noqa: PLC0415 - deferred; stdlib locale has ~5ms init cost
 
     # Try OS-level locale detection first
     try:

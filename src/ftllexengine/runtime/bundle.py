@@ -790,8 +790,8 @@ class FluentBundle:
         Returns:
             Collected entries ready for Phase 2 (commit).
         """
-        from ftllexengine.analysis.graph import entry_dependency_set  # noqa: PLC0415
-        from ftllexengine.introspection import extract_references  # noqa: PLC0415
+        from ftllexengine.analysis.graph import entry_dependency_set  # noqa: PLC0415 - circular
+        from ftllexengine.introspection import extract_references  # noqa: PLC0415 - circular
 
         pending = _PendingRegistration()
 

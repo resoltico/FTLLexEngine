@@ -132,7 +132,7 @@ def skip_multiline_pattern_start(cursor: Cursor) -> tuple[Cursor, int]:
 
     # Check for pattern starting on next line
     # Note: Line endings normalized to LF at parser entry point
-    if not cursor.is_eof and cursor.current == "\n":  # noqa: SIM102
+    if not cursor.is_eof and cursor.current == "\n":  # noqa: SIM102 - two-phase
         if is_indented_continuation(cursor):
             # Multiline pattern - skip newlines (including blank lines)
             cursor = cursor.advance()

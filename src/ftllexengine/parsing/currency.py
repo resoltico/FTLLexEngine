@@ -395,9 +395,9 @@ def _build_currency_maps_from_cldr() -> tuple[
     """
     # Lazy import to support parser-only installations
     try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-        from babel.localedata import locale_identifiers  # noqa: PLC0415
-        from babel.numbers import (  # noqa: PLC0415
+        from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+        from babel.localedata import locale_identifiers  # noqa: PLC0415 - Babel-optional
+        from babel.numbers import (  # noqa: PLC0415 - Babel-optional
             get_currency_symbol,
             get_territory_currencies,
         )
@@ -803,8 +803,8 @@ def parse_currency(
     """
     # Phase 1: Validate inputs
     require_babel("parse_currency")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415
-    from babel.numbers import NumberFormatError, parse_decimal  # noqa: PLC0415
+    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import NumberFormatError, parse_decimal  # noqa: PLC0415 - Babel-optional
 
     if not isinstance(value, str):
         diagnostic = ErrorTemplate.parse_currency_failed(  # type: ignore[unreachable]

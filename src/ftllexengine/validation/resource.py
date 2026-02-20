@@ -63,6 +63,26 @@ def _get_entry_position(
     return None, None
 
 
+def _annotation_to_diagnostic_code(annotation_code: str) -> DiagnosticCode:
+    """Resolve a parser annotation code string to a DiagnosticCode enum member.
+
+    Parser annotations use DiagnosticCode member names as their code field
+    (e.g., "PARSE_JUNK", "PARSE_NESTING_DEPTH_EXCEEDED"). This function
+    performs a name-based lookup and falls back to PARSE_JUNK for any
+    annotation code that does not match a DiagnosticCode member.
+
+    Args:
+        annotation_code: String code from an Annotation (e.g., "PARSE_JUNK")
+
+    Returns:
+        Matching DiagnosticCode member, or DiagnosticCode.PARSE_JUNK if unknown
+    """
+    try:
+        return DiagnosticCode[annotation_code]
+    except KeyError:
+        return DiagnosticCode.PARSE_JUNK
+
+
 def _extract_syntax_errors(
     resource: Resource,
     line_cache: LineOffsetCache,
@@ -102,7 +122,7 @@ def _extract_syntax_errors(
 
                     errors.append(
                         ValidationError(
-                            code=annotation.code,
+                            code=_annotation_to_diagnostic_code(annotation.code),
                             message=annotation.message,
                             content=entry.content,
                             line=ann_line,
@@ -118,7 +138,7 @@ def _extract_syntax_errors(
 
                 errors.append(
                     ValidationError(
-                        code=DiagnosticCode.VALIDATION_PARSE_ERROR.name,
+                        code=DiagnosticCode.VALIDATION_PARSE_ERROR,
                         message="Failed to parse FTL content",
                         content=entry.content,
                         line=line,
@@ -159,7 +179,7 @@ def _check_entry(
         line, column = _get_entry_position(entry, line_cache)
         warnings.append(
             ValidationWarning(
-                code=DiagnosticCode.VALIDATION_DUPLICATE_ID.name,
+                code=DiagnosticCode.VALIDATION_DUPLICATE_ID,
                 message=(
                     f"Duplicate {kind} ID '{entry_name}' "
                     f"(later definition will overwrite earlier)"
@@ -177,7 +197,7 @@ def _check_entry(
         line, column = _get_entry_position(entry, line_cache)
         warnings.append(
             ValidationWarning(
-                code=DiagnosticCode.VALIDATION_SHADOW_WARNING.name,
+                code=DiagnosticCode.VALIDATION_SHADOW_WARNING,
                 message=(
                     f"{kind.capitalize()} '{entry_name}' shadows "
                     f"existing {kind} "
@@ -198,7 +218,7 @@ def _check_entry(
             line, column = _get_entry_position(entry, line_cache)
             warnings.append(
                 ValidationWarning(
-                    code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE.name,
+                    code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE,
                     message=(
                         f"{kind.capitalize()} '{entry_name}' has "
                         f"duplicate attribute '{attr_name}' "
@@ -277,11 +297,7 @@ def _collect_entries(
                     )
                     warnings.append(  # pragma: no cover
                         ValidationWarning(
-                            code=(
-                                DiagnosticCode
-                                .VALIDATION_NO_VALUE_OR_ATTRS
-                                .name
-                            ),
+                            code=DiagnosticCode.VALIDATION_NO_VALUE_OR_ATTRS,
                             message=(
                                 f"Message '{msg_id.name}' has "
                                 f"neither value nor attributes"
@@ -355,7 +371,7 @@ def _check_undefined_references(
             if base_ref not in all_messages:
                 warnings.append(
                     ValidationWarning(
-                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE,
                         message=f"Message '{msg_name}' references undefined message '{base_ref}'",
                         context=base_ref,
                         line=line,
@@ -371,7 +387,7 @@ def _check_undefined_references(
             if base_ref not in all_terms:
                 warnings.append(
                     ValidationWarning(
-                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE,
                         message=f"Message '{msg_name}' references undefined term '-{base_ref}'",
                         context=f"-{base_ref}",
                         line=line,
@@ -391,7 +407,7 @@ def _check_undefined_references(
             if base_ref not in all_messages:
                 warnings.append(
                     ValidationWarning(
-                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE,
                         message=f"Term '-{term_name}' references undefined message '{base_ref}'",
                         context=base_ref,
                         line=line,
@@ -406,7 +422,7 @@ def _check_undefined_references(
             if base_ref not in all_terms:
                 warnings.append(
                     ValidationWarning(
-                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name,
+                        code=DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE,
                         message=f"Term '-{term_name}' references undefined term '-{base_ref}'",
                         context=f"-{base_ref}",
                         line=line,
@@ -472,7 +488,7 @@ def _detect_circular_references(
 
             warnings.append(
                 ValidationWarning(
-                    code=DiagnosticCode.VALIDATION_CIRCULAR_REFERENCE.name,
+                    code=DiagnosticCode.VALIDATION_CIRCULAR_REFERENCE,
                     message=msg,
                     context=cycle_str,
                     severity=WarningSeverity.CRITICAL,
@@ -735,7 +751,7 @@ def _detect_long_chains(
 
         warnings.append(
             ValidationWarning(
-                code=DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name,
+                code=DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED,
                 message=(
                     f"Reference chain depth ({chain_depth}) exceeds maximum ({max_depth}); "
                     f"will fail at runtime with MAX_DEPTH_EXCEEDED"
@@ -813,7 +829,7 @@ def validate_resource(
 
     if parser is None:
         # Local import to avoid import-time overhead for callers not providing parser
-        from ftllexengine.syntax.parser import (  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (  # noqa: PLC0415 - circular
             FluentParserV1 as ParserClass,
         )
 

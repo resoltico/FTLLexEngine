@@ -198,7 +198,7 @@ Atheris worker behavior under `fork()`.
 
 ```bash
 # HypoFuzz failures (automatic replay)
-./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip
+./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 
 # Atheris crashes (manual)
 uv run python scripts/fuzz_atheris_repro.py .fuzz_atheris_corpus/crash_xxx

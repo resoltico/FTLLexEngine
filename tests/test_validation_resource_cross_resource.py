@@ -54,7 +54,7 @@ class TestShadowWarnings:
         shadow_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
             and "greeting" in w.message.lower()
             and "message" in w.message.lower()
         ]
@@ -74,7 +74,7 @@ class TestShadowWarnings:
         shadow_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
             and "brand" in w.message.lower()
             and "term" in w.message.lower()
         ]
@@ -97,7 +97,7 @@ farewell = Goodbye
         shadow_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         assert len(shadow_warnings) >= 2
 
@@ -116,7 +116,7 @@ farewell = Goodbye
         shadow_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         assert len(shadow_warnings) >= 2
 
@@ -132,7 +132,7 @@ farewell = Goodbye
             w
             for w in result.warnings
             if w.code
-            == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         assert len(shadow_warnings) == 0
 
@@ -162,7 +162,7 @@ farewell = Goodbye
         shadow_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
 
         # Should have exactly num_shadows shadow warnings
@@ -260,7 +260,7 @@ term-local = { -term-external }
         undef_warnings_without = [
             w
             for w in result_without.warnings
-            if w.code == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            if w.code == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE
         ]
         assert len(undef_warnings_without) == 2
 
@@ -273,7 +273,7 @@ term-local = { -term-external }
         undef_warnings_with = [
             w
             for w in result_with.warnings
-            if w.code == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            if w.code == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE
         ]
         assert len(undef_warnings_with) == 0
 
@@ -399,12 +399,12 @@ msg = Second
         shadow_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         dup_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ID.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ID
         ]
 
         # Both types should be present
@@ -440,7 +440,7 @@ msg = Second
         dup_warnings = [
             w
             for w in warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ID.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ID
         ]
         assert len(dup_warnings) == 1
 
@@ -448,7 +448,7 @@ msg = Second
         shadow_warnings = [
             w
             for w in warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         assert len(shadow_warnings) >= 1
 
@@ -479,7 +479,7 @@ msg = Second
         dup_warnings = [
             w
             for w in warnings
-            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ID.name
+            if w.code == DiagnosticCode.VALIDATION_DUPLICATE_ID
         ]
         assert len(dup_warnings) == 1
 
@@ -487,7 +487,7 @@ msg = Second
         shadow_warnings = [
             w
             for w in warnings
-            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            if w.code == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         assert len(shadow_warnings) >= 1
 
@@ -512,7 +512,7 @@ class TestCrossResourceReferenceChains:
             w
             for w in result.warnings
             if w.code
-            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE
             and "term-b" in w.message
         ]
         assert len(undef) == 0
@@ -529,7 +529,7 @@ class TestCrossResourceReferenceChains:
             w
             for w in result.warnings
             if w.code
-            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE
             and "brand" in w.message
         ]
         assert len(undef) == 0
@@ -552,7 +552,7 @@ msg-c = { -term-x }
             w
             for w in result.warnings
             if w.code
-            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE.name
+            == DiagnosticCode.VALIDATION_UNDEFINED_REFERENCE
         ]
         assert len(undef) == 0
 
@@ -580,6 +580,6 @@ msg-c = { -term-x }
             w
             for w in result.warnings
             if w.code
-            == DiagnosticCode.VALIDATION_SHADOW_WARNING.name
+            == DiagnosticCode.VALIDATION_SHADOW_WARNING
         ]
         assert len(shadow_warnings) == actual

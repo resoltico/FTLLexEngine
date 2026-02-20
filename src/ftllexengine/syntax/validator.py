@@ -161,7 +161,7 @@ class SemanticValidator:
                 # Inline f-string required: splitting into a variable assignment
                 # causes MyPy to flag raise as unreachable in exhausted
                 # match/case union branches (a MyPy analysis limitation).
-                raise TypeError(f"Unexpected entry type: {type(entry)}")  # noqa: EM102
+                raise TypeError(f"Unexpected entry type: {type(entry)}")  # noqa: EM102 - MyPy
 
     def _validate_message(
         self, message: Message, errors: list[Annotation], depth_guard: DepthGuard
@@ -255,7 +255,7 @@ class SemanticValidator:
                     self._validate_expression(element.expression, errors, context, depth_guard)
             case _:
                 raise TypeError(
-                    f"Unexpected pattern element type: {type(element)}"  # noqa: EM102
+                    f"Unexpected pattern element type: {type(element)}"  # noqa: EM102 - MyPy
                 )
 
     # ========================================================================
@@ -304,7 +304,7 @@ class SemanticValidator:
                     self._validate_expression(expr.expression, errors, context, depth_guard)
             case _:
                 raise TypeError(
-                    f"Unexpected inline expression type: {type(expr)}"  # noqa: EM102
+                    f"Unexpected inline expression type: {type(expr)}"  # noqa: EM102 - MyPy
                 )
 
     def _validate_term_reference(

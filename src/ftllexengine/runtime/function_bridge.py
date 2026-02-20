@@ -604,7 +604,9 @@ class FunctionRegistry:
             None
         """
         # Lazy import to avoid circular dependency at module load time
-        from ftllexengine.runtime.function_metadata import BUILTIN_FUNCTIONS  # noqa: PLC0415
+        from ftllexengine.runtime.function_metadata import (  # noqa: PLC0415 - circular
+            BUILTIN_FUNCTIONS,
+        )
 
         metadata = BUILTIN_FUNCTIONS.get(ftl_name)
         return metadata.expected_positional_args if metadata else None
@@ -625,7 +627,9 @@ class FunctionRegistry:
             True
         """
         # Lazy import to avoid circular dependency at module load time
-        from ftllexengine.runtime.function_metadata import BUILTIN_FUNCTIONS  # noqa: PLC0415
+        from ftllexengine.runtime.function_metadata import (  # noqa: PLC0415 - circular
+            BUILTIN_FUNCTIONS,
+        )
 
         return BUILTIN_FUNCTIONS.get(ftl_name)
 

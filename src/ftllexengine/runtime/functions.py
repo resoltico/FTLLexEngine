@@ -176,7 +176,7 @@ def number_format(
         - number_format(1.00, min=2, max=2) -> "1.00" with precision=2
     """
     # Lazy import for parser-only installations
-    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415
+    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415 - Babel-optional
 
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
@@ -353,7 +353,7 @@ def currency_format(
         decimal places.
     """
     # Lazy import for parser-only installations
-    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415
+    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415 - Babel-optional
 
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales

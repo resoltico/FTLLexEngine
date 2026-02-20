@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.syntax.ast import Annotation
 
 if TYPE_CHECKING:
@@ -63,7 +64,7 @@ def _get_formatter(
 
     Local import to avoid circular dependency at module load time.
     """
-    from .formatter import DiagnosticFormatter  # noqa: PLC0415
+    from .formatter import DiagnosticFormatter  # noqa: PLC0415 - circular
 
     return DiagnosticFormatter(sanitize=sanitize, redact_content=redact_content)
 
@@ -73,11 +74,11 @@ class ValidationError:
     """Structured syntax error from FTL validation.
 
     Attributes:
-        code: Error code (e.g., "parse-error", "malformed-entry")
-        message: Human-readable error message
-        content: The unparseable FTL content
-        line: Line number where error occurred (1-indexed, optional)
-        column: Column number where error occurred (1-indexed, optional)
+        code: Typed diagnostic code identifying the error class.
+        message: Human-readable error message.
+        content: The unparseable FTL content.
+        line: Line number where error occurred (1-indexed, optional).
+        column: Column number where error occurred (1-indexed, optional).
 
     Security Note:
         The `content` field may contain FTL source that should not be exposed
@@ -85,7 +86,7 @@ class ValidationError:
         to truncate or redact content before logging or displaying errors.
     """
 
-    code: str
+    code: DiagnosticCode
     message: str
     content: str
     line: int | None = None
@@ -113,7 +114,7 @@ class ValidationError:
             Formatted error string with optional content sanitization.
 
         Examples:
-            >>> error = ValidationError("parse-error", "Syntax error", "secret data here")
+            >>> error = ValidationError(DiagnosticCode.PARSE_JUNK, "Syntax error", "bad ftl")
             >>> error.format(sanitize=True)  # Truncates to 100 chars
             >>> error.format(sanitize=True, redact_content=True)  # Redacts entirely
         """
@@ -126,12 +127,12 @@ class ValidationWarning:
     """Structured semantic warning from FTL validation.
 
     Attributes:
-        code: Warning code (e.g., "duplicate-id", "undefined-reference")
-        message: Human-readable warning message
-        context: Additional context (e.g., the duplicate ID name)
-        line: Line number where warning occurred (1-indexed, optional)
-        column: Column number where warning occurred (1-indexed, optional)
-        severity: Warning severity level (CRITICAL, WARNING, INFO)
+        code: Typed diagnostic code identifying the warning class.
+        message: Human-readable warning message.
+        context: Additional context (e.g., the duplicate ID name).
+        line: Line number where warning occurred (1-indexed, optional).
+        column: Column number where warning occurred (1-indexed, optional).
+        severity: Warning severity level (CRITICAL, WARNING, INFO).
 
     The optional line/column fields enable IDE integration (LSP servers)
     to display warning squiggles at the correct source location.
@@ -142,22 +143,34 @@ class ValidationWarning:
         INFO: Informational only (e.g., unused term)
     """
 
-    code: str
+    code: DiagnosticCode
     message: str
     context: str | None = None
     line: int | None = None
     column: int | None = None
     severity: WarningSeverity = WarningSeverity.WARNING
 
-    def format(self) -> str:
+    def format(
+        self,
+        *,
+        sanitize: bool = False,
+        redact_content: bool = False,
+    ) -> str:
         """Format warning as human-readable string.
 
         Delegates to DiagnosticFormatter for consistent output style.
 
+        Args:
+            sanitize: If True, truncate context to prevent information leakage.
+                     Useful for multi-tenant applications where context may
+                     contain tenant-specific message or term identifiers.
+            redact_content: If True (and sanitize=True), completely redact
+                           context instead of truncating.
+
         Returns:
-            Formatted warning string with optional location information.
+            Formatted warning string with optional location and context information.
         """
-        formatter = _get_formatter()
+        formatter = _get_formatter(sanitize=sanitize, redact_content=redact_content)
         return formatter.format_warning(self)
 
 
@@ -178,9 +191,9 @@ class ValidationResult:
     Immutable result object for thread-safe validation feedback.
 
     Attributes:
-        errors: Syntax/parse validation errors
-        warnings: Semantic validation warnings
-        annotations: Parser-level AST annotations
+        errors: Syntax/parse validation errors.
+        warnings: Semantic validation warnings.
+        annotations: Parser-level AST annotations.
 
     Example:
         >>> result = ValidationResult.valid()
@@ -192,7 +205,7 @@ class ValidationResult:
         >>> # With errors
         >>> result = ValidationResult.invalid(
         ...     errors=(ValidationError(
-        ...         code="parse-error",
+        ...         code=DiagnosticCode.PARSE_JUNK,
         ...         message="Expected '=' but found EOF",
         ...         content="msg",
         ...         line=1,

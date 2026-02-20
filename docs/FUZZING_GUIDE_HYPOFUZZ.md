@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.107.0"
 domain: fuzzing
-updated: "2026-02-10"
+updated: "2026-02-20"
 route:
   keywords: [fuzzing, hypothesis, hypofuzz, property-based, testing, coverage, metrics, workers]
   questions: ["how to run hypothesis tests?", "how to use hypofuzz?", "how to reproduce hypothesis failures?", "how to see strategy metrics?", "why does --metrics use pytest instead of hypofuzz?"]
@@ -25,7 +25,7 @@ route:
 ./scripts/fuzz_hypofuzz.sh --deep
 
 # Reproduce a specific failing test
-./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip
+./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 ```
 
 ---
@@ -125,13 +125,13 @@ When Hypothesis finds a failing example:
 **To reproduce with verbose output:**
 
 ```bash
-./scripts/fuzz_hypofuzz.sh --repro test_parser_hypothesis::test_roundtrip
+./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 ```
 
 **To extract @example decorator:**
 
 ```bash
-uv run python scripts/fuzz_hypofuzz_repro.py --example test_parser_hypothesis::test_roundtrip
+uv run python scripts/fuzz_hypofuzz_repro.py --example tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 ```
 
 This parses the failure output and generates a copy-paste ready `@example` decorator.
@@ -139,14 +139,14 @@ This parses the failure output and generates a copy-paste ready `@example` decor
 **JSON output for automation:**
 
 ```bash
-uv run python scripts/fuzz_hypofuzz_repro.py --json test_parser_hypothesis::test_roundtrip
+uv run python scripts/fuzz_hypofuzz_repro.py --json tests/fuzz/test_syntax_parser_property.py::test_roundtrip
 ```
 
 Output format:
 
 ```json
 {
-  "test_path": "tests/test_parser_hypothesis.py::test_roundtrip",
+  "test_path": "tests/fuzz/test_syntax_parser_property.py::test_roundtrip",
   "status": "fail",
   "exit_code": 1,
   "timestamp": "2026-02-04T10:30:00+00:00",
@@ -233,9 +233,10 @@ The `tests/fuzz/` directory contains oracle-based fuzzers that compare `FluentBu
 ```
 tests/fuzz/
 ├── __init__.py
-├── shadow_bundle.py        # Reference implementation (unoptimized, simple)
-├── test_bundle_oracle.py   # State machine fuzzer
-└── test_depth_exhaustion.py # MAX_DEPTH boundary testing
+├── shadow_bundle.py                     # Reference implementation (unoptimized, simple)
+├── test_runtime_bundle_oracle.py        # State machine oracle fuzzer
+├── test_core_depth_guard_exhaustion.py  # MAX_DEPTH boundary testing
+└── ...                                  # Additional fuzz modules (grammar, serializer, etc.)
 ```
 
 **ShadowBundle** is a deliberately simple implementation for differential testing:
@@ -250,7 +251,7 @@ tests/fuzz/
 uv run pytest tests/fuzz/ -v -m fuzz
 
 # Run state machine fuzzer
-uv run pytest tests/fuzz/test_bundle_oracle.py -v -m fuzz
+uv run pytest tests/fuzz/test_runtime_bundle_oracle.py -v -m fuzz
 ```
 
 The state machine fuzzer generates random sequences of operations and verifies both implementations produce consistent results.
@@ -259,14 +260,14 @@ The state machine fuzzer generates random sequences of operations and verifies b
 
 ## Depth Exhaustion Testing
 
-`test_depth_exhaustion.py` tests behavior at the `MAX_DEPTH` boundary (100 in `constants.py`):
+`test_core_depth_guard_exhaustion.py` tests behavior at the `MAX_DEPTH` boundary (100 in `constants.py`):
 
 - **99-deep nesting**: Should succeed normally
 - **100-deep nesting**: Should hit limit gracefully
 - **101-deep nesting**: Should fail cleanly (no crash)
 
 ```bash
-uv run pytest tests/fuzz/test_depth_exhaustion.py -v -m fuzz
+uv run pytest tests/fuzz/test_core_depth_guard_exhaustion.py -v -m fuzz
 ```
 
 This ensures the resolver handles pathological inputs without stack overflow or infinite recursion.

@@ -109,12 +109,6 @@ class TestSyntaxCodeValues:
     def test_unexpected_eof_value(self) -> None:
         assert DiagnosticCode.UNEXPECTED_EOF.value == 3001
 
-    def test_invalid_character_value(self) -> None:
-        assert DiagnosticCode.INVALID_CHARACTER.value == 3002
-
-    def test_expected_token_value(self) -> None:
-        assert DiagnosticCode.EXPECTED_TOKEN.value == 3003
-
     def test_parse_junk_value(self) -> None:
         assert DiagnosticCode.PARSE_JUNK.value == 3004
 

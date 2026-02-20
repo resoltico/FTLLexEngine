@@ -32,6 +32,7 @@ from ftllexengine.diagnostics.codes import (
     FrozenErrorContext,
     SourceSpan,
 )
+from ftllexengine.diagnostics.formatter import _escape_control_chars
 from tests.strategies.diagnostics import (
     diagnostics as diagnostic_strategy,
 )
@@ -204,8 +205,6 @@ class TestDiagnosticCodeEnum:
         """Syntax error codes are in 3000-3999 range."""
         syntax_codes = [
             DiagnosticCode.UNEXPECTED_EOF,
-            DiagnosticCode.INVALID_CHARACTER,
-            DiagnosticCode.EXPECTED_TOKEN,
             DiagnosticCode.PARSE_JUNK,
             DiagnosticCode.PARSE_NESTING_DEPTH_EXCEEDED,
         ]
@@ -371,13 +370,7 @@ class TestDiagnosticDataclass:
         must appear in the formatted output.
         """
         formatted = diagnostic.format_error()
-        escaped = (
-            diagnostic.message
-            .replace("\x1b", "\\x1b")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n")
-            .replace("\t", "\\t")
-        )
+        escaped = _escape_control_chars(diagnostic.message)
         assert escaped in formatted
         has_hint = diagnostic.hint is not None
         event(f"has_hint={has_hint}")

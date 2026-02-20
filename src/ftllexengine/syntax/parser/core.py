@@ -262,7 +262,7 @@ class FluentParserV1:
         """Maximum allowed placeable nesting depth."""
         return self._max_nesting_depth
 
-    def parse(self, source: str) -> Resource:  # noqa: PLR0915
+    def parse(self, source: str) -> Resource:  # noqa: PLR0915 - main parser loop
         """Parse FTL source into AST Resource.
 
         Parses complete FTL file into messages, terms, and comments.

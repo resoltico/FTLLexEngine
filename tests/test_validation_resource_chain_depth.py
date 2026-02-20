@@ -57,7 +57,7 @@ class TestLongChainDetection:
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) > 0
         assert chain_warnings[0].severity == WarningSeverity.WARNING
@@ -80,7 +80,7 @@ class TestLongChainDetection:
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) == 0
 
@@ -100,7 +100,7 @@ class TestLongChainDetection:
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) == 0
 
@@ -147,7 +147,7 @@ class TestChainPathTruncation:
         # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
         # With 15 nodes and max_depth=5, chains from msg0-msg8 all exceed the limit
         assert len(warnings) >= 1
-        assert warnings[0].code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+        assert warnings[0].code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
 
         # First warning (deepest chain) should show truncation marker
         assert warnings[0].context is not None
@@ -302,7 +302,7 @@ msg3 = End
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
 
         # If warning exists, check formatting
@@ -331,7 +331,7 @@ msg3 = End
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
 
         assert len(chain_warnings) > 0
@@ -367,7 +367,7 @@ msg3 = End
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
 
         assert len(chain_warnings) > 0
@@ -399,7 +399,7 @@ class TestChainDepthIntegration:
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) > 0
 
@@ -441,7 +441,7 @@ chain2_2 = End
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         # Short chains should not trigger warnings
         assert len(chain_warnings) == 0
@@ -474,7 +474,7 @@ end = Final
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) == 0
 
@@ -503,6 +503,6 @@ g = Terminal
         chain_warnings = [
             w
             for w in result.warnings
-            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED.name
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) == 0

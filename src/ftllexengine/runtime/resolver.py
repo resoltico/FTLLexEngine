@@ -892,7 +892,7 @@ class FluentResolver:
         # Handles Decimal, datetime, date, FluentNumber, and any other types
         return str(value)
 
-    def _get_fallback_for_placeable(self, expr: Expression, depth: int = 10) -> str:  # noqa: PLR0911
+    def _get_fallback_for_placeable(self, expr: Expression, depth: int = 10) -> str:  # noqa: PLR0911 - fallback dispatch
         """Get readable fallback for failed placeable per Fluent spec.
 
         Per Fluent specification, when a placeable fails to resolve,

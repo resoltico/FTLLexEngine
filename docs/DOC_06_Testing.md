@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.113.0"
 domain: TESTING
-updated: "2026-02-19"
+updated: "2026-02-20"
 route:
   keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh, metrics]
   questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?", "how to see strategy metrics?"]
@@ -21,10 +21,10 @@ Testing infrastructure reference. Pytest configuration, Hypothesis profiles, mar
 | Category | Location | Execution | Duration | Marker |
 |:---------|:---------|:----------|:---------|:-------|
 | Unit | `tests/test_*.py` | `uv run scripts/test.sh` | Seconds | N/A |
-| Property | `tests/test_*_hypothesis.py` | `uv run scripts/test.sh` | Minutes | N/A |
-| Fuzzing | `tests/test_grammar_based_fuzzing.py` | `pytest -m fuzz` | 10+ min | `fuzz` |
-| Oracle | `tests/fuzz/test_bundle_oracle.py` | `pytest -m fuzz` | 10+ min | `fuzz` |
-| Depth | `tests/fuzz/test_depth_exhaustion.py` | `pytest -m fuzz` | 5+ min | `fuzz` |
+| Property | `tests/test_*_property.py` | `uv run scripts/test.sh` | Minutes | N/A |
+| Fuzzing | `tests/fuzz/*.py` | `pytest -m fuzz` | 10+ min | `fuzz` |
+| Oracle | `tests/fuzz/test_runtime_bundle_oracle.py` | `pytest -m fuzz` | 10+ min | `fuzz` |
+| Depth | `tests/fuzz/test_core_depth_guard_exhaustion.py` | `pytest -m fuzz` | 5+ min | `fuzz` |
 
 ### Constraints
 - Categories are mutually exclusive: No.
@@ -54,7 +54,7 @@ pytestmark = pytest.mark.fuzz
 |:--------|:-------|
 | Normal test run (`pytest tests/`) | Test SKIPPED |
 | Marker filter (`pytest -m fuzz`) | Test RUNS |
-| Specific file (`pytest tests/test_grammar_based_fuzzing.py`) | Test RUNS (bypass) |
+| Specific file (`pytest tests/fuzz/test_syntax_parser_grammar.py`) | Test RUNS (bypass) |
 
 ### Constraints
 - Location: Defined in `tests/conftest.py`.
@@ -418,12 +418,12 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 ```
 pytest tests/
     |
-    +-- test_parser.py                     [RUN]
-    +-- test_parser_hypothesis.py          [RUN]
-    +-- test_grammar_based_fuzzing.py
-    |       +-- has @pytest.mark.fuzz
+    +-- test_syntax_parser.py              [RUN]
+    +-- test_syntax_parser_property.py     [RUN]
+    +-- tests/fuzz/test_syntax_parser_grammar.py
+    |       +-- has pytestmark = fuzz
     |       +-- conftest adds skip marker  [SKIP]
-    +-- tests/fuzz/test_bundle_oracle.py
+    +-- tests/fuzz/test_runtime_bundle_oracle.py
             +-- has pytestmark = fuzz
             +-- conftest adds skip marker  [SKIP]
 ```
@@ -433,19 +433,19 @@ pytest tests/
 ```
 pytest -m fuzz
     |
-    +-- test_parser.py                     [SKIP - no fuzz marker]
-    +-- test_grammar_based_fuzzing.py
-    |       +-- has @pytest.mark.fuzz      [RUN]
-    +-- tests/fuzz/test_bundle_oracle.py
+    +-- test_syntax_parser.py              [SKIP - no fuzz marker]
+    +-- tests/fuzz/test_syntax_parser_grammar.py
+    |       +-- has pytestmark = fuzz      [RUN]
+    +-- tests/fuzz/test_runtime_bundle_oracle.py
             +-- has pytestmark = fuzz      [RUN]
 ```
 
 ### Specific File Bypass
 
 ```
-pytest tests/fuzz/test_bundle_oracle.py
+pytest tests/fuzz/test_runtime_bundle_oracle.py
     |
-    +-- conftest detects fuzz-related file pattern
+    +-- conftest detects tests/fuzz/ path prefix
     +-- Bypass skip logic
     +-- All tests in file                  [RUN]
 ```
@@ -453,7 +453,7 @@ pytest tests/fuzz/test_bundle_oracle.py
 ### Constraints
 - Logic location: `tests/conftest.py:pytest_collection_modifyitems`.
 - Bypass: Target file explicitly or use `-m fuzz`.
-- Fuzz patterns: `_fuzzing`, `test_concurrent`, `test_resolver_depth_cycles`, and `tests/fuzz/` files.
+- Fuzz patterns: `tests/fuzz/` directory (any file directly invoked from this path prefix).
 
 ---
 
@@ -478,7 +478,7 @@ Parser must only raise `ValueError`, `RecursionError`, or `MemoryError` on inval
 
 ### Location
 - Enforced in: `src/ftllexengine/syntax/parser/`.
-- Tested by: `tests/test_grammar_based_fuzzing.py:test_random_input_stability`.
+- Tested by: `tests/fuzz/test_syntax_parser_grammar.py:test_random_input_stability`.
 
 ---
 
@@ -588,14 +588,11 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 
 | Pattern | Category | Marker | Notes |
 |:--------|:---------|:-------|:------|
-| `test_*.py` | Unit | N/A | Standard tests |
-| `test_*_hypothesis.py` | Property | N/A | Hypothesis-based |
-| `test_*_coverage.py` | Unit | N/A | Coverage gap tests |
-| `test_*_comprehensive.py` | Unit | N/A | Thorough edge cases |
-| `test_grammar_based_fuzzing.py` | Fuzzing | `fuzz` | Excluded from normal runs |
-| `test_metamorphic_properties.py` | Property | N/A | Metamorphic self-consistency tests |
-| `tests/fuzz/test_bundle_oracle.py` | Oracle | `fuzz` | Differential testing vs ShadowBundle |
-| `tests/fuzz/test_depth_exhaustion.py` | Depth | `fuzz` | MAX_DEPTH boundary testing |
+| `tests/test_*.py` | Unit | N/A | Standard tests |
+| `tests/test_*_property.py` | Property | N/A | Hypothesis property-based |
+| `tests/fuzz/*.py` | Fuzzing | `fuzz` | Excluded from normal runs |
+| `tests/fuzz/test_runtime_bundle_oracle.py` | Oracle | `fuzz` | Differential testing vs ShadowBundle |
+| `tests/fuzz/test_core_depth_guard_exhaustion.py` | Depth | `fuzz` | MAX_DEPTH boundary testing |
 | `tests/fuzz/shadow_bundle.py` | Support | N/A | Reference implementation (not a test) |
 
 ---
@@ -620,10 +617,10 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 
 ### Marker-Based Exclusion
 **Question**: How to separate fast unit tests from slow fuzzing tests?
-**Decision**: Use `@pytest.mark.fuzz` marker with conftest.py skip logic.
-**Rationale**: Markers are declarative, visible in code, and work with pytest's `-m` filter.
+**Decision**: `tests/fuzz/` subdirectory + `@pytest.mark.fuzz` marker + conftest.py skip logic.
+**Rationale**: Directory isolates fuzz tests visually and structurally; marker integrates with
+pytest `-m` filter; conftest enforces skipping in normal runs while allowing direct file bypass.
 **Alternatives Rejected**:
-- Separate `tests/fuzz/` directory: Would require different import paths, breaks grep.
 - Naming convention only: No enforcement mechanism, easily forgotten.
 - Environment variable check in tests: Invisible, hard to audit.
 
@@ -638,7 +635,7 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 ### File Bypass Logic
 **Question**: What if developer wants to run fuzz tests directly?
 **Decision**: Detect specific file in pytest args and bypass skip.
-**Rationale**: Allows `pytest tests/test_grammar_based_fuzzing.py` without `-m fuzz`.
+**Rationale**: Allows `pytest tests/fuzz/test_syntax_parser_grammar.py` without `-m fuzz`.
 **Alternatives Rejected**:
 - Always require `-m fuzz`: Extra typing, breaks muscle memory.
 - Never skip if any fuzz file mentioned: Too broad, confusing.
@@ -649,7 +646,7 @@ Unit tests with literal inputs are permanent, readable, and version-controlled.
 
 | Quirk | Behavior | Reason |
 |:------|:---------|:-------|
-| File bypass | `pytest tests/test_grammar_based_fuzzing.py` runs despite fuzz marker | Detected in `pytest_collection_modifyitems` via `config.invocation_params.args` |
+| File bypass | `pytest tests/fuzz/test_syntax_parser_grammar.py` runs despite fuzz marker | Detected in `pytest_collection_modifyitems` via `config.invocation_params.args` |
 | String matching | Bypass uses substring match, not exact | Allows both absolute and relative paths |
 | Profile load timing | Profiles loaded at import time in conftest.py | Must happen before any test collection |
 | `pytestmark` position | Must be before any `from` imports in file | Python module-level variable ordering |

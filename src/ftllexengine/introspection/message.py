@@ -16,7 +16,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import weakref
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, assert_never
 
 from ftllexengine.constants import MAX_DEPTH
@@ -194,12 +194,25 @@ class MessageIntrospection:
     """Whether message uses select expressions."""
 
     # Pre-computed name caches for O(1) accessor performance.
-    # Computed once at creation; avoids repeated frozenset construction.
-    _variable_names: frozenset[str]
+    # Derived from variables/functions in __post_init__. Using field(init=False)
+    # keeps these internal caches out of the public constructor signature and
+    # guarantees consistency — they cannot diverge from their source fields.
+    _variable_names: frozenset[str] = field(init=False, repr=False, compare=False, hash=False)
     """Cached variable names for O(1) lookup."""
 
-    _function_names: frozenset[str]
+    _function_names: frozenset[str] = field(init=False, repr=False, compare=False, hash=False)
     """Cached function names for O(1) lookup."""
+
+    def __post_init__(self) -> None:
+        """Compute derived name caches from public fields.
+
+        Uses object.__setattr__ to initialize slots on the frozen dataclass.
+        This is the documented Python pattern for computed fields in frozen
+        dataclasses: __post_init__ runs inside __init__, before the frozen
+        restriction is enforced externally.
+        """
+        object.__setattr__(self, "_variable_names", frozenset(v.name for v in self.variables))
+        object.__setattr__(self, "_function_names", frozenset(f.name for f in self.functions))
 
     def get_variable_names(self) -> frozenset[str]:
         """Get set of variable names.
@@ -308,102 +321,110 @@ class IntrospectionVisitor(ASTVisitor[None]):
                 assert_never(unreachable)
 
     def _visit_expression(self, expr: Expression | InlineExpression) -> None:
-        """Visit an expression and extract metadata using pattern matching."""
-        # Use Python 3.13 TypeIs for type-safe narrowing via static .guard() methods
-        # Spans are propagated from AST expression nodes to Info objects for IDE integration.
-        if VariableReference.guard(expr):
-            self.variables.add(
-                VariableInfo(name=expr.id.name, context=self._context, span=expr.span)
-            )
+        """Visit an expression and extract metadata using structural pattern matching.
 
-        elif FunctionReference.guard(expr):
-            self._extract_function_call(expr)
-
-        elif MessageReference.guard(expr):
-            attr_name = expr.attribute.name if expr.attribute else None
-            self.references.add(
-                ReferenceInfo(
-                    id=expr.id.name,
-                    kind=ReferenceKind.MESSAGE,
-                    attribute=attr_name,
-                    span=expr.span,
+        Spans are propagated from AST expression nodes to Info objects for IDE integration.
+        StringLiteral and NumberLiteral are leaf nodes with no sub-expressions; they
+        fall through to the default case intentionally.
+        """
+        match expr:
+            case VariableReference(id=var_id, span=span):
+                self.variables.add(
+                    VariableInfo(name=var_id.name, context=self._context, span=span)
                 )
-            )
 
-        elif TermReference.guard(expr):
-            attr_name = expr.attribute.name if expr.attribute else None
-            self.references.add(
-                ReferenceInfo(
-                    id=expr.id.name,
-                    kind=ReferenceKind.TERM,
-                    attribute=attr_name,
-                    span=expr.span,
+            case FunctionReference() as func_ref:
+                self._extract_function_call(func_ref)
+
+            case MessageReference(id=msg_id, attribute=attribute, span=span):
+                attr_name = attribute.name if attribute else None
+                self.references.add(
+                    ReferenceInfo(
+                        id=msg_id.name,
+                        kind=ReferenceKind.MESSAGE,
+                        attribute=attr_name,
+                        span=span,
+                    )
                 )
-            )
-            # Visit term arguments to extract nested dependencies
-            # Term arguments like -term(case: $var) contain expressions
-            if expr.arguments:
-                for pos_arg in expr.arguments.positional:
+
+            case TermReference(id=term_id, attribute=attribute, arguments=arguments, span=span):
+                attr_name = attribute.name if attribute else None
+                self.references.add(
+                    ReferenceInfo(
+                        id=term_id.name,
+                        kind=ReferenceKind.TERM,
+                        attribute=attr_name,
+                        span=span,
+                    )
+                )
+                # Visit term arguments to extract nested dependencies
+                # Term arguments like -term(case: $var) contain expressions
+                if arguments:
+                    for pos_arg in arguments.positional:
+                        with self._depth_guard:
+                            self._visit_expression(pos_arg)
+                    for named_arg in arguments.named:
+                        with self._depth_guard:
+                            self._visit_expression(named_arg.value)
+
+            case SelectExpression(selector=selector, variants=variants):
+                self.has_selectors = True
+                old_context = self._context
+                try:
+                    self._context = VariableContext.SELECTOR
                     with self._depth_guard:
-                        self._visit_expression(pos_arg)
-                for named_arg in expr.arguments.named:
-                    with self._depth_guard:
-                        self._visit_expression(named_arg.value)
+                        self._visit_expression(selector)
+                finally:
+                    self._context = old_context
+                for variant in variants:
+                    self._visit_variant(variant)
 
-        elif SelectExpression.guard(expr):
-            self.has_selectors = True
-            # Visit selector with depth tracking
-            old_context = self._context
-            self._context = VariableContext.SELECTOR
-            with self._depth_guard:
-                self._visit_expression(expr.selector)
-            self._context = old_context
+            case Placeable(expression=inner_expr):
+                # Handle nested Placeables (e.g., { { $var } })
+                with self._depth_guard:
+                    self._visit_expression(inner_expr)
 
-            # Visit variants
-            for variant in expr.variants:
-                self._visit_variant(variant)
-
-        elif Placeable.guard(expr):
-            # Handle nested Placeables (e.g., { { $var } })
-            # This case occurs when an expression contains a nested Placeable
-            with self._depth_guard:
-                self._visit_expression(expr.expression)
+            case _:
+                # StringLiteral | NumberLiteral: leaf nodes with no sub-expressions.
+                pass
 
     def _extract_function_call(self, func: FunctionReference) -> None:
         """Extract function call information including arguments.
 
         Recursively visits all argument expressions to extract nested dependencies
         (variables, message references, term references, and nested function calls).
+        Context is saved once before argument traversal and restored in a finally
+        block to guarantee exception safety even if DepthGuard fires mid-traversal.
         """
         positional: list[str] = []
         named: set[str] = set()
 
-        # Extract positional arguments - recursively visit all expression types
-        for pos_arg in func.arguments.positional:
-            # Unwrap Placeable if present (handles {$var} in function args)
-            unwrapped_arg = pos_arg.expression if Placeable.guard(pos_arg) else pos_arg
-
-            # Track variable names for positional args metadata
-            if VariableReference.guard(unwrapped_arg):
-                positional.append(unwrapped_arg.id.name)
-
-            # Recursively visit to extract all nested dependencies
-            # This handles: VariableReference, MessageReference, TermReference,
-            # nested FunctionReference, SelectExpression, etc.
-            old_context = self._context
+        old_context = self._context
+        try:
             self._context = VariableContext.FUNCTION_ARG
-            with self._depth_guard:
-                self._visit_expression(pos_arg)
-            self._context = old_context
 
-        # Extract named argument keys and recursively visit values
-        for named_arg in func.arguments.named:
-            named.add(named_arg.name.name)
-            # Recursively visit value expression for all nested dependencies
-            old_context = self._context
-            self._context = VariableContext.FUNCTION_ARG
-            with self._depth_guard:
-                self._visit_expression(named_arg.value)
+            # Extract positional arguments - recursively visit all expression types
+            for pos_arg in func.arguments.positional:
+                # Unwrap Placeable if present (handles {$var} in function args)
+                unwrapped_arg = pos_arg.expression if Placeable.guard(pos_arg) else pos_arg
+
+                # Track variable names for positional args metadata
+                if VariableReference.guard(unwrapped_arg):
+                    positional.append(unwrapped_arg.id.name)
+
+                # Recursively visit to extract all nested dependencies
+                # This handles: VariableReference, MessageReference, TermReference,
+                # nested FunctionReference, SelectExpression, etc.
+                with self._depth_guard:
+                    self._visit_expression(pos_arg)
+
+            # Extract named argument keys and recursively visit values
+            for named_arg in func.arguments.named:
+                named.add(named_arg.name.name)
+                # Recursively visit value expression for all nested dependencies
+                with self._depth_guard:
+                    self._visit_expression(named_arg.value)
+        finally:
             self._context = old_context
 
         func_info = FunctionCallInfo(
@@ -417,9 +438,11 @@ class IntrospectionVisitor(ASTVisitor[None]):
     def _visit_variant(self, variant: Variant) -> None:
         """Visit a select variant and extract variables from its pattern."""
         old_context = self._context
-        self._context = VariableContext.VARIANT
-        self.visit(variant.value)
-        self._context = old_context
+        try:
+            self._context = VariableContext.VARIANT
+            self.visit(variant.value)
+        finally:
+            self._context = old_context
 
 
 # ==============================================================================
@@ -618,19 +641,12 @@ def introspect_message(
     for attr in message.attributes:
         visitor.visit(attr.value)
 
-    # Pre-compute frozen sets for immutable storage
-    variables_fs = frozenset(visitor.variables)
-    functions_fs = frozenset(visitor.functions)
-
     result = MessageIntrospection(
         message_id=message.id.name,
-        variables=variables_fs,
-        functions=functions_fs,
+        variables=frozenset(visitor.variables),
+        functions=frozenset(visitor.functions),
         references=frozenset(visitor.references),
         has_selectors=visitor.has_selectors,
-        # Pre-computed name caches for O(1) accessor performance
-        _variable_names=frozenset(v.name for v in variables_fs),
-        _function_names=frozenset(f.name for f in functions_fs),
     )
 
     # Store in cache for future lookups

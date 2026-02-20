@@ -116,10 +116,25 @@ class CurrencyInfo:
 def _get_babel_locale(locale_str: str) -> object:
     """Get Babel Locale object, raising BabelImportError if unavailable."""
     try:
-        from babel import Locale  # noqa: PLC0415
+        from babel import Locale  # noqa: PLC0415 - Babel-optional
     except ImportError as e:
         raise BabelImportError(_BABEL_FEATURE) from e
     return Locale.parse(locale_str)
+
+
+def _is_unknown_locale_error(exc: Exception) -> bool:
+    """Return True if exc is Babel's UnknownLocaleError.
+
+    Babel's UnknownLocaleError inherits directly from Exception (not LookupError),
+    requiring explicit runtime type checking. Returns False when Babel is unavailable
+    (ImportError on the babel.core import), allowing the caller to re-raise the
+    original exception via a bare `raise`.
+    """
+    try:
+        from babel.core import UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    except ImportError:
+        return False
+    return isinstance(exc, UnknownLocaleError)
 
 
 def _get_babel_territories(locale_str: str) -> dict[str, str]:
@@ -134,19 +149,19 @@ def _get_babel_territories(locale_str: str) -> dict[str, str]:
         # Standard library exceptions from invalid data
         return {}
     except Exception as exc:
-        # Babel's UnknownLocaleError inherits directly from Exception
-        # (not LookupError). Import and check by type for precision.
-        try:
-            from babel.core import UnknownLocaleError  # noqa: PLC0415
-        except ImportError:
-            raise exc from None  # Babel unavailable; propagate original error
-        if isinstance(exc, UnknownLocaleError):
+        if _is_unknown_locale_error(exc):
             return {}
         raise  # Re-raise unexpected errors (logic bugs)
 
 
+@lru_cache(maxsize=1)
 def _get_babel_currencies() -> dict[str, str]:
-    """Get currency names from Babel (English)."""
+    """Get English currency names from Babel. Result is invariant; cached once.
+
+    The English CLDR currency map never changes within a process lifetime.
+    Caching with maxsize=1 avoids redundant Babel round-trips when list_currencies
+    is called for multiple locales (all calls share the same English source map).
+    """
     locale = _get_babel_locale("en")
     return locale.currencies  # type: ignore[attr-defined, no-any-return]
 
@@ -157,8 +172,8 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
     Returns None if the currency code is not found in CLDR data.
     """
     try:
-        from babel import Locale  # noqa: PLC0415
-        from babel.numbers import get_currency_name  # noqa: PLC0415
+        from babel import Locale  # noqa: PLC0415 - Babel-optional
+        from babel.numbers import get_currency_name  # noqa: PLC0415 - Babel-optional
     except ImportError as e:
         raise BabelImportError(_BABEL_FEATURE) from e
     try:
@@ -174,13 +189,7 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
         # TypeError) propagate to fail fast in financial-grade contexts.
         return None
     except Exception as exc:
-        # Babel's UnknownLocaleError inherits directly from Exception
-        # (not LookupError). Import and check by type for precision.
-        try:
-            from babel.core import UnknownLocaleError  # noqa: PLC0415
-        except ImportError:
-            raise exc from None  # Babel unavailable; propagate original error
-        if isinstance(exc, UnknownLocaleError):
+        if _is_unknown_locale_error(exc):
             return None
         raise  # Re-raise unexpected errors (logic bugs)
 
@@ -188,7 +197,7 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
 def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
     """Get localized currency symbol from Babel."""
     try:
-        from babel.numbers import get_currency_symbol  # noqa: PLC0415
+        from babel.numbers import get_currency_symbol  # noqa: PLC0415 - Babel-optional
     except ImportError as e:
         raise BabelImportError(_BABEL_FEATURE) from e
     try:
@@ -198,13 +207,7 @@ def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
         # KeyError/AttributeError for unknown codes. Logic bugs propagate.
         return code
     except Exception as exc:
-        # Babel's UnknownLocaleError inherits directly from Exception
-        # (not LookupError). Import and check by type for precision.
-        try:
-            from babel.core import UnknownLocaleError  # noqa: PLC0415
-        except ImportError:
-            raise exc from None  # Babel unavailable; propagate original error
-        if isinstance(exc, UnknownLocaleError):
+        if _is_unknown_locale_error(exc):
             return code
         raise  # Re-raise unexpected errors (logic bugs)
 
@@ -215,7 +218,7 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
     Returns list of currently active legal tender currencies.
     """
     try:
-        from babel.core import get_global  # noqa: PLC0415
+        from babel.core import get_global  # noqa: PLC0415 - Babel-optional
     except ImportError as e:
         raise BabelImportError(_BABEL_FEATURE) from e
     try:
@@ -618,6 +621,7 @@ def clear_iso_cache() -> None:
     Call this if you need to free memory or after locale configuration changes.
     Thread-safe.
     """
+    _get_babel_currencies.cache_clear()
     _get_territory_impl.cache_clear()
     _get_currency_impl.cache_clear()
     _list_territories_impl.cache_clear()

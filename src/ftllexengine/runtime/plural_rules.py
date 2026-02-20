@@ -81,14 +81,14 @@ def select_plural_category(
     """
     # Lazy import to support parser-only installations
     try:
-        from babel.core import UnknownLocaleError  # noqa: PLC0415
+        from babel.core import UnknownLocaleError  # noqa: PLC0415 - Babel-optional
     except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415
+        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415 - circular
 
         feature = "select_plural_category"
         raise BabelImportError(feature) from e
 
-    from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415
+    from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415 - circular
 
     try:
         # Use cached locale parsing for performance

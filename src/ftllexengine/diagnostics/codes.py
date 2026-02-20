@@ -97,10 +97,13 @@ class DiagnosticCode(Enum):
     EXPANSION_BUDGET_EXCEEDED = 2015
 
     # Syntax errors (3000-3999)
+    # 3001: UNEXPECTED_EOF - parser cursor signals early end of input
+    # 3002, 3003: not assigned - character-level and token-level errors
+    #             are reported via Annotation codes in the AST, not
+    #             DiagnosticCode, because they carry structural arguments
+    #             (found/expected token pairs) that do not map to flat codes.
     UNEXPECTED_EOF = 3001
-    INVALID_CHARACTER = 3002
-    EXPECTED_TOKEN = 3003
-    PARSE_JUNK = 3004  # Generic parse error for Junk AST entries
+    PARSE_JUNK = 3004      # Generic parse error for Junk AST entries
     PARSE_NESTING_DEPTH_EXCEEDED = 3005  # Nesting depth limit exceeded
 
     # Parsing errors (4000-4999) - Bi-directional localization
@@ -116,7 +119,15 @@ class DiagnosticCode(Enum):
     PARSE_CURRENCY_CODE_INVALID = 4010
 
     # Validation errors (5000-5099) - Fluent spec semantic validation
-    # These correspond to AST semantic checks per Fluent spec valid.md
+    # Codes 5001-5003: E0001 (call-args on attribute reference),
+    #     E0002 (positional args on attribute reference),
+    #     E0003 (attribute access on term value) - handled by the parser as
+    #     parse-time syntax errors (Junk), not as post-parse validation codes.
+    # Codes 5008-5009: E0008 (unresolved variable), E0009 (missing default)
+    #     are represented at runtime via VARIABLE_NOT_PROVIDED (1005) and
+    #     NO_VARIANTS (2002) respectively.
+    # Codes 5011-5013: E0011-E0013 are not defined by the Fluent spec
+    #     valid.md as of the current implementation revision.
     VALIDATION_TERM_NO_VALUE = 5004
     VALIDATION_SELECT_NO_DEFAULT = 5005
     VALIDATION_SELECT_NO_VARIANTS = 5006
@@ -222,6 +233,6 @@ class Diagnostic:
         Returns:
             Formatted error message
         """
-        from .formatter import DiagnosticFormatter  # noqa: PLC0415
+        from .formatter import DiagnosticFormatter  # noqa: PLC0415 - circular
 
         return DiagnosticFormatter().format(self)

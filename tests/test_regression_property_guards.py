@@ -21,6 +21,7 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
+from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.diagnostics.validation import (
     ValidationError,
     ValidationResult,
@@ -278,7 +279,7 @@ class TestSanitizationBoundsProperty:
         event(f"outcome={mode}")
 
         error = ValidationError(
-            code="test-error",
+            code=DiagnosticCode.PARSE_JUNK,
             message="Test error message",
             content=content,
             line=1,
@@ -302,7 +303,10 @@ class TestSanitizationBoundsProperty:
         long_content = "A" * 500
         errors = (
             ValidationError(
-                code="err1", message="Error 1", content=long_content, line=1
+                code=DiagnosticCode.PARSE_JUNK,
+                message="Error 1",
+                content=long_content,
+                line=1,
             ),
         )
         result = ValidationResult(errors=errors, warnings=(), annotations=())

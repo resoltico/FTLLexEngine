@@ -107,7 +107,6 @@ class FluentLocalization:
         "_pending_functions",
         "_resource_ids",
         "_resource_loader",
-        "_resources_loaded",
         "_strict",
         "_use_isolating",
     )
@@ -176,9 +175,6 @@ class FluentLocalization:
         # But resources are loaded eagerly at init time for fail-fast behavior
         self._bundles: dict[LocaleCode, FluentBundle] = {}
 
-        # Track which locales have had resources loaded
-        self._resources_loaded: set[LocaleCode] = set()
-
         # Track all load results for diagnostics
         self._load_results: list[ResourceLoadResult] = []
 
@@ -217,8 +213,11 @@ class FluentLocalization:
         When a new bundle is created, any pending functions (registered via
         add_function before the bundle was accessed) are automatically applied.
 
-        Thread-safe via internal RWLock (acquires write lock since it may
-        create a new bundle).
+        Thread-safe via double-checked locking: read lock for the common
+        already-initialized case (allows concurrent format operations), write
+        lock only when a new bundle must be created. Callers already holding
+        the write lock (add_resource, add_function) use RWLock downgrading
+        semantics: _acquire_read short-circuits via _writer_held_reads.
 
         Args:
             locale: Locale code (must be in _locales tuple)
@@ -226,6 +225,16 @@ class FluentLocalization:
         Returns:
             FluentBundle instance for the locale
         """
+        # Fast path: read lock allows concurrent format operations once all
+        # bundles are initialized. The write-lock-holder path (add_resource,
+        # add_function) uses RWLock downgrading and is also safe here.
+        with self._lock.read():
+            if locale in self._bundles:
+                return self._bundles[locale]
+
+        # Slow path: bundle does not exist; acquire write lock and create it.
+        # Double-check after acquiring write lock: another thread may have
+        # created the bundle between our read-lock release and write-lock acquire.
         with self._lock.write():
             if locale in self._bundles:
                 return self._bundles[locale]
@@ -271,7 +280,6 @@ class FluentLocalization:
             ftl_source = resource_loader.load(locale, resource_id)
             bundle = self._get_or_create_bundle(locale)
             junk_entries = bundle.add_resource(ftl_source, source_path=source_path)
-            self._resources_loaded.add(locale)
             return ResourceLoadResult(
                 locale=locale,
                 resource_id=resource_id,
@@ -463,8 +471,9 @@ class FluentLocalization:
                 msg = f"Locale '{locale}' not in fallback chain {self._locales}"
                 raise ValueError(msg)
 
-            # _get_or_create_bundle also acquires write lock; RWLock is
-            # reentrant for same-thread write re-acquisition.
+            # _get_or_create_bundle uses double-checked locking: it first
+            # acquires a read lock (downgrading from this write lock via
+            # RWLock._writer_held_reads), then a write lock if needed (reentrant).
             bundle = self._get_or_create_bundle(locale)
             self._modified_in_context = True
             return bundle.add_resource(ftl_source)
