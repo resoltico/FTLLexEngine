@@ -1,7 +1,7 @@
 """Tests for runtime behavioral contracts covering async safety, depth guards, and AST fields.
 
 Tests:
-- Parse error context uses task-local storage via contextvars (async-safe)
+- Parse errors returned as typed ParseError values (no side-channel state)
 - Term argument evaluation respects nesting depth guards
 - Serializer wraps argument serialization in depth guard
 - AST span fields exist on Pattern, TextElement, and Placeable
@@ -25,64 +25,58 @@ from ftllexengine.syntax.ast import (
     StringLiteral,
     TextElement,
 )
-from ftllexengine.syntax.parser.primitives import (
-    clear_parse_error,
-    get_last_parse_error,
-)
+from ftllexengine.syntax.cursor import ParseError
 
 
-class TestContextVarsAsyncIsolation:
-    """Parse error context uses task-local storage via contextvars.
+class TestTypedErrorReturn:
+    """Parse errors returned as typed ParseError values.
 
-    contextvars provides automatic isolation per async task, preventing
-    error context leakage between concurrent parse operations.
+    Primitives return ParseResult[T] | ParseError directly.
+    No shared state — each call is independent.
     """
 
-    def test_error_context_defaults_to_none(self) -> None:
-        """Fresh context has no parse error recorded."""
-        clear_parse_error()
-        assert get_last_parse_error() is None
-
-    def test_error_context_set_and_get(self) -> None:
-        """Parse error is recorded when parse_identifier fails."""
+    def test_failure_returns_parse_error(self) -> None:
+        """Failed parse returns ParseError, not None."""
         from ftllexengine.syntax.cursor import Cursor  # noqa: PLC0415
         from ftllexengine.syntax.parser.primitives import parse_identifier  # noqa: PLC0415
 
         cursor = Cursor("123invalid", 0)
         result = parse_identifier(cursor)
-        assert result is None
+        assert isinstance(result, ParseError)
+        assert result.cursor.pos == 0
 
-        error = get_last_parse_error()
-        assert error is not None
-        assert error.position == 0
-
-    def test_async_task_isolation(self) -> None:
-        """Each async task has its own independent parse error context."""
+    def test_success_is_not_parse_error(self) -> None:
+        """Successful parse does not return ParseError."""
         from ftllexengine.syntax.cursor import Cursor  # noqa: PLC0415
         from ftllexengine.syntax.parser.primitives import parse_identifier  # noqa: PLC0415
 
-        results: dict[str, str | None] = {}
+        cursor = Cursor("validId", 0)
+        result = parse_identifier(cursor)
+        assert not isinstance(result, ParseError)
+        assert result.value == "validId"
+
+    def test_async_calls_are_independent(self) -> None:
+        """Concurrent async parse calls return independent values."""
+        from ftllexengine.syntax.cursor import Cursor  # noqa: PLC0415
+        from ftllexengine.syntax.parser.primitives import parse_identifier  # noqa: PLC0415
+
+        results: dict[str, object] = {}
 
         async def task_a() -> None:
             cursor = Cursor("123bad", 0)
-            parse_identifier(cursor)
-            error = get_last_parse_error()
-            results["a_error"] = error.message if error else None
+            results["a"] = parse_identifier(cursor)
 
         async def task_b() -> None:
             cursor = Cursor("validId", 0)
-            result = parse_identifier(cursor)
-            results["b_result"] = result.value if result else None
-            err = get_last_parse_error()
-            results["b_error_after"] = err.message if err else None
+            results["b"] = parse_identifier(cursor)
 
         async def run_tasks() -> None:
             await asyncio.gather(task_a(), task_b())
 
         asyncio.run(run_tasks())
 
-        assert results["a_error"] is not None
-        assert results["b_result"] == "validId"
+        assert isinstance(results["a"], ParseError)
+        assert not isinstance(results["b"], ParseError)
 
 
 class TestTermArgumentDepthGuard:

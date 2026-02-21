@@ -26,6 +26,7 @@ from babel.core import UnknownLocaleError
 from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
+import ftllexengine.core.babel_compat as _bc
 from ftllexengine.runtime.plural_rules import select_plural_category
 
 # ============================================================================
@@ -72,7 +73,7 @@ class TestPluralRulesBabelImportError:
     def test_select_plural_category_raises_babel_import_error_when_babel_unavailable(
         self,
     ) -> None:
-        """select_plural_category raises BabelImportError when Babel unavailable (lines 67-70)."""
+        """select_plural_category raises BabelImportError when Babel unavailable."""
         from ftllexengine.core.babel_compat import (  # noqa: PLC0415 - test assertion
             BabelImportError,
         )
@@ -82,6 +83,9 @@ class TestPluralRulesBabelImportError:
         babel_core = sys.modules.pop("babel.core", None)
         babel_dates = sys.modules.pop("babel.dates", None)
         babel_numbers = sys.modules.pop("babel.numbers", None)
+
+        # Reset sentinel so _check_babel_available() re-evaluates under the mock
+        _bc._babel_available = None
 
         try:
             with patch.dict(sys.modules, {"babel": None, "babel.core": None}):
@@ -114,6 +118,8 @@ class TestPluralRulesBabelImportError:
                 sys.modules["babel.dates"] = babel_dates
             if babel_numbers is not None:
                 sys.modules["babel.numbers"] = babel_numbers
+            # Reset sentinel so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
 
 
 # ============================================================================

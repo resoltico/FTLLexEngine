@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.113.0"
+afad: "3.3"
+version: "0.117.0"
 domain: TESTING
-updated: "2026-02-20"
+updated: "2026-02-21"
 route:
   keywords: [pytest, hypothesis, fuzz, marker, profile, conftest, fixture, test.sh, metrics]
   questions: ["how to run tests?", "how to skip fuzz tests?", "what hypothesis profiles exist?", "what test markers are available?", "how to see strategy metrics?"]
@@ -29,15 +29,15 @@ Testing infrastructure reference. Pytest configuration, Hypothesis profiles, mar
 ### Constraints
 - Categories are mutually exclusive: No.
 - Default category: Unit.
-- Property tests use Hypothesis with moderate `max_examples` (50-500).
-- Fuzzing tests use Hypothesis with high `max_examples` (500-1500).
+- Property tests use Hypothesis with moderate `max_examples` (50 in CI, 500 in dev).
+- Fuzzing tests use Hypothesis with high `max_examples` (10000 under `--deep` via `hypofuzz` profile).
 
 ---
 
 ## `pytest.mark.fuzz`
 
 ### Rationale
-Fuzzing tests use high `max_examples` (500-1500) and take 10+ minutes to complete; excluding them from normal test runs keeps `uv run scripts/test.sh` fast while preserving the option for dedicated deep testing.
+Fuzzing tests use `max_examples=10000` (via `hypofuzz` profile) and take 10+ minutes to complete; excluding them from normal test runs keeps `uv run scripts/test.sh` fast while preserving the option for dedicated deep testing.
 
 ### Usage
 ```python
@@ -662,7 +662,7 @@ pytest `-m` filter; conftest enforces skipping in normal runs while allowing dir
 | Hardcode `@settings(max_examples=N)` | Overrides profile, CI takes forever | Omit decorator or use profile-based settings for fuzz-only |
 | Forget `pytestmark` in new fuzz file | Tests run in normal suite, slow | Add `pytestmark = pytest.mark.fuzz` at top of file |
 | Run `pytest tests/` expecting fuzz tests | Fuzz tests silently skipped | Use `pytest -m fuzz` or `./scripts/fuzz_hypofuzz.sh --deep` |
-| Set `HYPOTHESIS_PROFILE` wrong | Unexpected example counts | Valid values: `dev`, `ci`, `verbose` |
+| Set `HYPOTHESIS_PROFILE` wrong | Unexpected example counts | Valid values: `dev`, `ci`, `verbose`, `hypofuzz`, `stateful_fuzz` |
 | Long socket paths in fuzzing | `AF_UNIX path too long` error | Scripts set `TMPDIR=/tmp` automatically |
 | Ignore `.hypothesis/crashes/` | Miss portable crash reproductions | Check for auto-generated `repro_crash_*.py` scripts |
 

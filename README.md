@@ -439,20 +439,20 @@ us_calendar = FiscalCalendar(start_month=1)
 # Japan operations: fiscal year starts April
 jp_calendar = FiscalCalendar(start_month=4)
 
-today = date(2026, 3, 15)
+today = date(2026, 5, 15)
 
 # Same calendar date, different fiscal years
-uk_calendar.fiscal_year(today)  # 2026 (UK FY2026 runs Apr 2025 - Mar 2026)
+uk_calendar.fiscal_year(today)  # 2027 (UK FY2027 runs Apr 2026 - Mar 2027)
 us_calendar.fiscal_year(today)  # 2026
-jp_calendar.fiscal_year(today)  # 2026
+jp_calendar.fiscal_year(today)  # 2027
 
 # Quick lookups without creating calendar objects
-fiscal_quarter(today, start_month=4)  # 4 (Q4 of fiscal year)
-fiscal_quarter(today, start_month=1)  # 1 (Q1 of calendar year)
+fiscal_quarter(today, start_month=4)  # 1 (Q1 of fiscal year - May is 2nd fiscal month)
+fiscal_quarter(today, start_month=1)  # 2 (Q2 of calendar year)
 
 # When does UK Q4 end for filing?
-uk_calendar.quarter_end_date(2026, 4)
-# date(2026, 3, 31)
+uk_calendar.quarter_end_date(2027, 4)
+# date(2027, 3, 31)
 ```
 
 Alice's compliance team in London, New York, and Tokyo each see the correct fiscal periods for their jurisdiction. Bob reports colony expenditures on all three calendars simultaneously.

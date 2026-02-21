@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.116.0"
+afad: "3.3"
+version: "0.117.0"
 domain: INDEX
-updated: "2026-02-20"
+updated: "2026-02-21"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -221,7 +221,7 @@ ftllexengine/
     parser/
       __init__.py          # FluentParserV1, ParseContext
       core.py              # Parser main entry point
-      primitives.py        # get_last_parse_error, clear_parse_error, ParseErrorContext
+      primitives.py        # Parser primitive operations (identifier, number, string literal parsing)
       rules.py             # ParseContext, pattern/expression parsing
       whitespace.py        # Whitespace handling
   runtime/

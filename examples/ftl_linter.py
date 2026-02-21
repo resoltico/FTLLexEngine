@@ -247,7 +247,7 @@ welcome = Hello!
     print("=" * 60)
 
     unknown_function_ftl = """
-price = { CURRENCY($amount) }
+price = { PERCENTAGE($amount) }
 """
 
     issues = lint_ftl_file(unknown_function_ftl)

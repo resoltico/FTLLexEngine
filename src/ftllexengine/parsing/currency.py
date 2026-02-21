@@ -37,7 +37,16 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from ftllexengine.core.babel_compat import require_babel
+from ftllexengine.core.babel_compat import (
+    get_babel_numbers,
+    get_locale_class,
+    get_locale_identifiers_func,
+    get_number_format_error_class,
+    get_parse_decimal_func,
+    get_unknown_locale_error_class,
+    is_babel_available,
+    require_babel,
+)
 from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -393,32 +402,31 @@ def _build_currency_maps_from_cldr() -> tuple[
         - valid_codes: Frozenset of all valid ISO 4217 currency codes from CLDR
         Returns empty maps if Babel is not installed (fast tier still available).
     """
-    # Lazy import to support parser-only installations
-    try:
-        from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-        from babel.localedata import locale_identifiers  # noqa: PLC0415 - Babel-optional
-        from babel.numbers import (  # noqa: PLC0415 - Babel-optional
-            get_currency_symbol,
-            get_territory_currencies,
-        )
-    except ImportError:
+    if not is_babel_available():
         # Babel not installed - return empty maps, fast tier still available
         return ({}, set(), {}, frozenset())
 
-    all_locale_ids = list(locale_identifiers())
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
+    locale_identifiers_fn = get_locale_identifiers_func()
+    babel_numbers = get_babel_numbers()
+    get_currency_symbol = babel_numbers.get_currency_symbol
+    get_territory_currencies = babel_numbers.get_territory_currencies
+
+    all_locale_ids = list(locale_identifiers_fn())
 
     all_currencies = _collect_all_currencies(
-        all_locale_ids, Locale.parse, UnknownLocaleError,
+        all_locale_ids, locale_class.parse, unknown_locale_error_class,
     )
 
     unambiguous_map, ambiguous_set = _build_symbol_mappings(
         all_currencies, all_locale_ids,
-        Locale.parse, UnknownLocaleError, get_currency_symbol,
+        locale_class.parse, unknown_locale_error_class, get_currency_symbol,
     )
 
     locale_to_currency = _build_locale_currency_map(
         all_locale_ids,
-        Locale.parse, UnknownLocaleError, get_territory_currencies,
+        locale_class.parse, unknown_locale_error_class, get_territory_currencies,
     )
 
     return (
@@ -803,8 +811,10 @@ def parse_currency(
     """
     # Phase 1: Validate inputs
     require_babel("parse_currency")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-    from babel.numbers import NumberFormatError, parse_decimal  # noqa: PLC0415 - Babel-optional
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
+    number_format_error_class = get_number_format_error_class()
+    parse_decimal = get_parse_decimal_func()
 
     if not isinstance(value, str):
         diagnostic = ErrorTemplate.parse_currency_failed(  # type: ignore[unreachable]
@@ -825,8 +835,8 @@ def parse_currency(
         ),))
 
     try:
-        locale = Locale.parse(normalize_locale(locale_code))
-    except (UnknownLocaleError, ValueError):
+        locale = locale_class.parse(normalize_locale(locale_code))
+    except (unknown_locale_error_class, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
             input_value=str(value),
@@ -847,7 +857,7 @@ def parse_currency(
             return (None, (detect_error,))
         # Defensive: _detect_currency_symbol contract guarantees
         # exactly one of (match, error) is non-None.
-        diagnostic = ErrorTemplate.parse_currency_failed(
+        diagnostic = ErrorTemplate.parse_currency_failed(  # pragma: no cover
             value, locale_code, "No currency symbol or code found",
         )
         context = FrozenErrorContext(
@@ -877,7 +887,7 @@ def parse_currency(
     if currency_code is None:
         # Defensive: _resolve_currency_code contract guarantees
         # exactly one of (code, error) is non-None.
-        diagnostic = ErrorTemplate.parse_currency_failed(
+        diagnostic = ErrorTemplate.parse_currency_failed(  # pragma: no cover
             value, locale_code, "Currency resolution failed",
         )
         context = FrozenErrorContext(
@@ -899,14 +909,14 @@ def parse_currency(
         locale,
         locale_code,
         parse_decimal,
-        NumberFormatError,
+        number_format_error_class,
     )
     if amount_error is not None or amount is None:
         if amount_error is not None:
             return (None, (amount_error,))
         # Defensive: _parse_currency_amount contract guarantees
         # exactly one of (amount, error) is non-None.
-        diagnostic = ErrorTemplate.parse_currency_failed(
+        diagnostic = ErrorTemplate.parse_currency_failed(  # pragma: no cover
             value, locale_code, "Amount parsing failed",
         )
         context = FrozenErrorContext(

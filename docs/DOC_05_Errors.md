@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.116.0"
+afad: "3.3"
+version: "0.117.0"
 domain: ERRORS
-updated: "2026-02-19"
+updated: "2026-02-21"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -72,6 +72,12 @@ class FrozenFluentError(Exception):
     def content_hash(self) -> bytes: ...
     @property
     def fallback_value(self) -> str: ...
+    @property
+    def input_value(self) -> str: ...
+    @property
+    def locale_code(self) -> str: ...
+    @property
+    def parse_type(self) -> str: ...
 ```
 
 ### Parameters
@@ -88,6 +94,7 @@ class FrozenFluentError(Exception):
 - Sealed: Cannot be subclassed. Use `ErrorCategory` for classification.
 - Content-Addressed: BLAKE2b-128 hash computed at construction for integrity verification.
 - Hashable: Can be used in sets and as dict keys. Hash based on content, not identity.
+- Convenience Properties: `input_value`, `locale_code`, `parse_type` delegate to `context` (return empty string if context is None).
 - Hash Composition: Content hash includes ALL fields for complete audit trail integrity:
   - Core: `message`, `category.value`
   - Diagnostic (if present): `code.name`, `message`, `span` (start/end/line/column), `hint`, `help_url`, `function_name`, `argument_name`, `expected_type`, `received_type`, `ftl_location`, `severity`, `resolution_path`
@@ -228,7 +235,6 @@ class SyntaxIntegrityError(DataIntegrityError):
 - Sealed: `@final` decorator prevents subclassing.
 - Financial: Financial applications require fail-fast behavior. Silent failures during FTL source loading are unacceptable for monetary formatting.
 - Import: `from ftllexengine.integrity import SyntaxIntegrityError` or `from ftllexengine import SyntaxIntegrityError`
-- Version: Added in v0.85.0.
 
 ---
 
@@ -296,7 +302,7 @@ class BabelImportError(ImportError):
 ### Constraints
 - Purpose: Raised when Babel is required but not installed.
 - Behavior: Provides installation instructions in error message.
-- Raised by: `parse_number()`, `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`.
+- Raised by: `parse_number()`, `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`, `get_cldr_version()`, `get_territory()`, `get_currency()`, `list_territories()`, `list_currencies()`, `get_territory_currencies()`, `is_valid_territory_code()`, `is_valid_currency_code()`.
 - Import: `from ftllexengine.core.babel_compat import BabelImportError`
 
 ---
@@ -685,8 +691,8 @@ class SourceSpan:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `start` | `int` | Y | Start byte offset. |
-| `end` | `int` | Y | End byte offset (exclusive). |
+| `start` | `int` | Y | Start character offset (0-indexed). |
+| `end` | `int` | Y | End character offset (exclusive, 0-indexed). |
 | `line` | `int` | Y | Line number (1-indexed). |
 | `column` | `int` | Y | Column number (1-indexed). |
 
@@ -798,13 +804,19 @@ def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:
 
 ### Signature
 ```python
-def format_validation_result(self, result: ValidationResult) -> str:
+def format_validation_result(
+    self,
+    result: ValidationResult,
+    *,
+    include_warnings: bool = True,
+) -> str:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `result` | `ValidationResult` | Y | Validation result to format. |
+| `include_warnings` | `bool` | N | Include warnings in output (default: True). |
 
 ### Constraints
 - Return: Formatted string with summary, errors, warnings, and annotations.

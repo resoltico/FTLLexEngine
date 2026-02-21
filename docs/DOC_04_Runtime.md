@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.112.0"
+afad: "3.3"
+version: "0.117.0"
 domain: RUNTIME
-updated: "2026-02-18"
+updated: "2026-02-21"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?"]
@@ -595,7 +595,7 @@ def validate_resource(
 - Cross-Resource: References to `known_messages`/`known_terms` do not produce undefined warnings. Cycles detected across resource boundaries. Shadow warnings emitted when current resource redefines known entry.
 - Duplicate Attributes: Emits VALIDATION_DUPLICATE_ATTRIBUTE (5107) for duplicate attribute IDs within entry.
 - Shadow Warnings: Emits VALIDATION_SHADOW_WARNING (5108) when entry ID matches known bundle entry.
-- Raises: Never. Critical parse errors returned as ValidationError.
+- Raises: `TypeError` if source is not a str.
 - State: None (creates isolated parser if not provided).
 - Thread: Safe.
 - Import: `from ftllexengine.validation import validate_resource`

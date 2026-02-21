@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, assert_never
 from .codes import Diagnostic
 
 if TYPE_CHECKING:
-    from .validation import ValidationError, ValidationResult, ValidationWarning
+    from .validation import ValidationResult
 
 __all__ = [
     "DiagnosticFormatter",
@@ -176,22 +176,23 @@ class DiagnosticFormatter:
 
         return "\n".join(parts)
 
-    def format_error(self, error: ValidationError) -> str:
+    def format_error(self, error: object) -> str:
         """Format a ValidationError object.
 
         Central formatting method for ValidationError. Called by
         ValidationError.format() to ensure consistent output.
 
         Args:
-            error: ValidationError to format
+            error: ValidationError to format (runtime-checked)
 
         Returns:
             Formatted error string with location and content
         """
         from .validation import ValidationError as _ValidationError  # noqa: PLC0415 - circular
 
-        # Mypy requires isinstance guard for TYPE_CHECKING imports.
-        assert isinstance(error, _ValidationError)
+        if not isinstance(error, _ValidationError):
+            msg = f"format_error() requires ValidationError, got {type(error).__name__}"
+            raise TypeError(msg)
 
         code_name = error.code.name
         message = error.message
@@ -208,28 +209,29 @@ class DiagnosticFormatter:
 
         # Build content display with sanitization
         content_str = ""
-        if content is not None:
+        if content is not None:  # pragma: no branch
             content_display = self._maybe_sanitize_content(content)
             content_str = f" (content: {content_display!r})"
 
         return f"[{code_name}]{location}: {message}{content_str}"
 
-    def format_warning(self, warning: ValidationWarning) -> str:
+    def format_warning(self, warning: object) -> str:
         """Format a ValidationWarning object.
 
         Central formatting method for ValidationWarning. Called by
         ValidationWarning.format() to ensure consistent output.
 
         Args:
-            warning: ValidationWarning to format
+            warning: ValidationWarning to format (runtime-checked)
 
         Returns:
             Formatted warning string with location and context
         """
         from .validation import ValidationWarning as _ValidationWarning  # noqa: PLC0415 - circular
 
-        # Mypy requires isinstance guard for TYPE_CHECKING imports.
-        assert isinstance(warning, _ValidationWarning)
+        if not isinstance(warning, _ValidationWarning):
+            msg = f"format_warning() requires ValidationWarning, got {type(warning).__name__}"
+            raise TypeError(msg)
 
         code_name = warning.code.name
         message = warning.message

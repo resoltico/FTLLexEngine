@@ -236,7 +236,7 @@ class FluentLocalization:
         # Double-check after acquiring write lock: another thread may have
         # created the bundle between our read-lock release and write-lock acquire.
         with self._lock.write():
-            if locale in self._bundles:
+            if locale in self._bundles:  # pragma: no cover
                 return self._bundles[locale]
 
             bundle = FluentBundle(

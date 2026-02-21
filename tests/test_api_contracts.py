@@ -160,84 +160,57 @@ class TestTypeGuardNoneAcceptanceContract:
 
 
 # =============================================================================
-# CONTRACT 2: THREAD-LOCAL CLEANUP
+# CONTRACT 2: TYPED ERROR RETURN
 # =============================================================================
 
 
-class TestThreadLocalCleanupContract:
-    """Verify parse functions clear stale error context.
+class TestTypedErrorReturnContract:
+    """Verify parse functions return typed ParseError on failure.
 
-    Pattern: Parse functions using thread-local error storage MUST:
-    1. Clear error context at function start
-    2. Not leak errors from previous parse attempts
-    3. Return None error after successful parse
-
-    This prevents stale error data from confusing error handling.
+    Pattern: Parse functions MUST:
+    1. Return ParseResult[T] on success
+    2. Return ParseError on failure (no side-channel state)
+    3. Return independent values across calls (no shared state)
     """
 
-    def test_successful_parse_clears_stale_error(self) -> None:
-        """CONTRACT: Successful parse clears any stale error context."""
-        from ftllexengine.syntax.cursor import Cursor
+    def test_failure_returns_parse_error(self) -> None:
+        """CONTRACT: Failed parse returns ParseError directly."""
+        from ftllexengine.syntax.cursor import Cursor, ParseError
         from ftllexengine.syntax.parser.primitives import (
-            get_last_parse_error,
             parse_identifier,
             parse_number,
         )
 
-        # Create stale error by failing a parse
         cursor1 = Cursor(source="-invalid", pos=0)
-        parse_number(cursor1)
-        stale_error = get_last_parse_error()
-        assert stale_error is not None, "Setup: should have stale error"
+        result = parse_number(cursor1)
+        assert isinstance(result, ParseError), "Failed parse must return ParseError"
 
-        # Successful parse must clear the stale error
         cursor2 = Cursor(source="validIdentifier", pos=0)
-        result = parse_identifier(cursor2)
-        assert result is not None, "Parse should succeed"
+        result2 = parse_identifier(cursor2)
+        assert not isinstance(result2, ParseError), "Successful parse must not return ParseError"
 
-        # Error context should be cleared
-        error_after = get_last_parse_error()
-        assert error_after is None, "Stale error should be cleared after success"
-
-    def test_all_primitive_parsers_clear_error(self) -> None:
-        """CONTRACT: All primitive parsers clear error context on success."""
-        from ftllexengine.syntax.cursor import Cursor
+    def test_all_primitive_parsers_return_typed_errors(self) -> None:
+        """CONTRACT: All primitive parsers return ParseError on failure."""
+        from ftllexengine.syntax.cursor import Cursor, ParseError
         from ftllexengine.syntax.parser.primitives import (
-            clear_parse_error,
-            get_last_parse_error,
             parse_identifier,
             parse_number,
             parse_string_literal,
         )
 
-        # Test cases: (parser_func, valid_input)
-        test_cases = [
-            (parse_identifier, "validId"),
-            (parse_number, "123"),
-            (parse_number, "-456"),
-            (parse_number, "78.9"),
-            (parse_string_literal, '"hello"'),
+        failure_cases = [
+            (parse_identifier, "123invalid"),
+            (parse_number, "notanumber"),
+            (parse_string_literal, "no_quote"),
         ]
 
-        for parser_func, valid_input in test_cases:
-            # Create stale error
-            bad_cursor = Cursor(source="!!!", pos=0)
-            parse_identifier(bad_cursor)
-            assert get_last_parse_error() is not None
-
-            # Parse valid input
-            good_cursor = Cursor(source=valid_input, pos=0)
-            result = parser_func(good_cursor)
-
-            if result is not None:
-                # Successful parse must clear error
-                error = get_last_parse_error()
-                assert error is None, (
-                    f"{parser_func.__name__}({valid_input!r}) "
-                    "should clear stale error on success"
-                )
-
-            clear_parse_error()  # Clean up for next iteration
+        for parser_func, invalid_input in failure_cases:
+            cursor = Cursor(source=invalid_input, pos=0)
+            result = parser_func(cursor)
+            assert isinstance(result, ParseError), (
+                f"{parser_func.__name__}({invalid_input!r}) "
+                "must return ParseError on failure"
+            )
 
 
 # =============================================================================

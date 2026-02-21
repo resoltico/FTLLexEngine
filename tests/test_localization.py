@@ -14,6 +14,7 @@ from ftllexengine.localization import (
     FallbackInfo,
     FluentLocalization,
     PathResourceLoader,
+    ResourceLoader,
 )
 from ftllexengine.runtime.cache_config import CacheConfig
 
@@ -380,6 +381,27 @@ class TestPathResourceLoader:
 
         assert not errors
         assert result == "Hello!"  # Fell back to English
+
+    def test_resource_loader_describe_path_default(self) -> None:
+        """ResourceLoader.describe_path default returns locale/resource_id."""
+
+        class _MinimalLoader(ResourceLoader):
+            def load(self, _locale: str, _resource_id: str) -> str:
+                return ""
+
+        loader = _MinimalLoader()
+        result = loader.describe_path("en", "main.ftl")
+        assert result == "en/main.ftl"
+
+    def test_resource_loader_describe_path_default_no_override(self) -> None:
+        """ResourceLoader.describe_path default is used when subclass does not override."""
+
+        class _BareLoader(ResourceLoader):
+            def load(self, _locale: str, _resource_id: str) -> str:
+                return ""
+
+        loader = _BareLoader()
+        assert loader.describe_path("de_DE", "errors.ftl") == "de_DE/errors.ftl"
 
 
 class TestRealWorldScenarios:

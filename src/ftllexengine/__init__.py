@@ -213,13 +213,13 @@ def clear_all_caches() -> None:
     try:
         from .parsing.currency import clear_currency_caches
         clear_currency_caches()
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pass  # Parser-only installation; parsing.currency never imported
 
     try:
         from .parsing.dates import clear_date_caches
         clear_date_caches()
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pass  # Parser-only installation; parsing.dates never imported
 
     # 2. Locale caches (always present: core.locale_utils has no Babel dep at module level)
@@ -231,7 +231,7 @@ def clear_all_caches() -> None:
     try:
         from .runtime.locale_context import LocaleContext
         LocaleContext.clear_cache()
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pass  # Parser-only installation; runtime.locale_context never imported
 
     # 4. Introspection caches (message introspection + ISO standards data)

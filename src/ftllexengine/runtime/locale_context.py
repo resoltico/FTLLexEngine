@@ -47,6 +47,13 @@ from ftllexengine.constants import (
     MAX_LOCALE_CACHE_SIZE,
     MAX_LOCALE_CODE_LENGTH,
 )
+from ftllexengine.core.babel_compat import (
+    get_babel_dates,
+    get_babel_numbers,
+    get_locale_class,
+    get_unknown_locale_error_class,
+    require_babel,
+)
 from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -237,19 +244,15 @@ class LocaleContext:
                 cls._cache.move_to_end(cache_key)
                 return cls._cache[cache_key]
 
-        # Lazy import to support parser-only installations
-        try:
-            from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-        except ImportError as e:
-            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415 - circular
-
-            raise BabelImportError("LocaleContext.create") from e  # noqa: EM101 - ID
+        require_babel("LocaleContext.create")
+        locale_class = get_locale_class()
+        unknown_locale_error_class = get_unknown_locale_error_class()
 
         # Create new instance (Locale.parse is thread-safe)
         used_fallback = False
         try:
-            babel_locale = Locale.parse(cache_key)
-        except UnknownLocaleError as e:
+            babel_locale = locale_class.parse(cache_key)
+        except unknown_locale_error_class as e:
             if len(locale_code) > MAX_LOCALE_CODE_LENGTH:
                 logger.warning(
                     "Unknown locale '%s' (exceeds %d chars): %s. Falling back to en_US",
@@ -259,7 +262,7 @@ class LocaleContext:
                 )
             else:
                 logger.warning("Unknown locale '%s': %s. Falling back to en_US", locale_code, e)
-            babel_locale = Locale.parse("en_US")
+            babel_locale = locale_class.parse("en_US")
             used_fallback = True
         except ValueError as e:
             if len(locale_code) > MAX_LOCALE_CODE_LENGTH:
@@ -273,7 +276,7 @@ class LocaleContext:
                 logger.warning(
                     "Invalid locale format '%s': %s. Falling back to en_US", locale_code, e
                 )
-            babel_locale = Locale.parse("en_US")
+            babel_locale = locale_class.parse("en_US")
             used_fallback = True
 
         # Store with normalized cache_key, but preserve original locale_code for debugging
@@ -322,23 +325,19 @@ class LocaleContext:
                 ...
             ValueError: Unknown locale identifier 'invalid-locale'
         """
-        # Lazy import to support parser-only installations
-        try:
-            from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-        except ImportError as e:
-            from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415 - circular
-
-            raise BabelImportError("LocaleContext.create_or_raise") from e  # noqa: EM101 - ID
+        require_babel("LocaleContext.create_or_raise")
+        locale_class = get_locale_class()
+        unknown_locale_error_class = get_unknown_locale_error_class()
 
         try:
             normalized = normalize_locale(locale_code)
-            babel_locale = Locale.parse(normalized)
+            babel_locale = locale_class.parse(normalized)
             return cls(
                 locale_code=locale_code,
                 _babel_locale=babel_locale,
                 _factory_token=_FACTORY_TOKEN,
             )
-        except UnknownLocaleError as e:
+        except unknown_locale_error_class as e:
             msg = f"Unknown locale identifier '{locale_code}': {e}"
             raise ValueError(msg) from None
         except ValueError as e:
@@ -412,8 +411,7 @@ class LocaleContext:
             )
             raise ValueError(msg)
 
-        # Lazy import to support parser-only installations
-        from babel import numbers as babel_numbers  # noqa: PLC0415 - Babel-optional
+        babel_numbers = get_babel_numbers()
 
         try:
             # Use custom pattern if provided
@@ -539,8 +537,7 @@ class LocaleContext:
             Uses Babel's format_datetime() which implements CLDR rules.
             Matches Intl.DateTimeFormat behavior in JavaScript.
         """
-        # Lazy import to support parser-only installations
-        from babel import dates as babel_dates  # noqa: PLC0415 - Babel-optional
+        babel_dates = get_babel_dates()
 
         # Type narrowing: convert str to datetime
         dt_value: datetime
@@ -692,8 +689,7 @@ class LocaleContext:
             - BHD, KWD, OMR: 3 decimals
             - Most others: 2 decimals
         """
-        # Lazy import to support parser-only installations
-        from babel import numbers as babel_numbers  # noqa: PLC0415 - Babel-optional
+        babel_numbers = get_babel_numbers()
 
         try:
             # Use custom pattern if provided (overrides currency_display)

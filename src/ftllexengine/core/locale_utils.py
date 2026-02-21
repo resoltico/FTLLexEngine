@@ -25,6 +25,7 @@ import os
 from typing import TYPE_CHECKING
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
+from ftllexengine.core.babel_compat import get_locale_class, require_babel
 
 if TYPE_CHECKING:
     from babel import Locale
@@ -101,11 +102,6 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
-    from ftllexengine.core.babel_compat import (  # noqa: PLC0415 - circular
-        get_locale_class,
-        require_babel,
-    )
-
     require_babel("get_babel_locale")
     BabelLocale = get_locale_class()  # noqa: N806 - class alias, PascalCase by convention
 

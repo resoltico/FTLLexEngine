@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.115.0"
+afad: "3.3"
+version: "0.117.0"
 domain: CORE
-updated: "2026-02-16"
+updated: "2026-02-21"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -197,6 +197,7 @@ def add_resource(
 
 ### Constraints
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
+- Raises: `TypeError` if source is not a str. `SyntaxIntegrityError` in strict mode if parsing produces any Junk.
 - State: Mutates internal message/term registries. Clears cache.
 - Thread: Safe (RWLock). Parse occurs outside write lock; only registration requires exclusive access.
 
@@ -272,7 +273,7 @@ def validate_resource(self, source: str) -> ValidationResult:
 ### Constraints
 - Return: ValidationResult with errors and warnings.
 - Cross-Resource: References to existing bundle messages/terms do not produce undefined warnings.
-- Raises: Never.
+- Raises: `TypeError` if source is not a str.
 - State: None. Does not modify bundle.
 - Thread: Safe.
 
@@ -433,7 +434,7 @@ def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
 
 ### Constraints
 - Return: None.
-- Raises: None.
+- Raises: `TypeError` if registry is frozen or if callable has no inspectable signature.
 - State: Mutates function registry. Clears cache.
 - Thread: Safe (RWLock).
 
@@ -470,8 +471,25 @@ def get_cache_stats(self) -> dict[str, int | float | bool] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Dict with size/hits/misses (int), hit_rate (float 0.0-100.0), write_once/strict/audit_enabled (bool), or None if disabled.
-- Raises: None.
+- Return: Dict with 17 keys, or None if caching disabled.
+  - `size` (int): current number of cached entries
+  - `maxsize` (int): maximum cache capacity
+  - `max_entry_weight` (int): maximum memory weight per entry
+  - `max_errors_per_entry` (int): maximum errors per entry
+  - `hits` (int): total cache hits
+  - `misses` (int): total cache misses
+  - `hit_rate` (float, 0.0-100.0): hit rate as percentage
+  - `unhashable_skips` (int): operations skipped due to unhashable args
+  - `oversize_skips` (int): operations skipped due to result weight
+  - `error_bloat_skips` (int): operations skipped due to error count
+  - `corruption_detected` (int): checksum mismatches detected
+  - `idempotent_writes` (int): concurrent writes with identical content
+  - `sequence` (int): total put operations
+  - `write_once` (bool): write-once mode enabled
+  - `strict` (bool): strict mode enabled
+  - `audit_enabled` (bool): audit logging enabled
+  - `audit_entries` (int): current audit log entry count
+- Raises: Never.
 - State: Read-only.
 - Thread: Safe.
 
@@ -746,7 +764,6 @@ def function_registry(self) -> FunctionRegistry:
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
-- Version: Added in v0.102.0.
 
 ---
 
@@ -1177,19 +1194,18 @@ class ResourceLoadResult:
 ```python
 @dataclass(frozen=True, slots=True)
 class LoadSummary:
-    results: tuple[ResourceLoadResult, ...]
-    total_attempted: int  # computed
-    successful: int  # computed
-    not_found: int  # computed
-    errors: int  # computed
-    junk_count: int  # computed
+    results: tuple[ResourceLoadResult, ...]  # sole dataclass field
 
-    def get_errors(self) -> tuple[ResourceLoadResult, ...]: ...
-    def get_not_found(self) -> tuple[ResourceLoadResult, ...]: ...
-    def get_successful(self) -> tuple[ResourceLoadResult, ...]: ...
-    def get_by_locale(self, locale: LocaleCode) -> tuple[ResourceLoadResult, ...]: ...
-    def get_with_junk(self) -> tuple[ResourceLoadResult, ...]: ...
-    def get_all_junk(self) -> tuple[Junk, ...]: ...
+    @property
+    def total_attempted(self) -> int: ...
+    @property
+    def successful(self) -> int: ...
+    @property
+    def not_found(self) -> int: ...
+    @property
+    def errors(self) -> int: ...
+    @property
+    def junk_count(self) -> int: ...
     @property
     def has_errors(self) -> bool: ...
     @property
@@ -1198,21 +1214,23 @@ class LoadSummary:
     def all_clean(self) -> bool: ...
     @property
     def has_junk(self) -> bool: ...
+
+    def get_errors(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_not_found(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_successful(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_by_locale(self, locale: LocaleCode) -> tuple[ResourceLoadResult, ...]: ...
+    def get_with_junk(self) -> tuple[ResourceLoadResult, ...]: ...
+    def get_all_junk(self) -> tuple[Junk, ...]: ...
 ```
 
 ### Parameters
 | Field | Type | Description |
 |:------|:-----|:------------|
-| `results` | `tuple[ResourceLoadResult, ...]` | All individual load results. |
-| `total_attempted` | `int` | Total number of load attempts. |
-| `successful` | `int` | Number of successful loads. |
-| `not_found` | `int` | Number of resources not found. |
-| `errors` | `int` | Number of load errors. |
-| `junk_count` | `int` | Total Junk entries across all resources. |
+| `results` | `tuple[ResourceLoadResult, ...]` | All individual load results (sole constructor field). |
 
 ### Constraints
 - Return: Immutable summary record.
-- State: Frozen dataclass. Statistics computed in __post_init__.
+- State: Frozen dataclass. Statistics (`total_attempted`, `successful`, `not_found`, `errors`, `junk_count`) are `@property` methods computed from `results`; not constructor parameters.
 - Junk: `get_with_junk()` returns results with Junk; `get_all_junk()` aggregates all Junk.
 - Import: `from ftllexengine.localization import LoadSummary`
 
@@ -1301,7 +1319,7 @@ def validate_resource(self, ftl_source: FTLSource) -> ValidationResult:
 
 ### Constraints
 - Return: ValidationResult with errors and warnings.
-- Raises: Never.
+- Raises: `TypeError` if ftl_source is not a str (propagated from primary bundle).
 - State: None. Does not modify bundles.
 - Thread: Safe.
 

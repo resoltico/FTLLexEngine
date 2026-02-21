@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.116.0"
+afad: "3.3"
+version: "0.117.0"
 domain: TYPES
-updated: "2026-02-20"
+updated: "2026-02-21"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -877,6 +877,38 @@ type FluentValue = (
 
 ---
 
+## `FluentNumber`
+
+Frozen dataclass wrapping a formatted number to preserve numeric identity, formatted display, and precision simultaneously.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FluentNumber:
+    value: int | float | Decimal
+    formatted: str
+    precision: int | None = None
+
+    def __str__(self) -> str: ...
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `value` | `int \| float \| Decimal` | Y | Original numeric value for plural matching |
+| `formatted` | `str` | Y | Locale-formatted string for display output |
+| `precision` | `int \| None` | N | Visible fraction digit count (CLDR v operand); None if unspecified |
+
+### Constraints
+- Return: Immutable number wrapper.
+- State: Frozen dataclass.
+- Purpose: NUMBER() produces FluentNumber so the resolver can use `formatted` for output while using `value` and `precision` for CLDR plural category matching.
+- `__str__`: Returns `formatted` (the display string).
+- `precision`: Reflects ACTUAL visible fraction digits from the formatted string, not the minimum_fraction_digits parameter.
+- Import: `from ftllexengine.runtime.value_types import FluentNumber`
+
+---
+
 ## `VariableInfo`
 
 ### Signature
@@ -1032,6 +1064,50 @@ class ReferenceKind(StrEnum):
 ## ISO Introspection Types
 
 The introspection module provides type-safe access to ISO 3166 (territories) and ISO 4217 (currencies) data via Babel CLDR. Requires Babel installation: `pip install ftllexengine[babel]`.
+
+---
+
+## `BabelImportError`
+
+Exception raised when a Babel-dependent feature is called without Babel installed.
+
+### Signature
+```python
+class BabelImportError(ImportError):
+    feature: str
+
+    def __init__(self, feature: str) -> None: ...
+```
+
+### Parameters
+| Name | Type | Req | Semantics |
+|:-----|:-----|:----|:----------|
+| `feature` | `str` | Y | Name of the feature/function requiring Babel |
+
+### Constraints
+- Purpose: Fail-fast error with installation instructions when Babel is absent.
+- Message: `"{feature} requires Babel for CLDR locale data. Install with: pip install ftllexengine[babel]"`
+- Raised by: `get_territory`, `get_currency`, `list_territories`, `list_currencies`, `get_territory_currencies`, `is_valid_territory_code`, `is_valid_currency_code`, `get_cldr_version`, `get_babel_locale`, `clear_locale_cache`, and all `ftllexengine.parsing` parse functions.
+- Import: `from ftllexengine.introspection import BabelImportError`
+
+---
+
+## `get_cldr_version`
+
+Function that returns the Unicode CLDR version used by Babel.
+
+### Signature
+```python
+def get_cldr_version() -> str:
+```
+
+### Constraints
+- Return: CLDR version string (e.g., `"47"`).
+- Raises: `BabelImportError` if Babel not installed.
+- State: No mutable state.
+- Thread: Safe.
+- Purpose: Debugging locale-specific formatting differences; verifying deployment environments.
+- Import: `from ftllexengine.introspection import get_cldr_version`
 
 ---
 
@@ -1259,7 +1335,6 @@ def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:
 - Normalization: Territory code uppercased internally.
 - Multi-Currency: Returns all legal tender currencies, primary first (e.g., Panama: ("PAB", "USD")).
 - Import: `from ftllexengine.introspection import get_territory_currencies`
-- Version: Changed from list to tuple in v0.91.0.
 
 ---
 

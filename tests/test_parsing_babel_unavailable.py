@@ -118,6 +118,8 @@ class TestBuildCurrencyMapsBabelUnavailable:
         _get_currency_maps.cache_clear()
         _get_currency_pattern.cache_clear()
 
+        # Reset sentinel so is_babel_available() re-evaluates under the mock
+        _bc._babel_available = None
         mock_import = _make_import_blocker("babel")
 
         try:
@@ -131,6 +133,8 @@ class TestBuildCurrencyMapsBabelUnavailable:
             _build_currency_maps_from_cldr.cache_clear()
             _get_currency_maps.cache_clear()
             _get_currency_pattern.cache_clear()
+            # Reset sentinel so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
 
 
 class TestParseDateBabelUnavailable:
@@ -253,23 +257,29 @@ items = { $count ->
 """
         mock_import = _make_import_blocker("babel")
 
-        with patch.object(builtins, "__import__", side_effect=mock_import):
-            bundle = FluentBundle("en_US")
-            bundle.add_resource(ftl)
+        # Reset sentinel so _check_babel_available() re-evaluates under the mock
+        _bc._babel_available = None
+        try:
+            with patch.object(builtins, "__import__", side_effect=mock_import):
+                bundle = FluentBundle("en_US")
+                bundle.add_resource(ftl)
 
-            # Format with numeric argument (should trigger plural matching)
-            result, errors = bundle.format_pattern("items", {"count": 1})
+                # Format with numeric argument (should trigger plural matching)
+                result, errors = bundle.format_pattern("items", {"count": 1})
 
-            # Should fall back to default variant due to Babel unavailability
-            # Result may contain bidi marks, so just check for key components
-            assert "1" in result  # Default variant used
-            assert "items" in result
+                # Should fall back to default variant due to Babel unavailability
+                # Result may contain bidi marks, so just check for key components
+                assert "1" in result  # Default variant used
+                assert "items" in result
 
-            # Should have collected error about Babel unavailability
-            assert len(errors) == 1
-            error = errors[0]
-            assert hasattr(error, "diagnostic")
-            assert error.diagnostic is not None
-            assert error.diagnostic.code == DiagnosticCode.PLURAL_SUPPORT_UNAVAILABLE
-            assert "Babel not installed" in error.diagnostic.message
-            assert "ftllexengine[babel]" in error.diagnostic.message
+                # Should have collected error about Babel unavailability
+                assert len(errors) == 1
+                error = errors[0]
+                assert hasattr(error, "diagnostic")
+                assert error.diagnostic is not None
+                assert error.diagnostic.code == DiagnosticCode.PLURAL_SUPPORT_UNAVAILABLE
+                assert "Babel not installed" in error.diagnostic.message
+                assert "ftllexengine[babel]" in error.diagnostic.message
+        finally:
+            # Reset sentinel so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None

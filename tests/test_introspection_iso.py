@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import ftllexengine.core.babel_compat as _bc
 from ftllexengine.introspection import (
     BabelImportError,
     CurrencyCode,
@@ -776,32 +777,28 @@ class TestPrivateBabelWrappers:
             _get_babel_currency_name("USD", "en")
 
     def test_get_babel_currency_symbol_import_error(self) -> None:
-        """_get_babel_currency_symbol raises BabelImportError when import fails."""
-        error_msg = "Mocked import failure"
-
-        def mock_import(name: str, *args: object, **kwargs: object) -> object:
-            if name == "babel.numbers":
-                raise ImportError(error_msg)
-            return __import__(name, *args, **kwargs)  # type: ignore[arg-type]
-
-        with patch("builtins.__import__", side_effect=mock_import), pytest.raises(
-            BabelImportError
-        ):
-            _get_babel_currency_symbol("USD", "en")
+        """_get_babel_currency_symbol raises BabelImportError when Babel unavailable."""
+        # Set sentinel to False to simulate Babel being unavailable.
+        # Direct sentinel manipulation avoids the recursive __import__ mock pattern.
+        _bc._babel_available = False
+        try:
+            with pytest.raises(BabelImportError):
+                _get_babel_currency_symbol("USD", "en")
+        finally:
+            # Reset so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
 
     def test_get_babel_territory_currencies_import_error(self) -> None:
-        """_get_babel_territory_currencies raises BabelImportError when import fails."""
-        error_msg = "Mocked import failure"
-
-        def mock_import(name: str, *args: object, **kwargs: object) -> object:
-            if name == "babel.core":
-                raise ImportError(error_msg)
-            return __import__(name, *args, **kwargs)  # type: ignore[arg-type]
-
-        with patch("builtins.__import__", side_effect=mock_import), pytest.raises(
-            BabelImportError
-        ):
-            _get_babel_territory_currencies("US")
+        """_get_babel_territory_currencies raises BabelImportError when Babel unavailable."""
+        # Set sentinel to False to simulate Babel being unavailable.
+        # Direct sentinel manipulation avoids the recursive __import__ mock pattern.
+        _bc._babel_available = False
+        try:
+            with pytest.raises(BabelImportError):
+                _get_babel_territory_currencies("US")
+        finally:
+            # Reset so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
 
     def test_get_babel_territory_currencies_exception_handling(self) -> None:
         """_get_babel_territory_currencies returns empty list on Babel data errors."""

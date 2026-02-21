@@ -14,7 +14,7 @@ from unittest.mock import patch
 import ftllexengine.syntax.parser.rules  # noqa: F401 # pylint: disable=unused-import
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.syntax.ast import Identifier, MessageReference
-from ftllexengine.syntax.cursor import Cursor, ParseResult
+from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
 from ftllexengine.syntax.parser.core import FluentParserV1
 from ftllexengine.syntax.parser.rules import (
     ParseContext,
@@ -52,7 +52,7 @@ class TestLines117To118VariantKeyMinusIdentifier:
 
         with patch(
             "ftllexengine.syntax.parser.rules.parse_number",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("-abc", 0)),
         ), patch(
             "ftllexengine.syntax.parser.rules.parse_identifier",
             return_value=mock_id_result,
@@ -88,7 +88,7 @@ class TestLine307ArgumentExpressionIdentifierFailure:
 
         with patch(
             "ftllexengine.syntax.parser.rules.parse_identifier",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("a999!!!", 0)),
         ):
             result = parse_argument_expression(cursor)
 
@@ -112,7 +112,7 @@ class TestLine627InlineExpressionIdentifierFailure:
 
         with patch(
             "ftllexengine.syntax.parser.rules.parse_identifier",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("U999", 0)),
         ):
             result = parse_inline_expression(cursor)
 
@@ -217,7 +217,7 @@ class TestAdditionalUncoveredLines:
         # Patch in the module where it's used (expressions), not where it's defined
         with patch(
             "ftllexengine.syntax.parser.rules.parse_number",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("123", 0)),
         ):
             result = parse_argument_expression(cursor)
 
@@ -324,7 +324,7 @@ class TestAdditionalUncoveredLines:
 
         with patch(
             "ftllexengine.syntax.parser.rules.parse_number",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("-123", 0)),
         ):
             result = parse_inline_expression(cursor)
 
@@ -339,7 +339,7 @@ class TestAdditionalUncoveredLines:
 
         with patch(
             "ftllexengine.syntax.parser.rules.parse_number",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("123", 0)),
         ):
             result = parse_inline_expression(cursor)
 
@@ -354,7 +354,7 @@ class TestAdditionalUncoveredLines:
 
         with patch(
             "ftllexengine.syntax.parser.rules.parse_identifier",
-            return_value=None,
+            return_value=ParseError("forced failure", Cursor("msg", 0)),
         ):
             result = parse_inline_expression(cursor)
 

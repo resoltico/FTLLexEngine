@@ -382,7 +382,7 @@ def example_6_stateful_bundle_testing() -> None:
     except AssertionError as e:
         # AssertionError: Invariant violated
         # Note: Parser uses Junk nodes for syntax errors, never raises exceptions
-        print(f"✗ Stateful test found issue: {e}\n")
+        print(f"[FAIL] Stateful test found issue: {e}\n")
 
 
 # ==============================================================================

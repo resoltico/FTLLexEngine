@@ -31,6 +31,7 @@ from babel import Locale
 from babel import dates as babel_dates
 from babel import numbers as babel_numbers
 
+import ftllexengine.core.babel_compat as _bc
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -377,6 +378,9 @@ class TestLocaleContextBabelImportErrors:
         babel_dates_mod = sys.modules.pop("babel.dates", None)
         babel_nums = sys.modules.pop("babel.numbers", None)
 
+        # Reset sentinel so _check_babel_available() re-evaluates under the mock
+        _bc._babel_available = None
+
         try:
             with patch.dict(sys.modules, {"babel": None}):
                 original_import = __import__
@@ -424,7 +428,8 @@ class TestLocaleContextBabelImportErrors:
                 sys.modules["babel.dates"] = babel_dates_mod
             if babel_nums is not None:
                 sys.modules["babel.numbers"] = babel_nums
-
+            # Reset sentinel so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
             LocaleContext.clear_cache()
 
     def test_create_or_raise_raises_babel_import_error(
@@ -435,6 +440,9 @@ class TestLocaleContextBabelImportErrors:
         babel_core = sys.modules.pop("babel.core", None)
         babel_dates_mod = sys.modules.pop("babel.dates", None)
         babel_nums = sys.modules.pop("babel.numbers", None)
+
+        # Reset sentinel so _check_babel_available() re-evaluates under the mock
+        _bc._babel_available = None
 
         try:
             with patch.dict(sys.modules, {"babel": None}):
@@ -483,6 +491,8 @@ class TestLocaleContextBabelImportErrors:
                 sys.modules["babel.dates"] = babel_dates_mod
             if babel_nums is not None:
                 sys.modules["babel.numbers"] = babel_nums
+            # Reset sentinel so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
 
 
 # ============================================================================

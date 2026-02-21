@@ -45,7 +45,7 @@ from ftllexengine.syntax.ast import (
     Term,
 )
 from ftllexengine.syntax.cursor import Cursor
-from ftllexengine.syntax.parser.primitives import clear_parse_error, is_identifier_start
+from ftllexengine.syntax.parser.primitives import is_identifier_start
 from ftllexengine.syntax.parser.rules import (
     ParseContext,
     parse_comment,
@@ -300,11 +300,6 @@ class FluentParserV1:
             - :func:`~ftllexengine.syntax.parser.rules.parse_term` - Term parsing
             - :func:`~ftllexengine.syntax.parser.rules.parse_comment` - Comment parsing
         """
-        # Clear any stale parse error context from previous operations.
-        # This is critical for async frameworks that reuse threads, ensuring
-        # clean error state for each parse operation.
-        clear_parse_error()
-
         # Validate input size (DoS prevention)
         if self._max_source_size > 0 and len(source) > self._max_source_size:
             msg = (

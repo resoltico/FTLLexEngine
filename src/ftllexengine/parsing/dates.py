@@ -42,7 +42,12 @@ from functools import lru_cache
 from typing import Any
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
-from ftllexengine.core.babel_compat import require_babel
+from ftllexengine.core.babel_compat import (
+    get_locale_class,
+    get_unknown_locale_error_class,
+    is_babel_available,
+    require_babel,
+)
 from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -340,14 +345,15 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         BabelImportError: If Babel is not installed
     """
     require_babel("parse_date")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
 
     try:
-        locale = Locale.parse(normalize_locale(locale_code))
+        locale = locale_class.parse(normalize_locale(locale_code))
         return tuple(
             _extract_cldr_patterns(locale.date_formats, _DATE_PARSE_STYLES),
         )
-    except (UnknownLocaleError, ValueError, RuntimeError):
+    except (unknown_locale_error_class, ValueError, RuntimeError):
         return ()
 
 
@@ -431,10 +437,11 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         BabelImportError: If Babel is not installed
     """
     require_babel("parse_datetime")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
 
     try:
-        locale = Locale.parse(normalize_locale(locale_code))
+        locale = locale_class.parse(normalize_locale(locale_code))
 
         patterns = _extract_cldr_patterns(
             locale.datetime_formats, _DATETIME_PARSE_STYLES,
@@ -465,7 +472,7 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
 
         return tuple(patterns)
 
-    except (UnknownLocaleError, ValueError, RuntimeError):
+    except (unknown_locale_error_class, ValueError, RuntimeError):
         return ()
 
 
@@ -721,17 +728,16 @@ def _get_localized_era_strings(locale_code: str) -> tuple[str, ...]:
         Tuple of localized era strings from Babel CLDR data.
         Empty tuple if Babel unavailable or locale invalid.
     """
-    from ftllexengine.core.babel_compat import is_babel_available  # noqa: PLC0415 - circular
-
     if not is_babel_available():
         return ()
 
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
 
     try:
-        babel_locale = Locale.parse(locale_code)
+        babel_locale = locale_class.parse(locale_code)
         return tuple(_extract_era_strings_from_babel_locale(babel_locale))
-    except (UnknownLocaleError, ValueError):
+    except (unknown_locale_error_class, ValueError):
         return ()
 
 

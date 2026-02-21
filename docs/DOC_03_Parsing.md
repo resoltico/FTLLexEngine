@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.115.0"
+afad: "3.3"
+version: "0.117.0"
 domain: PARSING
-updated: "2026-02-19"
+updated: "2026-02-21"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
@@ -78,6 +78,8 @@ def validate_resource(
     parser: FluentParserV1 | None = None,
     known_messages: frozenset[str] | None = None,
     known_terms: frozenset[str] | None = None,
+    known_msg_deps: Mapping[str, frozenset[str]] | None = None,
+    known_term_deps: Mapping[str, frozenset[str]] | None = None,
 ) -> ValidationResult:
 ```
 
@@ -88,10 +90,12 @@ def validate_resource(
 | `parser` | `FluentParserV1 \| None` | N | Custom parser instance |
 | `known_messages` | `frozenset[str] \| None` | N | Known message IDs from other resources |
 | `known_terms` | `frozenset[str] \| None` | N | Known term IDs from other resources |
+| `known_msg_deps` | `Mapping[str, frozenset[str]] \| None` | N | Dependency graph for known messages (enables cross-resource cycle detection) |
+| `known_term_deps` | `Mapping[str, frozenset[str]] \| None` | N | Dependency graph for known terms (enables cross-resource cycle detection) |
 
 ### Constraints
 - Return: ValidationResult with errors (syntax), warnings (semantic), metadata
-- Raises: Never (errors and warnings collected in ValidationResult)
+- Raises: `TypeError` if source is not a str.
 - State: Read-only
 - Thread: Safe
 - Complexity: O(n) where n is AST node count
@@ -163,71 +167,6 @@ def parse(self, source: str) -> Resource:
 - State: None.
 - Thread: Safe.
 - Security: Enforces input size limit.
-
----
-
-## `get_last_parse_error`
-
-### Signature
-```python
-def get_last_parse_error() -> ParseErrorContext | None:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Return: ParseErrorContext with error details, or None.
-- Raises: None.
-- State: Reads thread-local error storage.
-- Thread: Thread-safe (thread-local storage).
-- Import: `from ftllexengine.syntax.parser.primitives import get_last_parse_error`
-
----
-
-## `clear_parse_error`
-
-### Signature
-```python
-def clear_parse_error() -> None:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Return: None.
-- Raises: None.
-- State: Clears thread-local error storage.
-- Thread: Thread-safe.
-- Import: `from ftllexengine.syntax.parser.primitives import clear_parse_error`
-
----
-
-## `ParseErrorContext`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class ParseErrorContext:
-    message: str
-    position: int
-    expected: tuple[str, ...] = ()
-```
-
-### Parameters
-| Field | Type | Description |
-|:------|:-----|:------------|
-| `message` | `str` | Human-readable error description. |
-| `position` | `int` | Character position in source. |
-| `expected` | `tuple[str, ...]` | Expected tokens (optional). |
-
-### Constraints
-- Immutable: Frozen dataclass.
-- Thread: Safe (immutable).
-- Import: `from ftllexengine.syntax.parser.primitives import ParseErrorContext`
 
 ---
 
@@ -1185,7 +1124,6 @@ def with_policy(self, policy: MonthEndPolicy) -> Self:
 - Return: New `FiscalDelta` with same duration but specified policy.
 - Preserves subclass type.
 - State: Read-only.
-- Version: Added in v0.90.0.
 
 ### Example
 ```python
@@ -1219,8 +1157,6 @@ d1 + d2  # ValueError: Cannot add FiscalDeltas with different month_end_policy
 ```
 
 Use `with_policy()` to explicitly normalize policies before combining deltas.
-
-- Version: Changed in v0.90.0 (previously silent - left operand's policy won).
 
 ---
 
@@ -1267,7 +1203,6 @@ def fiscal_year(d: date, start_month: int = 1) -> int:
 - Raises: `ValueError` if start_month not 1-12.
 - State: None.
 - Thread: Safe.
-- Version: Added in v0.91.0.
 
 ---
 
@@ -1291,7 +1226,6 @@ def fiscal_month(d: date, start_month: int = 1) -> int:
 - Raises: `ValueError` if start_month not 1-12.
 - State: None.
 - Thread: Safe.
-- Version: Added in v0.91.0.
 
 ---
 

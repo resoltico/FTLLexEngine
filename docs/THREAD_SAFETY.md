@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.116.0"
+afad: "3.3"
+version: "0.117.0"
 domain: architecture
-updated: "2026-02-19"
+updated: "2026-02-21"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -188,44 +188,6 @@ The introspection module uses `WeakKeyDictionary` **without locking**.
 ```
 
 **When This Matters**: Only if multiple threads simultaneously introspect the same `Message`/`Term` object for the first time. The only consequence is both threads compute and cache the same result.
-
----
-
-## Parse Error Context (Thread-Local)
-
-Parser primitives use **thread-local storage** for error context.
-
-**Architectural Decision**: This is an **intentional trade-off** prioritizing hot-path performance.
-
-**Location**: `src/ftllexengine/syntax/parser/primitives.py:10-38`
-
-**Why Thread-Local**:
-- Primitive functions called 100+ times per parse operation
-- Explicit context parameter would require ~10 signature changes
-- Parameter marshaling overhead degrades microsecond-scale operations
-
-```python
-from threading import local as thread_local
-
-_error_context = thread_local()
-
-def _set_parse_error(error: ParseError) -> None:
-    _error_context.last_error = error
-```
-
-**Async Framework Requirement**:
-For frameworks that reuse threads across parse operations:
-
-```python
-from ftllexengine.syntax.parser.primitives import clear_parse_error
-
-async def parse_ftl_async(source: str) -> Resource:
-    clear_parse_error()  # REQUIRED: Prevent error context leakage
-    parser = FluentParserV1()
-    return parser.parse(source)
-```
-
-**Automatic Clearing**: `FluentParserV1.parse()` calls `clear_parse_error()` at entry point. Manual clearing is only needed when using primitive functions directly.
 
 ---
 

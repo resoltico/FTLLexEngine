@@ -1,8 +1,8 @@
 ---
-afad: "3.1"
-version: "0.109.0"
+afad: "3.3"
+version: "0.117.0"
 domain: "architecture"
-updated: "2026-02-16"
+updated: "2026-02-21"
 route: "/docs/data-integrity"
 ---
 

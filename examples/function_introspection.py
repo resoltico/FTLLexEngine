@@ -1,8 +1,5 @@
 """Function Introspection Example - Demonstrating FunctionRegistry Introspection API.
 
-New in FTLLexEngine 0.4.0: Function introspection API for discovering and
-inspecting registered functions at runtime.
-
 This example demonstrates:
 1. Listing all registered functions
 2. Checking if functions exist before use

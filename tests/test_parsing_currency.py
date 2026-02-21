@@ -1055,6 +1055,8 @@ class TestBabelImportError:
         self,
     ) -> None:
         """_build_currency_maps_from_cldr returns empty without Babel."""
+        import ftllexengine.core.babel_compat as _bc
+
         _build_currency_maps_from_cldr.cache_clear()
 
         original_import = builtins.__import__
@@ -1066,6 +1068,9 @@ class TestBabelImportError:
                 msg = f"No module named '{name}'"
                 raise ImportError(msg)
             return original_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+        # Reset sentinel so is_babel_available() re-evaluates under the mock
+        _bc._babel_available = None
 
         try:
             with patch(
@@ -1080,6 +1085,8 @@ class TestBabelImportError:
                 assert codes == frozenset()
         finally:
             _build_currency_maps_from_cldr.cache_clear()
+            # Reset sentinel so subsequent tests reinitialize with Babel available
+            _bc._babel_available = None
 
     def test_parse_currency_raises_babel_import_error(
         self,

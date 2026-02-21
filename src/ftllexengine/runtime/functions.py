@@ -28,6 +28,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
+from ftllexengine.core.babel_compat import get_babel_numbers
+
 from .function_bridge import FunctionRegistry
 from .locale_context import LocaleContext
 from .value_types import _FTL_REQUIRES_LOCALE_ATTR, FluentNumber
@@ -175,8 +177,9 @@ def number_format(
         - number_format(1.0, min=0, max=3) -> "1" with precision=0
         - number_format(1.00, min=2, max=2) -> "1.00" with precision=2
     """
-    # Lazy import for parser-only installations
-    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415 - Babel-optional
+    babel_numbers = get_babel_numbers()
+    get_decimal_symbol = babel_numbers.get_decimal_symbol
+    parse_pattern = babel_numbers.parse_pattern
 
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales
@@ -352,8 +355,9 @@ def currency_format(
         matching for custom patterns or locales that deviate from standard
         decimal places.
     """
-    # Lazy import for parser-only installations
-    from babel.numbers import get_decimal_symbol, parse_pattern  # noqa: PLC0415 - Babel-optional
+    babel_numbers = get_babel_numbers()
+    get_decimal_symbol = babel_numbers.get_decimal_symbol
+    parse_pattern = babel_numbers.parse_pattern
 
     # Delegate to LocaleContext (immutable, thread-safe)
     # create() always returns LocaleContext with en_US fallback for invalid locales

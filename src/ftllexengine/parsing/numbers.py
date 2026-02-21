@@ -17,7 +17,13 @@ Python 3.13+.
 
 from decimal import Decimal, InvalidOperation
 
-from ftllexengine.core.babel_compat import require_babel
+from ftllexengine.core.babel_compat import (
+    get_locale_class,
+    get_number_format_error_class,
+    get_parse_decimal_func,
+    get_unknown_locale_error_class,
+    require_babel,
+)
 from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
@@ -80,13 +86,14 @@ def parse_number(
     errors: list[FrozenFluentError] = []
 
     require_babel("parse_number")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-    from babel.numbers import NumberFormatError  # noqa: PLC0415 - Babel-optional
-    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415 - Babel-optional
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
+    number_format_error_class = get_number_format_error_class()
+    babel_parse_decimal = get_parse_decimal_func()
 
     try:
-        locale = Locale.parse(normalize_locale(locale_code))
-    except (UnknownLocaleError, ValueError):
+        locale = locale_class.parse(normalize_locale(locale_code))
+    except (unknown_locale_error_class, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
             input_value=str(value),
@@ -103,7 +110,7 @@ def parse_number(
         parsed = babel_parse_decimal(value, locale=locale)
         return (float(parsed), tuple(errors))
     except (
-        NumberFormatError,
+        number_format_error_class,
         InvalidOperation,
         ValueError,
         AttributeError,
@@ -176,13 +183,14 @@ def parse_decimal(
     errors: list[FrozenFluentError] = []
 
     require_babel("parse_decimal")
-    from babel import Locale, UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-    from babel.numbers import NumberFormatError  # noqa: PLC0415 - Babel-optional
-    from babel.numbers import parse_decimal as babel_parse_decimal  # noqa: PLC0415 - Babel-optional
+    locale_class = get_locale_class()
+    unknown_locale_error_class = get_unknown_locale_error_class()
+    number_format_error_class = get_number_format_error_class()
+    babel_parse_decimal = get_parse_decimal_func()
 
     try:
-        locale = Locale.parse(normalize_locale(locale_code))
-    except (UnknownLocaleError, ValueError):
+        locale = locale_class.parse(normalize_locale(locale_code))
+    except (unknown_locale_error_class, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
             input_value=str(value),
@@ -197,7 +205,9 @@ def parse_decimal(
 
     try:
         return (babel_parse_decimal(value, locale=locale), tuple(errors))
-    except (NumberFormatError, InvalidOperation, ValueError, AttributeError, TypeError) as e:
+    except (
+        number_format_error_class, InvalidOperation, ValueError, AttributeError, TypeError,
+    ) as e:
         diagnostic = ErrorTemplate.parse_decimal_failed(value, locale_code, str(e))
         context = FrozenErrorContext(
             input_value=str(value),

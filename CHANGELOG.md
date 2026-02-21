@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-02-21
+
+### Changed (BREAKING)
+
+- **`DiagnosticFormatter.format_error` and `format_warning` raise `TypeError` on type violations** (ARCH-DIAG-ASSERT-TO-TYPEERROR-001):
+  - `ARCH-DIAG-DUCK-TYPING-001` (v0.116.0) enforced the type contract with `assert isinstance(...)`, which raises `AssertionError` in standard mode and is silently suppressed when Python runs with `-O`
+  - Both guards replaced with explicit `if not isinstance(...): raise TypeError(...)` — enforces the contract unconditionally regardless of optimization level
+  - Callers catching `AssertionError` for type enforcement failures in these methods must migrate to `TypeError`
+  - Location: `diagnostics/formatter.py`
+
+### Changed
+
+- **`babel_compat.py` consolidated as the sole Babel import gateway** (ARCH-BABEL-GATEWAY-001):
+  - Scattered `from babel.X import Y` imports across `runtime/`, `introspection/`, `parsing/`, and `core/` modules bypassed the `_babel_available` availability sentinel and invoked Babel APIs directly; any module importing Babel this way ignored `require_babel()` guards
+  - All direct Babel imports replaced with gateway functions in `core/babel_compat.py`; six new gateway functions added to `__all__`: `get_babel_dates`, `get_babel_numbers`, `get_global_data_func`, `get_locale_identifiers_func`, `get_number_format_error_class`, `get_parse_decimal_func`
+  - Location: `core/babel_compat.py`
+
+- **`require_babel()` added at entry points of `select_plural_category`, `LocaleContext.create`, `LocaleContext.create_or_raise`** (ARCH-BABEL-REQUIRE-ENTRY-001):
+  - After gateway consolidation, the first Babel operation in each function was a gateway call that raised `BabelImportError` with the internal gateway identifier (e.g., `"UnknownLocaleError"`) rather than the public function name
+  - Explicit `require_babel(feature_name)` added as the first statement in each function; error messages now consistently name the user-facing entry point
+  - Location: `runtime/plural_rules.py`, `runtime/locale_context.py`
+
 ## [0.116.0] - 2026-02-20
 
 ### Changed (BREAKING)
@@ -3787,6 +3809,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.117.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.117.0
 [0.116.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.116.0
 [0.115.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.115.0
 [0.114.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.114.0

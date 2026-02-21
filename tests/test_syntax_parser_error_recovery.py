@@ -23,7 +23,7 @@ from ftllexengine.syntax.ast import (
     TextElement,
     VariableReference,
 )
-from ftllexengine.syntax.cursor import Cursor, ParseResult
+from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
 from ftllexengine.syntax.parser.core import FluentParserV1
 from ftllexengine.syntax.parser.rules import (
     ParseContext,
@@ -73,7 +73,7 @@ class TestVariantKeyErrorPaths:
                 "ftllexengine.syntax.parser.rules.parse_identifier"
             ) as mock_id,
         ):
-            mock_num.return_value = None
+            mock_num.return_value = ParseError("forced failure", Cursor("-test", 0))
             mock_id.return_value = ParseResult(
                 "test", Cursor("test", 4)
             )
@@ -140,7 +140,7 @@ class TestArgumentExpressionErrorPaths:
         with patch(
             "ftllexengine.syntax.parser.rules.parse_number"
         ) as mock:
-            mock.return_value = None
+            mock.return_value = ParseError("forced failure", Cursor("9)", 0))
             assert parse_argument_expression(Cursor("9)", 0)) is None
 
     def test_identifier_fails_defensive_line_1139(self) -> None:
@@ -151,7 +151,7 @@ class TestArgumentExpressionErrorPaths:
         with patch(
             "ftllexengine.syntax.parser.rules.parse_identifier"
         ) as mock:
-            mock.return_value = None
+            mock.return_value = ParseError("forced failure", Cursor("x)", 0))
             assert parse_argument_expression(Cursor("x)", 0)) is None
 
     def test_function_ref_fails_line_1150(self) -> None:

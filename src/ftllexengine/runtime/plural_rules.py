@@ -5,9 +5,8 @@ Provides plural category selection for all locales using Babel's CLDR data.
 This eliminates 300+ lines of manual rule implementation and supports all CLDR locales.
 
 Babel Dependency:
-    This module requires Babel for CLDR data. Import is deferred to function call
-    time to support parser-only installations. Clear error message provided when
-    Babel is missing.
+    This module requires Babel for CLDR data. All Babel access goes through
+    ftllexengine.core.babel_compat for consistent optional-dependency handling.
 
 Python 3.13+.
 
@@ -16,6 +15,9 @@ Reference: https://www.unicode.org/cldr/charts/latest/supplemental/language_plur
 
 import math
 from decimal import ROUND_HALF_UP, Decimal
+
+from ftllexengine.core.babel_compat import get_unknown_locale_error_class, require_babel
+from ftllexengine.core.locale_utils import get_babel_locale
 
 __all__ = ["select_plural_category"]
 
@@ -79,21 +81,13 @@ def select_plural_category(
         - select_plural_category(1, "en_US") -> "one" (v=0: integer)
         - select_plural_category(1, "en_US", precision=2) -> "other" (v=2: "1.00")
     """
-    # Lazy import to support parser-only installations
-    try:
-        from babel.core import UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-    except ImportError as e:
-        from ftllexengine.core.babel_compat import BabelImportError  # noqa: PLC0415 - circular
-
-        feature = "select_plural_category"
-        raise BabelImportError(feature) from e
-
-    from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415 - circular
+    require_babel("select_plural_category")
+    unknown_locale_error_class = get_unknown_locale_error_class()
 
     try:
         # Use cached locale parsing for performance
         locale_obj = get_babel_locale(locale)
-    except (UnknownLocaleError, ValueError):
+    except (unknown_locale_error_class, ValueError):
         # Fallback to CLDR root locale for unknown/invalid locales
         # CLDR root returns "other" for all values, which is the safest
         # default since it makes no assumptions about language-specific rules.
@@ -101,7 +95,7 @@ def select_plural_category(
         # handle precision-based rules (e.g., 1 vs 1.0 distinctions).
         try:
             locale_obj = get_babel_locale("root")
-        except (UnknownLocaleError, ValueError):
+        except (unknown_locale_error_class, ValueError):  # pragma: no cover
             # Should not happen, but ultimate fallback
             return "other"
 

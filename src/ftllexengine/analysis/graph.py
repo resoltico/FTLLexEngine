@@ -148,7 +148,7 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
                         cycle = [*path[cycle_start:], neighbor]
 
                         canonical = _canonicalize_cycle(cycle)
-                        if canonical not in seen_canonical:
+                        if canonical not in seen_canonical:  # pragma: no branch
                             seen_canonical.add(canonical)
                             cycles.append(cycle)
 

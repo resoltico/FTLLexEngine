@@ -25,7 +25,13 @@ from ftllexengine.constants import (
     MAX_LOCALE_CACHE_SIZE,
     MAX_TERRITORY_CACHE_SIZE,
 )
-from ftllexengine.core.babel_compat import BabelImportError
+from ftllexengine.core.babel_compat import (
+    BabelImportError,
+    get_babel_numbers,
+    get_global_data_func,
+    get_locale_class,
+    get_unknown_locale_error_class,
+)
 from ftllexengine.core.locale_utils import normalize_locale
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
@@ -115,26 +121,22 @@ class CurrencyInfo:
 
 def _get_babel_locale(locale_str: str) -> object:
     """Get Babel Locale object, raising BabelImportError if unavailable."""
-    try:
-        from babel import Locale  # noqa: PLC0415 - Babel-optional
-    except ImportError as e:
-        raise BabelImportError(_BABEL_FEATURE) from e
-    return Locale.parse(locale_str)
+    locale_class = get_locale_class()
+    return locale_class.parse(locale_str)
 
 
 def _is_unknown_locale_error(exc: Exception) -> bool:
     """Return True if exc is Babel's UnknownLocaleError.
 
     Babel's UnknownLocaleError inherits directly from Exception (not LookupError),
-    requiring explicit runtime type checking. Returns False when Babel is unavailable
-    (ImportError on the babel.core import), allowing the caller to re-raise the
-    original exception via a bare `raise`.
+    requiring explicit runtime type checking. Returns False when Babel is unavailable,
+    allowing the caller to re-raise the original exception via a bare `raise`.
     """
     try:
-        from babel.core import UnknownLocaleError  # noqa: PLC0415 - Babel-optional
-    except ImportError:
+        unknown_locale_error_class = get_unknown_locale_error_class()
+    except BabelImportError:
         return False
-    return isinstance(exc, UnknownLocaleError)
+    return isinstance(exc, unknown_locale_error_class)
 
 
 def _get_babel_territories(locale_str: str) -> dict[str, str]:
@@ -171,18 +173,15 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
 
     Returns None if the currency code is not found in CLDR data.
     """
-    try:
-        from babel import Locale  # noqa: PLC0415 - Babel-optional
-        from babel.numbers import get_currency_name  # noqa: PLC0415 - Babel-optional
-    except ImportError as e:
-        raise BabelImportError(_BABEL_FEATURE) from e
+    locale_class = get_locale_class()
+    babel_numbers = get_babel_numbers()
     try:
         # Validate code exists in CLDR currency data before getting name
         # Babel returns input code if not found, so we check explicitly
-        locale = Locale.parse(locale_str)
+        locale = locale_class.parse(locale_str)
         if code.upper() not in locale.currencies:
             return None
-        return get_currency_name(code, locale=locale_str)
+        return str(babel_numbers.get_currency_name(code, locale=locale_str))
     except (ValueError, LookupError, KeyError, AttributeError):
         # Babel raises ValueError/LookupError for invalid locales,
         # KeyError/AttributeError for missing data. Logic bugs (NameError,
@@ -196,12 +195,9 @@ def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
 
 def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
     """Get localized currency symbol from Babel."""
+    babel_numbers = get_babel_numbers()
     try:
-        from babel.numbers import get_currency_symbol  # noqa: PLC0415 - Babel-optional
-    except ImportError as e:
-        raise BabelImportError(_BABEL_FEATURE) from e
-    try:
-        return get_currency_symbol(code, locale=locale_str)
+        return str(babel_numbers.get_currency_symbol(code, locale=locale_str))
     except (ValueError, LookupError, KeyError, AttributeError):
         # Babel raises ValueError/LookupError for invalid locales,
         # KeyError/AttributeError for unknown codes. Logic bugs propagate.
@@ -217,10 +213,7 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
 
     Returns list of currently active legal tender currencies.
     """
-    try:
-        from babel.core import get_global  # noqa: PLC0415 - Babel-optional
-    except ImportError as e:
-        raise BabelImportError(_BABEL_FEATURE) from e
+    get_global = get_global_data_func()
     try:
         # Data format: list of (code, start_date, end_date, tender)
         # end_date=None means still active; tender=True means legal tender

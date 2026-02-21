@@ -381,23 +381,24 @@ class TestIntrospectionCacheDocumentation:
         assert "var" in result2.get_variable_names()
 
 
-class TestParserThreadLocalDocumentation:
-    """Tests for FTL-PAR-THREADLOCAL-001: Task-local storage documented."""
+class TestParserTypedErrorReturn:
+    """Tests for FTL-PAR-TYPEDERROR-001: Typed error returns from primitives."""
 
-    def test_parser_primitives_module_has_thread_local(self) -> None:
-        """Parser primitives module uses contextvars for error context."""
+    def test_parser_primitives_has_no_side_channel(self) -> None:
+        """Parser primitives module has no ContextVar side-channel state."""
         from ftllexengine.syntax.parser import primitives
 
-        # Should have contextvars-based context (replaced threading.local)
-        assert hasattr(primitives, "_error_context_var")
+        # No ContextVar or thread-local state
+        assert not hasattr(primitives, "_error_context_var")
+        assert not hasattr(primitives, "get_last_parse_error")
+        assert not hasattr(primitives, "clear_parse_error")
 
-    def test_clear_parse_error_works(self) -> None:
-        """clear_parse_error() clears thread-local state."""
-        from ftllexengine.syntax.parser.primitives import clear_parse_error, get_last_parse_error
+    def test_parse_error_returned_directly(self) -> None:
+        """Failure returns ParseError as return value, not via side-channel."""
+        from ftllexengine.syntax.cursor import Cursor, ParseError
+        from ftllexengine.syntax.parser.primitives import parse_identifier
 
-        # Clear should not raise
-        clear_parse_error()
-
-        # Should have no error after clear
-        error = get_last_parse_error()
-        assert error is None
+        cursor = Cursor("123invalid", 0)
+        result = parse_identifier(cursor)
+        assert isinstance(result, ParseError)
+        assert result.message

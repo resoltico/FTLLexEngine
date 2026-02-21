@@ -57,7 +57,7 @@ from ftllexengine.syntax.ast import (
     VariableReference,
     Variant,
 )
-from ftllexengine.syntax.cursor import Cursor, ParseResult
+from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
 from ftllexengine.syntax.parser.primitives import (
     _ASCII_DIGITS,
     is_identifier_char,
@@ -190,8 +190,8 @@ def parse_variable_reference(cursor: Cursor) -> ParseResult[VariableReference] |
 
     # Parse identifier
     result = parse_identifier(cursor)
-    if result is None:
-        return result
+    if isinstance(result, ParseError):
+        return None
 
     parse_result = result
     var_ref = VariableReference(
@@ -867,7 +867,7 @@ def parse_variant_key(cursor: Cursor) -> ParseResult[Identifier | NumberLiteral]
     # Try number first (ASCII digits only, not Unicode like 2)
     if not cursor.is_eof and (cursor.current in _ASCII_DIGITS or cursor.current == "-"):
         num_result = parse_number(cursor)
-        if num_result is not None:
+        if not isinstance(num_result, ParseError):
             num_parse = num_result
             num_str = num_parse.value
             num_value = parse_number_value(num_str)
@@ -877,7 +877,7 @@ def parse_variant_key(cursor: Cursor) -> ParseResult[Identifier | NumberLiteral]
 
         # Failed to parse as number, try identifier
         id_result = parse_identifier(cursor)
-        if id_result is None:
+        if isinstance(id_result, ParseError):
             # Both failed - return parse error
             return None  # "Expected variant key (identifier or number)", cursor
 
@@ -889,8 +889,8 @@ def parse_variant_key(cursor: Cursor) -> ParseResult[Identifier | NumberLiteral]
 
     # Parse as identifier
     id_result = parse_identifier(cursor)
-    if id_result is None:
-        return id_result
+    if isinstance(id_result, ParseError):
+        return None
 
     id_parse = id_result
     return ParseResult(
@@ -1043,7 +1043,7 @@ def _parse_message_attribute(cursor: Cursor) -> tuple[Identifier | None, Cursor]
     cursor = cursor.advance()  # Skip '.'
     attr_start = cursor.pos  # Start of attribute identifier
     attr_id_result = parse_identifier(cursor)
-    if attr_id_result is None:
+    if isinstance(attr_id_result, ParseError):
         return None, cursor
     attr_id = Identifier(
         attr_id_result.value,
@@ -1097,7 +1097,7 @@ def parse_argument_expression(
     # String literal: "text"
     if ch == '"':
         str_result = parse_string_literal(cursor)
-        if str_result is None:
+        if isinstance(str_result, ParseError):
             return None
         return ParseResult(StringLiteral(value=str_result.value), str_result.cursor)
 
@@ -1112,7 +1112,7 @@ def parse_argument_expression(
             return ParseResult(term_result.value, term_result.cursor)
         # Negative number: -123
         num_result = parse_number(cursor)
-        if num_result is None:
+        if isinstance(num_result, ParseError):
             return None
         num_value = parse_number_value(num_result.value)
         return ParseResult(
@@ -1122,7 +1122,7 @@ def parse_argument_expression(
     # Positive number: 42
     if ch in _ASCII_DIGITS:
         num_result = parse_number(cursor)
-        if num_result is None:
+        if isinstance(num_result, ParseError):
             return None
         num_value = parse_number_value(num_result.value)
         return ParseResult(
@@ -1141,7 +1141,7 @@ def parse_argument_expression(
     # Note: ASCII letter check per Fluent spec for identifier start
     if is_identifier_start(ch) or ch == "_":
         id_result = parse_identifier(cursor)
-        if id_result is None:
+        if isinstance(id_result, ParseError):
             return None
 
         name = id_result.value
@@ -1323,8 +1323,8 @@ def parse_function_reference(
 
     # Parse function name (any case per spec)
     id_result = parse_identifier(cursor)
-    if id_result is None:
-        return id_result
+    if isinstance(id_result, ParseError):
+        return None
 
     id_parse = id_result
     func_name = id_parse.value
@@ -1405,8 +1405,8 @@ def parse_term_reference(
 
     # Parse identifier
     id_result = parse_identifier(cursor)
-    if id_result is None:
-        return id_result
+    if isinstance(id_result, ParseError):
+        return None
 
     id_parse = id_result
     cursor = id_parse.cursor
@@ -1418,8 +1418,8 @@ def parse_term_reference(
         attr_start = cursor.pos  # Start of attribute identifier
 
         attr_id_result = parse_identifier(cursor)
-        if attr_id_result is None:
-            return attr_id_result
+        if isinstance(attr_id_result, ParseError):
+            return None
 
         attr_id_parse = attr_id_result
         attribute = Identifier(
@@ -1468,7 +1468,7 @@ def parse_term_reference(
 def _parse_inline_string_literal(cursor: Cursor) -> ParseResult[InlineExpression] | None:
     """Parse string literal inline expression."""
     str_result = parse_string_literal(cursor)
-    if str_result is None:
+    if isinstance(str_result, ParseError):
         return None
     return ParseResult(StringLiteral(value=str_result.value), str_result.cursor)
 
@@ -1476,7 +1476,7 @@ def _parse_inline_string_literal(cursor: Cursor) -> ParseResult[InlineExpression
 def _parse_inline_number_literal(cursor: Cursor) -> ParseResult[InlineExpression] | None:
     """Parse number literal inline expression."""
     num_result = parse_number(cursor)
-    if num_result is None:
+    if isinstance(num_result, ParseError):
         return None
     num_str = num_result.value
     num_value = parse_number_value(num_str)
@@ -1522,7 +1522,7 @@ def _parse_inline_identifier(
     start_pos = cursor.pos
 
     id_result = parse_identifier(cursor)
-    if id_result is None:
+    if isinstance(id_result, ParseError):
         return None
 
     name = id_result.value
@@ -1752,8 +1752,8 @@ def parse_message_header(cursor: Cursor) -> ParseResult[tuple[str, int]] | None:
     The end position is needed for constructing Identifier spans.
     """
     id_result = parse_identifier(cursor)
-    if id_result is None:
-        return id_result
+    if isinstance(id_result, ParseError):
+        return None
 
     id_parse = id_result
     id_end_pos = id_parse.cursor.pos  # Capture end position before whitespace/equals
@@ -1939,8 +1939,8 @@ def parse_attribute(
 
     # Parse identifier after '.'
     id_result = parse_identifier(cursor)
-    if id_result is None:
-        return id_result
+    if isinstance(id_result, ParseError):
+        return None
 
     id_parse = id_result
     id_end_pos = id_parse.cursor.pos  # End of identifier
@@ -2007,8 +2007,8 @@ def parse_term(
 
     # Parse identifier
     id_result = parse_identifier(cursor)
-    if id_result is None:
-        return id_result
+    if isinstance(id_result, ParseError):
+        return None
 
     id_parse = id_result
     id_end_pos = id_parse.cursor.pos  # End of identifier

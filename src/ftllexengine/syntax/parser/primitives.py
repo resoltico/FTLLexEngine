@@ -3,43 +3,21 @@
 This module provides low-level parsers for identifiers, numbers,
 and string literals per the Fluent specification.
 
-Error Context:
-    Functions store error context on failure via _set_parse_error().
-    Retrieve with get_last_parse_error() for detailed diagnostics.
+Error Handling:
+    All parser functions return ``ParseResult[T] | ParseError``.
+    Callers check ``isinstance(result, ParseError)`` to detect failure.
+    Error details (message, position, expected tokens) are carried in
+    the returned ``ParseError`` object — no side-channel state required.
 
-Task-Local State (Architectural Decision):
-    This module uses contextvars for parse error context rather than explicit
-    parameter passing. This design choice prioritizes performance for
-    high-frequency operations while providing automatic async safety:
+Design:
+    - Zero mutable state at module level (no ContextVars, no thread-locals)
+    - Failure is a first-class value: ``ParseResult[T] | ParseError``
+    - Error details are always co-located with the failure return
+    - Safe for concurrent and async use without any per-call cleanup
 
-    Performance Rationale:
-    - Primitive functions (parse_identifier, parse_number, parse_string_literal)
-      are called 100+ times per parse operation
-    - Explicit context threading would require ~10 signature changes and
-      200+ call site updates throughout the parser
-    - ContextVar.get()/set() is O(1) with no performance penalty vs thread-local
-    - Task-local approach reduces 200-line primitives from growing to 300+ lines
-
-    Trade-off Analysis:
-    - Parser operations are synchronous and single-threaded per parse call
-    - Error context only needed for the most recent primitive failure
-    - Each async task maintains independent state (automatic isolation)
-    - Context lifetime is scoped to single parse operation
-    - Automatic cleanup per task (no manual clear_parse_error() required in async)
-
-    Async Safety:
-    contextvars provides automatic task-local isolation. In async frameworks
-    (asyncio, ASGI), each task has its own copy of the error context. No
-    manual cleanup is required between parse operations in async contexts.
-
-    This is a permanent architectural pattern where performance benefits of
-    implicit state outweigh the cost of reduced explicitness for this specific
-    high-frequency primitive layer, with the added benefit of automatic async
-    safety via contextvars.
+Python 3.13+.
 """
 
-from contextvars import ContextVar
-from dataclasses import dataclass
 from decimal import Decimal
 
 from ftllexengine.constants import MAX_IDENTIFIER_LENGTH
@@ -47,12 +25,10 @@ from ftllexengine.core.identifier_validation import (
     is_identifier_char,
     is_identifier_start,
 )
-from ftllexengine.syntax.cursor import Cursor, ParseResult
+from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
 
 __all__ = [
     "_ASCII_DIGITS",
-    "clear_parse_error",
-    "get_last_parse_error",
     "is_identifier_char",
     "is_identifier_start",
     "parse_identifier",
@@ -103,62 +79,8 @@ _MAX_STRING_LITERAL_LENGTH: int = 1_000_000
 # is_identifier_start, is_identifier_char
 # See identifier_validation.py for the unified source of truth for FTL identifier grammar.
 
-@dataclass(frozen=True, slots=True)
-class ParseErrorContext:
-    """Context information for parse failures.
 
-    Provides detailed error information when primitive parsing fails.
-    Retrieve via get_last_parse_error() after a parser returns None.
-
-    Attributes:
-        message: Human-readable error description
-        position: Character position in source where error occurred
-        expected: What the parser expected to find (optional)
-    """
-
-    message: str
-    position: int
-    expected: tuple[str, ...] = ()
-
-
-# Task-local storage for parse error context via contextvars.
-# ContextVar provides automatic isolation per async task, unlike thread-local
-# which only isolates per thread (causing context leakage in async frameworks).
-_error_context_var: ContextVar[ParseErrorContext | None] = ContextVar(
-    "parse_error_context", default=None
-)
-
-
-def _set_parse_error(
-    message: str, position: int, expected: tuple[str, ...] = ()
-) -> None:
-    """Store parse error context for later retrieval."""
-    _error_context_var.set(
-        ParseErrorContext(message=message, position=position, expected=expected)
-    )
-
-
-def get_last_parse_error() -> ParseErrorContext | None:
-    """Get the last parse error context (if any).
-
-    Returns:
-        ParseErrorContext with details, or None if no error recorded
-
-    Example:
-        >>> result = parse_identifier(cursor)
-        >>> if result is None:
-        ...     error = get_last_parse_error()
-        ...     print(f"Error at position {error.position}: {error.message}")
-    """
-    return _error_context_var.get()
-
-
-def clear_parse_error() -> None:
-    """Clear the last parse error context."""
-    _error_context_var.set(None)
-
-
-def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
+def parse_identifier(cursor: Cursor) -> ParseResult[str] | ParseError:
     """Parse identifier: [a-zA-Z][a-zA-Z0-9_-]*
 
     Fluent identifiers start with an ASCII letter and continue with ASCII
@@ -179,20 +101,16 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
         cursor: Current position in source
 
     Returns:
-        Success(ParseResult(identifier, new_cursor)) on success
-        Failure(ParseError(...)) if not an identifier
+        ParseResult(identifier, new_cursor) on success
+        ParseError with details on failure
     """
-    # Clear any stale error context from previous parse attempts
-    clear_parse_error()
-
     # Check first character is ASCII alpha (a-z, A-Z only)
     if cursor.is_eof or not is_identifier_start(cursor.current):
-        _set_parse_error(
+        return ParseError(
             "Expected identifier (must start with ASCII letter a-z or A-Z)",
-            cursor.pos,
+            cursor,
             ("a-z", "A-Z"),
         )
-        return None
 
     # Save start position
     start_pos = cursor.pos
@@ -207,11 +125,10 @@ def parse_identifier(cursor: Cursor) -> ParseResult[str] | None:
             # Check length limit after consuming character
             current_length = cursor.pos - start_pos
             if current_length > MAX_IDENTIFIER_LENGTH:
-                _set_parse_error(
+                return ParseError(
                     f"Identifier exceeds maximum length ({MAX_IDENTIFIER_LENGTH} chars)",
-                    cursor.pos,
+                    cursor,
                 )
-                return None
         else:
             break
 
@@ -235,11 +152,11 @@ def parse_number_value(num_str: str) -> int | Decimal:
     return int(num_str) if "." not in num_str else Decimal(num_str)
 
 
-def parse_number(cursor: Cursor) -> ParseResult[str] | None:
+def parse_number(cursor: Cursor) -> ParseResult[str] | ParseError:
     """Parse number literal: -?[0-9]+(.[0-9]+)?
 
     Returns the raw string representation. Use parse_number_value()
-    to convert to int or float for NumberLiteral construction.
+    to convert to int or Decimal for NumberLiteral construction.
 
     Examples:
         42 → "42"
@@ -250,12 +167,9 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
         cursor: Current position in source
 
     Returns:
-        Success(ParseResult(number_str, new_cursor)) on success
-        Failure(ParseError(...)) if not a number
+        ParseResult(number_str, new_cursor) on success
+        ParseError with details on failure
     """
-    # Clear any stale error context from previous parse attempts
-    clear_parse_error()
-
     start_pos = cursor.pos
 
     # Optional minus sign
@@ -264,19 +178,17 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
 
     # Must have at least one ASCII digit (0-9, not Unicode digits like ²)
     if cursor.is_eof or cursor.current not in _ASCII_DIGITS:
-        _set_parse_error("Expected number", cursor.pos, ("0-9",))
-        return None
+        return ParseError("Expected number", cursor, ("0-9",))
 
     # Integer part - with length limit to prevent DoS
     while not cursor.is_eof and cursor.current in _ASCII_DIGITS:
         cursor = cursor.advance()
         # Check length limit after consuming digit
         if cursor.pos - start_pos > _MAX_NUMBER_LENGTH:
-            _set_parse_error(
+            return ParseError(
                 f"Number exceeds maximum length ({_MAX_NUMBER_LENGTH} chars)",
-                cursor.pos,
+                cursor,
             )
-            return None
 
     # Optional decimal part
     if not cursor.is_eof and cursor.current == ".":
@@ -284,28 +196,28 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | None:
 
         # Must have digit after decimal
         if cursor.is_eof or cursor.current not in _ASCII_DIGITS:
-            _set_parse_error("Expected digit after decimal point", cursor.pos, ("0-9",))
-            return None
+            return ParseError("Expected digit after decimal point", cursor, ("0-9",))
 
         # Decimal digits - continue length check
         while not cursor.is_eof and cursor.current in _ASCII_DIGITS:
             cursor = cursor.advance()
             if cursor.pos - start_pos > _MAX_NUMBER_LENGTH:
-                _set_parse_error(
+                return ParseError(
                     f"Number exceeds maximum length ({_MAX_NUMBER_LENGTH} chars)",
-                    cursor.pos,
+                    cursor,
                 )
-                return None
 
     # Extract number string
     number_str = Cursor(cursor.source, start_pos).slice_to(cursor.pos)
     return ParseResult(number_str, cursor)
 
 
-def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa: PLR0911 - escape
+def parse_escape_sequence(  # noqa: PLR0911 - escape
+    cursor: Cursor,
+) -> tuple[str, Cursor] | ParseError:
     """Parse escape sequence after backslash in string.
 
-    Helper method extracted from parse_string_literal to reduce complexity.
+    Helper extracted from parse_string_literal to reduce complexity.
 
     Supported escape sequences:
         \\" → "
@@ -322,12 +234,11 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
         cursor: Position AFTER the backslash
 
     Returns:
-        Success((escaped_char, new_cursor)) on success
-        Failure(ParseError(...)) on invalid escape
+        (escaped_char, new_cursor) on success
+        ParseError on invalid escape
     """
     if cursor.is_eof:
-        _set_parse_error("Unexpected EOF in escape sequence", cursor.pos)
-        return None
+        return ParseError("Unexpected EOF in escape sequence", cursor)
 
     escape_ch = cursor.current
 
@@ -349,12 +260,11 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
         if len(hex_digits) < _UNICODE_ESCAPE_LEN_SHORT or not _HEX_DIGITS.issuperset(
             hex_digits
         ):
-            _set_parse_error(
+            return ParseError(
                 f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_SHORT} hex digits)",
-                cursor.pos,
+                cursor,
                 ("0-9", "a-f", "A-F"),
             )
-            return None
         cursor = cursor.advance(_UNICODE_ESCAPE_LEN_SHORT)
 
         # Convert to character
@@ -362,11 +272,10 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
         # Reject UTF-16 surrogate code points (invalid in UTF-8)
         # Per Unicode Standard: D800-DFFF are surrogates, invalid in isolation
         if _SURROGATE_RANGE_START <= code_point <= _SURROGATE_RANGE_END:
-            _set_parse_error(
+            return ParseError(
                 f"Invalid surrogate code point: U+{hex_digits} (surrogates not allowed)",
-                cursor.pos,
+                cursor,
             )
-            return None
         return (chr(code_point), cursor)
 
     if escape_ch == "U":
@@ -378,37 +287,33 @@ def parse_escape_sequence(cursor: Cursor) -> tuple[str, Cursor] | None:  # noqa:
         if len(hex_digits) < _UNICODE_ESCAPE_LEN_LONG or not _HEX_DIGITS.issuperset(
             hex_digits
         ):
-            _set_parse_error(
+            return ParseError(
                 f"Invalid Unicode escape (expected {_UNICODE_ESCAPE_LEN_LONG} hex digits)",
-                cursor.pos,
+                cursor,
                 ("0-9", "a-f", "A-F"),
             )
-            return None
         cursor = cursor.advance(_UNICODE_ESCAPE_LEN_LONG)
 
         # Convert to character
         code_point = int(hex_digits, 16)
         # Validate Unicode code point range
         if code_point > _MAX_UNICODE_CODE_POINT:
-            _set_parse_error(
+            return ParseError(
                 f"Invalid Unicode code point: U+{hex_digits} (max U+10FFFF)",
-                cursor.pos,
+                cursor,
             )
-            return None
         # Reject UTF-16 surrogate code points (invalid in UTF-8)
         if _SURROGATE_RANGE_START <= code_point <= _SURROGATE_RANGE_END:
-            _set_parse_error(
+            return ParseError(
                 f"Invalid surrogate code point: U+{hex_digits} (surrogates not allowed)",
-                cursor.pos,
+                cursor,
             )
-            return None
         return (chr(code_point), cursor)
 
-    _set_parse_error(f"Invalid escape sequence: \\{escape_ch}", cursor.pos)
-    return None
+    return ParseError(f"Invalid escape sequence: \\{escape_ch}", cursor)
 
 
-def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
+def parse_string_literal(cursor: Cursor) -> ParseResult[str] | ParseError:
     """Parse string literal: "text"
 
     Per Fluent EBNF:
@@ -437,16 +342,12 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
         cursor: Current position in source
 
     Returns:
-        Success(ParseResult(string_value, new_cursor)) on success
-        Failure(ParseError(...)) if invalid string
+        ParseResult(string_value, new_cursor) on success
+        ParseError with details on failure
     """
-    # Clear any stale error context from previous parse attempts
-    clear_parse_error()
-
     # Expect opening quote
     if cursor.is_eof or cursor.current != '"':
-        _set_parse_error("Expected opening quote", cursor.pos, ('"',))
-        return None
+        return ParseError("Expected opening quote", cursor, ('"',))
 
     cursor = cursor.advance()  # Skip opening "
     # Use list accumulation to avoid O(N^2) string concatenation
@@ -455,11 +356,10 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
     while not cursor.is_eof:
         # Check length limit before processing more characters (DoS prevention)
         if len(chars) > _MAX_STRING_LITERAL_LENGTH:
-            _set_parse_error(
+            return ParseError(
                 f"String literal exceeds maximum length ({_MAX_STRING_LITERAL_LENGTH} chars)",
-                cursor.pos,
+                cursor,
             )
-            return None
 
         ch = cursor.current
 
@@ -472,17 +372,16 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
         # quoted_char ::= (any_char - special_quoted_char - line_end)
         # Note: Line endings normalized to LF at parser entry point
         if ch == "\n":
-            _set_parse_error(
+            return ParseError(
                 "Line endings not allowed in string literals (use \\n escape)",
-                cursor.pos,
+                cursor,
             )
-            return None
 
         if ch == "\\":
             # Escape sequence - use extracted helper
             cursor = cursor.advance()
             escape_result = parse_escape_sequence(cursor)
-            if escape_result is None:
+            if isinstance(escape_result, ParseError):
                 return escape_result
 
             escaped_char, cursor = escape_result
@@ -494,5 +393,4 @@ def parse_string_literal(cursor: Cursor) -> ParseResult[str] | None:
             cursor = cursor.advance()
 
     # EOF without closing quote
-    _set_parse_error("Unterminated string literal", cursor.pos, ('"',))
-    return None
+    return ParseError("Unterminated string literal", cursor, ('"',))

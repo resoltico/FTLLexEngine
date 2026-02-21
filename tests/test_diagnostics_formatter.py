@@ -361,9 +361,9 @@ def test_sanitize_truncation_bound(
 
     truncated = len(message) > max_length
     if truncated:
-        # After truncation + escape: bound is 2*(max_length) + 3
-        # because control chars (\n -> \\n) can double each char.
-        assert len(msg_part) <= 2 * max_length + 3
+        # After truncation + escape: bound is 4*(max_length) + 3
+        # because control chars expand to \xNN (4 chars each).
+        assert len(msg_part) <= 4 * max_length + 3
         assert msg_part.endswith("...")
     event(f"truncated={truncated}")
 
@@ -785,3 +785,36 @@ def test_formatter_frozen() -> None:
     formatter = DiagnosticFormatter()
     with pytest.raises(AttributeError):
         formatter.sanitize = True  # type: ignore[misc]
+
+
+# ===================================================================
+# format_error / format_warning: TypeError on wrong argument type
+# ===================================================================
+
+
+def test_format_error_raises_type_error_on_wrong_type() -> None:
+    """format_error raises TypeError when passed a non-ValidationError."""
+    formatter = DiagnosticFormatter()
+    with pytest.raises(TypeError, match="format_error\\(\\) requires ValidationError"):
+        formatter.format_error("not an error")
+
+
+def test_format_error_raises_type_error_includes_type_name() -> None:
+    """TypeError message from format_error includes the actual argument type name."""
+    formatter = DiagnosticFormatter()
+    with pytest.raises(TypeError, match="int"):
+        formatter.format_error(42)
+
+
+def test_format_warning_raises_type_error_on_wrong_type() -> None:
+    """format_warning raises TypeError when passed a non-ValidationWarning."""
+    formatter = DiagnosticFormatter()
+    with pytest.raises(TypeError, match="format_warning\\(\\) requires ValidationWarning"):
+        formatter.format_warning("not a warning")
+
+
+def test_format_warning_raises_type_error_includes_type_name() -> None:
+    """TypeError message from format_warning includes the actual argument type name."""
+    formatter = DiagnosticFormatter()
+    with pytest.raises(TypeError, match="list"):
+        formatter.format_warning([])

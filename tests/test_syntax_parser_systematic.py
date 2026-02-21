@@ -21,7 +21,7 @@ See SYSTEM 4 in the testing strategy document.
 import pytest
 
 from ftllexengine.syntax.ast import Junk, Message, Term
-from ftllexengine.syntax.cursor import Cursor
+from ftllexengine.syntax.cursor import Cursor, ParseError
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.syntax.parser.primitives import parse_identifier, parse_number
 
@@ -45,7 +45,7 @@ class TestParseNumberErrorPaths:
 
         result = parse_number(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_number_no_digits_after_minus_eof(self):
         """Line 222: '-' at end of string.
@@ -57,7 +57,7 @@ class TestParseNumberErrorPaths:
 
         result = parse_number(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_number_no_digits_after_minus_non_digit(self):
         """Line 222: '-' followed by letter.
@@ -69,7 +69,7 @@ class TestParseNumberErrorPaths:
 
         result = parse_number(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_number_decimal_no_digits(self):
         """Line 234: '3.' with no digits after decimal point.
@@ -81,7 +81,7 @@ class TestParseNumberErrorPaths:
 
         result = parse_number(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_number_decimal_no_digits_eof(self):
         """Line 234: Number ending with decimal at EOF.
@@ -93,7 +93,7 @@ class TestParseNumberErrorPaths:
 
         result = parse_number(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_number_just_decimal_point(self):
         """Line 234: Just a decimal point with no integer part.
@@ -106,7 +106,7 @@ class TestParseNumberErrorPaths:
 
         result = parse_number(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
         # Should fail at the start - '.' is not a digit
 
 
@@ -233,7 +233,7 @@ class TestParseIdentifierErrorPaths:
 
         result = parse_identifier(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_identifier_starts_with_digit(self):
         """Identifier starting with digit (invalid).
@@ -245,7 +245,7 @@ class TestParseIdentifierErrorPaths:
 
         result = parse_identifier(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
     def test_identifier_special_character(self):
         """Identifier starting with special character.
@@ -257,7 +257,7 @@ class TestParseIdentifierErrorPaths:
 
         result = parse_identifier(cursor)
 
-        assert result is None
+        assert isinstance(result, ParseError)
 
 
 class TestParseMessageErrorPaths:

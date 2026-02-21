@@ -256,14 +256,15 @@ class TestBabelCompatModuleExports:
         assert locale.territory == "US"
 
     def test_removed_apis_not_exported(self) -> None:
-        """Removed APIs are not in babel_compat exports."""
+        """Removed Protocol-based APIs are not in babel_compat exports."""
         from ftllexengine.core import babel_compat
 
+        # BabelNumbersProtocol and BabelDatesProtocol were removed in favour of
+        # get_babel_numbers() and get_babel_dates() gateway functions.
+        # get_unknown_locale_error (no "class" suffix) was renamed and never existed.
         removed = [
             "BabelNumbersProtocol",
             "BabelDatesProtocol",
-            "get_babel_numbers",
-            "get_babel_dates",
             "get_unknown_locale_error",
         ]
         for name in removed:
@@ -275,8 +276,15 @@ class TestBabelCompatModuleExports:
 
         expected = [
             "BabelImportError",
+            "get_babel_dates",
+            "get_babel_numbers",
             "get_cldr_version",
+            "get_global_data_func",
             "get_locale_class",
+            "get_locale_identifiers_func",
+            "get_number_format_error_class",
+            "get_parse_decimal_func",
+            "get_unknown_locale_error_class",
             "is_babel_available",
             "require_babel",
         ]
