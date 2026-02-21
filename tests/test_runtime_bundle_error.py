@@ -40,7 +40,7 @@ welcome = Welcome to { -brand }!
         bundle.add_resource(ftl)
 
         # Format to ensure term attributes are validated
-        result, _ = bundle.format_value("welcome")
+        result, _ = bundle.format_pattern("welcome")
         assert "Firefox" in result
 
 
@@ -92,7 +92,7 @@ another = Another value
         assert bundle.has_message("message")
         assert bundle.has_message("another")
         # Verify comment handling doesn't break parsing
-        result, _ = bundle.format_value("message")
+        result, _ = bundle.format_pattern("message")
         assert result == "Value"
 
 
@@ -130,7 +130,7 @@ welcome = { -brand }
 
         # Warnings are generated internally (logged)
         # We can verify the bundle still works
-        result, _ = bundle.format_value("welcome")
+        result, _ = bundle.format_pattern("welcome")
         assert isinstance(result, str)
 
     def test_term_references_undefined_term_warning_line_475(self) -> None:
@@ -145,7 +145,7 @@ msg = { -company }
         bundle.add_resource(ftl)  # add_resource returns None
 
         # Warnings are generated internally (logged)
-        result, _ = bundle.format_value("msg")
+        result, _ = bundle.format_pattern("msg")
         assert isinstance(result, str)
 
 
@@ -194,5 +194,5 @@ msg = { -brand.legal }
         bundle.add_resource(ftl)
 
         # This should validate term attributes (line 463)
-        result, _ = bundle.format_value("msg")
+        result, _ = bundle.format_pattern("msg")
         assert "Existing" in result or "Corporation" in result

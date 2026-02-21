@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.117.0"
+version: "0.118.0"
 domain: parsing
 updated: "2026-02-21"
 route:
@@ -261,11 +261,11 @@ if errors:
 ```python
 # CORRECT - Same locale
 locale = "lv_LV"
-formatted, _ = bundle.format_value("price", {"amount": 1234.56})
+formatted, _ = bundle.format_pattern("price", {"amount": 1234.56})
 result, errors = parse_decimal(formatted, locale)  # Same locale!
 
 # WRONG - Different locales break roundtrip
-formatted, _ = bundle.format_value("price", {"amount": 1234.56})  # lv_LV
+formatted, _ = bundle.format_pattern("price", {"amount": 1234.56})  # lv_LV
 result, errors = parse_decimal(formatted, "en_US")  # Wrong locale!
 # Result: errors will contain parse error
 ```
@@ -407,9 +407,9 @@ def process_invoice(user_input: str) -> dict | None:
 
     # Format for display
     display = {
-        "subtotal": bundle.format_value("subtotal", {"amount": float(subtotal)})[0],
-        "vat": bundle.format_value("vat", {"vat": float(vat)})[0],
-        "total": bundle.format_value("total", {"total": float(total)})[0],
+        "subtotal": bundle.format_pattern("subtotal", {"amount": float(subtotal)})[0],
+        "vat": bundle.format_pattern("vat", {"vat": float(vat)})[0],
+        "total": bundle.format_pattern("total", {"total": float(total)})[0],
     }
 
     return {
@@ -529,7 +529,7 @@ from ftllexengine import FluentBundle
 
 # Formatting: FTLLexEngine
 bundle = FluentBundle("lv_LV")
-formatted, _ = bundle.format_value("price", {"amount": 1234.56})
+formatted, _ = bundle.format_pattern("price", {"amount": 1234.56})
 
 # Parsing: Babel directly
 user_input = "1 234,56"
@@ -545,7 +545,7 @@ from ftllexengine.parsing.guards import is_valid_decimal
 
 # Formatting: FTLLexEngine
 bundle = FluentBundle("lv_LV")
-formatted, _ = bundle.format_value("price", {"amount": 1234.56})
+formatted, _ = bundle.format_pattern("price", {"amount": 1234.56})
 
 # Parsing: FTLLexEngine (consistent API)
 user_input = "1 234,56"

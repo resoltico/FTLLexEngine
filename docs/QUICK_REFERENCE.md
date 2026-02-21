@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.117.0"
+version: "0.118.0"
 domain: reference
 updated: "2026-02-21"
 route:
@@ -326,7 +326,6 @@ with FluentBundle("en", cache=CacheConfig()) as bundle:
 ```python
 bundle.add_resource(ftl_source: str) -> tuple[Junk, ...]
 bundle.format_pattern(message_id, args=None, *, attribute=None) -> tuple[str, tuple[FrozenFluentError, ...]]
-bundle.format_value(message_id, args=None) -> tuple[str, tuple[FrozenFluentError, ...]]
 bundle.validate_resource(ftl_source: str) -> ValidationResult
 bundle.has_message(message_id: str) -> bool
 bundle.has_attribute(message_id: str, attribute: str) -> bool
@@ -667,7 +666,7 @@ def format_message(
     args: dict[str, FluentValue] | None = None,
 ) -> str:
     """Format message with error logging."""
-    result, errors = bundle.format_value(msg_id, args)
+    result, errors = bundle.format_pattern(msg_id, args)
     if errors:
         for error in errors:
             logger.warning(f"Translation error: {error}")

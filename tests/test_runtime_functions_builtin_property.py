@@ -74,7 +74,7 @@ class TestDatetimeFormatBehavior:
         result = datetime_format(dt, "invalid-locale")
         # Should contain formatted date (using en_US rules)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
     def test_datetime_format_with_invalid_locale_string_input(self) -> None:
         """Verify datetime_format with invalid locale handles string input."""
@@ -96,22 +96,22 @@ class TestDatetimeFormatBehavior:
         result = datetime_format(dt, "invalid", pattern="yyyy-MM-dd")
         # Should return formatted string using en_US fallback
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
     def test_datetime_format_success_case_basic(self) -> None:
         """Verify datetime_format works correctly in success case."""
         dt = datetime(2025, 10, 27, tzinfo=UTC)
         result = datetime_format(dt, "en-US", date_style="short")
         # Should format with locale-specific formatting
-        assert "10" in result
-        assert "27" in result
+        assert "10" in str(result)
+        assert "27" in str(result)
 
     def test_datetime_format_success_with_time_style(self) -> None:
         """Verify datetime_format with both date and time styles."""
         dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
         result = datetime_format(dt, "en-US", date_style="medium", time_style="short")
         # Should include both date and time
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
 
 class TestCurrencyFormatBehavior:
@@ -123,7 +123,7 @@ class TestCurrencyFormatBehavior:
         result = currency_format(123.45, "invalid-locale", currency="EUR")
         # Should contain currency info (formatted with en_US rules)
         assert isinstance(result, FluentNumber)
-        assert "123" in result or "EUR" in result
+        assert "123" in str(result) or "EUR" in str(result)
 
     @given(
         st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e10),
@@ -147,19 +147,19 @@ class TestCurrencyFormatBehavior:
         )
         # Should return FluentNumber using en_US fallback
         assert isinstance(result, FluentNumber)
-        assert "100" in result or "EUR" in result or "euro" in str(result).lower()
+        assert "100" in str(result) or "EUR" in str(result) or "euro" in str(result).lower()
 
     def test_currency_format_success_case_basic(self) -> None:
         """Verify currency_format works correctly in success case."""
         result = currency_format(123.45, "en-US", currency="USD")
         # Should format with currency symbol or code
-        assert "123" in result
+        assert "123" in str(result)
 
     def test_currency_format_success_with_symbol_display(self) -> None:
         """Verify currency_format with symbol display."""
         result = currency_format(100, "en-US", currency="EUR", currency_display="symbol")
         # Should include currency representation
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
 
 class TestFunctionRegistryIntegration:

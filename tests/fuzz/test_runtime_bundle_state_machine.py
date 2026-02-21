@@ -164,7 +164,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         # Skip messages that need variables - those are handled by format_with_args
         assume(msg_id not in self.known_variables)
 
-        result, errors = self._fluent_bundle.format_value(msg_id)
+        result, errors = self._fluent_bundle.format_pattern(msg_id)
 
         assert not errors
 
@@ -182,7 +182,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
             var_name = self.known_variables[msg_id]
             args[var_name] = arg_value
 
-        result, errors = self._fluent_bundle.format_value(msg_id, args)
+        result, errors = self._fluent_bundle.format_pattern(msg_id, args)
 
         assert not errors
         assert isinstance(result, str)
@@ -195,7 +195,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         # Skip if we know this message exists
         assume(msg_id not in self.known_messages)
 
-        result, _errors = self._fluent_bundle.format_value(msg_id)
+        result, _errors = self._fluent_bundle.format_pattern(msg_id)
 
         # Unknown message returns message ID as fallback (with error)
         assert msg_id in result
@@ -224,8 +224,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
     @rule(msg_id=messages)
     def format_twice_check_cache(self, msg_id: str) -> None:
         """Format same message twice and verify cache behavior."""
-        result1, _ = self._fluent_bundle.format_value(msg_id)
-        result2, _ = self._fluent_bundle.format_value(msg_id)
+        result1, _ = self._fluent_bundle.format_pattern(msg_id)
+        result2, _ = self._fluent_bundle.format_pattern(msg_id)
 
         # Results must be identical
         assert result1 == result2, (
@@ -263,7 +263,7 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         self.operation_count += 1
 
         # Format should now return normalized value
-        result, _ = self._fluent_bundle.format_value(msg_id)
+        result, _ = self._fluent_bundle.format_pattern(msg_id)
         # Note: result may have Unicode isolation chars depending on settings
         assert normalized_value in result or result == normalized_value
         event("rule=overwrite_message")
@@ -304,8 +304,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
         # Pick a known message if we have any
         if self.known_messages:
             msg_id = next(iter(self.known_messages))
-            result1, _ = self._fluent_bundle.format_value(msg_id)
-            result2, _ = self._fluent_bundle.format_value(msg_id)
+            result1, _ = self._fluent_bundle.format_pattern(msg_id)
+            result2, _ = self._fluent_bundle.format_pattern(msg_id)
             assert result1 == result2
         has_msgs = bool(self.known_messages)
         event(f"invariant=format_deterministic({has_msgs})")
@@ -345,7 +345,7 @@ class TestBundleStateMachineBasic:
         machine.known_messages["hello"] = "Hello, world!"
 
         # Format it
-        result, errors = machine._fluent_bundle.format_value("hello")
+        result, errors = machine._fluent_bundle.format_pattern("hello")
         assert "Hello, world!" in result
         assert len(errors) == 0
 
@@ -355,11 +355,11 @@ class TestBundleStateMachineBasic:
         machine.setup_bundle()
 
         machine._fluent_bundle.add_resource("msg = Original")
-        result1, _ = machine._fluent_bundle.format_value("msg")
+        result1, _ = machine._fluent_bundle.format_pattern("msg")
         assert "Original" in result1
 
         machine._fluent_bundle.add_resource("msg = Updated")
-        result2, _ = machine._fluent_bundle.format_value("msg")
+        result2, _ = machine._fluent_bundle.format_pattern("msg")
         assert "Updated" in result2
 
     def test_state_machine_cache_invalidation(self) -> None:
@@ -368,7 +368,7 @@ class TestBundleStateMachineBasic:
         machine.setup_bundle()
 
         machine._fluent_bundle.add_resource("msg = First")
-        machine._fluent_bundle.format_value("msg")  # Populate cache
+        machine._fluent_bundle.format_pattern("msg")  # Populate cache
 
         stats_before = machine._fluent_bundle.get_cache_stats()
         assert stats_before is not None

@@ -96,62 +96,47 @@ _BABEL_INDEPENDENT_ATTRS = frozenset({
     "fluent_function",
 })
 
-# Cache for lazy-loaded modules
-_lazy_cache: dict[str, object] = {}
-
-
-def _load_babel_independent(name: str) -> object:
-    """Import a Babel-independent lazy attribute by name."""
-    match name:
-        case "CacheConfig":
-            from .runtime.cache_config import CacheConfig
-
-            return CacheConfig
-        case "FluentValue":
-            from .runtime.value_types import FluentValue
-
-            return FluentValue
-        case "fluent_function":
-            from .runtime.function_bridge import fluent_function
-
-            return fluent_function
-        case _:
-            msg = f"__getattr__: unhandled Babel-independent attribute {name!r}"
-            raise AssertionError(msg)
-
-
 def __getattr__(name: str) -> object:
     """Lazy import for components.
 
     Handles two categories:
     - Babel-dependent (FluentBundle, FluentLocalization): Clear error if Babel missing
-    - Babel-independent (FluentValue, fluent_function): No Babel required, pure Python
+    - Babel-independent (CacheConfig, FluentValue, fluent_function): No Babel required
+
+    Uses the standard ``globals()[name] = obj`` caching pattern so the attribute is
+    stored in the module dict after the first access. Subsequent lookups hit
+    ``module.__dict__`` directly without going through ``__getattr__`` again.
     """
     # Babel-independent utilities (no Babel dependency, lazy for package init overhead)
     if name in _BABEL_INDEPENDENT_ATTRS:
-        if name in _lazy_cache:
-            return _lazy_cache[name]
-
-        obj = _load_babel_independent(name)
-        _lazy_cache[name] = obj
-        return obj
+        match name:
+            case "CacheConfig":
+                from .runtime.cache_config import CacheConfig
+                globals()[name] = CacheConfig
+                return CacheConfig
+            case "FluentValue":
+                from .runtime.value_types import FluentValue
+                globals()[name] = FluentValue
+                return FluentValue
+            case "fluent_function":
+                from .runtime.function_bridge import fluent_function
+                globals()[name] = fluent_function
+                return fluent_function
+            case _:
+                msg = f"__getattr__: unhandled Babel-independent attribute {name!r}"
+                raise AssertionError(msg)
 
     # Babel-dependent components
     if name in _BABEL_REQUIRED_ATTRS:
-        if name in _lazy_cache:
-            return _lazy_cache[name]
-
         try:
             match name:
                 case "FluentBundle":
                     from .runtime import FluentBundle
-
-                    _lazy_cache[name] = FluentBundle
+                    globals()[name] = FluentBundle
                     return FluentBundle
                 case "FluentLocalization":
                     from .localization import FluentLocalization
-
-                    _lazy_cache[name] = FluentLocalization
+                    globals()[name] = FluentLocalization
                     return FluentLocalization
                 case _:
                     msg = f"__getattr__: unhandled Babel-required attribute {name!r}"

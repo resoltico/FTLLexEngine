@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.117.0"
+version: "0.118.0"
 domain: migration
 updated: "2026-02-21"
 route:
@@ -210,9 +210,6 @@ result, errors = bundle.format_pattern(msg.value, {})
 ```python
 # Direct message ID - no get_message() step needed
 result, errors = bundle.format_pattern('hello', {})
-
-# Or format_value() - same but without attribute= keyword argument
-result, errors = bundle.format_value('hello', {})
 ```
 
 **Changes**:
@@ -438,7 +435,6 @@ print(result)
 | `bundle.add_resource(FluentResource)` | `bundle.add_resource(str)` | Direct string, no wrapper |
 | `bundle.get_message(id).value` then `format_pattern()` | `bundle.format_pattern(id, args)` | Direct formatting - no intermediate Message object needed |
 | `bundle.has_message(id)` | `bundle.has_message(id)` | Identical |
-| N/A | `bundle.format_value(id, args)` | Like format_pattern but without attribute= support |
 | N/A | `bundle.get_message_ids()` | List all messages |
 | N/A | `bundle.get_message_variables(id)` | Get required variables |
 | N/A | `bundle.introspect_message(id)` | Full message metadata |

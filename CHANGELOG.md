@@ -10,6 +10,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.118.0] - 2026-02-21
+
+### Changed (BREAKING)
+
+- **`FluentBundle.format_value()` removed** (ARCH-BUNDLE-FORMAT-VALUE-REMOVE-001):
+  - `format_value(message_id, args)` was an alias for `format_pattern(message_id, args, attribute=None)`; the `attribute=None` default is already the default for `format_pattern`, making the alias redundant
+  - The name created false symmetry with `FluentLocalization.format_value()`, which performs locale-fallback chain walking — `FluentBundle.format_value()` did not; callers seeing `.format_value()` on both types could not infer the different operational semantics
+  - Callers must replace `bundle.format_value(msg_id, args)` with `bundle.format_pattern(msg_id, args)`
+  - `FluentLocalization.format_value()` is unchanged
+  - Location: `runtime/bundle.py`
+
+- **`FluentBundle` pass-through cache properties removed** (ARCH-BUNDLE-CACHE-PROPS-REMOVE-001):
+  - Five read-only properties delegated entirely to `self._cache_config.*` without transformation: `cache_write_once`, `cache_enable_audit`, `cache_max_audit_entries`, `cache_max_entry_weight`, `cache_max_errors_per_entry`
+  - `bundle.cache_config` is already a public property returning the `CacheConfig` instance; the five properties added API surface with zero new information
+  - Callers must replace `bundle.cache_write_once` → `bundle.cache_config.write_once`, `bundle.cache_enable_audit` → `bundle.cache_config.enable_audit`, `bundle.cache_max_audit_entries` → `bundle.cache_config.max_audit_entries`, `bundle.cache_max_entry_weight` → `bundle.cache_config.max_entry_weight`, `bundle.cache_max_errors_per_entry` → `bundle.cache_config.max_errors_per_entry`
+  - Location: `runtime/bundle.py`
+
+- **`FluentNumber.__contains__` and `__len__` removed** (ARCH-FLUENT-NUMBER-PROTOCOL-REMOVE-001):
+  - Both methods made `FluentNumber` behave as a string container — `len(fn)` returned `len(fn.formatted)`, `x in fn` returned `x in fn.formatted`; this is semantically incorrect for a numeric type
+  - Neither method was called anywhere in production code; they had zero uses
+  - Callers must access `fn.formatted` directly for string-container operations on the formatted representation
+  - Location: `runtime/value_types.py`
+
+### Fixed
+
+- **`GlobalDepthGuard.__enter__` constructed `ErrorTemplate.expression_depth_exceeded()` twice** (DEFECT-DEPTH-GUARD-DOUBLE-CONSTRUCT-001):
+  - On a depth limit violation, `ErrorTemplate.expression_depth_exceeded(self._max_depth)` was called once to obtain the string message (`str(...)`) and again to obtain the diagnostic for `FrozenFluentError(diagnostic=...)`, allocating two identical objects where one suffices
+  - Fixed: the result is computed once into a local variable `diag` and used for both the string message and the diagnostic argument
+  - Location: `runtime/resolution_context.py`
+
+### Changed
+
+- **`IntegrityCache` content hash stored at construction time** (PERF-INTEGRITY-CACHE-CONTENT-HASH-001):
+  - `IntegrityCacheEntry.content_hash` was a `@property` that recomputed the BLAKE2b-128 hash on every access; the cache `put()` idempotency check called the property once per store attempt, invoking a full BLAKE2b round-trip each time
+  - `content_hash` is now an `init=False` field computed once in `__post_init__` via `object.__setattr__` (same pattern as `FunctionSignature.param_dict`); subsequent accesses read the cached bytes with no computation
+  - `verify()` now checks the stored `content_hash` against a recomputed value before the full checksum check, providing defense-in-depth against in-memory corruption of the content hash field itself
+  - Location: `runtime/cache.py`
+
+- **`IntegrityCacheEntry` error-hashing logic deduplicated** (REFACTOR-CACHE-FEED-ERRORS-DRY-001):
+  - The identical 10-line error-hashing block (length prefix, per-error type tag, content-hash or string encoding) appeared verbatim in both `_compute_checksum` and `_compute_content_hash`, creating a maintenance hazard where any BLAKE2b encoding change required two synchronized edits
+  - Extracted to a `@staticmethod _feed_errors(h, errors)` shared by both methods; public signatures of `_compute_checksum` and `_compute_content_hash` unchanged
+  - Location: `runtime/cache.py`
+
+- **`__init__.py` lazy-load cache uses `globals()` pattern** (REFACTOR-INIT-LAZY-CACHE-001):
+  - Babel-independent lazy attributes (`CacheConfig`, `FluentValue`, `fluent_function`) were stored in a module-level `_lazy_cache: dict[str, object]` dict, requiring a dict lookup on every `__getattr__` call after the first access
+  - Replaced with the standard `globals()[name] = obj` pattern; after the first access the attribute is stored in `module.__dict__` and subsequent lookups bypass `__getattr__` entirely via Python's normal attribute lookup protocol
+  - Location: `ftllexengine/__init__.py`
+
 ## [0.117.0] - 2026-02-21
 
 ### Changed (BREAKING)

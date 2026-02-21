@@ -446,51 +446,6 @@ class FluentBundle:
         return self._cache.size
 
     @property
-    def cache_write_once(self) -> bool:
-        """Get whether cache write-once mode is enabled (read-only).
-
-        Returns:
-            bool: True if write-once mode is configured
-        """
-        return self._cache_config.write_once
-
-    @property
-    def cache_enable_audit(self) -> bool:
-        """Get whether cache audit logging is enabled (read-only).
-
-        Returns:
-            bool: True if audit logging is configured
-        """
-        return self._cache_config.enable_audit
-
-    @property
-    def cache_max_audit_entries(self) -> int:
-        """Get maximum audit log entries configuration (read-only).
-
-        Returns:
-            int: Configured maximum audit log entries
-        """
-        return self._cache_config.max_audit_entries
-
-    @property
-    def cache_max_entry_weight(self) -> int:
-        """Get maximum cache entry weight configuration (read-only).
-
-        Returns:
-            int: Configured maximum entry weight in approximate bytes
-        """
-        return self._cache_config.max_entry_weight
-
-    @property
-    def cache_max_errors_per_entry(self) -> int:
-        """Get maximum errors per cache entry configuration (read-only).
-
-        Returns:
-            int: Configured maximum errors per cache entry
-        """
-        return self._cache_config.max_errors_per_entry
-
-    @property
     def max_source_size(self) -> int:
         """Maximum FTL source size in characters (read-only).
 
@@ -1240,42 +1195,6 @@ class FluentBundle:
             self._raise_strict_error(message_id, result, errors_tuple)
 
         return (result, errors_tuple)
-
-    def format_value(
-        self, message_id: str, args: Mapping[str, FluentValue] | None = None
-    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
-        """Format message to string (alias for format_pattern without attribute access).
-
-        This method provides API consistency with FluentLocalization.format_value()
-        for users who don't need attribute access. It's an alias for
-        format_pattern(message_id, args, attribute=None).
-
-        Args:
-            message_id: Message identifier
-            args: Variable arguments for interpolation
-
-        Returns:
-            Tuple of (formatted_string, errors)
-            - formatted_string: Best-effort formatted output (never empty)
-            - errors: Tuple of FrozenFluentError instances encountered during resolution (immutable)
-
-        Raises:
-            FormattingIntegrityError: In strict mode, if ANY error occurs during formatting
-
-        Note:
-            In non-strict mode, this method never raises exceptions. All errors
-            are collected and returned in the errors list.
-
-            In strict mode (bundle.strict=True), FormattingIntegrityError is raised
-            instead of returning fallback values when errors occur.
-
-        Example:
-            >>> bundle.add_resource("welcome = Hello, { $name }!")
-            >>> result, errors = bundle.format_value("welcome", {"name": "Alice"})
-            >>> assert result == "Hello, Alice!"
-            >>> assert errors == ()
-        """
-        return self.format_pattern(message_id, args, attribute=None)
 
     def has_message(self, message_id: str) -> bool:
         """Check if message exists.

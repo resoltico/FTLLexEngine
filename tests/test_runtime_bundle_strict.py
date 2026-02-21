@@ -242,27 +242,27 @@ class TestFormattingIntegrityErrorContent:
 
 
 # ============================================================================
-# FORMAT_VALUE STRICT MODE TESTS
+# FORMAT_PATTERN STRICT MODE TESTS
 # ============================================================================
 
 
-class TestFormatValueStrictMode:
-    """Test format_value() respects strict mode."""
+class TestFormatPatternStrictMode:
+    """Test format_pattern() respects strict mode."""
 
-    def test_format_value_raises_in_strict_mode(self) -> None:
-        """format_value() raises in strict mode on error."""
+    def test_format_pattern_raises_in_strict_mode(self) -> None:
+        """format_pattern() raises in strict mode on error."""
         bundle = FluentBundle("en", strict=True)
         bundle.add_resource("msg = { $name }")
 
         with pytest.raises(FormattingIntegrityError):
-            bundle.format_value("msg", {})
+            bundle.format_pattern("msg", {})
 
-    def test_format_value_returns_in_non_strict_mode(self) -> None:
-        """format_value() returns fallback in non-strict mode."""
+    def test_format_pattern_returns_in_non_strict_mode(self) -> None:
+        """format_pattern() returns fallback in non-strict mode."""
         bundle = FluentBundle("en", strict=False, use_isolating=False)
         bundle.add_resource("msg = { $name }")
 
-        result, errors = bundle.format_value("msg", {})
+        result, errors = bundle.format_pattern("msg", {})
 
         assert "{$name}" in result
         assert len(errors) >= 1

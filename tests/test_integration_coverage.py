@@ -2704,7 +2704,7 @@ class TestValidationChainDepth:
         # Runtime fails
         bundle = FluentBundle("en")
         bundle.add_resource(ftl_source)
-        _, errors = bundle.format_value(f"msg-{chain_length - 1}")
+        _, errors = bundle.format_pattern(f"msg-{chain_length - 1}")
         depth_errors = [
             e for e in errors
             if e.diagnostic is not None
@@ -2774,7 +2774,7 @@ class TestBundleOverwriteWarning:
         bundle.add_resource("greeting = Second")
         bundle.add_resource("greeting = Third")
 
-        result, _ = bundle.format_value("greeting")
+        result, _ = bundle.format_pattern("greeting")
         assert result == "Third"
 
 
@@ -2878,7 +2878,7 @@ class TestCacheEntrySizeLimit:
 
         # Format with small data
         small_data = "x" * 100
-        bundle.format_value("msg", {"data": small_data})
+        bundle.format_pattern("msg", {"data": small_data})
 
         stats = bundle.get_cache_stats()
         assert stats is not None
@@ -2922,7 +2922,7 @@ class TestAuditFixesIntegration:
         # Runtime confirms the issue
         bundle = FluentBundle("en")
         bundle.add_resource(ftl_source)
-        _, errors = bundle.format_value(f"msg-{chain_length - 1}")
+        _, errors = bundle.format_pattern(f"msg-{chain_length - 1}")
         has_depth_error = any(
             e.diagnostic is not None
             and e.diagnostic.code.name == "MAX_DEPTH_EXCEEDED"

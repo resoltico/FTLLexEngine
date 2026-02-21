@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.117.0"
+version: "0.118.0"
 domain: INDEX
 updated: "2026-02-21"
 route:
@@ -170,7 +170,7 @@ from ftllexengine.parsing import (
 
 | Query Pattern | Target File | Domain |
 |:--------------|:------------|:-------|
-| FluentBundle, FluentLocalization, add_resource, format_pattern, format_value | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
+| FluentBundle, FluentLocalization, add_resource, format_pattern | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |

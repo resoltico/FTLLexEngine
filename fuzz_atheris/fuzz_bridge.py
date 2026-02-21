@@ -514,10 +514,10 @@ def _pattern_signature_validation(fdp: atheris.FuzzedDataProvider) -> None:
 # CONTRACTS (3 patterns)
 
 
-def _pattern_fluent_number_contracts(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912
-    """FluentNumber object contracts: str, hash, contains, len, repr."""
+def _pattern_fluent_number_contracts(fdp: atheris.FuzzedDataProvider) -> None:
+    """FluentNumber object contracts: str, repr, precision, frozen."""
     _domain.fluent_number_checks += 1
-    variant = fdp.ConsumeIntInRange(0, 5)
+    variant = fdp.ConsumeIntInRange(0, 3)
 
     match variant:
         case 0:
@@ -528,24 +528,6 @@ def _pattern_fluent_number_contracts(fdp: atheris.FuzzedDataProvider) -> None:  
                 raise BridgeFuzzError(msg)
 
         case 1:
-            # __contains__ delegates to formatted
-            fn = FluentNumber(value=42, formatted="42.00", precision=2)
-            if "42" not in fn:
-                msg = "FluentNumber __contains__ failed for '42' in '42.00'"
-                raise BridgeFuzzError(msg)
-            if "99" in fn:
-                msg = "FluentNumber __contains__ false positive for '99' in '42.00'"
-                raise BridgeFuzzError(msg)
-
-        case 2:
-            # __len__ returns formatted string length
-            formatted = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 20))
-            fn = FluentNumber(value=0, formatted=formatted, precision=0)
-            if len(fn) != len(formatted):
-                msg = f"FluentNumber len() = {len(fn)}, expected {len(formatted)}"
-                raise BridgeFuzzError(msg)
-
-        case 3:
             # repr includes value info
             fn = FluentNumber(value=Decimal("99.9"), formatted="99.9", precision=1)
             r = repr(fn)
@@ -553,7 +535,7 @@ def _pattern_fluent_number_contracts(fdp: atheris.FuzzedDataProvider) -> None:  
                 msg = f"FluentNumber repr missing value: {r}"
                 raise BridgeFuzzError(msg)
 
-        case 4:
+        case 2:
             # Precision can be None
             fn = FluentNumber(value=42, formatted="42", precision=None)
             if fn.precision is not None:
@@ -828,7 +810,7 @@ def _pattern_evil_objects(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", cache=CacheConfig() if fdp.ConsumeBool() else None)
     bundle.add_resource("msg = Value: { $var }\n")
     with contextlib.suppress(*_ALLOWED_EXCEPTIONS, FrozenFluentError):
-        bundle.format_value("msg", {"var": var})  # type: ignore[dict-item]
+        bundle.format_pattern("msg", {"var": var})  # type: ignore[dict-item]
 
 
 # INTROSPECTION (4 patterns)

@@ -521,38 +521,6 @@ class TestFluentNumberProperties:
     @given(
         value=st.integers(min_value=-999999, max_value=999999),
         formatted=st.text(min_size=1, max_size=30),
-    )
-    @settings(max_examples=200)
-    def test_fluent_number_len_matches_formatted(
-        self, value: int, formatted: str
-    ) -> None:
-        """Property: len(FluentNumber) equals len(formatted)."""
-        fn = FluentNumber(
-            value=value, formatted=formatted, precision=0
-        )
-        assert len(fn) == len(formatted)
-        event(f"formatted_len={len(formatted)}")
-
-    @given(
-        value=st.integers(min_value=-999999, max_value=999999),
-        formatted=st.text(min_size=1, max_size=30),
-        needle=st.text(min_size=1, max_size=5),
-    )
-    @settings(max_examples=200)
-    def test_fluent_number_contains_matches_formatted(
-        self, value: int, formatted: str, needle: str
-    ) -> None:
-        """Property: 'x in FluentNumber' matches 'x in formatted'."""
-        fn = FluentNumber(
-            value=value, formatted=formatted, precision=0
-        )
-        assert (needle in fn) == (needle in formatted)
-        found = needle in fn
-        event(f"found={found}")
-
-    @given(
-        value=st.integers(min_value=-999999, max_value=999999),
-        formatted=st.text(min_size=1, max_size=30),
         precision=st.integers(min_value=0, max_value=6)
         | st.none(),
     )

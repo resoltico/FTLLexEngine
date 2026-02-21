@@ -30,8 +30,8 @@ class TestLazyImportCacheConfig:
         """CacheConfig resolves to the class in runtime.cache_config."""
         import ftllexengine
 
-        if "CacheConfig" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
-            del ftllexengine._lazy_cache["CacheConfig"]  # type: ignore[attr-defined]
+        # Remove from module dict to force fresh lazy load via __getattr__
+        ftllexengine.__dict__.pop("CacheConfig", None)
 
         cache_config_cls = ftllexengine.CacheConfig
 
@@ -44,29 +44,37 @@ class TestLazyImportCacheConfig:
         """CacheConfig is cached after first access; subsequent accesses return the same object."""
         import ftllexengine
 
-        if "CacheConfig" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
-            del ftllexengine._lazy_cache["CacheConfig"]  # type: ignore[attr-defined]
+        # Remove from module dict to force fresh lazy load via __getattr__
+        ftllexengine.__dict__.pop("CacheConfig", None)
 
         first = ftllexengine.CacheConfig
         second = ftllexengine.CacheConfig
         assert first is second
-        assert "CacheConfig" in ftllexengine._lazy_cache  # type: ignore[attr-defined]
+        # __getattr__ stores the result in globals() (module dict) on first access
+        assert "CacheConfig" in vars(ftllexengine)
 
 
 class TestLoadBabelIndependentAssertionError:
-    """_load_babel_independent raises AssertionError for names not in its dispatch table."""
+    """__getattr__ raises AssertionError for names in _BABEL_INDEPENDENT_ATTRS with no case arm."""
 
     def test_unknown_babel_independent_name_raises_assertion_error(self) -> None:
-        """_load_babel_independent raises AssertionError for unknown names.
+        """__getattr__ raises AssertionError for names registered but without a case arm.
 
         The exhaustiveness guard in the match/case dispatch distinguishes
         an internal invariant violation (frozenset and case arms out of sync)
         from a legitimate caller attribute error.
         """
-        from ftllexengine import _load_babel_independent  # type: ignore[attr-defined]
+        import ftllexengine
 
-        with pytest.raises(AssertionError, match="unhandled Babel-independent attribute"):
-            _load_babel_independent("UnknownBabelIndependentName")
+        original_attrs = ftllexengine._BABEL_INDEPENDENT_ATTRS  # type: ignore[attr-defined]
+        ftllexengine._BABEL_INDEPENDENT_ATTRS = frozenset(  # type: ignore[attr-defined]
+            {*original_attrs, "UnknownBabelIndependentName"}
+        )
+        try:
+            with pytest.raises(AssertionError, match="unhandled Babel-independent attribute"):
+                _ = ftllexengine.UnknownBabelIndependentName  # type: ignore[attr-defined]
+        finally:
+            ftllexengine._BABEL_INDEPENDENT_ATTRS = original_attrs  # type: ignore[attr-defined]
 
 
 class TestLazyImportFluentLocalization:
@@ -76,8 +84,8 @@ class TestLazyImportFluentLocalization:
         """FluentLocalization resolves to the class in the localization package."""
         import ftllexengine
 
-        if "FluentLocalization" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
-            del ftllexengine._lazy_cache["FluentLocalization"]  # type: ignore[attr-defined]
+        # Remove from module dict to force fresh lazy load via __getattr__
+        ftllexengine.__dict__.pop("FluentLocalization", None)
 
         localization_cls = ftllexengine.FluentLocalization
 
@@ -90,13 +98,14 @@ class TestLazyImportFluentLocalization:
         """FluentLocalization is cached after first access."""
         import ftllexengine
 
-        if "FluentLocalization" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
-            del ftllexengine._lazy_cache["FluentLocalization"]  # type: ignore[attr-defined]
+        # Remove from module dict to force fresh lazy load via __getattr__
+        ftllexengine.__dict__.pop("FluentLocalization", None)
 
         first = ftllexengine.FluentLocalization
         second = ftllexengine.FluentLocalization
         assert first is second
-        assert "FluentLocalization" in ftllexengine._lazy_cache  # type: ignore[attr-defined]
+        # __getattr__ stores the result in globals() (module dict) on first access
+        assert "FluentLocalization" in vars(ftllexengine)
 
 
 class TestBabelRequiredCacheHit:
@@ -157,14 +166,15 @@ class TestLazyImportFluentValue:
         """FluentValue is cached after first access."""
         import ftllexengine
 
-        if "FluentValue" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
-            del ftllexengine._lazy_cache["FluentValue"]  # type: ignore[attr-defined]
+        # Remove from module dict to force fresh lazy load via __getattr__
+        ftllexengine.__dict__.pop("FluentValue", None)
 
         first = ftllexengine.FluentValue
         second = ftllexengine.FluentValue
 
         assert first is second
-        assert "FluentValue" in ftllexengine._lazy_cache  # type: ignore[attr-defined]
+        # __getattr__ stores the result in globals() (module dict) on first access
+        assert "FluentValue" in vars(ftllexengine)
 
 
 class TestLazyImportFluentFunction:
@@ -187,14 +197,15 @@ class TestLazyImportFluentFunction:
         """fluent_function is cached after first access."""
         import ftllexengine
 
-        if "fluent_function" in ftllexengine._lazy_cache:  # type: ignore[attr-defined]
-            del ftllexengine._lazy_cache["fluent_function"]  # type: ignore[attr-defined]
+        # Remove from module dict to force fresh lazy load via __getattr__
+        ftllexengine.__dict__.pop("fluent_function", None)
 
         first = ftllexengine.fluent_function
         second = ftllexengine.fluent_function
 
         assert first is second
-        assert "fluent_function" in ftllexengine._lazy_cache  # type: ignore[attr-defined]
+        # __getattr__ stores the result in globals() (module dict) on first access
+        assert "fluent_function" in vars(ftllexengine)
 
 
 class TestUnknownAttributeError:
@@ -261,7 +272,7 @@ class TestBabelImportErrorPath:
                 return original_import(name, globs, locs, fromlist, level)
 
             ftllexengine = importlib.import_module("ftllexengine")
-            ftllexengine._lazy_cache.clear()
+            # Fresh module import - lazy attrs are not yet populated in module dict
 
             builtins.__import__ = mock_import
             try:
@@ -310,7 +321,7 @@ class TestBabelImportErrorPath:
                 return original_import(name, globs, locs, fromlist, level)
 
             ftllexengine = importlib.import_module("ftllexengine")
-            ftllexengine._lazy_cache.clear()
+            # Fresh module import - lazy attrs are not yet populated in module dict
 
             builtins.__import__ = mock_import
             try:

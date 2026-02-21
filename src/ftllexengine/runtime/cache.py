@@ -37,7 +37,7 @@ import struct
 import time
 from collections import OrderedDict, deque
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from threading import RLock
@@ -89,7 +89,7 @@ def _estimate_error_weight(error: FrozenFluentError) -> int:
         diag = error.diagnostic
         weight += len(diag.message)
         # Optional string fields
-        for field in (
+        for attr in (
             diag.hint,
             diag.help_url,
             diag.function_name,
@@ -98,8 +98,8 @@ def _estimate_error_weight(error: FrozenFluentError) -> int:
             diag.received_type,
             diag.ftl_location,
         ):
-            if field is not None:
-                weight += len(field)
+            if attr is not None:
+                weight += len(attr)
         # Resolution path
         if diag.resolution_path is not None:
             for path_element in diag.resolution_path:
@@ -152,16 +152,19 @@ type _CacheValue = tuple[str, tuple[FrozenFluentError, ...]]
 class IntegrityCacheEntry:
     """Immutable cache entry with integrity metadata.
 
-    Each entry contains the formatted result, any errors, and a BLAKE2b-128
-    checksum computed from the content. The checksum enables detection of
-    memory corruption, hardware faults, or tampering.
+    Each entry contains the formatted result, any errors, and two BLAKE2b-128
+    hashes: a content-only hash and a full checksum covering content + metadata.
+    Both enable detection of memory corruption, hardware faults, or tampering.
 
     Attributes:
         formatted: Formatted message string
         errors: Tuple of FrozenFluentError instances (immutable)
-        checksum: BLAKE2b-128 hash of (formatted, errors) for integrity verification
+        checksum: BLAKE2b-128 hash of (formatted, errors, created_at, sequence)
         created_at: Monotonic timestamp when entry was created (time.monotonic())
         sequence: Monotonically increasing sequence number for audit trail
+        content_hash: BLAKE2b-128 hash of (formatted, errors) only. Computed once
+            at construction via __post_init__; not part of the constructor signature.
+            Used for idempotent write detection without recomputation.
     """
 
     formatted: str
@@ -169,6 +172,16 @@ class IntegrityCacheEntry:
     checksum: bytes
     created_at: float
     sequence: int
+    # Computed once from (formatted, errors) at construction; not an __init__ parameter.
+    # Stored to avoid BLAKE2b recomputation on every put() idempotency check.
+    # Uses object.__setattr__ because frozen=True prevents normal assignment in __post_init__.
+    content_hash: bytes = field(init=False, repr=False, compare=False, hash=False)
+
+    def __post_init__(self) -> None:
+        """Compute and store content_hash after field initialization."""
+        object.__setattr__(
+            self, "content_hash", self._compute_content_hash(self.formatted, self.errors)
+        )
 
     @classmethod
     def create(
@@ -188,7 +201,7 @@ class IntegrityCacheEntry:
             sequence: Sequence number for audit trail
 
         Returns:
-            New IntegrityCacheEntry with computed checksum
+            New IntegrityCacheEntry with computed checksum and content_hash
         """
         # Capture timestamp BEFORE computing checksum to ensure consistency
         created_at = time.monotonic()
@@ -200,6 +213,33 @@ class IntegrityCacheEntry:
             created_at=created_at,
             sequence=sequence,
         )
+
+    @staticmethod
+    def _feed_errors(h: hashlib.blake2b, errors: tuple[FrozenFluentError, ...]) -> None:
+        """Feed error sequence into hasher using type-tagged encoding.
+
+        Shared by both _compute_checksum and _compute_content_hash to eliminate
+        duplicated hashing logic. Type markers (b"\\x01" vs b"\\x00") provide
+        structural disambiguation so a 16-byte hash cannot collide with a
+        length-prefixed string.
+
+        Args:
+            h: Active BLAKE2b hasher to update in-place
+            errors: Tuple of errors to include in hash
+        """
+        h.update(len(errors).to_bytes(4, "big"))
+        for error in errors:
+            # Use error's content hash if available and valid type, otherwise hash the message.
+            # Type validation ensures robustness against duck-typed objects with wrong type.
+            error_content_hash = getattr(error, "content_hash", None)
+            if isinstance(error_content_hash, bytes):
+                h.update(b"\x01")  # Type marker: raw content hash follows
+                h.update(error_content_hash)
+            else:
+                h.update(b"\x00")  # Type marker: length-prefixed string follows
+                error_encoded = str(error).encode("utf-8", errors="surrogatepass")
+                h.update(len(error_encoded).to_bytes(4, "big"))
+                h.update(error_encoded)
 
     @staticmethod
     def _compute_checksum(
@@ -238,22 +278,7 @@ class IntegrityCacheEntry:
         encoded = formatted.encode("utf-8", errors="surrogatepass")
         h.update(len(encoded).to_bytes(4, "big"))
         h.update(encoded)
-        # Include error count and content hashes
-        h.update(len(errors).to_bytes(4, "big"))
-        for error in errors:
-            # Use error's content hash if available and valid type, otherwise hash the message.
-            # Type validation ensures robustness against duck-typed objects with wrong type.
-            # Type markers (b"\x01" for hash, b"\x00" for encoded) ensure structural
-            # disambiguation: a 16-byte hash cannot collide with a length-prefixed string.
-            content_hash = getattr(error, "content_hash", None)
-            if isinstance(content_hash, bytes):
-                h.update(b"\x01")  # Type marker: raw content hash follows
-                h.update(content_hash)
-            else:
-                h.update(b"\x00")  # Type marker: length-prefixed string follows
-                error_encoded = str(error).encode("utf-8", errors="surrogatepass")
-                h.update(len(error_encoded).to_bytes(4, "big"))
-                h.update(error_encoded)
+        IntegrityCacheEntry._feed_errors(h, errors)
         # Include metadata fields for complete audit trail integrity
         h.update(struct.pack(">d", created_at))  # 8-byte big-endian IEEE 754 double
         h.update(sequence.to_bytes(8, "big", signed=True))  # 8-byte signed int
@@ -262,15 +287,19 @@ class IntegrityCacheEntry:
     def verify(self) -> bool:
         """Verify entry integrity recursively.
 
-        Recomputes the checksum from current content and metadata, then compares
-        against stored checksum using constant-time comparison (defense against
-        timing attacks). Also recursively verifies each contained error's
-        integrity for defense-in-depth.
+        Recomputes both the content hash and the full checksum from current
+        content, then compares against stored values using constant-time
+        comparison (defense against timing attacks). Also recursively verifies
+        each contained error's integrity for defense-in-depth.
 
         Returns:
-            True if checksum matches AND all errors verify, False otherwise
+            True if content_hash matches AND checksum matches AND all errors verify
         """
-        # First verify entry-level checksum
+        # Verify stored content_hash matches recomputed (catches field-level corruption)
+        expected_content = self._compute_content_hash(self.formatted, self.errors)
+        if not hmac.compare_digest(self.content_hash, expected_content):
+            return False
+        # Verify full checksum (includes metadata)
         expected = self._compute_checksum(
             self.formatted, self.errors, self.created_at, self.sequence
         )
@@ -320,34 +349,8 @@ class IntegrityCacheEntry:
         encoded = formatted.encode("utf-8", errors="surrogatepass")
         h.update(len(encoded).to_bytes(4, "big"))
         h.update(encoded)
-        # Include error count and content hashes
-        h.update(len(errors).to_bytes(4, "big"))
-        for error in errors:
-            # Use error's content hash if available and valid type, otherwise hash the message.
-            # Type validation ensures robustness against duck-typed objects with wrong type.
-            # Type markers (b"\x01" for hash, b"\x00" for encoded) ensure structural
-            # disambiguation: a 16-byte hash cannot collide with a length-prefixed string.
-            content_hash = getattr(error, "content_hash", None)
-            if isinstance(content_hash, bytes):
-                h.update(b"\x01")  # Type marker: raw content hash follows
-                h.update(content_hash)
-            else:
-                h.update(b"\x00")  # Type marker: length-prefixed string follows
-                error_encoded = str(error).encode("utf-8", errors="surrogatepass")
-                h.update(len(error_encoded).to_bytes(4, "big"))
-                h.update(error_encoded)
+        IntegrityCacheEntry._feed_errors(h, errors)
         return h.digest()
-
-    @property
-    def content_hash(self) -> bytes:
-        """Content-only hash for idempotent write detection.
-
-        Returns:
-            16-byte BLAKE2b digest of (formatted, errors) only.
-            Excludes metadata (created_at, sequence) so concurrent writes
-            with identical content produce identical hashes.
-        """
-        return self._compute_content_hash(self.formatted, self.errors)
 
 
 @dataclass(frozen=True, slots=True)

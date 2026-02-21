@@ -26,28 +26,28 @@ class TestCacheSecurityParameterDefaults:
     def test_default_cache_write_once_is_false(self) -> None:
         """write_once defaults to False."""
         bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_write_once is False
+        assert bundle.cache_config.write_once is False
 
     def test_default_cache_enable_audit_is_false(self) -> None:
         """enable_audit defaults to False."""
         bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_enable_audit is False
+        assert bundle.cache_config.enable_audit is False
 
     def test_default_cache_max_audit_entries_is_10000(self) -> None:
         """max_audit_entries defaults to 10000."""
         bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_max_audit_entries == 10000
+        assert bundle.cache_config.max_audit_entries == 10000
 
     def test_default_cache_max_entry_weight_is_default_max_entry_size(self) -> None:
         """max_entry_weight defaults to DEFAULT_MAX_ENTRY_SIZE."""
         bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
-        assert bundle.cache_max_entry_weight == 10_000
+        assert bundle.cache_config.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert bundle.cache_config.max_entry_weight == 10_000
 
     def test_default_cache_max_errors_per_entry_is_50(self) -> None:
         """max_errors_per_entry defaults to 50."""
         bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_max_errors_per_entry == 50
+        assert bundle.cache_config.max_errors_per_entry == 50
 
 
 class TestCacheSecurityParameterConfiguration:
@@ -56,28 +56,28 @@ class TestCacheSecurityParameterConfiguration:
     def test_cache_write_once_can_be_enabled(self) -> None:
         """write_once can be set to True."""
         bundle = FluentBundle("en", cache=CacheConfig(write_once=True))
-        assert bundle.cache_write_once is True
+        assert bundle.cache_config.write_once is True
 
     def test_cache_enable_audit_can_be_enabled(self) -> None:
         """enable_audit can be set to True."""
         bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
-        assert bundle.cache_enable_audit is True
+        assert bundle.cache_config.enable_audit is True
 
     def test_cache_max_audit_entries_can_be_customized(self) -> None:
         """max_audit_entries accepts custom values."""
         cfg = CacheConfig(enable_audit=True, max_audit_entries=5000)
         bundle = FluentBundle("en", cache=cfg)
-        assert bundle.cache_max_audit_entries == 5000
+        assert bundle.cache_config.max_audit_entries == 5000
 
     def test_cache_max_entry_weight_can_be_customized(self) -> None:
         """max_entry_weight accepts custom values."""
         bundle = FluentBundle("en", cache=CacheConfig(max_entry_weight=5000))
-        assert bundle.cache_max_entry_weight == 5000
+        assert bundle.cache_config.max_entry_weight == 5000
 
     def test_cache_max_errors_per_entry_can_be_customized(self) -> None:
         """max_errors_per_entry accepts custom values."""
         bundle = FluentBundle("en", cache=CacheConfig(max_errors_per_entry=25))
-        assert bundle.cache_max_errors_per_entry == 25
+        assert bundle.cache_config.max_errors_per_entry == 25
 
 
 class TestCacheConfigAccessible:
@@ -231,11 +231,11 @@ class TestForSystemLocaleWithCacheParameters:
 
         assert bundle.cache_enabled is True
         assert bundle.cache_size == 500
-        assert bundle.cache_write_once is True
-        assert bundle.cache_enable_audit is True
-        assert bundle.cache_max_audit_entries == 5000
-        assert bundle.cache_max_entry_weight == 8000
-        assert bundle.cache_max_errors_per_entry == 30
+        assert bundle.cache_config.write_once is True
+        assert bundle.cache_config.enable_audit is True
+        assert bundle.cache_config.max_audit_entries == 5000
+        assert bundle.cache_config.max_entry_weight == 8000
+        assert bundle.cache_config.max_errors_per_entry == 30
         assert bundle.strict is True
 
     def test_for_system_locale_cache_parameters_default(self) -> None:
@@ -244,11 +244,11 @@ class TestForSystemLocaleWithCacheParameters:
 
         assert bundle.cache_enabled is True
         assert bundle.cache_size == DEFAULT_CACHE_SIZE
-        assert bundle.cache_write_once is False
-        assert bundle.cache_enable_audit is False
-        assert bundle.cache_max_audit_entries == 10000
-        assert bundle.cache_max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
-        assert bundle.cache_max_errors_per_entry == 50
+        assert bundle.cache_config.write_once is False
+        assert bundle.cache_config.enable_audit is False
+        assert bundle.cache_config.max_audit_entries == 10000
+        assert bundle.cache_config.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert bundle.cache_config.max_errors_per_entry == 50
 
 
 class TestCacheParameterCombinations:
@@ -287,8 +287,8 @@ class TestCacheParameterCombinations:
         assert result == "Hello World!"
 
         assert bundle.cache_size == 10000
-        assert bundle.cache_enable_audit is False
-        assert bundle.cache_max_entry_weight == 50000
+        assert bundle.cache_config.enable_audit is False
+        assert bundle.cache_config.max_entry_weight == 50000
 
 
 class TestCacheStatsIncludeNewParameters:
@@ -353,9 +353,9 @@ class TestPropertyBasedCacheParameters:
         bundle = FluentBundle("en", cache=cfg)
 
         assert bundle.cache_size == size
-        assert bundle.cache_max_audit_entries == max_audit_entries
-        assert bundle.cache_max_entry_weight == max_entry_weight
-        assert bundle.cache_max_errors_per_entry == max_errors_per_entry
+        assert bundle.cache_config.max_audit_entries == max_audit_entries
+        assert bundle.cache_config.max_entry_weight == max_entry_weight
+        assert bundle.cache_config.max_errors_per_entry == max_errors_per_entry
         event(f"cache_size={size}")
 
     @given(
@@ -371,8 +371,8 @@ class TestPropertyBasedCacheParameters:
         cfg = CacheConfig(write_once=write_once, enable_audit=enable_audit)
         bundle = FluentBundle("en", cache=cfg, strict=strict)
 
-        assert bundle.cache_write_once == write_once
-        assert bundle.cache_enable_audit == enable_audit
+        assert bundle.cache_config.write_once == write_once
+        assert bundle.cache_config.enable_audit == enable_audit
         assert bundle.strict == strict
         wo = "write_once" if write_once else "normal"
         event(f"mode={wo}")

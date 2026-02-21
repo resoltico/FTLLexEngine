@@ -40,98 +40,98 @@ class TestCurrencyFunction:
         """EUR in en_US: symbol before amount."""
         result = currency_format(123.45, "en-US", currency="EUR")
         assert isinstance(result, FluentNumber)
-        assert "123" in result
-        assert "€" in result or "EUR" in result
+        assert "123" in str(result)
+        assert "€" in str(result) or "EUR" in str(result)
 
     def test_currency_basic_eur_lv(self) -> None:
         """EUR in lv_LV: symbol after amount with space."""
         result = currency_format(123.45, "lv-LV", currency="EUR")
         assert isinstance(result, FluentNumber)
-        assert "123" in result
-        assert "€" in result or "EUR" in result
+        assert "123" in str(result)
+        assert "€" in str(result) or "EUR" in str(result)
         # Latvian typically has symbol after
 
     def test_currency_basic_usd(self) -> None:
         """USD formatting in en_US."""
         result = currency_format(123.45, "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
-        assert "$" in result or "USD" in result
-        assert "123" in result
+        assert "$" in str(result) or "USD" in str(result)
+        assert "123" in str(result)
 
     def test_currency_jpy_zero_decimals(self) -> None:
         """JPY uses 0 decimal places (CLDR rule)."""
         result = currency_format(12345, "ja-JP", currency="JPY")
         assert isinstance(result, FluentNumber)
         # JPY should not have decimal point for whole numbers
-        assert "12" in result or "12,345" in result or "12345" in result
+        assert "12" in str(result) or "12,345" in str(result) or "12345" in str(result)
         # Accept halfwidth yen (\xa5 ¥), fullwidth yen (\uffe5 ￥), or JPY code
-        assert "\xa5" in result or "\uffe5" in result or "JPY" in result
+        assert "\xa5" in str(result) or "\uffe5" in str(result) or "JPY" in str(result)
 
     def test_currency_jpy_fractional_rounds(self) -> None:
         """JPY rounds fractional amounts (0 decimal places)."""
         result = currency_format(12345.67, "ja-JP", currency="JPY")
         assert isinstance(result, FluentNumber)
         # Should round to 12346
-        assert "12346" in result or "12,346" in result
+        assert "12346" in str(result) or "12,346" in str(result)
 
     def test_currency_bhd_three_decimals(self) -> None:
         """BHD uses 3 decimal places (CLDR rule)."""
         result = currency_format(123.456, "ar-BH", currency="BHD")
         assert isinstance(result, FluentNumber)
         # BHD should show 3 decimal places
-        assert "123" in result
-        assert "456" in result
+        assert "123" in str(result)
+        assert "456" in str(result)
 
     def test_currency_display_symbol(self) -> None:
         """currencyDisplay: 'symbol' shows € not EUR."""
         result = currency_format(100, "en-US", currency="EUR", currency_display="symbol")
         assert isinstance(result, FluentNumber)
-        assert "€" in result or "EUR" in result  # Symbol preferred
-        assert "100" in result
+        assert "€" in str(result) or "EUR" in str(result)  # Symbol preferred
+        assert "100" in str(result)
 
     def test_currency_display_code(self) -> None:
         """currencyDisplay: 'code' shows EUR not €."""
         result = currency_format(100, "en-US", currency="EUR", currency_display="code")
         assert isinstance(result, FluentNumber)
-        assert "EUR" in result  # Code required
-        assert "100" in result
+        assert "EUR" in str(result)  # Code required
+        assert "100" in str(result)
 
     def test_currency_display_name(self) -> None:
         """currencyDisplay: 'name' shows 'euros' or similar."""
         result = currency_format(100, "en-US", currency="EUR", currency_display="name")
         assert isinstance(result, FluentNumber)
         # Name display varies by Babel version, just check it's formatted
-        assert "100" in result
+        assert "100" in str(result)
 
     def test_currency_with_zero(self) -> None:
         """Zero amount formatting."""
         result = currency_format(0, "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
-        assert "0" in result
-        assert "$" in result or "USD" in result
+        assert "0" in str(result)
+        assert "$" in str(result) or "USD" in str(result)
 
     def test_currency_with_negative(self) -> None:
         """Negative amounts use locale-specific format."""
         result = currency_format(-123.45, "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
         # Different locales may use different negative formats
-        assert "123" in result
-        assert "-" in result or "(" in result  # Parentheses or minus sign
+        assert "123" in str(result)
+        assert "-" in str(result) or "(" in str(result)  # Parentheses or minus sign
 
     def test_currency_large_amount(self) -> None:
         """Large amounts use grouping separators."""
         result = currency_format(1234567.89, "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
         # Should have thousands separators
-        assert "1" in result
-        assert "234" in result or "567" in result
+        assert "1" in str(result)
+        assert "234" in str(result) or "567" in str(result)
 
     def test_currency_fractional_cents(self) -> None:
         """Sub-cent amounts (e.g., 0.005 EUR)."""
         result = currency_format(0.005, "en-US", currency="EUR")
         assert isinstance(result, FluentNumber)
         # May round to 0.01 or 0.00 depending on Babel
-        assert "€" in result or "EUR" in result
+        assert "€" in str(result) or "EUR" in str(result)
 
     def test_currency_multiple_currencies_same_locale(self) -> None:
         """Multiple currencies in same locale."""
@@ -139,9 +139,9 @@ class TestCurrencyFunction:
         eur = currency_format(100, "en-US", currency="EUR")
         gbp = currency_format(100, "en-US", currency="GBP")
 
-        assert "USD" in usd or "$" in usd
-        assert "EUR" in eur or "€" in eur
-        assert "GBP" in gbp or "£" in gbp
+        assert "USD" in str(usd) or "$" in str(usd)
+        assert "EUR" in str(eur) or "€" in str(eur)
+        assert "GBP" in str(gbp) or "£" in str(gbp)
 
     def test_currency_same_currency_multiple_locales(self) -> None:
         """Same currency in different locales has different formatting."""
@@ -150,9 +150,9 @@ class TestCurrencyFunction:
         eur_lv = currency_format(123.45, "lv-LV", currency="EUR")
 
         # All should contain EUR symbol or code
-        assert "€" in eur_us or "EUR" in eur_us
-        assert "€" in eur_de or "EUR" in eur_de
-        assert "€" in eur_lv or "EUR" in eur_lv
+        assert "€" in str(eur_us) or "EUR" in str(eur_us)
+        assert "€" in str(eur_de) or "EUR" in str(eur_de)
+        assert "€" in str(eur_lv) or "EUR" in str(eur_lv)
 
         # Formatting may differ (grouping, decimal separators)
         assert isinstance(eur_us, FluentNumber)
@@ -172,7 +172,7 @@ class TestCurrencyFunctionErrorHandling:
         result = currency_format(100, "en-US", currency="XXX")
         assert isinstance(result, FluentNumber)
         # Should return fallback format
-        assert "XXX" in result or "100" in result
+        assert "XXX" in str(result) or "100" in str(result)
 
     def test_currency_with_string_value_raises_formatting_error(self) -> None:
         """Non-numeric value raises FrozenFluentError with fallback."""
@@ -214,24 +214,24 @@ class TestCurrencyFunctionAllLocales:
         """CURRENCY() works for EUR in all 30 locales."""
         result = currency_format(123.45, locale_code, currency="EUR")
         assert isinstance(result, FluentNumber)
-        assert len(result) > 0
+        assert len(str(result)) > 0
         # Should contain currency symbol or code
-        assert "€" in result or "EUR" in result or "123" in result
+        assert "€" in str(result) or "EUR" in str(result) or "123" in str(result)
 
     @pytest.mark.parametrize("locale_code", sorted(TEST_LOCALES))
     def test_currency_works_all_locales_usd(self, locale_code: str) -> None:
         """CURRENCY() works for USD in all 30 test locales."""
         result = currency_format(99.99, locale_code, currency="USD")
         assert isinstance(result, FluentNumber)
-        assert len(result) > 0
-        assert "99" in result
+        assert len(str(result)) > 0
+        assert "99" in str(result)
 
     @pytest.mark.parametrize("locale_code", sorted(TEST_LOCALES))
     def test_currency_zero_all_locales(self, locale_code: str) -> None:
         """Zero currency value works in all test locales."""
         result = currency_format(0, locale_code, currency="EUR")
         assert isinstance(result, FluentNumber)
-        assert "0" in result
+        assert "0" in str(result)
 
 
 class TestCurrencyLocaleContext:
@@ -242,16 +242,16 @@ class TestCurrencyLocaleContext:
         ctx = LocaleContext.create_or_raise("en-US")
         result = ctx.format_currency(123.45, currency="EUR")
         assert isinstance(result, str)
-        assert "123" in result
-        assert "€" in result or "EUR" in result
+        assert "123" in str(result)
+        assert "€" in str(result) or "EUR" in str(result)
 
     def test_locale_context_currency_lv_lv(self) -> None:
         """LocaleContext formats EUR in lv_LV."""
         ctx = LocaleContext.create_or_raise("lv-LV")
         result = ctx.format_currency(123.45, currency="EUR")
         assert isinstance(result, str)
-        assert "123" in result
-        assert "€" in result or "EUR" in result
+        assert "123" in str(result)
+        assert "€" in str(result) or "EUR" in str(result)
 
     def test_locale_context_currency_display_modes(self) -> None:
         """LocaleContext supports all currency display modes."""
@@ -278,8 +278,8 @@ class TestCurrencyFluentBundleIntegration:
 
         assert isinstance(result, str)
         assert len(errors) == 0
-        assert "123" in result
-        assert "€" in result or "EUR" in result
+        assert "123" in str(result)
+        assert "€" in str(result) or "EUR" in str(result)
 
     def test_bundle_currency_different_currencies(self) -> None:
         """CURRENCY with different currency codes.
@@ -347,7 +347,7 @@ price = { $currency ->
             result, errors = bundle.format_pattern("price", {"amount": 123.45})
 
             assert isinstance(result, str)
-            assert len(result) > 0
+            assert len(str(result)) > 0
             # No errors should occur
             assert len(errors) == 0
 
@@ -358,37 +358,37 @@ class TestCurrencySpecificCurrencies:
     def test_jpy_zero_decimals(self) -> None:
         """Japanese Yen: 0 decimal places."""
         result = currency_format(1000, "ja-JP", currency="JPY")
-        assert "1" in result or "1,000" in result or "1000" in result
+        assert "1" in str(result) or "1,000" in str(result) or "1000" in str(result)
         # Should not show .00
 
     def test_krw_zero_decimals(self) -> None:
         """Korean Won: 0 decimal places."""
         result = currency_format(1000, "ko-KR", currency="KRW")
-        assert "1" in result or "1,000" in result or "1000" in result
+        assert "1" in str(result) or "1,000" in str(result) or "1000" in str(result)
 
     def test_bhd_three_decimals(self) -> None:
         """Bahraini Dinar: 3 decimal places."""
         result = currency_format(1.234, "ar-BH", currency="BHD")
         # Should show 3 decimals
-        assert "1" in result
-        assert "234" in result
+        assert "1" in str(result)
+        assert "234" in str(result)
 
     def test_kwd_three_decimals(self) -> None:
         """Kuwaiti Dinar: 3 decimal places."""
         result = currency_format(1.234, "ar-KW", currency="KWD")
-        assert "1" in result
-        assert "234" in result
+        assert "1" in str(result)
+        assert "234" in str(result)
 
     def test_eur_two_decimals(self) -> None:
         """Euro: 2 decimal places (standard)."""
         result = currency_format(10, "en-US", currency="EUR")
         # Most locales show 2 decimals for EUR
-        assert "10" in result
+        assert "10" in str(result)
 
     def test_usd_two_decimals(self) -> None:
         """US Dollar: 2 decimal places (standard)."""
         result = currency_format(10, "en-US", currency="USD")
-        assert "10" in result
+        assert "10" in str(result)
 
 
 class TestCurrencyRTLLocales:
@@ -398,14 +398,14 @@ class TestCurrencyRTLLocales:
         """Arabic locale with BIDI support."""
         result = currency_format(123.45, "ar", currency="SAR")
         assert isinstance(result, FluentNumber)
-        assert len(result) > 0
+        assert len(str(result)) > 0
         # May contain BIDI marks (invisible)
 
     def test_currency_urdu(self) -> None:
         """Urdu locale formatting."""
         result = currency_format(100, "ur", currency="PKR")
         assert isinstance(result, FluentNumber)
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
     def test_currency_arabic_with_bundle(self) -> None:
         """Arabic in FluentBundle includes BIDI marks."""
@@ -415,7 +415,7 @@ class TestCurrencyRTLLocales:
 
         # Should contain BIDI marks (U+2068, U+2069) when use_isolating=True
         assert isinstance(result, str)
-        assert "\u2068" in result or "\u2069" in result or len(result) > 0
+        assert "\u2068" in str(result) or "\u2069" in str(result) or len(str(result)) > 0
 
 
 class TestCurrencyHypothesis:
@@ -431,7 +431,7 @@ class TestCurrencyHypothesis:
         event(f"currency={currency}")
         result = currency_format(amount, "en-US", currency=currency)
         assert isinstance(result, FluentNumber)
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
     @given(
         locale=st.sampled_from(sorted(TEST_LOCALES)),
@@ -443,7 +443,7 @@ class TestCurrencyHypothesis:
         event(f"locale={locale}")
         result = currency_format(amount, locale, currency="EUR")
         assert isinstance(result, FluentNumber)
-        assert len(result) > 0
+        assert len(str(result)) > 0
 
     @given(
         amount=st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False)
@@ -511,7 +511,7 @@ class TestCurrencyEdgeCases:
         """Very large currency amounts."""
         result = currency_format(999999999.99, "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
-        assert "999" in result
+        assert "999" in str(result)
 
     def test_currency_very_small_amount(self) -> None:
         """Very small currency amounts."""
@@ -523,10 +523,10 @@ class TestCurrencyEdgeCases:
         """Exactly zero."""
         result = currency_format(0.0, "en-US", currency="EUR")
         assert isinstance(result, FluentNumber)
-        assert "0" in result
+        assert "0" in str(result)
 
     def test_currency_negative_zero(self) -> None:
         """Negative zero (edge case in floating point)."""
         result = currency_format(-0.0, "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
-        assert "0" in result
+        assert "0" in str(result)

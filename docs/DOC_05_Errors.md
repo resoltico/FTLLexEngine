@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.117.0"
+version: "0.118.0"
 domain: ERRORS
 updated: "2026-02-21"
 route:
@@ -276,7 +276,7 @@ class FormattingIntegrityError(DataIntegrityError):
 | `message_id` | `str` | N | Message ID that failed to format. |
 
 ### Constraints
-- Purpose: Raised by `FluentBundle.format_pattern()` and `format_value()` in strict mode when formatting errors occur.
+- Purpose: Raised by `FluentBundle.format_pattern()` in strict mode when formatting errors occur.
 - Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
 - Sealed: `@final` decorator prevents subclassing.
 - Financial: Financial applications require fail-fast behavior. Silent fallback values are unacceptable when formatting monetary amounts.

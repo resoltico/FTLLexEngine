@@ -217,7 +217,7 @@ def _pattern_term_arg_isolation(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value("msg", {var: outer_val})
+    result, errors = bundle.format_pattern("msg", {var: outer_val})
 
     # Term receives explicit arg, so should resolve to term_arg_val
     if result == term_arg_val:
@@ -256,7 +256,7 @@ def _pattern_variable_shadowing(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value("msg", {var: ext_val})
+    result, errors = bundle.format_pattern("msg", {var: ext_val})
 
     expected = f"{ext_val} - {term_val} - {ext_val}"
     if result != expected and not errors:
@@ -284,7 +284,7 @@ def _pattern_message_ref_scope(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value(msg_a, {var: val})
+    result, errors = bundle.format_pattern(msg_a, {var: val})
 
     # Referenced message should see the caller's args
     if result == val:
@@ -316,7 +316,7 @@ def _pattern_select_scope(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value(
+    result, errors = bundle.format_pattern(
         "msg", {var: count, "extra": extra_val}
     )
 
@@ -349,7 +349,7 @@ def _pattern_attribute_scope(fdp: atheris.FuzzedDataProvider) -> None:
     bundle.add_resource(ftl)
 
     # Test message value
-    result_val, errors_val = bundle.format_value(msg_id, {var: val})
+    result_val, errors_val = bundle.format_pattern(msg_id, {var: val})
 
     # Test attribute
     result_attr, errors_attr = bundle.format_pattern(
@@ -384,7 +384,7 @@ def _pattern_bidi_isolation(fdp: atheris.FuzzedDataProvider) -> None:
     )
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value("msg", {var: val})
+    result, errors = bundle.format_pattern("msg", {var: val})
 
     if errors:
         return
@@ -419,7 +419,7 @@ def _pattern_function_arg_scope(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle(_pick_locale(fdp), use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value("msg", {var: num_val})
+    result, errors = bundle.format_pattern("msg", {var: num_val})
 
     # NUMBER should format the value; the result should be non-empty
     if not errors and not result:
@@ -459,7 +459,7 @@ def _pattern_nested_term_scope(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value("msg", {})
+    result, errors = bundle.format_pattern("msg", {})
 
     if errors:
         return  # Acceptable: resolution errors from complex nesting
@@ -492,7 +492,7 @@ def _pattern_scope_chain(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result, errors = bundle.format_value(ids[0], {var: val})
+    result, errors = bundle.format_pattern(ids[0], {var: val})
 
     if not errors and result != val:
         msg = f"Scope chain (depth={depth}): expected '{val}', got '{result}'"
@@ -517,8 +517,8 @@ def _pattern_cross_message_isolation(fdp: atheris.FuzzedDataProvider) -> None:
     bundle = FluentBundle("en-US", use_isolating=False)
     bundle.add_resource(ftl)
 
-    result_a, errors_a = bundle.format_value("msg-alpha", {var: val_a})
-    result_b, errors_b = bundle.format_value("msg-beta", {var: val_b})
+    result_a, errors_a = bundle.format_pattern("msg-alpha", {var: val_a})
+    result_b, errors_b = bundle.format_pattern("msg-beta", {var: val_b})
 
     if not errors_a and result_a != val_a:
         msg = f"Cross-message: msg-alpha expected '{val_a}', got '{result_a}'"
@@ -529,7 +529,7 @@ def _pattern_cross_message_isolation(fdp: atheris.FuzzedDataProvider) -> None:
         raise ScopeFuzzError(msg)
 
     # Critical: formatting msg-beta should not retroactively change msg-alpha
-    result_a2, errors_a2 = bundle.format_value("msg-alpha", {var: val_a})
+    result_a2, errors_a2 = bundle.format_pattern("msg-alpha", {var: val_a})
     if not errors_a2 and result_a2 != val_a:
         msg = (
             f"Cross-message pollution: msg-alpha changed after msg-beta: "
@@ -553,7 +553,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
             ftl = "msg = { msg }\n"
             bundle = FluentBundle("en-US", use_isolating=False)
             bundle.add_resource(ftl)
-            result, errors = bundle.format_value("msg", {})
+            result, errors = bundle.format_pattern("msg", {})
             # Must have errors (cyclic reference detected)
             if not errors:
                 msg = "Depth guard: self-ref produced no errors"
@@ -564,7 +564,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
             ftl = "msg-a = { msg-b }\nmsg-b = { msg-a }\n"
             bundle = FluentBundle("en-US", use_isolating=False)
             bundle.add_resource(ftl)
-            result, errors = bundle.format_value("msg-a", {})
+            result, errors = bundle.format_pattern("msg-a", {})
             if not errors:
                 msg = "Depth guard: mutual recursion produced no errors"
                 raise ScopeFuzzError(msg)
@@ -580,7 +580,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
 
             bundle = FluentBundle("en-US", use_isolating=False)
             bundle.add_resource(ftl)
-            result, errors = bundle.format_value("d0", {})
+            result, errors = bundle.format_pattern("d0", {})
             # Either resolves to "leaf" or hits depth limit -- both acceptable
             if not errors and result != "leaf":
                 msg = f"Depth chain: expected 'leaf' or errors, got '{result}'"
@@ -598,7 +598,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
             ftl = "msg = { -brand }\n-brand = { $missing }\n"
             bundle = FluentBundle("en-US", use_isolating=False)
             bundle.add_resource(ftl)
-            result, errors = bundle.format_value("msg", {"missing": "LEAKED"})
+            result, errors = bundle.format_pattern("msg", {"missing": "LEAKED"})
             # The term should NOT see the outer "missing" variable
             if "LEAKED" in result and not errors:
                 msg = "Adversarial: term without args leaked outer scope"
@@ -613,7 +613,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
             ftl = f"msg = {{ ${var_a} }} {{ ${var_b} }}\n"
             bundle = FluentBundle("en-US", use_isolating=False)
             bundle.add_resource(ftl)
-            result, errors = bundle.format_value("msg", {var_a: val_a})
+            result, errors = bundle.format_pattern("msg", {var_a: val_a})
             # Should have at least one error for missing var_b
             # (unless var_a == var_b, in which case both are provided)
             if var_a != var_b and not errors:
@@ -626,7 +626,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
             ftl = f"msg = [{{ ${var} }}]\n"
             bundle = FluentBundle("en-US", use_isolating=False)
             bundle.add_resource(ftl)
-            result, errors = bundle.format_value("msg", {var: ""})
+            result, errors = bundle.format_pattern("msg", {var: ""})
             if not errors and result != "[]":
                 msg = f"Adversarial: empty string var produced '{result}'"
                 raise ScopeFuzzError(msg)
@@ -637,7 +637,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
             bundle = FluentBundle("en-US", use_isolating=False)
             with contextlib.suppress(*_ALLOWED_EXCEPTIONS):
                 bundle.add_resource(f"msg = {{ ${raw} }}\n")
-                bundle.format_value("msg", {raw: "test"})
+                bundle.format_pattern("msg", {raw: "test"})
 
 
 # --- Pattern Dispatch ---

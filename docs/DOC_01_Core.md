@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.117.0"
+version: "0.118.0"
 domain: CORE
 updated: "2026-02-21"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, format_value, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
 ---
 
@@ -230,31 +230,6 @@ def format_pattern(
 - State: Read-only (may update cache).
 - Thread: Safe for concurrent reads.
 - Duplicate Attributes: When message has duplicate attributes with same name, last attribute wins (per Fluent spec).
-
----
-
-## `FluentBundle.format_value`
-
-### Signature
-```python
-def format_value(
-    self,
-    message_id: str,
-    args: Mapping[str, FluentValue] | None = None
-) -> tuple[str, tuple[FrozenFluentError, ...]]:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message_id` | `str` | Y | Message identifier. |
-| `args` | `Mapping[str, FluentValue] \| None` | N | Variable arguments. |
-
-### Constraints
-- Return: Tuple of (formatted_string, errors).
-- Raises: `FormattingIntegrityError` in strict mode if ANY error occurs. In non-strict mode (default), never raises.
-- State: Read-only.
-- Thread: Safe.
 
 ---
 
@@ -581,86 +556,6 @@ def cache_size(self) -> int:
 
 ### Constraints
 - Return: Configured maximum cache entries (delegates to `cache_config.size`).
-- Raises: None.
-- State: Read-only property.
-- Thread: Safe.
-
----
-
-## `FluentBundle.cache_write_once`
-
-### Signature
-```python
-@property
-def cache_write_once(self) -> bool:
-```
-
-### Constraints
-- Return: True if write-once mode is configured (delegates to `cache_config.write_once`).
-- Raises: None.
-- State: Read-only property.
-- Thread: Safe.
-
----
-
-## `FluentBundle.cache_enable_audit`
-
-### Signature
-```python
-@property
-def cache_enable_audit(self) -> bool:
-```
-
-### Constraints
-- Return: True if audit logging is configured (delegates to `cache_config.enable_audit`).
-- Raises: None.
-- State: Read-only property.
-- Thread: Safe.
-
----
-
-## `FluentBundle.cache_max_audit_entries`
-
-### Signature
-```python
-@property
-def cache_max_audit_entries(self) -> int:
-```
-
-### Constraints
-- Return: Configured maximum audit log entries (delegates to `cache_config.max_audit_entries`).
-- Raises: None.
-- State: Read-only property.
-- Thread: Safe.
-
----
-
-## `FluentBundle.cache_max_entry_weight`
-
-### Signature
-```python
-@property
-def cache_max_entry_weight(self) -> int:
-```
-
-### Constraints
-- Return: Configured maximum entry weight (delegates to `cache_config.max_entry_weight`).
-- Raises: None.
-- State: Read-only property.
-- Thread: Safe.
-
----
-
-## `FluentBundle.cache_max_errors_per_entry`
-
-### Signature
-```python
-@property
-def cache_max_errors_per_entry(self) -> int:
-```
-
-### Constraints
-- Return: Configured maximum errors per cache entry (delegates to `cache_config.max_errors_per_entry`).
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.

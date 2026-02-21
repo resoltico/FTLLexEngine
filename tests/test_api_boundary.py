@@ -72,13 +72,13 @@ class TestFluentBundleBoundaryValidation:
         assert result == "Hello World"
         assert errors == ()
 
-    def test_format_value_with_invalid_args_type(self) -> None:
-        """format_value returns error when args is not a Mapping."""
+    def test_format_pattern_with_tuple_args_type(self) -> None:
+        """format_pattern returns error when args is a tuple (non-Mapping)."""
         bundle = FluentBundle("en")
         bundle.add_resource("msg = Hello")
 
         # Pass a tuple instead of dict/Mapping
-        result, errors = bundle.format_value("msg", ("invalid",))  # type: ignore[arg-type]
+        result, errors = bundle.format_pattern("msg", ("invalid",))  # type: ignore[arg-type]
 
         assert result == FALLBACK_INVALID
         assert len(errors) == 1

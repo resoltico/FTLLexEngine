@@ -840,40 +840,40 @@ class TestBundlePropertyAccessors:
         bundle.format_pattern("msg")
         assert bundle.cache_usage == 0
 
-    def test_cache_write_once_property(self) -> None:
-        """cache_write_once property returns configured boolean."""
+    def test_cache_write_once_config(self) -> None:
+        """cache_config.write_once reflects configured boolean."""
         on = FluentBundle("en", cache=CacheConfig(write_once=True))
-        assert on.cache_write_once is True
+        assert on.cache_config.write_once is True
         off = FluentBundle("en", cache=CacheConfig(write_once=False))
-        assert off.cache_write_once is False
+        assert off.cache_config.write_once is False
 
-    def test_cache_enable_audit_property(self) -> None:
-        """cache_enable_audit property returns configured boolean."""
+    def test_cache_enable_audit_config(self) -> None:
+        """cache_config.enable_audit reflects configured boolean."""
         on = FluentBundle("en", cache=CacheConfig(enable_audit=True))
-        assert on.cache_enable_audit is True
+        assert on.cache_config.enable_audit is True
         off = FluentBundle("en", cache=CacheConfig(enable_audit=False))
-        assert off.cache_enable_audit is False
+        assert off.cache_config.enable_audit is False
 
-    def test_cache_max_audit_entries_property(self) -> None:
-        """cache_max_audit_entries property returns configured maximum."""
+    def test_cache_max_audit_entries_config(self) -> None:
+        """cache_config.max_audit_entries reflects configured maximum."""
         bundle = FluentBundle(
             "en", cache=CacheConfig(max_audit_entries=5000)
         )
-        assert bundle.cache_max_audit_entries == 5000
+        assert bundle.cache_config.max_audit_entries == 5000
 
-    def test_cache_max_entry_weight_property(self) -> None:
-        """cache_max_entry_weight property returns configured maximum."""
+    def test_cache_max_entry_weight_config(self) -> None:
+        """cache_config.max_entry_weight reflects configured maximum."""
         bundle = FluentBundle(
             "en", cache=CacheConfig(max_entry_weight=8000)
         )
-        assert bundle.cache_max_entry_weight == 8000
+        assert bundle.cache_config.max_entry_weight == 8000
 
-    def test_cache_max_errors_per_entry_property(self) -> None:
-        """cache_max_errors_per_entry returns configured maximum."""
+    def test_cache_max_errors_per_entry_config(self) -> None:
+        """cache_config.max_errors_per_entry reflects configured maximum."""
         bundle = FluentBundle(
             "en", cache=CacheConfig(max_errors_per_entry=25)
         )
-        assert bundle.cache_max_errors_per_entry == 25
+        assert bundle.cache_config.max_errors_per_entry == 25
 
     def test_max_source_size_property(self) -> None:
         """max_source_size property returns configured or default value."""
@@ -1707,29 +1707,20 @@ class TestBundleIntrospection:
 
 
 # =============================================================================
-# Formatting (format_value, format_pattern error paths)
+# Formatting (format_pattern error paths)
 # =============================================================================
 
 
 class TestBundleFormatting:
     """Test formatting methods and error handling."""
 
-    def test_format_value_formats_message(self) -> None:
-        """format_value formats message without attribute access."""
+    def test_format_pattern_formats_message(self) -> None:
+        """format_pattern formats message without attribute access."""
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("welcome = Hello, { $name }!")
-        result, errors = bundle.format_value("welcome", {"name": "Alice"})
+        result, errors = bundle.format_pattern("welcome", {"name": "Alice"})
         assert result == "Hello, Alice!"
         assert errors == ()
-
-    def test_format_value_is_alias(self) -> None:
-        """format_value is equivalent to format_pattern without attr."""
-        bundle = FluentBundle("en")
-        bundle.add_resource("msg = Test message")
-        r1, e1 = bundle.format_value("msg")
-        r2, e2 = bundle.format_pattern("msg", attribute=None)
-        assert r1 == r2
-        assert e1 == e2
 
     def test_format_pattern_handles_recursion_error(self) -> None:
         """format_pattern catches RecursionError from circular refs."""

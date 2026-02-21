@@ -105,59 +105,56 @@ goodbye = Goodbye"""
         assert result.error_count == 0
 
 
-class TestFormatValueMappingSupport:
-    """Tests for format_value accepting Mapping type.
+class TestFormatPatternMappingSupport:
+    """Tests for format_pattern accepting Mapping type.
 
-    Validates that format_value now accepts any Mapping type, not just dict.
+    Validates that format_pattern accepts any Mapping type, not just dict.
     """
 
-    def test_format_value_accepts_dict(self) -> None:
-        """format_value accepts regular dict (baseline)."""
+    def test_format_pattern_accepts_dict(self) -> None:
+        """format_pattern accepts regular dict (baseline)."""
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource("greeting = Hello, { $name }!")
 
         args: dict[str, str] = {"name": "Alice"}
-        result, errors = bundle.format_value("greeting", args)
+        result, errors = bundle.format_pattern("greeting", args)
 
         assert result == "Hello, Alice!"
         assert not errors
 
-    def test_format_value_accepts_mapping_proxy(self) -> None:
-        """format_value accepts MappingProxyType (read-only dict)."""
+    def test_format_pattern_accepts_mapping_proxy(self) -> None:
+        """format_pattern accepts MappingProxyType (read-only dict)."""
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource("greeting = Hello, { $name }!")
 
         # MappingProxyType is a read-only view of a dict
         args = MappingProxyType({"name": "Bob"})
-        result, errors = bundle.format_value("greeting", args)
+        result, errors = bundle.format_pattern("greeting", args)
 
         assert result == "Hello, Bob!"
         assert not errors
 
-    def test_format_value_accepts_none(self) -> None:
-        """format_value accepts None for args."""
+    def test_format_pattern_accepts_none(self) -> None:
+        """format_pattern accepts None for args."""
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource("hello = Hello World!")
 
-        result, errors = bundle.format_value("hello", None)
+        result, errors = bundle.format_pattern("hello", None)
 
         assert result == "Hello World!"
         assert not errors
 
-    def test_format_pattern_mapping_consistency(self) -> None:
-        """format_value and format_pattern accept same Mapping types."""
+    def test_format_pattern_with_mapping_proxy_and_attribute(self) -> None:
+        """format_pattern with MappingProxyType args and attribute=None."""
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource("msg = Value: { $value }")
 
         args = MappingProxyType({"value": "test"})
 
-        # Both should work identically
-        result1, errors1 = bundle.format_value("msg", args)
-        result2, errors2 = bundle.format_pattern("msg", args)
+        result, errors = bundle.format_pattern("msg", args, attribute=None)
 
-        assert result1 == result2 == "Value: test"
-        assert not errors1
-        assert not errors2
+        assert result == "Value: test"
+        assert not errors
 
 
 class TestIntrospectMessageTermSupport:

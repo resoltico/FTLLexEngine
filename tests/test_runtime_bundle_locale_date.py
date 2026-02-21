@@ -96,7 +96,7 @@ class TestDatetimeDateSupport:
 
         # The date should be converted to string representation
         assert isinstance(result, str)
-        assert "2025" in result or "12" in result or "15" in result
+        assert "2025" in str(result) or "12" in str(result) or "15" in str(result)
 
     def test_datetime_value_still_works(self) -> None:
         """datetime.datetime values continue to work."""
@@ -109,7 +109,7 @@ class TestDatetimeDateSupport:
         assert not errors
 
         assert isinstance(result, str)
-        assert "2025" in result or "12" in result or "15" in result
+        assert "2025" in str(result) or "12" in str(result) or "15" in str(result)
 
     def test_date_in_datetime_function(self) -> None:
         """date values work with DATETIME() function."""
@@ -132,64 +132,64 @@ class TestCurrencyCodeDisplayDecimals:
         """JPY with code display should use 0 decimal places."""
         result = currency_format(12345, "en-US", currency="JPY", currency_display="code")
 
-        assert "JPY" in result
-        assert "12345" in result or "12,345" in result
+        assert "JPY" in str(result)
+        assert "12345" in str(result) or "12,345" in str(result)
         # Should NOT have decimal point since JPY has 0 decimals
         # Check no ".00" or ".00" pattern
-        assert ".00" not in result
+        assert ".00" not in str(result)
 
     def test_currency_code_display_bhd_three_decimals(self) -> None:
         """BHD with code display should use 3 decimal places."""
         result = currency_format(123.456, "en-US", currency="BHD", currency_display="code")
 
-        assert "BHD" in result
-        assert "123" in result
+        assert "BHD" in str(result)
+        assert "123" in str(result)
         # Should have 3 decimal places (456)
-        assert "456" in result
+        assert "456" in str(result)
 
     def test_currency_code_display_eur_two_decimals(self) -> None:
         """EUR with code display should use 2 decimal places."""
         result = currency_format(123.45, "en-US", currency="EUR", currency_display="code")
 
-        assert "EUR" in result
-        assert "123" in result
-        assert "45" in result
+        assert "EUR" in str(result)
+        assert "123" in str(result)
+        assert "45" in str(result)
 
     def test_currency_code_display_kwd_three_decimals(self) -> None:
         """KWD with code display should use 3 decimal places."""
         result = currency_format(100.123, "en-US", currency="KWD", currency_display="code")
 
-        assert "KWD" in result
-        assert "100" in result
+        assert "KWD" in str(result)
+        assert "100" in str(result)
         # Should have 3 decimal places
-        assert "123" in result
+        assert "123" in str(result)
 
     def test_currency_code_display_omr_three_decimals(self) -> None:
         """OMR with code display should use 3 decimal places."""
         result = currency_format(50.789, "en-US", currency="OMR", currency_display="code")
 
-        assert "OMR" in result
-        assert "50" in result
+        assert "OMR" in str(result)
+        assert "50" in str(result)
         # Should have 3 decimal places
-        assert "789" in result
+        assert "789" in str(result)
 
     def test_currency_symbol_display_still_works(self) -> None:
         """Symbol display continues to work correctly."""
         result = currency_format(123.45, "en-US", currency="EUR", currency_display="symbol")
 
-        assert "123" in result
-        assert "45" in result
+        assert "123" in str(result)
+        assert "45" in str(result)
         # Should have euro symbol
-        assert "€" in result
+        assert "€" in str(result)
 
     def test_currency_code_display_large_amount(self) -> None:
         """Large amounts with code display preserve grouping."""
         result = currency_format(1234567.89, "en-US", currency="USD", currency_display="code")
 
-        assert "USD" in result
+        assert "USD" in str(result)
         # Should have grouping (commas in en-US)
-        assert "1" in result
-        assert "234" in result or "567" in result
+        assert "1" in str(result)
+        assert "234" in str(result) or "567" in str(result)
 
 
 class TestCurrencyCodeDisplayLocaleContext:
@@ -200,18 +200,18 @@ class TestCurrencyCodeDisplayLocaleContext:
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(12345, currency="JPY", currency_display="code")
 
-        assert "JPY" in result
+        assert "JPY" in str(result)
         # JPY should have 0 decimal places
-        assert ".00" not in result
+        assert ".00" not in str(result)
 
     def test_locale_context_format_currency_code_bhd(self) -> None:
         """LocaleContext format_currency with code display for BHD."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(123.456, currency="BHD", currency_display="code")
 
-        assert "BHD" in result
+        assert "BHD" in str(result)
         # BHD should have 3 decimal places
-        assert "456" in result
+        assert "456" in str(result)
 
     def test_locale_context_preserves_locale_formatting(self) -> None:
         """Code display preserves locale-specific formatting."""
@@ -243,7 +243,7 @@ class TestCurrencyDecimalsPropertyBased:
         result = currency_format(amount, "en-US", currency="JPY", currency_display="code")
 
         # JPY should never have .00 or any decimal point before digits
-        assert "JPY" in result
+        assert "JPY" in str(result)
         # Remove the JPY code to check the number part
         number_part = str(result).replace("JPY", "").replace(",", "").replace(" ", "").strip()
         # If there's a decimal point, it shouldn't be followed by digits
@@ -262,6 +262,6 @@ class TestCurrencyDecimalsPropertyBased:
         event("outcome=three_decimals")
         result = currency_format(round(amount, 3), "en-US", currency="BHD", currency_display="code")
 
-        assert "BHD" in result
+        assert "BHD" in str(result)
         # BHD should have decimals (not rounded to integer)
         # The actual decimal format depends on locale
