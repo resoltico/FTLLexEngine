@@ -10,6 +10,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.126.0] - 2026-02-22
+
+### Fixed
+
+- **`LocaleContext._cache_lock` used `RLock` with no re-entry path** (SIMPLIFY-LOCALECONTEXT-RLOCK-001):
+  - `_cache_lock` was declared as `threading.RLock()` (reentrant lock); no code path in `create()`, `clear_cache()`, `cache_size()`, or `cache_info()` acquires the lock and then re-acquires it from the same thread; `RLock` pays two atomic operations per acquire/release versus `Lock`'s one, making every cache read a needless double-overhead operation
+  - Replaced with `threading.Lock()`; all four docstrings that referenced "RLock" updated to "Lock" for accuracy
+  - Location: `runtime/locale_context.py`
+
+- **`LocaleContext.create_or_raise()` bypassed the LRU cache entirely** (DEFECT-LOCALECONTEXT-CREATE-OR-RAISE-CACHE-001):
+  - `create_or_raise()` constructed a fresh `LocaleContext` and returned it without consulting or populating the class-level LRU cache; a subsequent `create(same_locale)` call experienced a cache miss and re-parsed via Babel; in the reverse order, `create()` cached the instance but `create_or_raise()` ignored it and created a second, unshared instance; repeated `create_or_raise()` calls for the same valid locale multiplied Babel `Locale.parse()` invocations without bound
+  - Fixed: `create_or_raise()` now validates the locale strictly via `Babel.Locale.parse()` (raising `ValueError` on failure as before), then delegates to `create()` for all cache management; on the first call, `parse()` executes twice (once for validation, once inside `create()` on cache miss); on all subsequent calls, `create()` returns the cached instance without re-parsing, making repeated calls effectively O(1); cache coherence between `create()` and `create_or_raise()` is now guaranteed
+  - Location: `runtime/locale_context.py`
+
+- **`integrity.py` had three blank lines before `WriteConflictError`** (CLARITY-INTEGRITY-BLANK-LINE-001):
+  - PEP 8 and the rest of the module use exactly two blank lines between top-level class definitions; `IntegrityCheckFailedError` was followed by three blank lines before `WriteConflictError`, a visual inconsistency with no semantic content
+  - Reduced to the standard two blank lines
+  - Location: `integrity.py`
+
+- **`parse_pattern` failures in `number_format` and `currency_format` silently swallowed at `DEBUG` level** (DEFECT-FUNCTIONS-PARSE-PATTERN-LOG-LEVEL-001):
+  - When Babel's `parse_pattern()` raises on a custom format pattern string after `format_number`/`format_currency` has already succeeded, the exception was caught and logged at `DEBUG` level; the consequence is a silent loss of precision capping for the CLDR `v` operand (visible fraction digit count), meaning `number_format(1.2, pattern="0.0'5'")` can produce an inflated plural precision; for financial applications that use ICU single-quote pattern literals, this miscategorisation silently causes the wrong plural form to be selected
+  - Changed log level from `DEBUG` to `WARNING` in both `number_format` and `currency_format`; message text updated to name the exact consequence ("CLDR v operand may be inflated") so operators can identify the affected pattern and respond appropriately
+  - Location: `runtime/functions.py`
+
 ## [0.125.0] - 2026-02-22
 
 ### Changed

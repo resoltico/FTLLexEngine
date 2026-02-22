@@ -210,9 +210,13 @@ def number_format(
             # Malformed pattern: fall back to uncapped counting.
             # Babel format_number already handled the pattern successfully,
             # so parse_pattern failure is unexpected but not fatal.
-            logger.debug(
+            # Logged at WARNING: the formatted output is correct, but the
+            # CLDR v operand (plural precision) may be inflated when the
+            # pattern uses ICU single-quote literals (e.g., "0.0'5'").
+            # Financial applications should inspect this warning.
+            logger.warning(
                 "parse_pattern failed for NUMBER pattern %r; "
-                "precision capping disabled",
+                "precision capping disabled — CLDR v operand may be inflated",
                 pattern,
             )
 
@@ -382,9 +386,13 @@ def currency_format(
             parsed = parse_pattern(pattern)
             max_frac = parsed.frac_prec[1]
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.debug(
+            # Logged at WARNING: same rationale as number_format — the
+            # formatted output is correct but the CLDR v operand may be
+            # inflated for patterns with ICU single-quote literals.
+            # Financial applications should inspect this warning.
+            logger.warning(
                 "parse_pattern failed for CURRENCY pattern %r; "
-                "precision capping disabled",
+                "precision capping disabled — CLDR v operand may be inflated",
                 pattern,
             )
 

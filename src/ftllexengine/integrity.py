@@ -189,7 +189,6 @@ class IntegrityCheckFailedError(DataIntegrityError):
     __slots__ = ()
 
 
-
 @final
 class WriteConflictError(DataIntegrityError):
     """Write-once violation in cache.

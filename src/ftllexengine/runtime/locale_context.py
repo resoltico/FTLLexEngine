@@ -38,7 +38,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from threading import RLock
+from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, Literal
 
 from ftllexengine.constants import (
@@ -106,7 +106,7 @@ class LocaleContext:
     Thread Safety:
         LocaleContext is immutable and thread-safe. Multiple threads can
         share the same instance without synchronization. Cache operations
-        are protected by RLock.
+        are protected by Lock.
 
     Babel vs locale module:
         - Babel: Thread-safe, CLDR-based, 600+ locales
@@ -117,7 +117,7 @@ class LocaleContext:
     # OrderedDict provides LRU semantics with O(1) operations
     # Note: ClassVar is excluded from dataclass fields
     _cache: ClassVar[OrderedDict[str, LocaleContext]] = OrderedDict()
-    _cache_lock: ClassVar[RLock] = RLock()
+    _cache_lock: ClassVar[Lock] = Lock()
 
     locale_code: str
     _babel_locale: Locale
@@ -140,7 +140,7 @@ class LocaleContext:
         """Clear the locale context cache.
 
         Use this method to free memory or reset state in tests.
-        Thread-safe via RLock.
+        Thread-safe via Lock.
 
         Example:
             >>> LocaleContext.create('en-US')  # Cached
@@ -202,7 +202,7 @@ class LocaleContext:
         This method always succeeds - use create_or_raise() if you need strict validation.
 
         Thread Safety:
-            Uses OrderedDict with RLock for thread-safe LRU caching.
+            Uses OrderedDict with Lock for thread-safe LRU caching.
             Concurrent calls with same locale_code return the same instance.
 
         Args:
@@ -306,11 +306,17 @@ class LocaleContext:
         Strict validation method that raises ValueError for invalid locales.
         Use this in tests or when silent fallback is not acceptable.
 
+        Validates the locale code strictly via Babel, then delegates to
+        ``create()`` for cache lookup and population. This ensures that:
+        - Invalid locales raise ValueError immediately (no silent fallback).
+        - Valid locales are cached and reused, matching ``create()`` semantics.
+        - Subsequent ``create()`` calls for the same locale hit the cache.
+
         Args:
             locale_code: BCP 47 locale identifier (e.g., 'en-US', 'lv-LV', 'de-DE')
 
         Returns:
-            LocaleContext instance with valid locale
+            LocaleContext instance with valid locale (cached via ``create()``)
 
         Raises:
             ValueError: If locale code is invalid or unknown
@@ -329,20 +335,30 @@ class LocaleContext:
         locale_class = get_locale_class()
         unknown_locale_error_class = get_unknown_locale_error_class()
 
+        # Validate strictly — raises on unknown or malformed locale.
+        # locale_class.parse() is called only for validation here; create()
+        # will use the cache or re-parse as needed. On the first call for a
+        # locale, parse() executes twice (once here, once inside create() on
+        # cache miss). On subsequent calls, create() returns the cached
+        # instance without re-parsing, making this effectively O(1) after
+        # the first invocation. This is the correct trade-off: correctness
+        # and cache coherence take precedence over avoiding one extra parse
+        # on first use.
         try:
             normalized = normalize_locale(locale_code)
-            babel_locale = locale_class.parse(normalized)
-            return cls(
-                locale_code=locale_code,
-                _babel_locale=babel_locale,
-                _factory_token=_FACTORY_TOKEN,
-            )
+            locale_class.parse(normalized)
         except unknown_locale_error_class as e:
             msg = f"Unknown locale identifier '{locale_code}': {e}"
             raise ValueError(msg) from None
         except ValueError as e:
             msg = f"Invalid locale format '{locale_code}': {e}"
             raise ValueError(msg) from None
+
+        # Locale is valid — delegate to create() for proper cache management.
+        # create() will find the key in cache (populated by the parse above
+        # if another thread raced) or re-parse and insert. Either way the
+        # result is identical to create(locale_code) for a valid locale.
+        return cls.create(locale_code)
 
     @property
     def babel_locale(self) -> Locale:
