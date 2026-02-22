@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.122.0] - 2026-02-22
+
+### Fixed
+
+- **LRU cache eviction corrupted capacity when updating an existing key** (DEFECT-CACHE-LRU-EVICTION-001):
+  - `IntegrityCache.put()` called `self._cache.popitem(last=False)` unconditionally when the cache was full, then updated the existing key if it was already present; when `key` already existed in a full cache, one LRU-end entry was evicted AND the existing key was updated, silently shrinking the effective capacity by one slot per thundering-herd write to the same key
+  - Fixed: compute `is_update = key in self._cache` before the eviction guard; skip `popitem` when `is_update is True`; subsequent `move_to_end(key)` promotes the updated entry to MRU position without altering capacity
+  - Location: `runtime/cache.py`
+
+- **Expansion budget overflow generated duplicate errors for nested resolutions** (DEFECT-RESOLVER-BUDGET-DUPLICATE-001):
+  - `_resolve_pattern` reported an `EXPANSION_BUDGET_EXCEEDED` error from two separate sites: the pre-loop check (fired on every iteration where `context.total_chars > context.max_expansion_size`) and the `Placeable` post-track check; when the overflow originated in a nested `_resolve_pattern` call (via term reference, message reference, or select-expression variant), the nested call already appended the error to the shared `errors` list, causing the outer call to append a second identical error
+  - Fixed in two changes: (1) pre-loop check moved before the element loop as an early `return` — it fires only when `_resolve_pattern` is entered with an already-exceeded context (e.g., externally provided `ResolutionContext`), never after a nested call; (2) `Placeable` post-track check now records `pre_track = context.total_chars` before `track_expansion` and suppresses the `errors.append` when `pre_track > context.max_expansion_size` (the overflow and its error were already reported inside the nested call)
+  - Location: `runtime/resolver.py`
+
+- **`IntegrityCache` docstrings referenced `RLock` after lock downgrade in v0.121.0** (CLARITY-CACHE-LOCK-DOCS-001):
+  - v0.121.0 (PERF-CACHE-LOCK-001) changed `IntegrityCache._lock` from `threading.RLock()` to `threading.Lock()` but did not update the module docstring phrase "Thread-safe using threading.RLock (reentrant lock)" or the class docstring phrase "All operations are protected by RLock"
+  - Corrected both sites to "threading.Lock" and "protected by Lock"
+  - Location: `runtime/cache.py`
+
+### Changed
+
+- **`babel_compat` getters simplified: dead `try/except ImportError` removed** (SIMPLIFY-BABEL-DEAD-EXCEPT-001):
+  - Seven getter functions (`get_cldr_version`, `get_babel_numbers`, `get_babel_dates`, `get_global_data_func`, `get_number_format_error_class`, `get_parse_decimal_func`, `get_locale_identifiers_func`) each wrapped their `from babel import ...` statement in a `try/except ImportError` block after calling `require_babel()`; `require_babel()` raises `BabelImportError` when Babel is unavailable, making the except clauses unreachable in any healthy environment; all seven had `# pragma: no cover` confirming they were never reached in CI
+  - Dead `try/except` blocks removed; each getter now calls `require_babel(feature)` and imports directly; `# pragma: no cover` annotations removed alongside; tests that previously reached the catch path through `sys.modules` manipulation (relying on a stale `_babel_available = True` sentinel) updated to use direct sentinel reset (`_bc._babel_available = False`) consistent with the pattern used by all other tests in that class
+  - Location: `core/babel_compat.py`, `tests/test_introspection_iso.py`
+
 ## [0.121.0] - 2026-02-22
 
 ### Changed (BREAKING)
@@ -4035,6 +4061,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.122.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.122.0
 [0.121.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.121.0
 [0.120.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.120.0
 [0.119.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.119.0

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.122.0"
 domain: "architecture"
-updated: "2026-02-21"
+updated: "2026-02-22"
 route: "/docs/data-integrity"
 ---
 
@@ -267,7 +267,7 @@ DataIntegrityError (base - immutable after construction)
 |:----------|:----------|:----------|
 | `FluentBundle._rwlock` | Custom `RWLock` | High-concurrency format operations; read-heavy; writer-preference |
 | `FluentLocalization._lock` | Custom `RWLock` | Concurrent format reads; exclusive writes for add_resource/add_function |
-| `IntegrityCache._lock` | `threading.RLock` | Short operations; LRU requires mutation on every read hit |
+| `IntegrityCache._lock` | `threading.Lock` | Short operations; no reentrant acquisition in the call path; `RLock` thread-tracking overhead eliminated |
 | `LocaleContext._cache_lock` | `threading.RLock` | Class-level LRU cache; infrequent writes |
 
 ### Context Manager Semantics

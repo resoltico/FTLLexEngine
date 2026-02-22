@@ -136,13 +136,9 @@ def get_locale_class() -> type[Locale]:
         BabelImportError: If Babel is not installed
     """
     require_babel("Locale")
-    try:
-        from babel import Locale  # noqa: PLC0415 - Babel-optional
+    from babel import Locale  # noqa: PLC0415 - Babel-optional
 
-        return Locale
-    except ImportError as exc:
-        feature = "Locale"
-        raise BabelImportError(feature) from exc
+    return Locale
 
 
 def get_unknown_locale_error_class() -> type[UnknownLocaleError]:
@@ -157,13 +153,9 @@ def get_unknown_locale_error_class() -> type[UnknownLocaleError]:
         BabelImportError: If Babel is not installed
     """
     require_babel("UnknownLocaleError")
-    try:
-        from babel import UnknownLocaleError  # noqa: PLC0415 - Babel-optional
+    from babel import UnknownLocaleError  # noqa: PLC0415 - Babel-optional
 
-        return UnknownLocaleError
-    except ImportError as exc:
-        feature = "UnknownLocaleError"
-        raise BabelImportError(feature) from exc
+    return UnknownLocaleError
 
 
 def get_cldr_version() -> str:
@@ -183,15 +175,11 @@ def get_cldr_version() -> str:
         Thread-safe. No mutable state.
     """
     require_babel("get_cldr_version")
-    try:
-        from babel.core import (  # noqa: PLC0415 - Babel-optional
-            get_cldr_version as babel_get_cldr_version,
-        )
+    from babel.core import (  # noqa: PLC0415 - Babel-optional
+        get_cldr_version as babel_get_cldr_version,
+    )
 
-        return babel_get_cldr_version()
-    except ImportError as exc:  # pragma: no cover
-        feature = "get_cldr_version"
-        raise BabelImportError(feature) from exc
+    return babel_get_cldr_version()
 
 
 def get_babel_numbers() -> Any:
@@ -208,13 +196,9 @@ def get_babel_numbers() -> Any:
         BabelImportError: If Babel is not installed
     """
     require_babel("babel.numbers")
-    try:
-        from babel import numbers  # noqa: PLC0415 - Babel-optional
+    from babel import numbers  # noqa: PLC0415 - Babel-optional
 
-        return numbers
-    except ImportError as exc:  # pragma: no cover
-        feature = "babel.numbers"
-        raise BabelImportError(feature) from exc
+    return numbers
 
 
 def get_babel_dates() -> Any:
@@ -231,13 +215,9 @@ def get_babel_dates() -> Any:
         BabelImportError: If Babel is not installed
     """
     require_babel("babel.dates")
-    try:
-        from babel import dates  # noqa: PLC0415 - Babel-optional
+    from babel import dates  # noqa: PLC0415 - Babel-optional
 
-        return dates
-    except ImportError as exc:  # pragma: no cover
-        feature = "babel.dates"
-        raise BabelImportError(feature) from exc
+    return dates
 
 
 def get_global_data_func() -> Any:
@@ -253,13 +233,9 @@ def get_global_data_func() -> Any:
         BabelImportError: If Babel is not installed
     """
     require_babel("babel.core.get_global")
-    try:
-        from babel.core import get_global  # noqa: PLC0415 - Babel-optional
+    from babel.core import get_global  # noqa: PLC0415 - Babel-optional
 
-        return get_global
-    except ImportError as exc:  # pragma: no cover
-        feature = "babel.core.get_global"
-        raise BabelImportError(feature) from exc
+    return get_global
 
 
 def get_number_format_error_class() -> type[NumberFormatError]:
@@ -274,13 +250,9 @@ def get_number_format_error_class() -> type[NumberFormatError]:
         BabelImportError: If Babel is not installed
     """
     require_babel("NumberFormatError")
-    try:
-        from babel.numbers import NumberFormatError  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import NumberFormatError  # noqa: PLC0415 - Babel-optional
 
-        return NumberFormatError
-    except ImportError as exc:  # pragma: no cover
-        feature = "NumberFormatError"
-        raise BabelImportError(feature) from exc
+    return NumberFormatError
 
 
 def get_parse_decimal_func() -> Any:
@@ -296,13 +268,9 @@ def get_parse_decimal_func() -> Any:
         BabelImportError: If Babel is not installed
     """
     require_babel("babel.numbers.parse_decimal")
-    try:
-        from babel.numbers import parse_decimal  # noqa: PLC0415 - Babel-optional
+    from babel.numbers import parse_decimal  # noqa: PLC0415 - Babel-optional
 
-        return parse_decimal
-    except ImportError as exc:  # pragma: no cover
-        feature = "babel.numbers.parse_decimal"
-        raise BabelImportError(feature) from exc
+    return parse_decimal
 
 
 def get_locale_identifiers_func() -> Any:
@@ -318,10 +286,6 @@ def get_locale_identifiers_func() -> Any:
         BabelImportError: If Babel is not installed
     """
     require_babel("babel.localedata.locale_identifiers")
-    try:
-        from babel.localedata import locale_identifiers  # noqa: PLC0415 - Babel-optional
+    from babel.localedata import locale_identifiers  # noqa: PLC0415 - Babel-optional
 
-        return locale_identifiers
-    except ImportError as exc:  # pragma: no cover
-        feature = "babel.localedata.locale_identifiers"
-        raise BabelImportError(feature) from exc
+    return locale_identifiers

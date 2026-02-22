@@ -682,6 +682,7 @@ class TestBabelExceptionHandling:
         """BabelImportError is raised when Babel is not available."""
         # Temporarily hide babel modules to trigger ImportError
         babel_modules = {k: v for k, v in sys.modules.items() if k.startswith("babel")}
+        saved_available = _bc._babel_available
         try:
             # Remove babel from sys.modules
             for key in list(babel_modules.keys()):
@@ -693,6 +694,12 @@ class TestBabelExceptionHandling:
             # Prevent import by blocking it
             sys.modules["babel"] = None  # type: ignore[assignment]
 
+            # Reset the availability sentinel so require_babel() re-evaluates against
+            # the patched sys.modules. Without this, a cached True value causes
+            # require_babel() to pass even though Babel is no longer importable,
+            # leading to a raw ModuleNotFoundError instead of BabelImportError.
+            _bc._babel_available = None
+
             # Now try to use the functions - they should raise BabelImportError
             # PLC0415: Runtime import needed to test ImportError path
             from ftllexengine.introspection import iso  # noqa: PLC0415
@@ -701,9 +708,10 @@ class TestBabelExceptionHandling:
                 iso.get_territory("US")
 
         finally:
-            # Restore babel modules
+            # Restore babel modules and availability sentinel
             for key, value in babel_modules.items():
                 sys.modules[key] = value
+            _bc._babel_available = saved_available
             # Clear cache again to restore normal operation
             clear_iso_cache()
 
@@ -763,18 +771,13 @@ class TestPrivateBabelWrappers:
         assert len(result) > 0
 
     def test_get_babel_currency_name_import_error(self) -> None:
-        """_get_babel_currency_name raises BabelImportError when import fails."""
-        error_msg = "Mocked import failure"
-
-        def mock_import(name: str, *args: object, **kwargs: object) -> object:
-            if name in ("babel", "babel.numbers"):
-                raise ImportError(error_msg)
-            return __import__(name, *args, **kwargs)  # type: ignore[arg-type]
-
-        with patch("builtins.__import__", side_effect=mock_import), pytest.raises(
-            BabelImportError
-        ):
-            _get_babel_currency_name("USD", "en")
+        """_get_babel_currency_name raises BabelImportError when Babel unavailable."""
+        _bc._babel_available = False
+        try:
+            with pytest.raises(BabelImportError):
+                _get_babel_currency_name("USD", "en")
+        finally:
+            _bc._babel_available = None
 
     def test_get_babel_currency_symbol_import_error(self) -> None:
         """_get_babel_currency_symbol raises BabelImportError when Babel unavailable."""

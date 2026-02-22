@@ -8,7 +8,7 @@ Provides financial-grade caching of format_pattern() calls with:
 - Automatic invalidation on resource/function changes
 
 Architecture:
-    - Thread-safe using threading.RLock (reentrant lock)
+    - Thread-safe using threading.Lock
     - LRU eviction via OrderedDict
     - Immutable cache keys (tuples of hashable types)
     - Content-addressed entries with BLAKE2b-128 checksums
@@ -23,7 +23,7 @@ Cache Key Structure:
     - use_isolating: bool
 
 Thread Safety:
-    All operations protected by RLock. Safe for concurrent reads and writes.
+    All operations protected by Lock. Safe for concurrent reads and writes.
 
 Python 3.13+. Zero external dependencies.
 """
@@ -379,7 +379,7 @@ class IntegrityCache:
     silent data corruption is unacceptable.
 
     Thread Safety:
-        All operations are protected by RLock. Safe for concurrent access.
+        All operations are protected by Lock. Safe for concurrent access.
 
     Memory Protection:
         The max_entry_weight parameter prevents unbounded memory usage.
@@ -645,13 +645,17 @@ class IntegrityCache:
             self._sequence += 1
             entry = IntegrityCacheEntry.create(formatted, errors, self._sequence)
 
-            # LRU eviction if needed
-            if len(self._cache) >= self._maxsize:
+            # LRU eviction only when adding a new key (not updating an existing one).
+            # Without this guard, updating an existing key in a full cache would
+            # evict an unrelated LRU entry AND keep the existing key, shrinking
+            # the cache by one slot per thundering-herd write to the same key.
+            is_update = key in self._cache
+            if not is_update and len(self._cache) >= self._maxsize:
                 evicted_key, evicted_entry = self._cache.popitem(last=False)
                 self._audit("EVICT", evicted_key, evicted_entry)
 
-            # Update existing or add new
-            if key in self._cache:
+            # Update existing (promote to MRU end) or insert new
+            if is_update:
                 self._cache.move_to_end(key)
             self._cache[key] = entry
             self._audit("PUT", key, entry)

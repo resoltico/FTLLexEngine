@@ -256,17 +256,20 @@ class FluentResolver:
         """
         parts: list[str] = []
 
-        for element in pattern.elements:
-            # Check expansion budget before each element to stop early
-            if context.total_chars > context.max_expansion_size:
-                diag = ErrorTemplate.expansion_budget_exceeded(
-                    context.total_chars, context.max_expansion_size
-                )
-                errors.append(
-                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-                )
-                break
+        # Fast-path: budget already exceeded before any element is processed.
+        # Covers externally-provided ResolutionContext instances (e.g., test fixtures,
+        # callers that pass a pre-populated context) where no element in this pattern
+        # has yet contributed to the error list.
+        if context.total_chars > context.max_expansion_size:
+            diag = ErrorTemplate.expansion_budget_exceeded(
+                context.total_chars, context.max_expansion_size
+            )
+            errors.append(
+                FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
+            )
+            return "".join(parts)
 
+        for element in pattern.elements:
             match element:
                 case TextElement():
                     context.track_expansion(len(element.value))
@@ -294,16 +297,22 @@ class FluentResolver:
                                 element.expression, args, errors, context
                             )
                         formatted = self._format_value(value)
+                        pre_track = context.total_chars
                         context.track_expansion(len(formatted))
                         if context.total_chars > context.max_expansion_size:
-                            diag = ErrorTemplate.expansion_budget_exceeded(
-                                context.total_chars, context.max_expansion_size
-                            )
-                            errors.append(
-                                FrozenFluentError(
-                                    str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
+                            if pre_track <= context.max_expansion_size:
+                                # This placeable's formatted output caused the overflow.
+                                # When pre_track was already over the limit, the overflow
+                                # was reported inside the nested resolution (term, message,
+                                # or select variant), and we must not duplicate that error.
+                                diag = ErrorTemplate.expansion_budget_exceeded(
+                                    context.total_chars, context.max_expansion_size
                                 )
-                            )
+                                errors.append(
+                                    FrozenFluentError(
+                                        str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
+                                    )
+                                )
                             break
 
                         # Wrap in Unicode bidi isolation marks (FSI/PDI)

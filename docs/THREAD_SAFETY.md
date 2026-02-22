@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.122.0"
 domain: architecture
-updated: "2026-02-21"
+updated: "2026-02-22"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -24,7 +24,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 | `FluentBundle` | Yes (all ops) | Yes | RWLock-protected reads and writes |
 | `FluentLocalization` | Yes (all ops) | Yes | RWLock-protected; concurrent format reads |
 | `FluentParserV1` | Yes | Yes | Stateless parsing |
-| `IntegrityCache` | Yes | Yes | RLock-protected |
+| `IntegrityCache` | Yes | Yes | Lock-protected |
 | `FunctionRegistry` | Copy-on-write | Copy-on-write | Copied on bundle init |
 | Introspection cache | Accepted race | Accepted race | Redundant computation, no corruption |
 | Parse error context | Thread-local | Requires clear | Call `clear_parse_error()` before parse |
@@ -39,7 +39,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 - All read operations (`format_pattern()`, `has_message()`, introspection) acquire read lock (concurrent)
 - All write operations (`add_resource()`, `add_function()`) acquire write lock (exclusive)
 - `format_pattern()` creates isolated `ResolutionContext` per call
-- `IntegrityCache` uses `RLock` for internal synchronization
+- `IntegrityCache` uses `Lock` for internal synchronization
 - `FunctionRegistry` is copied on initialization (copy-on-write)
 - Batch operations (`get_all_message_variables()`) acquire single read lock for atomic snapshot
 
