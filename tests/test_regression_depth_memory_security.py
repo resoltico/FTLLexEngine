@@ -277,8 +277,8 @@ class TestSecCacheErrorBloat001:
         assert "max_errors_per_entry" in stats
         assert stats["max_errors_per_entry"] == 25
 
-    def test_cache_clear_resets_error_bloat_counter(self) -> None:
-        """Cache.clear() resets error_bloat_skips counter."""
+    def test_cache_clear_preserves_error_bloat_counter(self) -> None:
+        """Cache.clear() does not reset error_bloat_skips; counter is cumulative."""
         cache = IntegrityCache(strict=False, max_errors_per_entry=5)
 
         # Trigger some error bloat skips
@@ -292,8 +292,8 @@ class TestSecCacheErrorBloat001:
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 2
 
-        # Clear should reset
+        # clear() removes entries but preserves cumulative observability metrics.
         cache.clear()
 
         stats = cache.get_stats()
-        assert stats["error_bloat_skips"] == 0
+        assert stats["error_bloat_skips"] == 2

@@ -15,6 +15,8 @@ Constants are grouped by domain:
 Python 3.13+. Zero external dependencies.
 """
 
+from types import MappingProxyType
+
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
     # Depth limits
@@ -257,7 +259,7 @@ FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # -> {!NUMBER}
 
 # Currencies with non-standard decimal digits (0, 3, or 4).
 # All currencies not listed here default to 2 decimal digits.
-ISO_4217_DECIMAL_DIGITS: dict[str, int] = {
+ISO_4217_DECIMAL_DIGITS: MappingProxyType[str, int] = MappingProxyType({
     # Zero decimal currencies (no minor unit or minor unit not used)
     "BIF": 0,  # Burundian Franc
     "CLP": 0,  # Chilean Peso
@@ -287,7 +289,7 @@ ISO_4217_DECIMAL_DIGITS: dict[str, int] = {
     # Four decimal currencies (accounting/indexing units)
     "CLF": 4,  # Unidad de Fomento (Chile)
     "UYW": 4,  # Unidad Previsional (Uruguay)
-}
+})
 
 # Default decimal digits for currencies not in ISO_4217_DECIMAL_DIGITS.
 # Per ISO 4217, the vast majority of currencies use 2 decimal places.

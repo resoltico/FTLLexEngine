@@ -565,11 +565,12 @@ class TestCacheConfiguration:
         # Format again - should be cache miss
         l10n.format_value("msg")
 
-        # Verify cache was cleared (only 1 miss after clear)
+        # Verify cache was cleared; metrics are cumulative (not reset on clear).
+        # 1 miss before clear + 1 miss after clear = 2 cumulative misses.
         bundles = list(l10n.get_bundles())
         lv_stats = bundles[0].get_cache_stats()
         assert lv_stats is not None
-        assert lv_stats["misses"] == 1  # Only the post-clear miss
+        assert lv_stats["misses"] == 2  # Pre-clear miss + post-clear miss
 
 
 class TestCacheIntrospection:
@@ -608,7 +609,8 @@ class TestCacheIntrospection:
         # Check all bundles have matching config
         for bundle in l10n.get_bundles():
             assert bundle.cache_enabled is True
-            assert bundle.cache_size == 250
+            assert bundle.cache_config is not None
+            assert bundle.cache_config.size == 250
 
 
 class TestMultiLocaleFileLoading:

@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.118.0"
+version: "0.121.0"
 domain: CORE
 updated: "2026-02-21"
 route:
@@ -535,27 +535,11 @@ def cache_enabled(self) -> bool:
 ### Signature
 ```python
 @property
-def cache_config(self) -> CacheConfig:
+def cache_config(self) -> CacheConfig | None:
 ```
 
 ### Constraints
-- Return: The `CacheConfig` instance used by this bundle.
-- Raises: None.
-- State: Read-only property. When caching is disabled (`cache=None`), returns a default `CacheConfig()`.
-- Thread: Safe.
-
----
-
-## `FluentBundle.cache_size`
-
-### Signature
-```python
-@property
-def cache_size(self) -> int:
-```
-
-### Constraints
-- Return: Configured maximum cache entries (delegates to `cache_config.size`).
+- Return: `CacheConfig` when caching enabled; `None` when `cache=None` was passed to constructor.
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
@@ -1251,12 +1235,30 @@ def get_cache_stats(self) -> dict[str, int | float | bool] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Dict with aggregated cache metrics, or None if caching disabled.
-- Keys: size (int), maxsize (int), hits (int), misses (int), hit_rate (float 0.0-100.0), unhashable_skips (int), bundle_count (int).
+- Return: Dict with 18 aggregated cache metrics, or None if caching disabled.
+  - `size` (int): total cached entries across all bundles
+  - `maxsize` (int): sum of maximum cache sizes
+  - `max_entry_weight` (int): max entry weight (from first bundle)
+  - `max_errors_per_entry` (int): max errors per entry (from first bundle)
+  - `hits` (int): total cache hits
+  - `misses` (int): total cache misses
+  - `hit_rate` (float, 0.0-100.0): weighted hit rate
+  - `unhashable_skips` (int): total uncacheable argument skips
+  - `oversize_skips` (int): total entries skipped due to result weight
+  - `error_bloat_skips` (int): total entries skipped due to error count
+  - `corruption_detected` (int): total checksum mismatches detected
+  - `idempotent_writes` (int): total benign concurrent writes
+  - `sequence` (int): sum of sequence numbers (total puts across bundles)
+  - `write_once` (bool): write-once mode (from first bundle's config)
+  - `strict` (bool): strict mode (from first bundle's config)
+  - `audit_enabled` (bool): audit logging (from first bundle's config)
+  - `audit_entries` (int): total audit log entries
+  - `bundle_count` (int): number of initialized bundles
+- Note: Boolean fields reflect first bundle config; all bundles share one CacheConfig.
+- Note: `bundle_count` reflects only initialized bundles, not total locales.
 - Raises: None.
 - State: Reads cache statistics from all initialized bundles.
 - Thread: Safe.
-- Note: bundle_count reflects only initialized bundles, not total locales.
 
 ---
 

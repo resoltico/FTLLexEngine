@@ -487,19 +487,21 @@ class TestPropertyAccessEdgeCases:
         bundle = FluentBundle("en", cache=CacheConfig())
         assert bundle.cache_enabled is True
 
-    def test_cache_size_property_returns_configured_size(self) -> None:
-        """cache_size returns configured size from CacheConfig."""
+    def test_cache_config_size_returns_configured_size(self) -> None:
+        """cache_config.size returns configured size from CacheConfig."""
         bundle = FluentBundle("en", cache=CacheConfig(size=200))
-        assert bundle.cache_size == 200
+        assert bundle.cache_config is not None
+        assert bundle.cache_config.size == 200
         assert bundle.cache_enabled is True
 
     @given(st.integers(min_value=1, max_value=10000))
-    def test_property_cache_size_reflects_initialization(self, size: int) -> None:
-        """Property: cache_size always reflects CacheConfig parameter."""
+    def test_property_cache_config_size_reflects_initialization(self, size: int) -> None:
+        """Property: cache_config.size always reflects CacheConfig parameter."""
         scale = "small" if size <= 100 else "large"
         event(f"boundary={scale}_cache")
         bundle = FluentBundle("en", cache=CacheConfig(size=size))
-        assert bundle.cache_size == size
+        assert bundle.cache_config is not None
+        assert bundle.cache_config.size == size
 
 
 # ============================================================================

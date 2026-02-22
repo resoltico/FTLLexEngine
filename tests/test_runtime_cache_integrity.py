@@ -763,17 +763,18 @@ class TestIdempotentWrites:
         assert entry is not None
         assert entry.formatted == "Hello"
 
-    def test_idempotent_counter_reset_on_clear(self) -> None:
-        """Idempotent counter reset when cache is cleared."""
+    def test_idempotent_counter_preserved_on_clear(self) -> None:
+        """Idempotent counter is cumulative across clear() calls."""
         cache = IntegrityCache(write_once=True, strict=True)
         cache.put("msg", None, None, "en", True, "Hello", ())
         cache.put("msg", None, None, "en", True, "Hello", ())  # Idempotent
 
         assert cache.idempotent_writes == 1
 
+        # clear() removes entries but does NOT reset cumulative metrics.
         cache.clear()
 
-        assert cache.idempotent_writes == 0
+        assert cache.idempotent_writes == 1
 
     def test_audit_records_idempotent_writes(self) -> None:
         """Audit log records WRITE_ONCE_IDEMPOTENT operations."""
@@ -995,25 +996,6 @@ class TestIntegrityCacheEntryContentHash:
         entry = IntegrityCacheEntry.create("formatted text", (error,), sequence=1)
         assert entry.checksum is not None
         assert len(entry.checksum) == 16  # BLAKE2b-128
-        assert entry.verify() is True
-
-    def test_compute_checksum_without_content_hash(self) -> None:
-        """_compute_checksum handles errors without content_hash via str() fallback."""
-
-        class CustomError(Exception):
-            def __init__(self, message: str) -> None:
-                super().__init__(message)
-                self.message = message
-
-            def __str__(self) -> str:
-                return self.message
-
-        custom_error = CustomError("Custom error message")
-        entry = IntegrityCacheEntry.create(
-            "formatted text", (custom_error,), sequence=1  # type: ignore[arg-type]
-        )
-        assert entry.checksum is not None
-        assert len(entry.checksum) == 16
         assert entry.verify() is True
 
     def test_compute_checksum_with_multiple_errors_content_hash(self) -> None:
@@ -1246,173 +1228,6 @@ class TestIntegrityCacheEdgeCases:
             assert entry is not None
         assert cache.hits == 5
         assert cache.get_audit_log() == ()
-
-
-# ============================================================================
-# NON-STANDARD ERROR OBJECT FALLBACK (content_hash attribute variants)
-# ============================================================================
-
-
-class _ErrorWithoutContentHash:
-    """Mock error object without content_hash attribute."""
-
-    def __init__(self, message: str) -> None:
-        self.message = message
-        self.diagnostic = None
-        self.context = None
-
-    def __str__(self) -> str:
-        return self.message
-
-
-class _ErrorWithNonBytesContentHash:
-    """Mock error object with content_hash attribute that is not bytes."""
-
-    def __init__(self, message: str) -> None:
-        self.message = message
-        self.content_hash = "not-bytes-string"
-        self.diagnostic = None
-        self.context = None
-
-    def __str__(self) -> str:
-        return self.message
-
-
-class _ErrorWithNoneContentHash:
-    """Mock error object with content_hash=None."""
-
-    def __init__(self, message: str) -> None:
-        self.message = message
-        self.content_hash = None
-        self.diagnostic = None
-        self.context = None
-
-    def __str__(self) -> str:
-        return self.message
-
-
-class TestErrorContentHashFallback:
-    """Test fallback path for errors without proper content_hash bytes attribute.
-
-    _compute_checksum and _compute_content_hash fall back to str(error).encode()
-    when error.content_hash is missing, None, or not bytes.
-    """
-
-    def test_entry_create_with_error_without_content_hash(self) -> None:
-        """IntegrityCacheEntry.create() handles errors without content_hash attribute."""
-        error = _ErrorWithoutContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        assert entry.formatted == "formatted"
-        assert entry.errors == (error,)  # type: ignore[comparison-overlap]
-        assert len(entry.checksum) == 16
-
-    def test_entry_create_with_non_bytes_content_hash(self) -> None:
-        """IntegrityCacheEntry.create() handles non-bytes content_hash via fallback."""
-        error = _ErrorWithNonBytesContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        assert entry.formatted == "formatted"
-        assert len(entry.checksum) == 16
-
-    def test_entry_create_with_none_content_hash(self) -> None:
-        """IntegrityCacheEntry.create() handles content_hash=None via fallback."""
-        error = _ErrorWithNoneContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        assert entry.formatted == "formatted"
-        assert len(entry.checksum) == 16
-
-    def test_content_hash_property_without_content_hash_attr(self) -> None:
-        """content_hash property handles errors without content_hash attribute."""
-        error = _ErrorWithoutContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        content_hash = entry.content_hash
-        assert content_hash is not None
-        assert len(content_hash) == 16
-
-    def test_content_hash_property_with_non_bytes_content_hash(self) -> None:
-        """content_hash property handles non-bytes content_hash via fallback."""
-        error = _ErrorWithNonBytesContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        content_hash = entry.content_hash
-        assert content_hash is not None
-        assert len(content_hash) == 16
-
-    def test_content_hash_property_with_none_content_hash(self) -> None:
-        """content_hash property handles content_hash=None via fallback."""
-        error = _ErrorWithNoneContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        content_hash = entry.content_hash
-        assert content_hash is not None
-        assert len(content_hash) == 16
-
-    def test_cache_roundtrip_with_error_without_content_hash(self) -> None:
-        """Cache roundtrip works with errors lacking content_hash."""
-        cache = IntegrityCache(strict=False)
-        error = _ErrorWithoutContentHash("Test error")
-        cache.put("msg", None, None, "en", True, "formatted", (error,))  # type: ignore[arg-type]
-        entry = cache.get("msg", None, None, "en", True)
-        assert entry is not None
-        assert entry.formatted == "formatted"
-        assert entry.verify()
-
-    def test_different_error_strings_produce_different_checksums(self) -> None:
-        """Errors without content_hash produce different checksums when str() differs."""
-        error1 = _ErrorWithoutContentHash("Error 1")
-        error2 = _ErrorWithoutContentHash("Error 2")
-        entry1 = IntegrityCacheEntry.create(
-            "formatted", (error1,), sequence=1  # type: ignore[arg-type]
-        )
-        entry2 = IntegrityCacheEntry.create(
-            "formatted", (error2,), sequence=1  # type: ignore[arg-type]
-        )
-        assert entry1.checksum != entry2.checksum
-        assert entry1.content_hash != entry2.content_hash
-
-    def test_same_error_string_produces_same_content_hash(self) -> None:
-        """Errors with same str() produce same content_hash despite different sequences."""
-        error1 = _ErrorWithoutContentHash("Same message")
-        error2 = _ErrorWithoutContentHash("Same message")
-        entry1 = IntegrityCacheEntry.create(
-            "formatted", (error1,), sequence=1  # type: ignore[arg-type]
-        )
-        entry2 = IntegrityCacheEntry.create(
-            "formatted", (error2,), sequence=2  # type: ignore[arg-type]
-        )
-        assert entry1.content_hash == entry2.content_hash
-        assert entry1.checksum != entry2.checksum  # Sequences differ
-
-    def test_verify_skips_errors_without_verify_integrity_method(self) -> None:
-        """verify() skips recursive verification for errors without verify_integrity."""
-        error = _ErrorWithoutContentHash("Test error")
-        entry = IntegrityCacheEntry.create(
-            "formatted", (error,), sequence=1  # type: ignore[arg-type]
-        )
-        assert entry.verify() is True
-
-    def test_mixed_error_types_all_handled(self) -> None:
-        """Mix of standard and non-standard errors all handled correctly."""
-        standard_error = FrozenFluentError("Standard", ErrorCategory.REFERENCE)
-        no_hash_error = _ErrorWithoutContentHash("No hash")
-        wrong_type_error = _ErrorWithNonBytesContentHash("Wrong type")
-        errors = (standard_error, no_hash_error, wrong_type_error)
-        entry = IntegrityCacheEntry.create(
-            "formatted", errors, sequence=1  # type: ignore[arg-type]
-        )
-        assert entry.formatted == "formatted"
-        assert len(entry.checksum) == 16
-        assert len(entry.content_hash) == 16
-        assert entry.verify() is True
 
 
 # ============================================================================

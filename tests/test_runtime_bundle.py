@@ -544,15 +544,16 @@ class TestFluentBundleMockedErrors:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello { $name }")
 
-        # Mock FluentResolver to raise KeyError
-        with patch("ftllexengine.runtime.bundle.FluentResolver") as MockResolver:
-            mock_resolver = Mock()
-            mock_resolver.resolve_message.side_effect = KeyError("name")
-            MockResolver.return_value = mock_resolver
-
-            # KeyError propagates (fail-fast)
-            with pytest.raises(KeyError, match="name"):
-                bundle.format_pattern("msg", {})
+        # Patch the resolver instance directly; resolver is eagerly initialized
+        # so patching the FluentResolver class does not affect existing bundles.
+        mock_resolver = Mock()
+        mock_resolver.resolve_message.side_effect = KeyError("name")
+        # KeyError propagates (fail-fast)
+        with (
+            patch.object(bundle, "_resolver", mock_resolver),
+            pytest.raises(KeyError, match="name"),
+        ):
+            bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_attribute_error_exception(self) -> None:
         """Bundle propagates AttributeError from resolver (fail-fast behavior).
@@ -562,15 +563,15 @@ class TestFluentBundleMockedErrors:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
-        # Mock FluentResolver to raise AttributeError
-        with patch("ftllexengine.runtime.bundle.FluentResolver") as MockResolver:
-            mock_resolver = Mock()
-            mock_resolver.resolve_message.side_effect = AttributeError("Invalid attribute")
-            MockResolver.return_value = mock_resolver
-
-            # AttributeError propagates (fail-fast)
-            with pytest.raises(AttributeError, match="Invalid attribute"):
-                bundle.format_pattern("msg", {})
+        # Patch the resolver instance directly; resolver is eagerly initialized.
+        mock_resolver = Mock()
+        mock_resolver.resolve_message.side_effect = AttributeError("Invalid attribute")
+        # AttributeError propagates (fail-fast)
+        with (
+            patch.object(bundle, "_resolver", mock_resolver),
+            pytest.raises(AttributeError, match="Invalid attribute"),
+        ):
+            bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_recursion_error_exception(self) -> None:
         """Bundle propagates RecursionError from resolver (fail-fast behavior).
@@ -580,15 +581,15 @@ class TestFluentBundleMockedErrors:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
-        # Mock FluentResolver to raise RecursionError
-        with patch("ftllexengine.runtime.bundle.FluentResolver") as MockResolver:
-            mock_resolver = Mock()
-            mock_resolver.resolve_message.side_effect = RecursionError("Maximum recursion")
-            MockResolver.return_value = mock_resolver
-
-            # RecursionError propagates (fail-fast)
-            with pytest.raises(RecursionError, match="Maximum recursion"):
-                bundle.format_pattern("msg", {})
+        # Patch the resolver instance directly; resolver is eagerly initialized.
+        mock_resolver = Mock()
+        mock_resolver.resolve_message.side_effect = RecursionError("Maximum recursion")
+        # RecursionError propagates (fail-fast)
+        with (
+            patch.object(bundle, "_resolver", mock_resolver),
+            pytest.raises(RecursionError, match="Maximum recursion"),
+        ):
+            bundle.format_pattern("msg", {})
 
     def test_format_pattern_with_unexpected_exception(self) -> None:
         """Bundle propagates unexpected exceptions from resolver (fail-fast behavior).
@@ -599,15 +600,15 @@ class TestFluentBundleMockedErrors:
         bundle = FluentBundle("en_US")
         bundle.add_resource("msg = Hello")
 
-        # Mock FluentResolver to raise unexpected exception
-        with patch("ftllexengine.runtime.bundle.FluentResolver") as MockResolver:
-            mock_resolver = Mock()
-            mock_resolver.resolve_message.side_effect = RuntimeError("Unexpected error")
-            MockResolver.return_value = mock_resolver
-
-            # RuntimeError propagates (fail-fast)
-            with pytest.raises(RuntimeError, match="Unexpected error"):
-                bundle.format_pattern("msg", {})
+        # Patch the resolver instance directly; resolver is eagerly initialized.
+        mock_resolver = Mock()
+        mock_resolver.resolve_message.side_effect = RuntimeError("Unexpected error")
+        # RuntimeError propagates (fail-fast)
+        with (
+            patch.object(bundle, "_resolver", mock_resolver),
+            pytest.raises(RuntimeError, match="Unexpected error"),
+        ):
+            bundle.format_pattern("msg", {})
 
     # Note: Lines 76-77 (term debug logging) are unreachable with current parser
     # Parser doesn't support Term syntax (-term = value), so isinstance(entry, Term)
@@ -762,17 +763,17 @@ def test_cache_enabled_property_default():
     assert bundle.cache_enabled is False
 
 
-def test_cache_size_property_when_enabled():
-    """cache_size property returns configured size when caching enabled."""
+def test_cache_config_size_when_enabled():
+    """cache_config.size returns configured size when caching enabled."""
     bundle = FluentBundle("en", cache=CacheConfig(size=500))
-    assert bundle.cache_size == 500
+    assert bundle.cache_config is not None
+    assert bundle.cache_config.size == 500
 
 
-def test_cache_size_property_default():
-    """cache_size property returns default (1000) even when cache disabled."""
+def test_cache_config_is_none_when_disabled():
+    """cache_config returns None when caching is disabled."""
     bundle = FluentBundle("en")
-    # Returns default configured limit (1000)
-    assert bundle.cache_size == 1000
+    assert bundle.cache_config is None
     assert bundle.cache_enabled is False
 
 
@@ -817,10 +818,11 @@ class TestBundlePropertyAccessors:
         assert FluentBundle("en", cache=CacheConfig()).cache_enabled is True
         assert FluentBundle("en").cache_enabled is False
 
-    def test_cache_size_property(self) -> None:
-        """cache_size property returns configured maximum."""
+    def test_cache_config_size_property(self) -> None:
+        """cache_config.size returns configured maximum."""
         bundle = FluentBundle("en", cache=CacheConfig(size=500))
-        assert bundle.cache_size == 500
+        assert bundle.cache_config is not None
+        assert bundle.cache_config.size == 500
 
     def test_cache_usage_property_tracks_entries(self) -> None:
         """cache_usage property tracks current cached entries."""
@@ -843,15 +845,19 @@ class TestBundlePropertyAccessors:
     def test_cache_write_once_config(self) -> None:
         """cache_config.write_once reflects configured boolean."""
         on = FluentBundle("en", cache=CacheConfig(write_once=True))
+        assert on.cache_config is not None
         assert on.cache_config.write_once is True
         off = FluentBundle("en", cache=CacheConfig(write_once=False))
+        assert off.cache_config is not None
         assert off.cache_config.write_once is False
 
     def test_cache_enable_audit_config(self) -> None:
         """cache_config.enable_audit reflects configured boolean."""
         on = FluentBundle("en", cache=CacheConfig(enable_audit=True))
+        assert on.cache_config is not None
         assert on.cache_config.enable_audit is True
         off = FluentBundle("en", cache=CacheConfig(enable_audit=False))
+        assert off.cache_config is not None
         assert off.cache_config.enable_audit is False
 
     def test_cache_max_audit_entries_config(self) -> None:
@@ -859,6 +865,7 @@ class TestBundlePropertyAccessors:
         bundle = FluentBundle(
             "en", cache=CacheConfig(max_audit_entries=5000)
         )
+        assert bundle.cache_config is not None
         assert bundle.cache_config.max_audit_entries == 5000
 
     def test_cache_max_entry_weight_config(self) -> None:
@@ -866,6 +873,7 @@ class TestBundlePropertyAccessors:
         bundle = FluentBundle(
             "en", cache=CacheConfig(max_entry_weight=8000)
         )
+        assert bundle.cache_config is not None
         assert bundle.cache_config.max_entry_weight == 8000
 
     def test_cache_max_errors_per_entry_config(self) -> None:
@@ -873,6 +881,7 @@ class TestBundlePropertyAccessors:
         bundle = FluentBundle(
             "en", cache=CacheConfig(max_errors_per_entry=25)
         )
+        assert bundle.cache_config is not None
         assert bundle.cache_config.max_errors_per_entry == 25
 
     def test_max_source_size_property(self) -> None:
@@ -1056,7 +1065,8 @@ class TestBundleForSystemLocale:
             assert bundle.locale == "de_DE"
             assert bundle.use_isolating is False
             assert bundle.cache_enabled is True
-            assert bundle.cache_size == 2000
+            assert bundle.cache_config is not None
+            assert bundle.cache_config.size == 2000
             assert bundle.strict is True
             assert bundle.max_source_size == 500_000
 
@@ -2149,8 +2159,8 @@ class TestBundleHypothesisProperties:
         assert bundle.strict == strict
 
     @given(st.integers(min_value=1, max_value=10000))
-    def test_cache_size_preserved(self, cache_size: int) -> None:
-        """cache_size configuration is preserved."""
+    def test_cache_config_size_preserved(self, cache_size: int) -> None:
+        """cache_config.size is preserved from CacheConfig constructor."""
         if cache_size < 100:
             event("boundary=small")
         elif cache_size < 5000:
@@ -2158,7 +2168,8 @@ class TestBundleHypothesisProperties:
         else:
             event("boundary=large")
         bundle = FluentBundle("en", cache=CacheConfig(size=cache_size))
-        assert bundle.cache_size == cache_size
+        assert bundle.cache_config is not None
+        assert bundle.cache_config.size == cache_size
 
     # --- Validation properties (from test_bundle_coverage, events added) ---
 

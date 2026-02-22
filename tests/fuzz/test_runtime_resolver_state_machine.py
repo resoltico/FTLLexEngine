@@ -125,7 +125,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
         event("rule=add_simple_message")
         return msg_id
 
@@ -143,7 +142,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
         event("rule=add_message_with_variable")
         return msg_id
 
@@ -157,7 +155,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.term_registry[term_id] = term
-        self.resolver.terms = self.term_registry
         event("rule=add_simple_term")
         return term_id
 
@@ -175,7 +172,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
         event("rule=add_message_referencing_term")
         return msg_id
 
@@ -239,7 +235,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
 
         result, errors = self.resolver.resolve_message(message, args={}, attribute=attr_name)
         assert text in result
@@ -281,7 +276,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
 
         result, errors = self.resolver.resolve_message(message, args={})
         assert isinstance(result, str)
@@ -310,7 +304,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
 
         result, errors = self.resolver.resolve_message(message, args={})
         assert isinstance(result, str)
@@ -349,7 +342,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
 
         self.message_registry[msg_id1] = message1
         self.message_registry[msg_id2] = message2
-        self.resolver.messages = self.message_registry
 
         result, _errors = self.resolver.resolve_message(message1, args={})
         assert isinstance(result, str)
@@ -387,7 +379,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         )
 
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
 
         result, errors = self.resolver.resolve_message(message, args={"count": number})
         assert result in ["singular", "plural"]
@@ -410,7 +401,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
             comment=None,
         )
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
 
         result, errors = self.resolver.resolve_message(message, args={})
         assert len(errors) == 1
@@ -442,7 +432,6 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
         )
 
         self.message_registry[msg_id] = message
-        self.resolver.messages = self.message_registry
 
         result, errors = self.resolver.resolve_message(message, args={})
         assert isinstance(result, str)
@@ -457,16 +446,16 @@ class FluentResolverStateMachine(RuleBasedStateMachine):
     @invariant()
     def resolver_state_consistent(self) -> None:
         """Invariant: Resolver registries stay consistent."""
-        assert self.resolver.messages == self.message_registry
-        assert self.resolver.terms == self.term_registry
-        assert self.resolver.locale == self.locale
+        assert self.resolver._messages == self.message_registry
+        assert self.resolver._terms == self.term_registry
+        assert self.resolver._locale == self.locale
         msg_count = len(self.message_registry)
         event(f"invariant=state_consistent({msg_count})")
 
     @invariant()
     def resolution_uses_explicit_context(self) -> None:
         """Invariant: Resolver properly initialized with explicit context pattern."""
-        assert self.resolver.locale == self.locale
+        assert self.resolver._locale == self.locale
         event("invariant=explicit_context")
 
 

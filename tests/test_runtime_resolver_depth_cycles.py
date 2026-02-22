@@ -12,7 +12,6 @@ Consolidates:
 
 from __future__ import annotations
 
-import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
@@ -113,66 +112,69 @@ class TestResolutionContextExpressionDepth:
 
 
 class TestResolutionContextTrackExpansion:
-    """Direct tests for ResolutionContext.track_expansion() exception path.
+    """Direct tests for ResolutionContext.track_expansion() accumulation.
 
-    Targets the expansion budget DoS protection: track_expansion() raises
-    FrozenFluentError when the accumulated character budget is exceeded.
+    Targets the expansion budget DoS protection: track_expansion() accumulates
+    character counts without raising. Callers check
+    ``total_chars > max_expansion_size`` after each call and generate
+    FrozenFluentError themselves (separation of state tracking from error policy).
     """
 
-    def test_track_expansion_raises_when_budget_exceeded(self) -> None:
-        """track_expansion() raises FrozenFluentError when budget exceeded."""
+    def test_track_expansion_accumulates_correctly(self) -> None:
+        """track_expansion() accumulates total_chars without raising."""
         context = ResolutionContext(max_expansion_size=100)
 
         context.track_expansion(99)
         assert context.total_chars == 99
+        assert context.total_chars <= context.max_expansion_size
 
-        with pytest.raises(FrozenFluentError) as exc_info:
-            context.track_expansion(2)
+        # Exceeding budget is detectable by caller; no exception raised here
+        context.track_expansion(2)
+        assert context.total_chars == 101
+        assert context.total_chars > context.max_expansion_size
 
-        error = exc_info.value
-        assert error.category == ErrorCategory.RESOLUTION
-        assert error.diagnostic is not None
-        assert error.diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
-
-    def test_track_expansion_exact_budget_limit_allowed(self) -> None:
-        """track_expansion() allows reaching exact budget limit."""
+    def test_track_expansion_exact_budget_limit_detectable(self) -> None:
+        """Exact budget limit is detectable by caller after track_expansion."""
         context = ResolutionContext(max_expansion_size=100)
 
         context.track_expansion(100)
         assert context.total_chars == 100
+        # At exactly the budget: caller may allow or deny based on policy
+        assert context.total_chars <= context.max_expansion_size
 
-        with pytest.raises(FrozenFluentError) as exc_info:
-            context.track_expansion(1)
-
-        error = exc_info.value
-        assert error.diagnostic is not None
-        assert error.diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
+        # One more char pushes over the limit — caller detects via comparison
+        context.track_expansion(1)
+        assert context.total_chars == 101
+        assert context.total_chars > context.max_expansion_size
 
     @given(
         budget=st.integers(min_value=1, max_value=1000),
         first_chunk=st.integers(min_value=0, max_value=500),
     )
     @settings(max_examples=50)
-    def test_track_expansion_never_exceeds_without_error(
+    def test_track_expansion_accumulates_accurately(
         self, budget: int, first_chunk: int
     ) -> None:
-        """Property: track_expansion() never allows exceeding budget silently."""
+        """Property: track_expansion() always accumulates total_chars precisely.
+
+        For any budget and chunk sizes, total_chars must equal the exact sum of
+        all chunk arguments passed. The caller detects budget exhaustion via
+        ``total_chars > max_expansion_size``.
+        """
         context = ResolutionContext(max_expansion_size=budget)
 
-        if first_chunk <= budget:
-            event("boundary=under_budget")
-            context.track_expansion(first_chunk)
-            assert context.total_chars == first_chunk
+        context.track_expansion(first_chunk)
+        assert context.total_chars == first_chunk
 
-            excess = budget - first_chunk + 1
-            if excess > 0:
-                with pytest.raises(FrozenFluentError):
-                    context.track_expansion(excess)
-                event("error_path=budget_exceeded")
-        else:
-            event("boundary=at_or_over_budget")
-            with pytest.raises(FrozenFluentError):
-                context.track_expansion(first_chunk)
+        over_budget = first_chunk > budget
+        event("boundary=at_or_over_budget" if over_budget else "boundary=under_budget")
+
+        # Add one more chunk that guarantees budget is exceeded
+        second_chunk = budget - first_chunk + 1
+        if second_chunk > 0:
+            context.track_expansion(second_chunk)
+            assert context.total_chars == first_chunk + second_chunk
+            assert context.total_chars > context.max_expansion_size
             event("error_path=budget_exceeded")
 
 

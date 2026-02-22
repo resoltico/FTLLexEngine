@@ -158,13 +158,13 @@ class TestCacheInvalidation:
         assert stats is not None
         assert stats["size"] == 1
 
-        # Add new resource - cache should be cleared
+        # Add new resource - entries cleared; metrics are cumulative (not reset)
         bundle.add_resource("msg2 = World")
         stats = bundle.get_cache_stats()
         assert stats is not None
-        assert stats["size"] == 0  # Cache cleared
-        assert stats["hits"] == 0  # Stats reset
-        assert stats["misses"] == 0
+        assert stats["size"] == 0  # Entries cleared
+        assert stats["hits"] == 0  # No hits ever occurred
+        assert stats["misses"] == 1  # Pre-clear miss preserved (cumulative)
 
     def test_cache_cleared_on_add_function(self) -> None:
         """Cache is cleared when add_function is called."""

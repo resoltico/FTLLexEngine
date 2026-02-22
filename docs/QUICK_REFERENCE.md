@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.118.0"
+version: "0.121.0"
 domain: reference
 updated: "2026-02-21"
 route:
@@ -344,7 +344,7 @@ bundle.get_babel_locale() -> str
 ```python
 bundle.locale -> str  # Read-only
 bundle.use_isolating -> bool  # Read-only
-bundle.cache_config -> CacheConfig  # Read-only
+bundle.cache_config -> CacheConfig | None  # Read-only; None when caching disabled
 bundle.cache_enabled -> bool  # Read-only
 bundle.cache_usage -> int  # Read-only
 bundle.max_source_size -> int  # Read-only

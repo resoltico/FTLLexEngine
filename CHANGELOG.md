@@ -10,6 +10,184 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.121.0] - 2026-02-22
+
+### Changed (BREAKING)
+
+- **`with_read_lock` and `with_write_lock` decorators removed** (DEAD-RWLOCK-DECORATORS-001):
+  - Both decorators were unreachable dead code: absent from `__all__ = ["RWLock"]`, not imported by any module in the codebase, not covered by any test
+  - Deleted from `runtime/rwlock.py`; `Callable` and `wraps` imports removed alongside; the file now exports only `RWLock`
+  - Callers must use the context-manager API directly: `with lock.read():` / `with lock.write():`, which provide identical semantics without decorator indirection
+  - Location: `runtime/rwlock.py`
+
+- **`ErrorCategory` base changed from `Enum` to `StrEnum`** (CLARITY-ERRORCATEGORY-STRENUM-001):
+  - `ErrorCategory(Enum)` produced `str(ErrorCategory.REFERENCE) == "ErrorCategory.REFERENCE"`; `.value` access was required for serialization and log aggregation, and the `str()` output was not the plain value string
+  - Changed to `ErrorCategory(StrEnum)`: `str(ErrorCategory.REFERENCE) == "reference"`; direct equality `ErrorCategory.REFERENCE == "reference"` is now `True` (StrEnum inherits from `str`); `.value` and `.name` attributes are unchanged
+  - Code comparing `str(category)` against `"ErrorCategory.X"` strings must update to compare against the plain value strings (`"reference"`, `"resolution"`, `"cyclic"`, `"parse"`, `"formatting"`)
+  - Location: `diagnostics/codes.py`
+
+### Fixed
+
+- **TextElement expansion budget exhaustion abandoned entire `parts` accumulator** (DEFECT-RESOLVER-TEXTELEMENT-BUDGET-001):
+  - `_resolve_pattern` handled `Placeable` budget exhaustion by catching `FrozenFluentError`, appending the error, and breaking — preserving previously accumulated `parts`; `TextElement` budget exhaustion propagated the exception upward via `track_expansion`, abandoning the entire `parts` accumulator and silently discarding all previously resolved elements
+  - Fixed: `TextElement` branch now checks `context.total_chars > context.max_expansion_size` after calling `track_expansion`, appends `EXPANSION_BUDGET_EXCEEDED` error, and breaks — symmetric behavior with the `Placeable` path; partial output is preserved regardless of which element type triggers the limit
+  - Location: `runtime/resolver.py`
+
+- **`ResolutionContext._seen` was injectable via dataclass `__init__`** (SECURITY-RESOLUTION-CONTEXT-SEEN-001):
+  - `_seen: set[str] = field(default_factory=set)` was a public `__init__` parameter; any caller could construct `ResolutionContext(_seen={"target-message"})` to pre-populate the cycle-detection set, making `context.contains("target-message")` return `True` immediately and silently bypassing cycle detection for an arbitrary message ID without any error
+  - Fixed: changed to `field(init=False, default_factory=set)`; excluded from `__init__`; pre-population is structurally impossible
+  - Location: `runtime/resolution_context.py`
+
+- **Data race on `_modified_in_context` in `FluentBundle` and `FluentLocalization`** (RACE-MODIFIED-IN-CONTEXT-001):
+  - `_modified_in_context` was reset to `False` in `__enter__` and read + reset in `__exit__` without holding `_rwlock`; concurrent `add_function` and `add_resource` calls write `_modified_in_context = True` under a write lock; in Python 3.13 free-threaded mode `__exit__` could observe a stale `False` and skip cache invalidation despite concurrent mutations having occurred
+  - Fixed: `__enter__` resets `_modified_in_context` under `_rwlock.write()` (bundle) or `_lock.write()` (orchestrator); `__exit__` reads and resets the flag atomically under the same write lock, then performs cache invalidation outside the lock (cache operations are independently thread-safe)
+  - Location: `runtime/bundle.py`, `localization/orchestrator.py`
+
+- **`_clear_tracebacks` destroyed forensic audit trail on every resolver return** (FORENSIC-CLEAR-TRACEBACKS-001):
+  - `_clear_tracebacks` set `err.__traceback__ = None` on every `FrozenFluentError` before `resolve_message` returned; stack traces were unconditionally destroyed at the resolver boundary, making post-mortem incident analysis impossible unless the caller logged the exception before the error tuple was discarded; this contradicted the forensic intent of `FrozenFluentError`'s BLAKE2b content hashing design
+  - Fixed: `_clear_tracebacks` deleted; all six `return (result, _clear_tracebacks(errors))` call sites changed to `return (result, tuple(errors))`; tracebacks are preserved for the full lifetime of the error objects
+  - Location: `runtime/resolver.py`
+
+### Changed
+
+- **`ResolutionContext.track_expansion` no longer raises on budget exceeded** (ARCH-TRACK-EXPANSION-SOC-001):
+  - `track_expansion` both mutated `_total_chars` and generated `FrozenFluentError` via `ErrorTemplate`, coupling state tracking to error policy in an infrastructure object; the resolver already had a pre-loop budget check that generated the same diagnostic via different code, making budget exhaustion handling inconsistent across `TextElement` and `Placeable` paths
+  - `track_expansion(char_count)` now only mutates `_total_chars` and never raises; callers check `context.total_chars > context.max_expansion_size` after each call and generate `FrozenFluentError` directly; error construction is unified in `_resolve_pattern` for both element paths
+  - Location: `runtime/resolution_context.py`, `runtime/resolver.py`
+
+- **`IntegrityCache._lock` changed from `RLock` to `Lock`** (PERF-CACHE-LOCK-001):
+  - `IntegrityCache._lock` was `threading.RLock()`; no call path in `IntegrityCache` acquires the lock re-entrantly — every public method acquires at entry and `_audit` is documented to run while the lock is already held without re-acquiring; `RLock` tracked the owning thread ID and acquire count on every acquisition, adding measurable overhead in the hot path of `format_pattern()`
+  - Changed to `threading.Lock()`; lock semantics unchanged for all current call paths; any future inadvertent re-entry would raise `RuntimeError` immediately rather than silently succeeding
+  - Location: `runtime/cache.py`
+
+- **`GlobalDepthGuard` thread-spawning limitation documented** (CLARITY-DEPTH-GUARD-THREAD-LIMIT-001):
+  - The class docstring documented protection against same-thread re-entry via `ContextVar` but did not document the known limitation: custom functions that spawn new threads bypass the guard entirely — each new thread receives `ContextVar` default (depth 0) and can initiate a full-depth resolution chain independent of the spawning thread's guard state
+  - Added explicit "Thread Spawning Limitation" section to the docstring; no code changes; the limitation is an accepted consequence of `ContextVar` semantics
+  - Location: `runtime/resolution_context.py`
+
+- **`resolve_message` except clause comment corrected** (CLARITY-RESOLVER-EXCEPT-COMMENT-001):
+  - The `except FrozenFluentError` block carried the comment "Global depth exceeded — collect error and return fallback"; the block catches all `FrozenFluentError` instances regardless of `DiagnosticCode` — including `EXPANSION_BUDGET_EXCEEDED` and `EXPRESSION_DEPTH_EXCEEDED` from the expression depth guard — not only global depth violations; the misleading comment could cause developers to incorrectly narrow the guard's scope during maintenance
+  - Replaced with: "Resolution limit exceeded (global depth, expression depth, or expansion budget). Collect error and return fallback — prevents partial output from reaching the caller."
+  - Location: `runtime/resolver.py`
+
+## [0.120.0] - 2026-02-21
+
+### Changed (BREAKING)
+
+- **`FluentResolver` slots privatized** (ARCH-RESOLVER-SLOTS-PRIVATE-001):
+  - Five public `__slots__` attributes were directly writable from external code: `locale`, `messages`, `terms`, `function_registry`, `use_isolating`; public slots on an internal implementation class permitted callers to mutate resolver state from outside its invariants
+  - Renamed to `_locale`, `_messages`, `_terms`, `_function_registry`, `_use_isolating`; all accesses within the class updated accordingly
+  - `FluentResolver` is an internal class; public resolver interaction is via `FluentBundle.format_pattern()`; direct `FluentResolver` usage requiring private-slot access should use `# noqa: SLF001` with a rationale comment
+  - Location: `runtime/resolver.py`
+
+- **`FluentBundle.cache_config` return type changed to `CacheConfig | None`** (ARCH-BUNDLE-CACHE-CONFIG-NULLABLE-001):
+  - `cache_config` previously returned `CacheConfig` in all cases: when `cache=None` was passed to the constructor, it silently initialized `_cache_config = CacheConfig()` and returned that phantom instance, making a disabled cache look enabled
+  - Now `_cache_config` is stored as `CacheConfig | None`; `cache_config` returns `None` when caching is disabled and the configured `CacheConfig` when enabled; callers accessing `bundle.cache_config.size` etc. must first guard with `assert bundle.cache_config is not None` or `if bundle.cache_config is not None:`
+  - Location: `runtime/bundle.py`
+
+- **`FluentBundle.cache_size` property removed** (ARCH-BUNDLE-CACHE-SIZE-REMOVE-001):
+  - `cache_size` returned `cache_config.size` without guarding for `None`; with `cache_config` now nullable, `cache_size` would silently return 0 or raise `AttributeError` on disabled-cache bundles; the delegation added no value over `bundle.cache_config.size`
+  - Callers must replace `bundle.cache_size` with `bundle.cache_config.size` (guarded: `if bundle.cache_config is not None: ... bundle.cache_config.size`)
+  - Location: `runtime/bundle.py`
+
+### Fixed
+
+- **Data race in `FluentBundle.__repr__`** (DEFECT-BUNDLE-REPR-RACE-001):
+  - `__repr__` accessed `len(self._messages)` and `len(self._terms)` without holding `_rwlock`; concurrent `add_resource()` calls (which mutate both dicts under a write lock) could yield a torn read
+  - Fixed: `__repr__` acquires `_rwlock.read()` before reading both counts
+  - Location: `runtime/bundle.py`
+
+- **Data race in `FluentLocalization.__repr__`** (DEFECT-LOCALIZATION-REPR-RACE-001):
+  - `__repr__` accessed `len(self._bundles)` without holding `_lock`; concurrent bundle initialization mutates `_bundles` under a write lock
+  - Fixed: `__repr__` acquires `_lock.read()` to read the bundle count; `len(self._locales)` is safe (immutable tuple)
+  - Location: `localization/orchestrator.py`
+
+- **Phantom `CacheConfig` when cache disabled** (DEFECT-BUNDLE-PHANTOM-CACHE-CONFIG-001):
+  - When `FluentBundle` was constructed with `cache=None`, `__init__` set `self._cache_config = CacheConfig()` — an unconditional default instantiation; `cache_config` returned a `CacheConfig` instance even when caching was disabled, and `cache_size` returned `DEFAULT_CACHE_SIZE` (1000) rather than indicating no cache
+  - Fixed: `_cache_config` is stored as `cache` directly (may be `None`); see `cache_config` and `cache_size` breaking changes above
+  - Location: `runtime/bundle.py`
+
+- **Validation performed after cache lookup in `_format_pattern_impl`** (DEFECT-BUNDLE-VALIDATION-ORDER-001):
+  - `_format_pattern_impl` checked the cache before validating `message_id`, `args`, and `attribute`; an invalid `message_id` (empty string, non-string) or invalid `args` type could interact with the cache before being rejected
+  - Fixed: all three validation checks (`message_id`, `args`, `attribute`) precede the cache lookup; invalid inputs are rejected immediately without touching the cache
+  - Location: `runtime/bundle.py`
+
+- **PII-exposing debug log in `_format_pattern_impl`** (DEFECT-BUNDLE-PII-LOG-001):
+  - `logger.debug("Resolved message '%s': %s", message_id, result[:50])` emitted the first 50 characters of every resolved message; for financial applications this can expose account numbers, balances, or transaction details in application logs
+  - Fixed: message replaced with `logger.debug("Resolved message '%s' successfully", message_id)`; the resolved text is never logged
+  - Location: `runtime/bundle.py`
+
+- **`IntegrityCacheEntry.verify()` duck-typed `@final` class** (DEFECT-CACHE-VERIFY-DUCK-TYPE-001):
+  - `verify()` checked `getattr(error, "verify_integrity", None)` and `callable(verify_method)` before calling the method; `FrozenFluentError` is `@final` and unconditionally exposes `verify_integrity()`, making the defensive duck-type check both dead code and a performance overhead per-error
+  - Fixed: direct call `error.verify_integrity()` without the attribute guard; loop consolidated to `return all(error.verify_integrity() for error in self.errors)`
+  - Location: `runtime/cache.py`
+
+- **`ISO_4217_DECIMAL_DIGITS` was a mutable module-level constant** (DEFECT-CONSTANTS-MUTABLE-DICT-001):
+  - `ISO_4217_DECIMAL_DIGITS: dict[str, int]` was a plain `dict`; any code importing and modifying it (by accident or otherwise) would corrupt the shared constant for all subsequent callers in the same process
+  - Fixed: wrapped in `MappingProxyType`; the type annotation is `MappingProxyType[str, int]`; mutation attempts raise `TypeError` at runtime
+  - Location: `constants.py`
+
+### Changed
+
+- **`IntegrityCache.size` delegates to `__len__`** (REFACTOR-CACHE-SIZE-DELEGATE-001):
+  - `size` acquired `self._lock` and returned `len(self._cache)` — identical to `__len__`; two methods held the same lock sequentially for the same operation
+  - `__len__` now acquires the lock and returns the count; `size` calls `len(self)`, delegating to `__len__` without a second lock acquisition
+  - Location: `runtime/cache.py`
+
+- **`FluentLocalization._primary_locale` precomputed at initialization** (PERF-LOCALIZATION-PRIMARY-LOCALE-001):
+  - `format_pattern()` computed `primary_locale = self._locales[0] if self._locales else None` on every call; `_locales` is an immutable tuple validated non-empty at construction
+  - `_primary_locale: LocaleCode` is now set once in `__init__` immediately after locale validation; `format_pattern()` reads the precomputed value directly
+  - Location: `localization/orchestrator.py`
+
+- **`scripts/verify_iso4217.py` type annotations aligned with actual types** (REFACTOR-VERIFY-ISO4217-TYPES-001):
+  - `_check_unrecognized`, `_check_discrepancies`, and `_check_coverage_gaps` were annotated `iso_digits: dict[str, int]` and `babel_currencies: set[str]`; the first parameter receives `MappingProxyType[str, int]` (now the actual type of the constant) and the second receives `frozenset[str]` (return type of Babel's `list_currencies()`)
+  - Parameters changed to `Mapping[str, int]` and `frozenset[str]`; call site wraps `list_currencies()` result in `frozenset()`; redundant `print("[EXIT-CODE] ...")` lines removed (exit code is set by `sys.exit()`)
+  - Location: `scripts/verify_iso4217.py`
+
+## [0.119.0] - 2026-02-21
+
+### Fixed
+
+- **Data race in `FluentBundle` resolver initialization** (DEFECT-BUNDLE-RESOLVER-RACE-001):
+  - `_resolver` was initialized lazily under a read lock: the first `format_pattern` call wrote `self._resolver` while only holding a read lock, creating a write-under-read-lock data race in Python 3.13 free-threaded mode (PYTHON_GIL=0)
+  - Fixed: resolver created eagerly in `__init__` via `_create_resolver()`; `_get_resolver()` is now a pure read that never writes; `_invalidate_resolver()` recreates the resolver under a write lock (called only by `add_function`, not by `add_resource`, since the resolver holds dict references and observes mutations directly)
+  - Type annotation updated from `FluentResolver | None` to `FluentResolver`; the `if self._resolver is None` branch in `_get_resolver()` is removed
+  - Location: `runtime/bundle.py`
+
+- **`FormattingIntegrityError` component wrong when raised through `FluentLocalization`** (DEFECT-LOCALIZATION-INTEGRITY-COMPONENT-001):
+  - `FluentLocalization.format_pattern()` delegates to `FluentBundle.format_pattern()`, which raises `FormattingIntegrityError` with `context.component="bundle"`; callers monitoring the component field saw `"bundle"` even when the call originated from the localization layer
+  - Fixed: `format_pattern()` catches `FormattingIntegrityError`, rebuilds `IntegrityContext` with `component="localization"`, and re-raises; all other fields (operation, key, expected, actual, timestamp) are preserved from the original context
+  - Location: `localization/orchestrator.py`
+
+- **`ResolutionContext.pop()` silently discarded state corruption** (DEFECT-RESOLUTION-CONTEXT-POP-001):
+  - `pop()` used `self._seen.discard(key)` — `discard` is a no-op when the key is absent; if `_seen` and `stack` fell out of sync, the corruption was silently absorbed
+  - Fixed: replaced with `self._seen.remove(key)` — raises `KeyError` if the key is absent, making state corruption immediately visible
+  - Location: `runtime/resolution_context.py`
+
+- **`IntegrityCacheEntry._feed_errors()` contained dead duck-typed fallback** (DEFECT-CACHE-FEED-ERRORS-FALLBACK-001):
+  - `_feed_errors()` used `getattr(error, "content_hash", None)` with an `isinstance(content_hash, bytes)` guard and a `str(error).encode()` fallback; `FrozenFluentError` is `@final` and always exposes `content_hash: bytes`, making the fallback unreachable for any valid input
+  - Fixed: fallback removed; `error.content_hash` accessed directly; any non-`FrozenFluentError` input immediately raises `AttributeError` rather than being silently accepted
+  - Location: `runtime/cache.py`
+
+### Changed
+
+- **`IntegrityCache.clear()` no longer resets cumulative observability metrics** (DEFECT-CACHE-CLEAR-METRICS-001):
+  - `clear()` previously reset `hits`, `misses`, `unhashable_skips`, `oversize_skips`, `error_bloat_skips`, `corruption_detected`, `idempotent_writes`, and `sequence` to 0, destroying production observability data each time the cache was invalidated (e.g., after `add_resource`)
+  - Fixed: `clear()` removes cached entries only; all counters accumulate across the lifetime of the `IntegrityCache` instance
+  - Callers that read statistics immediately after a `clear()` call and expect zero values must capture a pre-clear snapshot and subtract
+  - Location: `runtime/cache.py`
+
+- **`FluentLocalization.get_cache_stats()` now aggregates all `IntegrityCache` fields** (DEFECT-LOCALIZATION-CACHE-STATS-001):
+  - `get_cache_stats()` previously returned only 7 keys (`size`, `maxsize`, `hits`, `misses`, `hit_rate`, `unhashable_skips`, `bundle_count`), silently dropping 11 fields from `IntegrityCache.get_stats()`
+  - Now returns all 18 keys: the original 7 plus `oversize_skips`, `error_bloat_skips`, `corruption_detected`, `idempotent_writes`, `sequence`, `write_once`, `strict`, `audit_enabled`, `audit_entries`, `max_entry_weight`, `max_errors_per_entry`; boolean fields are from the first bundle (all bundles share one `CacheConfig`); numeric fields are summed across all bundles
+  - Callers comparing `set(get_cache_stats().keys())` against a hardcoded expected set must add the 11 new fields
+  - Location: `localization/orchestrator.py`
+
+- **`FluentLocalization.format_value()` delegates to `format_pattern()`** (DEFECT-LOCALIZATION-FORMAT-VALUE-001):
+  - `format_value()` was an ~80-line near-duplicate of `format_pattern()` with identical locale-fallback chain, strict-mode handling, and error propagation logic
+  - Replaced with a single-line delegate: `return self.format_pattern(message_id, args)`; all behavior preserved since `format_pattern` defaults to `attribute=None`
+  - Location: `localization/orchestrator.py`
+
 ## [0.118.0] - 2026-02-21
 
 ### Changed (BREAKING)
@@ -3857,6 +4035,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.121.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.121.0
+[0.120.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.120.0
+[0.119.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.119.0
+[0.118.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.118.0
 [0.117.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.117.0
 [0.116.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.116.0
 [0.115.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.115.0

@@ -40,7 +40,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from threading import RLock
+from threading import Lock
 from typing import final
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
@@ -216,12 +216,13 @@ class IntegrityCacheEntry:
 
     @staticmethod
     def _feed_errors(h: hashlib.blake2b, errors: tuple[FrozenFluentError, ...]) -> None:
-        """Feed error sequence into hasher using type-tagged encoding.
+        """Feed error sequence into hasher via content_hash.
 
         Shared by both _compute_checksum and _compute_content_hash to eliminate
-        duplicated hashing logic. Type markers (b"\\x01" vs b"\\x00") provide
-        structural disambiguation so a 16-byte hash cannot collide with a
-        length-prefixed string.
+        duplicated hashing logic. FrozenFluentError is @final and always carries
+        a content_hash (bytes), so direct attribute access is safe and correct.
+        The b"\\x01" type marker provides structural disambiguation between the
+        count field and each hash entry.
 
         Args:
             h: Active BLAKE2b hasher to update in-place
@@ -229,17 +230,10 @@ class IntegrityCacheEntry:
         """
         h.update(len(errors).to_bytes(4, "big"))
         for error in errors:
-            # Use error's content hash if available and valid type, otherwise hash the message.
-            # Type validation ensures robustness against duck-typed objects with wrong type.
-            error_content_hash = getattr(error, "content_hash", None)
-            if isinstance(error_content_hash, bytes):
-                h.update(b"\x01")  # Type marker: raw content hash follows
-                h.update(error_content_hash)
-            else:
-                h.update(b"\x00")  # Type marker: length-prefixed string follows
-                error_encoded = str(error).encode("utf-8", errors="surrogatepass")
-                h.update(len(error_encoded).to_bytes(4, "big"))
-                h.update(error_encoded)
+            # FrozenFluentError is @final; content_hash is always a bytes field.
+            # Accessing it directly enforces the type contract and eliminates dead code.
+            h.update(b"\x01")  # Type marker: content hash follows
+            h.update(error.content_hash)
 
     @staticmethod
     def _compute_checksum(
@@ -259,8 +253,8 @@ class IntegrityCacheEntry:
             between semantically different values. The checksum covers ALL entry
             fields for complete audit trail integrity:
             1. formatted: Message output (length-prefixed UTF-8)
-            2. errors: Count + each error with type marker (b"\\x01" + hash or
-               b"\\x00" + length-prefixed string) for structural disambiguation
+            2. errors: Count + each error as (b"\\x01" + content_hash) using
+               FrozenFluentError.content_hash (BLAKE2b-128, always present)
             3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
             4. sequence: Entry sequence number (8-byte signed big-endian)
 
@@ -305,14 +299,10 @@ class IntegrityCacheEntry:
         )
         if not hmac.compare_digest(self.checksum, expected):
             return False
-        # Recursively verify each error's integrity (defense-in-depth)
-        # Only verify errors that have the verify_integrity method with correct signature.
-        # Type validation ensures robustness against duck-typed objects.
-        for error in self.errors:
-            verify_method = getattr(error, "verify_integrity", None)
-            if callable(verify_method) and not verify_method():
-                return False
-        return True
+        # Recursively verify each error's integrity (defense-in-depth).
+        # FrozenFluentError is @final, so verify_integrity() is always present.
+        # Direct call eliminates the duck-typing overhead and clarifies intent.
+        return all(error.verify_integrity() for error in self.errors)
 
     def as_result(self) -> _CacheValue:
         """Extract formatted result and errors as a tuple.
@@ -334,8 +324,8 @@ class IntegrityCacheEntry:
 
         Hash Composition:
             1. formatted: Message output (length-prefixed UTF-8)
-            2. errors: Count + each error with type marker (b"\\x01" + hash or
-               b"\\x00" + length-prefixed string) for structural disambiguation
+            2. errors: Count + each error as (b"\\x01" + content_hash) using
+               FrozenFluentError.content_hash (BLAKE2b-128, always present)
 
         Args:
             formatted: Formatted message string
@@ -473,7 +463,7 @@ class IntegrityCache:
         self._maxsize = maxsize
         self._max_entry_weight = max_entry_weight
         self._max_errors_per_entry = max_errors_per_entry
-        self._lock = RLock()
+        self._lock = Lock()
         self._write_once = write_once
         self._strict = strict
 
@@ -670,17 +660,16 @@ class IntegrityCache:
         """Clear all cached entries.
 
         Thread-safe. Call when bundle is mutated (add_resource, add_function).
+
+        Metrics are cumulative and NOT reset on clear. They reflect the total
+        operational history of this cache instance. Resetting on clear would
+        destroy production observability (hit-rate trends, corruption counts)
+        and make auditing impossible after routine cache invalidation.
         """
         with self._lock:
             self._cache.clear()
-            # Reset metrics on clear
-            self._hits = 0
-            self._misses = 0
-            self._unhashable_skips = 0
-            self._oversize_skips = 0
-            self._error_bloat_skips = 0
-            self._corruption_detected = 0
-            self._idempotent_writes = 0
+            # Note: hits/misses/skips/corruption/idempotent_writes NOT reset
+            #   — cumulative counters for production observability and audit.
             # Note: sequence NOT reset (monotonic for audit trail)
             # Note: audit log NOT cleared (historical record)
 
@@ -1006,6 +995,11 @@ class IntegrityCache:
             return len(self._cache)
 
     @property
+    def size(self) -> int:
+        """Current number of cached entries. Thread-safe."""
+        return len(self)
+
+    @property
     def maxsize(self) -> int:
         """Maximum cache size."""
         return self._maxsize
@@ -1038,12 +1032,6 @@ class IntegrityCache:
     def max_entry_weight(self) -> int:
         """Maximum memory weight for cached results."""
         return self._max_entry_weight
-
-    @property
-    def size(self) -> int:
-        """Current number of cached entries. Thread-safe."""
-        with self._lock:
-            return len(self._cache)
 
     @property
     def corruption_detected(self) -> int:

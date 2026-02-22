@@ -35,9 +35,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable
 from contextlib import contextmanager
-from functools import wraps
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -378,75 +376,3 @@ class RWLock:
             # Notify all waiting threads (readers and writers)
             # Writer preference handled in _acquire_read logic
             self._condition.notify_all()
-
-
-def with_read_lock[T](
-    lock_attr: str = "_rwlock",
-    timeout: float | None = None,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Decorator to acquire read lock for method execution.
-
-    Args:
-        lock_attr: Name of RWLock attribute on class instance (default: "_rwlock")
-        timeout: Maximum seconds to wait for lock. None waits indefinitely.
-
-    Returns:
-        Decorated method that acquires read lock before execution
-
-    Example:
-        >>> class MyClass:
-        ...     def __init__(self):
-        ...         self._rwlock = RWLock()
-        ...
-        ...     @with_read_lock()
-        ...     def read_data(self):
-        ...         # Safe to read
-        ...         pass
-    """
-
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(self: object, *args: object, **kwargs: object) -> T:
-            lock: RWLock = getattr(self, lock_attr)
-            with lock.read(timeout=timeout):
-                return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def with_write_lock[T](
-    lock_attr: str = "_rwlock",
-    timeout: float | None = None,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Decorator to acquire write lock for method execution.
-
-    Args:
-        lock_attr: Name of RWLock attribute on class instance (default: "_rwlock")
-        timeout: Maximum seconds to wait for lock. None waits indefinitely.
-
-    Returns:
-        Decorated method that acquires write lock before execution
-
-    Example:
-        >>> class MyClass:
-        ...     def __init__(self):
-        ...         self._rwlock = RWLock()
-        ...
-        ...     @with_write_lock()
-        ...     def write_data(self, value):
-        ...         # Exclusive access
-        ...         pass
-    """
-
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(self: object, *args: object, **kwargs: object) -> T:
-            lock: RWLock = getattr(self, lock_attr)
-            with lock.write(timeout=timeout):
-                return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator

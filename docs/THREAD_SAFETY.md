@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.118.0"
+version: "0.121.0"
 domain: architecture
 updated: "2026-02-21"
 route:
@@ -152,6 +152,9 @@ Without global tracking, a malicious custom function could:
 4. Cause stack overflow
 
 `GlobalDepthGuard` prevents this by tracking depth across all contexts per async task.
+
+**Thread Spawning Limitation**:
+`ContextVar` provides per-thread isolation. Custom functions that spawn **new threads** bypass the guard: each new thread starts with the `ContextVar` default (depth 0) and can initiate its own full-depth resolution chain independent of the spawning thread. The guard prevents re-entry within a single thread or async task; it does not prevent cross-thread recursive invocation. If custom functions may spawn threads that call `format_pattern()`, apply additional rate limiting at the custom function level.
 
 ---
 

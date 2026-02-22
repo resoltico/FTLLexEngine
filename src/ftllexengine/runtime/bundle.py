@@ -54,11 +54,8 @@ __all__ = ["FluentBundle"]
 
 logger = logging.getLogger(__name__)
 
-# Logging truncation limits for error messages.
-# Warnings show more context (100 chars) as they're surfaced to users.
-# Debug messages are high-volume, shorter (50 chars) keeps logs manageable.
+# Logging truncation limit for warning messages (surfaced to users, more context helpful).
 _LOG_TRUNCATE_WARNING: int = 100
-_LOG_TRUNCATE_DEBUG: int = 50
 
 # BCP 47 locale code pattern (ASCII-only alphanumerics with underscore/hyphen separators).
 # Rejects non-ASCII characters like accented letters (e.g., "e_FR" with accented e).
@@ -315,7 +312,7 @@ class FluentBundle:
             self._owns_registry = False
 
         # Cache configuration and instance
-        self._cache_config: CacheConfig = cache if cache is not None else CacheConfig()
+        self._cache_config: CacheConfig | None = cache
         self._cache: IntegrityCache | None = None
 
         if cache is not None:
@@ -329,8 +326,11 @@ class FluentBundle:
                 max_audit_entries=cache.max_audit_entries,
             )
 
-        # Cached resolver (lazily created, invalidated on mutation)
-        self._resolver: FluentResolver | None = None
+        # Resolver: eagerly created, re-created only when function_registry changes.
+        # Holds dict references (not copies) so add_resource() mutations are immediately
+        # visible without re-creation. Initialized here to eliminate the read-lock
+        # write race that existed in the previous lazy-initialization pattern.
+        self._resolver: FluentResolver = self._create_resolver()
 
         # Context manager state tracking (cache invalidation optimization)
         self._modified_in_context = False
@@ -411,28 +411,22 @@ class FluentBundle:
         return self._cache is not None
 
     @property
-    def cache_config(self) -> CacheConfig:
+    def cache_config(self) -> CacheConfig | None:
         """Get cache configuration (read-only).
 
         Returns:
-            CacheConfig: Frozen cache configuration object.
+            CacheConfig if caching is enabled, None if caching is disabled.
 
         Example:
             >>> from ftllexengine.runtime.cache_config import CacheConfig
             >>> bundle = FluentBundle("en", cache=CacheConfig(size=500))
             >>> bundle.cache_config.size
             500
+            >>> bundle_no_cache = FluentBundle("en")
+            >>> bundle_no_cache.cache_config is None
+            True
         """
         return self._cache_config
-
-    @property
-    def cache_size(self) -> int:
-        """Get maximum cache size configuration (read-only).
-
-        Returns:
-            int: Configured maximum cache entries
-        """
-        return self._cache_config.size
 
     @property
     def cache_usage(self) -> int:
@@ -559,7 +553,6 @@ class FluentBundle:
     def __repr__(self) -> str:
         """Return string representation for debugging.
 
-
         Returns:
             String representation showing locale and loaded messages count
 
@@ -568,11 +561,12 @@ class FluentBundle:
             >>> repr(bundle)
             "FluentBundle(locale='lv_LV', messages=0, terms=0)"
         """
-        return (
-            f"FluentBundle(locale={self._locale!r}, "
-            f"messages={len(self._messages)}, "
-            f"terms={len(self._terms)})"
-        )
+        with self._rwlock.read():
+            return (
+                f"FluentBundle(locale={self._locale!r}, "
+                f"messages={len(self._messages)}, "
+                f"terms={len(self._terms)})"
+            )
 
     def __enter__(self) -> FluentBundle:
         """Enter context manager.
@@ -598,8 +592,12 @@ class FluentBundle:
             ...     result = bundle.format_pattern("hello")
             ... # Cache preserved (bundle NOT modified)
         """
-        # Reset modification tracking for new context
-        self._modified_in_context = False
+        # Reset modification tracking for new context; held under write lock
+        # to prevent a data race with concurrent add_resource / add_function /
+        # clear_cache calls (which also write _modified_in_context under the
+        # write lock) in free-threaded Python 3.13.
+        with self._rwlock.write():
+            self._modified_in_context = False
         return self
 
     def __exit__(
@@ -623,9 +621,18 @@ class FluentBundle:
             exc_val: Exception value (if any)
             exc_tb: Exception traceback (if any)
         """
-        # Clear cache only if bundle was modified during context
-        # Read-only operations (format_pattern) preserve cache for performance
-        if self._modified_in_context and self._cache is not None:
+        # Read and reset _modified_in_context under the write lock to prevent a
+        # data race: concurrent write operations set this flag under the write
+        # lock; reading it here without a lock is a torn read in free-threaded
+        # Python 3.13.
+        with self._rwlock.write():
+            modified = self._modified_in_context
+            self._modified_in_context = False
+
+        # Cache mutation happens outside the lock: IntegrityCache is
+        # independently thread-safe and clearing it does not need the bundle
+        # write lock to be held.
+        if modified and self._cache is not None:
             self._cache.clear()
             logger.debug(
                 "FluentBundle cache cleared on context exit (modified): %s",
@@ -636,9 +643,6 @@ class FluentBundle:
                 "FluentBundle cache preserved on context exit (read-only): %s",
                 self._locale,
             )
-
-        # Reset flag for next context (defensive)
-        self._modified_in_context = False
 
     def get_babel_locale(self) -> str:
         """Get the Babel locale identifier for this bundle (introspection API).
@@ -1047,34 +1051,43 @@ class FluentBundle:
             message_id=message_id,
         )
 
+    def _create_resolver(self) -> FluentResolver:
+        """Create a new FluentResolver from current bundle state.
+
+        Called once at initialization and again whenever the function_registry
+        changes (add_function). The resolver holds references to self._messages
+        and self._terms (not copies), so add_resource() mutations are immediately
+        visible without re-creation.
+        """
+        return FluentResolver(
+            locale=self._locale,
+            messages=self._messages,
+            terms=self._terms,
+            function_registry=self._function_registry,
+            use_isolating=self._use_isolating,
+            max_nesting_depth=self._max_nesting_depth,
+            max_expansion_size=self._max_expansion_size,
+        )
+
     def _get_resolver(self) -> FluentResolver:
-        """Get or create the cached FluentResolver (assumes read lock held).
+        """Return the cached FluentResolver (assumes read lock held).
 
         The resolver is stateless: all per-call state lives in ResolutionContext.
         It references self._messages and self._terms dicts directly, so dict
-        mutations from add_resource are visible without re-creation. Invalidated
-        only when function_registry or formatting config changes.
+        mutations from add_resource are visible without re-creation. The resolver
+        is only re-created when function_registry or formatting config changes.
         """
-        if self._resolver is None:
-            self._resolver = FluentResolver(
-                locale=self._locale,
-                messages=self._messages,
-                terms=self._terms,
-                function_registry=self._function_registry,
-                use_isolating=self._use_isolating,
-                max_nesting_depth=self._max_nesting_depth,
-                max_expansion_size=self._max_expansion_size,
-            )
         return self._resolver
 
     def _invalidate_resolver(self) -> None:
-        """Invalidate the cached resolver (assumes write lock held).
+        """Replace the cached resolver (assumes write lock held).
 
-        Called when function_registry changes. Not needed for add_resource
-        because the resolver references self._messages/self._terms dicts
-        directly (mutations are visible through the shared reference).
+        Called when function_registry changes (add_function). Re-creates the
+        resolver immediately so no subsequent reader can observe a stale or
+        None resolver. Not needed for add_resource because the resolver
+        references self._messages/self._terms dicts directly.
         """
-        self._resolver = None
+        self._resolver = self._create_resolver()
 
     def _format_pattern_impl(
         self,
@@ -1083,18 +1096,9 @@ class FluentBundle:
         attribute: str | None,
     ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Internal implementation of format_pattern (no locking)."""
-        # Check cache first (if enabled)
-        if self._cache is not None:
-            cached_entry = self._cache.get(
-                message_id, args, attribute, self._locale, self._use_isolating
-            )
-            if cached_entry is not None:
-                result, errors_tuple = cached_entry.as_result()
-                if errors_tuple and self._strict:
-                    self._raise_strict_error(message_id, result, errors_tuple)
-                return (result, errors_tuple)
-
-        # Validate message_id is non-empty string
+        # Validate message_id is non-empty string BEFORE cache lookup.
+        # Invalid inputs must be rejected immediately; caching invalid-ID results
+        # would waste entries and could produce misleading cache hits.
         if not message_id or not isinstance(message_id, str):
             logger.warning("Invalid message ID: empty or non-string")
             diagnostic = Diagnostic(
@@ -1104,10 +1108,8 @@ class FluentBundle:
             error = FrozenFluentError(
                 str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
             )
-            # Strict mode: raise instead of returning fallback
             if self._strict:
                 self._raise_strict_error("<empty>", FALLBACK_INVALID, (error,))
-            # Don't cache errors
             return (FALLBACK_INVALID, (error,))
 
         # Validate args is None or a Mapping (defensive check for callers ignoring type hints)
@@ -1144,6 +1146,20 @@ class FluentBundle:
                 self._raise_strict_error(message_id, FALLBACK_INVALID, (error,))
             return (FALLBACK_INVALID, (error,))
 
+        # Check cache after input validation (validated inputs are safe to use as key).
+        # Placing cache lookup here — after validation, before the message-exists check —
+        # ensures invalid inputs are never cached and avoids wasting a cache round-trip
+        # on inputs that would be rejected anyway.
+        if self._cache is not None:
+            cached_entry = self._cache.get(
+                message_id, args, attribute, self._locale, self._use_isolating
+            )
+            if cached_entry is not None:
+                result, errors_tuple = cached_entry.as_result()
+                if errors_tuple and self._strict:
+                    self._raise_strict_error(message_id, result, errors_tuple)
+                return (result, errors_tuple)
+
         # Check if message exists
         if message_id not in self._messages:
             logger.warning("Message '%s' not found", message_id)
@@ -1158,11 +1174,10 @@ class FluentBundle:
 
         message = self._messages[message_id]
 
-        # Reuse cached resolver (invalidated on add_resource/add_function).
         # The resolver is stateless: all per-call state lives in ResolutionContext.
         # It holds references to self._messages and self._terms dicts directly,
-        # so mutations are visible without re-creation. The resolver is only
-        # invalidated when function_registry, locale, or config changes.
+        # so mutations from add_resource are visible without re-creation. The
+        # resolver is only re-created when function_registry or config changes.
         resolver = self._get_resolver()
 
         # Resolve message (resolver handles all errors internally including cycles)
@@ -1180,7 +1195,7 @@ class FluentBundle:
             for err in errors_tuple:
                 logger.debug("  - %s: %s", type(err).__name__, err)
         else:
-            logger.debug("Resolved message '%s': %s", message_id, result[:50])
+            logger.debug("Resolved message '%s' successfully", message_id)
 
         # Cache resolution result (including errors) BEFORE strict mode check.
         # This ensures repeated calls for the same erroneous message in strict mode

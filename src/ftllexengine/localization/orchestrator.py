@@ -105,6 +105,7 @@ class FluentLocalization:
         "_modified_in_context",
         "_on_fallback",
         "_pending_functions",
+        "_primary_locale",
         "_resource_ids",
         "_resource_loader",
         "_strict",
@@ -162,6 +163,10 @@ class FluentLocalization:
         # Prevents ValueError from leaking out of format_value during lazy bundle creation
         for locale in self._locales:
             FluentBundle._validate_locale_format(locale)
+
+        # Precompute primary locale once: _locales is guaranteed non-empty (checked above)
+        # and is immutable (tuple), so this value never changes after construction.
+        self._primary_locale: LocaleCode = self._locales[0]
 
         self._resource_ids: tuple[ResourceId, ...] = tuple(resource_ids) if resource_ids else ()
         self._resource_loader: ResourceLoader | None = resource_loader
@@ -434,7 +439,8 @@ class FluentLocalization:
             >>> repr(l10n)
             "FluentLocalization(locales=('lv', 'en'), bundles=0/2)"
         """
-        initialized = len(self._bundles)
+        with self._lock.read():
+            initialized = len(self._bundles)
         total = len(self._locales)
         return f"FluentLocalization(locales={self._locales!r}, bundles={initialized}/{total})"
 
@@ -575,7 +581,8 @@ class FluentLocalization:
     ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Format message with fallback chain.
 
-        Tries each locale in priority order until message is found.
+        Delegates to format_pattern() with attribute=None. Provided as a
+        convenience alias that matches Mozilla python-fluent's format_value API.
 
         Args:
             message_id: Message identifier (e.g., 'welcome', 'error-404')
@@ -598,35 +605,7 @@ class FluentLocalization:
             >>> result
             'Sveiki!'
         """
-        errors: list[FrozenFluentError] = []
-
-        if not self._check_mapping_arg(args, errors):
-            return (FALLBACK_INVALID, tuple(errors))
-
-        primary_locale = self._locales[0] if self._locales else None
-
-        for locale in self._locales:
-            bundle = self._get_or_create_bundle(locale)
-
-            if bundle.has_message(message_id):
-                value, bundle_errors = bundle.format_pattern(message_id, args)
-                errors.extend(bundle_errors)
-
-                if (
-                    self._on_fallback is not None
-                    and primary_locale is not None
-                    and locale != primary_locale
-                ):
-                    fallback_info = FallbackInfo(
-                        requested_locale=primary_locale,
-                        resolved_locale=locale,
-                        message_id=message_id,
-                    )
-                    self._on_fallback(fallback_info)
-
-                return (value, tuple(errors))
-
-        return self._handle_message_not_found(message_id, errors)
+        return self.format_pattern(message_id, args)
 
     def has_message(self, message_id: MessageId) -> bool:
         """Check if message exists in any locale.
@@ -695,22 +674,42 @@ class FluentLocalization:
             )
             return (FALLBACK_INVALID, tuple(errors))
 
-        primary_locale = self._locales[0] if self._locales else None
-
         for locale in self._locales:
             bundle = self._get_or_create_bundle(locale)
 
             if bundle.has_message(message_id):
-                value, bundle_errors = bundle.format_pattern(message_id, args, attribute=attribute)
+                try:
+                    value, bundle_errors = bundle.format_pattern(
+                        message_id, args, attribute=attribute
+                    )
+                except FormattingIntegrityError as exc:
+                    # Re-raise with corrected component: the caller invoked
+                    # localization.format_pattern(), not bundle.format_pattern() directly.
+                    old_ctx = exc.context
+                    err_count = len(exc.fluent_errors)
+                    new_ctx = IntegrityContext(
+                        component="localization",
+                        operation=old_ctx.operation if old_ctx else "format_pattern",
+                        key=old_ctx.key if old_ctx else str(message_id),
+                        expected=old_ctx.expected if old_ctx else "<no errors>",
+                        actual=old_ctx.actual if old_ctx else f"<{err_count} error(s)>",
+                        timestamp=old_ctx.timestamp if old_ctx else time.monotonic(),
+                    )
+                    raise FormattingIntegrityError(
+                        str(exc),
+                        context=new_ctx,
+                        fluent_errors=exc.fluent_errors,
+                        fallback_value=exc.fallback_value,
+                        message_id=exc.message_id,
+                    ) from exc
                 errors.extend(bundle_errors)
 
                 if (
                     self._on_fallback is not None
-                    and primary_locale is not None
-                    and locale != primary_locale
+                    and locale != self._primary_locale
                 ):
                     fallback_info = FallbackInfo(
-                        requested_locale=primary_locale,
+                        requested_locale=self._primary_locale,
                         resolved_locale=locale,
                         message_id=message_id,
                     )
@@ -897,7 +896,12 @@ class FluentLocalization:
             ...     l10n.add_resource('en', 'hello = Hello')
             ... # Caches cleared (localization was modified)
         """
-        self._modified_in_context = False
+        # Reset modification tracking for new context; held under write lock
+        # to prevent a data race with concurrent add_resource / add_function /
+        # clear_cache calls (which also write _modified_in_context under the
+        # write lock) in free-threaded Python 3.13.
+        with self._lock.write():
+            self._modified_in_context = False
         return self
 
     def __exit__(
@@ -916,11 +920,16 @@ class FluentLocalization:
             exc_val: Exception value (if any)
             exc_tb: Exception traceback (if any)
         """
-        if self._modified_in_context:
-            with self._lock.write():
+        # Read and reset _modified_in_context under the write lock to prevent a
+        # data race: concurrent write operations set this flag under the write
+        # lock; reading it here without a lock is a torn read in free-threaded
+        # Python 3.13.
+        with self._lock.write():
+            modified = self._modified_in_context
+            self._modified_in_context = False
+            if modified:
                 for bundle in self._bundles.values():
                     bundle.clear_cache()
-        self._modified_in_context = False
 
     def get_babel_locale(self) -> str:
         """Get Babel locale identifier from primary bundle.
@@ -980,16 +989,32 @@ class FluentLocalization:
 
         Aggregates cache metrics from all bundles that have been created.
         Useful for production monitoring of multi-locale deployments.
+        All fields from IntegrityCache.get_stats() are included so callers
+        can monitor corruption events, oversize skips, and audit state.
 
         Returns:
             Dict with aggregated cache metrics, or None if caching disabled.
+            Numeric fields are summed across all bundles; boolean fields
+            (write_once, strict, audit_enabled) reflect the first bundle's
+            configuration (all bundles share the same CacheConfig).
             Keys:
             - size (int): Total cached entries across all bundles
             - maxsize (int): Sum of maximum cache sizes
+            - max_entry_weight (int): Max entry weight (from first bundle)
+            - max_errors_per_entry (int): Max errors per entry (from first bundle)
             - hits (int): Total cache hits
             - misses (int): Total cache misses
             - hit_rate (float): Weighted hit rate (0.0-100.0)
             - unhashable_skips (int): Total uncacheable argument skips
+            - oversize_skips (int): Total entries skipped due to result weight
+            - error_bloat_skips (int): Total entries skipped due to error count/weight
+            - corruption_detected (int): Total checksum mismatches detected
+            - idempotent_writes (int): Total benign concurrent writes
+            - sequence (int): Sum of sequence numbers (total puts across bundles)
+            - write_once (bool): Write-once mode (from first bundle's config)
+            - strict (bool): Strict mode (from first bundle's config)
+            - audit_enabled (bool): Audit logging (from first bundle's config)
+            - audit_entries (int): Total audit log entries across all bundles
             - bundle_count (int): Number of initialized bundles
 
         Thread-safe via internal RWLock (read lock).
@@ -1004,6 +1029,8 @@ class FluentLocalization:
             2
             >>> stats["size"]  # Total entries across all bundles
             1
+            >>> stats["corruption_detected"]  # Zero for healthy cache
+            0
         """
         if self._cache_config is None:
             return None
@@ -1014,16 +1041,41 @@ class FluentLocalization:
             total_hits = 0
             total_misses = 0
             total_unhashable = 0
+            total_oversize = 0
+            total_error_bloat = 0
+            total_corruption = 0
+            total_idempotent = 0
+            total_sequence = 0
+            total_audit_entries = 0
+            # Boolean fields: representative from first bundle (all share same CacheConfig)
+            first_write_once: bool = False
+            first_strict: bool = False
+            first_audit_enabled: bool = False
+            first_max_entry_weight: int = 0
+            first_max_errors: int = 0
+            is_first = True
 
             for bundle in self._bundles.values():
                 stats = bundle.get_cache_stats()
                 if stats is not None:
-                    # Cast to int: these values are always int from FormatCache.get_stats()
                     total_size += int(stats["size"])
                     total_maxsize += int(stats["maxsize"])
                     total_hits += int(stats["hits"])
                     total_misses += int(stats["misses"])
                     total_unhashable += int(stats["unhashable_skips"])
+                    total_oversize += int(stats["oversize_skips"])
+                    total_error_bloat += int(stats["error_bloat_skips"])
+                    total_corruption += int(stats["corruption_detected"])
+                    total_idempotent += int(stats["idempotent_writes"])
+                    total_sequence += int(stats["sequence"])
+                    total_audit_entries += int(stats["audit_entries"])
+                    if is_first:
+                        first_write_once = bool(stats["write_once"])
+                        first_strict = bool(stats["strict"])
+                        first_audit_enabled = bool(stats["audit_enabled"])
+                        first_max_entry_weight = int(stats["max_entry_weight"])
+                        first_max_errors = int(stats["max_errors_per_entry"])
+                        is_first = False
 
             total_requests = total_hits + total_misses
             hit_rate = (total_hits / total_requests * 100) if total_requests > 0 else 0.0
@@ -1031,10 +1083,21 @@ class FluentLocalization:
             return {
                 "size": total_size,
                 "maxsize": total_maxsize,
+                "max_entry_weight": first_max_entry_weight,
+                "max_errors_per_entry": first_max_errors,
                 "hits": total_hits,
                 "misses": total_misses,
                 "hit_rate": round(hit_rate, 2),
                 "unhashable_skips": total_unhashable,
+                "oversize_skips": total_oversize,
+                "error_bloat_skips": total_error_bloat,
+                "corruption_detected": total_corruption,
+                "idempotent_writes": total_idempotent,
+                "sequence": total_sequence,
+                "write_once": first_write_once,
+                "strict": first_strict,
+                "audit_enabled": first_audit_enabled,
+                "audit_entries": total_audit_entries,
                 "bundle_count": len(self._bundles),
             }
 

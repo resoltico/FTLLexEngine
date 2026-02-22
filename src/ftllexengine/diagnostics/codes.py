@@ -5,7 +5,7 @@ Python 3.13+. Zero external dependencies.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 __all__ = [
@@ -17,12 +17,14 @@ __all__ = [
 ]
 
 
-class ErrorCategory(Enum):
+class ErrorCategory(StrEnum):
     """Error categorization for FrozenFluentError.
 
-    Replaces the old FluentError subclass hierarchy with a flat enum.
-    This enables exhaustive pattern matching and prevents subclass-based
-    invariant violations.
+    Inherits from ``StrEnum`` so that ``str(category)`` and direct string
+    comparisons work without accessing ``.value``; serialization and log
+    aggregation receive plain strings (``"reference"``, ``"resolution"``,
+    etc.) rather than the ``"ErrorCategory.X"`` repr that a plain ``Enum``
+    would produce. The ``.value`` attribute is still the canonical string.
 
     Categories:
         REFERENCE: Unknown message, term, or variable reference

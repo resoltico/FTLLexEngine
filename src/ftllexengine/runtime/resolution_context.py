@@ -68,6 +68,14 @@ class GlobalDepthGuard:
         4. Eventually cause stack overflow
 
         GlobalDepthGuard prevents this by tracking depth across all contexts.
+
+    Thread Spawning Limitation:
+        Custom functions that spawn NEW threads bypass this guard: each new
+        thread starts with the ContextVar default (0). The guard prevents
+        re-entry within a single thread/async task; it does not prevent
+        cross-thread recursive invocation. Custom functions that may spawn
+        threads and call back into bundle.format_pattern() from those threads
+        must apply independent rate limiting at the custom function level.
     """
 
     __slots__ = ("_max_depth", "_token")
@@ -118,16 +126,16 @@ class ResolutionContext:
 
     Attributes:
         stack: Resolution stack for cycle detection (message keys being resolved)
-        _seen: Set for O(1) membership checking (internal)
         max_depth: Maximum resolution depth (prevents stack overflow)
         max_expression_depth: Maximum expression nesting depth
         max_expansion_size: Maximum total characters in resolved output (DoS prevention)
+        _seen: O(1) membership set for cycle detection (internal, not init-configurable)
         _total_chars: Running count of resolved characters (internal)
         _expression_guard: DepthGuard for expression depth tracking (internal)
     """
 
     stack: list[str] = field(default_factory=list)
-    _seen: set[str] = field(default_factory=set)
+    _seen: set[str] = field(init=False, default_factory=set)
     max_depth: int = MAX_DEPTH
     max_expression_depth: int = MAX_DEPTH
     max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE
@@ -148,7 +156,7 @@ class ResolutionContext:
     def pop(self) -> str:
         """Pop message key from resolution stack."""
         key = self.stack.pop()
-        self._seen.discard(key)
+        self._seen.remove(key)  # remove() raises KeyError if absent, exposing state corruption
         return key
 
     def contains(self, key: str) -> bool:
@@ -172,20 +180,19 @@ class ResolutionContext:
         return [*self.stack, key]
 
     def track_expansion(self, char_count: int) -> None:
-        """Add to running expansion total and check budget.
+        """Add to running expansion total.
 
-        Raises FrozenFluentError if expansion budget is exceeded. This prevents
-        Billion Laughs attacks where small FTL input expands to gigabytes via
-        nested message references (e.g., m0={m1}{m1}, m1={m2}{m2}, ...).
+        Does not raise on budget exceeded — callers must check
+        ``total_chars > max_expansion_size`` after calling this method and
+        generate the appropriate error. Keeping error generation in the caller
+        (resolver) preserves separation of concerns: this object tracks state;
+        the resolver decides what to do when limits are breached.
+
+        This prevents Billion Laughs attacks where small FTL input expands to
+        gigabytes via nested message references (e.g., m0={m1}{m1},
+        m1={m2}{m2}, ...).
         """
         self._total_chars += char_count
-        if self._total_chars > self.max_expansion_size:
-            diag = ErrorTemplate.expansion_budget_exceeded(
-                self._total_chars, self.max_expansion_size
-            )
-            raise FrozenFluentError(
-                str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
-            )
 
     @property
     def expression_guard(self) -> DepthGuard:

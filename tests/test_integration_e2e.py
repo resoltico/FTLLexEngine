@@ -716,22 +716,23 @@ class TestParseFormatWithCache:
         stats = bundle.get_cache_stats()
         assert stats is None
 
-    def test_clear_cache_resets_stats(self) -> None:
-        """clear_cache() resets cache statistics."""
+    def test_clear_cache_preserves_stats(self) -> None:
+        """clear_cache() clears entries but metrics are cumulative (not reset)."""
         ftl_source = "msg = Hello!"
 
         bundle = FluentBundle("en-US", use_isolating=False, cache=CacheConfig())
         bundle.add_resource(ftl_source)
 
-        bundle.format_pattern("msg")
-        bundle.format_pattern("msg")
+        bundle.format_pattern("msg")   # miss
+        bundle.format_pattern("msg")   # hit
 
         bundle.clear_cache()
-        bundle.format_pattern("msg")
+        bundle.format_pattern("msg")   # miss (entries cleared, not metrics)
 
         stats = bundle.get_cache_stats()
         assert stats is not None
-        assert stats["misses"] == 1  # Only the post-clear miss
+        # 1 pre-clear miss + 1 post-clear miss = 2 cumulative misses
+        assert stats["misses"] == 2
 
 
 class TestParseFormatIsolation:

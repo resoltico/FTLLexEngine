@@ -344,11 +344,12 @@ print(f"[FINANCIAL] {result}")
 # Check cache configuration
 print("\nCache security settings:")
 cfg = financial_bundle.cache_config
-print(f"  write_once: {cfg.write_once}")
-print(f"  integrity_strict: {cfg.integrity_strict}")
-print(f"  audit_enabled: {cfg.enable_audit}")
-print(f"  max_entry_weight: {cfg.max_entry_weight}")
-print(f"  max_errors_per_entry: {cfg.max_errors_per_entry}")
+if cfg is not None:
+    print(f"  write_once: {cfg.write_once}")
+    print(f"  integrity_strict: {cfg.integrity_strict}")
+    print(f"  audit_enabled: {cfg.enable_audit}")
+    print(f"  max_entry_weight: {cfg.max_entry_weight}")
+    print(f"  max_errors_per_entry: {cfg.max_errors_per_entry}")
 
 # Get cache stats including audit entries
 stats = financial_bundle.get_cache_stats()

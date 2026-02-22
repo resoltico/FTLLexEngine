@@ -2861,15 +2861,16 @@ class TestCacheEntrySizeLimit:
         assert stats["max_entry_weight"] == 50
         assert stats["size"] == 0
 
-    def test_clear_resets_oversize_skips(self) -> None:
-        """clear() resets oversize_skips counter."""
+    def test_clear_preserves_oversize_skips(self) -> None:
+        """clear() does not reset oversize_skips; counter is cumulative."""
         cache = IntegrityCache(strict=False, max_entry_weight=50)
 
         cache.put("msg", None, None, "en", True, "x" * 100, ())
         assert cache.oversize_skips == 1
 
+        # clear() removes entries but preserves cumulative observability metrics.
         cache.clear()
-        assert cache.oversize_skips == 0
+        assert cache.oversize_skips == 1
 
     def test_bundle_cache_uses_default_max_entry_weight(self) -> None:
         """FluentBundle's internal cache uses default max_entry_weight."""

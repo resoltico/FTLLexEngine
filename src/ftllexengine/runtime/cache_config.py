@@ -49,7 +49,8 @@ class CacheConfig:
         >>> bundle = FluentBundle("en", cache=config)
         >>> bundle.cache_enabled
         True
-        >>> bundle.cache_size
+        >>> assert bundle.cache_config is not None
+        >>> bundle.cache_config.size
         500
 
     Example - Financial application:

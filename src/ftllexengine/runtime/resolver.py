@@ -32,7 +32,6 @@ from ftllexengine.constants import (
 from ftllexengine.core import depth_clamp
 from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.diagnostics import (
-    DiagnosticCode,
     ErrorCategory,
     ErrorTemplate,
     FrozenFluentError,
@@ -75,21 +74,6 @@ UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
 
 
-def _clear_tracebacks(
-    errors: list[FrozenFluentError],
-) -> tuple[FrozenFluentError, ...]:
-    """Clear __traceback__ on caught exceptions to break reference cycles.
-
-    FrozenFluentError objects raised inside the resolver retain __traceback__
-    references to the frame in which they were raised. Those frames hold local
-    variables (including the bundle and its AST), creating cycles that only the
-    gc cycle collector can reclaim. Clearing tracebacks at the resolver boundary
-    allows CPython's refcount to free them immediately.
-    """
-    for err in errors:
-        err.__traceback__ = None
-    return tuple(errors)
-
 
 class FluentResolver:
     """Resolves Fluent messages to strings.
@@ -105,13 +89,13 @@ class FluentResolver:
     """
 
     __slots__ = (
+        "_function_registry",
+        "_locale",
         "_max_expansion_size",
         "_max_nesting_depth",
-        "function_registry",
-        "locale",
-        "messages",
-        "terms",
-        "use_isolating",
+        "_messages",
+        "_terms",
+        "_use_isolating",
     )
 
     def __init__(
@@ -136,11 +120,11 @@ class FluentResolver:
             max_nesting_depth: Maximum resolution depth limit (keyword-only)
             max_expansion_size: Maximum total characters in resolved output (keyword-only)
         """
-        self.locale = locale
-        self.use_isolating = use_isolating
-        self.messages = messages
-        self.terms = terms
-        self.function_registry = function_registry
+        self._locale = locale
+        self._use_isolating = use_isolating
+        self._messages = messages
+        self._terms = terms
+        self._function_registry = function_registry
         self._max_nesting_depth = depth_clamp(max_nesting_depth)
         self._max_expansion_size = max_expansion_size
 
@@ -210,7 +194,7 @@ class FluentResolver:
                 error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
                 errors.append(error)
                 fallback = FALLBACK_MISSING_MESSAGE.format(id=f"{message.id.name}.{attribute}")
-                return (fallback, _clear_tracebacks(errors))
+                return (fallback, tuple(errors))
             pattern = attr.value
         else:
             if message.value is None:
@@ -218,7 +202,7 @@ class FluentResolver:
                 error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
                 errors.append(error)
                 fallback = FALLBACK_MISSING_MESSAGE.format(id=message.id.name)
-                return (fallback, _clear_tracebacks(errors))
+                return (fallback, tuple(errors))
             pattern = message.value
 
         # Check for circular references using explicit context
@@ -229,7 +213,7 @@ class FluentResolver:
             error = FrozenFluentError(str(diag), ErrorCategory.CYCLIC, diagnostic=diag)
             errors.append(error)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
-            return (fallback, _clear_tracebacks(errors))
+            return (fallback, tuple(errors))
 
         # Check for maximum depth (prevents stack overflow from long non-cyclic chains)
         if context.is_depth_exceeded():
@@ -237,7 +221,7 @@ class FluentResolver:
             error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             errors.append(error)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
-            return (fallback, _clear_tracebacks(errors))
+            return (fallback, tuple(errors))
 
         # Use GlobalDepthGuard to track depth across separate format_pattern() calls.
         # This prevents custom functions from bypassing depth limits by calling
@@ -247,14 +231,16 @@ class FluentResolver:
                 context.push(msg_key)
                 try:
                     result = self._resolve_pattern(pattern, args, errors, context)
-                    return (result, _clear_tracebacks(errors))
+                    return (result, tuple(errors))
                 finally:
                     context.pop()
         except FrozenFluentError as e:
-            # Global depth exceeded - collect error and return fallback
+            # Resolution limit exceeded (global depth, expression depth, or
+            # expansion budget). Collect error and return fallback — prevents
+            # partial output from reaching the caller.
             errors.append(e)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
-            return (fallback, _clear_tracebacks(errors))
+            return (fallback, tuple(errors))
 
     def _resolve_pattern(
         self,
@@ -284,6 +270,16 @@ class FluentResolver:
             match element:
                 case TextElement():
                     context.track_expansion(len(element.value))
+                    if context.total_chars > context.max_expansion_size:
+                        diag = ErrorTemplate.expansion_budget_exceeded(
+                            context.total_chars, context.max_expansion_size
+                        )
+                        errors.append(
+                            FrozenFluentError(
+                                str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
+                            )
+                        )
+                        break
                     parts.append(element.value)
                 case Placeable():
                     try:
@@ -299,22 +295,25 @@ class FluentResolver:
                             )
                         formatted = self._format_value(value)
                         context.track_expansion(len(formatted))
+                        if context.total_chars > context.max_expansion_size:
+                            diag = ErrorTemplate.expansion_budget_exceeded(
+                                context.total_chars, context.max_expansion_size
+                            )
+                            errors.append(
+                                FrozenFluentError(
+                                    str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
+                                )
+                            )
+                            break
 
                         # Wrap in Unicode bidi isolation marks (FSI/PDI)
                         # Per Unicode TR9, prevents RTL/LTR text interference
-                        if self.use_isolating:
+                        if self._use_isolating:
                             parts.append(f"{UNICODE_FSI}{formatted}{UNICODE_PDI}")
                         else:
                             parts.append(formatted)
 
                     except FrozenFluentError as e:
-                        # Expansion budget errors must propagate to halt all resolution
-                        if (
-                            e.diagnostic is not None
-                            and e.diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
-                        ):
-                            errors.append(e)
-                            break
                         # Mozilla-aligned error handling:
                         # Collect error, show readable fallback (not {ERROR: ...})
                         errors.append(e)
@@ -392,10 +391,10 @@ class FluentResolver:
     ) -> str:
         """Resolve message reference."""
         msg_id = expr.id.name
-        if msg_id not in self.messages:
+        if msg_id not in self._messages:
             diag = ErrorTemplate.message_not_found(msg_id)
             raise FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
-        message = self.messages[msg_id]
+        message = self._messages[msg_id]
         # resolve_message returns (result, errors) tuple
         # Pass the same context for proper cycle detection across nested calls
         result, nested_errors = self.resolve_message(
@@ -424,10 +423,10 @@ class FluentResolver:
         allowing term patterns to reference them as variables.
         """
         term_id = expr.id.name
-        if term_id not in self.terms:
+        if term_id not in self._terms:
             diag = ErrorTemplate.term_not_found(term_id)
             raise FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
-        term = self.terms[term_id]
+        term = self._terms[term_id]
 
         # Select pattern (value or attribute)
         # Use reversed() for last-wins semantics, consistent with message attribute resolution
@@ -682,7 +681,7 @@ class FluentResolver:
                 # Example: NUMBER(1, minimumFractionDigits: 2) creates FluentNumber with
                 # precision=2, which makes select_plural_category treat it as "1.00" (v=2),
                 # selecting "other" instead of "one" in English plural rules.
-                plural_category = select_plural_category(numeric_value, self.locale, precision)
+                plural_category = select_plural_category(numeric_value, self._locale, precision)
                 plural_match = self._find_plural_variant(expr.variants, plural_category)
                 if plural_match is not None:
                     return self._resolve_pattern(
@@ -788,10 +787,10 @@ class FluentResolver:
 
         # Check if locale injection is needed (metadata-driven, not magic tuple)
         # This correctly handles custom functions with same name as built-ins
-        if self.function_registry.should_inject_locale(func_name):
+        if self._function_registry.should_inject_locale(func_name):
             # Validate arity before injection to provide clear error messages
             # instead of opaque TypeError from incorrect argument positioning
-            expected_args = self.function_registry.get_expected_positional_args(func_name)
+            expected_args = self._function_registry.get_expected_positional_args(func_name)
             if expected_args is not None and len(positional_values) != expected_args:
                 diag = ErrorTemplate.function_arity_mismatch(
                     func_name, expected_args, len(positional_values)
@@ -804,7 +803,7 @@ class FluentResolver:
             # FunctionRegistry.call() handles camelCase -> snake_case conversion
             return self._call_function_safe(
                 func_name,
-                [*positional_values, self.locale],
+                [*positional_values, self._locale],
                 named_values,
                 errors,
             )
@@ -841,7 +840,7 @@ class FluentResolver:
             Function result on success, or fallback error string on failure.
         """
         try:
-            return self.function_registry.call(func_name, positional, named)
+            return self._function_registry.call(func_name, positional, named)
         except FrozenFluentError:
             # Already structured error from registry (TypeError/ValueError),
             # let it propagate to pattern-level handler

@@ -44,10 +44,21 @@ class TestGetCacheStatsBasic:
         expected_keys = {
             "size",
             "maxsize",
+            "max_entry_weight",
+            "max_errors_per_entry",
             "hits",
             "misses",
             "hit_rate",
             "unhashable_skips",
+            "oversize_skips",
+            "error_bloat_skips",
+            "corruption_detected",
+            "idempotent_writes",
+            "sequence",
+            "write_once",
+            "strict",
+            "audit_enabled",
+            "audit_entries",
             "bundle_count",
         }
         assert set(stats.keys()) == expected_keys

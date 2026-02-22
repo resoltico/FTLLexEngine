@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.118.0"
+version: "0.121.0"
 domain: ERRORS
 updated: "2026-02-21"
 route:
@@ -14,11 +14,11 @@ route:
 
 ## `ErrorCategory`
 
-Error categorization enum replacing the exception class hierarchy.
+Error categorization string enum replacing the exception class hierarchy.
 
 ### Signature
 ```python
-class ErrorCategory(Enum):
+class ErrorCategory(StrEnum):
     REFERENCE = "reference"
     RESOLUTION = "resolution"
     CYCLIC = "cyclic"
@@ -36,7 +36,9 @@ class ErrorCategory(Enum):
 | `FORMATTING` | Locale-aware formatting failure. |
 
 ### Constraints
-- Enum: Members have string values. Access via `.value`: `ErrorCategory.REFERENCE.value == "reference"`
+- Type: `StrEnum` — each member IS a `str`; `ErrorCategory.REFERENCE == "reference"` is `True`
+- String repr: `str(ErrorCategory.REFERENCE) == "reference"` (not `"ErrorCategory.REFERENCE"`)
+- Value: `.value` is still the plain string (`"reference"`, `"resolution"`, etc.)
 - Usage: Check category instead of using isinstance() on subclasses.
 - Import: `from ftllexengine.diagnostics import ErrorCategory`
 

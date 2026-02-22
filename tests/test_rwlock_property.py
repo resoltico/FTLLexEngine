@@ -6,7 +6,6 @@ for all possible lock operation sequences:
 - Mutual exclusion invariants
 - Fairness properties
 - State consistency
-- Decorator preservation properties
 """
 
 import contextlib
@@ -18,7 +17,7 @@ import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
+from ftllexengine.runtime.rwlock import RWLock
 
 
 @pytest.mark.fuzz
@@ -324,161 +323,6 @@ class TestRWLockContextManagerProperties:
             pass
         exc_name = exception_type.__name__
         event(f"exception={exc_name}")
-
-
-@pytest.mark.fuzz
-class TestRWLockDecoratorProperties:
-    """Property tests for decorator functions."""
-
-    @given(
-        return_value=st.one_of(st.integers(), st.text(), st.booleans(), st.none()),
-    )
-    @settings(max_examples=50, deadline=None)
-    def test_read_decorator_preserves_return_value(self, return_value: object) -> None:
-        """Property: with_read_lock decorator preserves return values.
-
-        For any return value, the decorated function should return
-        the same value as the undecorated function.
-        """
-
-        class Container:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_read_lock()
-            def get_value(self) -> object:
-                return return_value
-
-        container = Container()
-        assert container.get_value() == return_value
-        ret_type = type(return_value).__name__
-        event(f"return_type={ret_type}")
-
-    @given(
-        return_value=st.one_of(st.integers(), st.text(), st.booleans(), st.none()),
-    )
-    @settings(max_examples=50, deadline=None)
-    def test_write_decorator_preserves_return_value(
-        self, return_value: object
-    ) -> None:
-        """Property: with_write_lock decorator preserves return values.
-
-        For any return value, the decorated function should return
-        the same value as the undecorated function.
-        """
-
-        class Container:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_write_lock()
-            def set_value(self) -> object:
-                return return_value
-
-        container = Container()
-        assert container.set_value() == return_value
-        ret_type = type(return_value).__name__
-        event(f"return_type={ret_type}")
-
-    @given(
-        args=st.lists(st.integers(), min_size=0, max_size=5),
-        kwargs=st.dictionaries(
-            st.text(min_size=1, max_size=10, alphabet=st.characters(categories=["Ll"])),
-            st.integers(),
-            min_size=0,
-            max_size=3,
-        ),
-    )
-    @settings(max_examples=50, deadline=None)
-    def test_read_decorator_preserves_arguments(
-        self, args: list[int], kwargs: dict[str, int]
-    ) -> None:
-        """Property: with_read_lock decorator preserves function arguments.
-
-        For any combination of positional and keyword arguments,
-        the decorated function receives them unchanged.
-        """
-
-        class Container:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_read_lock()
-            def process(self, *args: int, **kwargs: int) -> tuple[list[int], dict[str, int]]:
-                return (list(args), kwargs)
-
-        container = Container()
-        result_args, result_kwargs = container.process(*args, **kwargs)
-        assert result_args == list(args)
-        assert result_kwargs == kwargs
-        event(f"arg_count={len(args)}")
-
-    @given(
-        args=st.lists(st.integers(), min_size=0, max_size=5),
-        kwargs=st.dictionaries(
-            st.text(min_size=1, max_size=10, alphabet=st.characters(categories=["Ll"])),
-            st.integers(),
-            min_size=0,
-            max_size=3,
-        ),
-    )
-    @settings(max_examples=50, deadline=None)
-    def test_write_decorator_preserves_arguments(
-        self, args: list[int], kwargs: dict[str, int]
-    ) -> None:
-        """Property: with_write_lock decorator preserves function arguments.
-
-        For any combination of positional and keyword arguments,
-        the decorated function receives them unchanged.
-        """
-
-        class Container:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_write_lock()
-            def process(self, *args: int, **kwargs: int) -> tuple[list[int], dict[str, int]]:
-                return (list(args), kwargs)
-
-        container = Container()
-        result_args, result_kwargs = container.process(*args, **kwargs)
-        assert result_args == list(args)
-        assert result_kwargs == kwargs
-        event(f"arg_count={len(args)}")
-
-    @given(
-        lock_attr=st.text(
-            min_size=1,
-            max_size=20,
-            alphabet=st.characters(categories=["Ll", "Lu"]),
-        )
-    )
-    @settings(max_examples=30, deadline=None)
-    def test_decorator_custom_lock_attribute(self, lock_attr: str) -> None:
-        """Property: Decorators work with any valid attribute name.
-
-        For any valid Python identifier, the decorator should use
-        that attribute as the lock.
-        """
-        # Filter invalid identifiers
-        if not lock_attr.isidentifier() or lock_attr.startswith("_"):
-            assume(False)
-
-        class Container:
-            def __init__(self, attr_name: str) -> None:
-                setattr(self, attr_name, RWLock())
-
-        container = Container(lock_attr)
-
-        # Dynamically create decorated method
-        @with_read_lock(lock_attr=lock_attr)
-        def read_method(self: object) -> str:  # noqa: ARG001
-            return "success"
-
-        # Bind method to instance
-        result = read_method(container)
-        assert result == "success"
-        event(f"lock_attr_len={len(lock_attr)}")
 
 
 @pytest.mark.fuzz

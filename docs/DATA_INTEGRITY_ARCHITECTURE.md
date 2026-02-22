@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.118.0"
+version: "0.121.0"
 domain: "architecture"
 updated: "2026-02-21"
 route: "/docs/data-integrity"
@@ -175,7 +175,7 @@ bundle = FluentBundle("en", cache=config, strict=True)
 The BLAKE2b-128 checksum includes ALL entry fields for complete audit trail integrity:
 
 1. **Content:** `formatted` (UTF-8 encoded, length-prefixed message output)
-2. **Errors:** Each error's `content_hash` (or length-prefixed message string if unavailable)
+2. **Errors:** Each error's `content_hash` bytes (BLAKE2b-128, always present; `FrozenFluentError` is `@final`)
 3. **Metadata:**
    - `created_at`: 8-byte IEEE 754 double (monotonic timestamp)
    - `sequence`: 8-byte signed big-endian integer (audit trail ordering)

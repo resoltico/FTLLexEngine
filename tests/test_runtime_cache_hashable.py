@@ -947,8 +947,8 @@ class TestUnhashableHandling:
         cache.put("msg2", {"dict": {}}, None, "en-US", True, "result", ())
         assert cache.unhashable_skips == 0  # Dicts are convertible, not skipped
 
-    def test_unhashable_skips_resets_on_clear(self) -> None:
-        """clear() resets unhashable_skips to 0."""
+    def test_unhashable_skips_preserved_on_clear(self) -> None:
+        """clear() does not reset unhashable_skips; counter is cumulative."""
         cache = IntegrityCache(strict=False, maxsize=100)
 
         class UnhashableClass:
@@ -958,8 +958,9 @@ class TestUnhashableHandling:
 
         cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", True)  # type: ignore[dict-item]
         assert cache.unhashable_skips == 1
+        # clear() removes entries but preserves cumulative observability metrics.
         cache.clear()
-        assert cache.unhashable_skips == 0
+        assert cache.unhashable_skips == 1
 
     def test_get_stats_includes_unhashable_skips(self) -> None:
         """get_stats() includes accurate unhashable_skips count."""

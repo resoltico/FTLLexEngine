@@ -33,11 +33,12 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping
 
 
 def _check_unrecognized(
-    iso_digits: dict[str, int],
-    babel_currencies: set[str],
+    iso_digits: Mapping[str, int],
+    babel_currencies: frozenset[str],
 ) -> list[str]:
     """Check hardcoded currencies not recognized by Babel."""
     return [
@@ -48,7 +49,7 @@ def _check_unrecognized(
 
 
 def _check_discrepancies(
-    iso_digits: dict[str, int],
+    iso_digits: Mapping[str, int],
 ) -> list[str]:
     """Compare hardcoded values against Babel precision."""
     from babel.numbers import get_currency_precision  # noqa: PLC0415
@@ -62,8 +63,8 @@ def _check_discrepancies(
 
 
 def _check_coverage_gaps(
-    iso_digits: dict[str, int],
-    babel_currencies: set[str],
+    iso_digits: Mapping[str, int],
+    babel_currencies: frozenset[str],
     default_decimals: int,
 ) -> tuple[list[str], list[str]]:
     """Scan Babel currencies not in our list for precision mismatches.
@@ -196,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         ISO_4217_DEFAULT_DECIMALS,
     )
 
-    babel_currencies = list_currencies()
+    babel_currencies: frozenset[str] = frozenset(list_currencies())
 
     errors = _check_unrecognized(ISO_4217_DECIMAL_DIGITS, babel_currencies)
     discrepancies = _check_discrepancies(ISO_4217_DECIMAL_DIGITS)
@@ -216,7 +217,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if errors:
         print(f"[FAIL] {len(errors)} structural error(s) found.")
-        print("[EXIT-CODE] 1")
         return 1
 
     total = len(discrepancies) + len(actionable) + len(unverifiable)
@@ -228,7 +228,6 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         print("[PASS] All checks passed.")
-    print("[EXIT-CODE] 0")
     return 0
 
 

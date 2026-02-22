@@ -7,16 +7,16 @@ Tests verify:
 - Reentrant writer-held read locks work correctly
 - Lock downgrading works in complex concurrent scenarios
 - Property-based invariants hold for all lock state transitions
+- Downgraded writer does not break lock semantics
 """
 
 import threading
 import time
 
-import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
+from ftllexengine.runtime.rwlock import RWLock
 
 
 class TestRWLockDowngradingBasics:
@@ -569,90 +569,6 @@ class TestRWLockPropertyBased:
         # External reader should have been blocked while write was held
         # (even if no actual verification in this property test, the threading.Thread
         # join confirms no deadlock occurred)
-
-
-class TestRWLockDecoratorDowngrading:
-    """Test decorators work correctly with lock downgrading."""
-
-    def test_write_decorator_can_call_read_decorated_method(self) -> None:
-        """Method with write_lock can call method with read_lock (downgrading)."""
-
-        class DataStore:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-                self.value = 0
-
-            @with_read_lock()
-            def read_value(self) -> int:
-                return self.value
-
-            @with_write_lock()
-            def write_and_verify(self, new_value: int) -> int:
-                self.value = new_value
-                # Call read_decorated method while holding write lock
-                return self.read_value()
-
-        store = DataStore()
-        result = store.write_and_verify(42)
-
-        assert result == 42
-        assert store.value == 42
-
-    def test_nested_write_then_read_decorators(self) -> None:
-        """Nested decorator calls work with write-to-read downgrading."""
-
-        class Calculator:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-                self.result = 0
-
-            @with_read_lock()
-            def get_result(self) -> int:
-                return self.result
-
-            @with_write_lock()
-            def compute(self, value: int) -> int:
-                self.result = value * 2
-                # Downgrade: call read while holding write
-                verified = self.get_result()
-                assert verified == value * 2
-                return verified
-
-        calc = Calculator()
-        result = calc.compute(21)
-        assert result == 42
-
-    def test_decorator_downgrade_with_exception(self) -> None:
-        """Decorators handle exceptions correctly during downgrading."""
-
-        class DataStore:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-                self.value = 0
-
-            @with_read_lock()
-            def read_value(self) -> int:
-                if self.value == 99:
-                    msg = "Invalid value"
-                    raise ValueError(msg)
-                return self.value
-
-            @with_write_lock()
-            def write_and_verify(self, new_value: int) -> int:
-                self.value = new_value
-                return self.read_value()
-
-        store = DataStore()
-
-        # Normal case works
-        assert store.write_and_verify(42) == 42
-
-        # Exception case
-        with pytest.raises(ValueError, match="Invalid value"):
-            store.write_and_verify(99)
-
-        # Lock should be released - can acquire again
-        assert store.write_and_verify(100) == 100
 
 
 class TestRWLockDowngradingValidation:

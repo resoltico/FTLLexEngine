@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.118.0"
+version: "0.121.0"
 domain: RUNTIME
 updated: "2026-02-21"
 route:
@@ -1496,7 +1496,7 @@ def get_audit_log(self) -> tuple[WriteLogEntry, ...]:
 
 ## `IntegrityCache.clear`
 
-Clear all cached entries and reset statistics.
+Clear all cached entries. Observability metrics are preserved.
 
 ### Signature
 ```python
@@ -1505,7 +1505,7 @@ def clear(self) -> None:
 
 ### Constraints
 - Return: None.
-- State: Clears cache and resets hit/miss/skip counters. Sequence number NOT reset (monotonic for audit trail). Audit log NOT cleared (historical record).
+- State: Removes all cached entries from the LRU store. All counters (hits, misses, unhashable_skips, oversize_skips, error_bloat_skips, corruption_detected, idempotent_writes) and sequence number accumulate across `clear()` calls; they are never reset. Audit log is NOT cleared (historical record).
 - Thread: Safe.
 - Usage: Called automatically by FluentBundle on `add_resource()` or `add_function()`.
 

@@ -6,15 +6,15 @@
 # FUZZ_PLUGIN_HEADER_END
 """RWLock Contention Fuzzer (Atheris).
 
-Targets: ftllexengine.runtime.rwlock.RWLock, with_read_lock, with_write_lock
+Targets: ftllexengine.runtime.rwlock.RWLock
 
 Concern boundary: This fuzzer stress-tests the RWLock concurrency primitive
 directly. Tests reader/writer mutual exclusion, reader concurrency, writer
 preference, reentrant readers, reentrant writers, write-to-read downgrading,
-read-to-write upgrade rejection, decorator correctness, timeout behavior,
-negative timeout rejection, release-without-acquire rejection, zero-timeout
-non-blocking paths, and deadlock detection. Distinct from runtime/cache
-fuzzers which exercise locking only as a side effect.
+read-to-write upgrade rejection, timeout behavior, negative timeout rejection,
+release-without-acquire rejection, zero-timeout non-blocking paths, and
+deadlock detection. Distinct from runtime/cache fuzzers which exercise
+locking only as a side effect.
 
 Metrics:
 - Pattern coverage (reader_writer_exclusion, reentrant_reads, etc.)
@@ -112,7 +112,6 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("negative_timeout", 4),
     ("release_without_acquire", 4),
     ("upgrade_rejection", 8),
-    ("decorator_correctness", 6),
     ("zero_timeout_nonblocking", 5),
     ("write_to_read_downgrade", 10),
     # Medium: multi-threaded but bounded
@@ -190,7 +189,7 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 atheris.enabled_hooks.add("str")
 
 with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
+    from ftllexengine.runtime.rwlock import RWLock
 
 
 def _join_threads(threads: list[threading.Thread]) -> bool:
@@ -474,40 +473,6 @@ def _pattern_rapid_lock_cycling(fdp: atheris.FuzzedDataProvider) -> None:
     if shared_value != expected_value:
         msg = f"Lock cycling corruption: expected {expected_value}, got {shared_value}"
         raise LockFuzzError(msg)
-
-
-def _pattern_decorator_correctness(fdp: atheris.FuzzedDataProvider) -> None:
-    """Verify with_read_lock and with_write_lock decorators."""
-    lock_instance = RWLock()
-
-    class TestClass:
-        """Test target for decorator-based locking."""
-
-        def __init__(self) -> None:
-            self._rwlock = lock_instance
-            self.value = 0
-
-        @with_read_lock()
-        def read_value(self) -> int:
-            """Read under read lock."""
-            return self.value
-
-        @with_write_lock()
-        def write_value(self, val: int) -> None:
-            """Write under write lock."""
-            self.value = val
-
-    obj = TestClass()
-
-    num_ops = fdp.ConsumeIntInRange(10, 50)
-    for _ in range(num_ops):
-        if fdp.ConsumeBool():
-            obj.write_value(fdp.ConsumeIntInRange(0, 1000))
-        else:
-            val = obj.read_value()
-            if not isinstance(val, int):
-                msg = f"Decorator read returned non-int: {type(val)}"
-                raise LockFuzzError(msg)
 
 
 def _pattern_mixed_contention(fdp: atheris.FuzzedDataProvider) -> None:
@@ -863,7 +828,6 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "negative_timeout": _pattern_negative_timeout,
     "release_without_acquire": _pattern_release_without_acquire,
     "upgrade_rejection": _pattern_upgrade_rejection,
-    "decorator_correctness": _pattern_decorator_correctness,
     "zero_timeout_nonblocking": _pattern_zero_timeout_nonblocking,
     "write_to_read_downgrade": _pattern_write_to_read_downgrade,
     "rapid_lock_cycling": _pattern_rapid_lock_cycling,
@@ -959,7 +923,7 @@ def main() -> None:
 
     print_fuzzer_banner(
         title="RWLock Contention Fuzzer (Atheris)",
-        target="RWLock, with_read_lock, with_write_lock",
+        target="RWLock",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
     )

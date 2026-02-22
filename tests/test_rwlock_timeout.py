@@ -5,11 +5,10 @@ Tests verify:
 - Write lock acquisition respects timeout
 - Timeout of zero is non-blocking attempt
 - Negative timeout raises ValueError
-- None timeout preserves indefinite blocking (backward compatibility)
+- None timeout preserves indefinite blocking
 - Reentrant acquisition ignores timeout (no waiting)
 - Lock downgrading ignores timeout (no waiting)
 - TimeoutError does not corrupt internal state (_waiting_writers counter)
-- Decorator timeout passthrough
 - Property-based timeout invariants
 """
 
@@ -21,7 +20,7 @@ import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.rwlock import RWLock, with_read_lock, with_write_lock
+from ftllexengine.runtime.rwlock import RWLock
 
 
 class TestReadTimeout:
@@ -364,98 +363,6 @@ class TestTimeoutDowngrading:
 
         with lock.write(), lock.read(timeout=0.0):
             pass  # Should not raise; downgrading is immediate
-
-
-class TestDecoratorTimeout:
-    """Test timeout support in decorators."""
-
-    def test_read_decorator_with_timeout(self) -> None:
-        """with_read_lock decorator passes timeout to lock."""
-
-        class Target:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_read_lock(timeout=0.05)
-            def read_op(self) -> str:
-                return "ok"
-
-        target = Target()
-        assert target.read_op() == "ok"
-
-    def test_write_decorator_with_timeout(self) -> None:
-        """with_write_lock decorator passes timeout to lock."""
-
-        class Target:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_write_lock(timeout=0.05)
-            def write_op(self) -> str:
-                return "ok"
-
-        target = Target()
-        assert target.write_op() == "ok"
-
-    def test_read_decorator_timeout_fires(self) -> None:
-        """with_read_lock decorator raises TimeoutError when blocked."""
-
-        class Target:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_read_lock(timeout=0.05)
-            def read_op(self) -> str:
-                return "ok"  # pragma: no cover
-
-        target = Target()
-        writer_ready = threading.Event()
-        writer_release = threading.Event()
-
-        def hold_write() -> None:
-            with target._rwlock.write():
-                writer_ready.set()
-                writer_release.wait()
-
-        t = threading.Thread(target=hold_write)
-        t.start()
-        writer_ready.wait()
-
-        with pytest.raises(TimeoutError):
-            target.read_op()
-
-        writer_release.set()
-        t.join()
-
-    def test_write_decorator_timeout_fires(self) -> None:
-        """with_write_lock decorator raises TimeoutError when blocked."""
-
-        class Target:
-            def __init__(self) -> None:
-                self._rwlock = RWLock()
-
-            @with_write_lock(timeout=0.05)
-            def write_op(self) -> str:
-                return "ok"  # pragma: no cover
-
-        target = Target()
-        reader_ready = threading.Event()
-        reader_release = threading.Event()
-
-        def hold_read() -> None:
-            with target._rwlock.read():
-                reader_ready.set()
-                reader_release.wait()
-
-        t = threading.Thread(target=hold_read)
-        t.start()
-        reader_ready.wait()
-
-        with pytest.raises(TimeoutError):
-            target.write_op()
-
-        reader_release.set()
-        t.join()
 
 
 class TestTimeoutProperties:
