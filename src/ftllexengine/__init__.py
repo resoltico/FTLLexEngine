@@ -180,9 +180,9 @@ def clear_all_caches() -> None:
         of whether Babel-dependent modules have been imported. Caches that
         haven't been populated yet are simply no-ops.
 
-        FluentBundle instances maintain their own FormatCache which is NOT
-        cleared by this function. To clear bundle-specific caches, recreate
-        the FluentBundle instance.
+        FluentBundle instances maintain their own IntegrityCache which is NOT
+        cleared by this function. To clear a bundle's format cache, call
+        ``bundle.clear_cache()``.
 
     Example:
         >>> import ftllexengine

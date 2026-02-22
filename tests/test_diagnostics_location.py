@@ -349,18 +349,17 @@ class TestValidationCRLFNormalization:
 
 
 class TestBundleContextManagerCacheClearing:
-    """Tests for context manager cache clearing behavior."""
+    """Tests for context manager no-op behavior."""
 
-    def test_context_manager_clears_cache_on_exit(self) -> None:
-        """Context manager clears format cache on exit."""
+    def test_context_manager_exit_is_noop_no_exceptions(self) -> None:
+        """Context manager exit is a no-op: cache is preserved, no exceptions."""
         with FluentBundle("en", cache=CacheConfig()) as bundle:
             bundle.add_resource("msg = Hello")
 
-            # Format to populate cache
+            # Format to populate cache (add_resource clears then repopulate)
             bundle.format_pattern("msg")
             stats_during = bundle.get_cache_stats()
             assert stats_during is not None
             assert stats_during["size"] >= 0
 
-        # After exit, if we had access to the bundle,
-        # the cache would be cleared. The test verifies no exceptions.
+        # __exit__ is a no-op; no exceptions and cache is preserved.

@@ -73,6 +73,10 @@ logger = logging.getLogger(__name__)
 UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
 
+# Maximum recursion depth for fallback string generation in _get_fallback_for_placeable.
+# Fallback rendering is purely diagnostic (shown when resolution fails), so a shallow
+# depth limit prevents runaway recursion while still capturing meaningful context.
+_FALLBACK_MAX_DEPTH: int = 10
 
 
 class FluentResolver:
@@ -176,7 +180,7 @@ class FluentResolver:
             reference implementation behavior.
         """
         errors: list[FrozenFluentError] = []
-        args = args or {}
+        args = {} if args is None else args
 
         # Create fresh context if not provided (top-level call)
         if context is None:
@@ -900,7 +904,9 @@ class FluentResolver:
         # Handles Decimal, datetime, date, FluentNumber, and any other types
         return str(value)
 
-    def _get_fallback_for_placeable(self, expr: Expression, depth: int = 10) -> str:  # noqa: PLR0911 - fallback dispatch
+    def _get_fallback_for_placeable(  # noqa: PLR0911 - fallback dispatch
+        self, expr: Expression, depth: int = _FALLBACK_MAX_DEPTH
+    ) -> str:
         """Get readable fallback for failed placeable per Fluent spec.
 
         Per Fluent specification, when a placeable fails to resolve,

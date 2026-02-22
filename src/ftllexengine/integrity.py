@@ -158,6 +158,7 @@ class CacheCorruptionError(DataIntegrityError):
     The cache entry should be evicted and the operation retried.
     """
 
+    __slots__ = ()
 
 
 @final
@@ -171,6 +172,7 @@ class ImmutabilityViolationError(DataIntegrityError):
     attempting to tamper with error evidence.
     """
 
+    __slots__ = ()
 
 
 @final
@@ -183,6 +185,8 @@ class IntegrityCheckFailedError(DataIntegrityError):
         - Write log integrity check fails
         - Error verification fails
     """
+
+    __slots__ = ()
 
 
 

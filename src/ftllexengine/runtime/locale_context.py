@@ -184,7 +184,7 @@ class LocaleContext:
             >>> LocaleContext.clear_cache()
             >>> LocaleContext.create('en-US')
             >>> LocaleContext.cache_info()
-            {'size': 1, 'max_size': 128, 'locales': ('en_US',)}
+            {'size': 1, 'max_size': 128, 'locales': ('en_us',)}
         """
         with cls._cache_lock:
             return {

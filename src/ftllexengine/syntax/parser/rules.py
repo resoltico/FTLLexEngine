@@ -82,6 +82,14 @@ __all__ = ["ParseContext", "parse_comment", "parse_message", "parse_term"]
 # identifiers parse correctly while bounding lookahead on adversarial inputs.
 _MAX_LOOKAHEAD_CHARS: int = 300
 
+# Ordered comment types indexed by hash count minus one (hash_count in [1, 2, 3]).
+# Pre-computed tuple eliminates per-call dict allocation in parse_comment().
+_COMMENT_TYPE_BY_HASH_COUNT: tuple[CommentType, CommentType, CommentType] = (
+    CommentType.COMMENT,
+    CommentType.GROUP,
+    CommentType.RESOURCE,
+)
+
 
 @dataclass(slots=True)
 class ParseContext:
@@ -2090,12 +2098,9 @@ def parse_comment(cursor: Cursor) -> ParseResult[Comment] | None:
     if hash_count > 3:
         return None  # f"Invalid comment: expected 1-3 '#' characters, found {hash_count}"
 
-    # Map hash count to comment type
-    comment_type = {
-        1: CommentType.COMMENT,
-        2: CommentType.GROUP,
-        3: CommentType.RESOURCE,
-    }.get(hash_count, CommentType.COMMENT)
+    # Map hash count to comment type using module-level lookup (no per-call allocation).
+    # hash_count is 1/2/3 at this point; the > 3 guard above eliminates other values.
+    comment_type = _COMMENT_TYPE_BY_HASH_COUNT[hash_count - 1]
 
     # Advance cursor past the '#' characters
     cursor = temp_cursor

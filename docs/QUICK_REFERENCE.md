@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.123.0"
 domain: reference
-updated: "2026-02-21"
+updated: "2026-02-22"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -316,10 +316,10 @@ FluentBundle(
 # Auto-detect system locale (from LC_ALL, LC_MESSAGES, LANG)
 bundle = FluentBundle.for_system_locale()
 
-# Context manager support (clears cache on exit)
+# Context manager support (no-op: use for structured scoping only)
 with FluentBundle("en", cache=CacheConfig()) as bundle:
-    bundle.add_resource("hello = Hello!")
-    result, _ = bundle.format_pattern("hello")
+    bundle.add_resource("hello = Hello!")  # Cache cleared immediately
+    result, _ = bundle.format_pattern("hello")  # Cache populated
 ```
 
 **Key Methods**:

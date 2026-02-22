@@ -102,7 +102,6 @@ class FluentLocalization:
         "_load_results",
         "_locales",
         "_lock",
-        "_modified_in_context",
         "_on_fallback",
         "_pending_functions",
         "_primary_locale",
@@ -190,11 +189,6 @@ class FluentLocalization:
         # Thread safety: RWLock allows concurrent format_value/format_pattern
         # calls (readers) while serializing add_resource/add_function (writers).
         self._lock = RWLock()
-
-        # Context manager state tracking (cache invalidation optimization).
-        # Mirrors FluentBundle's context manager semantics: cache is cleared
-        # on __exit__ only if the localization was modified during the context.
-        self._modified_in_context = False
 
         # Resource loading is EAGER by design:
         # - Fail-fast: Critical errors (parse, permission) raised at construction
@@ -481,7 +475,6 @@ class FluentLocalization:
             # acquires a read lock (downgrading from this write lock via
             # RWLock._writer_held_reads), then a write lock if needed (reentrant).
             bundle = self._get_or_create_bundle(locale)
-            self._modified_in_context = True
             return bundle.add_resource(ftl_source)
 
     def _handle_message_not_found(
@@ -745,7 +738,6 @@ class FluentLocalization:
         with self._lock.write():
             # Store for future bundle creation (lazy loading support)
             self._pending_functions[name] = func
-            self._modified_in_context = True
 
             # Apply to any already-created bundles
             for bundle in self._bundles.values():
@@ -878,15 +870,15 @@ class FluentLocalization:
         return None
 
     def __enter__(self) -> FluentLocalization:
-        """Enter context manager for cache invalidation tracking.
+        """Enter context manager.
 
-        Clears all bundle caches on exit only if the localization was
-        modified during the context (add_resource, add_function, or
-        clear_cache called). For read-only operations, caches are
-        preserved for better performance.
+        No-op: mutations (add_resource, add_function, clear_cache) clear
+        affected caches immediately when called. Deferred cache clearing
+        on exit would only re-evict entries populated by concurrent readers
+        between the mutation and the context exit — invalidating valid work.
 
-        Semantics match FluentBundle's context manager: both track
-        modifications and conditionally clear caches on exit.
+        Use the context manager for structured scoping and ``with``-statement
+        readability; not for cache management.
 
         Returns:
             Self (the FluentLocalization instance)
@@ -894,14 +886,7 @@ class FluentLocalization:
         Example:
             >>> with FluentLocalization(['en'], cache=CacheConfig()) as l10n:
             ...     l10n.add_resource('en', 'hello = Hello')
-            ... # Caches cleared (localization was modified)
         """
-        # Reset modification tracking for new context; held under write lock
-        # to prevent a data race with concurrent add_resource / add_function /
-        # clear_cache calls (which also write _modified_in_context under the
-        # write lock) in free-threaded Python 3.13.
-        with self._lock.write():
-            self._modified_in_context = False
         return self
 
     def __exit__(
@@ -910,26 +895,15 @@ class FluentLocalization:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        """Exit context manager with conditional cache cleanup.
+        """Exit context manager.
 
-        Clears all bundle caches only if the localization was modified
-        during the context. Does not suppress exceptions.
+        No-op: see __enter__ for rationale. Does not suppress exceptions.
 
         Args:
             exc_type: Exception type (if any)
             exc_val: Exception value (if any)
             exc_tb: Exception traceback (if any)
         """
-        # Read and reset _modified_in_context under the write lock to prevent a
-        # data race: concurrent write operations set this flag under the write
-        # lock; reading it here without a lock is a torn read in free-threaded
-        # Python 3.13.
-        with self._lock.write():
-            modified = self._modified_in_context
-            self._modified_in_context = False
-            if modified:
-                for bundle in self._bundles.values():
-                    bundle.clear_cache()
 
     def get_babel_locale(self) -> str:
         """Get Babel locale identifier from primary bundle.
@@ -980,7 +954,6 @@ class FluentLocalization:
         Thread-safe via internal RWLock.
         """
         with self._lock.write():
-            self._modified_in_context = True
             for bundle in self._bundles.values():
                 bundle.clear_cache()
 

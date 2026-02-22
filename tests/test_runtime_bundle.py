@@ -975,17 +975,19 @@ class TestBundleSpecialMethods:
         with bundle as ctx:
             assert ctx is bundle
 
-    def test_context_manager_exit_clears_cache_when_modified(self) -> None:
-        """__exit__ clears cache when bundle was modified during context."""
+    def test_context_manager_exit_is_noop_does_not_clear_cache(self) -> None:
+        """__exit__ is a no-op: cache populated inside the context is preserved."""
         bundle = FluentBundle("en", cache=CacheConfig())
         with bundle:
             bundle.add_resource("msg = Hello")
+            # add_resource clears the cache; format_pattern re-populates it
             bundle.format_pattern("msg")
             assert bundle.cache_usage == 1
-        assert bundle.cache_usage == 0
+        # __exit__ is a no-op; valid cached result is preserved
+        assert bundle.cache_usage == 1
 
-    def test_context_manager_exit_preserves_cache_when_not_modified(self) -> None:
-        """__exit__ preserves cache for read-only contexts."""
+    def test_context_manager_exit_preserves_cache_for_read_only_use(self) -> None:
+        """__exit__ is a no-op: cache is always preserved on context exit."""
         bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
         bundle.format_pattern("msg")
@@ -995,11 +997,12 @@ class TestBundleSpecialMethods:
             bundle.format_pattern("msg")
         assert bundle.cache_usage == 1
 
-    def test_context_manager_exit_resets_modification_flag(self) -> None:
-        """__exit__ resets modification flag for next context."""
+    def test_context_manager_can_be_nested_and_reused(self) -> None:
+        """Context manager is a no-op: safe to nest and reuse without side effects."""
         bundle = FluentBundle("en", cache=CacheConfig())
         with bundle:
             bundle.add_resource("msg1 = Hello")
+        # add_resource cleared the cache; nothing was cached so usage is 0
         assert bundle.cache_usage == 0
 
         bundle.add_resource("msg2 = World")
@@ -1008,6 +1011,7 @@ class TestBundleSpecialMethods:
 
         with bundle:
             bundle.format_pattern("msg2")
+        # __exit__ is a no-op; cached entry is preserved
         assert bundle.cache_usage == 1
 
     def test_context_manager_preserves_messages_and_terms(self) -> None:

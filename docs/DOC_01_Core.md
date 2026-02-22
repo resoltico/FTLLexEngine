@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.124.0"
 domain: CORE
-updated: "2026-02-21"
+updated: "2026-02-22"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -86,7 +86,7 @@ class FluentBundle:
 - Raises: `ValueError` on invalid locale format (must be ASCII alphanumeric with underscore/hyphen separators) or locale code exceeding 1000 characters (DoS prevention).
 - State: Creates internal message/term registries.
 - Thread: Always thread-safe via internal RWLock.
-- Context: Supports context manager protocol (__enter__/__exit__).
+- Context: Supports context manager protocol (__enter__/__exit__). Both are no-ops; use for structured scoping only.
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`. `FluentValue` from `ftllexengine.runtime.value_types`.
 - Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback. Errors are cached before raising; subsequent cache hits re-raise without re-resolution.
 - Cache: Security parameters expose `IntegrityCache` features for financial-grade applications.
@@ -144,7 +144,7 @@ def __enter__(self) -> FluentBundle:
 ### Constraints
 - Return: Self (FluentBundle instance).
 - Raises: None.
-- State: Resets modification tracking for context.
+- State: No-op. Does not modify any bundle state.
 - Thread: Safe.
 
 ---
@@ -171,7 +171,7 @@ def __exit__(
 ### Constraints
 - Return: None (does not suppress exceptions).
 - Raises: None.
-- State: Clears cache only if bundle was modified in context (add_resource, add_function, clear_cache). Read-only operations preserve cache. Messages and terms always preserved.
+- State: No-op. Does not clear cache or modify any bundle state. Cache is managed at mutation time (`add_resource`, `add_function` clear cache immediately).
 - Thread: Safe.
 
 ---
@@ -699,7 +699,7 @@ class FluentLocalization:
 - Raises: `ValueError` if locales empty, invalid locale format, or resource_ids without loader. Locale codes must match `[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*` (BCP 47 subset).
 - State: Lazy bundle initialization. Bundles created on first access. Locale format validated eagerly at construction.
 - Thread: Safe (RWLock-protected; concurrent reads, exclusive writes).
-- Context: Supports context manager protocol (__enter__/__exit__). Cache cleared on exit only if modified during context.
+- Context: Supports context manager protocol (__enter__/__exit__). Both are no-ops; use for structured scoping only.
 - Fallback: `on_fallback` invoked when message resolved from non-primary locale.
 - Strict: When True, all underlying FluentBundle instances use strict mode. `_handle_message_not_found` raises `FormattingIntegrityError`.
 

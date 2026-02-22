@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.122.0"
+version: "0.124.0"
 domain: "architecture"
 updated: "2026-02-22"
 route: "/docs/data-integrity"
@@ -272,16 +272,18 @@ DataIntegrityError (base - immutable after construction)
 
 ### Context Manager Semantics
 
-Both `FluentBundle` and `FluentLocalization` use identical context manager semantics: cache invalidation tracking.
+`FluentBundle.__enter__` returns `self`; `__exit__` is a no-op. The context manager exists solely to enable `with bundle as b:` syntax for structured scoping.
+
+Cache invalidation is not deferred to context exit. `add_resource()` and `add_function()` clear the cache immediately on modification, so the cache is always consistent at the point of mutation.
 
 ```python
-with bundle_or_l10n:
-    bundle_or_l10n.add_resource(...)   # Sets _modified_in_context = True
-    bundle_or_l10n.format_pattern(...) # Read-only, no flag change
-# On exit: caches cleared only if modified (conditional invalidation)
+with bundle as b:
+    b.add_resource(...)   # Cache cleared immediately by add_resource
+    b.format_pattern(...) # Cache populated from fresh bundle state
+# __exit__ is a no-op; cache is preserved
 ```
 
-This avoids unnecessary cache invalidation for read-only contexts while ensuring consistency after mutations.
+`FluentLocalization` has identical semantics: `__enter__` returns `self`; `__exit__` is a no-op. Both classes are safe to use with `with` for structured scoping only.
 
 ## Security Model
 

@@ -10,6 +10,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.125.0] - 2026-02-22
+
+### Changed
+
+- **`_COMMENT_TYPE_BY_HASH_COUNT` module-level tuple constant replaces per-call dict in `parse_comment()`** (PERF-PARSER-RULES-COMMENT-TYPE-001):
+  - `parse_comment()` constructed a temporary `{1: CommentType.COMMENT, 2: CommentType.GROUP, 3: CommentType.RESOURCE}` dict on every invocation to map hash count to `CommentType`; the dict was discarded after the single `.get()` call
+  - Replaced with module-level `_COMMENT_TYPE_BY_HASH_COUNT: tuple[CommentType, CommentType, CommentType]` constant; index access `_COMMENT_TYPE_BY_HASH_COUNT[hash_count - 1]` is O(1) with zero allocation on each call; the tuple is constructed once at module import time
+  - Location: `syntax/parser/rules.py`
+
+### Fixed
+
+- **`ParseError.format_with_context()` docstring example used `list` instead of `tuple`** (CLARITY-CURSOR-PARSEERROR-DOCSTRING-001):
+  - The `expected` field in `ParseError` is typed `tuple[str, ...]`; the docstring example showed `expected=[']', '}']` (list literal), misrepresenting the actual type at every reader's first point of contact with the API
+  - Corrected to `expected=(']', '}')` (tuple literal) to accurately reflect the declared type
+  - Location: `syntax/cursor.py`
+
+## [0.124.0] - 2026-02-22
+
+### Changed (BREAKING)
+
+- **`FluentLocalization` context manager is now a no-op** (ARCH-LOCALIZATION-CONTEXT-MANAGER-NOOP-001):
+  - `__enter__` previously acquired a write lock to reset `_modified_in_context = False`; `__exit__` conditionally cleared all bundle caches when the localization was modified during the context; this was architecturally redundant and harmful for the same reasons as `FluentBundle` (v0.123.0): `add_resource()`, `add_function()`, and `clear_cache()` already clear the relevant cache immediately on mutation; the deferred `__exit__` clear invalidated valid cache entries populated by concurrent readers after the mutation; Thread A's context exit could evict Thread B's valid in-flight cache fills across all locale bundles
+  - `__enter__` now returns `self` unconditionally; `__exit__` is now a no-op; `_modified_in_context` slot removed; no write lock is acquired on context entry or exit
+  - Code relying on `with l10n:` to auto-clear bundle caches on block exit must now call `l10n.clear_cache()` explicitly; read-only `with l10n:` usage is unaffected (it was already correct)
+  - `FluentBundle` and `FluentLocalization` context managers now have identical semantics: both are no-ops used for structured scoping only
+  - Location: `localization/orchestrator.py`
+
+## [0.123.0] - 2026-02-22
+
+### Changed (BREAKING)
+
+- **`FluentBundle` context manager is now a no-op** (ARCH-BUNDLE-CONTEXT-MANAGER-NOOP-001):
+  - `__enter__` previously acquired a write lock to reset `_modified_in_context = False`; `__exit__` conditionally cleared the format cache when the bundle was modified during the context; this was architecturally redundant and harmful: `add_resource()` and `add_function()` already call `self._cache.clear()` immediately on modification, and the deferred `__exit__` clear invalidated valid cache entries populated after the modification; in concurrent usage, Thread A's context exit could evict Thread B's valid in-flight cache fills
+  - `__enter__` now returns `self` unconditionally; `__exit__` is now a no-op; `_modified_in_context` slot removed; no write lock is acquired on context entry or exit
+  - Code relying on `with bundle:` to auto-clear the cache on block exit must now call `bundle.clear_cache()` explicitly; read-only `with bundle:` usage is unaffected (it was already correct)
+  - Location: `runtime/bundle.py`
+
+### Changed
+
+- **`_get_resolver()` and `_invalidate_resolver()` one-liner methods inlined** (SIMPLIFY-BUNDLE-RESOLVER-WRAPPERS-001):
+  - Both were zero-value indirection: `_get_resolver()` returned `self._resolver`; `_invalidate_resolver()` assigned `self._resolver = self._create_resolver()`; each was called from exactly one site
+  - Methods deleted; call sites replaced with direct attribute access/assignment
+  - Location: `runtime/bundle.py`
+
+- **`_PendingRegistration` converted to `@dataclass(slots=True)`** (MODERN-BUNDLE-PENDING-REG-001):
+  - Was implemented as a plain class with manual `__slots__` and `__init__`; inconsistent with the rest of the codebase which uses `@dataclass` throughout
+  - Replaced with `@dataclass(slots=True)` using `field(default_factory=...)` for all mutable default fields; semantics are identical
+  - Location: `runtime/bundle.py`
+
+- **`__slots__ = ()` added to three empty `DataIntegrityError` subclasses** (MEMORY-INTEGRITY-SLOTS-001):
+  - `CacheCorruptionError`, `ImmutabilityViolationError`, and `IntegrityCheckFailedError` added no new attributes but omitted `__slots__ = ()`; Python created a `__dict__` for instances of each subclass, wasting memory and breaking the slot discipline established by `DataIntegrityError`
+  - `__slots__ = ()` added to all three
+  - Location: `integrity.py`
+
+- **`_FALLBACK_MAX_DEPTH` named constant added for fallback depth limit** (CLARITY-RESOLVER-FALLBACK-DEPTH-001):
+  - `_get_fallback_for_placeable` used a bare `10` as its default `depth` argument with no explanation; the magic number was opaque at definition and call sites
+  - Extracted to module-level constant `_FALLBACK_MAX_DEPTH: int = 10` with a docstring explaining the rationale
+  - Location: `runtime/resolver.py`
+
+### Fixed
+
+- **`args = args or {}` replaced with explicit `None` check in resolver** (DEFECT-RESOLVER-ARGS-FALSY-001):
+  - `resolve_message` used `args = args or {}` which treated any falsy `Mapping` (e.g., a custom `Mapping` subclass with `__bool__` returning `False`) as `None` and replaced it with `{}`, silently discarding all variable bindings
+  - Fixed to `args = {} if args is None else args`; only the `None` sentinel is replaced
+  - Location: `runtime/resolver.py`
+
+- **Stale `clear_all_caches()` docstring** (CLARITY-CLEAR-ALL-CACHES-DOCS-001):
+  - Docstring referenced `FormatCache` (the class's former name, replaced by `IntegrityCache`) and advised users to "recreate the FluentBundle instance" to clear bundle caches (incorrect — `bundle.clear_cache()` is the correct API)
+  - Corrected both: `FormatCache` → `IntegrityCache`; advice updated to `bundle.clear_cache()`
+  - Location: `__init__.py`
+
+- **`FluentBundle.__init__` `functions` parameter docstring was misleading** (CLARITY-BUNDLE-FUNCTIONS-PARAM-001):
+  - Docstring said "Share function registrations between bundles"; the registry is immediately `.copy()`ed on construction, so no sharing occurs after `__init__` returns
+  - Corrected: documents that the registry is copied on construction and later mutations to the original have no effect
+  - Location: `runtime/bundle.py`
+
 ## [0.122.0] - 2026-02-22
 
 ### Fixed
@@ -4061,6 +4137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.125.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.125.0
+[0.124.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.124.0
+[0.123.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.123.0
 [0.122.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.122.0
 [0.121.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.121.0
 [0.120.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.120.0

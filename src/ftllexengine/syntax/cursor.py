@@ -587,7 +587,7 @@ class ParseError:
             >>> error.format_error()
             "2:2: Expected ']'"
 
-            >>> error2 = ParseError("Unexpected", cursor, expected=[']', '}'])
+            >>> error2 = ParseError("Unexpected", cursor, expected=(']', '}'))
             >>> error2.format_error()
             "2:2: Unexpected (expected: ']', '}')"
         """

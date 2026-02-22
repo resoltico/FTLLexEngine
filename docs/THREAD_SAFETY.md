@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.122.0"
+version: "0.124.0"
 domain: architecture
 updated: "2026-02-22"
 route:
@@ -79,19 +79,24 @@ except TimeoutError:
 - All read operations (`format_value()`, `format_pattern()`, `has_message()`, `get_cache_stats()`) acquire read lock (concurrent)
 - All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
 - Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers holding the write lock use RWLock downgrading semantics
-- Context manager (`with l10n:`) tracks modifications and conditionally clears caches on exit
+- Context manager (`with l10n:`) is a no-op for structured scoping only
 
 **Context Manager Semantics**:
-Both `FluentBundle` and `FluentLocalization` use identical context manager behavior: cache invalidation tracking. Caches are cleared on `__exit__` only if the instance was modified during the context.
+Both `FluentBundle` and `FluentLocalization` have identical context manager behavior: `__enter__`/`__exit__` are no-ops. The `with obj:` syntax is supported for structured scoping only; no locking or cache management occurs on entry or exit.
+
+Cache invalidation is immediate. `add_resource()`, `add_function()`, and `clear_cache()` clear the relevant cache as part of the mutation — not deferred to context exit.
 
 ```python
-with l10n:
-    l10n.add_resource("en", "msg = Hello\n")  # Marks modified
-# Caches cleared on exit (modified)
+# Both FluentBundle and FluentLocalization: context manager is a no-op
+with bundle:
+    bundle.add_resource("msg = Hello\n")  # Cache cleared immediately by add_resource
+    result, _ = bundle.format_pattern("msg")  # Cache populated
+# __exit__ is a no-op; cache entry is preserved
 
 with l10n:
-    result, errors = l10n.format_value("msg")  # Read-only
-# Caches preserved (not modified)
+    l10n.add_resource("en", "msg = Hello\n")  # Cache cleared immediately by add_resource
+    result, _ = l10n.format_value("msg")  # Cache populated
+# __exit__ is a no-op; cache entry is preserved
 ```
 
 ---

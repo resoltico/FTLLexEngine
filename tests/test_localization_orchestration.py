@@ -507,26 +507,26 @@ class TestContextManager:
         result, _ = l10n.format_value("msg")
         assert result == "Works"
 
-    def test_add_resource_in_context_clears_cache_on_exit(self) -> None:
-        """add_resource inside with block clears cache on __exit__."""
+    def test_exit_is_noop_does_not_clear_cache(self) -> None:
+        """__exit__ is a no-op: cache populated inside the context is preserved."""
         l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Original\n")
 
-        # Warm cache
-        l10n.format_value("msg")
-        stats = l10n.get_cache_stats()
-        assert stats is not None
-        assert stats["size"] > 0
-
         with l10n:
             l10n.add_resource("en", "msg2 = Added\n")
-        # Cache cleared on exit because localization was modified
+            # add_resource clears the cache immediately; format repopulates it
+            l10n.format_value("msg")
+            stats_inside = l10n.get_cache_stats()
+            assert stats_inside is not None
+            assert stats_inside["size"] > 0
+
+        # __exit__ is a no-op; valid cached result is preserved
         stats_after = l10n.get_cache_stats()
         assert stats_after is not None
-        assert stats_after["size"] == 0
+        assert stats_after["size"] > 0
 
     def test_read_only_context_preserves_cache(self) -> None:
-        """Read-only operations inside with block preserve cache."""
+        """__exit__ is a no-op: cache is always preserved on context exit."""
         l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello\n")
 
@@ -544,8 +544,8 @@ class TestContextManager:
         assert stats_after is not None
         assert stats_after["size"] >= cached_size
 
-    def test_add_function_in_context_clears_cache_on_exit(self) -> None:
-        """add_function inside with block clears cache on __exit__."""
+    def test_add_function_clears_cache_immediately_not_on_exit(self) -> None:
+        """add_function clears cache immediately; __exit__ does not clear again."""
         l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello\n")
 
@@ -556,13 +556,20 @@ class TestContextManager:
             def _custom(val: str) -> str:
                 return val.upper()
             l10n.add_function("CUSTOM", _custom)
-        # Cache cleared on exit
+            # Cache is already cleared immediately by add_function
+            # Re-populate by formatting
+            l10n.format_value("msg")
+            stats_inside = l10n.get_cache_stats()
+            assert stats_inside is not None
+            assert stats_inside["size"] > 0
+
+        # __exit__ is a no-op; re-populated cache entry is preserved
         stats_after = l10n.get_cache_stats()
         assert stats_after is not None
-        assert stats_after["size"] == 0
+        assert stats_after["size"] > 0
 
-    def test_clear_cache_in_context_clears_cache_on_exit(self) -> None:
-        """clear_cache inside with block marks as modified."""
+    def test_clear_cache_is_immediate_not_deferred_to_exit(self) -> None:
+        """clear_cache empties cache immediately; __exit__ does not re-clear."""
         l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello\n")
 
@@ -571,10 +578,20 @@ class TestContextManager:
 
         with l10n:
             l10n.clear_cache()
-        # Cache cleared (clear_cache marks modified)
+            # Cache is immediately empty after clear_cache
+            stats_inside = l10n.get_cache_stats()
+            assert stats_inside is not None
+            assert stats_inside["size"] == 0
+            # Re-populate inside the context
+            l10n.format_value("msg")
+            stats_repopulated = l10n.get_cache_stats()
+            assert stats_repopulated is not None
+            assert stats_repopulated["size"] > 0
+
+        # __exit__ is a no-op; re-populated cache is preserved
         stats_after = l10n.get_cache_stats()
         assert stats_after is not None
-        assert stats_after["size"] == 0
+        assert stats_after["size"] > 0
 
 
 

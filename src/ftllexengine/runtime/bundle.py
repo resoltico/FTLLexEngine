@@ -9,6 +9,7 @@ import logging
 import re
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NoReturn
 
 from ftllexengine.constants import (
@@ -63,6 +64,7 @@ _LOG_TRUNCATE_WARNING: int = 100
 _LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*\Z")
 
 
+@dataclass(slots=True)
 class _PendingRegistration:
     """Collected entries from a parsed resource, prior to bundle state mutation.
 
@@ -72,22 +74,12 @@ class _PendingRegistration:
     rejects the resource, no bundle state has been touched.
     """
 
-    __slots__ = (
-        "junk",
-        "messages",
-        "msg_deps",
-        "overwrite_warnings",
-        "term_deps",
-        "terms",
-    )
-
-    def __init__(self) -> None:
-        self.messages: dict[str, Message] = {}
-        self.terms: dict[str, Term] = {}
-        self.msg_deps: dict[str, frozenset[str]] = {}
-        self.term_deps: dict[str, frozenset[str]] = {}
-        self.junk: list[Junk] = []
-        self.overwrite_warnings: list[tuple[str, str]] = []
+    messages: dict[str, Message] = field(default_factory=dict)
+    terms: dict[str, Term] = field(default_factory=dict)
+    msg_deps: dict[str, frozenset[str]] = field(default_factory=dict)
+    term_deps: dict[str, frozenset[str]] = field(default_factory=dict)
+    junk: list[Junk] = field(default_factory=list)
+    overwrite_warnings: list[tuple[str, str]] = field(default_factory=list)
 
 
 class FluentBundle:
@@ -151,7 +143,6 @@ class FluentBundle:
         "_max_nesting_depth",
         "_max_source_size",
         "_messages",
-        "_modified_in_context",
         "_msg_deps",
         "_owns_registry",
         "_parser",
@@ -222,10 +213,10 @@ class FluentBundle:
                   Pass ``CacheConfig()`` for default settings or customize fields.
                   Cache provides 50x speedup on repeated format calls.
             functions: Custom FunctionRegistry to use (default: standard registry with
-                      NUMBER, DATETIME, CURRENCY). Pass a custom registry to:
-                      - Use pre-registered custom functions
-                      - Share function registrations between bundles
-                      - Override default function behavior
+                      NUMBER, DATETIME, CURRENCY). Pass a custom registry to use
+                      pre-registered custom functions or override default behavior.
+                      The registry is copied on construction; later mutations to the
+                      original have no effect on this bundle.
             max_source_size: Maximum FTL source length in characters (default: 10 MiB / 10,485,760 chars).
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
@@ -331,9 +322,6 @@ class FluentBundle:
         # visible without re-creation. Initialized here to eliminate the read-lock
         # write race that existed in the previous lazy-initialization pattern.
         self._resolver: FluentResolver = self._create_resolver()
-
-        # Context manager state tracking (cache invalidation optimization)
-        self._modified_in_context = False
 
         logger.info(
             "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s, strict=%s)",
@@ -520,7 +508,8 @@ class FluentBundle:
             cache: Cache configuration. Pass ``CacheConfig()`` to enable caching
                 with defaults, or ``CacheConfig(size=500, ...)`` for custom settings.
                 ``None`` disables caching (default).
-            functions: Custom FunctionRegistry to use (default: standard registry)
+            functions: Custom FunctionRegistry to use (default: standard registry).
+                      Copied on construction; later mutations to the original have no effect.
             max_source_size: Maximum FTL source size in characters (default: 10 MiB / 10,485,760 chars)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
             strict: Enable strict mode (fail-fast on errors, strict cache corruption handling)
@@ -571,33 +560,17 @@ class FluentBundle:
     def __enter__(self) -> FluentBundle:
         """Enter context manager.
 
-        Enables use of FluentBundle with 'with' statement. The context manager
-        clears the format cache on exit only if the bundle was modified during
-        the context (add_resource, add_function, or clear_cache called). For
-        read-only operations, the cache is preserved for better performance.
-
-        Messages and terms are always preserved so the bundle remains usable
-        after the with block.
+        Enables use of FluentBundle with 'with' statement for structured
+        resource loading patterns. Does not acquire locks or modify state.
 
         Returns:
             Self (the FluentBundle instance)
 
         Example:
-            >>> with FluentBundle("en_US", cache=CacheConfig()) as bundle:
-            ...     bundle.add_resource("hello = Hello")  # Modifying operation
-            ...     result = bundle.format_pattern("hello")
-            ... # Cache cleared (bundle was modified)
-            >>>
-            >>> with bundle:  # Read-only context
-            ...     result = bundle.format_pattern("hello")
-            ... # Cache preserved (bundle NOT modified)
+            >>> with FluentBundle("en_US") as bundle:
+            ...     bundle.add_resource("hello = Hello")
+            ...     result, _ = bundle.format_pattern("hello")
         """
-        # Reset modification tracking for new context; held under write lock
-        # to prevent a data race with concurrent add_resource / add_function /
-        # clear_cache calls (which also write _modified_in_context under the
-        # write lock) in free-threaded Python 3.13.
-        with self._rwlock.write():
-            self._modified_in_context = False
         return self
 
     def __exit__(
@@ -606,43 +579,13 @@ class FluentBundle:
         exc_val: BaseException | None,
         exc_tb: object | None,
     ) -> None:
-        """Exit context manager with conditional cache cleanup.
-
-        Clears the format cache only if the bundle was modified during the
-        context (add_resource, add_function, or clear_cache called). For
-        read-only contexts, the cache is preserved to avoid invalidating
-        cached results in shared bundle scenarios.
-
-        Messages and terms are always preserved so the bundle remains usable
-        after the with block. Does not suppress exceptions.
+        """Exit context manager. Does not suppress exceptions.
 
         Args:
             exc_type: Exception type (if any)
             exc_val: Exception value (if any)
             exc_tb: Exception traceback (if any)
         """
-        # Read and reset _modified_in_context under the write lock to prevent a
-        # data race: concurrent write operations set this flag under the write
-        # lock; reading it here without a lock is a torn read in free-threaded
-        # Python 3.13.
-        with self._rwlock.write():
-            modified = self._modified_in_context
-            self._modified_in_context = False
-
-        # Cache mutation happens outside the lock: IntegrityCache is
-        # independently thread-safe and clearing it does not need the bundle
-        # write lock to be held.
-        if modified and self._cache is not None:
-            self._cache.clear()
-            logger.debug(
-                "FluentBundle cache cleared on context exit (modified): %s",
-                self._locale,
-            )
-        else:
-            logger.debug(
-                "FluentBundle cache preserved on context exit (read-only): %s",
-                self._locale,
-            )
 
     def get_babel_locale(self) -> str:
         """Get the Babel locale identifier for this bundle (introspection API).
@@ -882,8 +825,6 @@ class FluentBundle:
             self._cache.clear()
             logger.debug("Cache cleared after add_resource")
 
-        self._modified_in_context = True
-
         return junk_tuple
 
     def validate_resource(self, source: str) -> ValidationResult:
@@ -1069,26 +1010,6 @@ class FluentBundle:
             max_expansion_size=self._max_expansion_size,
         )
 
-    def _get_resolver(self) -> FluentResolver:
-        """Return the cached FluentResolver (assumes read lock held).
-
-        The resolver is stateless: all per-call state lives in ResolutionContext.
-        It references self._messages and self._terms dicts directly, so dict
-        mutations from add_resource are visible without re-creation. The resolver
-        is only re-created when function_registry or formatting config changes.
-        """
-        return self._resolver
-
-    def _invalidate_resolver(self) -> None:
-        """Replace the cached resolver (assumes write lock held).
-
-        Called when function_registry changes (add_function). Re-creates the
-        resolver immediately so no subsequent reader can observe a stale or
-        None resolver. Not needed for add_resource because the resolver
-        references self._messages/self._terms dicts directly.
-        """
-        self._resolver = self._create_resolver()
-
     def _format_pattern_impl(
         self,
         message_id: str,
@@ -1177,8 +1098,8 @@ class FluentBundle:
         # The resolver is stateless: all per-call state lives in ResolutionContext.
         # It holds references to self._messages and self._terms dicts directly,
         # so mutations from add_resource are visible without re-creation. The
-        # resolver is only re-created when function_registry or config changes.
-        resolver = self._get_resolver()
+        # resolver is only re-created when function_registry changes (add_function).
+        resolver = self._resolver
 
         # Resolve message (resolver handles all errors internally including cycles)
         # Note: No try-except here. The resolver is designed to collect all expected
@@ -1410,16 +1331,13 @@ class FluentBundle:
             self._function_registry.register(func, ftl_name=name)
             logger.debug("Added custom function: %s", name)
 
-            # Invalidate resolver (function registry changed)
-            self._invalidate_resolver()
+            # Re-create resolver so it captures the updated function registry
+            self._resolver = self._create_resolver()
 
             # Invalidate cache (functions changed)
             if self._cache is not None:
                 self._cache.clear()
                 logger.debug("Cache cleared after add_function")
-
-            # Mark bundle as modified for context manager tracking
-            self._modified_in_context = True
 
     def clear_cache(self) -> None:
         """Clear format cache.
@@ -1437,9 +1355,6 @@ class FluentBundle:
             if self._cache is not None:
                 self._cache.clear()
                 logger.debug("Cache manually cleared")
-
-            # Mark bundle as modified for context manager tracking
-            self._modified_in_context = True
 
     def get_cache_stats(self) -> dict[str, int | float | bool] | None:
         """Get cache statistics.
