@@ -1,3 +1,13 @@
+---
+afad: "3.3"
+version: "0.127.0"
+domain: examples
+updated: "2026-02-22"
+route:
+  keywords: [type checking, mypy, strict, threading, examples, stubs]
+  questions: ["how to type check examples?", "how to use mypy with examples?", "how to type threading.local?"]
+---
+
 # Type Checking Configuration for Examples
 
 This directory includes enhanced type checking configuration for example code.
@@ -17,7 +27,7 @@ The examples/ directory uses **mypy --strict** mode to demonstrate best practice
 # Check all examples with strict typing
 python -m mypy examples/ --strict
 
-# Output: Success: no issues found in 8 source files
+# Output: Success: no issues found in 11 source files
 ```
 
 ### Type-check Examples from examples/ Directory
@@ -64,7 +74,7 @@ return thread_local.bundle  # mypy: error - Returning Any
 # With our stub file:
 thread_local = threading.local()
 bundle: FluentBundle = FluentBundle("en", use_isolating=False)
-thread_local.bundle = bundle  # ✅ mypy understands
+thread_local.bundle = bundle  # mypy understands
 return thread_local.bundle  # type: ignore[no-any-return]  # Still needed for return type
 ```
 
@@ -90,7 +100,7 @@ def get_bundle() -> FluentBundle:
             bundle=FluentBundle("en", use_isolating=False)
         )
     state: ThreadLocalState = thread_local.state
-    return state.bundle  # ✅ No type: ignore needed!
+    return state.bundle  # No type: ignore needed!
 ```
 
 ## Why Not Contribute to typeshed?
@@ -120,14 +130,14 @@ All examples pass strict type checking:
 
 ```bash
 $ python -m mypy examples/ --strict
-Success: no issues found in 8 source files
+Success: no issues found in 11 source files
 ```
 
 All examples execute successfully:
 
 ```bash
 $ python examples/thread_safety.py
-[SUCCESS] All thread safety examples complete!
+[OK] All thread safety examples complete!
 ```
 
 ## Related Documentation
@@ -137,6 +147,6 @@ $ python examples/thread_safety.py
 
 ---
 
-**Last Updated**: December 9, 2025
+**Last Updated**: 2026-02-22
 **Python Version**: 3.13+
 **Mypy Version**: Compatible with latest stable mypy

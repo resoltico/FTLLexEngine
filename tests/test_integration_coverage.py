@@ -16,7 +16,7 @@ from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle, parse_ftl
 from ftllexengine.constants import (
-    DEFAULT_MAX_ENTRY_SIZE,
+    DEFAULT_MAX_ENTRY_WEIGHT,
     MAX_DEPTH,
     MAX_LOCALE_CACHE_SIZE,
 )
@@ -2793,7 +2793,7 @@ class TestCacheEntrySizeLimit:
     def test_default_max_entry_weight(self) -> None:
         """Default max_entry_weight is 10_000 characters."""
         cache = IntegrityCache(strict=False, )
-        assert cache.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert cache.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
         assert cache.max_entry_weight == 10_000
 
     def test_custom_max_entry_weight(self) -> None:

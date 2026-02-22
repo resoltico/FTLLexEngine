@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: type-hints
 updated: "2026-02-21"
 route:
@@ -687,11 +687,11 @@ ignore_missing_imports = false
 ```python
 from ftllexengine.localization import MessageId, LocaleCode
 
-# ✅ Good - descriptive types
+# [OK] Good - descriptive types
 def format_message(msg_id: MessageId, locale: LocaleCode) -> str:
     ...
 
-# ❌ Less clear - generic str
+# Less clear - generic str
 def format_message(msg_id: str, locale: str) -> str:
     ...
 ```
@@ -703,11 +703,11 @@ def format_message(msg_id: str, locale: str) -> str:
 ```python
 from ftllexengine import FluentBundle
 
-# ✅ Good - explicit return type
+# [OK] Good - explicit return type
 def create_bundle(locale: str) -> FluentBundle:
     return FluentBundle(locale)
 
-# ❌ Less safe - inferred return type
+# Less safe - inferred return type
 def create_bundle(locale: str):
     return FluentBundle(locale)
 ```
@@ -723,12 +723,12 @@ from ftllexengine.syntax.ast import Message
 resource = parse_ftl(ftl_source)
 
 for entry in resource.entries:
-    # ✅ Good - type guard provides narrowing (static method)
+    # [OK] Good - type guard provides narrowing (static method)
     if Message.guard(entry):
         # entry is Message here
         print(entry.value)
 
-    # ✅ Also correct - isinstance() works fine
+    # [OK] Also correct - isinstance() works fine
     if isinstance(entry, Message):
         # Type checker narrows to Message here too
         print(entry.value)
@@ -740,11 +740,11 @@ for entry in resource.entries:
 ### DO: Use dict[K, V] Syntax (Python 3.9+)
 
 ```python
-# ✅ Good - modern syntax (Python 3.9+)
+# [OK] Good - modern syntax (Python 3.9+)
 def format(msg_id: str, args: dict[str, object]) -> str:
     ...
 
-# ❌ Old - deprecated typing.Dict
+# Old - deprecated typing.Dict
 from typing import Dict
 def format(msg_id: str, args: Dict[str, object]) -> str:
     ...
@@ -757,11 +757,11 @@ def format(msg_id: str, args: Dict[str, object]) -> str:
 ### Error: "Argument has incompatible type"
 
 ```python
-# ❌ Type error
+# [WRONG] Type error
 locale_codes: list[LocaleCode] = ["en", "fr"]
 bundle = FluentBundle(locale_codes)  # Error: expected str, got list
 
-# ✅ Fixed - extract single locale
+# [OK] Fixed - extract single locale
 bundle = FluentBundle(locale_codes[0])
 ```
 
@@ -776,10 +776,10 @@ from ftllexengine.syntax.ast import Message
 resource = parse_ftl(ftl_source)
 msg = resource.entries[0]
 
-# ❌ Type error - entry might not be Message
+# [WRONG] Type error - entry might not be Message
 print(msg.value)  # Error: entry could be Term, Comment, Junk
 
-# ✅ Fixed - use type guard (static method)
+# [OK] Fixed - use type guard (static method)
 if Message.guard(msg):
     print(msg.value)  # Safe - type narrowed to Message
 ```

@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: custom-functions
 updated: "2026-02-21"
 route:
@@ -156,7 +156,7 @@ def PHONE(number: str, *, format_style: str = "international") -> str:
 
 ```python
 # WRONG - Missing * separator
-def FILESIZE(bytes_count: int | float, precision: int = 2) -> str:  # ❌ Wrong
+def FILESIZE(bytes_count: int | float, precision: int = 2) -> str:  # [WRONG] positional after keyword
     ...
 ```
 
@@ -170,7 +170,7 @@ def PHONE(number: str, *, format_style: str = "international") -> str:
     ...
 
 # WRONG - Don't use camelCase
-def PHONE(number: str, *, formatStyle: str = "international") -> str:  # ❌ Wrong
+def PHONE(number: str, *, formatStyle: str = "international") -> str:  # [WRONG] use snake_case
     ...
 ```
 
@@ -221,7 +221,7 @@ def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
 # WRONG - Raising exceptions crashes the application
 def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
     if not isinstance(bytes_count, (int, float)):
-        raise TypeError("bytes_count must be numeric")  # ❌ NEVER do this
+        raise TypeError("bytes_count must be numeric")  # [WRONG] NEVER raise from a custom function
     ...
 ```
 
@@ -247,7 +247,7 @@ def CURRENCY_CUSTOM(amount: float, *, currency_code: str = "USD") -> str:
     try:
         ...
     except Exception:
-        return "???"  # ❌ Not helpful for debugging
+        return "???"  # [WRONG] Not helpful for debugging
 ```
 
 ### Rule #3: Log Debug Information (Optional)
@@ -486,7 +486,7 @@ def CURRENCY_CUSTOM_EXAMPLE(amount: float, *, currency_code: str = "USD", locale
 def CURRENCY_NAIVE(amount: float, *, currency_code: str = "USD") -> str:
     symbols = {"USD": "$", "EUR": "€", "JPY": "¥"}
     symbol = symbols.get(currency_code, currency_code)
-    return f"{symbol}{amount:,.2f}"  # ❌ Many problems!
+    return f"{symbol}{amount:,.2f}"  # [WRONG] Many problems!
 
 # Problems with naive approach:
 # 1. Always puts symbol before amount (wrong for lv_LV, de_DE)
@@ -871,14 +871,14 @@ class TestFileSizeHypothesis:
 
 ---
 
-### ❌ Common Pitfalls
+### Common Pitfalls: What to Avoid
 
 1. **Raising exceptions**
    ```python
    # WRONG
    def CUSTOM(value: int) -> str:
        if value < 0:
-           raise ValueError("Negative values not allowed")  # ❌ Crashes!
+           raise ValueError("Negative values not allowed")  # [WRONG] Crashes!
        return str(value)
 
    # CORRECT
@@ -891,7 +891,7 @@ class TestFileSizeHypothesis:
 2. **Not using keyword-only arguments**
    ```python
    # WRONG
-   def CUSTOM(value: str, option: str = "default") -> str:  # ❌ Missing *
+   def CUSTOM(value: str, option: str = "default") -> str:  # [WRONG] Missing *
        ...
 
    # CORRECT
@@ -902,7 +902,7 @@ class TestFileSizeHypothesis:
 3. **Returning non-string types**
    ```python
    # WRONG
-   def CUSTOM(value: int) -> int:  # ❌ Returns int
+   def CUSTOM(value: int) -> int:  # [WRONG] Returns int
        return value * 2
 
    # CORRECT
@@ -913,7 +913,7 @@ class TestFileSizeHypothesis:
 4. **Using camelCase for parameters**
    ```python
    # WRONG
-   def CUSTOM(value: str, *, formatStyle: str = "default") -> str:  # ❌ camelCase
+   def CUSTOM(value: str, *, formatStyle: str = "default") -> str:  # [WRONG] camelCase
        ...
 
    # CORRECT
@@ -925,7 +925,7 @@ class TestFileSizeHypothesis:
    ```python
    # WRONG - Only works for US locale
    def CUSTOM_NUMBER(value: float) -> str:
-       return f"${value:,.2f}"  # ❌ Always uses $ and US formatting
+       return f"${value:,.2f}"  # [WRONG] Always uses $ and US formatting
 
    # CORRECT - Uses Babel for locale-aware formatting
    def CUSTOM_NUMBER(value: float, *, locale: str = "en_US") -> str:
@@ -937,7 +937,7 @@ class TestFileSizeHypothesis:
    ```python
    # WRONG - Crashes on invalid input
    def FILESIZE(bytes_count: int) -> str:
-       return f"{bytes_count / 1024:.2f} KB"  # ❌ Crashes if bytes_count is string
+       return f"{bytes_count / 1024:.2f} KB"  # [WRONG] Crashes if bytes_count is string
 
    # CORRECT - Handles invalid input
    def FILESIZE(bytes_count: int | float) -> str:
@@ -950,24 +950,25 @@ class TestFileSizeHypothesis:
 7. **Ignoring thread safety**
    ```python
    # WRONG - Using global mutable state
-   _cache = {}  # ❌ Not thread-safe!
+   _cache = {}  # [WRONG] Not thread-safe!
 
    def CUSTOM(value: str) -> str:
        if value not in _cache:
            _cache[value] = expensive_computation(value)
        return _cache[value]
 
-   # CORRECT - Use immutable data or thread-local storage
-   import threading
+   # CORRECT - Use a module-level dict protected by a lock, or a ContextVar
+   # for task-scoped state. ContextVar provides automatic async task isolation.
+   from contextvars import ContextVar
 
-   _thread_local = threading.local()
+   _task_cache: ContextVar[dict[str, str]] = ContextVar("_task_cache", default={})
 
    def CUSTOM(value: str) -> str:
-       if not hasattr(_thread_local, 'cache'):
-           _thread_local.cache = {}
-       if value not in _thread_local.cache:
-           _thread_local.cache[value] = expensive_computation(value)
-       return _thread_local.cache[value]
+       cache = _task_cache.get()
+       if value not in cache:
+           cache = {**cache, value: expensive_computation(value)}
+           _task_cache.set(cache)
+       return cache[value]
    ```
 
 ---

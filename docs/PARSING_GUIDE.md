@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: parsing
 updated: "2026-02-21"
 route:
@@ -50,6 +50,7 @@ if is_valid_decimal(result):
 ### Bi-Directional Workflow
 
 ```python
+from decimal import Decimal
 from ftllexengine import FluentBundle
 from ftllexengine.parsing import parse_decimal
 from ftllexengine.parsing.guards import is_valid_decimal
@@ -68,7 +69,7 @@ result, errors = parse_decimal(user_input, "lv_LV")
 
 if is_valid_decimal(result):  # guards accept None, return False
     # Roundtrip: format → parse → format preserves value
-    assert float(result) == 1234.56
+    assert result == Decimal("1234.56")
 ```
 
 ---
@@ -357,6 +358,7 @@ if amount is None:
 ### 5. Roundtrip Validation
 
 ```python
+from decimal import Decimal
 from ftllexengine.parsing import parse_currency
 from ftllexengine.runtime.functions import currency_format
 from ftllexengine.parsing.guards import is_valid_currency
@@ -364,7 +366,7 @@ from ftllexengine.parsing.guards import is_valid_currency
 # Verify roundtrip in tests
 def test_roundtrip():
     original = Decimal("1234.56")
-    formatted = currency_format(float(original), "lv-LV", currency="EUR")
+    formatted = currency_format(original, "lv-LV", currency="EUR")
     result, errors = parse_currency(formatted, "lv_LV")
 
     assert not errors
@@ -407,9 +409,9 @@ def process_invoice(user_input: str) -> dict | None:
 
     # Format for display
     display = {
-        "subtotal": bundle.format_pattern("subtotal", {"amount": float(subtotal)})[0],
-        "vat": bundle.format_pattern("vat", {"vat": float(vat)})[0],
-        "total": bundle.format_pattern("total", {"total": float(total)})[0],
+        "subtotal": bundle.format_pattern("subtotal", {"amount": subtotal})[0],
+        "vat": bundle.format_pattern("vat", {"vat": vat})[0],
+        "total": bundle.format_pattern("total", {"total": total})[0],
     }
 
     return {

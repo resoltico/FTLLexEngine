@@ -355,13 +355,13 @@ class TestValidateResourceProperties:
 
     @given(source=validation_resource_sources())
     def test_property_error_count_accurate(self, source: str) -> None:
-        """PROPERTY: error_count == len(errors) + len(annotations)."""
+        """PROPERTY: error_count == len(errors) and annotation_count == len(annotations)."""
         from ftllexengine.validation import validate_resource  # noqa: PLC0415
 
         result = validate_resource(source)
-        expected = len(result.errors) + len(result.annotations)
         event(f"outcome_error_count={result.error_count}")
-        assert result.error_count == expected
+        assert result.error_count == len(result.errors)
+        assert result.annotation_count == len(result.annotations)
 
     @given(source=validation_resource_sources())
     def test_property_idempotent_validation(self, source: str) -> None:

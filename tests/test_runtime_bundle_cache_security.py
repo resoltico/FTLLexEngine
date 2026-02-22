@@ -15,7 +15,7 @@ import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.cache_config import CacheConfig
 
@@ -42,11 +42,11 @@ class TestCacheSecurityParameterDefaults:
         assert bundle.cache_config.max_audit_entries == 10000
 
     def test_default_cache_max_entry_weight_is_default_max_entry_size(self) -> None:
-        """max_entry_weight defaults to DEFAULT_MAX_ENTRY_SIZE."""
+        """max_entry_weight defaults to DEFAULT_MAX_ENTRY_WEIGHT."""
         bundle = FluentBundle("en", cache=CacheConfig())
         cc = bundle.cache_config
         assert cc is not None
-        assert cc.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert cc.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
         assert cc.max_entry_weight == 10_000
 
     def test_default_cache_max_errors_per_entry_is_50(self) -> None:
@@ -262,7 +262,7 @@ class TestForSystemLocaleWithCacheParameters:
         assert bundle.cache_config.write_once is False
         assert bundle.cache_config.enable_audit is False
         assert bundle.cache_config.max_audit_entries == 10000
-        assert bundle.cache_config.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert bundle.cache_config.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
         assert bundle.cache_config.max_errors_per_entry == 50
 
 

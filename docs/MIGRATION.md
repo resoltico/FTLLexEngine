@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: migration
 updated: "2026-02-21"
 route:
@@ -131,8 +131,8 @@ bundle = FluentBundle('en-US', use_isolating=True)
 ```
 
 **Changes**:
-- [WARN]**Single locale string** instead of list: `'en-US'` not `['en-US']`
-- [OK]`use_isolating` parameter works identically
+- [WARN] **Single locale string** instead of list: `'en-US'` not `['en-US']`
+- [OK] `use_isolating` parameter works identically
 
 **Migration**:
 ```python
@@ -179,9 +179,9 @@ bundle.add_resource("""hello = Hello, World!""")
 ```
 
 **Changes**:
-- [OK]**No FluentResource wrapper needed** - pass string directly to `add_resource()`
-- [OK]Simpler API with one less step
-- [NOTE]`parse_ftl()` is for AST introspection only - `add_resource()` accepts strings
+- [OK] **No FluentResource wrapper needed** - pass string directly to `add_resource()`
+- [OK] Simpler API with one less step
+- [INFO] `parse_ftl()` is for AST introspection only - `add_resource()` accepts strings
 
 **Migration**:
 ```python
@@ -213,9 +213,9 @@ result, errors = bundle.format_pattern('hello', {})
 ```
 
 **Changes**:
-- [OK]**Simpler API**: Direct message ID, no `get_message()` step needed
-- [OK]**Same return pattern**: Both return `(result, errors)` tuple
-- [OK]**Cleaner code**: One call instead of two
+- [OK] **Simpler API**: Direct message ID, no `get_message()` step needed
+- [OK] **Same return pattern**: Both return `(result, errors)` tuple
+- [OK] **Cleaner code**: One call instead of two
 
 **Migration**:
 ```python
@@ -286,8 +286,8 @@ result, errors = bundle.format_pattern('login-button', attribute='tooltip')
 ```
 
 **Changes**:
-- [OK]**Much simpler**: Use `attribute` parameter instead of `get_message().attributes[...]`
-- [OK]**No manual attribute lookup**: Bundle handles it
+- [OK] **Much simpler**: Use `attribute` parameter instead of `get_message().attributes[...]`
+- [OK] **No manual attribute lookup**: Bundle handles it
 
 ---
 
@@ -312,8 +312,8 @@ bundle.add_function('NUMBER', NUMBER)
 ```
 
 **Changes**:
-- [OK]**Identical API**: Works the same way
-- [OK]Function names should be UPPERCASE (convention in both)
+- [OK] **Identical API**: Works the same way
+- [OK] Function names should be UPPERCASE (convention in both)
 
 ---
 
@@ -347,11 +347,11 @@ result, errors = l10n.format_value('hello')
 **Note**: `PathResourceLoader` is in `ftllexengine.localization`, not the main package.
 
 **Changes**:
-- [OK]**Similar API**: Both have FluentLocalization for multi-locale
-- [WARN]**CRITICAL Return difference**:
+- [OK] **Similar API**: Both have FluentLocalization for multi-locale
+- [WARN] **CRITICAL Return difference**:
   - fluent.runtime: Returns just string: `result = l10n.format_value('hello')`
   - FTLLexEngine: Returns tuple: `result, errors = l10n.format_value('hello')` (errors is immutable tuple)
-- [OK]**PathResourceLoader**: Similar to FluentResourceLoader
+- [OK] **PathResourceLoader**: Similar to FluentResourceLoader
 
 ---
 
@@ -577,9 +577,9 @@ def format_message(bundle: FluentBundle, msg_id: MessageId, args: dict[str, obje
 ```
 
 **Improvements**:
-- [OK]Full type safety with `mypy --strict`
-- [OK]Type aliases for clarity (`MessageId`)
-- [OK]Modern Python 3.13 dict syntax (`dict[str, object]` vs `Dict[str, Any]`)
+- [OK] Full type safety with `mypy --strict`
+- [OK] Type aliases for clarity (`MessageId`)
+- [OK] Modern Python 3.13 dict syntax (`dict[str, object]` vs `Dict[str, Any]`)
 
 ---
 
@@ -629,10 +629,10 @@ def test_message_formatting():
 
 **Solution**:
 ```python
-# [OLD]fluent.runtime syntax
+# [OLD] fluent.runtime syntax
 bundle = FluentBundle(['en-US'])
 
-# [NEW]FTLLexEngine syntax
+# [NEW] FTLLexEngine syntax
 bundle = FluentBundle('en-US')
 ```
 
@@ -644,10 +644,10 @@ bundle = FluentBundle('en-US')
 
 **Solution**:
 ```python
-# [OLD]fluent.runtime
+# [OLD] fluent.runtime
 from fluent.runtime import FluentResource  # Old library had wrapper class
 
-# [NEW]FTLLexEngine - no wrapper needed
+# [NEW] FTLLexEngine - no wrapper needed
 bundle.add_resource(ftl_source)  # Direct string
 
 # Or if you need AST manipulation
@@ -664,11 +664,11 @@ resource_ast = parse_ftl(ftl_source)
 
 **Solution**:
 ```python
-# [OLD]fluent.runtime - requires get_message step
+# [OLD] fluent.runtime - requires get_message step
 msg = bundle.get_message('hello')
 result, errors = bundle.format_pattern(msg.value, {})
 
-# [NEW]FTLLexEngine - direct message ID
+# [NEW] FTLLexEngine - direct message ID
 result, errors = bundle.format_pattern('hello', {})
 ```
 
@@ -700,32 +700,32 @@ from ftllexengine import FrozenFluentError, ErrorCategory
 
 ### What Works Identically
 
-[OK]Custom functions
-[OK]Built-in NUMBER and DATETIME functions
-[OK]Select expressions and plural rules
-[OK]Terms and message references
-[OK]Unicode bidi isolation
-[OK]Error handling philosophy (graceful degradation)
+[OK] Custom functions
+[OK] Built-in NUMBER and DATETIME functions
+[OK] Select expressions and plural rules
+[OK] Terms and message references
+[OK] Unicode bidi isolation
+[OK] Error handling philosophy (graceful degradation)
 
 ### What's Different
 
-[WARN]Constructor takes single locale, not list
-[WARN]No FluentResource wrapper - direct string to `add_resource()`
-[WARN]Different exception types (but same behavior)
+[WARN] Constructor takes single locale, not list
+[WARN] No FluentResource wrapper - direct string to `add_resource()`
+[WARN] Different exception types (but same behavior)
 Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError, ...]`)
-[WARN]Python 3.13+ required (vs 3.6+)
+[WARN] Python 3.13+ required (vs 3.6+)
 
 ### What's New in FTLLexEngine
 
-[NEW]`FluentLocalization` for multi-locale
-[NEW]`PathResourceLoader` for file systems
-[NEW]`validate_resource()` for pre-flight validation
-[NEW]`introspect_message()` for metadata
-[NEW]`get_message_variables()` for variable discovery
-[NEW]`get_message_ids()` for listing messages
-[NEW]Full `mypy --strict` type safety
-[NEW]Python 3.13 modern features
-[NEW]**Bi-directional parsing** (not in fluent.runtime):
+[NEW] `FluentLocalization` for multi-locale
+[NEW] `PathResourceLoader` for file systems
+[NEW] `validate_resource()` for pre-flight validation
+[NEW] `introspect_message()` for metadata
+[NEW] `get_message_variables()` for variable discovery
+[NEW] `get_message_ids()` for listing messages
+[NEW] Full `mypy --strict` type safety
+[NEW] Python 3.13 modern features
+[NEW] **Bi-directional parsing** (not in fluent.runtime):
   - `parse_number()`, `parse_decimal()` - locale-aware number parsing
   - `parse_date()`, `parse_datetime()` - locale-aware date parsing
   - `parse_currency()` - currency parsing with symbol detection

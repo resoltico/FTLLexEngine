@@ -43,7 +43,7 @@ from decimal import Decimal
 from threading import Lock
 from typing import final
 
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE, MAX_DEPTH
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT, MAX_DEPTH
 from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.integrity import (
     CacheCorruptionError,
@@ -423,7 +423,7 @@ class IntegrityCache:
     def __init__(
         self,
         maxsize: int = DEFAULT_CACHE_SIZE,
-        max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE,
+        max_entry_weight: int = DEFAULT_MAX_ENTRY_WEIGHT,
         max_errors_per_entry: int = _DEFAULT_MAX_ERRORS_PER_ENTRY,
         *,
         write_once: bool = False,

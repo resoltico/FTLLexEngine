@@ -174,7 +174,7 @@ class TestFluentResolverGlobalDepth:
 
     @staticmethod
     def _mock_depth_raise(_self: GlobalDepthGuard) -> GlobalDepthGuard:
-        diag = ErrorTemplate.expression_depth_exceeded(_self._max_depth)
+        diag = ErrorTemplate.depth_exceeded(_self._max_depth)
         raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
     def test_resolve_message_catches_global_depth_exceeded(self) -> None:

@@ -26,7 +26,7 @@ __all__ = [
     "MAX_TERRITORY_CACHE_SIZE",
     "MAX_CURRENCY_CACHE_SIZE",
     "DEFAULT_CACHE_SIZE",
-    "DEFAULT_MAX_ENTRY_SIZE",
+    "DEFAULT_MAX_ENTRY_WEIGHT",
     # Input limits
     "MAX_SOURCE_SIZE",
     "MAX_LOCALE_CODE_LENGTH",
@@ -125,12 +125,12 @@ MAX_CURRENCY_CACHE_SIZE: int = 300
 # 1000 entries is sufficient for most applications (typical UI has <500 messages).
 DEFAULT_CACHE_SIZE: int = 1000
 
-# Default maximum entry size in characters (~10KB for typical strings).
+# Default maximum entry weight in characters (~10KB for typical strings).
 # Prevents unbounded memory usage when caching very large formatted results.
 # Results exceeding this limit are computed but not cached, protecting against
 # scenarios where large variable values produce very large formatted strings
 # (e.g., 10MB results cached 1000 times would consume 10GB of memory).
-DEFAULT_MAX_ENTRY_SIZE: int = 10_000
+DEFAULT_MAX_ENTRY_WEIGHT: int = 10_000
 
 # ============================================================================
 # INPUT LIMITS
@@ -140,7 +140,7 @@ DEFAULT_MAX_ENTRY_SIZE: int = 10_000
 # Python measures string length in characters (code points), not bytes.
 # UTF-8 encoding means 1 character = 1-4 bytes, but len(source) counts characters.
 # Prevents DoS attacks via unbounded memory allocation from large FTL files.
-MAX_SOURCE_SIZE: int = 10 * 1024 * 1024
+MAX_SOURCE_SIZE: int = 10_000_000
 
 # Maximum typical locale code length per BCP 47 / RFC 5646 (35 characters recommended).
 # BCP 47 well-formed locale tags are typically <35 characters, including language,

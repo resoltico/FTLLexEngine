@@ -148,6 +148,11 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
                         cycle = [*path[cycle_start:], neighbor]
 
                         canonical = _canonicalize_cycle(cycle)
+                        # pragma: no branch -- DFS guarantees each edge (node → neighbor)
+                        # in rec_stack is visited at most once per DFS start node.
+                        # The False branch (canonical already seen) is unreachable for
+                        # a single DFS pass; only reachable with a separate pre-loaded
+                        # seen_canonical, which this function never does.
                         if canonical not in seen_canonical:  # pragma: no branch
                             seen_canonical.add(canonical)
                             cycles.append(cycle)

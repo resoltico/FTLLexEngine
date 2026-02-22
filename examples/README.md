@@ -150,6 +150,24 @@ Demonstrates:
 
 ---
 
+### [parser_only.py](parser_only.py)
+
+**Parser-only mode (no Babel required)** - Everything you can do without the Babel dependency.
+
+Demonstrates:
+1. Parse FTL source to AST
+2. Inspect message and term structure
+3. Extract variables and function references
+4. Validate FTL syntax
+5. Serialize AST back to FTL
+6. Roundtrip validation
+
+**Run**: `python examples/parser_only.py`
+
+**Note**: Works with `pip install ftllexengine` (no `[babel]` extra needed).
+
+---
+
 ### [locale_fallback.py](locale_fallback.py)
 
 **Multi-locale with fallback chains** - Use this for applications supporting multiple languages.
@@ -321,6 +339,7 @@ Demonstrates:
 ```bash
 # Run each example individually
 python examples/quickstart.py
+python examples/parser_only.py
 python examples/locale_fallback.py
 python examples/bidirectional_formatting.py
 python examples/ftl_transform.py

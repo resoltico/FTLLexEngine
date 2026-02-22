@@ -20,8 +20,12 @@ from hypothesis import strategies as st
 
 import ftllexengine
 from ftllexengine import FluentBundle
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE
-from ftllexengine.core.locale_utils import clear_locale_cache, get_babel_locale
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
+from ftllexengine.core.locale_utils import (
+    _get_babel_locale_normalized,
+    clear_locale_cache,
+    get_babel_locale,
+)
 from ftllexengine.parsing import clear_currency_caches, clear_date_caches
 from ftllexengine.parsing.currency import (
     _build_currency_maps_from_cldr,
@@ -329,7 +333,7 @@ class TestCacheConfigValidation:
         """Default CacheConfig() uses documented constant defaults."""
         cfg = CacheConfig()
         assert cfg.size == DEFAULT_CACHE_SIZE
-        assert cfg.max_entry_weight == DEFAULT_MAX_ENTRY_SIZE
+        assert cfg.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
         assert cfg.write_once is False
         assert cfg.integrity_strict is True
         assert cfg.enable_audit is False
@@ -489,14 +493,14 @@ class TestLocaleCacheClear:
         locale2 = get_babel_locale("de_DE")
 
         # Verify cache is populated (cache_info shows hits=0, misses=2)
-        info_before = get_babel_locale.cache_info()
+        info_before = _get_babel_locale_normalized.cache_info()
         assert info_before.misses >= 2
 
         # Clear cache
         clear_locale_cache()
 
         # Cache should be empty (currsize=0)
-        info_after = get_babel_locale.cache_info()
+        info_after = _get_babel_locale_normalized.cache_info()
         assert info_after.currsize == 0
 
         # Re-fetch should create new cache entries
@@ -516,14 +520,14 @@ class TestLocaleCacheClear:
         get_babel_locale("en_US")
         get_babel_locale("en_US")  # Should be cache hit
 
-        info = get_babel_locale.cache_info()
+        info = _get_babel_locale_normalized.cache_info()
         assert info.hits >= 1
 
         # Clear
         clear_locale_cache()
 
         # Hits/misses reset
-        info_after = get_babel_locale.cache_info()
+        info_after = _get_babel_locale_normalized.cache_info()
         assert info_after.hits == 0
         assert info_after.misses == 0
 
@@ -613,13 +617,13 @@ class TestClearAllCaches:
         """clear_all_caches() clears locale cache."""
         # Populate locale cache
         get_babel_locale("en_US")
-        assert get_babel_locale.cache_info().currsize >= 1
+        assert _get_babel_locale_normalized.cache_info().currsize >= 1
 
         # Clear all
         ftllexengine.clear_all_caches()
 
         # Locale cache should be empty
-        assert get_babel_locale.cache_info().currsize == 0
+        assert _get_babel_locale_normalized.cache_info().currsize == 0
 
     def test_clear_all_clears_date_caches(self) -> None:
         """clear_all_caches() clears date pattern caches."""
@@ -723,7 +727,7 @@ class TestCacheLifecycleIdempotency:
         clear_locale_cache()
         clear_locale_cache()
         clear_locale_cache()
-        assert get_babel_locale.cache_info().currsize == 0
+        assert _get_babel_locale_normalized.cache_info().currsize == 0
 
     def test_date_clear_idempotent(self) -> None:
         """Multiple date cache clears are equivalent to single clear."""
@@ -751,7 +755,7 @@ class TestCacheLifecycleIdempotency:
         ftllexengine.clear_all_caches()
         ftllexengine.clear_all_caches()
 
-        assert get_babel_locale.cache_info().currsize == 0
+        assert _get_babel_locale_normalized.cache_info().currsize == 0
         assert _get_date_patterns.cache_info().currsize == 0
         assert _get_currency_pattern.cache_info().currsize == 0
 

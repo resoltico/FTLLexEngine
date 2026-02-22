@@ -18,6 +18,8 @@ import hashlib
 import hmac
 from typing import final
 
+from ftllexengine.integrity import PYTHON_EXCEPTION_ATTRS, ImmutabilityViolationError
+
 from .codes import Diagnostic, ErrorCategory, FrozenErrorContext
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
@@ -84,13 +86,6 @@ class FrozenFluentError(Exception):
     _diagnostic: Diagnostic | None
     _frozen: bool
     _message: str
-
-    # Python's exception handling sets these attributes when propagating exceptions.
-    # They must be allowed even after freeze to enable normal raise/except flow.
-    # __notes__ was added in Python 3.11 for Exception Groups (PEP 654/678).
-    _PYTHON_EXCEPTION_ATTRS: frozenset[str] = frozenset(
-        ("__traceback__", "__context__", "__cause__", "__suppress_context__", "__notes__")
-    )
 
     def __init__(
         self,
@@ -266,14 +261,10 @@ class FrozenFluentError(Exception):
                 attributes after construction
         """
         # Allow Python's internal exception handling attributes
-        if name in self._PYTHON_EXCEPTION_ATTRS:
+        if name in PYTHON_EXCEPTION_ATTRS:
             object.__setattr__(self, name, value)
             return
         if getattr(self, "_frozen", False):
-            from ftllexengine.integrity import (  # noqa: PLC0415 - circular
-                ImmutabilityViolationError,
-            )
-
             msg = f"Cannot modify frozen error attribute: {name}"
             raise ImmutabilityViolationError(msg)
         # Pre-freeze assignment path: reached on non-CPython runtimes where
@@ -287,9 +278,6 @@ class FrozenFluentError(Exception):
         Raises:
             ImmutabilityViolationError: Always
         """
-
-        from ftllexengine.integrity import ImmutabilityViolationError  # noqa: PLC0415 - circular
-
         msg = f"Cannot delete frozen error attribute: {name}"
         raise ImmutabilityViolationError(msg)
 

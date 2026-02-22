@@ -258,9 +258,14 @@ class FluentBundle:
             >>> # Audit-enabled cache for compliance
             >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
         """
-        # Validate locale format
+        # Validate locale format on the raw input.
         FluentBundle._validate_locale_format(locale)
 
+        # Store the original locale string for public API consistency.
+        # Callers expect bundle.locale to return what they passed in.
+        # Normalization is applied at the specific call sites that require it
+        # (e.g., LocaleContext.create) so that equivalent locale codes share
+        # cached objects even when spelled differently ("en-US" vs "en_US").
         self._locale = locale
         self._use_isolating = use_isolating
         self._strict = strict
@@ -615,7 +620,8 @@ class FluentBundle:
             - bundle.locale: The original locale code passed to FluentBundle
             - LocaleContext.babel_locale: The underlying Babel Locale object
         """
-        # create() always returns LocaleContext with en_US fallback for invalid locales
+        # LocaleContext.create() normalizes the locale code internally,
+        # so "en-US" and "en_US" share the same cached LocaleContext entry.
         ctx = LocaleContext.create(self._locale)
         return str(ctx.babel_locale)
 

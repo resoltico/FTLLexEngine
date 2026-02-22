@@ -17,6 +17,7 @@ from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.core.locale_utils import (
+    _get_babel_locale_normalized,
     clear_locale_cache,
     get_babel_locale,
     get_system_locale,
@@ -62,28 +63,28 @@ class TestClearLocaleCache:
         get_babel_locale("de_de")
 
         # Cache info should show hits
-        info_before = get_babel_locale.cache_info()
+        info_before = _get_babel_locale_normalized.cache_info()
         assert info_before.currsize > 0
 
         # Clear the cache
         clear_locale_cache()
 
         # Cache should be empty
-        info_after = get_babel_locale.cache_info()
+        info_after = _get_babel_locale_normalized.cache_info()
         assert info_after.currsize == 0
 
     def test_clear_locale_cache_idempotent(self) -> None:
         """clear_locale_cache() can be called multiple times safely."""
         clear_locale_cache()
         clear_locale_cache()
-        info = get_babel_locale.cache_info()
+        info = _get_babel_locale_normalized.cache_info()
         assert info.currsize == 0
 
     def test_clear_locale_cache_when_empty(self) -> None:
         """clear_locale_cache() works on an already-empty cache."""
-        get_babel_locale.cache_clear()  # Ensure empty
+        _get_babel_locale_normalized.cache_clear()  # Ensure empty
         clear_locale_cache()  # Should not raise
-        info = get_babel_locale.cache_info()
+        info = _get_babel_locale_normalized.cache_info()
         assert info.currsize == 0
 
 
@@ -131,7 +132,7 @@ class TestGetBabelLocale:
         saved_locale = sys.modules.get("babel.core")
 
         # Clear caches to force re-evaluation
-        get_babel_locale.cache_clear()
+        _get_babel_locale_normalized.cache_clear()
         import ftllexengine.core.babel_compat as _bc  # noqa: PLC0415
 
         _bc._babel_available = None
@@ -166,7 +167,7 @@ class TestGetBabelLocale:
             if saved_locale is not None:
                 sys.modules["babel.core"] = saved_locale
             # Reset state for subsequent tests
-            get_babel_locale.cache_clear()
+            _get_babel_locale_normalized.cache_clear()
             _bc._babel_available = None
 
 

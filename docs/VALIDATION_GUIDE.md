@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: validation
 updated: "2026-02-21"
 route:
@@ -279,15 +279,37 @@ result = validate_resource(ftl_content)
 ## Validation Result Structure
 
 ```python
-@dataclass
+@dataclass(frozen=True, slots=True)
 class ValidationResult:
-    errors: tuple[ValidationError, ...]    # Blocking issues
-    warnings: tuple[ValidationWarning, ...] # Non-blocking issues
-    annotations: tuple[Annotation, ...]    # Parser annotations
+    errors: tuple[ValidationError, ...]      # Blocking issues
+    warnings: tuple[ValidationWarning, ...]  # Non-blocking; do not affect is_valid
+    annotations: tuple[Annotation, ...]      # Parser annotations; affect is_valid
 
+    # Validity check
     @property
-    def is_valid(self) -> bool:
-        return len(self.errors) == 0 and len(self.annotations) == 0
+    def is_valid(self) -> bool: ...          # True if no errors AND no annotations
+
+    # Counts
+    @property
+    def error_count(self) -> int: ...        # len(errors)
+    @property
+    def annotation_count(self) -> int: ...   # len(annotations)
+    @property
+    def warning_count(self) -> int: ...      # len(warnings)
+
+    # Factories
+    @staticmethod
+    def valid() -> ValidationResult: ...     # Empty result (all tuples empty)
+    @staticmethod
+    def invalid(
+        errors: tuple[ValidationError, ...] = (),
+        warnings: tuple[ValidationWarning, ...] = (),
+        annotations: tuple[Annotation, ...] = (),
+    ) -> ValidationResult: ...
+    @staticmethod
+    def from_annotations(
+        annotations: tuple[Annotation, ...]
+    ) -> ValidationResult: ...              # Convenience: parser annotations only
 ```
 
 **Error vs Warning**:

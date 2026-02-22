@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: PARSING
 updated: "2026-02-21"
 route:
@@ -135,7 +135,7 @@ class FluentParserV1:
 ### Parameters
 | Parameter | Type | Req | Semantics |
 |:----------|:-----|:----|:----------|
-| `max_source_size` | `int \| None` | N | Maximum source size in characters (default: 10M). |
+| `max_source_size` | `int \| None` | N | Maximum source size in characters (default: 10,000,000). |
 | `max_nesting_depth` | `int \| None` | N | Maximum nesting depth (default: 100); must be positive if specified. |
 | `max_parse_errors` | `int \| None` | N | Maximum Junk entries before parser aborts (default: 100). Set to 0 to disable limit. |
 

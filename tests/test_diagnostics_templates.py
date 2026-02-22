@@ -172,9 +172,9 @@ class TestResolutionTemplates:
         event(f"depth={max_depth}")
 
     @given(max_depth=st.integers(min_value=1, max_value=1000))
-    def test_expression_depth_exceeded(self, max_depth: int) -> None:
-        """expression_depth_exceeded embeds the depth limit."""
-        d = ErrorTemplate.expression_depth_exceeded(max_depth)
+    def test_depth_exceeded(self, max_depth: int) -> None:
+        """depth_exceeded embeds the depth limit."""
+        d = ErrorTemplate.depth_exceeded(max_depth)
         assert d.code == DiagnosticCode.MAX_DEPTH_EXCEEDED
         assert str(max_depth) in d.message
         assert d.hint is not None
@@ -481,7 +481,7 @@ class TestTemplateStructuralInvariants:
         lambda: ErrorTemplate.message_no_value("msg"),
         lambda: ErrorTemplate.cyclic_reference(["a", "b"]),
         lambda: ErrorTemplate.max_depth_exceeded("msg", 10),
-        lambda: ErrorTemplate.expression_depth_exceeded(50),
+        lambda: ErrorTemplate.depth_exceeded(50),
         lambda: ErrorTemplate.expansion_budget_exceeded(200, 100),
         ErrorTemplate.no_variants,
         lambda: ErrorTemplate.function_not_found("NUMBER"),

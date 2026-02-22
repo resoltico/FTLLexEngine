@@ -65,9 +65,9 @@ total = Kopa: { CURRENCY($total, currency: "EUR") }
     print(f"  Total: {total}")
 
     # Format for display
-    subtotal_display, _ = bundle.format_pattern("subtotal", {"amount": float(subtotal)})
-    vat_display, _ = bundle.format_pattern("vat", {"vat": float(vat)})
-    total_display, _ = bundle.format_pattern("total", {"total": float(total)})
+    subtotal_display, _ = bundle.format_pattern("subtotal", {"amount": subtotal})
+    vat_display, _ = bundle.format_pattern("vat", {"vat": vat})
+    total_display, _ = bundle.format_pattern("total", {"total": total})
 
     print("\nFormatted for display (Latvian):")
     print(f"  {subtotal_display}")
@@ -127,7 +127,7 @@ def example_form_validation() -> None:
 
         # Format for display
         assert amount is not None, "Amount should not be None after error checks"
-        formatted, _ = bundle.format_pattern("price", {"amount": float(amount)})
+        formatted, _ = bundle.format_pattern("price", {"amount": amount})
         print(f"  Display: {formatted}")
         print("  Status: Valid")
 
@@ -175,7 +175,7 @@ formatted = { $curr ->
 """
             bundle.add_resource(ftl_source)
             formatted, _ = bundle.format_pattern(
-                "formatted", {"amount": float(amount), "curr": currency}
+                "formatted", {"amount": amount, "curr": currency}
             )
             print(f"  Formatted: {formatted}")
         else:
@@ -235,7 +235,7 @@ def example_roundtrip_validation() -> None:
         bundle.add_resource('price = { CURRENCY($amount, currency: "EUR") }')
 
         # Format -> Parse -> Format
-        formatted1, _ = bundle.format_pattern("price", {"amount": float(original_value)})
+        formatted1, _ = bundle.format_pattern("price", {"amount": original_value})
 
         # Returns tuple (result, errors)
         result, errors = parse_currency(formatted1, locale)
@@ -247,7 +247,7 @@ def example_roundtrip_validation() -> None:
 
         if result is not None:
             parsed_amount, parsed_currency = result
-            formatted2, _ = bundle.format_pattern("price", {"amount": float(parsed_amount)})
+            formatted2, _ = bundle.format_pattern("price", {"amount": parsed_amount})
 
             print(f"Locale: {locale}")
             print(f"  Format 1:  {formatted1}")

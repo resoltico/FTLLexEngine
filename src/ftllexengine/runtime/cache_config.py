@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_SIZE
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
 
 __all__ = ["CacheConfig"]
 
@@ -68,7 +68,7 @@ class CacheConfig:
     integrity_strict: bool = True
     enable_audit: bool = False
     max_audit_entries: int = 10000
-    max_entry_weight: int = DEFAULT_MAX_ENTRY_SIZE
+    max_entry_weight: int = DEFAULT_MAX_ENTRY_WEIGHT
     max_errors_per_entry: int = 50
 
     def __post_init__(self) -> None:

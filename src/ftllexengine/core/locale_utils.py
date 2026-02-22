@@ -72,13 +72,37 @@ def normalize_locale(locale_code: str) -> str:
 
 
 @functools.lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
+def _get_babel_locale_normalized(normalized_code: str) -> Locale:
+    """Get a Babel Locale object from a pre-normalized locale code with caching.
+
+    Cache key is normalized (lowercase, underscores) so all equivalent locale
+    codes map to a single cache entry. Called exclusively by get_babel_locale().
+
+    Thread-safe via lru_cache internal locking.
+
+    Args:
+        normalized_code: Locale code already in canonical POSIX form (lowercase, underscores)
+
+    Returns:
+        Babel Locale object
+
+    Raises:
+        BabelImportError: If Babel is not installed
+        babel.core.UnknownLocaleError: If locale is not recognized
+        ValueError: If locale format is invalid
+    """
+    require_babel("get_babel_locale")
+    BabelLocale = get_locale_class()  # noqa: N806 - class alias, PascalCase by convention
+    return BabelLocale.parse(normalized_code)
+
+
 def get_babel_locale(locale_code: str) -> Locale:
     """Get a Babel Locale object with caching.
 
-    Parses the locale code once and caches the result. This avoids repeated
-    parsing overhead in hot paths like plural rule selection.
+    Normalizes the locale code before cache lookup so that "en-US", "en_US",
+    and "EN-US" all resolve to a single cached Babel Locale object.
 
-    Thread-safe via lru_cache internal locking.
+    Thread-safe via lru_cache internal locking in _get_babel_locale_normalized.
 
     Note:
         This function REQUIRES the optional Babel dependency.
@@ -102,11 +126,7 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
-    require_babel("get_babel_locale")
-    BabelLocale = get_locale_class()  # noqa: N806 - class alias, PascalCase by convention
-
-    normalized = normalize_locale(locale_code)
-    return BabelLocale.parse(normalized)
+    return _get_babel_locale_normalized(normalize_locale(locale_code))
 
 
 def get_system_locale(*, raise_on_failure: bool = False) -> str:
@@ -200,4 +220,4 @@ def clear_locale_cache() -> None:
         >>> from ftllexengine.core.locale_utils import clear_locale_cache
         >>> clear_locale_cache()  # Clears all cached Locale objects
     """
-    get_babel_locale.cache_clear()
+    _get_babel_locale_normalized.cache_clear()

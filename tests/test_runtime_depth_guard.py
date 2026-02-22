@@ -203,7 +203,7 @@ class TestDepthGuardError:
 
     def test_error_carries_diagnostic(self) -> None:
         """DepthGuard error carries diagnostic template data."""
-        diagnostic = ErrorTemplate.expression_depth_exceeded(50)
+        diagnostic = ErrorTemplate.depth_exceeded(50)
         error = FrozenFluentError(
             str(diagnostic),
             ErrorCategory.RESOLUTION,

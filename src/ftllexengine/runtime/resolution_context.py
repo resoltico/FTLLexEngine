@@ -89,7 +89,7 @@ class GlobalDepthGuard:
         """Enter guarded section, increment global depth."""
         current = _global_resolution_depth.get()
         if current >= self._max_depth:
-            diag = ErrorTemplate.expression_depth_exceeded(self._max_depth)
+            diag = ErrorTemplate.depth_exceeded(self._max_depth)
             raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
         self._token = _global_resolution_depth.set(current + 1)
         return self

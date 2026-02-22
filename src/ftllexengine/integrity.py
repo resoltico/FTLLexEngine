@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ftllexengine.syntax.ast import Junk
 
 __all__ = [
+    "PYTHON_EXCEPTION_ATTRS",
     "CacheCorruptionError",
     "DataIntegrityError",
     "FormattingIntegrityError",
@@ -40,6 +41,13 @@ __all__ = [
     "SyntaxIntegrityError",
     "WriteConflictError",
 ]
+
+# Attributes set by Python's exception machinery during propagation.
+# Must remain mutable after freeze on ALL exception-derived classes.
+# __notes__ was added in Python 3.11 for Exception Groups (PEP 654/678).
+PYTHON_EXCEPTION_ATTRS: frozenset[str] = frozenset(
+    ("__traceback__", "__context__", "__cause__", "__suppress_context__", "__notes__")
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,12 +111,6 @@ class DataIntegrityError(Exception):
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_frozen", True)
 
-    # Python's exception handling sets these attributes when propagating exceptions.
-    # __notes__ was added in Python 3.11 for Exception Groups (PEP 654/678).
-    _PYTHON_EXCEPTION_ATTRS: frozenset[str] = frozenset(
-        ("__traceback__", "__context__", "__cause__", "__suppress_context__", "__notes__")
-    )
-
     def __setattr__(self, name: str, value: object) -> None:
         """Reject all attribute mutations after initialization.
 
@@ -120,7 +122,7 @@ class DataIntegrityError(Exception):
             ImmutabilityViolationError: If attempting to modify after construction
         """
         # Allow Python's internal exception handling attributes
-        if name in self._PYTHON_EXCEPTION_ATTRS:
+        if name in PYTHON_EXCEPTION_ATTRS:
             object.__setattr__(self, name, value)
             return
         if getattr(self, "_frozen", False):

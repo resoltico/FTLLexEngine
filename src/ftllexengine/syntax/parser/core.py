@@ -377,17 +377,8 @@ class FluentParserV1:
                     Junk(content=junk_content, annotations=(annotation,), span=junk_span)
                 )
                 junk_count += 1
-
-                # DoS protection: Abort if too many parse errors
-                if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
-                    logger.warning(
-                        "Parse aborted: exceeded maximum of %d Junk entries. "
-                        "This usually indicates severely malformed FTL input. "
-                        "Consider fixing the FTL source or increasing max_parse_errors.",
-                        self._max_parse_errors,
-                    )
+                if self._junk_limit_exceeded(junk_count):
                     break
-
                 continue
 
             # Parse comments (per Fluent spec: #, ##, ###)
@@ -443,17 +434,8 @@ class FluentParserV1:
                     )
                 )
                 junk_count += 1
-
-                # DoS protection: Abort if too many parse errors
-                if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
-                    logger.warning(
-                        "Parse aborted: exceeded maximum of %d Junk entries. "
-                        "This usually indicates severely malformed FTL input. "
-                        "Consider fixing the FTL source or increasing max_parse_errors.",
-                        self._max_parse_errors,
-                    )
+                if self._junk_limit_exceeded(junk_count):
                     break
-
                 if not cursor.is_eof:
                     cursor = cursor.advance()
                 continue
@@ -552,15 +534,7 @@ class FluentParserV1:
                     Junk(content=junk_content, annotations=(annotation,), span=junk_span)
                 )
                 junk_count += 1
-
-                # DoS protection: Abort if too many parse errors
-                if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
-                    logger.warning(
-                        "Parse aborted: exceeded maximum of %d Junk entries. "
-                        "This usually indicates severely malformed FTL input. "
-                        "Consider fixing the FTL source or increasing max_parse_errors.",
-                        self._max_parse_errors,
-                    )
+                if self._junk_limit_exceeded(junk_count):
                     break
 
         # Finalize any remaining pending comment at EOF
@@ -568,6 +542,29 @@ class FluentParserV1:
             entries.append(pending_accumulator.finalize())
 
         return Resource(entries=tuple(entries))
+
+    def _junk_limit_exceeded(self, junk_count: int) -> bool:
+        """Return True and log warning if the Junk entry limit has been reached.
+
+        Implements DoS protection: when severely malformed input generates an
+        unbounded number of parse errors, abort early rather than consuming
+        arbitrary memory.
+
+        Args:
+            junk_count: Current count of Junk entries produced so far
+
+        Returns:
+            True if the limit is active and has been reached, False otherwise
+        """
+        if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
+            logger.warning(
+                "Parse aborted: exceeded maximum of %d Junk entries. "
+                "This usually indicates severely malformed FTL input. "
+                "Consider fixing the FTL source or increasing max_parse_errors.",
+                self._max_parse_errors,
+            )
+            return True
+        return False
 
     def _consume_junk_lines(self, cursor: Cursor) -> Cursor:
         """Consume junk lines per FTL spec until valid entry start.

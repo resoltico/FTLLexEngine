@@ -284,9 +284,7 @@ Enable `strict=True`. FTLLexEngine raises immediately -- no bad data reaches the
 
 ```python
 from decimal import Decimal
-from ftllexengine import FluentBundle
-from ftllexengine.integrity import FormattingIntegrityError
-from ftllexengine.runtime.cache_config import CacheConfig
+from ftllexengine import CacheConfig, FluentBundle, FormattingIntegrityError
 
 # strict=True raises on ANY formatting error instead of returning fallback
 # integrity_strict=True (default) raises on cache corruption/write conflicts

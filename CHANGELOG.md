@@ -10,6 +10,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.127.0] - 2026-02-23
+
+### Changed (BREAKING)
+
+- **`DEFAULT_MAX_ENTRY_SIZE` renamed to `DEFAULT_MAX_ENTRY_WEIGHT`** (CLARITY-CONSTANTS-ENTRY-SIZE-RENAME-001):
+  - `DEFAULT_MAX_ENTRY_SIZE` named an entry weight ceiling yet used "size" while the corresponding `CacheConfig.max_entry_weight` field and its docstring consistently used "weight"; the cross-module terminology mismatch required readers to mentally reconcile two terms for the same concept, and the import error on upgrade is immediate and unambiguous
+  - Renamed to `DEFAULT_MAX_ENTRY_WEIGHT` throughout `constants.py`, `runtime/cache_config.py`, and `runtime/cache.py`
+  - Location: `constants.py`, `runtime/cache_config.py`, `runtime/cache.py`
+
+- **`ValidationResult.error_count` now counts syntax errors only** (CLARITY-VALIDATION-ERROR-COUNT-001):
+  - `error_count` returned `len(self.errors) + len(self.annotations)`, conflating two distinct diagnostic categories under a name that implies only hard syntax errors; callers that depended on `error_count == 0` as a clean-resource signal were silently misled — a resource with annotations only would still report `error_count > 0`; a new `annotation_count` property is added to give each category its own unambiguous name
+  - `error_count` now returns `len(self.errors)` only; `annotation_count` property added returning `len(self.annotations)`; the formatter validation summary now reports both counts separately: `"N issue(s) (E error(s), A annotation(s)), W warning(s)"`
+  - Location: `diagnostics/validation.py`, `diagnostics/formatter.py`
+
+- **`ErrorTemplate.expression_depth_exceeded` renamed to `depth_exceeded`** (CLARITY-TEMPLATES-DEPTH-RENAME-001):
+  - `expression_depth_exceeded` was called from three structurally unrelated contexts — expression nesting (`depth_guard.py`), message resolution depth (`resolution_context.py`), and any future validation traversal depth — but the `expression_` prefix falsely implied the method applied exclusively to expression nesting, misleading readers who encountered the call in non-expression contexts and suggesting separate methods might be needed for other depth types
+  - Renamed to `depth_exceeded`; all three call sites updated
+  - Location: `diagnostics/templates.py`, `core/depth_guard.py`, `runtime/resolution_context.py`
+
+### Changed
+
+- **`get_babel_locale` cache key inconsistency eliminated** (DEFECT-LOCALE-UTILS-CACHE-KEY-001):
+  - `get_babel_locale` was the `@lru_cache`-decorated function; the locale code was normalized inside the function body after being used as the cache key, so `"en-US"`, `"en_US"`, and `"EN-US"` each created a separate cache entry despite being semantically equivalent; the module-level locale cache grew without bound under locale format variation, and `cache_clear()` / `cache_info()` exposed the wrong function's LRU statistics
+  - Split into private `_get_babel_locale_normalized(normalized_code: str)` carrying the `@lru_cache` decorator (cache key is always the post-normalized form) and public `get_babel_locale(locale_code: str)` (normalizes via `normalize_locale()` then delegates); `clear_locale_cache()` now clears `_get_babel_locale_normalized`'s cache; semantically equivalent locale codes share exactly one cache entry
+  - Location: `core/locale_utils.py`
+
+- **`MAX_SOURCE_SIZE` corrected to exactly 10,000,000 bytes** (DEFECT-CONSTANTS-SOURCE-SIZE-001):
+  - `MAX_SOURCE_SIZE` was computed as `10 * 1024 * 1024 = 10,485,760`; all module docstrings and comments described the limit as "10 million bytes"; the 4.86% surplus allowed inputs up to 485,760 bytes larger than the documented limit, a correctness defect for financial applications that rely on the stated byte budget for capacity planning and DoS risk modelling
+  - Changed to the integer literal `10_000_000`; documented limit and enforced limit are now identical
+  - Location: `constants.py`
+
+- **`PYTHON_EXCEPTION_ATTRS` deduplicated to a single module-level constant** (SIMPLIFY-INTEGRITY-ATTRS-DEDUP-001):
+  - The same `frozenset` of Python exception machinery attribute names (`__traceback__`, `__context__`, `__cause__`, `__suppress_context__`, `__notes__`) was defined independently as a class attribute `_PYTHON_EXCEPTION_ATTRS` inside both `DataIntegrityError` (`integrity.py`) and `FrozenFluentError` (`diagnostics/errors.py`); a future addition to Python's exception machinery would require two synchronised edits with no static enforcement; the duplication also required a circular-import workaround: `errors.py` imported `ImmutabilityViolationError` inside `__setattr__` and `__delattr__` bodies with `# noqa: PLC0415` to avoid a module-level circular import, inflating the call-time cost of every mutation attempt on `FrozenFluentError`
+  - Extracted to module-level constant `PYTHON_EXCEPTION_ATTRS: frozenset[str]` in `integrity.py` and added to `__all__`; `diagnostics/errors.py` imports both `PYTHON_EXCEPTION_ATTRS` and `ImmutabilityViolationError` at the top level; class-level `_PYTHON_EXCEPTION_ATTRS` definitions removed from both classes; all function-local deferred imports eliminated
+  - Location: `integrity.py`, `diagnostics/errors.py`
+
+- **`FluentParserV1._junk_limit_exceeded()` extracted to eliminate triplicated DoS guard** (SIMPLIFY-PARSER-JUNK-DOS-GUARD-001):
+  - The three parse branches in `FluentParserV1.parse()` — message, term, and junk recovery — each contained an identical six-line block checking `self._max_parse_errors > 0 and junk_count >= self._max_parse_errors`, emitting a `WARNING` log, and breaking the loop; triplicated logic is a maintenance hazard for a security-critical path: a future change to the threshold condition, log message, or log level would require three synchronised edits
+  - Extracted to private method `_junk_limit_exceeded(self, junk_count: int) -> bool`; all three call sites replaced with `if self._junk_limit_exceeded(junk_count): break`
+  - Location: `syntax/parser/core.py`
+
+### Fixed
+
+- **`graph.py` `# pragma: no branch` lacked explanation** (CLARITY-GRAPH-PRAGMA-COMMENT-001):
+  - The coverage pragma at `detect_cycles()` suppressing the False branch of `if canonical not in seen_canonical` was unaccompanied by any rationale; readers could not determine whether the unseen branch was architecturally impossible, a test coverage gap, or dead code awaiting removal
+  - Added a four-line comment block immediately above the pragma explaining the DFS invariant: each `(node → neighbor)` edge in `rec_stack` is visited at most once per DFS start node, making the `canonical already seen` False branch unreachable within a single DFS pass; `seen_canonical` is never pre-populated by the caller
+  - Location: `analysis/graph.py`
+
+- **`FunctionRegistry.__repr__` docstring had an extraneous blank line** (CLARITY-FUNCTION-BRIDGE-REPR-DOCSTRING-001):
+  - The one-line summary and the `Returns:` section were separated by two blank lines; Google-style docstrings require exactly one blank line between the summary and the first named section
+  - Removed the extra blank line
+  - Location: `runtime/function_bridge.py`
+
 ## [0.126.0] - 2026-02-22
 
 ### Fixed
@@ -4161,6 +4214,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.127.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.127.0
+[0.126.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.126.0
 [0.125.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.125.0
 [0.124.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.124.0
 [0.123.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.123.0

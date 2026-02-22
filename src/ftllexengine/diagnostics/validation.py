@@ -235,12 +235,21 @@ class ValidationResult:
 
     @property
     def error_count(self) -> int:
-        """Get total number of errors (syntax + parser).
+        """Get number of syntax/structural validation errors.
 
         Returns:
-            Count of errors and annotations combined
+            Count of ValidationError instances in ``errors``
         """
-        return len(self.errors) + len(self.annotations)
+        return len(self.errors)
+
+    @property
+    def annotation_count(self) -> int:
+        """Get number of parser-level annotations (parse errors).
+
+        Returns:
+            Count of Annotation instances in ``annotations``
+        """
+        return len(self.annotations)
 
     @property
     def warning_count(self) -> int:

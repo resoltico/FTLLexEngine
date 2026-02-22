@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: ERRORS
-updated: "2026-02-21"
+updated: "2026-02-22"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -361,7 +361,9 @@ class ValidationResult:
     @property
     def is_valid(self) -> bool: ...
     @property
-    def error_count(self) -> int: ...
+    def error_count(self) -> int: ...       # len(self.errors) only
+    @property
+    def annotation_count(self) -> int: ...  # len(self.annotations) only
     @property
     def warning_count(self) -> int: ...
     @staticmethod
@@ -382,6 +384,9 @@ class ValidationResult:
 ### Constraints
 - Return: Immutable validation result.
 - State: Frozen dataclass.
+- `error_count`: Count of `ValidationError` entries only (syntax errors); does not include annotations.
+- `annotation_count`: Count of `Annotation` entries only (parser informational notes); does not include syntax errors.
+- `is_valid`: True iff `error_count == 0`; annotations do not affect validity.
 
 ---
 

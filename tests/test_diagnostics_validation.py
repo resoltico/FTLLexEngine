@@ -208,12 +208,12 @@ class TestValidationResultProperties:
         event(f"is_valid={valid}")
 
     @given(result=validation_result_strategy())
-    def test_property_error_count_matches_tuple_lengths(
+    def test_property_error_count_matches_errors_length(
         self, result: ValidationResult
     ) -> None:
-        """PROPERTY: error_count == len(errors) + len(annotations)."""
-        expected = len(result.errors) + len(result.annotations)
-        assert result.error_count == expected
+        """PROPERTY: error_count == len(errors) and annotation_count == len(annotations)."""
+        assert result.error_count == len(result.errors)
+        assert result.annotation_count == len(result.annotations)
         event(f"error_count={result.error_count}")
 
     @given(result=validation_result_strategy())
@@ -348,7 +348,7 @@ class TestValidationResultFactoryProperties:
         """PROPERTY: ValidationResult.invalid() with annotations is invalid."""
         result = ValidationResult.invalid(annotations=annotations)
         assert not result.is_valid
-        assert result.error_count > 0
+        assert result.annotation_count > 0
         event(f"annotation_count={len(annotations)}")
 
     @given(

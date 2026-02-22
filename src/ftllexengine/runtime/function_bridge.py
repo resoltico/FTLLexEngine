@@ -513,7 +513,6 @@ class FunctionRegistry:
     def __repr__(self) -> str:
         """Return string representation for debugging.
 
-
         Returns:
             String representation showing registered functions
 

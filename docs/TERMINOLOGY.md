@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.121.0"
+version: "0.127.0"
 domain: terminology
 updated: "2026-02-21"
 route:
@@ -68,11 +68,11 @@ This document establishes the standard terminology used throughout FTLLexEngine'
 **Usage Context**: AST manipulation, linting, transformation, serialization
 
 **How to Reference**:
-- ✅ **"the Resource AST node"**
-- ✅ **"the parsed Resource"**
-- ✅ **"Resource object"**
-- ✅ **"AST Resource"**
-- ❌ ~~"resource"~~ (ambiguous)
+- [OK] **"the Resource AST node"**
+- [OK] **"the parsed Resource"**
+- [OK] **"Resource object"**
+- [OK] **"AST Resource"**
+- [AVOID] ~~"resource"~~ (ambiguous)
 
 **Code Example**:
 ```python
@@ -90,9 +90,9 @@ resource = parse_ftl(ftl_source)  # Is this AST, source, or loader?
 
 **Prose Example**:
 ```markdown
-✅ "The Resource AST node contains all parsed entries"
-✅ "parse_ftl() returns a Resource object representing the AST"
-❌ "The resource contains all entries" (which resource?)
+[OK] "The Resource AST node contains all parsed entries"
+[OK] "parse_ftl() returns a Resource object representing the AST"
+[AVOID] "The resource contains all entries" (which resource?)
 ```
 
 ---
@@ -106,11 +106,11 @@ resource = parse_ftl(ftl_source)  # Is this AST, source, or loader?
 **Usage Context**: Loading translations at runtime, validation, file I/O
 
 **How to Reference**:
-- ✅ **"FTL source"**
-- ✅ **"FTL source text"**
-- ✅ **"FTL source code"**
-- ✅ **"ftl_source"** (variable name)
-- ❌ ~~"resource"~~ (ambiguous)
+- [OK] **"FTL source"**
+- [OK] **"FTL source text"**
+- [OK] **"FTL source code"**
+- [OK] **"ftl_source"** (variable name)
+- [AVOID] ~~"resource"~~ (ambiguous)
 
 **Code Example**:
 ```python
@@ -130,9 +130,9 @@ bundle.add_resource(resource)
 
 **Prose Example**:
 ```markdown
-✅ "Pass FTL source to add_resource()"
-✅ "The FTL source text is validated before loading"
-❌ "Pass the resource to add_resource()" (which resource?)
+[OK] "Pass FTL source to add_resource()"
+[OK] "The FTL source text is validated before loading"
+[AVOID] "Pass the resource to add_resource()" (which resource?)
 ```
 
 ---
@@ -146,11 +146,11 @@ bundle.add_resource(resource)
 **Usage Context**: Multi-locale applications with file-based translations
 
 **How to Reference**:
-- ✅ **"resource loader"**
-- ✅ **"PathResourceLoader instance"**
-- ✅ **"ResourceLoader protocol"**
-- ✅ **"loader"** (variable name)
-- ❌ ~~"resource"~~ (ambiguous)
+- [OK] **"resource loader"**
+- [OK] **"PathResourceLoader instance"**
+- [OK] **"ResourceLoader protocol"**
+- [OK] **"loader"** (variable name)
+- [AVOID] ~~"resource"~~ (ambiguous)
 
 **Code Example**:
 ```python
@@ -166,9 +166,9 @@ resource = PathResourceLoader("locales/{locale}")  # This is a LOADER
 
 **Prose Example**:
 ```markdown
-✅ "PathResourceLoader loads .ftl files from disk"
-✅ "Implement the ResourceLoader protocol for custom loaders"
-❌ "The resource loads .ftl files" (resource doesn't load files, loaders do!)
+[OK] "PathResourceLoader loads .ftl files from disk"
+[OK] "Implement the ResourceLoader protocol for custom loaders"
+[AVOID] "The resource loads .ftl files" (resource doesn't load files, loaders do!)
 ```
 
 ---
@@ -215,7 +215,7 @@ disk_loader = PathResourceLoader("locales/{locale}")
 
 **Avoid**:
 ```python
-# ❌ Ambiguous - which type of resource?
+# [WRONG] Ambiguous - which type of resource?
 resource = ...
 res = ...
 r = ...
@@ -297,22 +297,22 @@ Some methods use "resource" in their name - context determines meaning:
 
 1. **Be explicit about "resource" meaning**:
    ```markdown
-   ❌ "Load the resource into the bundle"
-   ✅ "Load the FTL source into the bundle"
-   ✅ "Parse the Resource AST using parse_ftl()"
-   ✅ "Use the resource loader to fetch .ftl files"
+   [AVOID] "Load the resource into the bundle"
+   [OK] "Load the FTL source into the bundle"
+   [OK] "Parse the Resource AST using parse_ftl()"
+   [OK] "Use the resource loader to fetch .ftl files"
    ```
 
 2. **Use consistent capitalization**:
    ```markdown
-   ✅ "Fluent" (system), "FTL" (format), "Fluent syntax" (language)
-   ❌ "fluent", "ftl", "FTL syntax"
+   [OK] "Fluent" (system), "FTL" (format), "Fluent syntax" (language)
+   [AVOID] "fluent", "ftl", "FTL syntax"
    ```
 
 3. **Prose vs Code formatting**:
    ```markdown
-   ✅ "The message ID 'welcome' is used in `bundle.format_pattern()`"
-   ❌ "The `message ID` welcome is used in bundle.format_pattern()"
+   [OK] "The message ID 'welcome' is used in `bundle.format_pattern()`"
+   [AVOID] "The `message ID` welcome is used in bundle.format_pattern()"
    ```
 
 ### Code Style
@@ -360,28 +360,28 @@ When reviewing documentation or code, verify:
 
 ## Common Pitfalls
 
-### ❌ Pitfall 1: Ambiguous "resource"
+### Pitfall 1: Ambiguous "resource"
 
 ```markdown
-❌ "The bundle loads resources from disk"
-✅ "The bundle loads FTL source from resource loaders on disk"
+[AVOID] "The bundle loads resources from disk"
+[OK] "The bundle loads FTL source from resource loaders on disk"
 ```
 
-### ❌ Pitfall 2: Mixing "Fluent" and "FTL"
+### Pitfall 2: Mixing "Fluent" and "FTL"
 
 ```markdown
-❌ "FTL is a localization system for .ftl files"
-✅ "Fluent is a localization system using .ftl files (FTL format)"
+[AVOID] "FTL is a localization system for .ftl files"
+[OK] "Fluent is a localization system using .ftl files (FTL format)"
 ```
 
-### ❌ Pitfall 3: Inconsistent capitalization
+### Pitfall 3: Inconsistent capitalization
 
 ```python
-# ❌ Inconsistent
+# [WRONG] Inconsistent
 from ftllexengine import fluentBundle  # Wrong
 from ftllexengine import FLUENTBUNDLE  # Wrong
 
-# ✅ Correct
+# Correct
 from ftllexengine import FluentBundle
 ```
 

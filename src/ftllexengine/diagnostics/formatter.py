@@ -148,9 +148,11 @@ class DiagnosticFormatter:
         elif result.is_valid:
             parts.append(f"Validation passed with {result.warning_count} warning(s)")
         else:
+            total_issues = result.error_count + result.annotation_count
             parts.append(
-                f"Validation failed: {result.error_count} error(s), "
-                f"{result.warning_count} warning(s)"
+                f"Validation failed: {total_issues} issue(s)"
+                f" ({result.error_count} error(s), {result.annotation_count} annotation(s)),"
+                f" {result.warning_count} warning(s)"
             )
 
         # Format errors

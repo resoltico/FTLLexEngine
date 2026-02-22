@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.124.0"
+version: "0.127.0"
 domain: CORE
 updated: "2026-02-22"
 route:
@@ -76,9 +76,9 @@ class FluentBundle:
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables caching (default). `CacheConfig()` enables with defaults. |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry (must be `FunctionRegistry`, not `dict`). |
-| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
+| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10,000,000). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
-| `max_expansion_size` | `int \| None` | N | Maximum total characters produced during resolution (default: 1M). Prevents Billion Laughs DoS. |
+| `max_expansion_size` | `int \| None` | N | Maximum total characters produced during resolution (default: 1,000,000). Prevents Billion Laughs DoS. |
 | `strict` | `bool` | N | Fail-fast mode: raises FormattingIntegrityError on ANY error. |
 
 ### Constraints
@@ -117,9 +117,9 @@ def for_system_locale(
 | `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
 | `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables (default). |
 | `functions` | `FunctionRegistry \| None` | N | Custom function registry (must be `FunctionRegistry`, not `dict`). |
-| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10M). |
+| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10,000,000). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
-| `max_expansion_size` | `int \| None` | N | Maximum total characters during resolution (default: 1M). |
+| `max_expansion_size` | `int \| None` | N | Maximum total characters during resolution (default: 1,000,000). |
 | `strict` | `bool` | N | Enable strict mode (fail-fast on errors). |
 
 ### Constraints
@@ -626,7 +626,7 @@ def max_source_size(self) -> int:
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
-- Default: 10485760.
+- Default: 10,000,000.
 
 ---
 
@@ -1362,21 +1362,20 @@ def normalize_locale(locale_code: str) -> str:
 
 ### Signature
 ```python
-@functools.lru_cache(maxsize=128)
 def get_babel_locale(locale_code: str) -> Locale:
 ```
 
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `locale_code` | `str` | Y | BCP-47 or POSIX locale code. |
+| `locale_code` | `str` | Y | BCP-47 or POSIX locale code. Normalized before cache lookup. |
 
 ### Constraints
-- Return: Babel Locale object (cached).
+- Return: Babel Locale object. Results are cached; semantically equivalent locale codes (e.g., `"en-US"` and `"en_US"`) share a single cache entry.
 - Raises: `BabelImportError` if Babel not installed.
 - Raises: `babel.core.UnknownLocaleError` on invalid locale.
-- State: None. Cached pure function.
-- Thread: Safe (lru_cache internal locking).
+- State: Normalizes `locale_code` before delegating to the internal cache.
+- Thread: Safe (internal LRU cache uses its own locking).
 - Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
 - Import: `from ftllexengine.core.locale_utils import get_babel_locale`
 
@@ -1435,7 +1434,7 @@ def clear_locale_cache() -> None:
 ### Constraints
 - Return: None.
 - Raises: Never.
-- State: Clears `get_babel_locale` functools.cache.
+- State: Clears the internal locale object cache shared by `get_babel_locale`.
 - Thread: Safe (functools.cache internal locking).
 - Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
 - Import: `from ftllexengine.core.locale_utils import clear_locale_cache`

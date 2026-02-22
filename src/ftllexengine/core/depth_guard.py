@@ -72,7 +72,7 @@ class DepthGuard:
         permanently elevated, causing all subsequent operations to fail.
         """
         if self.current_depth >= self.max_depth:
-            diag = ErrorTemplate.expression_depth_exceeded(self.max_depth)
+            diag = ErrorTemplate.depth_exceeded(self.max_depth)
             raise FrozenFluentError(
                 str(diag), ErrorCategory.RESOLUTION, diagnostic=diag,
             )
@@ -97,7 +97,7 @@ class DepthGuard:
             FrozenFluentError: If depth limit exceeded (category=RESOLUTION)
         """
         if self.current_depth >= self.max_depth:
-            diag = ErrorTemplate.expression_depth_exceeded(self.max_depth)
+            diag = ErrorTemplate.depth_exceeded(self.max_depth)
             raise FrozenFluentError(
                 str(diag), ErrorCategory.RESOLUTION, diagnostic=diag,
             )

@@ -232,25 +232,26 @@ class ErrorTemplate:
         )
 
     @staticmethod
-    def expression_depth_exceeded(max_depth: int) -> Diagnostic:
-        """Maximum expression nesting depth exceeded.
+    def depth_exceeded(max_depth: int) -> Diagnostic:
+        """Maximum nesting depth exceeded.
 
-        Used when nested Placeables or other expressions exceed safe depth limits.
-        This protects against stack overflow from adversarial or malformed ASTs.
+        Used when any nesting (expressions, validation traversal, serialization)
+        exceeds the configured depth limit. Protects against stack overflow from
+        adversarial or malformed input.
 
         Args:
-            max_depth: The maximum allowed expression depth
+            max_depth: The maximum allowed nesting depth
 
         Returns:
             Diagnostic for MAX_DEPTH_EXCEEDED
         """
-        msg = f"Maximum expression nesting depth ({max_depth}) exceeded"
+        msg = f"Maximum nesting depth ({max_depth}) exceeded"
 
         return Diagnostic(
             code=DiagnosticCode.MAX_DEPTH_EXCEEDED,
             message=msg,
             span=None,
-            hint="Reduce expression nesting or check for malformed AST construction",
+            hint="Reduce nesting depth or check for malformed AST construction",
             help_url=f"{ErrorTemplate._DOCS_BASE}/references.html",
         )
 
