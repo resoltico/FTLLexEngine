@@ -187,7 +187,7 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine.parsing.fiscal import (
+    from ftllexengine.core.fiscal import (
         FiscalCalendar,
         FiscalDelta,
         FiscalPeriod,

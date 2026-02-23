@@ -81,6 +81,28 @@ class TestFiscalPeriod:
         with pytest.raises(ValueError, match="Month must be 1-12"):
             FiscalPeriod(fiscal_year=2024, quarter=1, month=13)
 
+    def test_invalid_fiscal_year_zero(self) -> None:
+        """FiscalPeriod rejects fiscal_year=0 (not in 1-9999 range)."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            FiscalPeriod(fiscal_year=0, quarter=1, month=1)
+
+    def test_invalid_fiscal_year_negative(self) -> None:
+        """FiscalPeriod rejects negative fiscal_year."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            FiscalPeriod(fiscal_year=-1, quarter=1, month=1)
+
+    def test_invalid_fiscal_year_too_large(self) -> None:
+        """FiscalPeriod rejects fiscal_year > 9999 (beyond datetime.date range)."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            FiscalPeriod(fiscal_year=10000, quarter=1, month=1)
+
+    def test_valid_fiscal_year_boundaries(self) -> None:
+        """FiscalPeriod accepts fiscal_year at its valid boundaries (1 and 9999)."""
+        p_min = FiscalPeriod(fiscal_year=1, quarter=1, month=1)
+        p_max = FiscalPeriod(fiscal_year=9999, quarter=4, month=12)
+        assert p_min.fiscal_year == 1
+        assert p_max.fiscal_year == 9999
+
 
 class TestFiscalCalendar:
     """Tests for FiscalCalendar class."""
@@ -832,7 +854,7 @@ class TestAddMonthsDefensiveDefaultCase:
         should never be reached in normal operation because FiscalDelta validates
         the policy at construction time. This is defense-in-depth.
         """
-        from ftllexengine.parsing.fiscal import _add_months
+        from ftllexengine.core.fiscal import _add_months
 
         # Create a mock "policy" that isn't a MonthEndPolicy enum member
         # This simulates a scenario where invalid data bypasses validation
@@ -848,21 +870,21 @@ class TestAddMonthsDefensiveDefaultCase:
         Note: MonthEndPolicy is a StrEnum, so valid string values like "preserve"
         will match the enum cases. Only truly invalid strings trigger the default.
         """
-        from ftllexengine.parsing.fiscal import _add_months
+        from ftllexengine.core.fiscal import _add_months
 
         with pytest.raises(ValueError, match="Unknown month_end_policy"):
             _add_months(date(2024, 1, 15), 1, "invalid_policy")  # type: ignore[arg-type]
 
     def test_internal_function_raises_for_none_policy(self) -> None:
         """_add_months raises ValueError for None policy."""
-        from ftllexengine.parsing.fiscal import _add_months
+        from ftllexengine.core.fiscal import _add_months
 
         with pytest.raises(ValueError, match="Unknown month_end_policy"):
             _add_months(date(2024, 1, 15), 1, None)  # type: ignore[arg-type]
 
     def test_internal_function_works_with_valid_policies(self) -> None:
         """_add_months works correctly with valid MonthEndPolicy values."""
-        from ftllexengine.parsing.fiscal import _add_months
+        from ftllexengine.core.fiscal import _add_months
 
         # All valid policies should work without raising
         result_preserve = _add_months(

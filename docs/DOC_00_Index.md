@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.128.0"
 domain: INDEX
-updated: "2026-02-21"
+updated: "2026-02-23"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -38,6 +38,16 @@ from ftllexengine import (
     WriteConflictError,
     IntegrityCheckFailedError,
     IntegrityContext,
+    # Fiscal calendar (no Babel required)
+    FiscalCalendar,
+    FiscalDelta,
+    FiscalPeriod,
+    MonthEndPolicy,
+    fiscal_quarter,
+    fiscal_year,
+    fiscal_month,
+    fiscal_year_start,
+    fiscal_year_end,
     # Metadata
     __version__,
     __fluent_spec_version__,
@@ -120,7 +130,12 @@ from ftllexengine.validation import validate_resource
 
 ### Core Utilities (`from ftllexengine.core import ...`)
 ```python
-from ftllexengine.core import DepthGuard, depth_clamp  # Depth limiting
+from ftllexengine.core import (
+    DepthGuard, depth_clamp,  # Depth limiting
+    # Fiscal calendar (no Babel required)
+    FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy,
+    fiscal_quarter, fiscal_year, fiscal_month, fiscal_year_start, fiscal_year_end,
+)
 from ftllexengine.core.babel_compat import (
     BabelImportError, require_babel,        # Babel availability checking
     is_babel_available, get_locale_class,   # Babel introspection
@@ -148,6 +163,10 @@ from ftllexengine.localization import (
 ```
 
 ### Parsing (`from ftllexengine.parsing import ...`)
+
+> **Babel required** for this entire module. For fiscal calendar without Babel,
+> use `from ftllexengine import FiscalCalendar` or `from ftllexengine.core import FiscalCalendar`.
+
 ```python
 from ftllexengine.parsing import (
     # Parse functions (require Babel)
@@ -158,7 +177,7 @@ from ftllexengine.parsing import (
     ParseResult,
     # Cache management
     clear_date_caches, clear_currency_caches,
-    # Fiscal calendar (no Babel required)
+    # Fiscal calendar (re-exported from ftllexengine.core; Babel required for this module)
     FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy,
     fiscal_quarter, fiscal_year, fiscal_month, fiscal_year_start, fiscal_year_end,
 )
@@ -200,10 +219,11 @@ ftllexengine/
     message.py             # MessageIntrospection, introspect_message, extract_variables, extract_references, extract_references_by_attribute
     iso.py                 # TerritoryInfo, CurrencyInfo, get_territory, get_currency (requires Babel)
   core/
-    __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError)
+    __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError, fiscal types)
     babel_compat.py        # BabelImportError, Babel lazy import infrastructure
     depth_guard.py         # DepthGuard, depth_clamp
     errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
+    fiscal.py              # FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy (no Babel)
     identifier_validation.py  # FTL identifier validation utilities
     locale_utils.py        # get_system_locale, normalize_locale, get_babel_locale, clear_locale_cache
   analysis/
@@ -238,12 +258,11 @@ ftllexengine/
     rwlock.py              # RWLock (readers-writer lock)
     value_types.py         # FluentNumber, FluentValue, FluentFunction, FunctionSignature
   parsing/
-    __init__.py            # Parsing API exports
+    __init__.py            # Parsing API exports (requires Babel; re-exports fiscal from core)
     numbers.py             # parse_number, parse_decimal
     dates.py               # parse_date, parse_datetime
     currency.py            # parse_currency
     guards.py              # Type guards
-    fiscal.py              # FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy (no Babel)
   diagnostics/
     __init__.py            # Error exports
     errors.py              # FrozenFluentError, ErrorCategory, FrozenErrorContext

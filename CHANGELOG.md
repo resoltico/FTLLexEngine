@@ -10,6 +10,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.128.0] - 2026-02-23
+
+### Changed (BREAKING)
+
+- **`fiscal.py` moved from `parsing/` to `core/`** (ARCH-FISCAL-MOVE-CORE-001):
+  - `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod`, `MonthEndPolicy`, and the five
+    convenience functions have zero Babel dependency; keeping them in `parsing/` forced
+    parser-only installs to fail with `ModuleNotFoundError: No module named 'babel'`
+    when importing `from ftllexengine.parsing import FiscalCalendar`, because
+    `parsing/__init__.py` imports `.currency` and `.dates` at module level before
+    reaching the fiscal re-export; the docstring correctly stated "No external
+    dependencies" but the import behaviour contradicted this claim
+  - Moved `src/ftllexengine/parsing/fiscal.py` → `src/ftllexengine/core/fiscal.py`;
+    `core/__init__.py` now exports all fiscal types; `parsing/__init__.py` re-exports
+    from `ftllexengine.core.fiscal` so `from ftllexengine.parsing import FiscalCalendar`
+    still works for Babel installs; all fiscal types are now directly importable from the
+    top-level `ftllexengine` namespace without Babel; `tests/test_parsing_fiscal.py`
+    updated four `from ftllexengine.parsing.fiscal import _add_months` calls to
+    `from ftllexengine.core.fiscal import _add_months`
+  - Location: `core/fiscal.py` (new), `core/__init__.py`, `parsing/__init__.py`,
+    `ftllexengine/__init__.py`, `tests/test_parsing_fiscal.py`
+
+- **`FluentNumber.value` type narrowed from `int | float | Decimal` to `int | Decimal`**
+  (DEFECT-FLUENTNUMBER-FLOAT-PRECISION-001):
+  - Storing `float` in `FluentNumber.value` contradicted the library's stated guarantee
+    of "Decimal precision — No float math, no rounding surprises" (README); `float` has
+    approximately 15 significant decimal digits, while `int` and `Decimal` are exact;
+    `FluentNumber` is the internal storage type used for plural category matching and cache
+    key construction, both of which require exact numeric representation
+  - `FluentNumber.value` type annotation changed to `int | Decimal`; `number_format()`
+    and `currency_format()` now convert `float` input via `Decimal(str(value))` before
+    constructing `FluentNumber`, preserving the caller's intended decimal representation;
+    `FluentValue` (the public input type) retains `float` since callers legitimately pass
+    native Python floats to `format_pattern()`
+  - Location: `runtime/value_types.py`, `runtime/functions.py`
+
+- **`FiscalPeriod` rejects `fiscal_year` outside 1–9999** (DEFECT-FISCALPERIOD-YEAR-BOUNDS-001):
+  - `FiscalPeriod.__post_init__` validated `quarter` (1–4) and `month` (1–12) but not
+    `fiscal_year`; invalid values such as 0, −1, or 99999 were silently accepted at
+    construction time and produced a cryptic `ValueError: year 0 is out of range` from
+    Python's `datetime.date` only when `fiscal_year_start_date()` or similar methods
+    were later called; fail-fast at construction time is the correct behaviour for a
+    financial-grade library
+  - Added `if not 1 <= self.fiscal_year <= 9999: raise ValueError(...)` as the first
+    check in `FiscalPeriod.__post_init__`; bounds match Python's `datetime.date` year
+    range; four tests added to `tests/test_parsing_fiscal.py`
+  - Location: `core/fiscal.py`, `tests/test_parsing_fiscal.py`
+
+### Changed
+
+- **Fiscal convenience functions use module-level singleton for calendar-year case**
+  (PERF-FISCAL-CALENDAR-ALLOC-001):
+  - Every call to `fiscal_quarter(d)`, `fiscal_year(d)`, `fiscal_month(d)`,
+    `fiscal_year_start(y)`, or `fiscal_year_end(y)` with the default `start_month=1`
+    allocated a new `FiscalCalendar(start_month=1)` instance; `FiscalCalendar` is an
+    immutable frozen dataclass so the per-call allocation is unnecessary
+  - Added `_CALENDAR_YEAR: Final[FiscalCalendar] = FiscalCalendar(start_month=1)` as a
+    module-level constant; all five convenience functions now use `_CALENDAR_YEAR` when
+    `start_month == 1` and allocate a new instance only for non-calendar fiscal years
+  - Location: `core/fiscal.py`
+
+- **Fiscal types promoted to top-level `ftllexengine` namespace** (API-FISCAL-TOPLEVEL-001):
+  - `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod`, `MonthEndPolicy`, `fiscal_quarter`,
+    `fiscal_year`, `fiscal_month`, `fiscal_year_start`, and `fiscal_year_end` were only
+    accessible via `ftllexengine.parsing` (Babel-gated) or direct submodule import;
+    financial users expect top-level access and the types have no Babel dependency
+  - All nine symbols now importable as `from ftllexengine import FiscalCalendar, ...`
+    with no Babel requirement; added to `__all__` in `ftllexengine/__init__.py`
+  - Location: `ftllexengine/__init__.py`
+
+- **`bridge_fnum_type` and `bridge_fnum_precision` strategy events added to metrics**
+  (GAP-STRATEGY-METRICS-BRIDGE-FNUM-001):
+  - The `fluent_numbers()` strategy in `tests/strategies/ftl.py` emitted
+    `bridge_fnum_type={type}` and `bridge_fnum_precision={n}` events that were absent
+    from `EXPECTED_EVENTS`, `STRATEGY_CATEGORIES`, and `INTENDED_WEIGHTS` in
+    `tests/strategy_metrics.py`; the coverage gap detection system could not flag missing
+    coverage for this strategy family; additionally the float branch was removed from the
+    strategy after `FluentNumber.value` no longer accepts float
+  - Added `bridge_fnum_type=int`, `bridge_fnum_type=decimal`, and four
+    `bridge_fnum_precision=*` variants to all three tracking constants; removed float
+    branch from `fluent_numbers()` in `tests/strategies/ftl.py`
+  - Location: `tests/strategy_metrics.py`, `tests/strategies/ftl.py`
+
 ## [0.127.0] - 2026-02-23
 
 ### Changed (BREAKING)
@@ -4214,6 +4297,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.128.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.128.0
 [0.127.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.127.0
 [0.126.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.126.0
 [0.125.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.125.0

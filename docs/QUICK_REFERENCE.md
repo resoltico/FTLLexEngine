@@ -702,19 +702,23 @@ bundle.add_function("CUSTOM", my_function)  # Thread-safe
 result, errors = bundle.format_pattern("msg")  # Thread-safe
 ```
 
-### Pattern 2: Thread-Local Bundles (Per-Thread Customization)
+### Pattern 2: Task-Local Bundles (Per-Task Customization)
 
 ```python
-import threading
+from contextvars import ContextVar
 
-_thread_local = threading.local()
+_bundle_var: ContextVar[FluentBundle | None] = ContextVar("_bundle_var", default=None)
 
-def get_bundle():
-    if not hasattr(_thread_local, 'bundle'):
-        _thread_local.bundle = FluentBundle("en_US")
-        _thread_local.bundle.add_resource(ftl_source)
-    return _thread_local.bundle
+def get_bundle() -> FluentBundle:
+    bundle = _bundle_var.get()
+    if bundle is None:
+        bundle = FluentBundle("en_US")
+        bundle.add_resource(ftl_source)
+        _bundle_var.set(bundle)
+    return bundle
 ```
+
+`ContextVar` provides automatic isolation per thread and per async task, with no dynamic attribute access.
 
 ---
 

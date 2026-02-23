@@ -426,7 +426,7 @@ Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New Y
 
 ```python
 from datetime import date
-from ftllexengine.parsing.fiscal import FiscalCalendar, fiscal_year, fiscal_quarter
+from ftllexengine import FiscalCalendar, fiscal_year, fiscal_quarter
 
 # UK importer: fiscal year starts April
 uk_calendar = FiscalCalendar(start_month=4)
@@ -465,7 +465,7 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 | **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (CURRENCY, DATETIME) | Yes |
 | **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains | Yes |
 | **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
-| **Fiscal** — `ftllexengine.parsing.fiscal` | Fiscal calendar arithmetic, quarter calculations | No |
+| **Fiscal** — `ftllexengine.core.fiscal` | Fiscal calendar arithmetic, quarter calculations | No |
 | **Introspection** — `ftllexengine.introspection` | Message variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
 | **Validation** — `ftllexengine.validation` | Cycle detection, reference validation, semantic checks | No |
 | **Diagnostics** — `ftllexengine.diagnostics` | Structured error types, error codes, formatting | No |

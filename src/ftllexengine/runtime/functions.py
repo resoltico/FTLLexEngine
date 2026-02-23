@@ -147,15 +147,15 @@ def number_format(
 
     Examples:
         >>> number_format(1234.5, "en-US")
-        FluentNumber(value=1234.5, formatted='1,234.5')
+        FluentNumber(value=Decimal('1234.5'), formatted='1,234.5')
         >>> number_format(1234.5, "de-DE")
-        FluentNumber(value=1234.5, formatted='1.234,5')
+        FluentNumber(value=Decimal('1234.5'), formatted='1.234,5')
         >>> number_format(1234.5, "lv-LV")
-        FluentNumber(value=1234.5, formatted='1 234,5')
+        FluentNumber(value=Decimal('1234.5'), formatted='1 234,5')
         >>> number_format(42, "en-US", minimum_fraction_digits=2)
         FluentNumber(value=42, formatted='42.00')
         >>> number_format(-1234.56, "en-US", pattern="#,##0.00;(#,##0.00)")
-        FluentNumber(value=-1234.56, formatted='(1,234.56)')
+        FluentNumber(value=Decimal('-1234.56'), formatted='(1,234.56)')
 
     FTL Usage:
         price = { $amount NUMBER(minimumFractionDigits: 2) }
@@ -224,7 +224,11 @@ def number_format(
         formatted, decimal_symbol, max_fraction_digits=max_frac
     )
 
-    return FluentNumber(value=value, formatted=formatted, precision=precision)
+    # Convert float to Decimal before storage. str() preserves the user's intended
+    # decimal representation without float rounding artefacts (e.g., str(1234.5)
+    # gives "1234.5", not "1234.4999999999998863...").
+    stored_value: int | Decimal = Decimal(str(value)) if isinstance(value, float) else value
+    return FluentNumber(value=stored_value, formatted=formatted, precision=precision)
 
 
 def datetime_format(
@@ -323,13 +327,13 @@ def currency_format(
 
     Examples:
         >>> currency_format(123.45, "en-US", currency="EUR")
-        FluentNumber(value=123.45, formatted='€123.45', precision=2)
+        FluentNumber(value=Decimal('123.45'), formatted='€123.45', precision=2)
         >>> currency_format(123.45, "lv-LV", currency="EUR")
-        FluentNumber(value=123.45, formatted='123,45 €', precision=2)
+        FluentNumber(value=Decimal('123.45'), formatted='123,45 €', precision=2)
         >>> currency_format(12345, "ja-JP", currency="JPY")
         FluentNumber(value=12345, formatted='¥12,345', precision=0)
         >>> currency_format(123.456, "ar-BH", currency="BHD")
-        FluentNumber(value=123.456, formatted='123.456 د.ب.', precision=3)
+        FluentNumber(value=Decimal('123.456'), formatted='123.456 د.ب.', precision=3)
 
     FTL Usage:
         price = { CURRENCY($amount, currency: "EUR") }
@@ -400,7 +404,10 @@ def currency_format(
         formatted, decimal_symbol, max_fraction_digits=max_frac
     )
 
-    return FluentNumber(value=value, formatted=formatted, precision=precision)
+    # Convert float to Decimal before storage. str() preserves the user's intended
+    # decimal representation without float rounding artefacts.
+    stored_value: int | Decimal = Decimal(str(value)) if isinstance(value, float) else value
+    return FluentNumber(value=stored_value, formatted=formatted, precision=precision)
 
 
 # Mark built-in functions that require locale injection.

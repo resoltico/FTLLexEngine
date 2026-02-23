@@ -640,7 +640,7 @@ class ResolutionContext:
 | `_seen` | `set[str]` | O(1) membership check set. |
 | `max_depth` | `int` | Maximum resolution depth (default: MAX_DEPTH=100). |
 | `max_expression_depth` | `int` | Maximum expression depth (default: MAX_DEPTH=100). |
-| `max_expansion_size` | `int` | Maximum total output characters (default: 1M). Prevents Billion Laughs. |
+| `max_expansion_size` | `int` | Maximum total output characters (default: 1,000,000). Prevents Billion Laughs. |
 | `_total_chars` | `int` | Running character count (internal; use `total_chars` property). |
 | `_expression_guard` | `DepthGuard` | Internal depth guard (init=False). |
 

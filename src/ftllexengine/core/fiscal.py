@@ -31,10 +31,7 @@ import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Self
-
-if TYPE_CHECKING:
-    pass
+from typing import Final, Self
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 # pylint: disable=redefined-outer-name
@@ -103,6 +100,9 @@ class FiscalPeriod:
 
     def __post_init__(self) -> None:
         """Validate period values."""
+        if not 1 <= self.fiscal_year <= 9999:
+            msg = f"fiscal_year must be 1-9999, got {self.fiscal_year}"
+            raise ValueError(msg)
         if not 1 <= self.quarter <= 4:
             msg = f"Quarter must be 1-4, got {self.quarter}"
             raise ValueError(msg)
@@ -647,6 +647,10 @@ def _add_months(d: date, months: int, policy: MonthEndPolicy) -> date:
 # CONVENIENCE FACTORIES
 # ============================================================================
 
+# Singleton for the common calendar-year case (start_month=1).
+# Avoids allocating a new FiscalCalendar on every convenience-function call.
+_CALENDAR_YEAR: Final[FiscalCalendar] = FiscalCalendar(start_month=1)
+
 
 def fiscal_quarter(d: date, start_month: int = 1) -> int:
     """Get fiscal quarter for a date with given fiscal year start.
@@ -666,7 +670,8 @@ def fiscal_quarter(d: date, start_month: int = 1) -> int:
         >>> fiscal_quarter(date(2024, 7, 15), start_month=1)  # Calendar Q3
         3
     """
-    return FiscalCalendar(start_month=start_month).fiscal_quarter(d)
+    cal = _CALENDAR_YEAR if start_month == 1 else FiscalCalendar(start_month=start_month)
+    return cal.fiscal_quarter(d)
 
 
 def fiscal_year(d: date, start_month: int = 1) -> int:
@@ -688,7 +693,8 @@ def fiscal_year(d: date, start_month: int = 1) -> int:
         >>> fiscal_year(date(2024, 4, 1), start_month=4)   # First day of UK FY2025
         2025
     """
-    return FiscalCalendar(start_month=start_month).fiscal_year(d)
+    cal = _CALENDAR_YEAR if start_month == 1 else FiscalCalendar(start_month=start_month)
+    return cal.fiscal_year(d)
 
 
 def fiscal_month(d: date, start_month: int = 1) -> int:
@@ -710,7 +716,8 @@ def fiscal_month(d: date, start_month: int = 1) -> int:
         >>> fiscal_month(date(2024, 3, 15), start_month=4)  # Mar = Month 12 for UK
         12
     """
-    return FiscalCalendar(start_month=start_month).fiscal_month(d)
+    cal = _CALENDAR_YEAR if start_month == 1 else FiscalCalendar(start_month=start_month)
+    return cal.fiscal_month(d)
 
 
 def fiscal_year_start(fiscal_year: int, start_month: int = 1) -> date:
@@ -729,7 +736,8 @@ def fiscal_year_start(fiscal_year: int, start_month: int = 1) -> date:
         >>> fiscal_year_start(2025, start_month=4)  # UK FY2025 starts Apr 2024
         datetime.date(2024, 4, 1)
     """
-    return FiscalCalendar(start_month=start_month).fiscal_year_start_date(fiscal_year)
+    cal = _CALENDAR_YEAR if start_month == 1 else FiscalCalendar(start_month=start_month)
+    return cal.fiscal_year_start_date(fiscal_year)
 
 
 def fiscal_year_end(fiscal_year: int, start_month: int = 1) -> date:
@@ -748,4 +756,5 @@ def fiscal_year_end(fiscal_year: int, start_month: int = 1) -> date:
         >>> fiscal_year_end(2025, start_month=4)  # UK FY2025 ends Mar 2025
         datetime.date(2025, 3, 31)
     """
-    return FiscalCalendar(start_month=start_month).fiscal_year_end_date(fiscal_year)
+    cal = _CALENDAR_YEAR if start_month == 1 else FiscalCalendar(start_month=start_month)
+    return cal.fiscal_year_end_date(fiscal_year)

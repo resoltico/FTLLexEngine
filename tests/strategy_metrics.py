@@ -227,6 +227,8 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "month_end_policy=": "month_end_policy_with_event",
     # ftl.py function bridge strategies
     "bridge_id_parts=": "snake_case/camel_case_identifiers",
+    "bridge_fnum_type=": "fluent_numbers_by_type",
+    "bridge_fnum_precision=": "fluent_numbers_by_precision",
     # diagnostics.py strategies
     "diag_span_size=": "diag_source_spans",
     "diag_ctx_fields=": "diag_frozen_error_contexts",
@@ -380,6 +382,16 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "1": 1 / 3,
         "2": 1 / 3,
         "3": 1 / 3,
+    },
+    "bridge_fnum_type=": {
+        "int": 0.5,
+        "decimal": 0.5,
+    },
+    "bridge_fnum_precision=": {
+        "none": 0.25,
+        "0": 0.25,
+        "low": 0.25,
+        "high": 0.25,
     },
     # Diagnostics strategies
     "diag_span_size=": {
@@ -648,6 +660,12 @@ EXPECTED_EVENTS: set[str] = {
     "bridge_id_parts=1",
     "bridge_id_parts=2",
     "bridge_id_parts=3",
+    "bridge_fnum_type=int",
+    "bridge_fnum_type=decimal",
+    "bridge_fnum_precision=none",
+    "bridge_fnum_precision=0",
+    "bridge_fnum_precision=low",
+    "bridge_fnum_precision=high",
     # Diagnostics strategy events
     "diag_span_size=zero",
     "diag_span_size=small",

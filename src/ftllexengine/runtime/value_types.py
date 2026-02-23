@@ -48,7 +48,10 @@ class FluentNumber:
     - Use .value and .precision for plural category matching
 
     Attributes:
-        value: Original numeric value for matching
+        value: Original numeric value for matching. Always int or Decimal — never
+            float. Callers passing float to number_format() or currency_format()
+            receive a FluentNumber with Decimal(str(float_value)) stored here.
+            This preserves exact decimal representation with no float rounding.
         formatted: Locale-formatted string for display
         precision: Visible fraction digit count (CLDR v operand), computed from
             the formatted string. This is the ACTUAL count of digits after the
@@ -66,12 +69,12 @@ class FluentNumber:
 
     Precision Semantics:
         The precision field reflects what is VISIBLE in the formatted output:
-        - FluentNumber(1.5, "1.5", precision=1) - one visible fraction digit
+        - FluentNumber(Decimal("1.5"), "1.5", precision=1) - one visible fraction digit
         - FluentNumber(1, "1.00", precision=2) - two visible fraction digits
         - FluentNumber(1, "1", precision=0) - no visible fraction digits
     """
 
-    value: int | float | Decimal
+    value: int | Decimal
     formatted: str
     precision: int | None = None
 

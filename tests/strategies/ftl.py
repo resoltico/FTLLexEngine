@@ -594,30 +594,20 @@ def ftl_function_names(draw: st.DrawFn) -> str:
 def fluent_numbers(draw: st.DrawFn) -> FluentNumber:
     """Generate FluentNumber instances with diverse value/format combos.
 
+    FluentNumber.value is int | Decimal (never float — precision requirement).
+
     Events emitted:
-    - bridge_fnum_type={type}: Value type (int, float, decimal)
+    - bridge_fnum_type={type}: Value type (int, decimal)
     - bridge_fnum_precision={n}: Precision category (none, 0, low, high)
     """
-    value_type = draw(st.sampled_from(["int", "float", "decimal"]))
+    value_type = draw(st.sampled_from(["int", "decimal"]))
     event(f"bridge_fnum_type={value_type}")
 
-    value: int | float | Decimal
+    value: int | Decimal
     if value_type == "int":
         value = draw(st.integers(min_value=-999999, max_value=999999))
         formatted = str(value)
         precision = 0
-    elif value_type == "float":
-        value = draw(
-            st.floats(
-                min_value=-999999.0,
-                max_value=999999.0,
-                allow_nan=False,
-                allow_infinity=False,
-            )
-        )
-        places = draw(st.integers(min_value=0, max_value=6))
-        formatted = f"{value:.{places}f}"
-        precision = places
     else:
         places = draw(st.integers(min_value=0, max_value=6))
         int_part = draw(

@@ -14,6 +14,17 @@ Public API:
     fluent_function - Decorator for custom functions (locale injection support)
     clear_all_caches - Clear all module-level caches (memory management)
 
+Fiscal Calendar (no Babel dependency):
+    FiscalCalendar - Configuration for fiscal year boundaries
+    FiscalDelta - Immutable fiscal period delta for date arithmetic
+    FiscalPeriod - Immutable fiscal period identifier (year, quarter, month)
+    MonthEndPolicy - Enum for month-end date handling in arithmetic
+    fiscal_quarter - Fiscal quarter for a date
+    fiscal_year - Fiscal year for a date
+    fiscal_month - Fiscal month for a date
+    fiscal_year_start - First day of a fiscal year
+    fiscal_year_end - Last day of a fiscal year
+
 Exceptions:
     FrozenFluentError - Immutable, sealed error type
     ErrorCategory - Error classification enum (REFERENCE, RESOLUTION, CYCLIC, PARSE, FORMATTING)
@@ -31,6 +42,7 @@ Data Integrity:
 Submodules:
     ftllexengine.syntax - Parser and AST (no Babel dependency)
     ftllexengine.syntax.ast - AST node types (Resource, Message, Term, Pattern, etc.)
+    ftllexengine.core.fiscal - Fiscal calendar arithmetic (no Babel dependency)
     ftllexengine.introspection - Message introspection and variable extraction
     ftllexengine.parsing - Bidirectional parsing (requires Babel)
     ftllexengine.diagnostics - Error types and validation results
@@ -54,7 +66,22 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _get_version
 from typing import TYPE_CHECKING
 
-# Core API - Always available (no Babel dependency)
+# Fiscal calendar - no Babel dependency; imported after diagnostics to avoid circular import
+from .core.fiscal import (
+    FiscalCalendar,
+    FiscalDelta,
+    FiscalPeriod,
+    MonthEndPolicy,
+    fiscal_month,
+    fiscal_quarter,
+    fiscal_year,
+    fiscal_year_end,
+    fiscal_year_start,
+)
+
+# Error types must load before core to avoid circular import:
+# diagnostics -> validation -> syntax.ast -> syntax.__init__ -> serializer -> core.depth_guard
+# depth_guard imports from diagnostics; diagnostics must be in sys.modules first.
 from .diagnostics import (
     ErrorCategory,
     FrozenErrorContext,
@@ -266,6 +293,16 @@ __all__ = [
     "IntegrityContext",
     "SyntaxIntegrityError",
     "WriteConflictError",
+    # Fiscal calendar (no Babel dependency)
+    "FiscalCalendar",
+    "FiscalDelta",
+    "FiscalPeriod",
+    "MonthEndPolicy",
+    "fiscal_month",
+    "fiscal_quarter",
+    "fiscal_year",
+    "fiscal_year_end",
+    "fiscal_year_start",
     # Parsing API
     "parse_ftl",
     "serialize_ftl",
