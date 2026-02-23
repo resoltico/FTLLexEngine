@@ -3,8 +3,11 @@
 Tests cover:
 - FiscalPeriod validation and comparison
 - FiscalCalendar period calculations
+- FiscalCalendar date methods: fiscal_year bounds (1-9999) enforcement
 - FiscalDelta arithmetic
+- FiscalDelta: bool rejection for numeric fields (__post_init__ and __mul__)
 - Month-end policy behavior
+- _add_months: result year range enforcement
 - Convenience factory functions
 """
 
@@ -1165,3 +1168,184 @@ class TestFiscalDeltaWithPolicy:
         )
         assert result.months == 6
         assert result.month_end_policy == MonthEndPolicy.PRESERVE
+
+
+class TestFiscalCalendarFiscalYearBounds:
+    """Tests for FiscalCalendar date methods enforcing fiscal_year 1-9999.
+
+    FiscalPeriod.__post_init__ validates fiscal_year at construction.
+    The four date-returning FiscalCalendar methods accept a bare int and
+    must apply the same bounds to prevent cryptic errors from date().
+    """
+
+    def setup_method(self) -> None:
+        """Create calendar-year fiscal calendar."""
+        self.cal = FiscalCalendar(start_month=1)
+
+    def test_fiscal_year_start_date_zero_raises(self) -> None:
+        """fiscal_year_start_date rejects fiscal_year=0."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.fiscal_year_start_date(0)
+
+    def test_fiscal_year_start_date_negative_raises(self) -> None:
+        """fiscal_year_start_date rejects negative fiscal_year."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.fiscal_year_start_date(-1)
+
+    def test_fiscal_year_start_date_too_large_raises(self) -> None:
+        """fiscal_year_start_date rejects fiscal_year > 9999."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.fiscal_year_start_date(10000)
+
+    def test_fiscal_year_start_date_boundaries_valid(self) -> None:
+        """fiscal_year_start_date accepts boundary values 1 and 9999."""
+        assert self.cal.fiscal_year_start_date(1) == date(1, 1, 1)
+        assert self.cal.fiscal_year_start_date(9999) == date(9999, 1, 1)
+
+    def test_fiscal_year_end_date_zero_raises(self) -> None:
+        """fiscal_year_end_date rejects fiscal_year=0."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.fiscal_year_end_date(0)
+
+    def test_fiscal_year_end_date_too_large_raises(self) -> None:
+        """fiscal_year_end_date rejects fiscal_year > 9999."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.fiscal_year_end_date(10000)
+
+    def test_fiscal_year_end_date_boundaries_valid(self) -> None:
+        """fiscal_year_end_date accepts boundary values 1 and 9999."""
+        assert self.cal.fiscal_year_end_date(1) == date(1, 12, 31)
+        assert self.cal.fiscal_year_end_date(9999) == date(9999, 12, 31)
+
+    def test_quarter_start_date_zero_year_raises(self) -> None:
+        """quarter_start_date rejects fiscal_year=0."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.quarter_start_date(0, 1)
+
+    def test_quarter_start_date_too_large_year_raises(self) -> None:
+        """quarter_start_date rejects fiscal_year > 9999."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.quarter_start_date(10000, 1)
+
+    def test_quarter_start_date_boundaries_valid(self) -> None:
+        """quarter_start_date accepts boundary fiscal year values."""
+        assert self.cal.quarter_start_date(1, 1) == date(1, 1, 1)
+        assert self.cal.quarter_start_date(9999, 4) == date(9999, 10, 1)
+
+    def test_quarter_end_date_zero_year_raises(self) -> None:
+        """quarter_end_date rejects fiscal_year=0."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.quarter_end_date(0, 1)
+
+    def test_quarter_end_date_too_large_year_raises(self) -> None:
+        """quarter_end_date rejects fiscal_year > 9999."""
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            self.cal.quarter_end_date(10000, 1)
+
+    def test_quarter_end_date_boundaries_valid(self) -> None:
+        """quarter_end_date accepts boundary fiscal year values."""
+        assert self.cal.quarter_end_date(1, 1) == date(1, 3, 31)
+        assert self.cal.quarter_end_date(9999, 4) == date(9999, 12, 31)
+
+    def test_non_january_start_month_bounds_apply(self) -> None:
+        """Fiscal year bounds apply to non-calendar-year fiscal calendars."""
+        uk_cal = FiscalCalendar(start_month=4)
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            uk_cal.fiscal_year_start_date(0)
+        with pytest.raises(ValueError, match="fiscal_year must be 1-9999"):
+            uk_cal.fiscal_year_end_date(10000)
+
+
+class TestFiscalDeltaBoolRejection:
+    """Tests for FiscalDelta rejecting bool for numeric fields.
+
+    bool is a subclass of int in Python. FiscalDelta.__post_init__ must
+    explicitly reject bool before the isinstance(value, int) check.
+    """
+
+    def test_years_bool_true_rejected(self) -> None:
+        """FiscalDelta rejects True for years."""
+        with pytest.raises(TypeError, match="years must be int, not bool"):
+            FiscalDelta(years=True)
+
+    def test_years_bool_false_rejected(self) -> None:
+        """FiscalDelta rejects False for years."""
+        with pytest.raises(TypeError, match="years must be int, not bool"):
+            FiscalDelta(years=False)
+
+    def test_quarters_bool_rejected(self) -> None:
+        """FiscalDelta rejects bool for quarters."""
+        with pytest.raises(TypeError, match="quarters must be int, not bool"):
+            FiscalDelta(quarters=True)
+
+    def test_months_bool_rejected(self) -> None:
+        """FiscalDelta rejects bool for months."""
+        with pytest.raises(TypeError, match="months must be int, not bool"):
+            FiscalDelta(months=False)
+
+    def test_days_bool_rejected(self) -> None:
+        """FiscalDelta rejects bool for days."""
+        with pytest.raises(TypeError, match="days must be int, not bool"):
+            FiscalDelta(days=True)
+
+    def test_mul_bool_factor_returns_not_implemented(self) -> None:
+        """FiscalDelta.__mul__ returns NotImplemented for bool factor."""
+        delta = FiscalDelta(months=1)
+        result = delta.__mul__(True)  # pylint: disable=unnecessary-dunder-call
+        assert result is NotImplemented
+
+    def test_mul_bool_false_factor_returns_not_implemented(self) -> None:
+        """FiscalDelta.__mul__ returns NotImplemented for False factor."""
+        delta = FiscalDelta(months=1)
+        result = delta.__mul__(False)  # pylint: disable=unnecessary-dunder-call
+        assert result is NotImplemented
+
+    def test_int_zero_still_valid(self) -> None:
+        """FiscalDelta accepts int 0 (not bool, even though 0 == False)."""
+        delta = FiscalDelta(years=0, months=0)
+        assert delta.years == 0
+        assert delta.months == 0
+
+    def test_int_one_still_valid(self) -> None:
+        """FiscalDelta accepts int 1 (not bool, even though 1 == True)."""
+        delta = FiscalDelta(years=1, months=1)
+        assert delta.years == 1
+        assert delta.months == 1
+
+
+class TestAddMonthsYearRangeBounds:
+    """Tests for _add_months raising ValueError when result year is out of range.
+
+    _add_months computes target_year arithmetically and must validate the
+    result is within 1-9999 before calling date().
+    """
+
+    def test_overflow_future_raises_value_error(self) -> None:
+        """Adding months that push year beyond 9999 raises ValueError."""
+        delta = FiscalDelta(months=24)
+        with pytest.raises(ValueError, match="out of the supported range"):
+            delta.add_to(date(9999, 1, 1))
+
+    def test_overflow_past_raises_value_error(self) -> None:
+        """Subtracting months that push year below 1 raises ValueError."""
+        delta = FiscalDelta(months=-24)
+        with pytest.raises(ValueError, match="out of the supported range"):
+            delta.add_to(date(1, 12, 31))
+
+    def test_large_positive_month_delta_raises(self) -> None:
+        """Large positive month delta raises for dates near year 9999."""
+        delta = FiscalDelta(months=13)
+        with pytest.raises(ValueError, match="out of the supported range"):
+            delta.add_to(date(9999, 6, 1))
+
+    def test_large_negative_month_delta_raises(self) -> None:
+        """Large negative month delta raises for dates near year 1."""
+        delta = FiscalDelta(months=-13)
+        with pytest.raises(ValueError, match="out of the supported range"):
+            delta.add_to(date(1, 6, 1))
+
+    def test_valid_large_delta_within_range(self) -> None:
+        """Large month delta is valid when result stays within 1-9999."""
+        delta = FiscalDelta(months=120)
+        result = delta.add_to(date(2020, 1, 15))
+        assert result == date(2030, 1, 15)

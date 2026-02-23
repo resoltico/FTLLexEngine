@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.128.0"
+version: "0.129.0"
 domain: PARSING
 updated: "2026-02-23"
 route:
@@ -941,10 +941,11 @@ def fiscal_year_start_date(self, fiscal_year: int) -> date:
 ### Parameters
 | Name | Type | Req | Semantics |
 |:-----|:-----|:----|:----------|
-| `fiscal_year` | `int` | Y | Fiscal year number |
+| `fiscal_year` | `int` | Y | Fiscal year number, 1-9999 |
 
 ### Constraints
 - Return: First day of the fiscal year.
+- Raises: `ValueError` if `fiscal_year` not in 1-9999.
 - State: Read-only.
 
 ---
@@ -959,10 +960,11 @@ def fiscal_year_end_date(self, fiscal_year: int) -> date:
 ### Parameters
 | Name | Type | Req | Semantics |
 |:-----|:-----|:----|:----------|
-| `fiscal_year` | `int` | Y | Fiscal year number |
+| `fiscal_year` | `int` | Y | Fiscal year number, 1-9999 |
 
 ### Constraints
 - Return: Last day of the fiscal year.
+- Raises: `ValueError` if `fiscal_year` not in 1-9999.
 - State: Read-only.
 
 ---
@@ -977,12 +979,12 @@ def quarter_start_date(self, fiscal_year: int, quarter: int) -> date:
 ### Parameters
 | Name | Type | Req | Semantics |
 |:-----|:-----|:----|:----------|
-| `fiscal_year` | `int` | Y | Fiscal year number |
+| `fiscal_year` | `int` | Y | Fiscal year number, 1-9999 |
 | `quarter` | `int` | Y | Quarter 1-4 |
 
 ### Constraints
 - Return: First day of the fiscal quarter.
-- Raises: `ValueError` if quarter not 1-4.
+- Raises: `ValueError` if `fiscal_year` not in 1-9999 or `quarter` not 1-4.
 - State: Read-only.
 
 ---
@@ -997,12 +999,12 @@ def quarter_end_date(self, fiscal_year: int, quarter: int) -> date:
 ### Parameters
 | Name | Type | Req | Semantics |
 |:-----|:-----|:----|:----------|
-| `fiscal_year` | `int` | Y | Fiscal year number |
+| `fiscal_year` | `int` | Y | Fiscal year number, 1-9999 |
 | `quarter` | `int` | Y | Quarter 1-4 |
 
 ### Constraints
 - Return: Last day of the fiscal quarter.
-- Raises: `ValueError` if quarter not 1-4.
+- Raises: `ValueError` if `fiscal_year` not in 1-9999 or `quarter` not 1-4.
 - State: Read-only.
 
 ---
@@ -1043,12 +1045,12 @@ class FiscalDelta:
 
 ### Constraints
 - Return: Immutable delta.
-- Raises: `TypeError` if any numeric field is not int.
+- Raises: `TypeError` if any numeric field is `bool` or not `int`.
 - Raises: `TypeError` if `month_end_policy` is not a `MonthEndPolicy` enum member.
 - State: Immutable (frozen dataclass).
 - Thread: Safe.
 - Hashable: Yes.
-- Arithmetic: Supports +, -, *, negation.
+- Arithmetic: Supports +, -, *, negation; `*` rejects `bool` factor.
 - Validation: All fields validated at construction (fail-fast).
 
 ### Usage
@@ -1082,7 +1084,7 @@ def add_to(self, d: date) -> date:
 ### Constraints
 - Return: Date with delta applied.
 - Raises: `ValueError` if STRICT policy and day overflows.
-- Raises: `OverflowError` if result out of date range.
+- Raises: `ValueError` if result year outside 1-9999.
 - State: Read-only.
 
 ---

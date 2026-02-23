@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.128.0"
+version = "0.129.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -309,6 +309,8 @@ ignore = [
 "tests/test_runtime_function_registry_integration.py" = ["N802"]
 "tests/test_parsing_dates.py" = ["DTZ001"]
 "tests/test_parsing_*.py" = ["PLC0415"]
+"tests/test_core_fiscal.py" = ["PLC0415"]
+"tests/test_core_fiscal_property.py" = ["PLC0415"]
 "tests/test_syntax_spec_conformance.py" = ["ARG002", "PLC0415"]
 "tests/test_syntax_parser_systematic.py" = ["ARG002"]
 "tests/test_syntax_parser_multiline_property.py" = ["E721", "E501"]

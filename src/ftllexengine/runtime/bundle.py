@@ -186,7 +186,12 @@ class FluentBundle:
             raise ValueError(msg)
 
         if not _LOCALE_PATTERN.match(locale):
-            msg = f"Invalid locale code format: '{locale}' (must be ASCII alphanumeric)"
+            msg = (
+                f"Invalid locale code format: '{locale}'. "
+                f"Locale must be ASCII alphanumeric with optional underscore or hyphen separators. "
+                f"Use BCP 47 format (e.g., 'en-US', 'de-DE', 'zh-Hans-CN'). "
+                f"Strip charset suffixes such as '.UTF-8' from POSIX locale strings."
+            )
             raise ValueError(msg)
 
     def __init__(

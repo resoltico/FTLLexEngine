@@ -315,46 +315,16 @@ test = { $count ->
                 variants=(),
             )
 
-    def test_select_with_malformed_number_literal_key(self) -> None:
-        """Select with invalid NumberLiteral.raw falls through gracefully."""
-        msg = Message(
-            id=Identifier(name="test"),
-            value=Pattern(
-                elements=(
-                    Placeable(
-                        expression=SelectExpression(
-                            selector=VariableReference(id=Identifier(name="x")),
-                            variants=(
-                                Variant(
-                                    key=NumberLiteral(value=Decimal("0.0"), raw="invalid"),
-                                    value=Pattern(elements=(TextElement(value="Invalid"),)),
-                                    default=False,
-                                ),
-                                Variant(
-                                    key=Identifier(name="other"),
-                                    value=Pattern(elements=(TextElement(value="Default"),)),
-                                    default=True,
-                                ),
-                            ),
-                        )
-                    ),
-                )
-            ),
-            attributes=(),
-        )
+    def test_number_literal_rejects_invalid_raw(self) -> None:
+        """NumberLiteral.__post_init__ prevents construction with invalid raw strings.
 
-        from ftllexengine.runtime.functions import create_default_registry  # noqa: PLC0415
-
-        resolver = FluentResolver(
-            locale="en",
-            messages={"test": msg},
-            terms={},
-            function_registry=create_default_registry(),
-            use_isolating=False,
-        )
-
-        result, _ = resolver.resolve_message(msg, {"x": 0})
-        assert "Default" in result
+        Previously, the resolver handled programmatically constructed ASTs where
+        NumberLiteral.raw was unparseable as Decimal. NumberLiteral now enforces
+        the invariant at construction time, making such ASTs impossible via the
+        normal API.
+        """
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=Decimal("0.0"), raw="invalid")
 
     def test_deeply_nested_select_expression_fallback(self) -> None:
         """Deeply nested SelectExpression in fallback generation doesn't overflow."""

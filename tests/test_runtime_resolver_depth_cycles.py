@@ -12,6 +12,7 @@ Consolidates:
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
@@ -818,81 +819,24 @@ class TestPatternMultiplePlaceables:
 
 
 class TestVariantMatchingMalformedNumberLiteral:
-    """Coverage for InvalidOperation handling in _find_exact_variant.
+    """NumberLiteral.__post_init__ prevents construction with invalid raw strings.
 
-    Programmatically constructed ASTs can contain invalid NumberLiteral.raw
-    strings that would be rejected by the parser. The resolver must skip them
-    gracefully rather than crashing.
+    Previously, programmatically constructed ASTs could contain invalid
+    NumberLiteral.raw strings that bypassed the parser. NumberLiteral.__post_init__
+    now enforces the invariant at construction time, making the resolver's
+    former InvalidOperation handler unreachable via normal API usage.
     """
 
-    def test_malformed_number_literal_raw_skipped(self) -> None:
-        """Variant with malformed NumberLiteral.raw is skipped; default used."""
-        malformed_variant = Variant(
-            key=NumberLiteral(value=42, raw="not_a_number"),
-            value=Pattern(elements=(TextElement(value="malformed"),)),
-            default=False,
-        )
-        default_variant = Variant(
-            key=Identifier("other"),
-            value=Pattern(elements=(TextElement(value="default"),)),
-            default=True,
-        )
-        select_expr = SelectExpression(
-            selector=VariableReference(id=Identifier("count")),
-            variants=(malformed_variant, default_variant),
-        )
-        pattern = Pattern(elements=(Placeable(expression=select_expr),))
-        message = Message(id=Identifier("msg"), value=pattern, attributes=())
-        resolver = FluentResolver(
-            locale="en",
-            messages={"msg": message},
-            terms={},
-            function_registry=FunctionRegistry(),
-            use_isolating=False,
-        )
+    def test_malformed_raw_rejected_at_construction(self) -> None:
+        """NumberLiteral rejects raw string that does not parse as a number."""
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=42, raw="not_a_number")
 
-        result, errors = resolver.resolve_message(message, {"count": 42})
-
-        assert result == "default"
-        assert errors == ()
-
-    def test_multiple_malformed_literals_all_skipped(self) -> None:
-        """Multiple malformed NumberLiterals are all skipped; default used."""
-        variants = [
-            Variant(
-                key=NumberLiteral(value=1, raw="invalid1"),
-                value=Pattern(elements=(TextElement(value="v1"),)),
-                default=False,
-            ),
-            Variant(
-                key=NumberLiteral(value=2, raw="also_invalid"),
-                value=Pattern(elements=(TextElement(value="v2"),)),
-                default=False,
-            ),
-            Variant(
-                key=Identifier("other"),
-                value=Pattern(elements=(TextElement(value="fallback"),)),
-                default=True,
-            ),
-        ]
-        select_expr = SelectExpression(
-            selector=VariableReference(id=Identifier("n")),
-            variants=tuple(variants),
-        )
-        pattern = Pattern(elements=(Placeable(expression=select_expr),))
-        message = Message(id=Identifier("msg"), value=pattern, attributes=())
-        resolver = FluentResolver(
-            locale="en",
-            messages={"msg": message},
-            terms={},
-            function_registry=FunctionRegistry(),
-            use_isolating=False,
-        )
-
-        result, errors = resolver.resolve_message(message, {"n": 1})
-
-        assert result == "fallback"
-        assert errors == ()
+    def test_multiple_malformed_raws_all_rejected(self) -> None:
+        """NumberLiteral rejects each invalid raw string at construction time."""
+        for bad_raw in ("invalid1", "also_invalid", "not-a-number", "[1,2,3]"):
+            with pytest.raises(ValueError, match="not a valid number literal"):
+                NumberLiteral(value=1, raw=bad_raw)
 
 
 # ============================================================================

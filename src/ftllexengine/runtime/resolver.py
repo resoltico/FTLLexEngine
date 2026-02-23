@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from ftllexengine.constants import (
@@ -570,13 +570,10 @@ class FluentResolver:
                         numeric_for_match = selector_value
 
                     if numeric_for_match is not None:
-                        # Use raw string for key to preserve exact source precision
-                        try:
-                            key_decimal = Decimal(raw_str)
-                        except InvalidOperation:
-                            # Malformed NumberLiteral.raw from programmatic AST construction.
-                            # Fall through to next variant instead of crashing.
-                            continue
+                        # Use raw string for key to preserve exact source precision.
+                        # NumberLiteral.__post_init__ guarantees raw is a parseable
+                        # finite number, so Decimal(raw_str) always succeeds here.
+                        key_decimal = Decimal(raw_str)
                         sel_decimal = Decimal(str(numeric_for_match))
                         if key_decimal == sel_decimal:
                             return variant

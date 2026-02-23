@@ -233,11 +233,17 @@ class FiscalCalendar:
         Returns:
             First date of the fiscal year.
 
+        Raises:
+            ValueError: If fiscal_year is not in the range 1-9999.
+
         Examples:
             >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar
             >>> cal.fiscal_year_start_date(2025)
             datetime.date(2024, 4, 1)
         """
+        if not 1 <= fiscal_year <= 9999:
+            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
+            raise ValueError(msg)
         if self.start_month == 1:
             return date(fiscal_year, 1, 1)
         # Fiscal year labeled by end year, so start is in prior calendar year
@@ -252,11 +258,17 @@ class FiscalCalendar:
         Returns:
             Last date of the fiscal year.
 
+        Raises:
+            ValueError: If fiscal_year is not in the range 1-9999.
+
         Examples:
             >>> cal = FiscalCalendar(start_month=4)  # Apr-Mar
             >>> cal.fiscal_year_end_date(2025)
             datetime.date(2025, 3, 31)
         """
+        if not 1 <= fiscal_year <= 9999:
+            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
+            raise ValueError(msg)
         if self.start_month == 1:
             return date(fiscal_year, 12, 31)
         # End month is the month before start_month (start_month is 2-12 here)
@@ -276,8 +288,12 @@ class FiscalCalendar:
             First date of the quarter.
 
         Raises:
+            ValueError: If fiscal_year is not in the range 1-9999.
             ValueError: If quarter is not 1-4.
         """
+        if not 1 <= fiscal_year <= 9999:
+            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
+            raise ValueError(msg)
         if not 1 <= quarter <= 4:
             msg = f"Quarter must be 1-4, got {quarter}"
             raise ValueError(msg)
@@ -297,8 +313,12 @@ class FiscalCalendar:
             Last date of the quarter.
 
         Raises:
+            ValueError: If fiscal_year is not in the range 1-9999.
             ValueError: If quarter is not 1-4.
         """
+        if not 1 <= fiscal_year <= 9999:
+            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
+            raise ValueError(msg)
         if not 1 <= quarter <= 4:
             msg = f"Quarter must be 1-4, got {quarter}"
             raise ValueError(msg)
@@ -384,10 +404,15 @@ class FiscalDelta:
         """Validate inputs at construction time.
 
         Raises:
-            TypeError: If numeric fields are not int or month_end_policy is invalid.
+            TypeError: If numeric fields are bool (bool is a subclass of int
+                but is not a valid fiscal period delta value), not int, or
+                month_end_policy is not a MonthEndPolicy member.
         """
         for field in ("years", "quarters", "months", "days"):
             value = getattr(self, field)
+            if isinstance(value, bool):
+                msg = f"{field} must be int, not bool"
+                raise TypeError(msg)
             if not isinstance(value, int):
                 msg = f"{field} must be int, got {type(value).__name__}"
                 raise TypeError(msg)
@@ -512,7 +537,7 @@ class FiscalDelta:
         if self.month_end_policy != other.month_end_policy:
             msg = (
                 f"Cannot add FiscalDeltas with different month_end_policy: "
-                f"{self.month_end_policy.value!r} vs {other.month_end_policy.value!r}. "
+                f"{self.month_end_policy.value} vs {other.month_end_policy.value}. "
                 f"Use with_policy() to normalize policies before arithmetic."
             )
             raise ValueError(msg)
@@ -540,7 +565,7 @@ class FiscalDelta:
         if self.month_end_policy != other.month_end_policy:
             msg = (
                 f"Cannot subtract FiscalDeltas with different month_end_policy: "
-                f"{self.month_end_policy.value!r} vs {other.month_end_policy.value!r}. "
+                f"{self.month_end_policy.value} vs {other.month_end_policy.value}. "
                 f"Use with_policy() to normalize policies before arithmetic."
             )
             raise ValueError(msg)
@@ -562,7 +587,7 @@ class FiscalDelta:
         Preserves subclass type: if self is a subclass of FiscalDelta,
         the result is also that subclass.
         """
-        if not isinstance(factor, int):
+        if isinstance(factor, bool) or not isinstance(factor, int):
             return NotImplemented
         return type(self)(
             years=self.years * factor,
@@ -608,6 +633,10 @@ def _add_months(d: date, months: int, policy: MonthEndPolicy) -> date:
     total_months = d.year * 12 + d.month - 1 + months
     target_year = total_months // 12
     target_month = total_months % 12 + 1
+
+    if not 1 <= target_year <= 9999:
+        msg = f"Result year {target_year} is out of the supported range 1-9999"
+        raise ValueError(msg)
 
     # Get max day of target month
     max_day = calendar.monthrange(target_year, target_month)[1]

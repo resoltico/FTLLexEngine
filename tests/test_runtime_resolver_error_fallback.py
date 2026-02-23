@@ -343,46 +343,16 @@ def test_variant_key_with_unknown_type_skipped() -> None:
     assert len(errors) == 0
 
 
-def test_select_expression_with_invalid_number_literal_raw() -> None:
-    """Variant with malformed NumberLiteral.raw is skipped gracefully.
+def test_number_literal_rejects_invalid_raw() -> None:
+    """NumberLiteral.__post_init__ rejects raw strings that are not valid numbers.
 
-    Coverage: Lines 670-675 in resolver.py (_find_exact_variant).
-
-    Tests that when NumberLiteral.raw cannot be parsed as Decimal
-    (from programmatic AST construction), the variant is skipped instead
-    of crashing. Falls back to the default variant.
+    Previously, programmatically constructed ASTs with invalid NumberLiteral.raw
+    strings required the resolver to handle them defensively. NumberLiteral now
+    enforces the invariant at construction time, preventing invalid ASTs from
+    being created via the normal API.
     """
-    malformed_variant = Variant(
-        key=NumberLiteral(value=1, raw="not-a-number"),
-        value=Pattern(elements=(TextElement(value="malformed"),)),
-        default=False,
-    )
-    valid_variant = Variant(
-        key=Identifier(name="other"),
-        value=Pattern(elements=(TextElement(value="fallback"),)),
-        default=True,
-    )
-
-    selector = VariableReference(id=Identifier(name="count"))
-    select_expr = SelectExpression(
-        selector=selector,
-        variants=(malformed_variant, valid_variant),
-    )
-
-    pattern = Pattern(elements=(Placeable(expression=select_expr),))
-    message = Message(id=Identifier(name="test"), value=pattern, attributes=())
-
-    resolver = FluentResolver(
-        locale="en",
-        messages={},
-        terms={},
-        function_registry=FunctionRegistry(),
-    )
-
-    result, errors = resolver.resolve_message(message, args={"count": 1})
-    assert "fallback" in result
-    assert "malformed" not in result
-    assert len(errors) == 0
+    with pytest.raises(ValueError, match="not a valid number literal"):
+        NumberLiteral(value=1, raw="not-a-number")
 
 
 def test_select_expression_fallback_no_default_uses_first() -> None:

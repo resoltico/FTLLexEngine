@@ -4,6 +4,8 @@ Tests all AST node classes for immutability, construction, and type guards.
 
 """
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
@@ -512,7 +514,6 @@ class TestNumberLiteralDataclass:
     @given(st.floats(allow_nan=False, allow_infinity=False))
     def test_number_literal_float_construction(self, value: float) -> None:
         """Property: NumberLiteral accepts Decimal values for floats."""
-        from decimal import Decimal  # noqa: PLC0415 - test-local import for readability
         raw = str(value)
         decimal_value = Decimal(str(value))
         lit = NumberLiteral(value=decimal_value, raw=raw)
@@ -528,6 +529,46 @@ class TestNumberLiteralDataclass:
         """Verify NumberLiteral.guard returns False for non-NumberLiteral objects."""
         ident = Identifier(name="test")
         assert NumberLiteral.guard(ident) is False
+
+    def test_bool_true_value_rejected(self) -> None:
+        """NumberLiteral rejects bool True for value (bool is a subclass of int)."""
+        with pytest.raises(TypeError, match="not bool"):
+            NumberLiteral(value=True, raw="1")
+
+    def test_bool_false_value_rejected(self) -> None:
+        """NumberLiteral rejects bool False for value (bool is a subclass of int)."""
+        with pytest.raises(TypeError, match="not bool"):
+            NumberLiteral(value=False, raw="0")
+
+    def test_unparseable_raw_raises_value_error(self) -> None:
+        """NumberLiteral rejects raw strings that are not parseable as numbers."""
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=1, raw="not-a-number")
+
+    def test_empty_raw_raises_value_error(self) -> None:
+        """NumberLiteral rejects empty raw string."""
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=1, raw="")
+
+    def test_raw_value_divergence_raises_value_error(self) -> None:
+        """NumberLiteral rejects raw that parses to a different value than value field."""
+        with pytest.raises(ValueError, match="parses to"):
+            NumberLiteral(value=Decimal("1.5"), raw="9.9")
+
+    def test_int_raw_value_divergence_raises_value_error(self) -> None:
+        """NumberLiteral rejects int raw that parses to a different integer than value."""
+        with pytest.raises(ValueError, match="parses to"):
+            NumberLiteral(value=42, raw="99")
+
+    def test_non_finite_decimal_raw_raises_value_error(self) -> None:
+        """NumberLiteral rejects raw that produces a non-finite Decimal (Infinity)."""
+        with pytest.raises(ValueError, match="not a finite number"):
+            NumberLiteral(value=Decimal("Infinity"), raw="Infinity")
+
+    def test_nan_raw_raises_value_error(self) -> None:
+        """NumberLiteral rejects raw that produces NaN."""
+        with pytest.raises(ValueError, match="not a finite number"):
+            NumberLiteral(value=Decimal("NaN"), raw="NaN")
 
 
 class TestVariableReferenceDataclass:

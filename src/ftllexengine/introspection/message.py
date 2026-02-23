@@ -76,10 +76,18 @@ __all__ = [
 # - Alternative (RLock): adds synchronization overhead for minimal benefit
 # - Alternative (thread-local cache): reduces hit rate, increases memory usage
 #
+# GIL assumption: This design relies on CPython's Global Interpreter Lock (GIL)
+# making dict read/write operations atomic at the bytecode level. Under CPython
+# with the GIL, concurrent WeakKeyDictionary writes produce at worst a redundant
+# computation — the dict remains internally consistent. Under Python 3.13+
+# free-threaded mode (--disable-gil, PEP 703), GIL atomicity is absent and
+# concurrent writes to WeakKeyDictionary can corrupt its internal state. If
+# free-threaded Python support is required, replace this with a threading.Lock.
+#
 # Trade-off: Lock-free reads provide better performance than synchronized access.
 # Occasional redundant computation under concurrent load is acceptable given the
 # rarity of pathological concurrent introspection scenarios. This is a permanent
-# architectural decision prioritizing common-case performance.
+# architectural decision prioritizing common-case performance under CPython GIL.
 _introspection_cache: weakref.WeakKeyDictionary[Message | Term, MessageIntrospection] = (
     weakref.WeakKeyDictionary()
 )

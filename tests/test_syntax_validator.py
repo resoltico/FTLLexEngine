@@ -869,8 +869,12 @@ class TestVariantKeyNormalization:
     """Test variant key normalization and Decimal handling."""
 
     def test_decimal_normalization_for_numeric_keys(self) -> None:
-        """Numeric keys are normalized using Decimal for comparison."""
-        # Test that 100 and 1E2 are treated as same key
+        """Numeric keys are normalized using Decimal for comparison.
+
+        100 (int, raw="100") and 1E+2 (Decimal, raw="1E2") are the same numeric
+        value after Decimal normalization; the validator must detect them as
+        duplicate variant keys.
+        """
         variants = (
             Variant(
                 key=NumberLiteral(value=100, raw="100"),
@@ -878,7 +882,10 @@ class TestVariantKeyNormalization:
                 default=False,
             ),
             Variant(
-                key=NumberLiteral(value=100, raw="1E2"),  # Same value, different format
+                # Decimal("1E2") == Decimal("100") after normalization.
+                # raw="1E2" is a valid Decimal literal; value must be Decimal, not int,
+                # because int("1E2") fails. Both normalize to format("f") = "100".
+                key=NumberLiteral(value=Decimal("1E2"), raw="1E2"),
                 value=Pattern(elements=(TextElement(value="Also hundred"),)),
                 default=False,
             ),
@@ -903,65 +910,25 @@ class TestVariantKeyNormalization:
         # Should detect as duplicates after normalization
         assert not result.is_valid
 
-    def test_decimal_conversion_fallback_on_invalid_value(self) -> None:
-        """Decimal conversion uses fallback for invalid values.
+    def test_number_literal_rejects_invalid_raw(self) -> None:
+        """NumberLiteral.__post_init__ rejects raw strings that do not parse as numbers.
 
-        Tests lines 448-450 (exception handling in _variant_key_to_string).
+        The validator's former fallback (returning key.raw on Decimal conversion failure)
+        is now unreachable because NumberLiteral enforces the raw/value invariant at
+        construction time.
         """
-        # Create NumberLiteral with raw string that can't be converted to Decimal
-        # This triggers the ValueError/InvalidOperation exception path
-        malformed_key = NumberLiteral(value=Decimal("0"), raw="not-a-number")
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=Decimal("0"), raw="not-a-number")
 
-        variant = Variant(
-            key=malformed_key,
-            value=Pattern(elements=(TextElement(value="Invalid"),)),
-            default=True,
-        )
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="x")),
-            variants=(variant,),
-        )
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-        resource = Resource(entries=(message,))
-        validator = SemanticValidator()
+    def test_number_literal_rejects_non_finite_decimal(self) -> None:
+        """NumberLiteral.__post_init__ rejects non-finite Decimal values.
 
-        # Should not crash, uses fallback to key.raw
-        result = validator.validate(resource)
-        assert result is not None
-
-    def test_decimal_conversion_with_infinity(self) -> None:
-        """Decimal conversion handles infinity values.
-
-        Additional test for exception handling in _variant_key_to_string.
-        Tests that format() with Infinity doesn't crash.
+        Infinity and NaN are not valid FTL number literal values.
+        The validator's former exception handling for format(Infinity, 'f') is now
+        unreachable because NumberLiteral rejects non-finite Decimals at construction.
         """
-        # Decimal("Infinity") is valid, but format(..., 'f') may behave differently
-        inf_key = NumberLiteral(value=Decimal("Infinity"), raw="Infinity")
-
-        variant = Variant(
-            key=inf_key,
-            value=Pattern(elements=(TextElement(value="Infinite"),)),
-            default=True,
-        )
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="x")),
-            variants=(variant,),
-        )
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-        resource = Resource(entries=(message,))
-        validator = SemanticValidator()
-
-        # Should handle without crashing
-        result = validator.validate(resource)
-        assert result is not None
+        with pytest.raises(ValueError, match="not a finite number"):
+            NumberLiteral(value=Decimal("Infinity"), raw="Infinity")
 
 
 # ============================================================================

@@ -9,7 +9,7 @@ Python 3.13+. Zero external dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TypeIs
 
 from ftllexengine.enums import CommentType
@@ -438,6 +438,39 @@ class NumberLiteral:
     """Original source representation (for serialization)."""
 
     span: Span | None = None
+
+    def __post_init__(self) -> None:
+        """Validate NumberLiteral invariants.
+
+        Raises:
+            TypeError: If value is bool (bool is a subclass of int but is not
+                a valid numeric literal value in FTL).
+            ValueError: If raw is not parseable as a finite integer or decimal
+                number, or if parsing raw yields a value that differs from the
+                value field. Divergence between raw and value would cause the
+                serializer to output a number that does not match the value used
+                for plural category matching.
+        """
+        if isinstance(self.value, bool):
+            msg = "NumberLiteral.value must be int or Decimal, not bool"
+            raise TypeError(msg)
+        try:
+            if isinstance(self.value, int):
+                parsed: int | Decimal = int(self.raw)
+            else:
+                parsed = Decimal(self.raw)
+        except (ValueError, InvalidOperation) as exc:
+            msg = f"NumberLiteral.raw {self.raw!r} is not a valid number literal"
+            raise ValueError(msg) from exc
+        if isinstance(parsed, Decimal) and not parsed.is_finite():
+            msg = f"NumberLiteral.raw {self.raw!r} is not a finite number"
+            raise ValueError(msg)
+        if parsed != self.value:
+            msg = (
+                f"NumberLiteral.raw {self.raw!r} parses to {parsed!r} "
+                f"but value is {self.value!r}"
+            )
+            raise ValueError(msg)
 
     @staticmethod
     def guard(key: object) -> TypeIs[NumberLiteral]:

@@ -14,7 +14,7 @@ References:
   (message attributes cannot be parameterized, only terms can)
 """
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
@@ -456,22 +456,21 @@ class SemanticValidator:
         For numeric keys, uses Decimal normalization to ensure 1 == 1.0.
         This prevents false negatives where [1] and [1.0] are incorrectly
         treated as unique when they should be duplicates.
+
+        NumberLiteral.__post_init__ guarantees key.raw is a parseable finite
+        number, so Decimal(key.raw) always succeeds here.
         """
         if isinstance(key, Identifier):
             return key.name
         # key must be NumberLiteral at this point.
         # Normalize numeric value using Decimal for proper equality.
-        # Use raw string (original source) instead of value (float) to preserve precision.
+        # Use raw string (original source) instead of value to preserve precision.
         # This matches resolver behavior and prevents false positives for high-precision variants.
-        try:
-            # Convert raw string to Decimal and normalize to canonical form
-            normalized = Decimal(key.raw).normalize()
-            # Use fixed-point format ('f') instead of str() to avoid scientific notation
-            # str(Decimal("100").normalize()) returns "1E2", but format(..., 'f') returns "100"
-            return format(normalized, "f")
-        except (ValueError, InvalidOperation):
-            # Fallback to raw string if Decimal conversion fails
-            return key.raw
+        # Convert raw string to Decimal and normalize to canonical form.
+        normalized = Decimal(key.raw).normalize()
+        # Use fixed-point format ('f') instead of str() to avoid scientific notation:
+        # str(Decimal("100").normalize()) returns "1E+2", format(..., 'f') returns "100".
+        return format(normalized, "f")
 
 
 # ============================================================================

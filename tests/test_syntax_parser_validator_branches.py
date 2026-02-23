@@ -2,7 +2,7 @@
 
 Addresses specific uncovered lines and branches:
 - rules.py line 885: parse_term_reference returning None in parse_argument_expression
-- validator.py lines 423-425: Decimal conversion exception in _variant_key_to_string
+- NumberLiteral.__post_init__: invariant enforcement for raw/value consistency
 - validator.py branches 157->exit, 246->exit: Match case exits for Junk and TextElement
 
 Python 3.13+.
@@ -10,8 +10,9 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
+import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
@@ -24,14 +25,10 @@ from ftllexengine.syntax.ast import (
     Message,
     NumberLiteral,
     Pattern,
-    Placeable,
     Resource,
-    SelectExpression,
     Span,
     Term,
     TextElement,
-    VariableReference,
-    Variant,
 )
 from ftllexengine.syntax.cursor import Cursor
 from ftllexengine.syntax.parser import FluentParserV1
@@ -127,146 +124,30 @@ class TestRulesLine885TermReferenceFailure:
         assert result is None
 
 
-class TestValidatorLines423To425DecimalConversionException:
-    """Test validator.py lines 423-425: Decimal conversion exception handler.
+class TestNumberLiteralInvariantPreventsInvalidConstruction:
+    """NumberLiteral.__post_init__ prevents construction of malformed AST nodes.
 
-    Lines 423-425 handle the case where Decimal conversion fails for a
-    NumberLiteral value. This is defensive code for malformed AST.
+    Previously, the validator's _variant_key_to_string had a try/except handler
+    for Decimal conversion failures caused by programmatic NumberLiteral construction
+    with invalid raw strings or non-int/Decimal value types. NumberLiteral now
+    enforces the raw/value invariant at construction time, making those exception
+    handlers unreachable via the normal API.
     """
 
-    def test_decimal_conversion_failure_with_invalid_string_value(self) -> None:
-        """NumberLiteral with value that fails Decimal conversion.
+    def test_invalid_raw_string_rejected(self) -> None:
+        """NumberLiteral rejects raw strings that do not parse as numbers."""
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=1, raw="invalid")
 
-        Create a NumberLiteral with a value that, when str() is called,
-        produces a string that Decimal cannot parse.
-        """
-        # Create a class that produces invalid Decimal string
-        class InvalidDecimalValue:
-            """Value that produces invalid Decimal string."""
+    def test_unparseable_raw_brackets_rejected(self) -> None:
+        """NumberLiteral rejects raw strings containing bracket syntax."""
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=Decimal("0"), raw="[1,2,3]")
 
-            def __str__(self) -> str:
-                return "not_a_valid_decimal"
-
-        # Create NumberLiteral with invalid value (type violation for testing)
-        malformed_key = NumberLiteral(
-            value=InvalidDecimalValue(),  # type: ignore[arg-type]
-            raw="invalid",
-        )
-
-        # Create select expression with this malformed key
-        variant = Variant(
-            key=malformed_key,
-            value=Pattern(elements=()),
-            default=True,
-        )
-
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="x")),
-            variants=(variant,),
-        )
-
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-
-        resource = Resource(entries=(message,))
-        validator = SemanticValidator()
-
-        # Should not crash - uses fallback string conversion (lines 423-425)
-        result = validator.validate(resource)
-
-        # Validation should complete without crashing
-        assert result is not None
-
-    def test_decimal_invalid_operation_exception(self) -> None:
-        """Test that InvalidOperation exception is caught and handled."""
-        # Create a value that causes InvalidOperation when Decimal parses it
-        # Decimal constructor raises InvalidOperation for invalid literals
-        class RaisesInvalidOperation:
-            """Value that causes InvalidOperation."""
-
-            def __str__(self) -> str:
-                # String that Decimal cannot parse
-                return "[1, 2, 3]"
-
-        malformed_key = NumberLiteral(
-            value=RaisesInvalidOperation(),  # type: ignore[arg-type]
-            raw="[1,2,3]",
-        )
-
-        # Verify this actually raises InvalidOperation
-        try:
-            Decimal(str(RaisesInvalidOperation()))
-            did_raise = False
-        except InvalidOperation:
-            did_raise = True
-
-        assert did_raise, "Test setup failed - expected InvalidOperation"
-
-        # Now test the validator handles this
-        variant = Variant(
-            key=malformed_key,
-            value=Pattern(elements=()),
-            default=True,
-        )
-
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="x")),
-            variants=(variant,),
-        )
-
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-
-        resource = Resource(entries=(message,))
-        validator = SemanticValidator()
-
-        # Should catch InvalidOperation and use fallback (lines 423-425)
-        result = validator.validate(resource)
-        assert result is not None
-
-    def test_value_error_in_decimal_conversion(self) -> None:
-        """Test that ValueError is also caught in Decimal conversion."""
-        # Some edge cases might raise ValueError instead of InvalidOperation
-        class RaisesValueError:
-            """Value that causes issues during Decimal conversion."""
-
-            def __str__(self) -> str:
-                return ""  # Empty string might cause issues
-
-        malformed_key = NumberLiteral(
-            value=RaisesValueError(),  # type: ignore[arg-type]
-            raw="",
-        )
-
-        variant = Variant(
-            key=malformed_key,
-            value=Pattern(elements=()),
-            default=True,
-        )
-
-        select = SelectExpression(
-            selector=VariableReference(id=Identifier(name="x")),
-            variants=(variant,),
-        )
-
-        message = Message(
-            id=Identifier(name="msg"),
-            value=Pattern(elements=(Placeable(expression=select),)),
-            attributes=(),
-        )
-
-        resource = Resource(entries=(message,))
-        validator = SemanticValidator()
-
-        # Should handle gracefully
-        result = validator.validate(resource)
-        assert result is not None
+    def test_empty_raw_string_rejected(self) -> None:
+        """NumberLiteral rejects empty raw strings."""
+        with pytest.raises(ValueError, match="not a valid number literal"):
+            NumberLiteral(value=1, raw="")
 
 
 class TestValidatorBranch157JunkEntry:

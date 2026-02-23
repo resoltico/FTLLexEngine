@@ -10,6 +10,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.129.0] - 2026-02-23
+
+### Changed (BREAKING)
+
+- **`NumberLiteral.__post_init__` enforces raw/value invariant** (ARCH-NUMBERLITERAL-INVARIANT-001):
+  - `NumberLiteral` carries `value: int | Decimal` (used by the resolver for plural-category
+    matching) and `raw: str` (used by the serializer for output); no validation ensured these
+    two fields were consistent; `NumberLiteral(value=Decimal("1.5"), raw="9.9")` silently
+    passed construction, then serialized as `"9.9"` while matching plural rules for `1.5`
+    — silent data corruption that could cause mismatched output in financial documents;
+    additionally, `isinstance(True, int)` is `True` so `NumberLiteral(value=True, raw="1")`
+    was silently accepted and stored a boolean as a numeric literal
+  - Added `__post_init__` to `NumberLiteral` that: (1) rejects `bool` for `value` before
+    the `isinstance(value, int)` check; (2) validates `raw` is parseable as an `int` (when
+    `value` is `int`) or `Decimal` (when `value` is `Decimal`) — raises `ValueError` with
+    message "not a valid number literal" on failure; (3) rejects non-finite `Decimal` raw
+    strings such as `"Infinity"` or `"NaN"` — raises `ValueError` "not a finite number";
+    (4) validates `parsed_raw == value` — raises `ValueError` "parses to X but value is Y"
+    on divergence
+  - Consequence: two defensive exception handlers that caught `InvalidOperation` for
+    malformed `NumberLiteral.raw` in `_find_exact_variant` (resolver) and `_variant_key_to_string`
+    (validator) are now unreachable dead code and have been removed; their removal eliminates
+    silent masking of programmer errors in those code paths
+  - Location: `syntax/ast.py`, `runtime/resolver.py`, `syntax/validator.py`,
+    `tests/test_syntax_ast.py`, `tests/test_runtime_resolver_depth_cycles.py`,
+    `tests/test_runtime_resolver_error_fallback.py`, `tests/test_runtime_resolver_selection.py`,
+    `tests/test_syntax_validator.py`, `tests/test_syntax_parser_validator_branches.py`
+
+- **`FiscalCalendar` date methods enforce `fiscal_year` 1–9999** (DEFECT-FISCALCALENDAR-YEAR-BOUNDS-001):
+  - Follow-on to DEFECT-FISCALPERIOD-YEAR-BOUNDS-001 (v0.128.0); that fix added bounds
+    validation to `FiscalPeriod.__post_init__`, but the four public date-returning methods
+    `fiscal_year_start_date(fiscal_year)`, `fiscal_year_end_date(fiscal_year)`,
+    `quarter_start_date(fiscal_year, quarter)`, and `quarter_end_date(fiscal_year, quarter)`
+    take a bare `int` parameter with no bounds check; `cal.fiscal_year_start_date(0)` evaluates
+    to `date(0 - 1, start_month, 1)` → `date(-1, ...)` → Python `ValueError: year -1 is out
+    of range` with no attribution to the caller's invalid argument; callers going through these
+    methods directly (not via `FiscalPeriod`) received a cryptic error with no indication that
+    the `fiscal_year` argument was the problem
+  - Added `if not 1 <= fiscal_year <= 9999: raise ValueError(f"fiscal_year must be 1-9999,
+    got {fiscal_year}")` at the top of each of the four public date-returning methods;
+    `_add_months()` now also validates `target_year` post-arithmetic and raises
+    `ValueError(f"Result year {target_year} is out of the supported range 1-9999")` before
+    delegating to `date()`, preventing the cryptic Python-internal `ValueError` from escaping
+    when month arithmetic pushes results out of the supported date range
+  - Location: `core/fiscal.py`, `tests/test_core_fiscal.py`
+
+- **`FiscalDelta` rejects `bool` for numeric fields** (DEFECT-FISCALDELTA-BOOL-REJECTION-001):
+  - `FiscalDelta.__post_init__` validated each of `years`, `quarters`, `months`, and `days`
+    with `isinstance(value, int)` — but `isinstance(True, int)` is `True` (bool is a subclass
+    of int in Python); `FiscalDelta(years=True)` silently created `FiscalDelta(years=1)`;
+    the same issue existed in `__mul__`: `isinstance(factor, int)` passed for `True`, so
+    `delta * True` multiplied by 1 rather than returning `NotImplemented`; boolean-as-integer
+    is never valid fiscal arithmetic input
+  - Added `isinstance(value, bool)` guard BEFORE the `isinstance(value, int)` check for
+    all four numeric fields in `__post_init__`; raises `TypeError("years must be int, not bool")`
+    (and similarly for other fields); added matching guard in `__mul__`: `isinstance(factor, bool)`
+    now returns `NotImplemented` before the `isinstance(factor, int)` check
+  - Location: `core/fiscal.py`, `tests/test_core_fiscal.py`
+
+### Changed
+
+- **`FiscalDelta.__add__`/`__sub__` policy mismatch messages remove spurious quotes**
+  (CLARITY-FISCALDELTA-POLICY-MSG-001):
+  - Error messages used `f"{self.month_end_policy.value!r}"` where `.value` is already a
+    `str`; `!r` added unnecessary surrounding quotes, producing
+    `"month_end_policy: 'preserve' vs 'clamp'"` in financial logs instead of the cleaner
+    `"preserve vs clamp"`
+  - Removed `!r` from both `.value` interpolations in `__add__` and `__sub__` error messages
+  - Location: `core/fiscal.py`
+
+- **`FluentBundle` POSIX locale rejection message includes BCP 47 guidance**
+  (CLARITY-BUNDLE-POSIX-LOCALE-MSG-001):
+  - `_LOCALE_PATTERN` in `bundle.py` rejects POSIX locale format `en_US.UTF-8` but the
+    rejection message gave no actionable guidance; a developer with `LANG=en_US.UTF-8` had
+    to debug the regex to discover that the `.UTF-8` charset suffix was the issue
+  - Error message now reads: `"Invalid locale code format: '{locale}'. Locale must be ASCII
+    alphanumeric with optional underscore or hyphen separators. Use BCP 47 format (e.g.,
+    'en-US', 'de-DE', 'zh-Hans-CN'). Strip charset suffixes such as '.UTF-8' from POSIX
+    locale strings."`
+  - Location: `runtime/bundle.py`
+
+- **`introspection/message.py` WeakKeyDictionary waiver documents GIL dependency**
+  (ARCH-INTROSPECTION-GIL-DOC-001):
+  - The accepted WeakKeyDictionary race (worst case: redundant computation, not data
+    corruption) relies on CPython's GIL making dict read/write operations atomic at the
+    bytecode level; this assumption was not documented; under Python 3.13+ free-threaded
+    mode (`--disable-gil`, PEP 703), GIL atomicity is absent and concurrent
+    `WeakKeyDictionary` writes can corrupt the dict's internal state; the waiver acceptance
+    was correct for CPython with GIL but incomplete as written
+  - Added explicit GIL dependency documentation to the waiver comment block: states that
+    the race acceptance is valid under the CPython GIL, that free-threaded mode (PEP 703)
+    removes this guarantee, and that a `threading.Lock` is required if free-threaded support is ever needed
+  - Location: `introspection/message.py`
+
+- **Test files renamed to match §5.1 naming schema** (NAMING-FISCAL-TEST-RENAME-001):
+  - `tests/test_parsing_fiscal.py` and `tests/test_parsing_fiscal_property.py` were named
+    for the `parsing/` package where `fiscal.py` previously resided; `fiscal.py` moved to
+    `core/` in v0.128.0 (ARCH-FISCAL-MOVE-CORE-001) but the test file names were not
+    updated; per §5.1, test file names must map to the source module's current package:
+    `core/fiscal.py` → `test_core_fiscal*.py`
+  - Renamed via `git mv`: `test_parsing_fiscal.py` → `test_core_fiscal.py`;
+    `test_parsing_fiscal_property.py` → `test_core_fiscal_property.py`
+  - Location: `tests/test_core_fiscal.py`, `tests/test_core_fiscal_property.py`
+
 ## [0.128.0] - 2026-02-23
 
 ### Changed (BREAKING)
@@ -4297,6 +4401,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.129.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.129.0
 [0.128.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.128.0
 [0.127.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.127.0
 [0.126.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.126.0
