@@ -15,6 +15,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import DiagnosticCode, WarningSeverity
+from ftllexengine.runtime import FluentBundle
 from ftllexengine.syntax import (
     Identifier,
     Message,
@@ -506,3 +507,89 @@ g = Terminal
             if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
         ]
         assert len(chain_warnings) == 0
+
+
+# ============================================================================
+# VALIDATION CHAIN DEPTH: validate_resource + runtime confirmation
+# ============================================================================
+
+
+class TestValidationChainDepth:
+    """Validation detects reference chains exceeding MAX_DEPTH and runtime confirms."""
+
+    def test_short_chain_no_warning(self) -> None:
+        """Short reference chain of 5 messages produces no chain depth warning."""
+        messages = [
+            "msg-0 = Base value",
+            "msg-1 = { msg-0 }",
+            "msg-2 = { msg-1 }",
+            "msg-3 = { msg-2 }",
+            "msg-4 = { msg-3 }",
+        ]
+        ftl_source = "\n".join(messages)
+
+        result = validate_resource(ftl_source)
+        chain_warnings = [
+            w for w in result.warnings
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
+        ]
+        assert len(chain_warnings) == 0
+
+    def test_chain_at_max_depth_no_warning(self) -> None:
+        """Chain of exactly MAX_DEPTH messages produces no chain depth warning."""
+        messages = ["msg-0 = Base value"]
+        for i in range(1, MAX_DEPTH):
+            messages.append(f"msg-{i} = {{ msg-{i - 1} }}")
+
+        ftl_source = "\n".join(messages)
+
+        result = validate_resource(ftl_source)
+        chain_warnings = [
+            w for w in result.warnings
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
+        ]
+        assert len(chain_warnings) == 0
+
+    def test_chain_exceeding_max_depth_warning(self) -> None:
+        """Chain exceeding MAX_DEPTH by 10 produces at least one depth warning."""
+        chain_length = MAX_DEPTH + 10
+        messages = ["msg-0 = Base value"]
+        for i in range(1, chain_length):
+            messages.append(f"msg-{i} = {{ msg-{i - 1} }}")
+
+        ftl_source = "\n".join(messages)
+
+        result = validate_resource(ftl_source)
+        chain_warnings = [
+            w for w in result.warnings
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
+        ]
+        assert len(chain_warnings) >= 1
+        assert "exceeds maximum" in chain_warnings[0].message
+        assert "MAX_DEPTH_EXCEEDED" in chain_warnings[0].message
+
+    def test_chain_warning_runtime_confirmation(self) -> None:
+        """Chains that produce validation warnings actually fail at runtime."""
+        chain_length = MAX_DEPTH + 50
+        messages = ["msg-0 = Base value"]
+        for i in range(1, chain_length):
+            messages.append(f"msg-{i} = {{ msg-{i - 1} }}")
+
+        ftl_source = "\n".join(messages)
+
+        result = validate_resource(ftl_source)
+        chain_warnings = [
+            w for w in result.warnings
+            if w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
+        ]
+        assert len(chain_warnings) >= 1
+
+        bundle = FluentBundle("en")
+        bundle.add_resource(ftl_source)
+        _, errors = bundle.format_pattern(f"msg-{chain_length - 1}")
+        depth_errors = [
+            e for e in errors
+            if e.diagnostic is not None
+            and e.diagnostic.code.name == "MAX_DEPTH_EXCEEDED"
+        ]
+        assert len(depth_errors) > 0

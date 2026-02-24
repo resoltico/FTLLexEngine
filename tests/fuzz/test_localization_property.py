@@ -11,6 +11,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -1075,12 +1076,12 @@ class TestValidationEdgeCases:
 
     @given(
         locale=st.sampled_from(["en", "de"]),
-        invalid_attr=st.sampled_from([42, 3.14, ["a"], {"k": "v"}]),
+        invalid_attr=st.sampled_from([42, Decimal("3.14"), ["a"], {"k": "v"}]),
     )
     def test_format_pattern_invalid_attribute_type(
         self,
         locale: str,
-        invalid_attr: int | float | list[str] | dict[str, str],
+        invalid_attr: int | Decimal | list[str] | dict[str, str],
     ) -> None:
         """format_pattern with non-str attribute returns error."""
         event("outcome=invalid_attr")

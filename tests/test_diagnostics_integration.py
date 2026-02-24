@@ -119,9 +119,6 @@ class TestSyntaxCodeValues:
 class TestParsingCodeValues:
     """Regression: parsing error codes (4000-4999) — breaking API contract."""
 
-    def test_parse_number_failed_value(self) -> None:
-        assert DiagnosticCode.PARSE_NUMBER_FAILED.value == 4001
-
     def test_parse_decimal_failed_value(self) -> None:
         assert DiagnosticCode.PARSE_DECIMAL_FAILED.value == 4002
 

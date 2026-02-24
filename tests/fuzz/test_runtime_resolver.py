@@ -14,6 +14,8 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
@@ -94,9 +96,9 @@ def ftl_with_select(draw: st.DrawFn) -> str:
 
 
 @st.composite
-def format_arguments(draw: st.DrawFn) -> dict[str, str | int | float]:
+def format_arguments(draw: st.DrawFn) -> dict[str, str | int | Decimal]:
     """Generate valid format arguments."""
-    args: dict[str, str | int | float] = {}
+    args: dict[str, str | int | Decimal] = {}
 
     # Common variable names
     var_names = ["name", "count", "user", "value", "gender", "case"]
@@ -106,7 +108,10 @@ def format_arguments(draw: st.DrawFn) -> dict[str, str | int | float]:
             st.one_of(
                 st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=1, max_size=20),
                 st.integers(min_value=-1000, max_value=1000),
-                st.floats(min_value=-1000, max_value=1000, allow_nan=False, allow_infinity=False),
+                st.decimals(
+                    min_value=Decimal("-1000"), max_value=Decimal("1000"),
+                    allow_nan=False, allow_infinity=False,
+                ),
             )
         )
         args[var] = value
@@ -128,7 +133,7 @@ class TestFormatPatternProperties:
         suppress_health_check=[HealthCheck.too_slow],
         deadline=None,
     )
-    def test_format_never_crashes(self, ftl: str, args: dict[str, str | int | float]) -> None:
+    def test_format_never_crashes(self, ftl: str, args: dict[str, str | int | Decimal]) -> None:
         """Property: format_pattern never raises, always returns (str, tuple)."""
         bundle = FluentBundle("en-US")
         bundle.add_resource(ftl)
@@ -161,7 +166,7 @@ class TestFormatPatternProperties:
         deadline=None,
     )
     def test_references_resolve_or_error(
-        self, ftl: str, args: dict[str, str | int | float]
+        self, ftl: str, args: dict[str, str | int | Decimal]
     ) -> None:
         """Property: Message references either resolve or produce errors, never crash."""
         bundle = FluentBundle("en-US")
@@ -191,7 +196,7 @@ class TestFormatPatternProperties:
         deadline=None,
     )
     def test_select_expressions_always_resolve(
-        self, ftl: str, args: dict[str, str | int | float]
+        self, ftl: str, args: dict[str, str | int | Decimal]
     ) -> None:
         """Property: Select expressions always resolve to a variant."""
         bundle = FluentBundle("en-US")
@@ -237,7 +242,7 @@ class TestErrorCollectionProperties:
 
     @given(format_arguments())
     @settings(max_examples=200, deadline=None)
-    def test_missing_variable_collected(self, args: dict[str, str | int | float]) -> None:
+    def test_missing_variable_collected(self, args: dict[str, str | int | Decimal]) -> None:
         """Property: Missing variables produce errors but don't crash."""
         bundle = FluentBundle("en-US")
         bundle.add_resource("msg = Hello { $missing_var }!")

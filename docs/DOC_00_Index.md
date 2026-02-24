@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.129.0"
+version: "0.130.0"
 domain: INDEX
-updated: "2026-02-23"
+updated: "2026-02-24"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -170,9 +170,9 @@ from ftllexengine.localization import (
 ```python
 from ftllexengine.parsing import (
     # Parse functions (require Babel)
-    parse_number, parse_decimal, parse_date, parse_datetime, parse_currency,
+    parse_decimal, parse_date, parse_datetime, parse_currency,
     # Type guards
-    is_valid_number, is_valid_decimal, is_valid_date, is_valid_datetime, is_valid_currency,
+    is_valid_decimal, is_valid_date, is_valid_datetime, is_valid_currency,
     # Type alias
     ParseResult,
     # Cache management
@@ -191,7 +191,7 @@ from ftllexengine.parsing import (
 |:--------------|:------------|:-------|
 | FluentBundle, FluentLocalization, add_resource, format_pattern | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
-| parse, serialize, parse_ftl, serialize_ftl, parse_number, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
+| parse, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
 | NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
@@ -259,7 +259,7 @@ ftllexengine/
     value_types.py         # FluentNumber, FluentValue, FluentFunction, FunctionSignature
   parsing/
     __init__.py            # Parsing API exports (requires Babel; re-exports fiscal from core)
-    numbers.py             # parse_number, parse_decimal
+    numbers.py             # parse_decimal
     dates.py               # parse_date, parse_datetime
     currency.py            # parse_currency
     guards.py              # Type guards
@@ -281,7 +281,7 @@ ftllexengine/
 
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
-| `FluentValue` | `str \| int \| float \| bool \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
+| `FluentValue` | `str \| int \| bool \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
 | `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |

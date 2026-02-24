@@ -16,6 +16,7 @@ Bug Categories Covered:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
@@ -77,20 +78,22 @@ class TestParameterEffectProperty:
 
     @given(
         value=st.decimals(
-            min_value=-1000000, max_value=1000000, allow_nan=False, allow_infinity=False
+            min_value=Decimal("-1000000"),
+            max_value=Decimal("1000000"),
+            allow_nan=False,
+            allow_infinity=False,
         )
     )
     @settings(max_examples=50)
     def test_minimum_fraction_digits_affects_format_number(
-        self, value: float
+        self, value: Decimal
     ) -> None:
         """PROPERTY: minimum_fraction_digits affects number formatting."""
         ctx = LocaleContext.create("en_US")
-        float_val = float(value)
 
         # Both results used for comparison
-        _ = ctx.format_number(float_val, minimum_fraction_digits=0)
-        result_3 = ctx.format_number(float_val, minimum_fraction_digits=3)
+        _ = ctx.format_number(value, minimum_fraction_digits=0)
+        result_3 = ctx.format_number(value, minimum_fraction_digits=3)
 
         has_dec = "has_decimal" if "." in result_3 else "no_decimal"
         event(f"outcome={has_dec}")

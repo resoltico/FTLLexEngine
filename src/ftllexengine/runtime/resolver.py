@@ -387,8 +387,10 @@ class FluentResolver:
         """Resolve variable reference from args."""
         var_name = expr.id.name
         if var_name not in args:
-            # Include resolution path for debugging nested references
-            resolution_path = tuple(context.stack) if context.stack else None
+            # Include resolution path for debugging nested references.
+            # resolution_path is an immutable snapshot of the current stack.
+            path = context.resolution_path
+            resolution_path = path if path else None
             diag = ErrorTemplate.variable_not_provided(
                 var_name, resolution_path=resolution_path
             )
@@ -546,25 +548,20 @@ class FluentResolver:
                     if key_name == selector_str:
                         return variant
                 case NumberLiteral(raw=raw_str):
-                    # Handle int, float, Decimal, and FluentNumber for exact numeric match.
-                    # Use raw string representation for maximum precision.
-                    # Problem: float(1.1) != Decimal("1.1") due to IEEE 754.
-                    # Solution: Use NumberLiteral.raw (exact source string) for key,
-                    # and convert selector to Decimal via str for comparison.
-                    # Edge case: Float arithmetic results (e.g., 0.1 + 0.2) may produce
-                    # values like 0.30000000000000004 that won't match literal "0.3".
-                    # For exact matching with computed values, use Decimal arithmetic.
+                    # Handle int, Decimal, and FluentNumber for exact numeric match.
+                    # float is not in FluentValue: only int and Decimal are valid numeric types.
+                    # Use NumberLiteral.raw (exact source string) for key comparison.
                     # Note: Exclude bool since isinstance(True, int) is True in Python,
                     # but str(True) == "True" which is not a valid Decimal.
                     #
                     # FluentNumber wraps formatted numbers (from NUMBER() function) while
                     # preserving the original numeric value for matching. Extract .value
                     # for numeric comparison so [1000] matches FluentNumber(1000, "1,000").
-                    numeric_for_match: int | float | Decimal | None = None
+                    numeric_for_match: int | Decimal | None = None
                     if isinstance(selector_value, FluentNumber):
                         numeric_for_match = selector_value.value
                     elif (
-                        isinstance(selector_value, (int, float, Decimal))
+                        isinstance(selector_value, (int, Decimal))
                         and not isinstance(selector_value, bool)
                     ):
                         numeric_for_match = selector_value
@@ -668,16 +665,17 @@ class FluentResolver:
         # Pass 2: Plural category match (numeric selectors only)
         # FluentValue includes Decimal for currency/financial values.
         # FluentNumber wraps formatted numbers while preserving numeric identity.
+        # float is not in FluentValue: only int and Decimal are valid numeric types.
         # Note: Exclude bool since isinstance(True, int) is True in Python,
         # but booleans should match [true]/[false] variants, not plural categories.
         #
         # Extract numeric value and precision from FluentNumber for plural matching.
-        numeric_value: int | float | Decimal | None = None
+        numeric_value: int | Decimal | None = None
         precision: int | None = None
         if isinstance(selector_value, FluentNumber):
             numeric_value = selector_value.value
             precision = selector_value.precision
-        elif isinstance(selector_value, (int, float, Decimal)) and not isinstance(
+        elif isinstance(selector_value, (int, Decimal)) and not isinstance(
             selector_value, bool
         ):
             numeric_value = selector_value
@@ -878,17 +876,20 @@ class FluentResolver:
         Handles all types in the FluentValue union:
         - str: returned as-is
         - bool: "true"/"false" (Fluent convention)
-        - int/float: string representation
-        - Decimal/datetime/date: string representation via __str__
+        - int: string representation
+        - Decimal/datetime/date/FluentNumber: string representation via __str__
         - Sequence/Mapping: type name (collections are for function args, not display)
         - None: empty string
+
+        float is not in FluentValue and is not handled here. Callers passing float
+        will see a type error at the call site, not here.
         """
         if isinstance(value, str):
             return value
-        # Check bool BEFORE int/float (bool is subclass of int in Python)
+        # Check bool BEFORE int (bool is a subclass of int in Python)
         if isinstance(value, bool):
             return "true" if value else "false"
-        if isinstance(value, (int, float)):
+        if isinstance(value, int):
             return str(value)
         if value is None:
             return ""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from decimal import Decimal
 
 import pytest
 from hypothesis import HealthCheck, assume, event, given, settings
@@ -358,15 +359,14 @@ class TestFinancialBundleOperations:
     """Financial-grade property tests for bundle operations."""
 
     @given(
-        # Remove arbitrary max - only constrain what makes business sense
-        amount=st.floats(min_value=0.01, allow_nan=False, allow_infinity=False),
+        amount=st.decimals(min_value=Decimal("0.01"), allow_nan=False, allow_infinity=False),
         currency=st.sampled_from(["EUR", "USD", "GBP", "JPY"]),
         locale=locale_codes,
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_currency_formatting_never_crashes(
         self,
-        amount: float,
+        amount: Decimal,
         currency: str,
         locale: str,
     ) -> None:
@@ -412,15 +412,17 @@ items = { $count ->
         event("outcome=plural_quantity_format")
 
     @given(
-        # Keep min constraints (business logic), remove arbitrary max
-        vat_rate=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
-        net_amount=st.floats(min_value=0.01, allow_nan=False, allow_infinity=False),
+        vat_rate=st.decimals(
+            min_value=Decimal("0.0"), max_value=Decimal("1.0"),
+            allow_nan=False, allow_infinity=False,
+        ),
+        net_amount=st.decimals(min_value=Decimal("0.01"), allow_nan=False, allow_infinity=False),
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_vat_calculation_formatting(
         self,
-        vat_rate: float,
-        net_amount: float,
+        vat_rate: Decimal,
+        net_amount: Decimal,
     ) -> None:
         """Property: VAT calculations format correctly."""
         bundle = FluentBundle("lv_LV", use_isolating=False)
@@ -804,7 +806,7 @@ class TestVariableSubstitution:
         bundle.add_resource(f"{msg_id} = {vars_ftl}")
 
         # Build args dict
-        args: dict[str, int | str | float | bool] = {f"var{i}": i for i in range(var_count)}
+        args: dict[str, int | str | bool] = {f"var{i}": i for i in range(var_count)}
 
         result, errors = bundle.format_pattern(msg_id, args)
 
@@ -847,16 +849,16 @@ class TestFunctionCalls:
     @given(
         msg_id=ftl_identifiers,
         var_name=ftl_identifiers,
-        number=st.floats(
-            min_value=-1000.0,
-            max_value=1000.0,
+        number=st.decimals(
+            min_value=Decimal("-1000"),
+            max_value=Decimal("1000"),
             allow_nan=False,
             allow_infinity=False,
         ),
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_number_function_formatting(
-        self, msg_id: str, var_name: str, number: float
+        self, msg_id: str, var_name: str, number: Decimal
     ) -> None:
         """PROPERTY: NUMBER function formats numbers."""
         bundle = FluentBundle("en")
@@ -864,7 +866,7 @@ class TestFunctionCalls:
 
         result, errors = bundle.format_pattern(msg_id, {var_name: number})
 
-        event(f"num={number:.2f}")
+        event(f"num={number}")
         assert errors == ()
         assert isinstance(result, str)
         assert len(result) > 0
@@ -873,16 +875,16 @@ class TestFunctionCalls:
     @given(
         msg_id=ftl_identifiers,
         currency=st.sampled_from(["USD", "EUR", "GBP", "JPY"]),
-        amount=st.floats(
-            min_value=0.01,
-            max_value=10000.0,
+        amount=st.decimals(
+            min_value=Decimal("0.01"),
+            max_value=Decimal("10000"),
             allow_nan=False,
             allow_infinity=False,
         ),
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_currency_function_formatting(
-        self, msg_id: str, currency: str, amount: float
+        self, msg_id: str, currency: str, amount: Decimal
     ) -> None:
         """PROPERTY: CURRENCY function formats currency values."""
         bundle = FluentBundle("en")
@@ -1173,9 +1175,9 @@ class TestNumberFormattingVariations:
 
     @given(
         msg_id=ftl_identifiers,
-        number=st.floats(
-            min_value=0.01,
-            max_value=1000.0,
+        number=st.decimals(
+            min_value=Decimal("0.01"),
+            max_value=Decimal("1000"),
             allow_nan=False,
             allow_infinity=False,
         ),
@@ -1183,7 +1185,7 @@ class TestNumberFormattingVariations:
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_number_minimum_fraction_digits(
-        self, msg_id: str, number: float, min_digits: int
+        self, msg_id: str, number: Decimal, min_digits: int
     ) -> None:
         """PROPERTY: minimumFractionDigits option works."""
         bundle = FluentBundle("en")
@@ -2201,7 +2203,7 @@ msg = { -outer }
         bundle.add_resource(f"{msg_id} = {placeables}")
 
         # Provide all variables
-        args: dict[str, str | int | float | bool] = {f"var{i}": f"V{i}" for i in range(var_count)}
+        args: dict[str, str | int | bool] = {f"var{i}": f"V{i}" for i in range(var_count)}
 
         result, errors = bundle.format_pattern(msg_id, args)
 
@@ -2246,7 +2248,7 @@ msg = { $variant ->
 
         # Build pattern: text0 { $v0 } text1 { $v1 } ...
         pattern_parts = []
-        args: dict[str, str | int | float | bool] = {}
+        args: dict[str, str | int | bool] = {}
         for i, text in enumerate(text_segments):
             pattern_parts.append(text)
             if i < len(text_segments) - 1:
@@ -2284,7 +2286,7 @@ msg = Welcome to { -brand }!
 
         result, errors = bundle.format_pattern(
             "msg",
-            {"count": 5, "price": 99.99}
+            {"count": 5, "price": Decimal("99.99")}
         )
 
         assert errors == ()
@@ -2302,16 +2304,16 @@ class TestFunctionArgumentEdgeCases:
 
     @given(
         msg_id=ftl_identifiers,
-        number=st.floats(
-            min_value=0.0,
-            max_value=1.0,
+        number=st.decimals(
+            min_value=Decimal("0.0"),
+            max_value=Decimal("1.0"),
             allow_nan=False,
             allow_infinity=False,
         ),
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_number_function_small_values(
-        self, msg_id: str, number: float
+        self, msg_id: str, number: Decimal
     ) -> None:
         """PROPERTY: NUMBER handles small decimal values."""
         bundle = FluentBundle("en")
@@ -2326,16 +2328,16 @@ class TestFunctionArgumentEdgeCases:
 
     @given(
         msg_id=ftl_identifiers,
-        number=st.floats(
-            min_value=1000000.0,
-            max_value=1000000000.0,
+        number=st.decimals(
+            min_value=Decimal("1000000"),
+            max_value=Decimal("1000000000"),
             allow_nan=False,
             allow_infinity=False,
         ),
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_number_function_large_values(
-        self, msg_id: str, number: float
+        self, msg_id: str, number: Decimal
     ) -> None:
         """PROPERTY: NUMBER handles large values."""
         bundle = FluentBundle("en")
@@ -2351,23 +2353,23 @@ class TestFunctionArgumentEdgeCases:
         bundle = FluentBundle("en")
         bundle.add_resource("msg = { NUMBER($num) }")
 
-        result, errors = bundle.format_pattern("msg", {"num": -0.0})
+        result, errors = bundle.format_pattern("msg", {"num": Decimal("-0")})
 
         assert errors == ()
         assert isinstance(result, str)
 
     @given(
         msg_id=ftl_identifiers,
-        amount=st.floats(
-            min_value=0.001,
-            max_value=0.01,
+        amount=st.decimals(
+            min_value=Decimal("0.001"),
+            max_value=Decimal("0.01"),
             allow_nan=False,
             allow_infinity=False,
         ),
     )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_currency_function_tiny_amounts(
-        self, msg_id: str, amount: float
+        self, msg_id: str, amount: Decimal
     ) -> None:
         """PROPERTY: CURRENCY handles very small amounts."""
         bundle = FluentBundle("en")
@@ -2387,7 +2389,7 @@ class TestFunctionArgumentEdgeCases:
         bundle = FluentBundle("en")
         bundle.add_resource("msg = { CURRENCY($amt) }")
 
-        result, _errors = bundle.format_pattern("msg", {"amt": 99.99})
+        result, _errors = bundle.format_pattern("msg", {"amt": Decimal("99.99")})
 
         # Should handle missing currency option
         assert isinstance(result, str)
@@ -2428,8 +2430,8 @@ class TestLocaleFallbackBehavior:
         bundle_en.add_resource(ftl)
         bundle_de.add_resource(ftl)
 
-        result_en, _ = bundle_en.format_pattern("msg", {"num": 1234.56})
-        result_de, _ = bundle_de.format_pattern("msg", {"num": 1234.56})
+        result_en, _ = bundle_en.format_pattern("msg", {"num": Decimal("1234.56")})
+        result_de, _ = bundle_de.format_pattern("msg", {"num": Decimal("1234.56")})
 
         # Both should format, potentially differently
         assert isinstance(result_en, str)
@@ -2699,12 +2701,12 @@ class TestBundleVariableInterpolation:
         var_value=st.one_of(
             st.text(min_size=1, max_size=50),
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
         ),
     )
     @settings(max_examples=500)
     def test_variable_interpolation_preserves_value(
-        self, msg_id: str, var_name: str, var_value: str | int | float
+        self, msg_id: str, var_name: str, var_value: str | int | Decimal
     ) -> None:
         """Property: Variable values appear in formatted output."""
         var_type = type(var_value).__name__

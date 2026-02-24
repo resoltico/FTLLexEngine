@@ -630,7 +630,7 @@ class TestRoundtripCurrency:
 
         original = Decimal("1234.56")
         formatted = currency_format(
-            float(original), "en-US",
+            original, "en-US",
             currency="USD", currency_display="symbol",
         )
         result, errors = parse_currency(
@@ -647,7 +647,7 @@ class TestRoundtripCurrency:
 
         original = Decimal("1234.56")
         formatted = currency_format(
-            float(original), "lv-LV",
+            original, "lv-LV",
             currency="EUR", currency_display="symbol",
         )
         result, errors = parse_currency(str(formatted), "lv_LV")

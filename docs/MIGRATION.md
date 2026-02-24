@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: migration
-updated: "2026-02-21"
+updated: "2026-02-24"
 route:
   keywords: [migration, fluent.runtime, upgrade, breaking changes, mozilla fluent, python fluent]
   questions: ["how to migrate from fluent.runtime?", "how to upgrade to ftllexengine?"]
@@ -726,10 +726,10 @@ Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError
 [NEW] Full `mypy --strict` type safety
 [NEW] Python 3.13 modern features
 [NEW] **Bi-directional parsing** (not in fluent.runtime):
-  - `parse_number()`, `parse_decimal()` - locale-aware number parsing
+  - `parse_decimal()` - locale-aware number parsing (financial-grade Decimal precision)
   - `parse_date()`, `parse_datetime()` - locale-aware date parsing
   - `parse_currency()` - currency parsing with symbol detection
-  - Type guards: `is_valid_number()`, `is_valid_decimal()`, `is_valid_currency()`
+  - Type guards: `is_valid_decimal()`, `is_valid_currency()`
 
 ---
 

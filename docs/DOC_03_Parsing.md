@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.129.0"
+version: "0.130.0"
 domain: PARSING
-updated: "2026-02-23"
+updated: "2026-02-24"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
@@ -235,31 +235,6 @@ def enter_nesting(self) -> ParseContext:
 
 ---
 
-## `parse_number`
-
-### Signature
-```python
-def parse_number(
-    value: str,
-    locale_code: str,
-) -> tuple[float | None, tuple[FrozenFluentError, ...]]:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `str` | Y | Locale-formatted number string. |
-| `locale_code` | `str` | Y | BCP 47 locale identifier. |
-
-### Constraints
-- Return: Tuple of (float or None, errors).
-- Raises: `BabelImportError` if Babel not installed.
-- State: None.
-- Thread: Safe.
-- Dependency: Requires Babel for CLDR data.
-
----
-
 ## `parse_decimal`
 
 ### Signature
@@ -375,26 +350,6 @@ def parse_currency(
 - Ambiguous: Yen sign (`¥`) resolves to CNY for `zh_*` locales, JPY otherwise.
 - Ambiguous: Pound sign (`£`) resolves to EGP for `ar_*` locales, GBP otherwise.
 - Resolution: With `infer_from_locale=True`, ambiguous symbols use locale-aware defaults.
-
----
-
-## `is_valid_number`
-
-### Signature
-```python
-def is_valid_number(value: float | None) -> TypeIs[float]:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `float \| None` | Y | Float to validate (may be None). |
-
-### Constraints
-- Return: True if finite float, False if None/NaN/Infinity.
-- Raises: None.
-- State: None.
-- Thread: Safe.
 
 ---
 

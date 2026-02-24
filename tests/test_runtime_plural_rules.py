@@ -16,7 +16,6 @@ Coverage:
 
 from __future__ import annotations
 
-import math
 import sys
 from decimal import Decimal
 from unittest.mock import patch
@@ -56,10 +55,13 @@ LOCALE_CODES = st.sampled_from([
     "uk", "uk_UA",
 ])
 
-# Numbers strategy (integers and floats)
+# Numbers strategy (integers and decimals)
 NUMBERS = st.one_of(
     st.integers(min_value=0, max_value=1000000),
-    st.floats(min_value=0.0, max_value=1000000.0, allow_nan=False, allow_infinity=False),
+    st.decimals(
+        min_value=Decimal("0"), max_value=Decimal("1000000"),
+        allow_nan=False, allow_infinity=False,
+    ),
 )
 
 # ============================================================================
@@ -134,13 +136,11 @@ class TestPluralRuleInvariants:
     @example(n=0, locale="en_US")
     @example(n=1, locale="en_US")
     @example(n=2, locale="ar_SA")
-    def test_always_returns_valid_category(self, n: int | float, locale: str) -> None:
+    def test_always_returns_valid_category(self, n: int | Decimal, locale: str) -> None:
         """Plural selection always returns valid CLDR category.
 
         Property: For all n and locale, result ∈ {zero, one, two, few, many, other}
         """
-        assume(not (isinstance(n, float) and math.isnan(n)))
-
         result = select_plural_category(n, locale)
 
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
@@ -153,13 +153,11 @@ class TestPluralRuleInvariants:
 
     @given(n=NUMBERS, locale=LOCALE_CODES)
     @example(n=42, locale="lv_LV")
-    def test_never_returns_none(self, n: int | float, locale: str) -> None:
+    def test_never_returns_none(self, n: int | Decimal, locale: str) -> None:
         """Plural selection never returns None.
 
         Property: For all n and locale, result is not None
         """
-        assume(not (isinstance(n, float) and math.isnan(n)))
-
         result = select_plural_category(n, locale)
 
         assert result is not None
@@ -184,13 +182,11 @@ class TestPluralRuleInvariants:
     @example(n=0)
     @example(n=1)
     @example(n=42)
-    def test_unknown_locale_defaults_to_cldr_root(self, n: int | float) -> None:
+    def test_unknown_locale_defaults_to_cldr_root(self, n: int | Decimal) -> None:
         """Unknown locale uses CLDR root rules (always 'other').
 
         Property: For all n, select_plural_category(n, unknown) = "other"
         """
-        assume(not (isinstance(n, float) and math.isnan(n)))
-
         result = select_plural_category(n, "xx_XX")
 
         assert result == "other"
@@ -229,21 +225,24 @@ class TestEnglishPluralRules:
         """English: 0 is 'other'."""
         assert select_plural_category(0, "en") == "other"
 
-    @given(n=st.floats(min_value=0.1, max_value=1000.0, allow_nan=False))
-    @example(n=0.5)
-    @example(n=2.5)
-    def test_floats_are_other(self, n: float) -> None:
-        """English: all floats are 'other' (unless exactly 1.0).
+    @given(n=st.decimals(
+        min_value=Decimal("0.1"), max_value=Decimal("1000"),
+        allow_nan=False, allow_infinity=False,
+    ))
+    @example(n=Decimal("0.5"))
+    @example(n=Decimal("2.5"))
+    def test_decimals_are_other(self, n: Decimal) -> None:
+        """English: Decimals not equal to 1 are 'other'.
 
-        Property: For all n in R where n != 1.0, category = "other"
+        Property: For all n in Q where n != 1, category = "other"
         """
-        assume(n != 1.0)
+        assume(n != Decimal("1"))
 
         result = select_plural_category(n, "en")
 
         assert result == "other"
-        is_integer = n.is_integer()
-        event(f"float_is_integer={is_integer}")
+        is_whole = n % 1 == 0
+        event(f"decimal_is_whole={is_whole}")
 
 
 class TestLatvianPluralRules:
@@ -330,18 +329,19 @@ class TestSlavicPluralRules:
             assert result == "many"
 
     @given(
-        fraction=st.floats(
-            min_value=0.01, max_value=999.99, allow_nan=False, allow_infinity=False
+        fraction=st.decimals(
+            min_value=Decimal("0.01"), max_value=Decimal("999.99"),
+            allow_nan=False, allow_infinity=False,
         )
     )
-    @example(fraction=0.5)
-    @example(fraction=1.5)
-    def test_fractional_numbers_return_other(self, fraction: float) -> None:
+    @example(fraction=Decimal("0.5"))
+    @example(fraction=Decimal("1.5"))
+    def test_fractional_numbers_return_other(self, fraction: Decimal) -> None:
         """Slavic: fractional numbers return 'other'.
 
-        Property: For all n in R where n not in Z, category = "other"
+        Property: For all n in Q where n not in Z, category = "other"
         """
-        assume(not fraction.is_integer())
+        assume(fraction % 1 != 0)
 
         category = select_plural_category(fraction, "ru_RU")
 
@@ -416,10 +416,13 @@ class TestPluralRuleEdgeCases:
         result = select_plural_category(42, locale)
         assert isinstance(result, str)
 
-    @given(n=st.floats(min_value=-1000.0, max_value=0.0, allow_nan=False))
-    @example(n=-1.0)
-    @example(n=-100.0)
-    def test_negative_numbers_return_valid_category(self, n: float) -> None:
+    @given(n=st.decimals(
+        min_value=Decimal("-1000"), max_value=Decimal("0"),
+        allow_nan=False, allow_infinity=False,
+    ))
+    @example(n=Decimal("-1"))
+    @example(n=Decimal("-100"))
+    def test_negative_numbers_return_valid_category(self, n: Decimal) -> None:
         """Negative numbers return valid category.
 
         Property: For all n < 0, category ∈ valid_categories
@@ -637,17 +640,17 @@ class TestPrecisionParameter:
         assert result in valid_categories
 
     @given(
-        n=st.floats(
-            min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
+        n=st.decimals(
+            min_value=Decimal("0"), max_value=Decimal("100"), allow_nan=False, allow_infinity=False
         ),
         precision=st.integers(min_value=1, max_value=6),
     )
-    @example(n=1.5, precision=2)
-    @example(n=42.7, precision=1)
-    def test_precision_with_floats(self, n: float, precision: int) -> None:
-        """Precision works correctly with float inputs (lines 118-121).
+    @example(n=Decimal("1.5"), precision=2)
+    @example(n=Decimal("42.7"), precision=1)
+    def test_precision_with_fractional_decimals(self, n: Decimal, precision: int) -> None:
+        """Precision works correctly with Decimal inputs (lines 118-121).
 
-        Property: Floats are converted via Decimal and quantized correctly
+        Property: Decimal values are quantized correctly for plural selection
         """
         result = select_plural_category(n, "en_US", precision=precision)
 
@@ -800,23 +803,23 @@ class TestRoundingConsistency:
     def test_half_value_rounds_up_for_plural(self) -> None:
         """2.5 with precision=0 rounds to 3, selecting 'other' in English."""
         # 2.5 -> 3 (ROUND_HALF_UP), which is 'other' in English (not 1)
-        result = select_plural_category(2.5, "en_US", precision=0)
+        result = select_plural_category(Decimal("2.5"), "en_US", precision=0)
         assert result == "other"
 
     def test_half_value_3_5_rounds_up_for_plural(self) -> None:
         """3.5 with precision=0 rounds to 4, selecting 'other' in English."""
-        result = select_plural_category(3.5, "en_US", precision=0)
+        result = select_plural_category(Decimal("3.5"), "en_US", precision=0)
         assert result == "other"
 
     def test_half_value_0_5_rounds_to_one_for_plural(self) -> None:
         """0.5 with precision=0 rounds to 1, selecting 'one' in English."""
         # 0.5 -> 1 (ROUND_HALF_UP), which is 'one' in English
-        result = select_plural_category(0.5, "en_US", precision=0)
+        result = select_plural_category(Decimal("0.5"), "en_US", precision=0)
         assert result == "one"
 
     def test_half_value_1_5_rounds_up_for_plural(self) -> None:
         """1.5 with precision=0 rounds to 2, selecting 'other' in English."""
-        result = select_plural_category(1.5, "en_US", precision=0)
+        result = select_plural_category(Decimal("1.5"), "en_US", precision=0)
         assert result == "other"
 
     def test_rounding_matches_formatting_at_half_values(self) -> None:
@@ -846,17 +849,17 @@ class TestRoundingConsistency:
             )
 
     @given(
-        n=st.floats(
-            min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
+        n=st.decimals(
+            min_value=Decimal("0"), max_value=Decimal("100"), allow_nan=False, allow_infinity=False
         ),
         precision=st.integers(min_value=0, max_value=4),
     )
-    @example(n=0.5, precision=0)
-    @example(n=2.5, precision=0)
-    @example(n=3.5, precision=0)
-    @example(n=1.005, precision=2)
+    @example(n=Decimal("0.5"), precision=0)
+    @example(n=Decimal("2.5"), precision=0)
+    @example(n=Decimal("3.5"), precision=0)
+    @example(n=Decimal("1.005"), precision=2)
     def test_plural_rounding_direction_property(
-        self, n: float, precision: int
+        self, n: Decimal, precision: int
     ) -> None:
         """Plural rounding direction matches ROUND_HALF_UP for all inputs.
 
@@ -866,7 +869,7 @@ class TestRoundingConsistency:
         from decimal import ROUND_HALF_UP  # noqa: PLC0415
 
         quantizer = Decimal(10) ** -precision
-        expected = Decimal(str(n)).quantize(quantizer, rounding=ROUND_HALF_UP)
+        expected = n.quantize(quantizer, rounding=ROUND_HALF_UP)
 
         # The plural category must correspond to the ROUND_HALF_UP result.
         # We verify indirectly: call select_plural_category with precision,
@@ -879,3 +882,22 @@ class TestRoundingConsistency:
             f"precision path gave '{category_via_precision}', "
             f"explicitly rounded {expected} gave '{category_via_rounded}'"
         )
+
+
+# ============================================================================
+# SLAVIC PLURAL RULE COVERAGE
+# ============================================================================
+
+
+class TestSlavicRuleReturnOther:
+    """Slavic plural rules return 'other' for numbers not matching one/few/many."""
+
+    def test_slavic_rule_return_other(self) -> None:
+        """Polish plural rules return 'many' or 'other' for 111 (ends in 1 but mod 100 == 11)."""
+        # 111 % 10 = 1, 111 % 100 = 11
+        # Polish: 'one' requires mod_100 != 11, so 111 skips 'one'
+        # Polish: 'few' requires 2-4, so 111 skips 'few'
+        # Polish: 'many' covers 0 and 5-9 and 11-14; 111 does not match (mod_10 == 1)
+        # Remaining cases return 'other'
+        result = select_plural_category(111, "pl")
+        assert result in ["many", "other"]

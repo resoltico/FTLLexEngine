@@ -22,6 +22,12 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Protocol
 
+# Financial precision contract: float is explicitly excluded from FluentValue.
+# float is IEEE 754 and cannot represent most decimal fractions exactly.
+# For financial applications, callers must use int or Decimal.
+# Decimal(str(float_val)) is the correct conversion pattern when interoperating
+# with existing float-typed values at system boundaries.
+
 __all__ = [
     "FluentFunction",
     "FluentNumber",
@@ -86,7 +92,8 @@ class FluentNumber:
         """Return detailed representation for debugging."""
         return (
             f"FluentNumber(value={self.value!r}, "
-            f"formatted={self.formatted!r})"
+            f"formatted={self.formatted!r}, "
+            f"precision={self.precision!r})"
         )
 
 
@@ -95,6 +102,11 @@ class FluentNumber:
 # Note: Includes both datetime.date and datetime.datetime for flexibility.
 # FluentNumber added for NUMBER() identity preservation in select expressions.
 #
+# float is deliberately absent. IEEE 754 floating-point cannot represent most
+# decimal fractions exactly (e.g., 0.1 + 0.2 != 0.3). Financial applications
+# must use int (for whole amounts) or Decimal (for fractional amounts).
+# At system boundaries, convert with Decimal(str(float_val)).
+#
 # Collections Support:
 #   Sequence[FluentValue] and Mapping[str, FluentValue] are supported for custom
 #   functions that need to pass structured data. The cache (_make_hashable) and
@@ -102,7 +114,6 @@ class FluentNumber:
 type FluentValue = (
     str
     | int
-    | float
     | bool
     | Decimal
     | datetime

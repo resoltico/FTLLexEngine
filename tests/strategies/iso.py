@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from hypothesis import event
@@ -263,7 +264,7 @@ _NUMBER_FORMAT_LOCALES = [
 @composite
 def locale_formatted_numbers(
     draw: st.DrawFn,
-) -> tuple[float, str, str]:
+) -> tuple[Decimal, str, str]:
     """Generate locale-formatted number strings with source values.
 
     Events emitted:
@@ -277,9 +278,10 @@ def locale_formatted_numbers(
         number_format,
     )
 
-    value = draw(st.floats(
-        min_value=-999999.99,
-        max_value=999999.99,
+    value = draw(st.decimals(
+        min_value=Decimal("-999999.99"),
+        max_value=Decimal("999999.99"),
+        places=2,
         allow_nan=False,
         allow_infinity=False,
     ))
@@ -319,7 +321,7 @@ def locale_formatted_decimals(
     ))
     locale = draw(st.sampled_from(_NUMBER_FORMAT_LOCALES))
     formatted = str(number_format(
-        float(value),
+        value,
         locale,
         minimum_fraction_digits=2,
     ))

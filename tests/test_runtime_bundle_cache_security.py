@@ -11,6 +11,8 @@ These parameters are essential for financial-grade applications requiring
 integrity verification, audit trails, and memory bounds.
 """
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
@@ -278,7 +280,7 @@ class TestCacheParameterCombinations:
         bundle = FluentBundle("en_US", cache=cfg, strict=True)
 
         bundle.add_resource("amount = { NUMBER($value, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("amount", {"value": 1234.56})
+        result, errors = bundle.format_pattern("amount", {"value": Decimal("1234.56")})
         assert errors == ()
         assert "1,234.56" in result or "1234.56" in result
 

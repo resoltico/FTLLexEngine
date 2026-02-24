@@ -1,5 +1,6 @@
 """Tests for FluentResolver message and term resolution."""
 
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -200,13 +201,13 @@ quantity = Quantity: { $count }
 """)
         return bundle
 
-    def test_resolve_float_literal(self, bundle: Any) -> None:
-        """Resolver formats float values."""
-        result, errors = bundle.format_pattern("price", {"amount": 42.50})
+    def test_resolve_decimal_literal(self, bundle: Any) -> None:
+        """Resolver formats Decimal values."""
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("42.5")})
 
         assert not errors
 
-        assert "42.5" in result  # Python formats as 42.5, not 42.50
+        assert "42.5" in result
 
     def test_resolve_integer_literal(self, bundle: Any) -> None:
         """Resolver formats integer values."""
@@ -396,9 +397,9 @@ test-none = { $value }
 
         assert result == "42"
 
-    def test_format_float_value(self, bundle: Any) -> None:
-        """Resolver formats float values."""
-        result, errors = bundle.format_pattern("test-num", {"value": 3.14})
+    def test_format_decimal_value(self, bundle: Any) -> None:
+        """Resolver formats Decimal values."""
+        result, errors = bundle.format_pattern("test-num", {"value": Decimal("3.14")})
 
         assert not errors
 
@@ -481,7 +482,7 @@ summary = User { $name } has { $count } items worth { $value } EUR
 """)
 
         result, errors = bundle.format_pattern(
-            "summary", {"name": "Bob", "count": 3, "value": 45.99}
+            "summary", {"name": "Bob", "count": 3, "value": Decimal("45.99")}
         )
 
         assert not errors
@@ -806,7 +807,7 @@ button = Save
 
         # Define test function
         def DOUBLE(value: object) -> str:
-            return str(int(float(str(value))) * 2)
+            return str(int(Decimal(str(value))) * 2)
 
         # Create custom registry with test function
         custom_registry = FunctionRegistry()
@@ -961,3 +962,21 @@ button = Save
         # Resolver catches error and shows inline error message
         _result, errors = resolver.resolve_message(msg, {})
         assert len(errors) > 0  # Should have error
+
+
+# ============================================================================
+# PLACEABLE RESOLUTION COVERAGE
+# ============================================================================
+
+
+class TestPlaceableResolution:
+    """Resolver resolves Placeable's inner expression correctly."""
+
+    def test_placeable_resolution(self) -> None:
+        """Placeable containing a variable reference resolves the variable."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("test = { $value }")
+
+        result, _ = bundle.format_pattern("test", {"value": "Resolved"})
+
+        assert "Resolved" in result

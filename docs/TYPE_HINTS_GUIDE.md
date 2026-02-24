@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: type-hints
-updated: "2026-02-21"
+updated: "2026-02-24"
 route:
   keywords: [type hints, typing, mypy, type safety, pep 695, typeis, type guards, annotations, FluentValue]
   questions: ["how to use type hints?", "how to configure mypy?", "how to write type safe code?", "what types can FluentValue hold?"]
@@ -392,7 +392,7 @@ from typing import Literal
 
 # Python 3.13+ with precise types
 def format_currency(
-    amount: float | int,
+    amount: int | Decimal,
     *,
     currency_code: Literal["USD", "EUR", "GBP", "JPY"] = "USD",
     show_symbol: bool = True,

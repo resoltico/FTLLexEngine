@@ -816,7 +816,7 @@ class TestVariantNumericMatching:
             function_registry=FunctionRegistry(),
         )
 
-        result, errors = resolver.resolve_message(message, {"price": 9.99})
+        result, errors = resolver.resolve_message(message, {"price": Decimal("9.99")})
         assert not errors
         assert "special price" in result
 
@@ -1081,8 +1081,8 @@ class TestNumberLiteralNonMatchingValue:
         assert result == "other_amount"
         assert errors == ()
 
-    def test_number_literal_float_no_exact_match(self) -> None:
-        """NumberLiteral variants with float that doesn't exactly match."""
+    def test_number_literal_decimal_no_exact_match(self) -> None:
+        """NumberLiteral variants with Decimal that doesn't exactly match."""
         select_expr = SelectExpression(
             selector=VariableReference(id=Identifier("val")),
             variants=(
@@ -1098,7 +1098,7 @@ class TestNumberLiteralNonMatchingValue:
                 ),
                 Variant(
                     key=Identifier("other"),
-                    value=Pattern(elements=(TextElement(value="other_float"),)),
+                    value=Pattern(elements=(TextElement(value="other_decimal"),)),
                     default=True,
                 ),
             ),
@@ -1115,8 +1115,8 @@ class TestNumberLiteralNonMatchingValue:
             use_isolating=False,
         )
 
-        result, errors = resolver.resolve_message(message, {"val": 3.7})
-        assert result == "other_float"
+        result, errors = resolver.resolve_message(message, {"val": Decimal("3.7")})
+        assert result == "other_decimal"
         assert errors == ()
 
 
@@ -1181,10 +1181,10 @@ rating = { $stars ->
 """
         )
 
-        result, _ = bundle.format_pattern("rating", {"stars": 5.0})
+        result, _ = bundle.format_pattern("rating", {"stars": Decimal("5")})
         assert "Excellent" in result
 
-        result, _ = bundle.format_pattern("rating", {"stars": 3.5})
+        result, _ = bundle.format_pattern("rating", {"stars": Decimal("3.5")})
         assert "Unrated" in result
 
     def test_number_literal_match_second_key(self) -> None:
@@ -1230,8 +1230,8 @@ msg = { $count ->
         assert result == "exactly forty-two"
         assert errors == ()
 
-    def test_exact_number_literal_match_with_float(self) -> None:
-        """Exact match with float NumberLiteral (Decimal comparison logic)."""
+    def test_exact_number_literal_match_with_decimal_pi(self) -> None:
+        """Exact match with Decimal NumberLiteral value (pi example)."""
         bundle = FluentBundle("en_US", use_isolating=False)
         bundle.add_resource(
             """
@@ -1243,7 +1243,7 @@ msg = { $value ->
 """
         )
 
-        result, errors = bundle.format_pattern("msg", {"value": 3.14})
+        result, errors = bundle.format_pattern("msg", {"value": Decimal("3.14")})
         assert result == "pi"
         assert errors == ()
 
@@ -1448,19 +1448,16 @@ class TestFormatValueComprehensive:
         assert resolver._format_value(0) == "0"
         assert resolver._format_value(-100) == "-100"
 
-    def test_format_value_with_float(self) -> None:
-        """Verify _format_value handles floats."""
+    def test_format_value_with_decimal(self) -> None:
+        """Verify _format_value handles Decimal values."""
         resolver = self._make_resolver()
-        assert resolver._format_value(3.14) == "3.14"
-        assert resolver._format_value(0.0) == "0.0"
+        assert resolver._format_value(Decimal("3.14")) == "3.14"
+        assert resolver._format_value(Decimal("0")) == "0"
+        assert resolver._format_value(Decimal("123.45")) == "123.45"
 
     def test_format_value_with_none(self) -> None:
         """Verify _format_value handles None as empty string."""
         assert self._make_resolver()._format_value(None) == ""
-
-    def test_format_value_with_decimal(self) -> None:
-        """Verify _format_value handles Decimal."""
-        assert self._make_resolver()._format_value(Decimal("123.45")) == "123.45"
 
     def test_format_value_with_datetime(self) -> None:
         """Verify _format_value handles datetime via str()."""
@@ -1474,12 +1471,12 @@ class TestFormatValueComprehensive:
         value=st.one_of(
             st.text(),
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.booleans(),
             st.none(),
         )
     )
-    def test_format_value_never_raises(self, value: str | int | float | bool | None) -> None:
+    def test_format_value_never_raises(self, value: str | int | Decimal | bool | None) -> None:
         """Property: _format_value never raises exceptions."""
         event(f"value_type={type(value).__name__}")
         result = self._make_resolver()._format_value(value)

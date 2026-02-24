@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: RUNTIME
-updated: "2026-02-21"
+updated: "2026-02-24"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?"]
@@ -20,7 +20,7 @@ Wrapper preserving numeric identity and precision through NUMBER() formatting.
 ```python
 @dataclass(frozen=True, slots=True)
 class FluentNumber:
-    value: int | float | Decimal
+    value: int | Decimal
     formatted: str
     precision: int | None = None
 ```
@@ -28,7 +28,7 @@ class FluentNumber:
 ### Parameters
 | Field | Type | Req | Description |
 |:------|:-----|:----|:------------|
-| `value` | `int \| float \| Decimal` | Y | Original numeric value for plural matching. |
+| `value` | `int \| Decimal` | Y | Original numeric value for plural matching. |
 | `formatted` | `str` | Y | Locale-formatted string for display. |
 | `precision` | `int \| None` | N | Minimum fraction digits for CLDR v operand in plural rules. None if not specified. |
 
@@ -48,7 +48,7 @@ class FluentNumber:
 ### Signature
 ```python
 def number_format(
-    value: int | float | Decimal,
+    value: int | Decimal,
     locale_code: str = "en-US",
     *,
     minimum_fraction_digits: int = 0,
@@ -61,7 +61,7 @@ def number_format(
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float \| Decimal` | Y | Number to format. |
+| `value` | `int \| Decimal` | Y | Number to format. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `minimum_fraction_digits` | `int` | N | Minimum decimal places. |
 | `maximum_fraction_digits` | `int` | N | Maximum decimal places. |
@@ -115,7 +115,7 @@ def datetime_format(
 ### Signature
 ```python
 def currency_format(
-    value: int | float | Decimal,
+    value: int | Decimal,
     locale_code: str = "en-US",
     *,
     currency: str,
@@ -127,7 +127,7 @@ def currency_format(
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `int \| float \| Decimal` | Y | Monetary amount. |
+| `value` | `int \| Decimal` | Y | Monetary amount. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `currency` | `str` | Y | ISO 4217 currency code. |
 | `currency_display` | `Literal[...]` | N | Display style. |
@@ -491,7 +491,7 @@ Function that selects the CLDR plural category for a number using Babel's CLDR d
 ### Signature
 ```python
 def select_plural_category(
-    n: int | float | Decimal,
+    n: int | Decimal,
     locale: str,
     precision: int | None = None,
 ) -> str:
@@ -500,7 +500,7 @@ def select_plural_category(
 ### Parameters
 | Parameter | Type | Req | Semantics |
 |:----------|:-----|:----|:----------|
-| `n` | `int \| float \| Decimal` | Y | Number to categorize |
+| `n` | `int \| Decimal` | Y | Number to categorize |
 | `locale` | `str` | Y | BCP-47 or POSIX locale code |
 | `precision` | `int \| None` | N | Fraction digits for CLDR v operand |
 
@@ -1273,9 +1273,9 @@ class IntegrityCache:
 - Integrity: Each entry has BLAKE2b-128 checksum computed at creation and verified on retrieval.
 - Corruption: Corrupted entries are evicted silently (strict=False) or raise CacheCorruptionError (strict=True).
 - Key Normalization: Cache keys are normalized to prevent hash collisions between values that format differently:
-  - NaN: `float("nan")` and `Decimal("NaN")` normalized to `"__NaN__"` (IEEE 754 NaN != NaN).
+  - NaN: `Decimal("NaN")` normalized to `"__NaN__"` (IEEE 754 NaN != NaN; prevents unretrievable cache entries).
+  - Decimal: Uses `str(value)` to preserve scale (`Decimal("1.0")` vs `Decimal("1.00")` are distinct for CLDR plural rules).
   - Datetime: Includes isoformat and tzinfo string; same-UTC-instant different-timezone datetimes produce distinct keys.
-  - Float: Uses `str(value)` to distinguish `0.0` from `-0.0` (Python equality treats them as equal).
   - Collections: Supports Sequence/Mapping ABCs (UserList, ChainMap) in addition to list/tuple/dict.
 - Idempotent Writes: When `write_once=True`, concurrent writes with identical content are treated as idempotent success (not conflict). Content comparison uses `IntegrityCacheEntry.content_hash` which excludes metadata (created_at, sequence).
 - Import: `from ftllexengine.runtime.cache import IntegrityCache`

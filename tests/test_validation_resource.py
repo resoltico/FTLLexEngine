@@ -10,6 +10,7 @@ from hypothesis import strategies as st
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.syntax import (
     Identifier,
+    Junk,
     Message,
     MessageReference,
     Pattern,
@@ -23,6 +24,7 @@ from ftllexengine.validation.resource import (
     _build_dependency_graph,
     _compute_longest_paths,
     _detect_circular_references,
+    _extract_syntax_errors,
     validate_resource,
 )
 
@@ -1378,3 +1380,36 @@ class TestValidationResourceCompleteIntegration:
 
         # All messages should be in result
         assert len(result) >= num_messages
+
+
+class TestValidationResourceEdgeCases:
+    """Coverage for validation/resource.py edge cases."""
+
+    def test_junk_without_span(self) -> None:
+        """Junk entry without span uses None for line/column."""
+        junk = Junk(content="invalid", span=None)
+
+        class MockResource:
+            def __init__(self) -> None:
+                self.entries = [junk]
+
+        errors = _extract_syntax_errors(
+            MockResource(), "invalid"  # type: ignore[arg-type]
+        )
+        assert len(errors) > 0
+        assert errors[0].line is None
+
+    def test_validation_with_invalid_ftl(self) -> None:
+        """Validation handles malformed FTL gracefully."""
+        result = validate_resource("msg = { $val ->")
+        assert result is not None
+
+    def test_cycle_deduplication(self) -> None:
+        """Circular references are detected without duplicates."""
+        ftl = "\na = { b }\nb = { a }\nc = { d }\nd = { c }\n"
+        result = validate_resource(ftl)
+        circular = [
+            w for w in result.warnings
+            if "circular" in w.message.lower()
+        ]
+        assert len(circular) >= 2

@@ -55,6 +55,25 @@ __all__ = [
 
 
 # ============================================================================
+# INTERNAL HELPERS
+# ============================================================================
+
+
+def _require_valid_fiscal_year(fiscal_year: int) -> None:
+    """Validate fiscal_year is in the range 1-9999.
+
+    Args:
+        fiscal_year: The fiscal year number to validate.
+
+    Raises:
+        ValueError: If fiscal_year is not in the range 1-9999.
+    """
+    if not 1 <= fiscal_year <= 9999:
+        msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
+        raise ValueError(msg)
+
+
+# ============================================================================
 # ENUMS
 # ============================================================================
 
@@ -100,9 +119,7 @@ class FiscalPeriod:
 
     def __post_init__(self) -> None:
         """Validate period values."""
-        if not 1 <= self.fiscal_year <= 9999:
-            msg = f"fiscal_year must be 1-9999, got {self.fiscal_year}"
-            raise ValueError(msg)
+        _require_valid_fiscal_year(self.fiscal_year)
         if not 1 <= self.quarter <= 4:
             msg = f"Quarter must be 1-4, got {self.quarter}"
             raise ValueError(msg)
@@ -241,9 +258,7 @@ class FiscalCalendar:
             >>> cal.fiscal_year_start_date(2025)
             datetime.date(2024, 4, 1)
         """
-        if not 1 <= fiscal_year <= 9999:
-            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
-            raise ValueError(msg)
+        _require_valid_fiscal_year(fiscal_year)
         if self.start_month == 1:
             return date(fiscal_year, 1, 1)
         # Fiscal year labeled by end year, so start is in prior calendar year
@@ -266,9 +281,7 @@ class FiscalCalendar:
             >>> cal.fiscal_year_end_date(2025)
             datetime.date(2025, 3, 31)
         """
-        if not 1 <= fiscal_year <= 9999:
-            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
-            raise ValueError(msg)
+        _require_valid_fiscal_year(fiscal_year)
         if self.start_month == 1:
             return date(fiscal_year, 12, 31)
         # End month is the month before start_month (start_month is 2-12 here)
@@ -291,9 +304,7 @@ class FiscalCalendar:
             ValueError: If fiscal_year is not in the range 1-9999.
             ValueError: If quarter is not 1-4.
         """
-        if not 1 <= fiscal_year <= 9999:
-            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
-            raise ValueError(msg)
+        _require_valid_fiscal_year(fiscal_year)
         if not 1 <= quarter <= 4:
             msg = f"Quarter must be 1-4, got {quarter}"
             raise ValueError(msg)
@@ -316,9 +327,7 @@ class FiscalCalendar:
             ValueError: If fiscal_year is not in the range 1-9999.
             ValueError: If quarter is not 1-4.
         """
-        if not 1 <= fiscal_year <= 9999:
-            msg = f"fiscal_year must be 1-9999, got {fiscal_year}"
-            raise ValueError(msg)
+        _require_valid_fiscal_year(fiscal_year)
         if not 1 <= quarter <= 4:
             msg = f"Quarter must be 1-4, got {quarter}"
             raise ValueError(msg)

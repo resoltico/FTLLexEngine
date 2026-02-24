@@ -133,7 +133,7 @@ class TestNumberFormatPatternExceptionHandling:
         """
         # Use a custom pattern that limits decimals
         result = number_format(
-            123.456789,
+            Decimal("123.456789"),
             "en-US",
             pattern="#,##0.00",  # Pattern with max 2 decimals
         )
@@ -170,7 +170,7 @@ class TestNumberFormatPatternExceptionHandling:
         with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
             # The format should still succeed
             result = number_format(
-                123.456,
+                Decimal("123.456"),
                 "en-US",
                 pattern="#,##0.00",
                 minimum_fraction_digits=2,
@@ -202,15 +202,18 @@ class TestNumberFormatPatternExceptionHandling:
                 raise exc_class(error_msg)
 
             with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
-                result = number_format(100.5, "en-US", pattern="#,##0.00")
+                result = number_format(Decimal("100.5"), "en-US", pattern="#,##0.00")
 
                 assert isinstance(result, FluentNumber)
                 assert "100" in str(result)
 
     @given(
-        st.floats(allow_nan=False, allow_infinity=False, min_value=-1e6, max_value=1e6),
+        st.decimals(
+            allow_nan=False, allow_infinity=False,
+            min_value=Decimal("-1000000"), max_value=Decimal("1000000"),
+        ),
     )
-    def test_number_format_pattern_exception_property(self, value: float) -> None:
+    def test_number_format_pattern_exception_property(self, value: Decimal) -> None:
         """Property: number_format succeeds even when metadata extraction fails."""
         event(f"value={type(value).__name__}")
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
@@ -249,7 +252,7 @@ class TestCurrencyFormatPatternExceptionHandling:
         """
         # Use a custom pattern that limits decimals
         result = currency_format(
-            123.456789,
+            Decimal("123.456789"),
             "en-US",
             currency="USD",
             pattern="¤ #,##0.00",  # Pattern with max 2 decimals
@@ -282,7 +285,7 @@ class TestCurrencyFormatPatternExceptionHandling:
 
         with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
             result = currency_format(
-                100.50,
+                Decimal("100.50"),
                 "en-US",
                 currency="USD",
                 pattern="¤ #,##0.00",
@@ -312,18 +315,21 @@ class TestCurrencyFormatPatternExceptionHandling:
 
             with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
                 result = currency_format(
-                    50.25, "en-US", currency="EUR", pattern="¤ #,##0.00"
+                    Decimal("50.25"), "en-US", currency="EUR", pattern="¤ #,##0.00"
                 )
 
                 assert isinstance(result, FluentNumber)
                 assert "50" in str(result) or "EUR" in str(result)
 
     @given(
-        st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e6),
+        st.decimals(
+            allow_nan=False, allow_infinity=False,
+            min_value=Decimal("0"), max_value=Decimal("1000000"),
+        ),
         st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF", "BHD"]),
     )
     def test_currency_format_pattern_exception_property(
-        self, value: float, currency: str
+        self, value: Decimal, currency: str
     ) -> None:
         """Property: currency_format succeeds even when metadata extraction fails."""
         event(f"currency={currency}")
@@ -552,12 +558,15 @@ class TestComprehensiveEdgeCases:
         assert len(result) > 0
 
     @given(
-        st.floats(allow_nan=False, allow_infinity=False, min_value=-1e8, max_value=1e8),
+        st.decimals(
+            allow_nan=False, allow_infinity=False,
+            min_value=Decimal("-100000000"), max_value=Decimal("100000000"),
+        ),
         st.integers(min_value=0, max_value=6),
         st.integers(min_value=0, max_value=6),
     )
     def test_number_format_min_max_fraction_relationship(
-        self, value: float, min_frac: int, max_frac: int
+        self, value: Decimal, min_frac: int, max_frac: int
     ) -> None:
         """Property: number_format handles min/max fraction digit relationship correctly."""
         # Ensure min <= max
@@ -598,10 +607,13 @@ class TestComprehensiveEdgeCases:
     @given(
         st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF"]),
         st.sampled_from(["symbol", "code", "name"]),
-        st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e6),
+        st.decimals(
+            allow_nan=False, allow_infinity=False,
+            min_value=Decimal("0"), max_value=Decimal("1000000"),
+        ),
     )
     def test_currency_format_display_style_consistency(
-        self, currency: str, display: str, value: float
+        self, currency: str, display: str, value: Decimal
     ) -> None:
         """Property: currency_format with same parameters produces consistent results."""
         event(f"currency={currency}")
@@ -692,21 +704,6 @@ class TestDictFunctionsRejected:
 class TestNaNPluralHandling:
     """NaN and Infinity values fall through to 'other' plural category."""
 
-    def test_float_nan_returns_other(self) -> None:
-        """float('nan') returns 'other' plural category."""
-        result = select_plural_category(float("nan"), "en_US")
-        assert result == "other"
-
-    def test_float_inf_returns_other(self) -> None:
-        """float('inf') returns 'other' plural category."""
-        result = select_plural_category(float("inf"), "en_US")
-        assert result == "other"
-
-    def test_float_neg_inf_returns_other(self) -> None:
-        """float('-inf') returns 'other' plural category."""
-        result = select_plural_category(float("-inf"), "en_US")
-        assert result == "other"
-
     def test_decimal_nan_returns_other(self) -> None:
         """Decimal('NaN') returns 'other' plural category."""
         result = select_plural_category(Decimal("NaN"), "en_US")
@@ -715,6 +712,11 @@ class TestNaNPluralHandling:
     def test_decimal_inf_returns_other(self) -> None:
         """Decimal('Infinity') returns 'other' plural category."""
         result = select_plural_category(Decimal("Infinity"), "en_US")
+        assert result == "other"
+
+    def test_decimal_neg_inf_returns_other(self) -> None:
+        """Decimal('-Infinity') returns 'other' plural category."""
+        result = select_plural_category(Decimal("-Infinity"), "en_US")
         assert result == "other"
 
     def test_normal_numbers_still_work(self) -> None:
@@ -733,6 +735,6 @@ class TestNaNPluralHandling:
             "}"
         )
         result, _errors = bundle.format_pattern(
-            "msg", {"count": float("nan")}
+            "msg", {"count": Decimal("NaN")}
         )
         assert "many items" in result

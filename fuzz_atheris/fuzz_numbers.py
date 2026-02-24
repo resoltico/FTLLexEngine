@@ -6,9 +6,9 @@
 # FUZZ_PLUGIN_HEADER_END
 """Numeric Parser Unit Fuzzer (Atheris).
 
-Targets: ftllexengine.parsing.numbers (parse_number, parse_decimal)
+Targets: ftllexengine.parsing.numbers (parse_decimal)
 
-Concern boundary: This fuzzer targets locale-aware numeric parsing -- float and
+Concern boundary: This fuzzer targets locale-aware numeric parsing --
 decimal extraction with CLDR-compliant grouping/decimal separators across locales.
 This is distinct from the currency fuzzer (parse_currency with symbol resolution),
 runtime fuzzer (resolver/bundle/cache stack), OOM fuzzer (parser AST explosion),
@@ -76,8 +76,6 @@ import atheris  # noqa: E402  # pylint: disable=C0412,C0413
 class NumbersMetrics:
     """Domain-specific metrics for numbers fuzzer."""
 
-    float_successes: int = 0
-    float_failures: int = 0
     decimal_successes: int = 0
     decimal_failures: int = 0
 
@@ -143,7 +141,7 @@ _state = BaseFuzzerState(
     checkpoint_interval=500,
     seed_corpus_max_size=500,
     fuzzer_name="numbers",
-    fuzzer_target="parse_number, parse_decimal (locale-aware numeric parsing)",
+    fuzzer_target="parse_decimal (locale-aware numeric parsing)",
     pattern_intended_weights={
         name: float(weight) for name, weight in _PATTERN_WEIGHTS
     },
@@ -157,8 +155,6 @@ _REPORT_FILENAME = "fuzz_numbers_report.json"
 def _build_stats_dict() -> dict[str, Any]:
     """Build complete stats dictionary including domain metrics."""
     stats = build_base_stats_dict(_state)
-    stats["float_successes"] = _domain.float_successes
-    stats["float_failures"] = _domain.float_failures
     stats["decimal_successes"] = _domain.decimal_successes
     stats["decimal_failures"] = _domain.decimal_failures
     return stats
@@ -183,7 +179,7 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.diagnostics.errors import FrozenFluentError
-    from ftllexengine.parsing.numbers import parse_decimal, parse_number
+    from ftllexengine.parsing.numbers import parse_decimal
 
 
 # --- Input Generation ---
@@ -329,7 +325,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
 # --- Main Entry Point ---
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912
+def test_one_input(data: bytes) -> None:
     """Atheris entry point: Test locale-aware number parsing."""
     # Initialize memory baseline on first iteration
     if _state.iterations == 0:
@@ -361,14 +357,6 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912
         return
 
     try:
-        # Test parse_number (float)
-        res_f, _ = parse_number(input_str, locale)
-        if res_f is not None:
-            _domain.float_successes += 1
-        else:
-            _domain.float_failures += 1
-
-        # Test parse_decimal (Decimal)
         res_d, _ = parse_decimal(input_str, locale)
         if res_d is not None:
             _domain.decimal_successes += 1
@@ -438,7 +426,7 @@ def main() -> None:
 
     print_fuzzer_banner(
         title="Numeric Parser Unit Fuzzer (Atheris)",
-        target="ftllexengine.parsing.numbers (parse_number, parse_decimal)",
+        target="ftllexengine.parsing.numbers (parse_decimal)",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
         extra_lines=[

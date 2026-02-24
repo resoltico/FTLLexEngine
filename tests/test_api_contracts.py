@@ -94,12 +94,10 @@ class TestTypeGuardNoneAcceptanceContract:
             is_valid_date,
             is_valid_datetime,
             is_valid_decimal,
-            is_valid_number,
         )
 
         guards: list[Callable[..., bool]] = [
             is_valid_decimal,
-            is_valid_number,
             is_valid_currency,
             is_valid_date,
             is_valid_datetime,
@@ -117,7 +115,6 @@ class TestTypeGuardNoneAcceptanceContract:
 
         guard_names = [
             "is_valid_decimal",
-            "is_valid_number",
             "is_valid_currency",
             "is_valid_date",
             "is_valid_datetime",
@@ -148,12 +145,10 @@ class TestTypeGuardNoneAcceptanceContract:
             is_valid_date,
             is_valid_datetime,
             is_valid_decimal,
-            is_valid_number,
         )
 
         event(f"value={value}")
         assert is_valid_decimal(value) is False
-        assert is_valid_number(value) is False
         assert is_valid_currency(value) is False
         assert is_valid_date(value) is False
         assert is_valid_datetime(value) is False
@@ -319,12 +314,10 @@ class TestApiReturnTypeConsistency:
             parse_date,
             parse_datetime,
             parse_decimal,
-            parse_number,
         )
 
         parse_funcs = [
             (parse_decimal, "invalid", "en_US"),
-            (parse_number, "invalid", "en_US"),
             (parse_currency, "invalid", "en_US"),
             (parse_date, "invalid", "en_US"),
             (parse_datetime, "invalid", "en_US"),
@@ -396,12 +389,10 @@ class TestFunctionSignatureStability:
             is_valid_date,
             is_valid_datetime,
             is_valid_decimal,
-            is_valid_number,
         )
 
         guards = [
             is_valid_decimal,
-            is_valid_number,
             is_valid_currency,
             is_valid_date,
             is_valid_datetime,

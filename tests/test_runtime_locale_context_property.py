@@ -8,7 +8,6 @@ Python 3.13+.
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -149,12 +148,6 @@ class TestFormatNumberProperties:
                 min_value=-1_000_000_000,
                 max_value=1_000_000_000,
             ),
-            st.floats(
-                min_value=-1_000_000_000.0,
-                max_value=1_000_000_000.0,
-                allow_nan=False,
-                allow_infinity=False,
-            ),
             st.decimals(
                 min_value=Decimal("-1000000000"),
                 max_value=Decimal("1000000000"),
@@ -165,10 +158,10 @@ class TestFormatNumberProperties:
         locale=st.sampled_from(COMMON_LOCALES),
     )
     @example(value=0, locale="en-US")
-    @example(value=1234.5, locale="de-DE")
+    @example(value=Decimal("1234.5"), locale="de-DE")
     @example(value=Decimal("999.99"), locale="fr-FR")
     def test_format_number_type_safety(
-        self, value: int | float | Decimal, locale: str
+        self, value: int | Decimal, locale: str
     ) -> None:
         """format_number() always returns non-empty string (property: type safety).
 
@@ -182,8 +175,6 @@ class TestFormatNumberProperties:
         """
         if isinstance(value, int):
             event("value_type=int")
-        elif isinstance(value, float):
-            event("value_type=float")
         else:
             event("value_type=Decimal")
 
@@ -211,29 +202,34 @@ class TestFormatNumberProperties:
 
     @given(
         value=st.one_of(
-            st.floats(min_value=-1e10, max_value=1e10),
-            st.just(float("inf")),
-            st.just(float("-inf")),
-            st.just(float("nan")),
+            st.decimals(
+                min_value=Decimal("-1e10"),
+                max_value=Decimal("1e10"),
+                allow_nan=False,
+                allow_infinity=False,
+            ),
+            st.just(Decimal("Infinity")),
+            st.just(Decimal("-Infinity")),
+            st.just(Decimal("NaN")),
         )
     )
-    @example(value=float("inf"))
-    @example(value=float("-inf"))
-    @example(value=float("nan"))
+    @example(value=Decimal("Infinity"))
+    @example(value=Decimal("-Infinity"))
+    @example(value=Decimal("NaN"))
     def test_format_number_special_values_property(
-        self, value: float
+        self, value: Decimal
     ) -> None:
-        """format_number() handles special float values (property: robustness).
+        """format_number() handles special Decimal values (property: robustness).
 
-        Property: For all special values v in {inf, -inf, nan, normal},
+        Property: For all special values v in {Infinity, -Infinity, NaN, normal},
         format_number(v) returns non-empty string without exception.
 
         Events emitted:
         - special_value={type}: Special value type
         """
-        if math.isnan(value):
+        if value.is_nan():
             event("special_value=nan")
-        elif math.isinf(value):
+        elif value.is_infinite():
             if value > 0:
                 event("special_value=positive_infinity")
             else:
@@ -284,7 +280,7 @@ class TestFormatNumberProperties:
 
         ctx = LocaleContext.create("en-US")
         result = ctx.format_number(
-            123.456789,
+            Decimal("123.456789"),
             minimum_fraction_digits=minimum,
             maximum_fraction_digits=maximum,
         )
@@ -316,7 +312,7 @@ class TestFormatNumberProperties:
             ValueError, match=r"minimum_fraction_digits"
         ):
             ctx.format_number(
-                123.45, minimum_fraction_digits=minimum
+                Decimal("123.45"), minimum_fraction_digits=minimum
             )
 
     @given(
@@ -343,7 +339,7 @@ class TestFormatNumberProperties:
             ValueError, match=r"maximum_fraction_digits"
         ):
             ctx.format_number(
-                123.45, maximum_fraction_digits=maximum
+                Decimal("123.45"), maximum_fraction_digits=maximum
             )
 
     @given(
@@ -382,7 +378,7 @@ class TestFormatNumberProperties:
             ValueError, match=r"minimum_fraction_digits"
         ):
             ctx.format_number(
-                42.0, minimum_fraction_digits=value
+                Decimal("42"), minimum_fraction_digits=value
             )
 
     @given(
@@ -421,7 +417,7 @@ class TestFormatNumberProperties:
             ValueError, match=r"maximum_fraction_digits"
         ):
             ctx.format_number(
-                42.0, maximum_fraction_digits=value
+                Decimal("42"), maximum_fraction_digits=value
             )
 
 
@@ -523,12 +519,6 @@ class TestFormatCurrencyProperties:
     @given(
         value=st.one_of(
             st.integers(min_value=0, max_value=1_000_000),
-            st.floats(
-                min_value=0.0,
-                max_value=1_000_000.0,
-                allow_nan=False,
-                allow_infinity=False,
-            ),
             st.decimals(
                 min_value=Decimal("0"),
                 max_value=Decimal("1000000"),
@@ -542,14 +532,14 @@ class TestFormatCurrencyProperties:
         locale=st.sampled_from(COMMON_LOCALES[:5]),
     )
     @example(value=0, currency="USD", locale="en-US")
-    @example(value=123.45, currency="EUR", locale="de-DE")
+    @example(value=Decimal("123.45"), currency="EUR", locale="de-DE")
     @example(
         value=Decimal("999.99"),
         currency="JPY", locale="ja-JP",
     )
     def test_format_currency_type_safety(
         self,
-        value: int | float | Decimal,
+        value: int | Decimal,
         currency: str,
         locale: str,
     ) -> None:
@@ -565,8 +555,6 @@ class TestFormatCurrencyProperties:
         """
         if isinstance(value, int):
             event("value_type=int")
-        elif isinstance(value, float):
-            event("value_type=float")
         else:
             event("value_type=Decimal")
 

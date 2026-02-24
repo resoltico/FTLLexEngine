@@ -1407,7 +1407,7 @@ msg = { $count ->
 
         Regression test for SEM-VALIDATOR-PRECISION-001.
         Validator should use NumberLiteral.raw (original string) for comparison,
-        not NumberLiteral.value (float), to preserve precision.
+        not NumberLiteral.value (Decimal), to preserve precision.
         This matches resolver behavior.
         """
         parser = FluentParserV1()
@@ -1422,8 +1422,8 @@ msg = { $x ->
         result = validate(resource)
 
         # These keys should NOT be treated as duplicates because they have
-        # different source representations, even though they might round to
-        # the same float value. The validator should accept this as valid FTL.
+        # different source representations even though their numeric values are
+        # close. The validator should accept this as valid FTL.
         assert result.is_valid
 
 
@@ -1990,3 +1990,211 @@ goodbye = { welcome } - { -slogan }
         assert "msg:welcome" in bundle._msg_deps["goodbye"]
         assert "term:slogan" in bundle._msg_deps["goodbye"]
         # pylint: enable=protected-access
+
+
+# ============================================================================
+# VALIDATOR BRANCH COVERAGE
+# ============================================================================
+
+
+class TestValidatorBranchCoverage:
+    """Test SemanticValidator branch coverage."""
+
+    def test_validate_junk_entry_passthrough(self) -> None:
+        """Junk entry in validation passes through without error."""
+        junk = Junk(content="invalid")
+        resource = Resource(entries=(junk,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result is not None
+
+    def test_validate_comment_entry_passthrough(self) -> None:
+        """Comment entry in validation passes through successfully."""
+        comment = Comment(content="This is a comment", type=CommentType.COMMENT)
+        resource = Resource(entries=(comment,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result.is_valid
+
+    def test_validate_message_without_value(self) -> None:
+        """Message with value=None and attributes validates without crash."""
+        attr = Attribute(
+            id=Identifier("hint"),
+            value=Pattern(elements=(TextElement("Hint text"),)),
+        )
+        message = Message(
+            id=Identifier("noValue"),
+            value=None,
+            attributes=(attr,),
+        )
+        resource = Resource(entries=(message,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result is not None
+
+
+class TestTermWithoutValueRejected:
+    """Term with None value is rejected at construction time by __post_init__."""
+
+    def test_term_without_value_via_manual_ast(self) -> None:
+        """Term constructor raises ValueError when value is None."""
+        with pytest.raises(ValueError, match="Term must have a value pattern"):
+            Term(
+                id=Identifier(name="empty-term"),
+                value=None,  # type: ignore[arg-type]
+                attributes=(),
+            )
+
+
+class TestPlaceableExpressionValidation:
+    """Validator processes the expression inside a Placeable."""
+
+    def test_placeable_expression_validation(self) -> None:
+        """Validation processes Placeable's inner expression (hits validate_expression path)."""
+        ftl = """
+message = Text { $variable } more text
+"""
+        resource = FluentParserV1().parse(ftl)
+        result = validate(resource)
+
+        assert result.is_valid
+
+
+class TestDuplicateNamedArguments:
+    """Validator detects duplicate named argument names in function calls."""
+
+    def test_duplicate_named_arguments(self) -> None:
+        """Function with duplicate named arg names produces validation annotation."""
+        func_ref = FunctionReference(
+            id=Identifier(name="NUMBER"),
+            arguments=CallArguments(
+                positional=(NumberLiteral(value=42, raw="42"),),
+                named=(
+                    NamedArgument(
+                        name=Identifier(name="minimumFractionDigits"),
+                        value=NumberLiteral(value=2, raw="2"),
+                    ),
+                    NamedArgument(
+                        name=Identifier(name="minimumFractionDigits"),  # Duplicate
+                        value=NumberLiteral(value=3, raw="3"),
+                    ),
+                ),
+            ),
+        )
+
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(elements=(Placeable(expression=func_ref),)),
+            attributes=(),
+            comment=None,
+            span=(0, 0),  # type: ignore[arg-type]
+        )
+
+        resource = Resource(entries=(msg,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert len(result.annotations) > 0 or not result.is_valid
+
+
+class TestSelectExpressionNoVariants:
+    """SelectExpression with zero variants is rejected by __post_init__."""
+
+    def test_select_expression_no_variants(self) -> None:
+        """SelectExpression constructor raises ValueError when variants is empty."""
+        with pytest.raises(ValueError, match="SelectExpression requires at least one variant"):
+            SelectExpression(
+                selector=VariableReference(id=Identifier(name="count")),
+                variants=(),
+            )
+
+
+class TestNestedPlaceableValidation:
+    """Validator processes nested Placeables (Placeable as expression of Placeable)."""
+
+    def test_nested_placeable_validation(self) -> None:
+        """Validator traverses nested Placeables without error."""
+        inner_placeable = Placeable(
+            expression=VariableReference(id=Identifier(name="count"))
+        )
+        outer_placeable = Placeable(expression=inner_placeable)
+
+        msg = Message(
+            id=Identifier(name="test"),
+            value=Pattern(elements=(outer_placeable,)),
+            attributes=(),
+            comment=None,
+            span=(0, 0),  # type: ignore[arg-type]
+        )
+
+        resource = Resource(entries=(msg,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result.is_valid
+
+
+class TestValidatorBranchCoverageExtended:
+    """Extended validator branch coverage tests."""
+
+    def test_validate_term_with_attributes(self) -> None:
+        """Validator handles term with attributes without error."""
+        term = Term(
+            id=Identifier("brand"),
+            value=Pattern(elements=(TextElement("Firefox"),)),
+            attributes=(
+                Attribute(
+                    id=Identifier("gender"),
+                    value=Pattern(elements=(TextElement("m"),)),
+                ),
+            ),
+        )
+        resource = Resource(entries=(term,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result is not None
+
+    def test_validate_message_with_select_in_attribute(self) -> None:
+        """Validator processes message with SelectExpression in attribute."""
+        select = SelectExpression(
+            selector=VariableReference(id=Identifier("count")),
+            variants=(
+                Variant(
+                    key=Identifier("one"),
+                    value=Pattern(elements=(TextElement("One"),)),
+                    default=False,
+                ),
+                Variant(
+                    key=Identifier("other"),
+                    value=Pattern(elements=(TextElement("Other"),)),
+                    default=True,
+                ),
+            ),
+        )
+
+        message = Message(
+            id=Identifier("msg"),
+            value=Pattern(elements=(TextElement("Main"),)),
+            attributes=(
+                Attribute(
+                    id=Identifier("count"),
+                    value=Pattern(elements=(Placeable(expression=select),)),
+                ),
+            ),
+        )
+        resource = Resource(entries=(message,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result is not None

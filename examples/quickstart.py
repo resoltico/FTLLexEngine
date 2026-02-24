@@ -11,6 +11,7 @@ always check errors and log/report translation issues.
 """
 
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
 from ftllexengine import FluentBundle
@@ -147,7 +148,7 @@ price = Price: { NUMBER($amount, minimumFractionDigits: 2) } EUR
 discount = Discount: { NUMBER($percent, maximumFractionDigits: 0) }%
 """)
 
-result, _ = bundle.format_pattern("price", {"amount": 19.5})
+result, _ = bundle.format_pattern("price", {"amount": Decimal("19.5")})
 print(result)
 # Output: Price: 19.50 EUR
 
@@ -155,7 +156,7 @@ result, _ = bundle.format_pattern("price", {"amount": 100})
 print(result)
 # Output: Price: 100.00 EUR
 
-result, _ = bundle.format_pattern("discount", {"percent": 15.75})
+result, _ = bundle.format_pattern("discount", {"percent": Decimal("15.75")})
 print(result)
 # Output: Discount: 16%
 
@@ -331,12 +332,12 @@ transaction = { $type } of { NUMBER($amount, minimumFractionDigits: 2) } on { $d
 """)
 
 # Format with financial values
-result, _ = financial_bundle.format_pattern("balance", {"amount": 12345.67})
+result, _ = financial_bundle.format_pattern("balance", {"amount": Decimal("12345.67")})
 print(f"[FINANCIAL] {result}")
 
 result, _ = financial_bundle.format_pattern("transaction", {
     "type": "Deposit",
-    "amount": 500.00,
+    "amount": Decimal("500.00"),
     "date": "2026-01-21",
 })
 print(f"[FINANCIAL] {result}")

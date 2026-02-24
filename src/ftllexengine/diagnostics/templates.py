@@ -564,30 +564,6 @@ class ErrorTemplate:
     # =========================================================================
 
     @staticmethod
-    def parse_number_failed(
-        value: str,
-        locale_code: str,
-        reason: str,
-    ) -> Diagnostic:
-        """Number parsing failed.
-
-        Args:
-            value: The input string that failed to parse
-            locale_code: The locale used for parsing
-            reason: The reason parsing failed
-
-        Returns:
-            Diagnostic for PARSE_NUMBER_FAILED
-        """
-        msg = f"Failed to parse number '{value}' for locale '{locale_code}': {reason}"
-        return Diagnostic(
-            code=DiagnosticCode.PARSE_NUMBER_FAILED,
-            message=msg,
-            span=None,
-            hint="Check that the number format matches the locale's conventions",
-        )
-
-    @staticmethod
     def parse_decimal_failed(
         value: str,
         locale_code: str,

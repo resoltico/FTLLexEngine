@@ -92,7 +92,7 @@ class TestParseDateHypothesis:
     @given(
         value=st.one_of(
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.lists(st.integers()),
             st.dictionaries(st.text(), st.integers()),
         ),
@@ -334,7 +334,7 @@ class TestParseDatetimeHypothesis:
     @given(
         value=st.one_of(
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.lists(st.integers()),
             st.dictionaries(st.text(), st.integers()),
         ),

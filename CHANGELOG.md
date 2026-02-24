@@ -10,6 +10,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.130.0] - 2026-02-24
+
+### Changed (BREAKING)
+
+- **`float` removed from `FluentValue` — hard architectural break** (ARCH-FLUENT-VALUE-NO-FLOAT-001):
+  - `FluentValue` previously included `float` in its union type, admitting IEEE 754 floating-point
+    values as locale-aware formatting inputs; IEEE 754 arithmetic introduces representational error
+    (e.g., `0.1 + 0.2 != 0.3`) that is fundamentally incompatible with financial-grade applications
+    requiring exact decimal semantics; the type annotation `float` in `FluentValue` created a false
+    guarantee — accepting a value that could not be formatted with the precision its caller expected
+  - `FluentValue` is now `str | int | bool | Decimal | datetime | date | FluentNumber | None |
+    Sequence["FluentValue"] | Mapping[str, "FluentValue"]`; `float` is absent from the union;
+    callers that previously passed `float` literals (e.g., `{"price": 19.99}`) must use
+    `Decimal` (e.g., `{"price": Decimal("19.99")}`)
+  - `HashableValue` (the type alias in `IntegrityCache._make_hashable`) had `float` removed;
+    the `float()` match branch in `_make_hashable` (which used `math.isnan()` to canonicalize
+    NaN floats to a sentinel string) was removed entirely; `import math` was removed from
+    `runtime/cache.py` because it was only needed by that branch; passing a `float` to
+    `_make_hashable` now raises `TypeError: Unknown type in cache key: float`
+  - `LocaleContext.format_number` and `format_currency` signatures changed: `int | float | Decimal`
+    → `int | Decimal` throughout
+  - `select_plural_category` signature changed: `int | float | Decimal | FluentNumber`
+    → `int | Decimal | FluentNumber`
+  - Location: `runtime/cache.py`, `runtime/locale_context.py`, `runtime/plural_rules.py`,
+    `runtime/function_bridge.py` (`FluentValue`, `HashableValue`), plus all callers in
+    `tests/` and `examples/`
+
+- **`parse_number()` removed from `parsing/numbers.py`** (ARCH-PARSE-NUMBER-REMOVE-001):
+  - `parse_number(text, locale)` returned `float | None`, conflating "parse as number" with
+    "produce a float" — both halves of this contract are wrong; locale-aware number parsing
+    already exists in `parse_decimal()` (returns `Decimal`); returning `float` from a parsing
+    function violates the no-float contract; the function was also unused outside of tests
+  - Removed `parse_number(text: str, locale: str) -> float | None` from `parsing/numbers.py`;
+    removed the corresponding re-export from `parsing/__init__.py`
+  - `is_valid_number(text, locale)` in `parsing/guards.py` relied on `parse_number`; removed it;
+    removed the corresponding re-export from `parsing/__init__.py`
+  - `PARSE_NUMBER_FAILED = 4001` removed from `diagnostics/codes.py`; `parse_number_failed()`
+    factory removed from `diagnostics/templates.py`
+  - Location: `parsing/numbers.py`, `parsing/guards.py`, `parsing/__init__.py`,
+    `diagnostics/codes.py`, `diagnostics/templates.py`
+
 ## [0.129.0] - 2026-02-23
 
 ### Changed (BREAKING)
@@ -4401,6 +4442,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.130.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.130.0
 [0.129.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.129.0
 [0.128.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.128.0
 [0.127.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.127.0

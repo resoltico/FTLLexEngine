@@ -10,6 +10,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import event, given, settings
 
@@ -180,10 +182,10 @@ class TestResolutionBehavioralContracts:
     @given(args=resolver_mixed_args())
     @settings(max_examples=50)
     def test_format_pattern_always_returns_str_tuple(
-        self, args: dict[str, str | int | float]
+        self, args: dict[str, str | int | Decimal]
     ) -> None:
         """Property: format_pattern always returns (str, tuple), never raises."""
-        has_numeric = any(isinstance(v, (int, float)) for v in args.values())
+        has_numeric = any(isinstance(v, (int, Decimal)) for v in args.values())
         arg_kind = "numeric" if has_numeric else "strings"
         event(f"arg_kind={arg_kind}")
         bundle = FluentBundle("en")

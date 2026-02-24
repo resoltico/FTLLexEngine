@@ -7,6 +7,8 @@ Includes round-trip, metamorphic, structural, and malformed-input properties.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from hypothesis import assume, event, example, given, settings
 from hypothesis import strategies as st
 
@@ -47,7 +49,7 @@ safe_text = st.text(
 
 # Numbers for numeric literals - remove arbitrary bounds
 numbers = st.integers()
-decimals = st.floats(
+decimals = st.decimals(
     allow_nan=False,
     allow_infinity=False,
 )
@@ -1032,23 +1034,28 @@ class TestNumberLiteralParsing:
 
     @given(decimal=decimals)
     @settings(max_examples=150)
-    def test_decimal_literal(self, decimal: float) -> None:
+    def test_decimal_literal(self, decimal: Decimal) -> None:
         """PROPERTY: Decimal literals parse correctly."""
-        source = f"msg = {{ {decimal} }}"
+        # Use fixed-point notation to avoid scientific notation in FTL source
+        num_str = format(decimal, "f")
+        # Filter out strings that are too long for the parser
+        assume(len(num_str) <= 50)
+        source = f"msg = {{ {num_str} }}"
         parser = FluentParserV1()
         resource = parser.parse(source)
 
         assert resource is not None
 
         # Emit events for HypoFuzz guidance
-        if decimal < 0:
+        if decimal < Decimal("0"):
             event("decimal_sign=negative")
-        elif decimal == 0.0:
+        elif decimal == Decimal("0"):
             event("decimal_sign=zero")
         else:
             event("decimal_sign=positive")
-        # Check if it's a whole number float
-        if decimal == int(decimal):
+        # Check if it's a whole number decimal (use str to avoid overflow on huge Decimals)
+        _, _, frac_part = num_str.lstrip("-").partition(".")
+        if not frac_part or all(c == "0" for c in frac_part):
             event("decimal_type=whole")
         else:
             event("decimal_type=fractional")

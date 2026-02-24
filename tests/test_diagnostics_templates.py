@@ -347,18 +347,6 @@ class TestParsingTemplates:
     """Templates for bi-directional parsing errors."""
 
     @given(val=_short_text, locale=_locale_codes, reason=_short_text)
-    def test_parse_number_failed(
-        self, val: str, locale: str, reason: str
-    ) -> None:
-        """parse_number_failed embeds value, locale, and reason."""
-        d = ErrorTemplate.parse_number_failed(val, locale, reason)
-        assert d.code == DiagnosticCode.PARSE_NUMBER_FAILED
-        assert val in d.message
-        assert locale in d.message
-        assert reason in d.message
-        event("template=parse_number_failed")
-
-    @given(val=_short_text, locale=_locale_codes, reason=_short_text)
     def test_parse_decimal_failed(
         self, val: str, locale: str, reason: str
     ) -> None:
@@ -494,7 +482,6 @@ class TestTemplateStructuralInvariants:
         lambda: ErrorTemplate.pattern_invalid("NUMBER", "#,##0", "syntax"),
         lambda: ErrorTemplate.unknown_expression("FooExpr"),
         lambda: ErrorTemplate.unexpected_eof(42),
-        lambda: ErrorTemplate.parse_number_failed("abc", "en_US", "not a number"),
         lambda: ErrorTemplate.parse_decimal_failed("abc", "de_DE", "invalid"),
         lambda: ErrorTemplate.parse_date_failed("abc", "en_US", "invalid"),
         lambda: ErrorTemplate.parse_datetime_failed("abc", "en_US", "invalid"),
@@ -529,3 +516,21 @@ class TestTemplateStructuralInvariants:
         for factory in self._all_factories:
             d = factory()
             assert d.span is None, f"Unexpected span from {factory}"
+
+
+# ============================================================================
+# CURRENCY SYMBOL UNKNOWN TEMPLATE COVERAGE
+# ============================================================================
+
+
+class TestDiagnosticsTemplatesCoverage:
+    """Coverage for ErrorTemplate.parse_currency_symbol_unknown factory."""
+
+    def test_parse_currency_symbol_unknown_template(self) -> None:
+        """parse_currency_symbol_unknown produces correct diagnostic structure."""
+        diagnostic = ErrorTemplate.parse_currency_symbol_unknown("XYZ", "XYZ100.50")
+
+        assert diagnostic.code == DiagnosticCode.PARSE_CURRENCY_SYMBOL_UNKNOWN
+        assert "Unknown currency symbol" in diagnostic.message
+        assert "XYZ" in diagnostic.message
+        assert diagnostic.hint is not None

@@ -125,16 +125,16 @@ class ResolutionContext:
         object pooling is not used to avoid synchronization overhead.
 
     Attributes:
-        stack: Resolution stack for cycle detection (message keys being resolved)
         max_depth: Maximum resolution depth (prevents stack overflow)
         max_expression_depth: Maximum expression nesting depth
         max_expansion_size: Maximum total characters in resolved output (DoS prevention)
-        _seen: O(1) membership set for cycle detection (internal, not init-configurable)
-        _total_chars: Running count of resolved characters (internal)
-        _expression_guard: DepthGuard for expression depth tracking (internal)
+        _stack: Mutable resolution stack for cycle detection (private; use push/pop/resolution_path)
+        _seen: O(1) membership set for cycle detection (private)
+        _total_chars: Running count of resolved characters (private)
+        _expression_guard: DepthGuard for expression depth tracking (private)
     """
 
-    stack: list[str] = field(default_factory=list)
+    _stack: list[str] = field(default_factory=list)
     _seen: set[str] = field(init=False, default_factory=set)
     max_depth: int = MAX_DEPTH
     max_expression_depth: int = MAX_DEPTH
@@ -150,12 +150,12 @@ class ResolutionContext:
 
     def push(self, key: str) -> None:
         """Push message key onto resolution stack."""
-        self.stack.append(key)
+        self._stack.append(key)
         self._seen.add(key)
 
     def pop(self) -> str:
         """Pop message key from resolution stack."""
-        key = self.stack.pop()
+        key = self._stack.pop()
         self._seen.remove(key)  # remove() raises KeyError if absent, exposing state corruption
         return key
 
@@ -169,7 +169,7 @@ class ResolutionContext:
     @property
     def depth(self) -> int:
         """Current resolution depth."""
-        return len(self.stack)
+        return len(self._stack)
 
     def is_depth_exceeded(self) -> bool:
         """Check if maximum depth has been exceeded."""
@@ -177,7 +177,17 @@ class ResolutionContext:
 
     def get_cycle_path(self, key: str) -> list[str]:
         """Get the cycle path for error reporting."""
-        return [*self.stack, key]
+        return [*self._stack, key]
+
+    @property
+    def resolution_path(self) -> tuple[str, ...]:
+        """Current resolution stack as an immutable snapshot (read-only).
+
+        Returns an immutable copy of the current resolution path for external
+        use (e.g., error context, diagnostics). Callers must not modify the
+        stack directly; use push() and pop() for all mutations.
+        """
+        return tuple(self._stack)
 
     def track_expansion(self, char_count: int) -> None:
         """Add to running expansion total.

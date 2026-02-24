@@ -5,6 +5,7 @@ per ECMA-402 specification, with automatic conversion to Python snake_case.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from ftllexengine import FluentBundle
 
@@ -16,7 +17,7 @@ class TestNumberCamelCase:
         """NUMBER accepts minimumFractionDigits in camelCase."""
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("price = { NUMBER($amount, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("price", {"amount": 19.5})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("19.5")})
         assert "19.50" in result
         assert errors == ()
 
@@ -24,7 +25,7 @@ class TestNumberCamelCase:
         """NUMBER accepts minimum_fraction_digits in snake_case (backward compat)."""
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("price = { NUMBER($amount, minimum_fraction_digits: 2) }")
-        result, errors = bundle.format_pattern("price", {"amount": 19.5})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("19.5")})
         assert "19.50" in result
         assert errors == ()
 
@@ -32,7 +33,7 @@ class TestNumberCamelCase:
         """NUMBER accepts maximumFractionDigits in camelCase."""
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("percent = { NUMBER($ratio, maximumFractionDigits: 0) }")
-        result, errors = bundle.format_pattern("percent", {"ratio": 42.789})
+        result, errors = bundle.format_pattern("percent", {"ratio": Decimal("42.789")})
         assert "43" in result or "42" in result
         assert errors == ()
 
@@ -42,7 +43,7 @@ class TestNumberCamelCase:
         bundle.add_resource(
             "val = { NUMBER($n, minimumFractionDigits: 2, maximumFractionDigits: 4) }"
         )
-        result, errors = bundle.format_pattern("val", {"n": 123.456})
+        result, errors = bundle.format_pattern("val", {"n": Decimal("123.456")})
         assert "123.456" in result or "123.46" in result
         assert errors == ()
 
@@ -103,8 +104,8 @@ price1 = { NUMBER($val, minimumFractionDigits: 2) }
 price2 = { NUMBER($val, minimum_fraction_digits: 2) }
         """.strip())
 
-        result1, errors1 = bundle.format_pattern("price1", {"val": 42.5})
-        result2, errors2 = bundle.format_pattern("price2", {"val": 42.5})
+        result1, errors1 = bundle.format_pattern("price1", {"val": Decimal("42.5")})
+        result2, errors2 = bundle.format_pattern("price2", {"val": Decimal("42.5")})
 
         # Both should produce identical output
         assert "42.50" in result1
@@ -121,7 +122,7 @@ class TestLocales:
         """camelCase params work with German locale."""
         bundle = FluentBundle("de_DE", use_isolating=False)
         bundle.add_resource("price = { NUMBER($amount, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("price", {"amount": 1234.5})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("1234.5")})
 
         # German formatting
         assert "1" in result
@@ -133,7 +134,7 @@ class TestLocales:
         """camelCase params work with Latvian locale."""
         bundle = FluentBundle("lv_LV", use_isolating=False)
         bundle.add_resource("price = { NUMBER($amount, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("price", {"amount": 1234.5})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("1234.5")})
 
         assert "1" in result
         assert "234" in result
@@ -148,7 +149,7 @@ class TestCustomFunctions:
         """Custom functions receive camelCase parameter conversion."""
 
         def format_currency(
-            amount: float,
+            amount: int | Decimal,
             *,
             currency_code: str = "USD",
         ) -> str:
@@ -160,7 +161,7 @@ class TestCustomFunctions:
         bundle.add_function("CURRENCY", format_currency)
         bundle.add_resource('price = { CURRENCY($amt, currencyCode: "EUR") }')
 
-        result, errors = bundle.format_pattern("price", {"amt": 123.45})
+        result, errors = bundle.format_pattern("price", {"amt": Decimal("123.45")})
         assert "€123.45" in result
         assert errors == ()
 
@@ -172,7 +173,7 @@ class TestEdgeCases:
         """NUMBER works without parameters."""
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("val = { NUMBER($amount) }")
-        result, errors = bundle.format_pattern("val", {"amount": 1234.5})
+        result, errors = bundle.format_pattern("val", {"amount": Decimal("1234.5")})
         assert "1" in result
         assert "234" in result
         assert errors == ()

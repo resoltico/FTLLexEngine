@@ -109,7 +109,6 @@ class DiagnosticCode(Enum):
     PARSE_NESTING_DEPTH_EXCEEDED = 3005  # Nesting depth limit exceeded
 
     # Parsing errors (4000-4999) - Bi-directional localization
-    PARSE_NUMBER_FAILED = 4001
     PARSE_DECIMAL_FAILED = 4002
     PARSE_DATE_FAILED = 4003
     PARSE_DATETIME_FAILED = 4004

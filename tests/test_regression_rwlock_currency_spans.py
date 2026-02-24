@@ -109,14 +109,14 @@ class TestCurrencyReturnsFluentNumber:
         from ftllexengine.runtime.function_bridge import FluentNumber  # noqa: PLC0415
         from ftllexengine.runtime.functions import currency_format  # noqa: PLC0415
 
-        result = currency_format(123.45, "en-US", currency="USD")
+        result = currency_format(Decimal("123.45"), "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
 
     def test_currency_format_has_precision(self) -> None:
         """FluentNumber from CURRENCY has correct precision."""
         from ftllexengine.runtime.functions import currency_format  # noqa: PLC0415
 
-        result = currency_format(123.45, "en-US", currency="USD")
+        result = currency_format(Decimal("123.45"), "en-US", currency="USD")
         assert result.precision == 2
 
     def test_currency_format_jpy_zero_decimals(self) -> None:
@@ -132,7 +132,7 @@ class TestCurrencyReturnsFluentNumber:
 
         # Use en-US locale to avoid RTL markers in currency symbol
         # that interfere with decimal symbol detection
-        result = currency_format(123.456, "en-US", currency="BHD")
+        result = currency_format(Decimal("123.456"), "en-US", currency="BHD")
         assert result.precision == 3
 
 

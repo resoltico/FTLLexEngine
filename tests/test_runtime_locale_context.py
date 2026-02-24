@@ -23,7 +23,7 @@ import sys
 import threading
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal, get_args
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -506,13 +506,13 @@ class TestFormatNumber:
     def test_format_number_en_us_grouping(self) -> None:
         """format_number() formats with grouping for en-US."""
         ctx = LocaleContext.create("en-US")
-        result = ctx.format_number(1234.5, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.5"), use_grouping=True)
         assert "1,234" in result or "1234" in result
 
     def test_format_number_de_de_grouping(self) -> None:
         """format_number() formats with grouping for de-DE."""
         ctx = LocaleContext.create("de-DE")
-        result = ctx.format_number(1234.5, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.5"), use_grouping=True)
         assert "1.234" in result or "1234" in result
 
     def test_format_number_fixed_decimals(self) -> None:
@@ -520,14 +520,14 @@ class TestFormatNumber:
         ctx = LocaleContext.create("en-US")
 
         result = ctx.format_number(
-            1234.5,
+            Decimal("1234.5"),
             minimum_fraction_digits=2,
             maximum_fraction_digits=2,
         )
         assert result == "1,234.50"
 
         result = ctx.format_number(
-            1234.567,
+            Decimal("1234.567"),
             minimum_fraction_digits=0,
             maximum_fraction_digits=0,
         )
@@ -538,7 +538,7 @@ class TestFormatNumber:
         """format_number() with fixed 3 decimal places."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_number(
-            123.4,
+            Decimal("123.4"),
             minimum_fraction_digits=3,
             maximum_fraction_digits=3,
         )
@@ -548,7 +548,7 @@ class TestFormatNumber:
         """format_number() respects custom pattern."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_number(
-            -1234.56, pattern="#,##0.00;(#,##0.00)"
+            Decimal("-1234.56"), pattern="#,##0.00;(#,##0.00)"
         )
         assert "1,234.56" in result or "1234.56" in result
 
@@ -602,7 +602,7 @@ class TestFormatNumber:
 
         ctx = LocaleContext.create("en-US")
         with pytest.raises(FrozenFluentError) as exc_info:
-            ctx.format_number(123.45)
+            ctx.format_number(Decimal("123.45"))
 
         assert (
             exc_info.value.category == ErrorCategory.FORMATTING
@@ -628,7 +628,7 @@ class TestFormatNumberDigitValidation:
             match=r"minimum_fraction_digits must be",
         ):
             ctx.format_number(
-                123.45, minimum_fraction_digits=-1
+                Decimal("123.45"), minimum_fraction_digits=-1
             )
 
     def test_minimum_fraction_digits_exceeds_max_raises(
@@ -645,7 +645,7 @@ class TestFormatNumberDigitValidation:
             match=r"minimum_fraction_digits must be",
         ):
             ctx.format_number(
-                123.45,
+                Decimal("123.45"),
                 minimum_fraction_digits=MAX_FORMAT_DIGITS + 1,
             )
 
@@ -659,7 +659,7 @@ class TestFormatNumberDigitValidation:
             match=r"maximum_fraction_digits must be",
         ):
             ctx.format_number(
-                123.45, maximum_fraction_digits=-1
+                Decimal("123.45"), maximum_fraction_digits=-1
             )
 
     def test_maximum_fraction_digits_exceeds_max_raises(
@@ -676,32 +676,32 @@ class TestFormatNumberDigitValidation:
             match=r"maximum_fraction_digits must be",
         ):
             ctx.format_number(
-                123.45,
+                Decimal("123.45"),
                 maximum_fraction_digits=MAX_FORMAT_DIGITS + 1,
             )
 
 
 class TestFormatNumberSpecialValues:
-    """Test format_number() with special float values."""
+    """Test format_number() with special Decimal values."""
 
     def test_format_number_positive_infinity(self) -> None:
         """format_number() handles positive infinity."""
         ctx = LocaleContext.create("en-US")
-        result = ctx.format_number(float("inf"))
+        result = ctx.format_number(Decimal("Infinity"))
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_format_number_negative_infinity(self) -> None:
         """format_number() handles negative infinity."""
         ctx = LocaleContext.create("en-US")
-        result = ctx.format_number(float("-inf"))
+        result = ctx.format_number(Decimal("-Infinity"))
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_format_number_nan(self) -> None:
         """format_number() handles NaN."""
         ctx = LocaleContext.create("en-US")
-        result = ctx.format_number(float("nan"))
+        result = ctx.format_number(Decimal("NaN"))
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -709,7 +709,7 @@ class TestFormatNumberSpecialValues:
         """format_number() handles infinity with use_grouping."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_number(
-            float("inf"), use_grouping=False
+            Decimal("Infinity"), use_grouping=False
         )
         assert isinstance(result, str)
         assert len(result) > 0
@@ -718,7 +718,7 @@ class TestFormatNumberSpecialValues:
         """format_number() handles NaN with custom pattern."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_number(
-            float("nan"), pattern="#,##0.00"
+            Decimal("NaN"), pattern="#,##0.00"
         )
         assert isinstance(result, str)
         assert len(result) > 0
@@ -868,7 +868,7 @@ class TestFormatCurrency:
         """format_currency() with symbol for en-US."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(
-            123.45, currency="EUR"
+            Decimal("123.45"), currency="EUR"
         )
         assert "123" in result
 
@@ -876,7 +876,7 @@ class TestFormatCurrency:
         """format_currency() with symbol for lv-LV."""
         ctx = LocaleContext.create("lv-LV")
         result = ctx.format_currency(
-            123.45, currency="EUR"
+            Decimal("123.45"), currency="EUR"
         )
         assert "123" in result
 
@@ -884,7 +884,7 @@ class TestFormatCurrency:
         """format_currency() displays currency code."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(
-            123.45,
+            Decimal("123.45"),
             currency="USD",
             currency_display="code",
         )
@@ -895,7 +895,7 @@ class TestFormatCurrency:
         """format_currency() displays currency name."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(
-            123.45,
+            Decimal("123.45"),
             currency="USD",
             currency_display="name",
         )
@@ -907,7 +907,7 @@ class TestFormatCurrency:
         """format_currency() with explicit symbol display."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(
-            123.45,
+            Decimal("123.45"),
             currency="EUR",
             currency_display="symbol",
         )
@@ -917,7 +917,7 @@ class TestFormatCurrency:
         """format_currency() respects custom pattern."""
         ctx = LocaleContext.create("en-US")
         result = ctx.format_currency(
-            1234.56,
+            Decimal("1234.56"),
             currency="USD",
             pattern="#,##0.00 \xa4",
         )
@@ -941,7 +941,7 @@ class TestFormatCurrency:
 
         ctx = LocaleContext.create("en-US")
         with pytest.raises(FrozenFluentError) as exc_info:
-            ctx.format_currency(123.45, currency="USD")
+            ctx.format_currency(Decimal("123.45"), currency="USD")
 
         assert (
             exc_info.value.category == ErrorCategory.FORMATTING
@@ -1073,7 +1073,7 @@ class TestCurrencyPatternFallback:
             ) as mock_logger,
         ):
             result = ctx.format_currency(
-                123.45,
+                Decimal("123.45"),
                 currency="USD",
                 currency_display="code",
             )
@@ -1100,7 +1100,7 @@ class TestCurrencyPatternFallback:
             return_value=mock_obj,
         ):
             result = ctx.format_currency(
-                123.45,
+                Decimal("123.45"),
                 currency="USD",
                 currency_display="code",
             )
@@ -1117,7 +1117,7 @@ class TestCurrencyPatternFallback:
             return_value=None,
         ):
             result = ctx.format_currency(
-                123.45,
+                Decimal("123.45"),
                 currency="USD",
                 currency_display="code",
             )
@@ -1312,9 +1312,289 @@ class TestCurrencyBoundaryValues:
         assert isinstance(result, str)
         assert "$" in result or "USD" in result
 
-    def test_currency_float_1000(self) -> None:
-        """Currency formatting handles float 1000.0."""
+    def test_currency_decimal_1000(self) -> None:
+        """Currency formatting handles Decimal 1000."""
         ctx = LocaleContext.create("en_US")
-        result = ctx.format_currency(1000.0, currency="USD")
+        result = ctx.format_currency(Decimal("1000"), currency="USD")
         assert isinstance(result, str)
         assert "$" in result or "USD" in result
+
+
+# ============================================================================
+# CACHE INFO AND DATETIME PATTERN COVERAGE
+# ============================================================================
+
+
+class TestLocaleContextCoverageExtra:
+    """Test LocaleContext cache_info and datetime formatting branches."""
+
+    def test_cache_info_returns_dict(self) -> None:
+        """cache_info() returns dict with size, max_size, and locales keys."""
+        LocaleContext.clear_cache()
+
+        LocaleContext.create("en-US")
+        LocaleContext.create("de-DE")
+
+        info = LocaleContext.cache_info()
+
+        assert isinstance(info, dict)
+        assert "size" in info
+        assert "max_size" in info
+        assert "locales" in info
+        assert info["size"] == 2
+        locales = info["locales"]
+        assert isinstance(locales, tuple)
+        assert "en_us" in locales or "de_de" in locales
+
+    def test_format_datetime_combined_styles(self) -> None:
+        """format_datetime with both date and time styles produces non-empty string."""
+        ctx = LocaleContext.create("en-US")
+
+        dt = datetime(2024, 6, 15, 14, 30, 0, tzinfo=UTC)
+        result = ctx.format_datetime(dt, date_style="medium", time_style="short")
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_datetime_date_only(self) -> None:
+        """format_datetime with date_style only produces non-empty string."""
+        ctx = LocaleContext.create("en-US")
+
+        dt = datetime(2024, 12, 25, 0, 0, 0, tzinfo=UTC)
+        result = ctx.format_datetime(dt, date_style="long")
+
+        assert isinstance(result, str)
+        assert "2024" in result or "December" in result
+
+
+class TestLocaleContextBranchCoverageExtra:
+    """Additional tests for locale_context formatting branch coverage."""
+
+    def test_format_datetime_with_string_pattern(self) -> None:
+        """format_datetime with both date and time styles covers combined-pattern path."""
+        ctx = LocaleContext.create("en-US")
+
+        dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+
+        result1 = ctx.format_datetime(dt, date_style="short", time_style="short")
+        assert isinstance(result1, str)
+
+        result2 = ctx.format_datetime(dt, date_style="full", time_style="full")
+        assert isinstance(result2, str)
+
+    def test_format_datetime_varied_styles(self) -> None:
+        """All standard datetime style combinations produce non-empty strings."""
+        type _DateTimeStyle = Literal["short", "medium", "long", "full"]
+        styles: tuple[_DateTimeStyle, ...] = get_args(_DateTimeStyle)
+
+        ctx = LocaleContext.create("en-US")
+        dt = datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC)
+
+        for date_style in styles:
+            for time_style in styles:
+                result = ctx.format_datetime(
+                    dt, date_style=date_style, time_style=time_style
+                )
+                assert isinstance(result, str)
+                assert len(result) > 0
+
+
+class TestLocaleContextCacheRaceCondition:
+    """LocaleContext cache handles the double-check locking pattern."""
+
+    def test_cache_hit_in_double_check_pattern(self) -> None:
+        """Cache hit during the inner lock check returns the cached instance."""
+        LocaleContext.clear_cache()
+
+        locale_code = "en_US"
+        ctx = LocaleContext.create(locale_code)
+
+        cache_key = locale_code.lower().replace("-", "_")
+        with LocaleContext._cache_lock:  # pylint: disable=protected-access
+            LocaleContext._cache.clear()  # pylint: disable=protected-access
+            LocaleContext._cache[cache_key] = ctx  # pylint: disable=protected-access
+
+        result = LocaleContext.create(locale_code)
+        assert result is ctx
+
+        LocaleContext.clear_cache()
+
+
+class TestLocaleContextDatetimePattern:
+    """LocaleContext formats datetime values using the locale's pattern."""
+
+    def test_datetime_pattern_without_format_method(self) -> None:
+        """format_datetime produces a non-empty string for en_US short styles."""
+        LocaleContext.clear_cache()
+
+        ctx = LocaleContext.create("en_US")
+        dt = datetime(2025, 6, 15, 14, 30, 0, tzinfo=UTC)
+
+        result = ctx.format_datetime(dt, date_style="short", time_style="short")
+        assert result is not None
+        assert len(result) > 0
+
+        LocaleContext.clear_cache()
+
+
+class TestLocaleContextCacheLimitCoverage:
+    """LocaleContext LRU cache eviction at MAX_LOCALE_CACHE_SIZE."""
+
+    def test_cache_at_limit_evicts_lru_entry(self) -> None:
+        """When cache reaches MAX_LOCALE_CACHE_SIZE, LRU entry is evicted on next create."""
+        LocaleContext.clear_cache()
+
+        locales_to_fill = [f"en_TEST{i:04d}" for i in range(MAX_LOCALE_CACHE_SIZE)]
+
+        for locale_code in locales_to_fill:
+            ctx = LocaleContext.create(locale_code)
+            assert ctx is not None
+
+        cache_size = LocaleContext.cache_size()
+        assert cache_size >= MAX_LOCALE_CACHE_SIZE
+
+        size_before = cache_size
+
+        ctx = LocaleContext.create("de_TESTOVERFLOW")
+        assert ctx is not None
+
+        cache_size_after = LocaleContext.cache_size()
+        assert cache_size_after <= MAX_LOCALE_CACHE_SIZE
+        assert cache_size_after <= size_before + 1
+
+        LocaleContext.clear_cache()
+
+
+class TestLocaleContextUnexpectedErrorPropagation:
+    """Unexpected errors propagate instead of being silently caught."""
+
+    def test_format_number_unexpected_error_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RuntimeError in format_number propagates for debugging."""
+        ctx = LocaleContext.create_or_raise("en_US")
+
+        def mock_format_decimal(*_args: object, **_kwargs: object) -> str:
+            msg = "Mocked RuntimeError for testing"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(babel_numbers, "format_decimal", mock_format_decimal)
+
+        with pytest.raises(RuntimeError, match="Mocked RuntimeError"):
+            ctx.format_number(Decimal("123.45"))
+
+    def test_format_currency_unexpected_error_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RuntimeError in format_currency propagates for debugging."""
+        ctx = LocaleContext.create_or_raise("en_US")
+
+        def mock_format_currency(*_args: object, **_kwargs: object) -> str:
+            msg = "Mocked RuntimeError for testing"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(babel_numbers, "format_currency", mock_format_currency)
+
+        with pytest.raises(RuntimeError, match="Mocked RuntimeError"):
+            ctx.format_currency(Decimal("100"), currency="USD")
+
+
+class TestLocaleContextCustomPatternCoverage:
+    """Custom pattern and currency code fallback branches in format_currency."""
+
+    def test_format_currency_with_custom_pattern(self) -> None:
+        """Custom pattern in format_currency is applied to the result."""
+        ctx = LocaleContext.create_or_raise("en_US")
+
+        result = ctx.format_currency(Decimal("1234.56"), currency="USD", pattern="#,##0.00 \xa4")
+
+        assert isinstance(result, str)
+        assert "1,234.56" in result or "1234.56" in result
+
+    def test_format_currency_code_display_fallback(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """format_currency logs debug when locale pattern lacks currency placeholder."""
+        mock_locale = MagicMock()
+        mock_pattern = MagicMock()
+        mock_pattern.pattern = "#,##0.00"  # No currency placeholder (missing \xa4)
+        mock_locale.currency_formats = {"standard": mock_pattern}
+
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_babel_locale = ctx._babel_locale  # pylint: disable=protected-access
+
+        object.__setattr__(ctx, "_babel_locale", mock_locale)
+
+        monkeypatch.setattr(
+            babel_numbers,
+            "format_currency",
+            lambda *_args, **_kwargs: "$100.00",
+        )
+
+        try:
+            with caplog.at_level(logging.DEBUG):
+                result = ctx.format_currency(
+                    Decimal("100"), currency="USD", currency_display="code"
+                )
+
+            assert isinstance(result, str)
+
+            assert any(
+                "lacks placeholder" in record.message
+                for record in caplog.records
+            )
+        finally:
+            object.__setattr__(ctx, "_babel_locale", original_babel_locale)
+
+
+class TestLocaleContextCurrencyCodeFallback:
+    """Currency code display fallback when standard_pattern is None or lacks attributes."""
+
+    def test_format_currency_code_no_standard_pattern(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """format_currency falls through to default when standard_pattern is None."""
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_babel_locale = ctx._babel_locale  # pylint: disable=protected-access
+
+        mock_locale = MagicMock()
+        mock_locale.currency_formats = {"standard": None}
+
+        object.__setattr__(ctx, "_babel_locale", mock_locale)
+
+        monkeypatch.setattr(
+            babel_numbers,
+            "format_currency",
+            lambda *_args, **_kwargs: "$100.00",
+        )
+
+        try:
+            result = ctx.format_currency(Decimal("100"), currency="USD", currency_display="code")
+            assert isinstance(result, str)
+        finally:
+            object.__setattr__(ctx, "_babel_locale", original_babel_locale)
+
+    def test_format_currency_code_pattern_no_attr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """format_currency falls through to default when standard_pattern lacks 'pattern' attr."""
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_babel_locale = ctx._babel_locale  # pylint: disable=protected-access
+
+        mock_locale = MagicMock()
+        mock_pattern = object()  # Plain object with no attributes
+        mock_locale.currency_formats = {"standard": mock_pattern}
+
+        object.__setattr__(ctx, "_babel_locale", mock_locale)
+
+        monkeypatch.setattr(
+            babel_numbers,
+            "format_currency",
+            lambda *_args, **_kwargs: "$100.00",
+        )
+
+        try:
+            result = ctx.format_currency(Decimal("100"), currency="USD", currency_display="code")
+            assert isinstance(result, str)
+        finally:
+            object.__setattr__(ctx, "_babel_locale", original_babel_locale)

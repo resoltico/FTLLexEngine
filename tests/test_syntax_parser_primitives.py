@@ -9,6 +9,8 @@ All ``@given`` tests emit ``event()`` calls for HypoFuzz guidance.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
@@ -249,19 +251,20 @@ class TestParseNumber:
         assert result.value == num_str
 
     @given(
-        n=st.floats(
-            min_value=0.0, max_value=1e10, allow_nan=False,
+        n=st.decimals(
+            min_value=Decimal("0"), max_value=Decimal("10000000000"), allow_nan=False,
+            allow_infinity=False,
         )
     )
-    @example(n=3.14)
-    @example(n=0.001)
-    def test_valid_floats_parse(self, n: float) -> None:
-        """Valid floats within length limits parse successfully."""
-        num_str = str(n)
+    @example(n=Decimal("3.14"))
+    @example(n=Decimal("0.001"))
+    def test_valid_decimals_parse(self, n: Decimal) -> None:
+        """Valid decimal numbers within length limits parse successfully."""
+        num_str = format(n, "f")
         assume("." in num_str)
         assume("e" not in num_str.lower())
         assume(len(num_str) <= _MAX_NUMBER_LENGTH)
-        event(f"boundary=float_len_{min(len(num_str), 20)}")
+        event(f"boundary=decimal_len_{min(len(num_str), 20)}")
         cursor = Cursor(source=num_str, pos=0)
         result = parse_number(cursor)
         assert not isinstance(result, ParseError)
@@ -274,8 +277,8 @@ class TestParseNumber:
         assert not isinstance(result, ParseError)
         assert result.value == "-42"
 
-    def test_negative_float(self) -> None:
-        """Negative floats parse correctly."""
+    def test_negative_decimal(self) -> None:
+        """Negative decimal numbers parse correctly."""
         cursor = Cursor(source="-2.5", pos=0)
         result = parse_number(cursor)
         assert not isinstance(result, ParseError)
@@ -288,8 +291,8 @@ class TestParseNumber:
         assert not isinstance(result, ParseError)
         assert result.value == "0"
 
-    def test_float_with_leading_zero(self) -> None:
-        """Float with leading zero parses correctly."""
+    def test_decimal_with_leading_zero(self) -> None:
+        """Decimal with leading zero parses correctly."""
         cursor = Cursor(source="0.001", pos=0)
         result = parse_number(cursor)
         assert not isinstance(result, ParseError)
@@ -403,16 +406,14 @@ class TestParseNumberValue:
         assert isinstance(result, int)
         assert result == n
 
-    @given(n=st.floats(allow_nan=False, allow_infinity=False))
-    @example(n=3.14)
-    @example(n=-2.5)
+    @given(n=st.decimals(allow_nan=False, allow_infinity=False))
+    @example(n=Decimal("3.14"))
+    @example(n=Decimal("-2.5"))
     def test_decimal_strings_convert_to_decimal(
-        self, n: float,
+        self, n: Decimal,
     ) -> None:
         """Decimal strings convert to Decimal for financial precision."""
-        from decimal import Decimal  # noqa: PLC0415
-
-        num_str = str(n)
+        num_str = format(n, "f")
         assume("." in num_str)
         event(f"boundary=decimal_len_{min(len(num_str), 20)}")
         result = parse_number_value(num_str)

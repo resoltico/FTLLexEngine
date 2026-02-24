@@ -185,28 +185,6 @@ class TestParseDatetimeBabelUnavailable:
             _bc._babel_available = None
 
 
-class TestParseNumberBabelUnavailable:
-    """Test parse_number when Babel is not installed."""
-
-    def test_parse_number_raises_babel_import_error(self) -> None:
-        """parse_number raises BabelImportError when Babel unavailable."""
-        from ftllexengine.parsing.numbers import parse_number
-
-        _bc._babel_available = None
-        mock_import = _make_import_blocker("babel")
-
-        try:
-            with (
-                patch.object(builtins, "__import__", side_effect=mock_import),
-                pytest.raises(BabelImportError) as exc_info,
-            ):
-                parse_number("1,234.56", "en_US")
-
-            assert "parse_number" in str(exc_info.value)
-        finally:
-            _bc._babel_available = None
-
-
 class TestParseDecimalBabelUnavailable:
     """Test parse_decimal when Babel is not installed."""
 

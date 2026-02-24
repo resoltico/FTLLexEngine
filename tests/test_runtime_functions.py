@@ -6,6 +6,7 @@ Covers various parameter combinations and edge cases for locale-aware formatting
 import locale
 from contextlib import suppress
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +17,7 @@ from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import (
     create_default_registry,
     datetime_format,
+    is_builtin_with_locale_requirement,
     number_format,
 )
 
@@ -31,9 +33,9 @@ class TestNumberFunction:
         assert isinstance(result, FluentNumber)
         assert "42" in str(result)
 
-    def test_number_basic_float(self) -> None:
-        """number_format() formats float with decimals."""
-        result = number_format(123.456)
+    def test_number_basic_decimal(self) -> None:
+        """number_format() formats Decimal with decimals."""
+        result = number_format(Decimal("123.456"))
 
         # Should include decimal part
         assert isinstance(result, FluentNumber)
@@ -55,7 +57,7 @@ class TestNumberFunction:
 
     def test_number_with_maximum_fraction_digits(self) -> None:
         """number_format() respects maximumFractionDigits parameter."""
-        result = number_format(123.456789, maximum_fraction_digits=2)
+        result = number_format(Decimal("123.456789"), maximum_fraction_digits=2)
 
         # Should limit decimal places
         assert isinstance(result, FluentNumber)
@@ -86,7 +88,7 @@ class TestNumberFunction:
 
     def test_number_with_negative(self) -> None:
         """number_format() handles negative numbers."""
-        result = number_format(-123.45)
+        result = number_format(Decimal("-123.45"))
 
         # Accept both ASCII hyphen-minus (-) and Unicode minus sign (\u2212)
         # Different locales may use different characters for negative numbers
@@ -103,13 +105,15 @@ class TestNumberFunction:
 
     def test_number_with_very_small_decimal(self) -> None:
         """number_format() handles very small decimal numbers."""
-        result = number_format(0.00001, maximum_fraction_digits=5)
+        result = number_format(Decimal("0.00001"), maximum_fraction_digits=5)
 
         assert isinstance(result, FluentNumber)
 
     def test_number_strips_trailing_zeros_beyond_minimum(self) -> None:
         """number_format() strips trailing zeros beyond minimumFractionDigits."""
-        result = number_format(42.50, minimum_fraction_digits=1, maximum_fraction_digits=2)
+        result = number_format(
+            Decimal("42.50"), minimum_fraction_digits=1, maximum_fraction_digits=2
+        )
 
         # Should keep at least 1 decimal place (minimum)
         # But strip the trailing 0 if minimum is 1
@@ -118,7 +122,10 @@ class TestNumberFunction:
     def test_number_with_combined_parameters(self) -> None:
         """number_format() handles all parameters together."""
         result = number_format(
-            1234.567, minimum_fraction_digits=2, maximum_fraction_digits=4, use_grouping=True
+            Decimal("1234.567"),
+            minimum_fraction_digits=2,
+            maximum_fraction_digits=4,
+            use_grouping=True,
         )
 
         assert isinstance(result, FluentNumber)
@@ -166,7 +173,7 @@ class TestNumberFunctionErrorHandling:
 
         try:
             # Valid input should work fine
-            result = number_format(123.45)
+            result = number_format(Decimal("123.45"))
 
             # Should handle gracefully
             assert isinstance(result, FluentNumber)
@@ -387,7 +394,9 @@ class TestNumberFunctionEdgeCases:
 
     def test_number_with_zero_minimum_and_maximum_digits(self) -> None:
         """number_format() with minimumFractionDigits=0, maximumFractionDigits=0."""
-        result = number_format(123.456, minimum_fraction_digits=0, maximum_fraction_digits=0)
+        result = number_format(
+            Decimal("123.456"), minimum_fraction_digits=0, maximum_fraction_digits=0
+        )
 
         # Should strip all decimals
         assert isinstance(result, FluentNumber)
@@ -396,21 +405,23 @@ class TestNumberFunctionEdgeCases:
     def test_number_minimum_greater_than_maximum(self) -> None:
         """number_format() when minimumFractionDigits > maximumFractionDigits."""
         # This is an edge case - behavior may vary
-        result = number_format(42.5, minimum_fraction_digits=3, maximum_fraction_digits=1)
+        result = number_format(
+            Decimal("42.5"), minimum_fraction_digits=3, maximum_fraction_digits=1
+        )
 
         # Should handle gracefully
         assert isinstance(result, FluentNumber)
 
     def test_number_with_infinity(self) -> None:
-        """number_format() handles infinity."""
-        result = number_format(float("inf"))
+        """number_format() handles Decimal infinity."""
+        result = number_format(Decimal("Infinity"))
 
         # Should return FluentNumber
         assert isinstance(result, FluentNumber)
 
     def test_number_with_nan(self) -> None:
-        """number_format() handles NaN."""
-        result = number_format(float("nan"))
+        """number_format() handles Decimal NaN."""
+        result = number_format(Decimal("NaN"))
 
         # Should return FluentNumber
         assert isinstance(result, FluentNumber)
@@ -425,7 +436,7 @@ class TestNumberFunctionMockedErrors:
         # Note: number_format uses Babel, not locale module, so this mock has no effect
         # The test confirms number_format works normally regardless of locale module state
         with patch("locale.format_string", side_effect=locale.Error("Mock locale error")):
-            result = number_format(123.45)
+            result = number_format(Decimal("123.45"))
 
             # Should return FluentNumber (Babel-based formatting unaffected by mock)
             assert isinstance(result, FluentNumber)
@@ -437,7 +448,7 @@ class TestNumberFunctionMockedErrors:
         # Note: number_format uses Babel, not locale module, so this mock has no effect
         # The test confirms number_format works normally regardless of locale module state
         with patch("locale.format_string", side_effect=RuntimeError("Unexpected error")):
-            result = number_format(42.0)
+            result = number_format(42)
 
             # Should return FluentNumber (Babel-based formatting unaffected by mock)
             assert isinstance(result, FluentNumber)
@@ -530,3 +541,38 @@ class TestDatetimeFunctionMockedErrors:
             pytest.raises(RuntimeError, match="Unexpected error"),
         ):
             datetime_format(test_dt, date_style="medium")
+
+
+# ============================================================================
+# IS_BUILTIN_WITH_LOCALE_REQUIREMENT COVERAGE
+# ============================================================================
+
+
+class TestIsBuiltinWithLocaleRequirement:
+    """is_builtin_with_locale_requirement checks the _ftl_requires_locale attribute."""
+
+    def test_false_when_attribute_not_set(self) -> None:
+        """Returns False for functions that lack the _ftl_requires_locale attribute."""
+
+        def plain_function() -> str:
+            return "test"
+
+        assert is_builtin_with_locale_requirement(plain_function) is False
+
+    def test_false_when_attribute_is_false(self) -> None:
+        """Returns False when _ftl_requires_locale is explicitly False."""
+
+        def func_with_false() -> str:
+            return "test"
+
+        func_with_false._ftl_requires_locale = False  # type: ignore[attr-defined]
+        assert is_builtin_with_locale_requirement(func_with_false) is False
+
+    def test_false_when_attribute_is_truthy_but_not_true(self) -> None:
+        """Returns False when _ftl_requires_locale is truthy but not exactly True."""
+
+        def func_with_truthy() -> str:
+            return "test"
+
+        func_with_truthy._ftl_requires_locale = 1  # type: ignore[attr-defined]
+        assert is_builtin_with_locale_requirement(func_with_truthy) is False

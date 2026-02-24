@@ -22,6 +22,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from ftllexengine import FluentBundle
 
 
@@ -100,14 +102,16 @@ def demonstrate_custom_function_introspection() -> None:
     bundle = FluentBundle("en_US", use_isolating=False)
 
     # Register custom functions
-    def VAT_CALCULATION(amount: float, *, vat_rate: float = 0.21) -> str:  # pylint: disable=invalid-name
+    def VAT_CALCULATION(amount: int | Decimal, *, vat_rate: Decimal = Decimal("0.21")) -> str:  # pylint: disable=invalid-name
         """Calculate VAT for Latvian/EU invoices."""
-        vat = amount * vat_rate
-        return f"{vat:.2f}"
+        amt = Decimal(amount) if isinstance(amount, int) else amount
+        vat = amt * vat_rate
+        return format(vat, ".2f")
 
-    def FORMAT_PERCENTAGE(value: float, *, decimal_places: int = 1) -> str:  # pylint: disable=invalid-name
+    def FORMAT_PERCENTAGE(value: int | Decimal, *, decimal_places: int = 1) -> str:  # pylint: disable=invalid-name
         """Format value as percentage."""
-        return f"{value:.{decimal_places}f}%"
+        val = Decimal(value) if isinstance(value, int) else value
+        return f"{val:.{decimal_places}f}%"
 
     bundle.add_function("VAT_CALCULATION", VAT_CALCULATION)
     bundle.add_function("FORMAT_PERCENTAGE", FORMAT_PERCENTAGE)
@@ -246,7 +250,7 @@ def demonstrate_safe_function_use() -> None:
     if "CURRENCY" in registry:
         print("[OK] CURRENCY function available, safe to use")
         bundle.add_resource('price = { CURRENCY($amount, currency: "USD") }')
-        result, errors = bundle.format_pattern("price", {"amount": 123.45})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("123.45")})
         if not errors:
             print(f"Result: {result}")
         else:

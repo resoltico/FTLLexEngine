@@ -25,7 +25,6 @@ from ftllexengine.parsing.guards import (
     is_valid_date,
     is_valid_datetime,
     is_valid_decimal,
-    is_valid_number,
 )
 
 # ============================================================================
@@ -35,9 +34,6 @@ from ftllexengine.parsing.guards import (
 
 # Strategy for Decimal values
 decimals = st.decimals(allow_nan=True, allow_infinity=True, places=2)
-
-# Strategy for floats
-floats = st.floats(allow_nan=True, allow_infinity=True)
 
 # Strategy for currency tuples
 currency_tuples = st.tuples(
@@ -95,51 +91,6 @@ class TestValidDecimalGuard:
         event(f"value_sign={sign}")
         assert value.is_infinite()
         assert is_valid_decimal(value) is False
-
-
-# ============================================================================
-# PROPERTY TESTS - is_valid_number
-# ============================================================================
-
-
-class TestValidNumberGuard:
-    """Test is_valid_number() type guard properties.
-
-    Accepts None and returns False for None values.
-    """
-
-    @given(value=st.floats(allow_nan=False, allow_infinity=False))
-    @settings(max_examples=200)
-    def test_finite_float_returns_true(self, value: float) -> None:
-        """PROPERTY: Finite float values return True."""
-        event(f"guard_result={is_valid_number(value)}")
-        assert is_valid_number(value) is True
-
-    @given(value=st.none())
-    @settings(max_examples=50)
-    def test_none_returns_false(self, value: None) -> None:
-        """PROPERTY: None returns False (unified API)."""
-        event(f"guard_result={is_valid_number(value)}")
-        assert is_valid_number(value) is False
-
-    @given(value=st.just(float("nan")))
-    @settings(max_examples=50)
-    def test_nan_returns_false(self, value: float) -> None:
-        """PROPERTY: NaN float returns False."""
-        event(f"guard_result={is_valid_number(value)}")
-        assert is_valid_number(value) is False
-
-    @given(value=st.just(float("inf")))
-    @settings(max_examples=50)
-    def test_positive_infinity_returns_false(self, value: float) -> None:
-        """PROPERTY: Positive infinity float returns False."""
-        assert is_valid_number(value) is False
-
-    @given(value=st.just(float("-inf")))
-    @settings(max_examples=50)
-    def test_negative_infinity_returns_false(self, value: float) -> None:
-        """PROPERTY: Negative infinity float returns False."""
-        assert is_valid_number(value) is False
 
 
 # ============================================================================
@@ -312,27 +263,6 @@ class TestTypeNarrowingIntegration:
             assert result.year == year
 
     @given(
-        value=st.floats(
-            min_value=-999999.99,
-            max_value=999999.99,
-            allow_nan=False,
-            allow_infinity=False,
-        ),
-    )
-    @settings(max_examples=100)
-    def test_number_type_narrowing(self, value: float) -> None:
-        """PROPERTY: Type guard correctly narrows number result type."""
-        from ftllexengine.parsing import parse_number
-        from ftllexengine.runtime.functions import number_format
-
-        formatted = number_format(value, "en_US")
-        result, errors = parse_number(str(formatted), "en_US")
-
-        if not errors and result is not None and is_valid_number(result):
-            # After type narrowing, mypy knows result is float
-            assert isinstance(result, float)
-
-    @given(
         value=st.decimals(
             min_value=Decimal("0.01"),
             max_value=Decimal("999999.99"),
@@ -345,10 +275,9 @@ class TestTypeNarrowingIntegration:
         from ftllexengine.parsing import parse_decimal
         from ftllexengine.runtime.functions import number_format
 
-        formatted = number_format(float(value), "en_US", minimum_fraction_digits=2)
+        formatted = number_format(value, "en_US", minimum_fraction_digits=2)
         result, errors = parse_decimal(str(formatted), "en_US")
 
         if not errors and result is not None and is_valid_decimal(result):
-            # After type narrowing, mypy knows result is Decimal
             assert isinstance(result, Decimal)
             assert result.is_finite()

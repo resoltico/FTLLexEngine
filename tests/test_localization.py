@@ -6,10 +6,12 @@ Uses Python 3.13 features for modern test patterns.
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
 
+from ftllexengine import FluentBundle
 from ftllexengine.localization import (
     FallbackInfo,
     FluentLocalization,
@@ -47,11 +49,10 @@ class TestFluentLocalizationBasics:
             FluentLocalization(["en"], resource_ids=["main.ftl"])
 
     def test_invalid_locale_format_rejected_at_init(self) -> None:
-        """Invalid locale format raises ValueError at initialization.
+        """Invalid locale format raises ValueError at initialization (fail-fast).
 
-        Regression test for API-LOCALE-LEAK-001.
-        Validates that locale format errors are caught early (fail-fast)
-        rather than propagating out of format_value during lazy bundle creation.
+        Locale format errors are caught at construction time rather than
+        propagating out of format_value during lazy bundle creation.
         """
         with pytest.raises(ValueError, match="Invalid locale code format"):
             FluentLocalization(["en", "invalid locale with spaces"])
@@ -332,7 +333,7 @@ class TestPathResourceLoader:
 
         # Valid: Contains {locale} placeholder
         loader = PathResourceLoader("locales/{locale}")  # Should not raise
-        assert "{locale}" not in loader.base_path.replace("{locale}", "X")
+        assert "{locale}" in loader.base_path
 
     def test_path_resource_loader_file_not_found(self, tmp_path: Path) -> None:
         """PathResourceLoader raises FileNotFoundError for missing files."""
@@ -582,12 +583,7 @@ class TestCacheIntrospection:
         assert l10n.cache_enabled is True
 
     def test_cache_enabled_property_when_disabled(self) -> None:
-        """cache_enabled property returns False when caching disabled."""
-        l10n = FluentLocalization(["en"])
-        assert l10n.cache_enabled is False
-
-    def test_cache_enabled_property_default(self) -> None:
-        """cache_enabled property returns False by default."""
+        """cache_enabled property returns False when no CacheConfig is provided."""
         l10n = FluentLocalization(["en"])
         assert l10n.cache_enabled is False
 
@@ -743,13 +739,14 @@ class TestMultiLocaleFileLoading:
         assert level3 == "English Three"
 
     def test_unicode_content_in_files(self, tmp_path: Path) -> None:
-        """Unicode content in FTL files loads correctly."""
+        """FTL files containing CJK and accented Unicode characters load correctly."""
         locales_dir = tmp_path / "locales"
 
-        # Create locales with various Unicode content
         ja_dir = locales_dir / "ja"
         ja_dir.mkdir(parents=True)
-        (ja_dir / "main.ftl").write_text("greeting = Hello", encoding="utf-8")
+        (ja_dir / "main.ftl").write_text(
+            "greeting = \u3053\u3093\u306b\u3061\u306f\u4e16\u754c", encoding="utf-8"
+        )
 
         lv_dir = locales_dir / "lv"
         lv_dir.mkdir(parents=True)
@@ -763,7 +760,7 @@ class TestMultiLocaleFileLoading:
         ja_greeting, _ = l10n_ja.format_value("greeting")
         lv_greeting, _ = l10n_lv.format_value("greeting")
 
-        assert ja_greeting == "Hello"
+        assert "\u3053\u3093\u306b\u3061\u306f" in ja_greeting
         assert lv_greeting == "Sveiki, pasaule!"
 
     def test_missing_locale_directory_falls_back(self, tmp_path: Path) -> None:
@@ -840,11 +837,7 @@ class TestMultiLocaleFileLoading:
 
 
 class TestOnFallbackCallback:
-    """Tests for on_fallback callback (lines 853-858, 946-951).
-
-    Tests the callback that's invoked when a message is resolved from
-    a fallback locale instead of the primary locale.
-    """
+    """on_fallback callback is invoked when a message resolves from a fallback locale."""
 
     def test_on_fallback_invoked_on_format_value(self) -> None:
         """on_fallback callback invoked when message resolved from fallback locale."""
@@ -953,19 +946,13 @@ button = Click
         # Request attribute via format_pattern
         result, _ = l10n.format_pattern("button", attribute="tooltip")
 
-        assert "tooltip" in result.lower() or "Button" in result
+        assert result == "Button tooltip"
         assert len(fallback_events) == 1
         assert fallback_events[0].message_id == "button"
 
 
-@pytest.mark.fuzz
 class TestCrossFileDepthValidation:
-    """Tests for reference depth limits across multiple resources.
-
-    These tests verify that reference chain depth limits are enforced
-    even when the chain spans multiple add_resource() calls. This
-    prevents DoS attacks that split deep reference chains across files.
-    """
+    """Reference depth limits are enforced even when the chain spans multiple add_resource calls."""
 
     def test_deep_reference_chain_across_resources(self) -> None:
         """Reference chains spanning multiple resources respect depth limits.
@@ -992,13 +979,7 @@ class TestCrossFileDepthValidation:
         assert "L5:" in result
 
     def test_very_deep_reference_chain_is_limited(self) -> None:
-        """Extremely deep reference chains are limited to prevent stack overflow.
-
-        This tests that reference chains spanning many add_resource calls
-        eventually hit the depth limit rather than causing stack overflow.
-        """
-        from ftllexengine.runtime.bundle import FluentBundle  # noqa: PLC0415
-
+        """Reference chains exceeding max_nesting_depth produce errors, not stack overflow."""
         bundle = FluentBundle("en", use_isolating=False, max_nesting_depth=10)
 
         # Build a chain deeper than max_nesting_depth
@@ -1009,8 +990,8 @@ class TestCrossFileDepthValidation:
         # Resolving the deepest level should hit depth limit
         result, errors = bundle.format_pattern("level14")
 
-        # Should have errors due to depth limit
-        assert len(errors) > 0 or "level" not in result.lower()
+        # Depth limit exceeded must produce resolution errors
+        assert len(errors) > 0, f"Expected depth limit errors; got result={result!r}"
 
     def test_cross_file_term_reference_depth(self) -> None:
         """Term references across resources are tracked for depth.
@@ -1107,3 +1088,253 @@ base = { $type ->
         assert not errors
         assert "Type A" in result
         assert "Final:" in result
+
+
+class TestPathResourceLoaderResolvedRoot:
+    """PathResourceLoader._resolved_root falls back to cwd when no static prefix."""
+
+    def test_resolved_root_fallback_to_cwd(self) -> None:
+        """Pattern with no static path prefix resolves root to current working directory."""
+        loader = PathResourceLoader("{locale}")
+        expected = Path.cwd().resolve()
+        assert loader._resolved_root == expected  # pylint: disable=protected-access
+
+
+class TestPathResourceLoaderSecurity:
+    """PathResourceLoader rejects path traversal and absolute path inputs."""
+
+    def test_load_rejects_absolute_path(self) -> None:
+        """Absolute path resource_id raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Absolute paths not allowed"):
+            loader.load("en", "/etc/passwd")
+
+    def test_load_rejects_absolute_path_posix_style(self) -> None:
+        """POSIX absolute path resource_id raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Absolute paths not allowed"):
+            loader.load("en", "/usr/local/etc/passwd")
+
+    def test_load_rejects_parent_directory_traversal(self) -> None:
+        """'..' sequences in resource_id raise ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Path traversal sequences not allowed"):
+            loader.load("en", "../../../etc/passwd")
+
+    def test_load_rejects_parent_directory_in_middle(self) -> None:
+        """'..' in the middle of a resource_id path raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Path traversal sequences not allowed"):
+            loader.load("en", "foo/../bar/../secrets.ftl")
+
+    def test_load_rejects_path_starting_with_forward_slash(self) -> None:
+        """resource_id starting with '/' is rejected as absolute or separator-prefixed.
+
+        On Unix, /messages.ftl is caught as an absolute path first.
+        On Windows with forward slash it may be caught by the separator check.
+        """
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match=r"(Absolute|separator)"):
+            loader.load("en", "/messages.ftl")
+
+    def test_load_rejects_path_starting_with_backslash(self) -> None:
+        """resource_id starting with '\\' is rejected."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="not allowed in resource_id"):
+            loader.load("en", "\\messages.ftl")
+
+    def test_load_detects_symlink_escape_via_is_safe_path(self) -> None:
+        """Symlink pointing outside the base directory is rejected by _is_safe_path."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir)
+            locale_dir = base_path / "locales" / "en"
+            locale_dir.mkdir(parents=True)
+
+            outside_dir = base_path / "outside"
+            outside_dir.mkdir()
+            secret_file = outside_dir / "secret.ftl"
+            secret_file.write_text("secret = Secret data")
+
+            symlink_path = locale_dir / "escape.ftl"
+            try:
+                symlink_path.symlink_to(secret_file)
+
+                loader = PathResourceLoader(str(base_path / "locales" / "{locale}"))
+
+                with pytest.raises(ValueError, match="Path traversal detected"):
+                    loader.load("en", "escape.ftl")
+            except OSError:
+                pytest.skip("Symlink creation not supported on this system")
+
+
+
+class TestPathResourceLoaderValidation:
+    """PathResourceLoader accepts valid resource_ids and rejects malformed ones."""
+
+    def test_load_with_valid_resource_id(self) -> None:
+        """Valid resource_id loads file content correctly."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            locale_dir = base / "locales" / "en"
+            locale_dir.mkdir(parents=True)
+
+            test_file = locale_dir / "messages.ftl"
+            test_file.write_text("hello = Hello, World!")
+
+            loader = PathResourceLoader(str(base / "locales" / "{locale}"))
+            content = loader.load("en", "messages.ftl")
+
+            assert "Hello, World!" in content
+
+    def test_load_with_subdirectory_resource_id(self) -> None:
+        """Subdirectory in resource_id resolves to nested path correctly."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            locale_dir = base / "locales" / "en" / "ui"
+            locale_dir.mkdir(parents=True)
+
+            test_file = locale_dir / "buttons.ftl"
+            test_file.write_text("save = Save")
+
+            loader = PathResourceLoader(str(base / "locales" / "{locale}"))
+            content = loader.load("en", "ui/buttons.ftl")
+
+            assert "Save" in content
+
+    def test_validate_resource_id_validates_before_path_resolution(self) -> None:
+        """Validation rejects malformed resource_ids before any filesystem operations."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        invalid_ids = [
+            "/absolute/path.ftl",
+            "..\\parent\\path.ftl",
+            "..\\..\\..\\escape.ftl",
+            "\\windows\\path.ftl",
+        ]
+
+        for invalid_id in invalid_ids:
+            with pytest.raises(ValueError, match=r"(Absolute|traversal|separator)"):
+                loader.load("en", invalid_id)
+
+
+class TestPathResourceLoaderLocaleValidation:
+    """PathResourceLoader rejects locale codes containing path traversal sequences."""
+
+    def test_load_rejects_locale_with_parent_traversal(self) -> None:
+        """'..' in locale code raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Path traversal sequences not allowed in locale"):
+            loader.load("../../../etc", "messages.ftl")
+
+    def test_load_rejects_locale_with_embedded_traversal(self) -> None:
+        """'..' embedded within locale code raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Path traversal sequences not allowed in locale"):
+            loader.load("en/../de", "messages.ftl")
+
+    def test_load_rejects_locale_with_forward_slash(self) -> None:
+        """'/' in locale code raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Path separators not allowed in locale"):
+            loader.load("en/attack", "messages.ftl")
+
+    def test_load_rejects_locale_with_backslash(self) -> None:
+        """'\\' in locale code raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Path separators not allowed in locale"):
+            loader.load("en\\attack", "messages.ftl")
+
+    def test_load_rejects_empty_locale(self) -> None:
+        """Empty locale code raises ValueError."""
+        loader = PathResourceLoader("locales/{locale}")
+
+        with pytest.raises(ValueError, match="Locale code cannot be empty"):
+            loader.load("", "messages.ftl")
+
+    def test_load_accepts_valid_locale_codes(self) -> None:
+        """Standard BCP 47-style locale codes are accepted."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+
+            valid_locales = ["en", "en_US", "de_DE", "lv_LV", "zh_Hans_CN"]
+
+            for locale in valid_locales:
+                locale_dir = base / "locales" / locale
+                locale_dir.mkdir(parents=True, exist_ok=True)
+                test_file = locale_dir / "test.ftl"
+                test_file.write_text(f"msg = Test for {locale}")
+
+            loader = PathResourceLoader(str(base / "locales" / "{locale}"))
+
+            for locale in valid_locales:
+                content = loader.load(locale, "test.ftl")
+                assert f"Test for {locale}" in content
+
+    def test_root_dir_parameter_provides_fixed_anchor(self) -> None:
+        """root_dir anchors path validation independently of the locale parameter."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            locale_dir = base / "locales" / "en"
+            locale_dir.mkdir(parents=True)
+            test_file = locale_dir / "test.ftl"
+            test_file.write_text("msg = Test")
+
+            loader = PathResourceLoader(
+                str(base / "locales" / "{locale}"),
+                root_dir=str(base),
+            )
+
+            content = loader.load("en", "test.ftl")
+            assert "Test" in content
+
+    def test_root_dir_prevents_locale_escape_attempt(self) -> None:
+        """root_dir constrains path validation to a fixed boundary.
+
+        When a symlink inside the locale directory resolves to a file
+        outside root_dir, the loader raises ValueError even though the
+        resource_id itself contains no traversal sequences.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            locale_dir = base / "locales" / "en"
+            locale_dir.mkdir(parents=True)
+            (locale_dir / "test.ftl").write_text("msg = Test")
+
+            outside = base / "outside"
+            outside.mkdir()
+            secret = outside / "secret.ftl"
+            secret.write_text("secret = Should not access")
+
+            loader = PathResourceLoader(
+                str(base / "locales" / "{locale}"),
+                root_dir=str(base / "locales"),
+            )
+
+            # Normal load within root_dir succeeds
+            content = loader.load("en", "test.ftl")
+            assert "Test" in content
+
+            # Symlink from within locale dir to a file outside root_dir
+            escape_link = locale_dir / "escape.ftl"
+            try:
+                escape_link.symlink_to(secret)
+                # The resource_id has no '..' but the resolved path escapes root_dir
+                with pytest.raises(ValueError, match="Path traversal detected"):
+                    loader.load("en", "escape.ftl")
+            except OSError:
+                pytest.skip("Symlink creation not supported on this system")

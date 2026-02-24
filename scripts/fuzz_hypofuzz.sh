@@ -317,13 +317,20 @@ for py_file in tests_dir.rglob("*.py"):
         pass
 
 # ---- Pass 4: Strategy analysis ----
+# __init__.py is a pure re-export aggregator; event() calls belong in domain modules.
+_STRATEGY_REEXPORT_FILES = {"__init__.py"}
 strategy_coverage = {}
+strategy_gaps = []
 if strategies_dir.exists():
     for strat_file in strategies_dir.glob("*.py"):
         try:
+            if strat_file.name in _STRATEGY_REEXPORT_FILES:
+                continue
             content = strat_file.read_text()
             events = len(re.findall(r'(?<![a-zA-Z_])event\(', content))
             strategy_coverage[strat_file.name] = events
+            if events == 0:
+                strategy_gaps.append(strat_file.name)
         except Exception:
             pass
 
@@ -337,8 +344,14 @@ print()
 if strategy_coverage:
     print("Strategy Coverage:")
     for name, count in sorted(strategy_coverage.items()):
-        status = "[  OK  ]" if count > 0 else "[ WARN ]"
+        status = "[  OK  ]" if count > 0 else "[ FAIL ]"
         print(f"  {status} {name:<20} {count} events")
+    print()
+
+if strategy_gaps:
+    print("[FAIL] Strategy files without event() calls (HypoFuzz guidance gap):")
+    for name in sorted(strategy_gaps):
+        print(f"  [ FAIL ] {name}")
     print()
 
 if fuzz_modules_without_events:
@@ -370,9 +383,9 @@ if top_files:
     print()
 
 # Summary
-gaps = len(fuzz_modules_without_events) + len(tests_without_events)
+gaps = len(fuzz_modules_without_events) + len(tests_without_events) + len(strategy_gaps)
 if gaps > 0:
-    print(f"[WARN] {gaps} gap(s) detected. Add hypothesis.event() calls for semantic guidance.")
+    print(f"[FAIL] {gaps} gap(s) detected. Add hypothesis.event() calls for semantic guidance.")
     sys.exit(1)
 else:
     print("[  OK  ] Infrastructure audit passed. Run --deep for coverage-guided fuzzing.")

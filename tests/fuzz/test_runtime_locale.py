@@ -12,6 +12,8 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
@@ -96,11 +98,14 @@ class TestPluralRuleProperties:
 
     @given(
         st.sampled_from(COMMON_LOCALES),
-        st.floats(min_value=0, max_value=1000, allow_nan=False, allow_infinity=False),
+        st.decimals(
+            min_value=Decimal("0"), max_value=Decimal("1000"),
+            allow_nan=False, allow_infinity=False,
+        ),
     )
     @settings(max_examples=300, deadline=None)
-    def test_plural_category_float(self, locale: str, n: float) -> None:
-        """Property: Plural category works for floats."""
+    def test_plural_category_decimal(self, locale: str, n: Decimal) -> None:
+        """Property: Plural category works for Decimals."""
         category = select_plural_category(n, locale)
 
         assert isinstance(category, str)
@@ -194,7 +199,7 @@ class TestNumberFormattingProperties:
     )
     @settings(max_examples=300, deadline=None)
     def test_financial_number_formatting(
-        self, locale: str, n: int | float
+        self, locale: str, n: Decimal
     ) -> None:
         """Property: Financial numbers (ISO 4217 magnitudes) format correctly."""
         bundle = FluentBundle(locale)
@@ -207,16 +212,16 @@ class TestNumberFormattingProperties:
 
     @given(
         st.sampled_from(COMMON_LOCALES),
-        st.floats(
-            min_value=-1000000,
-            max_value=1000000,
+        st.decimals(
+            min_value=Decimal("-1000000"),
+            max_value=Decimal("1000000"),
             allow_nan=False,
             allow_infinity=False,
         ),
     )
     @settings(max_examples=300, deadline=None)
-    def test_float_formatting(self, locale: str, n: float) -> None:
-        """Property: FLOAT formatting never crashes."""
+    def test_decimal_formatting(self, locale: str, n: Decimal) -> None:
+        """Property: Decimal formatting never crashes."""
         bundle = FluentBundle(locale)
         bundle.add_resource("num = { NUMBER($n) }")
 
@@ -232,13 +237,13 @@ class TestNumberFormattingProperties:
         bundle = FluentBundle(locale)
         bundle.add_resource("num = { NUMBER($n) }")
 
-        large_numbers = [
-            1e10,
-            1e15,
-            1e20,
-            -1e10,
-            0.000001,
-            0.0000001,
+        large_numbers: list[int | Decimal] = [
+            Decimal("10000000000"),
+            Decimal("1000000000000000"),
+            Decimal("100000000000000000000"),
+            Decimal("-10000000000"),
+            Decimal("0.000001"),
+            Decimal("0.0000001"),
         ]
 
         for n in large_numbers:

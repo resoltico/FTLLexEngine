@@ -259,7 +259,7 @@ class TestNumberRounding:
         locale_ctx = LocaleContext.create("en")
 
         result = locale_ctx.format_number(
-            2.5,
+            Decimal("2.5"),
             maximum_fraction_digits=0,
             use_grouping=False
         )
@@ -271,7 +271,7 @@ class TestNumberRounding:
         locale_ctx = LocaleContext.create("en")
 
         result = locale_ctx.format_number(
-            3.5,
+            Decimal("3.5"),
             maximum_fraction_digits=0,
             use_grouping=False
         )
@@ -283,7 +283,7 @@ class TestNumberRounding:
         locale_ctx = LocaleContext.create("en")
 
         result = locale_ctx.format_number(
-            4.5,
+            Decimal("4.5"),
             maximum_fraction_digits=0,
             use_grouping=False
         )
@@ -293,9 +293,9 @@ class TestNumberRounding:
     def test_rounding_uses_decimal_quantize(self) -> None:
         """Rounding uses Decimal.quantize with ROUND_HALF_UP."""
         # This test verifies the implementation detail
-        value = 2.5
-        rounded = float(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-        assert rounded == 3.0
+        value = Decimal("2.5")
+        rounded = value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        assert rounded == Decimal("3")
 
 
 class TestDependencyGraphOptimization:

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from collections import ChainMap
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, given, settings
@@ -40,7 +41,7 @@ class TestCurrencyDecimalConsistency:
         # ISO 4217 specifies JPY has 0 decimals
         assert ISO_4217_DECIMAL_DIGITS.get("JPY") == 0
 
-        result = locale_context.format_currency(12345.678, currency="JPY")
+        result = locale_context.format_currency(Decimal("12345.678"), currency="JPY")
         # Should format as whole number (no decimals)
         assert "." not in result.replace(",", "").replace(" ", ""), (
             f"JPY should have no decimals, got: {result}"
@@ -51,7 +52,7 @@ class TestCurrencyDecimalConsistency:
         # ISO 4217 specifies BHD has 3 decimals
         assert ISO_4217_DECIMAL_DIGITS.get("BHD") == 3
 
-        result = locale_context.format_currency(123.4567, currency="BHD")
+        result = locale_context.format_currency(Decimal("123.4567"), currency="BHD")
         # Should format with 3 decimals (123.457 rounded)
         # Note: The actual decimal separator depends on locale
         assert "457" in result or "456" in result, (
@@ -64,7 +65,7 @@ class TestCurrencyDecimalConsistency:
         Note: USD is not in ISO_4217_DECIMAL_DIGITS because it uses the default
         of 2 decimals. Babel's CLDR data matches ISO 4217.
         """
-        result = locale_context.format_currency(123.456, currency="USD")
+        result = locale_context.format_currency(Decimal("123.456"), currency="USD")
         # Should format with 2 decimals (123.46 rounded)
         assert "46" in result, f"USD should round to 2 decimals, got: {result}"
 
@@ -73,15 +74,18 @@ class TestCurrencyDecimalConsistency:
         # ISO 4217 specifies CLF has 4 decimals
         assert ISO_4217_DECIMAL_DIGITS.get("CLF") == 4
 
-        result = locale_context.format_currency(123.45678, currency="CLF")
+        result = locale_context.format_currency(Decimal("123.45678"), currency="CLF")
         # Should format with 4 decimals
         assert "4568" in result or "4567" in result, (
             f"CLF should have 4 decimals, got: {result}"
         )
 
-    @given(st.floats(min_value=0.01, max_value=999999.99, allow_nan=False, allow_infinity=False))
+    @given(st.decimals(
+        min_value=Decimal("0.01"), max_value=Decimal("999999.99"),
+        allow_nan=False, allow_infinity=False,
+    ))
     @settings(max_examples=20)
-    def test_currency_never_exceeds_iso_decimals(self, value: float) -> None:
+    def test_currency_never_exceeds_iso_decimals(self, value: Decimal) -> None:
         """PROPERTY: Formatted currency never exceeds ISO-specified decimals."""
         event(f"value_magnitude={int(value)}")
         ctx = LocaleContext.create("en-US")
@@ -217,7 +221,7 @@ class TestIntegration:
         """Currency formatting in FluentBundle uses ISO decimals."""
         bundle = FluentBundle("en-US")
         bundle.add_resource('price = { CURRENCY($amt, currency: "JPY") }')
-        result, _errors = bundle.format_pattern("price", {"amt": 12345.678})
+        result, _errors = bundle.format_pattern("price", {"amt": Decimal("12345.678")})
 
         # JPY should be formatted without decimals
         assert "." not in result.replace(",", ""), (

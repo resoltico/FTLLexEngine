@@ -9,6 +9,7 @@ This ensures our claim of "30 locale support" is fully backed by tests.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, given, settings
@@ -86,7 +87,7 @@ class TestLocaleContextAllLocales:
     def test_format_number_basic(self, locale_code: str) -> None:
         """format_number() works for all 30 locales with basic number."""
         ctx = LocaleContext.create_or_raise(locale_code)
-        result = ctx.format_number(1234.56)
+        result = ctx.format_number(Decimal("1234.56"))
         # Should return a string containing the digits
         assert isinstance(result, str)
         assert "1" in result or "\u0661" in result  # Latin or Arabic-Indic digit
@@ -137,7 +138,7 @@ class TestFluentBundleAllLocales:
         """NUMBER function works in FluentBundle for all 30 locales."""
         bundle = FluentBundle(locale_code)
         bundle.add_resource("price = { NUMBER($amount) }")
-        result, _ = bundle.format_pattern("price", {"amount": 1234.56})
+        result, _ = bundle.format_pattern("price", {"amount": Decimal("1234.56")})
         assert isinstance(result, str)
         # Should contain formatted number (not error)
         assert "{ERROR" not in result
@@ -168,7 +169,7 @@ class TestFluentBundleAllLocales:
         """CURRENCY function works in FluentBundle for all 30 locales."""
         bundle = FluentBundle(locale_code)
         bundle.add_resource('price = { CURRENCY($amount, currency: "EUR") }')
-        result, _ = bundle.format_pattern("price", {"amount": 123.45})
+        result, _ = bundle.format_pattern("price", {"amount": Decimal("123.45")})
         assert isinstance(result, str)
         assert "{ERROR" not in result
         # Should contain currency symbol or code
@@ -181,7 +182,7 @@ class TestFluentBundleAllLocales:
         bundle.add_resource(
             'price = { CURRENCY($amount, currency: "USD", currencyDisplay: "code") }'
         )
-        result, _ = bundle.format_pattern("price", {"amount": 99.99})
+        result, _ = bundle.format_pattern("price", {"amount": Decimal("99.99")})
         assert isinstance(result, str)
         assert "{ERROR" not in result
         assert "USD" in result  # Code display should show USD
@@ -215,7 +216,7 @@ class TestLocaleSpecificFormatting:
     def test_german_number_separators(self) -> None:
         """German uses period for thousands, comma for decimal."""
         ctx = LocaleContext.create_or_raise("de")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # German: 1.234,56
         assert "," in result  # Decimal comma
         assert "." in result  # Thousand period
@@ -223,14 +224,14 @@ class TestLocaleSpecificFormatting:
     def test_french_number_separators(self) -> None:
         """French uses narrow no-break space for thousands, comma for decimal."""
         ctx = LocaleContext.create_or_raise("fr")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # French: 1 234,56 (with special space)
         assert "," in result  # Decimal comma
 
     def test_english_number_separators(self) -> None:
         """English uses comma for thousands, period for decimal."""
         ctx = LocaleContext.create_or_raise("en")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # English: 1,234.56
         assert "," in result  # Thousand comma
         assert "." in result  # Decimal period
@@ -238,14 +239,14 @@ class TestLocaleSpecificFormatting:
     def test_russian_number_separators(self) -> None:
         """Russian uses space for thousands, comma for decimal."""
         ctx = LocaleContext.create_or_raise("ru")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # Russian: 1 234,56 (with no-break space)
         assert "," in result  # Decimal comma
 
     def test_arabic_uses_arabic_indic_numerals(self) -> None:
         """Arabic locale may use Arabic-Indic numerals."""
         ctx = LocaleContext.create_or_raise("ar")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # Arabic may use Arabic-Indic numerals or Western numerals depending on Babel
         assert isinstance(result, str)
         assert len(result) > 0
@@ -253,28 +254,28 @@ class TestLocaleSpecificFormatting:
     def test_latvian_number_format(self) -> None:
         """Latvian uses space for thousands, comma for decimal."""
         ctx = LocaleContext.create_or_raise("lv")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # Latvian: 1 234,56
         assert "," in result  # Decimal comma
 
     def test_chinese_number_format(self) -> None:
         """Chinese uses comma for thousands, period for decimal."""
         ctx = LocaleContext.create_or_raise("zh")
-        result = ctx.format_number(1234.56, use_grouping=True)
+        result = ctx.format_number(Decimal("1234.56"), use_grouping=True)
         # Chinese: 1,234.56
         assert isinstance(result, str)
 
     def test_currency_eur_us(self) -> None:
         """EUR in en_US: symbol before."""
         ctx = LocaleContext.create_or_raise("en-US")
-        result = ctx.format_currency(123.45, currency="EUR")
+        result = ctx.format_currency(Decimal("123.45"), currency="EUR")
         assert "€" in result or "EUR" in result
         assert "123" in result
 
     def test_currency_eur_lv(self) -> None:
         """EUR in lv_LV: symbol after with space."""
         ctx = LocaleContext.create_or_raise("lv-LV")
-        result = ctx.format_currency(123.45, currency="EUR")
+        result = ctx.format_currency(Decimal("123.45"), currency="EUR")
         assert "€" in result or "EUR" in result
         assert "123" in result
         # Symbol typically after in Latvian
@@ -292,7 +293,7 @@ class TestLocaleSpecificFormatting:
     def test_currency_bhd_three_decimals(self) -> None:
         """BHD has 3 decimal places."""
         ctx = LocaleContext.create_or_raise("ar-BH")
-        result = ctx.format_currency(123.456, currency="BHD")
+        result = ctx.format_currency(Decimal("123.456"), currency="BHD")
         assert "123" in result
         assert "456" in result  # 3 decimals
 
@@ -302,10 +303,15 @@ class TestHypothesisLocaleFormatting:
 
     @given(
         locale=st.sampled_from(sorted(TEST_LOCALES)),
-        number=st.floats(min_value=-1e12, max_value=1e12, allow_nan=False, allow_infinity=False),
+        number=st.decimals(
+            min_value=Decimal("-1e12"),
+            max_value=Decimal("1e12"),
+            allow_nan=False,
+            allow_infinity=False,
+        ),
     )
     @settings(max_examples=200)
-    def test_number_format_never_crashes(self, locale: str, number: float) -> None:
+    def test_number_format_never_crashes(self, locale: str, number: Decimal) -> None:
         """format_number() never crashes for any locale and number."""
         event(f"locale={locale}")
         ctx = LocaleContext.create_or_raise(locale)
@@ -331,12 +337,17 @@ class TestHypothesisLocaleFormatting:
 
     @given(
         locale=st.sampled_from(sorted(TEST_LOCALES)),
-        amount=st.floats(min_value=-1e9, max_value=1e9, allow_nan=False, allow_infinity=False),
+        amount=st.decimals(
+            min_value=Decimal("-1e9"),
+            max_value=Decimal("1e9"),
+            allow_nan=False,
+            allow_infinity=False,
+        ),
         currency=st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF"]),
     )
     @settings(max_examples=200)
     def test_currency_format_never_crashes(
-        self, locale: str, amount: float, currency: str
+        self, locale: str, amount: Decimal, currency: str
     ) -> None:
         """format_currency() never crashes for any locale, amount, and currency."""
         event(f"locale={locale}")
@@ -385,7 +396,7 @@ class TestEdgeCases:
     def test_negative_number_formatting(self, locale_code: str) -> None:
         """Negative numbers format correctly in all locales."""
         ctx = LocaleContext.create_or_raise(locale_code)
-        result = ctx.format_number(-123.45)
+        result = ctx.format_number(Decimal("-123.45"))
         assert isinstance(result, str)
         # Should contain negative sign (hyphen-minus or Unicode minus sign)
         assert "-" in result or "\u2212" in result
@@ -403,7 +414,7 @@ class TestEdgeCases:
     def test_fraction_only_number(self, locale_code: str) -> None:
         """Fractional numbers format correctly in all locales."""
         ctx = LocaleContext.create_or_raise(locale_code)
-        result = ctx.format_number(0.123, minimum_fraction_digits=3)
+        result = ctx.format_number(Decimal("0.123"), minimum_fraction_digits=3)
         assert isinstance(result, str)
         assert "0" in result or "\u0660" in result
 
@@ -415,7 +426,7 @@ class TestRTLLocales:
         """Arabic FluentBundle handles NUMBER correctly."""
         bundle = FluentBundle("ar")
         bundle.add_resource("price = { NUMBER($amount) }")
-        result, _ = bundle.format_pattern("price", {"amount": 1234.56})
+        result, _ = bundle.format_pattern("price", {"amount": Decimal("1234.56")})
         assert isinstance(result, str)
         assert "{ERROR" not in result
 
@@ -423,7 +434,7 @@ class TestRTLLocales:
         """Urdu FluentBundle handles NUMBER correctly."""
         bundle = FluentBundle("ur")
         bundle.add_resource("price = { NUMBER($amount) }")
-        result, _ = bundle.format_pattern("price", {"amount": 1234.56})
+        result, _ = bundle.format_pattern("price", {"amount": Decimal("1234.56")})
         assert isinstance(result, str)
         assert "{ERROR" not in result
 

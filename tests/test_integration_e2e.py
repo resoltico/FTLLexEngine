@@ -24,25 +24,31 @@ Structure:
     - TestParseFormatValidation: Validation API integration
     - TestParseFormatWithCache: Caching behavior integration
     - TestParseFormatIsolation: Unicode isolation mark behavior
-    - TestSerializeParseRoundtrip: AST serialization round-trips (fuzz-marked)
+    - TestSerializeParseRoundtrip: AST serialization round-trips
+    - TestMultiModuleIntegration: parse->validate->serialize->introspect pipeline
+    - TestValidationRuntimeConsistency: validation warnings predict runtime failures
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
-from hypothesis import assume, event, given, settings
-from hypothesis import strategies as st
 
 from ftllexengine import (
     FluentBundle,
     parse_ftl,
     serialize_ftl,
 )
-from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.diagnostics import DiagnosticCode, ErrorCategory, FrozenFluentError
+from ftllexengine.introspection import introspect_message
 from ftllexengine.runtime.cache_config import CacheConfig
-from ftllexengine.syntax.ast import Junk, Message, Term
+from ftllexengine.syntax.ast import Junk, Message, NumberLiteral, Term
+from ftllexengine.syntax.parser import FluentParserV1
+from ftllexengine.syntax.serializer import serialize
+from ftllexengine.validation.resource import validate_resource
 
 # =============================================================================
 # Essential Parse->Format Tests (Run in every CI build)
@@ -185,14 +191,14 @@ class TestParseFormatWithVariables:
         result, _ = bundle.format_pattern("count", {"n": 42})
         assert "42" in result
 
-    def test_float_variable_roundtrip(self) -> None:
-        """Float variables format correctly."""
+    def test_decimal_variable_roundtrip(self) -> None:
+        """Decimal variables format correctly."""
         ftl_source = "price = Total: { $amount }"
 
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(ftl_source)
 
-        result, _ = bundle.format_pattern("price", {"amount": 19.99})
+        result, _ = bundle.format_pattern("price", {"amount": Decimal("19.99")})
         assert "19.99" in result
 
     def test_missing_variable_fallback(self) -> None:
@@ -390,34 +396,34 @@ class TestParseFormatEdgeCases:
         assert "\U0001F44B" in result
 
     def test_cjk_content_roundtrip(self) -> None:
-        """CJK (Chinese/Japanese/Korean) content parses and formats correctly."""
-        ftl_source = "hello = Hello"
+        """CJK (Japanese) content in pattern values parses and formats correctly."""
+        ftl_source = "hello = \u3053\u3093\u306b\u3061\u306f\u4e16\u754c"
 
         bundle = FluentBundle("ja-JP", use_isolating=False)
         bundle.add_resource(ftl_source)
 
         result, _ = bundle.format_pattern("hello")
-        assert "Hello" in result
+        assert "\u3053\u3093\u306b\u3061\u306f" in result
 
     def test_arabic_content_roundtrip(self) -> None:
-        """Arabic RTL content parses and formats correctly."""
-        ftl_source = "greeting = Marhaba"
+        """Arabic RTL script in pattern values parses and formats correctly."""
+        ftl_source = "greeting = \u0645\u0631\u062d\u0628\u0627"
 
         bundle = FluentBundle("ar-SA", use_isolating=False)
         bundle.add_resource(ftl_source)
 
         result, _ = bundle.format_pattern("greeting")
-        assert "Marhaba" in result
+        assert "\u0645\u0631\u062d\u0628\u0627" in result
 
     def test_hebrew_content_roundtrip(self) -> None:
-        """Hebrew RTL content parses and formats correctly."""
-        ftl_source = "greeting = Shalom"
+        """Hebrew RTL script in pattern values parses and formats correctly."""
+        ftl_source = "greeting = \u05e9\u05b8\u05dc\u05d5\u05b9\u05dd"
 
         bundle = FluentBundle("he-IL", use_isolating=False)
         bundle.add_resource(ftl_source)
 
         result, _ = bundle.format_pattern("greeting")
-        assert "Shalom" in result
+        assert "\u05e9\u05b8\u05dc\u05d5\u05b9\u05dd" in result
 
     def test_backslash_in_text_roundtrip(self) -> None:
         """Backslash in text (not StringLiteral) is preserved as-is per Fluent spec."""
@@ -481,7 +487,7 @@ class TestParseFormatWithFunctions:
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(ftl_source)
 
-        result, _ = bundle.format_pattern("amount", {"value": 19.99})
+        result, _ = bundle.format_pattern("amount", {"value": Decimal("19.99")})
         assert "19.99" in result or "19,99" in result
 
     def test_datetime_function_roundtrip(self) -> None:
@@ -502,7 +508,7 @@ class TestParseFormatWithFunctions:
 
         bundle = FluentBundle("en-US", use_isolating=False)
 
-        def double_func(n: int | float) -> str:
+        def double_func(n: int | Decimal) -> str:
             return str(n * 2)
 
         bundle.add_function("DOUBLE", double_func)
@@ -793,9 +799,8 @@ world = World!
 # =============================================================================
 
 
-@pytest.mark.fuzz
 class TestSerializeParseRoundtrip:
-    """Property-based tests for AST serialization round-trips."""
+    """Example-based tests for AST serialization round-trips."""
 
     def test_serialize_parse_simple_message(self) -> None:
         """Serialize->parse round-trip preserves simple messages."""
@@ -824,29 +829,6 @@ class TestSerializeParseRoundtrip:
         result2, _ = bundle2.format_pattern("greeting", {"name": "Test"})
 
         assert result1 == result2
-
-    @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
-    @settings(max_examples=50, deadline=None)
-    def test_serialize_parse_identifiers(self, identifier: str) -> None:
-        """Property: Valid identifiers survive serialize->parse round-trip."""
-        # Skip invalid identifiers using assume (proper hypothesis pattern)
-        assume(identifier[0].isalpha())
-        assume(all(c.isalnum() or c == "-" for c in identifier))
-
-        ftl_source = f"{identifier} = Test value"
-
-        resource = parse_ftl(ftl_source)
-        # Skip if parse produced Junk (invalid identifier)
-        assume(len(resource.entries) > 0)
-        assume(not isinstance(resource.entries[0], Junk))
-
-        serialized = serialize_ftl(resource)
-        resource2 = parse_ftl(serialized)
-
-        event(f"id_len={len(identifier)}")
-        assert resource2 is not None
-        assert len(resource2.entries) == len(resource.entries)
-        event("outcome=e2e_id_roundtrip_success")
 
     def test_serialize_preserves_select_expressions(self) -> None:
         """Serialize->parse preserves select expression structure."""
@@ -903,3 +885,175 @@ button = Click me
 
         assert accesskey == "C"
         assert title == "Submit"
+
+
+# =============================================================================
+# Multi-Module Pipeline Tests
+# =============================================================================
+
+
+class TestMultiModuleIntegration:
+    """Integration tests exercising parse->validate->serialize->introspect pipeline."""
+
+    def test_parse_validate_serialize_roundtrip(self) -> None:
+        """Complete roundtrip: parse -> validate -> serialize -> re-parse preserves structure."""
+        ftl = """
+msg = Hello { $name }
+    .title = Title
+
+-brand = Firefox
+
+plural = { $count ->
+    [one] One item
+   *[other] { $count } items
+}
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        result = validate_resource(ftl)
+        assert result.is_valid
+
+        serialized = serialize(resource)
+        resource2 = parser.parse(serialized)
+
+        assert len(resource2.entries) == len(resource.entries)
+
+    def test_introspect_complex_message(self) -> None:
+        """Introspect message with select expression, term reference, and function call."""
+        ftl = """
+complex = { NUMBER($count) ->
+    [one] { -brand } has { $count } item
+   *[other] { -brand } has { NUMBER($count) } items
+}
+    .hint = { $hint }
+"""
+        parser = FluentParserV1()
+        resource = parser.parse(ftl)
+
+        msg = resource.entries[0]
+        assert isinstance(msg, Message)
+
+        info = introspect_message(msg)
+
+        var_names = {v.name for v in info.variables}
+        func_names = {f.name for f in info.functions}
+        assert "count" in var_names
+        assert "hint" in var_names
+        assert info.has_selectors
+        assert "NUMBER" in func_names
+
+
+class TestValidationRuntimeConsistency:
+    """Validation warnings predict runtime resolution failures."""
+
+    def test_chain_depth_warning_matches_runtime_error(self) -> None:
+        """VALIDATION_CHAIN_DEPTH_EXCEEDED warning implies MAX_DEPTH_EXCEEDED at runtime."""
+        chain_length = MAX_DEPTH + 5
+        messages = ["msg-0 = Base"]
+        for i in range(1, chain_length):
+            messages.append(f"msg-{i} = {{ msg-{i - 1} }}")
+
+        ftl_source = "\n".join(messages)
+
+        result = validate_resource(ftl_source)
+        has_chain_warning = any(
+            w.code == DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED
+            for w in result.warnings
+        )
+        assert has_chain_warning
+
+        bundle = FluentBundle("en")
+        bundle.add_resource(ftl_source)
+        _, errors = bundle.format_pattern(f"msg-{chain_length - 1}")
+        has_depth_error = any(
+            e.diagnostic is not None
+            and e.diagnostic.code.name == "MAX_DEPTH_EXCEEDED"
+            for e in errors
+        )
+        assert has_depth_error
+
+
+# =============================================================================
+# NumberLiteral Invariant and Roundtrip
+# =============================================================================
+
+
+class TestNumberLiteralInvariant:
+    """NumberLiteral enforces raw/value consistency and rejects bool."""
+
+    def test_bool_value_rejected(self) -> None:
+        """NumberLiteral rejects bool for value (bool is int subclass, not a number literal)."""
+        with pytest.raises(TypeError, match="must be int or Decimal, not bool"):
+            NumberLiteral(value=True, raw="1")
+
+    def test_raw_value_inconsistency_rejected(self) -> None:
+        """NumberLiteral rejects raw that parses to a different value than the value field."""
+        with pytest.raises(ValueError, match=r"parses to.*but value is"):
+            NumberLiteral(value=Decimal("1.5"), raw="9.9")
+
+    def test_integer_variant_key_exact_match_roundtrip(self) -> None:
+        """Integer number variant keys select the correct variant."""
+        ftl = """
+rating = { $stars ->
+    [1] Poor
+    [3] Good
+    [5] Excellent
+   *[other] Unknown
+}
+"""
+        bundle = FluentBundle("en-US", use_isolating=False)
+        bundle.add_resource(ftl)
+
+        poor, err1 = bundle.format_pattern("rating", {"stars": 1})
+        excellent, err2 = bundle.format_pattern("rating", {"stars": 5})
+        fallback, err3 = bundle.format_pattern("rating", {"stars": 99})
+
+        assert not err1
+        assert not err2
+        assert not err3
+        assert poor == "Poor"
+        assert excellent == "Excellent"
+        assert fallback == "Unknown"
+
+    def test_decimal_variant_key_roundtrip(self) -> None:
+        """Decimal number variant keys in serialized FTL survive parse->format roundtrip."""
+        ftl = """
+precision = { $level ->
+    [0.5] Half
+    [1.0] Full
+   *[other] Custom
+}
+"""
+        resource = parse_ftl(ftl)
+        serialized = serialize_ftl(resource)
+        resource2 = parse_ftl(serialized)
+
+        bundle = FluentBundle("en-US", use_isolating=False)
+        bundle.add_resource(serialize_ftl(resource2))
+
+        # Default variant (string selector won't match numeric keys)
+        result, _ = bundle.format_pattern("precision", {"level": "other"})
+        assert result == "Custom"
+
+
+# =============================================================================
+# Locale Code Validation
+# =============================================================================
+
+
+class TestLocaleCodeValidation:
+    """FluentBundle validates locale codes against BCP 47 format."""
+
+    def test_posix_locale_with_charset_rejected(self) -> None:
+        """POSIX locale string with charset suffix is rejected with BCP 47 guidance."""
+        with pytest.raises(ValueError, match="Strip charset suffixes"):
+            FluentBundle("en_US.UTF-8")
+
+    def test_valid_bcp47_locales_accepted(self) -> None:
+        """Valid BCP 47 locale codes are accepted by FluentBundle."""
+        for locale in ("en-US", "de-DE", "zh-Hans-CN"):
+            bundle = FluentBundle(locale, use_isolating=False)
+            bundle.add_resource("hello = Hello")
+            result, _ = bundle.format_pattern("hello")
+            assert result == "Hello"

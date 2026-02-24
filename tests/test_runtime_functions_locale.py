@@ -19,6 +19,7 @@ This test suite would have caught the CURRENCY() locale bug immediately.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Literal, cast
 
 import pytest
@@ -43,8 +44,10 @@ class TestNumberLocaleContract:
     """
 
     @pytest.mark.parametrize("locale", TEST_LOCALES)
-    @pytest.mark.parametrize("value", [0, 1.5, 123.45, 1234567.89, -42])
-    def test_number_basic_contract(self, locale: str, value: int | float) -> None:
+    @pytest.mark.parametrize(
+        "value", [0, Decimal("1.5"), Decimal("123.45"), Decimal("1234567.89"), -42]
+    )
+    def test_number_basic_contract(self, locale: str, value: int | Decimal) -> None:
         """NUMBER() respects bundle locale (contract test)."""
         # Ground truth: Direct function call (FluentNumber, convert to str for comparison)
         expected = str(number_format(value, locale))
@@ -64,7 +67,7 @@ class TestNumberLocaleContract:
     @pytest.mark.parametrize("locale", ["en-US", "de-DE", "lv-LV", "ja-JP"])
     def test_number_with_fraction_digits_contract(self, locale: str) -> None:
         """NUMBER() with minimumFractionDigits respects locale."""
-        value = 42.1
+        value = Decimal("42.1")
         # FluentNumber, convert to str for comparison
         expected = str(number_format(value, locale, minimum_fraction_digits=3))
 
@@ -87,9 +90,9 @@ class TestCurrencyLocaleContract:
 
     @pytest.mark.parametrize("locale", ["en-US", "lv-LV", "de-DE", "ja-JP", "ar-SA"])
     @pytest.mark.parametrize("currency", ["EUR", "USD", "GBP", "JPY"])
-    @pytest.mark.parametrize("amount", [0, 1.5, 123.45, 9999.99])
+    @pytest.mark.parametrize("amount", [0, Decimal("1.5"), Decimal("123.45"), Decimal("9999.99")])
     def test_currency_locale_contract(
-        self, locale: str, currency: str, amount: int | float
+        self, locale: str, currency: str, amount: int | Decimal
     ) -> None:
         """CURRENCY() respects bundle locale (contract test).
 
@@ -113,7 +116,7 @@ class TestCurrencyLocaleContract:
     @pytest.mark.parametrize("locale", ["en-US", "de-DE", "lv-LV"])
     def test_currency_display_modes_contract(self, locale: str) -> None:
         """CURRENCY() currencyDisplay parameter respects locale."""
-        amount = 100.0
+        amount = Decimal("100")
 
         for display_mode in ["symbol", "code", "name"]:
             # Ground truth (str() for comparison with bundle output)
@@ -183,7 +186,7 @@ class TestContractTestMetaValidation:
         """
         # Test case that would fail with the bug
         locale = "lv-LV"  # Latvian locale
-        amount = 123.45
+        amount = Decimal("123.45")
         currency = "EUR"
 
         # Ground truth: Latvian format has symbol AFTER amount with space

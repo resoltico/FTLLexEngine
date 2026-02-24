@@ -5,6 +5,8 @@ Targets uncovered branches and error paths using property-based testing.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from hypothesis import event, example, given
 from hypothesis import strategies as st
 
@@ -372,7 +374,7 @@ msg = { 42 ->
         """Test select expression with FunctionReference selector."""
         bundle = FluentBundle("en_US")
 
-        def get_value(_val: int | float | str) -> str:
+        def get_value(_val: int | Decimal | str) -> str:
             return "test"
 
         bundle.add_function("GET", get_value)

@@ -20,7 +20,6 @@ Example:
     ...     amount = result.quantize(Decimal("0.01"))
 """
 
-import math
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TypeIs
@@ -30,7 +29,6 @@ __all__ = [
     "is_valid_date",
     "is_valid_datetime",
     "is_valid_decimal",
-    "is_valid_number",
 ]
 
 
@@ -53,27 +51,6 @@ def is_valid_decimal(value: Decimal | None) -> TypeIs[Decimal]:
         ...     total = result * Decimal("1.21")  # Add VAT
     """
     return value is not None and value.is_finite()
-
-
-def is_valid_number(value: float | None) -> TypeIs[float]:
-    """Type guard: Check if parsed number is valid (not None/NaN/Infinity).
-
-    Safe to call directly on parse_number() result without checking errors first.
-    Returns False for None, NaN, and Infinity values.
-
-    Args:
-        value: Float from parse_number() result tuple (may be None on error)
-
-    Returns:
-        True if value is a finite float, False otherwise
-
-    Example:
-        >>> result, errors = parse_number("1,234.56", "en_US")
-        >>> if is_valid_number(result):
-        ...     # Type-safe: mypy knows result is finite float
-        ...     total = result * 1.21
-    """
-    return value is not None and math.isfinite(value)
 
 
 def is_valid_currency(

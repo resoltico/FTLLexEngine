@@ -11,6 +11,7 @@ Select expression edge cases and error paths live in test_resolver_selection.py.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -756,7 +757,7 @@ class TestFunctionArityValidation:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("""price = { CURRENCY($amount, currency: "USD") }""")
 
-        result, errors = bundle.format_pattern("price", {"amount": 99.99})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("99.99")})
 
         assert not errors
         assert "99" in result

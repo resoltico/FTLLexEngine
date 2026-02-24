@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: ERRORS
-updated: "2026-02-22"
+updated: "2026-02-24"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -304,7 +304,7 @@ class BabelImportError(ImportError):
 ### Constraints
 - Purpose: Raised when Babel is required but not installed.
 - Behavior: Provides installation instructions in error message.
-- Raised by: `parse_number()`, `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`, `get_cldr_version()`, `get_territory()`, `get_currency()`, `list_territories()`, `list_currencies()`, `get_territory_currencies()`, `is_valid_territory_code()`, `is_valid_currency_code()`.
+- Raised by: `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`, `get_cldr_version()`, `get_territory()`, `get_currency()`, `list_territories()`, `list_currencies()`, `get_territory_currencies()`, `is_valid_territory_code()`, `is_valid_currency_code()`.
 - Import: `from ftllexengine.core.babel_compat import BabelImportError`
 
 ---

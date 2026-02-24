@@ -17,6 +17,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -247,7 +248,7 @@ class TestFormatPatternInvalidArgsTypeValidation:
         message_id=message_identifiers(),
         invalid_args=st.one_of(
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.text(min_size=1, max_size=10),
             st.lists(st.integers()),
         ),
@@ -256,7 +257,7 @@ class TestFormatPatternInvalidArgsTypeValidation:
         self,
         locale: str,
         message_id: str,
-        invalid_args: int | float | str | list[int],
+        invalid_args: int | Decimal | str | list[int],
     ) -> None:
         """format_pattern with non-Mapping args returns error."""
         event(f"args_type={type(invalid_args).__name__}")

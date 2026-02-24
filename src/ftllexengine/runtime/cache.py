@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import math
 import struct
 import time
 from collections import OrderedDict, deque
@@ -119,17 +118,16 @@ def _estimate_error_weight(error: FrozenFluentError) -> int:
 # Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged.
 #
 # Type-Tagging for Collision Prevention:
-#   Python's hash equality means hash(1) == hash(True) == hash(1.0), causing
-#   cache collisions when these values produce different formatted outputs.
-#   To prevent this, _make_hashable() returns type-tagged tuples for bool/int/float:
+#   Python's hash equality means hash(1) == hash(True), causing cache collisions
+#   when these values produce different formatted outputs.
+#   To prevent this, _make_hashable() returns type-tagged tuples for bool/int:
 #   - True  -> ("__bool__", True)
 #   - 1     -> ("__int__", 1)
-#   - 1.0   -> ("__float__", 1.0)
+#   - Decimal("1") -> ("__decimal__", "1")
 #   These are distinct cache keys despite Python's hash equality.
 type HashableValue = (
     str
     | int
-    | float
     | bool
     | Decimal
     | datetime
@@ -790,7 +788,6 @@ class IntegrityCache:
             - dict -> tuple of sorted key-value tuples (recursively)
             - set -> frozenset (recursively)
             - Decimal -> ("__decimal__", str) - str preserves scale for CLDR rules
-            - float -> ("__float__", str) - str preserves -0.0 sign
             - datetime -> ("__datetime__", isoformat, tzinfo_str) - includes timezone
             - date -> ("__date__", isoformat) - no timezone
             - FluentNumber -> type-tagged with underlying type info
@@ -800,9 +797,8 @@ class IntegrityCache:
 
         Type-Tagging Rationale:
             Python's hash equality creates collision risk:
-            - hash(1) == hash(True) == hash(1.0)
+            - hash(1) == hash(True)
             - Decimal("1.0") == Decimal("1") but produce different plural forms
-            - 0.0 == -0.0 but may format differently ("-0" vs "0")
             - datetime objects at same UTC instant with different tzinfo are equal
               but format to different local time strings
             - list vs tuple: str([1,2]) != str((1,2)) but would hash same
@@ -896,15 +892,6 @@ class IntegrityCache:
                 return ("__bool__", value)
             case int():
                 return ("__int__", value)
-            case float():
-                # NaN normalization: float("nan") != float("nan") due to IEEE 754.
-                # Without normalization, NaN-containing keys are unretrievable,
-                # causing cache pollution (DoS risk via cache thrashing).
-                if math.isnan(value):
-                    return ("__float__", "__NaN__")
-                # Use str() to distinguish -0.0 from 0.0 (0.0 == -0.0 in Python).
-                # Locale formatting may produce "-0" vs "0" for these values.
-                return ("__float__", str(value))
             # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
             # CLDR plural rules use visible fraction digits (v operand) which differs
             case Decimal():
@@ -923,8 +910,8 @@ class IntegrityCache:
                 # date has no timezone, isoformat is sufficient for unique key
                 return ("__date__", value.isoformat())
             # FluentNumber: type-tag with underlying value type for financial precision
-            # Recursively normalize inner value to handle NaN (float/Decimal) correctly.
-            # Without this, FluentNumber(value=float('nan')...) creates unretrievable keys.
+            # Recursively normalize inner value to handle Decimal NaN correctly.
+            # Without this, FluentNumber(value=Decimal('NaN')...) creates unretrievable keys.
             case FluentNumber():
                 return (
                     "__fluentnumber__",

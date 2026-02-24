@@ -12,6 +12,8 @@ test runs. Run via: ./scripts/fuzz.sh or pytest -m fuzz
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
@@ -42,7 +44,7 @@ def custom_length(value: str) -> int:
     return len(str(value))
 
 
-def custom_add(a: int | float, b: int | float) -> int | float:
+def custom_add(a: int | Decimal, b: int | Decimal) -> int | Decimal:
     """Add two numbers."""
     return a + b
 
@@ -173,16 +175,16 @@ class TestFunctionInvocationProperties:
         event(f"sign={'negative' if value < 0 else 'zero' if value == 0 else 'positive'}")
 
     @given(
-        st.floats(
-            min_value=-1000,
-            max_value=1000,
+        st.decimals(
+            min_value=Decimal("-1000"),
+            max_value=Decimal("1000"),
             allow_nan=False,
             allow_infinity=False,
         )
     )
     @settings(max_examples=100, deadline=None)
-    def test_float_argument_passing(self, value: float) -> None:
-        """Property: Float arguments are handled."""
+    def test_decimal_argument_passing(self, value: Decimal) -> None:
+        """Property: Decimal arguments are handled."""
         bundle = FluentBundle("en-US")
         bundle.add_function("LEN", custom_length)
         bundle.add_resource("msg = { LEN($val) }")
@@ -278,24 +280,24 @@ class TestBuiltinFunctionProperties:
         event("outcome=number_func_int_success")
 
     @given(
-        st.floats(
-            min_value=-1000000,
-            max_value=1000000,
+        st.decimals(
+            min_value=Decimal("-1000000"),
+            max_value=Decimal("1000000"),
             allow_nan=False,
             allow_infinity=False,
         )
     )
     @settings(max_examples=200, deadline=None)
-    def test_number_function_floats(self, n: float) -> None:
-        """Property: NUMBER function handles floats."""
+    def test_number_function_decimals(self, n: Decimal) -> None:
+        """Property: NUMBER function handles Decimals."""
         bundle = FluentBundle("en-US")
         bundle.add_resource("num = { NUMBER($n) }")
 
         result, _ = bundle.format_pattern("num", {"n": n})
 
-        event("number_type=float")
+        event("number_type=Decimal")
         assert isinstance(result, str)
-        event("outcome=number_func_float_success")
+        event("outcome=number_func_decimal_success")
 
     @given(st.text(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=None)

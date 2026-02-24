@@ -324,11 +324,10 @@ class TestComprehensiveTypeTagging:
             unique_keys.add(key_str)
 
     def test_numeric_types_distinct(self) -> None:
-        """int, float, bool, Decimal with same value produce different keys."""
+        """int, bool, Decimal with same value produce different keys."""
         keys = {
             "bool_true": IntegrityCache._make_hashable(True),
             "int_1": IntegrityCache._make_hashable(1),
-            "float_1": IntegrityCache._make_hashable(1.0),
             "decimal_1": IntegrityCache._make_hashable(Decimal("1")),
         }
 

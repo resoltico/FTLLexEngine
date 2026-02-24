@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -28,9 +28,9 @@ class TestNumberFormatBoundaries:
     def test_number_format_negative_zero(self):
         """Kills: negative zero handling mutations.
 
-        Negative zero should format as zero.
+        Zero Decimal should format as zero.
         """
-        result = number_format(-0.0, "en-US")
+        result = number_format(Decimal("0"), "en-US")
         assert "0" in str(result)
 
     def test_number_format_negative_number(self):
@@ -58,7 +58,7 @@ class TestNumberFormatBoundaries:
 
         Very small decimals should format correctly.
         """
-        result = number_format(0.000001, "en-US", maximum_fraction_digits=6)
+        result = number_format(Decimal("0.000001"), "en-US", maximum_fraction_digits=6)
         assert isinstance(str(result), str)
 
     def test_number_format_with_infinity(self):
@@ -66,7 +66,7 @@ class TestNumberFormatBoundaries:
 
         Infinity should be handled gracefully.
         """
-        result = number_format(math.inf, "en-US")
+        result = number_format(Decimal("Infinity"), "en-US")
         result_str = str(result)
         assert isinstance(result_str, str)
         # Either formatted as "inf" or fallback to str(value)
@@ -77,7 +77,7 @@ class TestNumberFormatBoundaries:
 
         NaN should be handled gracefully.
         """
-        result = number_format(math.nan, "en-US")
+        result = number_format(Decimal("NaN"), "en-US")
         result_str = str(result)
         assert isinstance(result_str, str)
         assert len(result_str) > 0
@@ -133,7 +133,7 @@ class TestNumberFormatPrecisionBoundaries:
 
         Zero maximum should round to integer.
         """
-        result = number_format(5.7, "en-US", maximum_fraction_digits=0)
+        result = number_format(Decimal("5.7"), "en-US", maximum_fraction_digits=0)
         # Should be "6" (rounded)
         assert "6" in str(result)
 
@@ -142,7 +142,7 @@ class TestNumberFormatPrecisionBoundaries:
 
         One maximum should show at most one decimal.
         """
-        result = number_format(5.789, "en-US", maximum_fraction_digits=1)
+        result = number_format(Decimal("5.789"), "en-US", maximum_fraction_digits=1)
         # Should be "5.8" (rounded)
         assert "5" in str(result)
 
@@ -151,7 +151,7 @@ class TestNumberFormatPrecisionBoundaries:
 
         Default maximum should allow three decimals.
         """
-        result = number_format(5.12345, "en-US", maximum_fraction_digits=3)
+        result = number_format(Decimal("5.12345"), "en-US", maximum_fraction_digits=3)
         # Should be "5.123" (rounded)
         assert "5" in str(result)
 
@@ -213,7 +213,7 @@ class TestNumberFormatPrecisionCombinations:
         Value between min and max should show actual digits.
         """
         result = number_format(
-            5.5, "en-US", minimum_fraction_digits=1,
+            Decimal("5.5"), "en-US", minimum_fraction_digits=1,
             maximum_fraction_digits=3,
         )
         # Should show "5.5" (one decimal)
@@ -225,7 +225,7 @@ class TestNumberFormatPrecisionCombinations:
         Zeros beyond minimum should be stripped.
         """
         result = number_format(
-            5.0, "en-US", minimum_fraction_digits=0,
+            Decimal("5"), "en-US", minimum_fraction_digits=0,
             maximum_fraction_digits=3,
         )
         # Should be "5" not "5.000"
@@ -426,10 +426,10 @@ class TestNumberFormatParametricCombinations:
             (3, 3, 5, 3),  # Exactly 3 decimals
             # Ranges (min < max)  # noqa: ERA001
             (0, 3, 5, 0),  # Integer, show 0 decimals
-            (0, 3, 5.5, 1),  # One decimal needed
-            (0, 3, 5.12, 2),  # Two decimals needed
+            (0, 3, Decimal("5.5"), 1),  # One decimal needed
+            (0, 3, Decimal("5.12"), 2),  # Two decimals needed
             (1, 3, 5, 1),  # Integer, min forces 1 decimal
-            (1, 3, 5.5, 1),  # One decimal
+            (1, 3, Decimal("5.5"), 1),  # One decimal
             (2, 3, 5, 2),  # Integer, min forces 2 decimals
         ],
     )
@@ -495,12 +495,12 @@ class TestNumberFormatParametricCombinations:
         ("value", "min_frac", "max_frac", "use_grouping"),
         [
             # All parameters at defaults
-            (1234.5, 0, 3, True),
+            (Decimal("1234.5"), 0, 3, True),
             # All parameters customized
-            (1234.5, 2, 2, False),
+            (Decimal("1234.5"), 2, 2, False),
             # Mixed: some default, some custom
-            (1234.5, 1, 3, True),
-            (1234.5, 0, 5, False),
+            (Decimal("1234.5"), 1, 3, True),
+            (Decimal("1234.5"), 0, 5, False),
             # Edge values
             (0, 0, 0, True),
             (0, 2, 2, True),
@@ -551,7 +551,7 @@ class TestNumberFormatDefaultParameterMutations:
         Default maximum should be 3.
         """
         # With default params, should allow up to 3 decimals
-        result = number_format(5.12345, "en-US")  # More than 3 decimals
+        result = number_format(Decimal("5.12345"), "en-US")  # More than 3 decimals
         # Should be rounded to 3 decimals
         assert isinstance(str(result), str)
 

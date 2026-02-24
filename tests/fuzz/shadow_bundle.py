@@ -28,6 +28,7 @@ Python 3.13+.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from ftllexengine.syntax.ast import (
@@ -127,7 +128,7 @@ class ShadowBundle:
     def format_pattern(
         self,
         message_id: str,
-        args: dict[str, str | int | float] | None = None,
+        args: dict[str, str | int | Decimal] | None = None,
     ) -> tuple[str, tuple[ShadowError, ...]]:
         """Format a message pattern.
 
@@ -200,7 +201,7 @@ class ShadowBundle:
     def _resolve_pattern(
         self,
         pattern: Pattern,
-        args: dict[str, str | int | float],
+        args: dict[str, str | int | Decimal],
         context_id: str,
     ) -> tuple[str, list[ShadowError]]:
         """Resolve a pattern to a string."""
@@ -223,7 +224,7 @@ class ShadowBundle:
     def _resolve_expression(  # noqa: PLR0911, PLR0912, PLR0915
         self,
         expr: InlineExpression | SelectExpression,
-        args: dict[str, str | int | float],
+        args: dict[str, str | int | Decimal],
         context_id: str,
     ) -> tuple[str, list[ShadowError]]:
         """Resolve an expression to a string."""

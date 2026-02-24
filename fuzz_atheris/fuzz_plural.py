@@ -9,7 +9,7 @@
 Targets: ftllexengine.runtime.plural_rules.select_plural_category
 
 Concern boundary: This fuzzer stress-tests CLDR plural category selection
-directly. Tests category validity across all number types (int, float, Decimal),
+directly. Tests category validity across all number types (int, Decimal),
 precision-aware v-operand handling, locale fallback chains, deterministic output,
 boundary number behavior, and locale cache consistency. Distinct from runtime
 fuzzers which exercise plural rules only as a side effect of FluentBundle
@@ -207,14 +207,11 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.runtime.plural_rules import select_plural_category
 
 
-def _generate_number(fdp: atheris.FuzzedDataProvider) -> int | float | Decimal:
-    """Generate a number from fuzzed data (int, float, or Decimal)."""
-    num_type = fdp.ConsumeIntInRange(0, 2)
-    if num_type == 0:
+def _generate_number(fdp: atheris.FuzzedDataProvider) -> int | Decimal:
+    """Generate a number from fuzzed data (int or Decimal)."""
+    if fdp.ConsumeBool():
         return fdp.ConsumeInt(8)
-    if num_type == 1:
-        return fdp.ConsumeFloat()
-    # Decimal from float string
+    # Decimal from float string avoids Decimal constructor exceptions
     return Decimal(str(fdp.ConsumeFloat()))
 
 
@@ -319,12 +316,11 @@ def _pattern_determinism(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _pattern_number_type_variety(fdp: atheris.FuzzedDataProvider) -> None:
-    """int, float, and Decimal must all produce valid categories."""
+    """int and Decimal must both produce valid categories."""
     base_val = fdp.ConsumeIntInRange(0, 1000)
     locale = fdp.PickValueInList(list(_HIGH_LEVERAGE_LOCALES))
 
-    # Test all three types
-    for n in (base_val, float(base_val), Decimal(str(base_val))):
+    for n in (base_val, Decimal(str(base_val))):
         category = select_plural_category(n, locale, precision=None)
         if category not in VALID_CATEGORIES:
             msg = (
@@ -363,16 +359,16 @@ def _pattern_extreme_inputs(fdp: atheris.FuzzedDataProvider) -> None:
     """Extreme/pathological numbers: huge, negative, NaN, Inf, high precision."""
     locale = fdp.PickValueInList(list(_HIGH_LEVERAGE_LOCALES))
 
-    extreme_values: list[int | float | Decimal] = [
+    extreme_values: list[int | Decimal] = [
         fdp.ConsumeInt(8),
         -fdp.ConsumeInt(8),
-        float("inf"),
-        float("-inf"),
-        float("nan"),
         10**18,
         -(10**18),
         Decimal("0.0000000000000001"),
         Decimal("999999999999999999"),
+        Decimal("Infinity"),
+        Decimal("-Infinity"),
+        Decimal("NaN"),
     ]
 
     val = fdp.PickValueInList(extreme_values)
@@ -390,12 +386,10 @@ def _pattern_raw_bytes(fdp: atheris.FuzzedDataProvider) -> None:
     """Malformed input stability: raw bytes as locale, arbitrary numbers."""
     locale = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 100))
 
-    num_type = fdp.ConsumeIntInRange(0, 3)
+    num_type = fdp.ConsumeIntInRange(0, 2)
     if num_type == 0:
-        n: int | float | Decimal = fdp.ConsumeInt(8)
+        n: int | Decimal = fdp.ConsumeInt(8)
     elif num_type == 1:
-        n = fdp.ConsumeFloat()
-    elif num_type == 2:
         try:
             n = Decimal(fdp.ConsumeUnicodeNoSurrogates(20))
         except InvalidOperation:

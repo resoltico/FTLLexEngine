@@ -6,6 +6,8 @@ Financial-grade quality for production use.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from ftllexengine import FluentBundle
@@ -198,7 +200,7 @@ class TestFunctionDiscoveryWorkflow:
 
         # Use it in FTL
         bundle.add_resource("price = { NUMBER($amount, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("price", {"amount": 123.456})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("123.456")})
         assert errors == ()
         assert "123" in result
 
@@ -250,7 +252,7 @@ class TestFinancialUseCases:
 
         # Safe to use
         bundle.add_resource('price = { CURRENCY($amount, currency: "EUR") }')
-        result, errors = bundle.format_pattern("price", {"amount": 1234.56})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("1234.56")})
         assert errors == ()
         assert "1" in result
         assert "234" in result
@@ -272,7 +274,7 @@ class TestFinancialUseCases:
 
         # Use in VAT calculation
         bundle.add_resource("vat = VAT: { NUMBER($amount, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("vat", {"amount": 23.45})
+        result, errors = bundle.format_pattern("vat", {"amount": Decimal("23.45")})
         assert errors == ()
         assert "23.45" in result
 
@@ -280,9 +282,10 @@ class TestFinancialUseCases:
         """Register and verify custom financial function."""
         bundle = FluentBundle("lv_LV", use_isolating=False)
 
-        def LATVIAN_VAT(amount: float, rate: float = 0.21) -> str:  # pylint: disable=invalid-name
+        def LATVIAN_VAT(amount: int | Decimal, rate: Decimal = Decimal("0.21")) -> str:  # pylint: disable=invalid-name
             """Calculate Latvian VAT (21%)."""
-            vat = amount * rate
+            value = Decimal(amount) if isinstance(amount, int) else amount
+            vat = value * rate
             return f"{vat:.2f}"
 
         # Register custom function
@@ -298,7 +301,7 @@ class TestFinancialUseCases:
 
         # Use in FTL
         bundle.add_resource("vat = VAT: €{ LATVIAN_VAT($amount) }")
-        result, errors = bundle.format_pattern("vat", {"amount": 100.0})
+        result, errors = bundle.format_pattern("vat", {"amount": 100})
         assert errors == ()
         assert "21.00" in result
 

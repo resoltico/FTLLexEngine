@@ -18,7 +18,6 @@ Public API:
                          tuple[T | None, tuple[FrozenFluentError, ...]]
 
     Parsing Functions:
-        parse_number - Returns ParseResult[float]
         parse_decimal - Returns ParseResult[Decimal]
         parse_date - Returns ParseResult[date]
         parse_datetime - Returns ParseResult[datetime]
@@ -26,7 +25,6 @@ Public API:
 
     Type Guards:
         is_valid_decimal - TypeIs guard for finite Decimal
-        is_valid_number - TypeIs guard for finite float
         is_valid_currency - TypeIs guard for tuple[Decimal, str] (not None)
         is_valid_date - TypeIs guard for date (not None)
         is_valid_datetime - TypeIs guard for datetime (not None)
@@ -83,9 +81,8 @@ from .guards import (
     is_valid_date,
     is_valid_datetime,
     is_valid_decimal,
-    is_valid_number,
 )
-from .numbers import parse_decimal, parse_number
+from .numbers import parse_decimal
 
 # Type alias for parsing function return values (defined after imports to satisfy linting)
 type ParseResult[T] = tuple[T | None, tuple[FrozenFluentError, ...]]
@@ -113,13 +110,11 @@ __all__ = [
     "is_valid_date",
     "is_valid_datetime",
     "is_valid_decimal",
-    "is_valid_number",
     # Parsing functions
     "parse_currency",
     "parse_date",
     "parse_datetime",
     "parse_decimal",
-    "parse_number",
     # Fiscal calendar
     "FiscalCalendar",
     "FiscalDelta",

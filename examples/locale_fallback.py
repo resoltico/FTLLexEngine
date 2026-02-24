@@ -32,6 +32,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
 from ftllexengine import FluentLocalization
@@ -419,7 +420,7 @@ return-policy = Return Policy
         print(f"  {item}: {result}")
 
     print("\nDynamic content:")
-    result, _ = l10n.format_value("total", {"amount": 49.99})
+    result, _ = l10n.format_value("total", {"amount": Decimal("49.99")})
     print(f"  total: {result}")
 
 

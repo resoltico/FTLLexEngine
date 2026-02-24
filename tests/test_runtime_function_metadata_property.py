@@ -3,6 +3,8 @@
 Tests metadata system for built-in Fluent functions.
 """
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
@@ -259,7 +261,7 @@ class TestShouldInjectLocale:
         """Verify replaced built-in function doesn't get locale injection."""
         bundle = FluentBundle("en", use_isolating=False)
 
-        def custom_number(value: float | int) -> str:
+        def custom_number(value: int | Decimal) -> str:
             return f"CUSTOM:{value}"
 
         # Replace built-in NUMBER with custom implementation
@@ -442,7 +444,7 @@ class TestShouldInjectLocaleEdgeCases:
 
         registry = FunctionRegistry()
 
-        def custom_number(value: float) -> str:
+        def custom_number(value: int | Decimal) -> str:
             return f"CUSTOM:{value}"
 
         registry.register(custom_number, ftl_name="NUMBER")

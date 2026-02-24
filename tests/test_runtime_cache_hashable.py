@@ -3,11 +3,11 @@ unhashable argument handling.
 
 Covers:
 - __init__ parameter validation
-- _make_hashable type-tagged conversions (bool/int/float/Decimal/datetime/date/
+- _make_hashable type-tagged conversions (bool/int/Decimal/datetime/date/
   FluentNumber/list/dict/set/tuple) for collision-free cache keys
 - Depth limiting to prevent O(N) key computation on adversarial inputs
 - _make_key integration and error recovery (RecursionError, TypeError)
-- NaN normalization (float/Decimal) to prevent cache pollution DoS vectors
+- NaN normalization (Decimal) to prevent cache pollution DoS vectors
 - Hashable conversion of list/dict/set/tuple args for full cache coverage
 - Unhashable argument graceful bypass (skips caching, increments counter)
 - Error bloat protection (max_entry_weight, max_errors_per_entry)
@@ -17,7 +17,6 @@ Covers:
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, NoReturn
@@ -78,24 +77,22 @@ class TestIntegrityCacheInitValidation:
 class TestMakeHashableTypes:
     """Test IntegrityCache._make_hashable type-tagged conversions.
 
-    Python's hash equality (hash(1) == hash(True) == hash(1.0)) would cause
-    cache collisions. Type-tagging ensures distinct cache keys per type.
+    Python's hash equality (hash(1) == hash(True)) would cause cache collisions.
+    Type-tagging ensures distinct cache keys per type.
     """
 
     def test_make_hashable_primitives(self) -> None:
-        """_make_hashable type-tags bool/int/float to prevent hash collisions.
+        """_make_hashable type-tags bool/int to prevent hash collisions.
 
         str and None are not tagged (no collision risk).
-        bool/int/float are type-tagged so hash(1) == hash(True) == hash(1.0)
-        does not cause cache key collisions.
+        bool/int are type-tagged so hash(1) == hash(True) does not cause
+        cache key collisions.
         """
         assert IntegrityCache._make_hashable("text") == "text"
         assert IntegrityCache._make_hashable(None) is None
         assert IntegrityCache._make_hashable(42) == ("__int__", 42)
         assert IntegrityCache._make_hashable(True) == ("__bool__", True)
         assert IntegrityCache._make_hashable(False) == ("__bool__", False)
-        # float uses str() to distinguish -0.0 from 0.0
-        assert IntegrityCache._make_hashable(3.14) == ("__float__", "3.14")
 
     def test_make_hashable_decimal(self) -> None:
         """_make_hashable type-tags Decimal with str() to preserve scale.
@@ -364,8 +361,8 @@ class TestMakeKey:
             args={
                 "string": "hello",
                 "int": 42,
-                "float": 3.14,
-                "decimal": Decimal("99.99"),
+                "decimal": Decimal("3.14"),
+                "decimal2": Decimal("99.99"),
                 "datetime": datetime(2024, 1, 1, tzinfo=UTC),
                 "date": date(2024, 1, 1),
                 "fluent_number": FluentNumber(value=100, formatted="100"),
@@ -437,49 +434,6 @@ class TestMakeKey:
 # ============================================================================
 
 
-class TestNaNFloatNormalization:
-    """Test that float NaN values are normalized in cache keys.
-
-    Security context: float NaN violates Python's equality contract
-    (float("nan") != float("nan")). Without normalization each put() with NaN
-    creates an unretrievable entry, enabling cache pollution DoS.
-    """
-
-    def test_float_nan_cache_key_consistency(self) -> None:
-        """Float NaN produces consistent cache key across independent instances."""
-        cache = IntegrityCache(strict=False)
-        cache.put("msg", {"val": float("nan")}, None, "en", True, "Result", ())
-        entry = cache.get("msg", {"val": float("nan")}, None, "en", True)
-        assert entry is not None
-        assert entry.formatted == "Result"
-
-    def test_float_nan_does_not_pollute_cache(self) -> None:
-        """Multiple puts with float NaN update the same entry, not create new ones."""
-        cache = IntegrityCache(strict=False, maxsize=100)
-        for i in range(10):
-            cache.put("msg", {"val": float("nan")}, None, "en", True, f"Value {i}", ())
-        stats = cache.get_stats()
-        assert stats["size"] == 1, (
-            f"Expected 1 entry but got {stats['size']}. "
-            "NaN normalization may not be working - cache pollution detected."
-        )
-
-    def test_float_nan_different_from_regular_float(self) -> None:
-        """Float NaN has different cache key from regular floats."""
-        cache = IntegrityCache(strict=False)
-        cache.put("msg", {"val": float("nan")}, None, "en", True, "NaN Result", ())
-        cache.put("msg", {"val": 1.0}, None, "en", True, "Float Result", ())
-
-        nan_entry = cache.get("msg", {"val": float("nan")}, None, "en", True)
-        float_entry = cache.get("msg", {"val": 1.0}, None, "en", True)
-
-        assert nan_entry is not None
-        assert nan_entry.formatted == "NaN Result"
-        assert float_entry is not None
-        assert float_entry.formatted == "Float Result"
-        assert cache.get_stats()["size"] == 2
-
-
 class TestNaNDecimalNormalization:
     """Test that Decimal NaN values are normalized in cache keys."""
 
@@ -526,50 +480,25 @@ class TestNaNDecimalNormalization:
         assert cache.get_stats()["size"] == 2
 
 
-class TestNaNMixedTypes:
-    """Test NaN handling with mixed float and Decimal types."""
-
-    def test_float_nan_and_decimal_nan_are_separate_keys(self) -> None:
-        """Float NaN and Decimal NaN produce different cache keys.
-
-        Both are "NaN" semantically but are different types. Type-tagging
-        (__float__ vs __decimal__) ensures they cache separately.
-        """
-        cache = IntegrityCache(strict=False)
-        cache.put("msg", {"val": float("nan")}, None, "en", True, "Float NaN", ())
-        cache.put("msg", {"val": Decimal("NaN")}, None, "en", True, "Decimal NaN", ())
-
-        float_entry = cache.get("msg", {"val": float("nan")}, None, "en", True)
-        decimal_entry = cache.get("msg", {"val": Decimal("NaN")}, None, "en", True)
-
-        assert float_entry is not None
-        assert float_entry.formatted == "Float NaN"
-        assert decimal_entry is not None
-        assert decimal_entry.formatted == "Decimal NaN"
-        assert cache.get_stats()["size"] == 2
-
-
 class TestNaNInNestedStructures:
     """Test NaN normalization in nested data structures."""
 
     def test_nan_in_list_normalized(self) -> None:
         """NaN values within lists are normalized for cache key consistency."""
         cache = IntegrityCache(strict=False)
-        cache.put(
-            "msg", {"items": [1.0, float("nan"), 3.0]}, None, "en", True, "List Result", ()
-        )
-        entry = cache.get(
-            "msg", {"items": [1.0, float("nan"), 3.0]}, None, "en", True
-        )
+        items = [Decimal("1"), Decimal("NaN"), Decimal("3")]
+        cache.put("msg", {"items": items}, None, "en", True, "List Result", ())
+        entry = cache.get("msg", {"items": items}, None, "en", True)
         assert entry is not None
         assert entry.formatted == "List Result"
 
     def test_nan_in_dict_normalized(self) -> None:
         """NaN values within dicts are normalized for cache key consistency."""
         cache = IntegrityCache(strict=False)
-        args = {"data": {"a": 1.0, "b": float("nan")}}
+        args: dict[str, FluentValue] = {"data": {"a": Decimal("1"), "b": Decimal("NaN")}}
         cache.put("msg", args, None, "en", True, "Dict Result", ())
-        entry = cache.get("msg", {"data": {"a": 1.0, "b": float("nan")}}, None, "en", True)
+        data = {"a": Decimal("1"), "b": Decimal("NaN")}
+        entry = cache.get("msg", {"data": data}, None, "en", True)
         assert entry is not None
         assert entry.formatted == "Dict Result"
 
@@ -579,8 +508,8 @@ class TestNaNInNestedStructures:
         deep_args: dict[str, FluentValue] = {
             "outer": {
                 "inner": [
-                    {"value": float("nan")},
                     {"value": Decimal("NaN")},
+                    {"value": Decimal("sNaN")},
                 ]
             }
         }
@@ -588,8 +517,8 @@ class TestNaNInNestedStructures:
         fresh_args: dict[str, FluentValue] = {
             "outer": {
                 "inner": [
-                    {"value": float("nan")},
                     {"value": Decimal("NaN")},
+                    {"value": Decimal("sNaN")},
                 ]
             }
         }
@@ -612,29 +541,13 @@ class TestNaNSecurityProperties:
         for i in range(5):
             cache.put(f"legit{i}", None, None, "en", True, f"Legit {i}", ())
         for i in range(100):
-            cache.put("attack", {"val": float("nan")}, None, "en", True, f"Attack {i}", ())
+            cache.put("attack", {"val": Decimal("NaN")}, None, "en", True, f"Attack {i}", ())
 
         # 5 legit + 1 attack = 6 entries (attack collapses to 1 due to normalization)
         assert cache.get_stats()["size"] == 6
         for i in range(5):
             entry = cache.get(f"legit{i}", None, None, "en", True)
             assert entry is not None, f"Legitimate entry legit{i} was evicted!"
-
-    @given(st.floats(allow_nan=True))
-    @settings(max_examples=100)
-    @example(float("nan"))
-    @example(float("-nan"))
-    @example(float("inf"))
-    @example(float("-inf"))
-    def test_all_float_special_values_produce_retrievable_keys(self, value: float) -> None:
-        """PROPERTY: For any float value, put followed by get returns the entry."""
-        cache = IntegrityCache(strict=False)
-        args = {"val": value}
-        cache.put("msg", args, None, "en", True, f"Value: {value}", ())
-        entry = cache.get("msg", args, None, "en", True)
-        assert entry is not None, f"Entry for value {value!r} was not retrievable"
-        is_nan = math.isnan(value)
-        event(f"is_nan={is_nan}")
 
     @given(st.decimals(allow_nan=True))
     @settings(max_examples=100)
@@ -658,11 +571,6 @@ class TestNaNSecurityProperties:
 class TestNaNHashableValue:
     """Test _make_hashable NaN handling directly."""
 
-    def test_make_hashable_float_nan_returns_canonical(self) -> None:
-        """_make_hashable returns canonical ('__float__', '__NaN__') for float NaN."""
-        result = IntegrityCache._make_hashable(float("nan"))
-        assert result == ("__float__", "__NaN__")
-
     def test_make_hashable_decimal_nan_returns_canonical(self) -> None:
         """_make_hashable returns canonical ('__decimal__', '__NaN__') for Decimal NaN."""
         result = IntegrityCache._make_hashable(Decimal("NaN"))
@@ -673,28 +581,23 @@ class TestNaNHashableValue:
         result = IntegrityCache._make_hashable(Decimal("sNaN"))
         assert result == ("__decimal__", "__NaN__")
 
-    def test_make_hashable_regular_float_uses_str(self) -> None:
-        """_make_hashable returns tagged str for regular floats (non-NaN)."""
-        result = IntegrityCache._make_hashable(1.5)
-        assert result == ("__float__", "1.5")
-
     def test_make_hashable_regular_decimal_uses_str(self) -> None:
         """_make_hashable returns tagged str for regular Decimal values."""
         result = IntegrityCache._make_hashable(Decimal("1.50"))
         assert result == ("__decimal__", "1.50")
 
-    def test_make_hashable_infinity_uses_str_not_nan_sentinel(self) -> None:
-        """Infinity uses str() representation, not the NaN sentinel.
+    def test_make_hashable_decimal_infinity_uses_str_not_nan_sentinel(self) -> None:
+        """Decimal Infinity uses str() representation, not the NaN sentinel.
 
         Infinity satisfies Inf == Inf (unlike NaN), so no special normalization
         is needed. Both +Inf and -Inf produce distinct, retrievable keys.
         """
-        pos_inf = IntegrityCache._make_hashable(float("inf"))
-        neg_inf = IntegrityCache._make_hashable(float("-inf"))
-        nan_result = IntegrityCache._make_hashable(float("nan"))
+        pos_inf = IntegrityCache._make_hashable(Decimal("Inf"))
+        neg_inf = IntegrityCache._make_hashable(Decimal("-Inf"))
+        nan_result = IntegrityCache._make_hashable(Decimal("NaN"))
 
-        assert pos_inf == ("__float__", "inf")
-        assert neg_inf == ("__float__", "-inf")
+        assert pos_inf == ("__decimal__", "Infinity")
+        assert neg_inf == ("__decimal__", "-Infinity")
         assert pos_inf != nan_result
         assert neg_inf != nan_result
 
@@ -980,9 +883,9 @@ class TestUnhashableHandling:
     def test_hashable_args_do_not_increment_unhashable_skips(self) -> None:
         """Fully hashable primitive args never increment unhashable_skips."""
         cache = IntegrityCache(strict=False, maxsize=100)
-        args: dict[str, object] = {"str": "value", "int": 42, "float": 3.14}
-        cache.get("msg1", args, None, "en-US", True)  # type: ignore[arg-type]
-        cache.put("msg2", args, None, "en-US", True, "result", ())  # type: ignore[arg-type]
+        args: dict[str, FluentValue] = {"str": "value", "int": 42, "decimal": Decimal("3.14")}
+        cache.get("msg1", args, None, "en-US", True)
+        cache.put("msg2", args, None, "en-US", True, "result", ())
         assert cache.unhashable_skips == 0
 
     def test_put_with_circular_reference_increments_skip_counter(self) -> None:
@@ -1238,15 +1141,16 @@ class TestIntegrityCacheProperties:
         """PROPERTY: All primitive FluentValue types produce valid, retrievable entries."""
         cache = IntegrityCache(strict=False)
 
-        for args in [
+        args_list: list[dict[str, FluentValue]] = [
             {"text": text},
             {"num": 42},
-            {"float": 3.14},
+            {"decimal": Decimal("3.14")},
             {"flag": True},
             {"val": None},
-        ]:
-            cache.put("msg", args, None, "en", True, "result", ())  # type: ignore[arg-type]
-            entry = cache.get("msg", args, None, "en", True)  # type: ignore[arg-type]
+        ]
+        for args in args_list:
+            cache.put("msg", args, None, "en", True, "result", ())
+            entry = cache.get("msg", args, None, "en", True)
             assert entry is not None
             assert entry.as_result() == ("result", ())
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: TYPES
-updated: "2026-02-21"
+updated: "2026-02-24"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -848,7 +848,7 @@ Type alias for values passable to Fluent functions and format_pattern().
 ### Signature
 ```python
 type FluentValue = (
-    str | int | float | bool | Decimal | datetime | date | FluentNumber | None |
+    str | int | bool | Decimal | datetime | date | FluentNumber | None |
     Sequence["FluentValue"] | Mapping[str, "FluentValue"]
 )
 ```
@@ -858,9 +858,8 @@ type FluentValue = (
 |:-----|:------------|
 | `str` | String arguments. |
 | `int` | Integer arguments. |
-| `float` | Floating-point arguments. |
 | `bool` | Boolean arguments. |
-| `Decimal` | Precise decimal arguments (currency). |
+| `Decimal` | Precise decimal arguments (currency, any fractional value). |
 | `datetime` | Date-time arguments. |
 | `date` | Date-only arguments. |
 | `FluentNumber` | Formatted number from NUMBER() function. |
@@ -885,7 +884,7 @@ Frozen dataclass wrapping a formatted number to preserve numeric identity, forma
 ```python
 @dataclass(frozen=True, slots=True)
 class FluentNumber:
-    value: int | float | Decimal
+    value: int | Decimal
     formatted: str
     precision: int | None = None
 
@@ -895,7 +894,7 @@ class FluentNumber:
 ### Parameters
 | Name | Type | Req | Semantics |
 |:-----|:-----|:----|:----------|
-| `value` | `int \| float \| Decimal` | Y | Original numeric value for plural matching |
+| `value` | `int \| Decimal` | Y | Original numeric value for plural matching |
 | `formatted` | `str` | Y | Locale-formatted string for display output |
 | `precision` | `int \| None` | N | Visible fraction digit count (CLDR v operand); None if unspecified |
 

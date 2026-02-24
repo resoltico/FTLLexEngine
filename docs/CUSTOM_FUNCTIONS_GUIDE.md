@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: custom-functions
-updated: "2026-02-21"
+updated: "2026-02-24"
 route:
   keywords: [custom functions, add_function, fluent functions, factory pattern, locale-aware, formatting functions]
   questions: ["how to create custom function?", "how to add custom function?", "how to make locale-aware function?"]
@@ -76,7 +76,7 @@ By convention, FTL functions use UPPERCASE names to distinguish them from messag
 
 ```python
 # RECOMMENDED - FTL convention (UPPERCASE)
-def FILESIZE(bytes_count: int | float) -> str:
+def FILESIZE(bytes_count: int) -> str:
     ...
 
 def PHONE(number: str) -> str:
@@ -107,7 +107,7 @@ def phoneNumber(number: str) -> str:  # Works, but unconventional
 Disable naming warnings for FTL functions:
 
 ```python
-def FILESIZE(bytes_count: int | float) -> str:  # noqa: N802
+def FILESIZE(bytes_count: int) -> str:  # noqa: N802
     """Format file size."""
     ...
 
@@ -135,7 +135,7 @@ phone = { PHONE($number, format_style: "international") }
 
 ```python
 # CORRECT - Uses * to enforce keyword-only args
-def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
+def FILESIZE(bytes_count: int, *, precision: int = 2) -> str:
     """Format file size in human-readable format.
 
     Args:
@@ -156,7 +156,7 @@ def PHONE(number: str, *, format_style: str = "international") -> str:
 
 ```python
 # WRONG - Missing * separator
-def FILESIZE(bytes_count: int | float, precision: int = 2) -> str:  # [WRONG] positional after keyword
+def FILESIZE(bytes_count: int, precision: int = 2) -> str:  # [WRONG] positional after keyword
     ...
 ```
 
@@ -203,7 +203,7 @@ Fluent's error model requires graceful degradation:
 
 ```python
 # CORRECT - Returns fallback on error
-def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
+def FILESIZE(bytes_count: int, *, precision: int = 2) -> str:
     """Format file size."""
     try:
         bytes_count = float(bytes_count)
@@ -219,8 +219,8 @@ def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
 
 ```python
 # WRONG - Raising exceptions crashes the application
-def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
-    if not isinstance(bytes_count, (int, float)):
+def FILESIZE(bytes_count: int, *, precision: int = 2) -> str:
+    if not isinstance(bytes_count, int):
         raise TypeError("bytes_count must be numeric")  # [WRONG] NEVER raise from a custom function
     ...
 ```
@@ -231,7 +231,7 @@ When errors occur, return a fallback that helps developers debug:
 
 ```python
 # GOOD - Descriptive fallback
-def CURRENCY_CUSTOM(amount: float, *, currency_code: str = "USD") -> str:
+def CURRENCY_CUSTOM(amount: int | Decimal, *, currency_code: str = "USD") -> str:
     try:
         from babel import numbers
         return numbers.format_currency(amount, currency_code, locale="en_US")
@@ -243,7 +243,7 @@ def CURRENCY_CUSTOM(amount: float, *, currency_code: str = "USD") -> str:
 
 ```python
 # BAD - Useless fallback
-def CURRENCY_CUSTOM(amount: float, *, currency_code: str = "USD") -> str:
+def CURRENCY_CUSTOM(amount: int | Decimal, *, currency_code: str = "USD") -> str:
     try:
         ...
     except Exception:
@@ -445,7 +445,7 @@ Use Babel for **international data types** where formatting rules vary by locale
 **NOTE**: FTLLexEngine has a built-in `CURRENCY()` function. This example is for educational purposes only, demonstrating how to integrate Babel in custom functions.
 
 ```python
-def CURRENCY_CUSTOM_EXAMPLE(amount: float, *, currency_code: str = "USD", locale: str = "en_US") -> str:
+def CURRENCY_CUSTOM_EXAMPLE(amount: int | Decimal, *, currency_code: str = "USD", locale: str = "en_US") -> str:
     """Format currency with CLDR-compliant locale-aware formatting.
 
     EDUCATIONAL EXAMPLE ONLY - Use built-in CURRENCY() function instead!
@@ -483,7 +483,7 @@ def CURRENCY_CUSTOM_EXAMPLE(amount: float, *, currency_code: str = "USD", locale
 
 ```python
 # WRONG - Naive implementation
-def CURRENCY_NAIVE(amount: float, *, currency_code: str = "USD") -> str:
+def CURRENCY_NAIVE(amount: int | Decimal, *, currency_code: str = "USD") -> str:
     symbols = {"USD": "$", "EUR": "€", "JPY": "¥"}
     symbol = symbols.get(currency_code, currency_code)
     return f"{symbol}{amount:,.2f}"  # [WRONG] Many problems!
@@ -499,7 +499,7 @@ def CURRENCY_NAIVE(amount: float, *, currency_code: str = "USD") -> str:
 # CORRECT - Babel integration
 from babel import numbers
 
-def CURRENCY_CORRECT(amount: float, *, currency_code: str = "USD", locale: str = "en_US") -> str:
+def CURRENCY_CORRECT(amount: int | Decimal, *, currency_code: str = "USD", locale: str = "en_US") -> str:
     try:
         return numbers.format_currency(amount, currency_code, locale=locale)
     except Exception:
@@ -604,7 +604,7 @@ result, _ = bundle.format_pattern("welcome-html", {
 ### Example 3: FILESIZE Formatting
 
 ```python
-def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
+def FILESIZE(bytes_count: int, *, precision: int = 2) -> str:
     """Format file size in human-readable format.
 
     Args:
@@ -647,7 +647,7 @@ result, _ = bundle.format_pattern("file-info", {
 ### Example 4: DURATION Formatting
 
 ```python
-def DURATION(seconds: int | float, *, format_style: str = "long") -> str:
+def DURATION(seconds: int | Decimal, *, format_style: str = "long") -> str:
     """Format duration in human-readable format.
 
     Args:
@@ -845,7 +845,7 @@ class TestFileSizeHypothesis:
    ```python
    from babel import numbers, dates
 
-   def CUSTOM(value: float, *, locale: str = "en_US") -> str:
+   def CUSTOM(value: int | Decimal, *, locale: str = "en_US") -> str:
        return numbers.format_decimal(value, locale=locale)
    ```
 
@@ -924,11 +924,11 @@ class TestFileSizeHypothesis:
 5. **Hardcoding locale-specific formatting**
    ```python
    # WRONG - Only works for US locale
-   def CUSTOM_NUMBER(value: float) -> str:
+   def CUSTOM_NUMBER(value: int | Decimal) -> str:
        return f"${value:,.2f}"  # [WRONG] Always uses $ and US formatting
 
    # CORRECT - Uses Babel for locale-aware formatting
-   def CUSTOM_NUMBER(value: float, *, locale: str = "en_US") -> str:
+   def CUSTOM_NUMBER(value: int | Decimal, *, locale: str = "en_US") -> str:
        from babel import numbers
        return numbers.format_currency(value, "USD", locale=locale)
    ```
@@ -940,7 +940,7 @@ class TestFileSizeHypothesis:
        return f"{bytes_count / 1024:.2f} KB"  # [WRONG] Crashes if bytes_count is string
 
    # CORRECT - Handles invalid input
-   def FILESIZE(bytes_count: int | float) -> str:
+   def FILESIZE(bytes_count: int) -> str:
        try:
            return f"{float(bytes_count) / 1024:.2f} KB"
        except (ValueError, TypeError):

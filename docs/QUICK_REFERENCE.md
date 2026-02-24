@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: reference
-updated: "2026-02-22"
+updated: "2026-02-24"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -241,16 +241,16 @@ bundle.add_resource(ftl_source)
 
 ```python
 # Define custom function (FILESIZE example)
-def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:
+def FILESIZE(bytes_count: int, *, precision: int = 2) -> str:
     """Format file size in human-readable format."""
-    bytes_count = float(bytes_count)
+    size = float(bytes_count)
     units = ["B", "KB", "MB", "GB", "TB"]
 
     for unit in units:
-        if bytes_count < 1024.0:
-            return f"{bytes_count:.{precision}f} {unit}"
-        bytes_count /= 1024.0
-    return f"{bytes_count:.{precision}f} PB"
+        if size < 1024.0:
+            return f"{size:.{precision}f} {unit}"
+        size /= 1024.0
+    return f"{size:.{precision}f} PB"
 
 # Register function
 bundle = FluentBundle("en")
@@ -571,7 +571,6 @@ result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
 ```
 
 **Key Functions**:
-- `parse_number(value, locale)` → `tuple[float | None, tuple[FrozenFluentError, ...]]`
 - `parse_decimal(value, locale)` → `tuple[Decimal | None, tuple[FrozenFluentError, ...]]`
 - `parse_date(value, locale)` → `tuple[date | None, tuple[FrozenFluentError, ...]]`
 - `parse_datetime(value, locale, tzinfo=None)` → `tuple[datetime | None, tuple[FrozenFluentError, ...]]`
@@ -679,7 +678,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
     return bundle
 ```
 
-**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | float | bool | Decimal | datetime | date | FluentNumber | None | Sequence[FluentValue] | Mapping[str, FluentValue]`.
+**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | bool | Decimal | datetime | date | FluentNumber | None | Sequence[FluentValue] | Mapping[str, FluentValue]`.
 
 **`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FrozenFluentError, ...]]`. Import from `ftllexengine.parsing`.
 

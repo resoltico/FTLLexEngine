@@ -461,36 +461,35 @@ def ftl_comments(draw: st.DrawFn) -> str:
 
 
 @composite
-def ftl_numbers(draw: st.DrawFn) -> int | float:
+def ftl_numbers(draw: st.DrawFn) -> int | Decimal:
     """Generate valid FTL numbers.
 
     FTL number literals support format: -?[0-9]+(.[0-9]+)?
-    No scientific notation. Subnormal floats are excluded because
+    No scientific notation. Subnormal values are excluded because
     their string representation uses scientific notation (e.g., 1e-308).
     """
     return draw(
         st.one_of(
             st.integers(min_value=-1000000, max_value=1000000),
-            st.floats(
-                min_value=-1000000.0,
-                max_value=1000000.0,
+            st.decimals(
+                min_value=Decimal("-1000000"),
+                max_value=Decimal("1000000"),
                 allow_nan=False,
                 allow_infinity=False,
-                allow_subnormal=False,
             ),
         )
     )
 
 
 @composite
-def ftl_financial_numbers(draw: st.DrawFn) -> int | float:
+def ftl_financial_numbers(draw: st.DrawFn) -> Decimal:
     """Generate financial-scale numbers for financial application testing.
 
     Events emitted:
     - strategy=financial_{magnitude}: Number magnitude category (for HypoFuzz)
     - strategy=financial_decimals_{n}: Decimal places (for ISO 4217 coverage)
 
-    D4 fix: Financial applications handle amounts in billions (GDP, fund values,
+    Financial applications handle amounts in billions (GDP, fund values,
     transaction volumes). This strategy generates numbers across the full range
     needed for financial formatting tests.
 
@@ -523,12 +522,12 @@ def ftl_financial_numbers(draw: st.DrawFn) -> int | float:
     event(f"strategy=financial_decimals_{decimals}")
 
     if decimals == 0:
-        return base
+        return Decimal(base)
 
-    # Add decimal component based on ISO 4217 decimal places
+    # Add decimal component based on ISO 4217 decimal places using exact arithmetic.
     divisor = 10 ** decimals
     fraction = draw(st.integers(min_value=0, max_value=divisor - 1))
-    return base + fraction / divisor
+    return Decimal(base) + Decimal(fraction) / Decimal(divisor)
 
 
 # =============================================================================
@@ -664,14 +663,12 @@ def ftl_number_literals(draw: st.DrawFn) -> NumberLiteral:
     No scientific notation allowed. Uses fixed-point notation for Decimals.
     """
     value = draw(ftl_numbers())
-    # Convert float to Decimal for decimal numbers (financial-grade precision)
-    typed_value = Decimal(str(value)) if isinstance(value, float) else value
 
     # Ensure raw string uses fixed-point notation (no scientific notation)
     # str(Decimal) may use 'E' notation for very small/large values
-    raw = format(typed_value, "f") if isinstance(typed_value, Decimal) else str(typed_value)
+    raw = format(value, "f") if isinstance(value, Decimal) else str(value)
 
-    return NumberLiteral(value=typed_value, raw=raw)
+    return NumberLiteral(value=value, raw=raw)
 
 
 @composite
@@ -1642,26 +1639,26 @@ def resolver_string_args(draw: st.DrawFn) -> dict[str, str]:
 
 
 @composite
-def resolver_number_args(draw: st.DrawFn) -> dict[str, int | float]:
+def resolver_number_args(draw: st.DrawFn) -> dict[str, int | Decimal]:
     """Generate number-only resolver arguments."""
     keys = draw(st.lists(ftl_identifiers(), min_size=0, max_size=5, unique=True))
     return {k: draw(ftl_numbers()) for k in keys}
 
 
 @composite
-def resolver_mixed_args(draw: st.DrawFn) -> dict[str, str | int | float]:
+def resolver_mixed_args(draw: st.DrawFn) -> dict[str, str | int | Decimal]:
     """Generate mixed-type resolver arguments."""
     keys = draw(st.lists(ftl_identifiers(), min_size=0, max_size=5, unique=True))
-    result: dict[str, str | int | float] = {}
+    result: dict[str, str | int | Decimal] = {}
 
     for k in keys:
-        value: str | int | float = draw(
+        value: str | int | Decimal = draw(
             st.one_of(
                 ftl_simple_text(),
                 st.integers(min_value=-1000000, max_value=1000000),
-                st.floats(
-                    min_value=-1000000,
-                    max_value=1000000,
+                st.decimals(
+                    min_value=Decimal("-1000000"),
+                    max_value=Decimal("1000000"),
                     allow_nan=False,
                     allow_infinity=False,
                 ),
@@ -1673,18 +1670,18 @@ def resolver_mixed_args(draw: st.DrawFn) -> dict[str, str | int | float]:
 
 
 @composite
-def resolver_edge_case_args(draw: st.DrawFn) -> dict[str, str | int | float]:
+def resolver_edge_case_args(draw: st.DrawFn) -> dict[str, str | int | Decimal]:
     """Generate edge case resolver arguments."""
-    edge_values: list[str | int | float] = [
+    edge_values: list[str | int | Decimal] = [
         "",  # Empty string
         " ",  # Whitespace only
         "0",  # Zero as string
         0,  # Zero
         -1,  # Negative
-        0.0,  # Float zero
-        0.1,  # Small float
-        1e10,  # Large number
-        -1e10,  # Large negative
+        Decimal("0"),  # Decimal zero
+        Decimal("0.1"),  # Small decimal
+        Decimal("10000000000"),  # Large number
+        Decimal("-10000000000"),  # Large negative
     ]
 
     keys = draw(st.lists(ftl_identifiers(), min_size=1, max_size=3, unique=True))

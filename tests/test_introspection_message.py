@@ -1022,7 +1022,7 @@ class TestIntrospectMessageTypeErrors:
     @given(
         st.one_of(
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.booleans(),
             st.lists(st.text()),
         )
@@ -1278,3 +1278,134 @@ class TestIntrospectionIdempotence:
         assert "value" in info.get_variable_names()
         for name in var_names_list:
             assert name in info.get_variable_names()
+
+
+# ============================================================================
+# NESTED PLACEABLE COVERAGE
+# ============================================================================
+
+
+class TestIntrospectionNestedPlaceable:
+    """Test introspection of nested Placeable expressions."""
+
+    def test_nested_placeable_extraction(self) -> None:
+        """Nested Placeable (Placeable containing Placeable) visits inner expression."""
+        inner_var = VariableReference(id=Identifier("innerVar"))
+        inner_placeable = Placeable(expression=inner_var)
+        outer_placeable = Placeable(expression=inner_placeable)
+
+        message = Message(
+            id=Identifier("nested"),
+            value=Pattern(elements=(outer_placeable,)),
+            attributes=(),
+        )
+
+        result = introspect_message(message)
+
+        var_names = {v.name for v in result.variables}
+        assert "innerVar" in var_names
+
+    def test_deeply_nested_placeables(self) -> None:
+        """Multiple levels of nested Placeables are fully traversed."""
+        var = VariableReference(id=Identifier("deep"))
+        level1 = Placeable(expression=var)
+        level2 = Placeable(expression=level1)
+        level3 = Placeable(expression=level2)
+
+        message = Message(
+            id=Identifier("deepNest"),
+            value=Pattern(elements=(level3,)),
+            attributes=(),
+        )
+
+        result = introspect_message(message)
+        var_names = {v.name for v in result.variables}
+        assert "deep" in var_names
+
+    def test_message_without_value_extract_references(self) -> None:
+        """Message with value=None but with attributes extracts from attributes."""
+        attr_pattern = Pattern(
+            elements=(Placeable(expression=VariableReference(id=Identifier("attrVar"))),)
+        )
+        message = Message(
+            id=Identifier("attrsOnly"),
+            value=None,
+            attributes=(Attribute(id=Identifier("hint"), value=attr_pattern),),
+        )
+
+        msg_refs, term_refs = extract_references(message)
+
+        assert isinstance(msg_refs, frozenset)
+        assert isinstance(term_refs, frozenset)
+
+    def test_introspect_message_without_value(self) -> None:
+        """introspect_message extracts from attributes when message.value is None."""
+        attr_pattern = Pattern(
+            elements=(
+                TextElement("Hint: "),
+                Placeable(expression=VariableReference(id=Identifier("hintVar"))),
+            )
+        )
+        message = Message(
+            id=Identifier("noValue"),
+            value=None,
+            attributes=(Attribute(id=Identifier("tooltip"), value=attr_pattern),),
+        )
+
+        result = introspect_message(message)
+
+        var_names = {v.name for v in result.variables}
+        assert "hintVar" in var_names
+
+
+class TestIntrospectionBranchCoverage:
+    """Tests for introspection branch coverage."""
+
+    def test_function_without_arguments(self) -> None:
+        """Function reference with empty arguments visits function node correctly."""
+        func_ref = FunctionReference(
+            id=Identifier("NOARGS"),
+            arguments=CallArguments(positional=(), named=()),
+        )
+
+        message = Message(
+            id=Identifier("noArgsFunc"),
+            value=Pattern(elements=(Placeable(expression=func_ref),)),
+            attributes=(),
+        )
+
+        result = introspect_message(message)
+
+        func_names = {f.name for f in result.functions}
+        assert "NOARGS" in func_names
+
+    def test_text_element_only_pattern(self) -> None:
+        """Pattern with only TextElement yields no variables or functions."""
+        message = Message(
+            id=Identifier("textOnly"),
+            value=Pattern(elements=(TextElement("Just plain text"),)),
+            attributes=(),
+        )
+
+        result = introspect_message(message)
+
+        assert len(result.variables) == 0
+        assert len(result.functions) == 0
+
+    def test_function_with_empty_call_arguments(self) -> None:
+        """Function with empty positional and named arguments is still recorded."""
+        func_ref = FunctionReference(
+            id=Identifier("EMPTY"),
+            arguments=CallArguments(positional=(), named=()),
+        )
+
+        message = Message(
+            id=Identifier("emptyArgs"),
+            value=Pattern(elements=(Placeable(expression=func_ref),)),
+            attributes=(),
+        )
+
+        result = introspect_message(message)
+
+        func_names = {f.name for f in result.functions}
+        assert "EMPTY" in func_names

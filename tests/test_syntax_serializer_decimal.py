@@ -98,8 +98,7 @@ half = { $val ->
    *[other] { $val }
 }
 """)
-        # 0.5 = 1/2 is exactly representable in binary
-        result, errors = bundle.format_pattern("half", {"val": 0.5})
+        result, errors = bundle.format_pattern("half", {"val": Decimal("0.5")})
         assert result == "exactly half"
         assert not errors
 

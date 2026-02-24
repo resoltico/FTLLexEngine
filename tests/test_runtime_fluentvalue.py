@@ -84,9 +84,9 @@ class TestFluentValueTypeAnnotation:
         # All original types should still work
         str_val: FluentValue = "hello"
         int_val: FluentValue = 42
-        float_val: FluentValue = 3.14
         bool_val: FluentValue = True
         decimal_val: FluentValue = Decimal("1.50")
+        decimal_pi: FluentValue = Decimal("3.14")
         datetime_val: FluentValue = datetime.now(tz=UTC)
         date_val: FluentValue = datetime.now(tz=UTC).date()
         none_val: FluentValue = None
@@ -95,9 +95,9 @@ class TestFluentValueTypeAnnotation:
         # All should be accepted
         assert str_val == "hello"
         assert int_val == 42
-        assert float_val == 3.14
         assert bool_val is True
         assert decimal_val == Decimal("1.50")
+        assert decimal_pi == Decimal("3.14")
         assert isinstance(datetime_val, datetime)
         assert isinstance(date_val, date)
         assert none_val is None

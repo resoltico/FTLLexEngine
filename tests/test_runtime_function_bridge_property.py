@@ -479,17 +479,17 @@ class TestFluentValueTypes:
         result = registry.call("INT", [42], {})
         assert result == "Int: 42"
 
-    def test_function_with_float_value(self) -> None:
-        """Verify functions handle float values."""
+    def test_function_with_decimal_fractional_value(self) -> None:
+        """Verify functions handle Decimal fractional values."""
 
-        def float_func(value: float) -> str:
-            return f"Float: {value}"
+        def decimal_func(value: Decimal) -> str:
+            return f"Decimal: {value}"
 
         registry = FunctionRegistry()
-        registry.register(float_func, ftl_name="FLOAT")
+        registry.register(decimal_func, ftl_name="DEC2")
 
-        result = registry.call("FLOAT", [3.14], {})
-        assert result == "Float: 3.14"
+        result = registry.call("DEC2", [Decimal("3.14")], {})
+        assert result == "Decimal: 3.14"
 
     def test_function_with_decimal_value(self) -> None:
         """Verify functions handle Decimal values."""
@@ -606,10 +606,10 @@ class TestFluentFunctionProtocol:
 
             def __call__(
                 self,
-                value: str | int | float | Decimal | bool | None,
+                value: str | int | Decimal | bool | None,
                 locale_code: str,
                 /,
-                **kwargs: str | int | float | Decimal | bool | None,
+                **kwargs: str | int | Decimal | bool | None,
             ) -> str:
                 return f"Value: {value}, Locale: {locale_code}, Args: {kwargs}"
 
@@ -696,10 +696,10 @@ class TestFluentFunctionProtocol:
         """
         # Create a concrete callable that matches the Protocol
         def concrete_impl(
-            value: str | int | float | Decimal | bool | None,
+            value: str | int | Decimal | bool | None,
             locale_code: str,
             /,
-            **_kwargs: str | int | float | Decimal | bool | None,
+            **_kwargs: str | int | Decimal | bool | None,
         ) -> str:
             return f"{value}@{locale_code}"
 
@@ -726,7 +726,7 @@ class TestFluentNumberRepr:
         )
 
         fn = FluentNumber(value=42, formatted="42.00")
-        assert repr(fn) == "FluentNumber(value=42, formatted='42.00')"
+        assert repr(fn) == "FluentNumber(value=42, formatted='42.00', precision=None)"
 
     def test_fluent_number_repr_decimal(self) -> None:
         """FluentNumber.__repr__ for Decimal values."""
@@ -746,5 +746,5 @@ class TestFluentNumberRepr:
 
         fn = FluentNumber(value=100, formatted="100.00")
         assert str(fn) == "100.00"
-        assert repr(fn) == "FluentNumber(value=100, formatted='100.00')"
+        assert repr(fn) == "FluentNumber(value=100, formatted='100.00', precision=None)"
         assert str(fn) != repr(fn)

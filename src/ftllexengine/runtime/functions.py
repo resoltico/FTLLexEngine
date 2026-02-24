@@ -117,7 +117,7 @@ def _compute_visible_precision(
 
 
 def number_format(
-    value: int | float | Decimal,
+    value: int | Decimal,
     locale_code: str = "en-US",
     *,
     minimum_fraction_digits: int = 0,
@@ -131,7 +131,8 @@ def number_format(
     to FTL camelCase (minimumFractionDigits → minimum_fraction_digits).
 
     Args:
-        value: Number to format (int, float, or Decimal)
+        value: Number to format (int or Decimal). float is not accepted;
+            use Decimal(str(float_val)) to convert at system boundaries.
         locale_code: BCP 47 locale identifier (e.g., 'en-US', 'de-DE')
         minimum_fraction_digits: Minimum decimal places (default: 0)
         maximum_fraction_digits: Maximum decimal places (default: 3)
@@ -146,16 +147,17 @@ def number_format(
         FluentNumber with formatted string and computed precision for plural matching
 
     Examples:
-        >>> number_format(1234.5, "en-US")
-        FluentNumber(value=Decimal('1234.5'), formatted='1,234.5')
-        >>> number_format(1234.5, "de-DE")
-        FluentNumber(value=Decimal('1234.5'), formatted='1.234,5')
-        >>> number_format(1234.5, "lv-LV")
-        FluentNumber(value=Decimal('1234.5'), formatted='1 234,5')
+        >>> from decimal import Decimal
+        >>> number_format(Decimal('1234.5'), "en-US")
+        FluentNumber(value=Decimal('1234.5'), formatted='1,234.5', precision=1)
+        >>> number_format(Decimal('1234.5'), "de-DE")
+        FluentNumber(value=Decimal('1234.5'), formatted='1.234,5', precision=1)
+        >>> number_format(Decimal('1234.5'), "lv-LV")
+        FluentNumber(value=Decimal('1234.5'), formatted='1 234,5', precision=1)
         >>> number_format(42, "en-US", minimum_fraction_digits=2)
-        FluentNumber(value=42, formatted='42.00')
-        >>> number_format(-1234.56, "en-US", pattern="#,##0.00;(#,##0.00)")
-        FluentNumber(value=Decimal('-1234.56'), formatted='(1,234.56)')
+        FluentNumber(value=42, formatted='42.00', precision=2)
+        >>> number_format(Decimal('-1234.56'), "en-US", pattern="#,##0.00;(#,##0.00)")
+        FluentNumber(value=Decimal('-1234.56'), formatted='(1,234.56)', precision=2)
 
     FTL Usage:
         price = { $amount NUMBER(minimumFractionDigits: 2) }
@@ -224,11 +226,7 @@ def number_format(
         formatted, decimal_symbol, max_fraction_digits=max_frac
     )
 
-    # Convert float to Decimal before storage. str() preserves the user's intended
-    # decimal representation without float rounding artefacts (e.g., str(1234.5)
-    # gives "1234.5", not "1234.4999999999998863...").
-    stored_value: int | Decimal = Decimal(str(value)) if isinstance(value, float) else value
-    return FluentNumber(value=stored_value, formatted=formatted, precision=precision)
+    return FluentNumber(value=value, formatted=formatted, precision=precision)
 
 
 def datetime_format(
@@ -297,7 +295,7 @@ def datetime_format(
 
 
 def currency_format(
-    value: int | float | Decimal,
+    value: int | Decimal,
     locale_code: str = "en-US",
     *,
     currency: str,
@@ -310,7 +308,8 @@ def currency_format(
     to FTL camelCase (currencyDisplay → currency_display).
 
     Args:
-        value: Monetary amount (int, float, or Decimal)
+        value: Monetary amount (int or Decimal). float is not accepted;
+            use Decimal(str(float_val)) to convert at system boundaries.
         locale_code: BCP 47 locale identifier (e.g., 'en-US', 'de-DE')
         currency: ISO 4217 currency code (EUR, USD, JPY, BHD, etc.)
         currency_display: Display style (default: "symbol")
@@ -326,13 +325,14 @@ def currency_format(
         in plural/select expressions, matching NUMBER() behavior.
 
     Examples:
-        >>> currency_format(123.45, "en-US", currency="EUR")
+        >>> from decimal import Decimal
+        >>> currency_format(Decimal('123.45'), "en-US", currency="EUR")
         FluentNumber(value=Decimal('123.45'), formatted='€123.45', precision=2)
-        >>> currency_format(123.45, "lv-LV", currency="EUR")
+        >>> currency_format(Decimal('123.45'), "lv-LV", currency="EUR")
         FluentNumber(value=Decimal('123.45'), formatted='123,45 €', precision=2)
         >>> currency_format(12345, "ja-JP", currency="JPY")
         FluentNumber(value=12345, formatted='¥12,345', precision=0)
-        >>> currency_format(123.456, "ar-BH", currency="BHD")
+        >>> currency_format(Decimal('123.456'), "ar-BH", currency="BHD")
         FluentNumber(value=Decimal('123.456'), formatted='123.456 د.ب.', precision=3)
 
     FTL Usage:
@@ -404,10 +404,7 @@ def currency_format(
         formatted, decimal_symbol, max_fraction_digits=max_frac
     )
 
-    # Convert float to Decimal before storage. str() preserves the user's intended
-    # decimal representation without float rounding artefacts.
-    stored_value: int | Decimal = Decimal(str(value)) if isinstance(value, float) else value
-    return FluentNumber(value=stored_value, formatted=formatted, precision=precision)
+    return FluentNumber(value=value, formatted=formatted, precision=precision)
 
 
 # Mark built-in functions that require locale injection.

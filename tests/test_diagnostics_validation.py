@@ -515,3 +515,129 @@ class TestWarningSeverityEnum:
         """All expected enum members exist."""
         severity_values = {s.value for s in WarningSeverity}
         assert severity_values == {"critical", "warning", "info"}
+
+
+# ============================================================================
+# FORMAT METHOD COVERAGE
+# ============================================================================
+
+
+class TestValidationErrorFormatLines:
+    """ValidationError.format() with varying line/column location combinations."""
+
+    def test_format_with_line_but_no_column(self) -> None:
+        """Format with line number but no column omits 'column' from output."""
+        error = ValidationError(
+            code=DiagnosticCode.PARSE_JUNK,
+            message="Unexpected token",
+            content="broken content",
+            line=42,
+            column=None,
+        )
+        result = error.format()
+        assert "at line 42" in result
+        assert "column" not in result
+        assert f"[{DiagnosticCode.PARSE_JUNK.name}]" in result
+
+    def test_format_with_line_and_column(self) -> None:
+        """Format with both line and column includes both in output."""
+        error = ValidationError(
+            code=DiagnosticCode.UNEXPECTED_EOF,
+            message="Missing equals",
+            content="msg",
+            line=10,
+            column=5,
+        )
+        result = error.format()
+        assert "at line 10, column 5" in result
+
+    def test_format_without_location(self) -> None:
+        """Format without any location omits the 'at line' phrase."""
+        error = ValidationError(
+            code=DiagnosticCode.PARSE_JUNK,
+            message="General error",
+            content="content",
+            line=None,
+            column=None,
+        )
+        result = error.format()
+        assert "at line" not in result
+        assert f"[{DiagnosticCode.PARSE_JUNK.name}]:" in result
+
+
+class TestValidationResultFormatSections:
+    """ValidationResult.format() output sections: errors, warnings, annotations."""
+
+    def test_format_with_errors_only(self) -> None:
+        """Errors section appears in formatted output with correct count."""
+        error = ValidationError(
+            code=DiagnosticCode.PARSE_JUNK,
+            message="Error message",
+            content="bad content",
+            line=1,
+        )
+        result = ValidationResult(errors=(error,), warnings=(), annotations=())
+        output = result.format()
+        assert "Errors (1):" in output
+        assert f"[{DiagnosticCode.PARSE_JUNK.name}]" in output
+
+    def test_format_with_annotations_sanitized(self) -> None:
+        """Long annotation messages are truncated when sanitize=True."""
+        long_message = "A" * 150
+        annotation = Annotation(code="junk", message=long_message)
+        result = ValidationResult(errors=(), warnings=(), annotations=(annotation,))
+        output = result.format(sanitize=True)
+        assert "Annotations (1):" in output
+        assert "..." in output
+
+    def test_format_with_annotations_not_sanitized(self) -> None:
+        """Short annotation messages are not truncated when sanitize=False."""
+        message = "Short message"
+        annotation = Annotation(code="junk", message=message)
+        result = ValidationResult(errors=(), warnings=(), annotations=(annotation,))
+        output = result.format(sanitize=False)
+        assert "Annotations (1):" in output
+        assert message in output
+        assert "..." not in output
+
+    def test_format_with_warnings(self) -> None:
+        """Warnings section appears with context when include_warnings=True."""
+        warning = ValidationWarning(
+            code=DiagnosticCode.VALIDATION_DUPLICATE_ID,
+            message="Duplicate message ID",
+            context="hello",
+        )
+        result = ValidationResult(errors=(), warnings=(warning,), annotations=())
+        output = result.format(include_warnings=True)
+        assert "Warnings (1):" in output
+        assert f"[{DiagnosticCode.VALIDATION_DUPLICATE_ID.name}]" in output
+        assert "(context: 'hello')" in output
+
+    def test_format_with_warning_no_context(self) -> None:
+        """Warning without context does not include empty parentheses."""
+        warning = ValidationWarning(
+            code=DiagnosticCode.VALIDATION_PARSE_ERROR,
+            message="Unused message",
+            context=None,
+        )
+        result = ValidationResult(errors=(), warnings=(warning,), annotations=())
+        output = result.format(include_warnings=True)
+        assert "Warnings (1):" in output
+        assert "()" not in output
+
+    def test_format_exclude_warnings(self) -> None:
+        """Warnings section is omitted when include_warnings=False."""
+        warning = ValidationWarning(
+            code=DiagnosticCode.VALIDATION_PARSE_ERROR,
+            message="Warning",
+            context=None,
+        )
+        result = ValidationResult(errors=(), warnings=(warning,), annotations=())
+        output = result.format(include_warnings=False)
+        assert "Warnings" not in output
+
+    def test_format_valid_result(self) -> None:
+        """Valid result formats as a single success message."""
+        result = ValidationResult.valid()
+        output = result.format()
+        assert output == "Validation passed: no errors or warnings"

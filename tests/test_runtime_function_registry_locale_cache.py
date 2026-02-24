@@ -10,6 +10,8 @@ Tests for:
 Python 3.13+.
 """
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
@@ -25,7 +27,7 @@ def _identity_str(x: object) -> str:
     return str(x)
 
 
-def _custom_format(value: float, *, precision: int = 2) -> str:
+def _custom_format(value: int | Decimal, *, precision: int = 2) -> str:
     """Custom format function for testing."""
     return f"{value:.{precision}f}"
 
@@ -70,7 +72,7 @@ class TestFunctionRegistryGetCallable:
         assert callable_func is _custom_format
         # Functionality check - callable_func is guaranteed to be _custom_format
         assert callable_func is not None
-        assert callable_func(3.14159, precision=2) == "3.14"
+        assert callable_func(Decimal("3.14159"), precision=2) == "3.14"
 
     @given(st.text(min_size=1, max_size=20, alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
     @settings(max_examples=20)
@@ -104,7 +106,7 @@ class TestLocaleContextCreate:
         # Original locale_code preserved for debugging
         assert result.locale_code == "xx-UNKNOWN"
         # Formatting uses en_US rules (fallback)
-        formatted = result.format_number(1234.5, use_grouping=True)
+        formatted = result.format_number(Decimal("1234.5"), use_grouping=True)
         assert "1,234" in formatted or "1234" in formatted
 
     def test_create_with_invalid_format_returns_locale_context(self) -> None:

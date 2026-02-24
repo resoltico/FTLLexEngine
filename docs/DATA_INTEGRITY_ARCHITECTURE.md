@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: "architecture"
-updated: "2026-02-22"
+updated: "2026-02-24"
 route: "/docs/data-integrity"
 ---
 
@@ -204,9 +204,8 @@ Cache keys must distinguish between values that hash identically but have differ
 
 | Type | Tag Format | Purpose |
 |:-----|:-----------|:--------|
-| `bool` | `("__bool__", value)` | Distinguish `True` from `1` |
-| `int` | `("__int__", value)` | Distinguish `1` from `1.0` |
-| `float` | `("__float__", value)` | Distinguish `1.0` from `1` |
+| `bool` | `("__bool__", value)` | Distinguish `True` from `1` (`bool` subclasses `int`) |
+| `int` | `("__int__", value)` | Distinguish `1` from `True` (must be checked after `bool`) |
 | `Decimal` | `("__decimal__", str(value))` | Preserve scale for CLDR plural rules (`Decimal("1.0")` vs `Decimal("1.00")`) |
 | `FluentNumber` | `("__fluentnumber__", type, value, formatted, precision)` | Preserve underlying type and formatting info |
 | `list` | `("__list__", tuple(...))` | Distinguish from tuple in formatted output |

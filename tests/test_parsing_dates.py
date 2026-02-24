@@ -1148,3 +1148,34 @@ class TestIntegrationFullCoverage:
             else:
                 assert len(errors) > 0
                 assert result is None
+
+
+# ============================================================================
+# DATETIME SEPARATOR AND BABEL PATTERN TOKENIZER COVERAGE
+# ============================================================================
+
+
+class TestTokenizeBabelPatternEdgeCases:
+    """_tokenize_babel_pattern: patterns starting with a quote and unclosed sections."""
+
+    def test_quoted_section_with_escaped_quote(self) -> None:
+        """Escaped quote '' inside a quoted literal is unescaped to a single quote."""
+        pattern = "'It''s a test'"
+        tokens = _tokenize_babel_pattern(pattern)
+        assert any("It's a test" in t for t in tokens)
+
+    def test_unclosed_quoted_section(self) -> None:
+        """Unclosed quoted literal collects remaining characters."""
+        pattern = "'unclosed"
+        tokens = _tokenize_babel_pattern(pattern)
+        assert any("unclosed" in t for t in tokens)
+
+
+class TestDatesQuotedLiteral:
+    """Non-empty quoted literal in Babel date pattern tokenizes correctly."""
+
+    def test_quoted_literal_in_pattern(self) -> None:
+        """Spanish-style quoted separator 'de' is extracted as a token."""
+        pattern = "d 'de' MMMM 'de' y"
+        tokens = _tokenize_babel_pattern(pattern)
+        assert "de" in tokens

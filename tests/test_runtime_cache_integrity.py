@@ -19,11 +19,13 @@ import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.constants import DEFAULT_MAX_ENTRY_WEIGHT
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -32,12 +34,14 @@ from ftllexengine.diagnostics import (
     FrozenFluentError,
 )
 from ftllexengine.integrity import CacheCorruptionError, WriteConflictError
+from ftllexengine.runtime import FluentBundle
 from ftllexengine.runtime.cache import (
     IntegrityCache,
     IntegrityCacheEntry,
     WriteLogEntry,
     _estimate_error_weight,
 )
+from ftllexengine.runtime.cache_config import CacheConfig
 
 # ============================================================================
 # CHECKSUM VERIFICATION TESTS
@@ -916,25 +920,25 @@ class TestDatetimeTimezoneCollisionPrevention:
         assert key_aware[2] == "UTC"
 
 
-class TestFloatNegativeZeroCollisionPrevention:
-    """Test that 0.0 and -0.0 produce distinct cache keys.
+class TestDecimalNegativeZeroCollisionPrevention:
+    """Test that Decimal("0") and Decimal("-0") produce distinct cache keys.
 
-    Python's 0.0 == -0.0, but locale-aware formatting may distinguish them
-    (e.g., "-0" vs "0"). The cache must treat them as distinct values.
+    Python's Decimal("0") == Decimal("-0"), but locale-aware formatting may
+    distinguish them (e.g., "-0" vs "0"). The cache must treat them as distinct.
     """
 
     def test_zero_and_negative_zero_distinct_keys(self) -> None:
-        """0.0 and -0.0 produce distinct cache keys."""
-        key_pos = IntegrityCache._make_hashable(0.0)
-        key_neg = IntegrityCache._make_hashable(-0.0)
+        """Decimal("0") and Decimal("-0") produce distinct cache keys."""
+        key_pos = IntegrityCache._make_hashable(Decimal("0"))
+        key_neg = IntegrityCache._make_hashable(Decimal("-0"))
 
         # They're equal in Python
-        assert 0.0 == -0.0
+        assert Decimal("0") == Decimal("-0")
 
         # But distinct in cache keys (via str representation)
         assert key_pos != key_neg
-        assert key_pos == ("__float__", "0.0")
-        assert key_neg == ("__float__", "-0.0")
+        assert key_pos == ("__decimal__", "0")
+        assert key_neg == ("__decimal__", "-0")
 
 
 class TestSequenceMappingABCSupport:
@@ -1435,7 +1439,7 @@ class TestErrorWeightAndVerifyIntegration:
             fallback_value="{!CURRENCY}",
         )
         diagnostic = Diagnostic(
-            code=DiagnosticCode.PARSE_NUMBER_FAILED,
+            code=DiagnosticCode.PARSE_DECIMAL_FAILED,
             message="Failed to parse number",
             hint="Check number format",
             resolution_path=("step1", "step2", "step3"),
@@ -1487,3 +1491,106 @@ class TestErrorWeightAndVerifyIntegration:
         min_weight = len(message) + len(input_val) + len(locale) + len("test") + len("fallback")
         assert weight1 >= min_weight
         event(f"weight={weight1}")
+
+
+# ============================================================================
+# CACHE ENTRY SIZE LIMIT COVERAGE
+# ============================================================================
+
+
+class TestCacheEntrySizeLimit:
+    """IntegrityCache max_entry_weight prevents caching of oversized results."""
+
+    def test_default_max_entry_weight(self) -> None:
+        """Default max_entry_weight is DEFAULT_MAX_ENTRY_WEIGHT (10,000 characters)."""
+        cache = IntegrityCache(strict=False)
+        assert cache.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
+        assert cache.max_entry_weight == 10_000
+
+    def test_custom_max_entry_weight(self) -> None:
+        """Custom max_entry_weight is stored and returned correctly."""
+        cache = IntegrityCache(strict=False, max_entry_weight=1000)
+        assert cache.max_entry_weight == 1000
+
+    def test_invalid_max_entry_weight_rejected(self) -> None:
+        """Zero and negative max_entry_weight raise ValueError."""
+        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
+            IntegrityCache(strict=False, max_entry_weight=0)
+
+        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
+            IntegrityCache(strict=False, max_entry_weight=-1)
+
+    def test_small_entries_cached(self) -> None:
+        """Entries below max_entry_weight are stored and retrievable."""
+        cache = IntegrityCache(strict=False, max_entry_weight=1000)
+
+        cache.put("msg", None, None, "en", True, "x" * 100, ())
+
+        assert cache.size == 1
+        assert cache.oversize_skips == 0
+
+        cached = cache.get("msg", None, None, "en", True)
+        assert cached is not None
+        assert cached.as_result() == ("x" * 100, ())
+
+    def test_large_entries_not_cached(self) -> None:
+        """Entries exceeding max_entry_weight are skipped and counted."""
+        cache = IntegrityCache(strict=False, max_entry_weight=100)
+
+        cache.put("msg", None, None, "en", True, "x" * 200, ())
+
+        assert cache.size == 0
+        assert cache.oversize_skips == 1
+
+        cached = cache.get("msg", None, None, "en", True)
+        assert cached is None
+
+    def test_boundary_entry_size(self) -> None:
+        """Entry exactly at max_entry_weight is cached (inclusive boundary)."""
+        cache = IntegrityCache(strict=False, max_entry_weight=100)
+
+        cache.put("msg", None, None, "en", True, "x" * 100, ())
+
+        assert cache.size == 1
+        assert cache.oversize_skips == 0
+
+    def test_get_stats_includes_oversize_skips(self) -> None:
+        """get_stats() reports oversize_skips and max_entry_weight."""
+        cache = IntegrityCache(strict=False, max_entry_weight=50)
+
+        for i in range(5):
+            cache.put(f"msg-{i}", None, None, "en", True, "x" * 100, ())
+
+        stats = cache.get_stats()
+        assert stats["oversize_skips"] == 5
+        assert stats["max_entry_weight"] == 50
+        assert stats["size"] == 0
+
+    def test_clear_preserves_oversize_skips(self) -> None:
+        """clear() removes entries but preserves cumulative oversize_skips counter."""
+        cache = IntegrityCache(strict=False, max_entry_weight=50)
+
+        cache.put("msg", None, None, "en", True, "x" * 100, ())
+        assert cache.oversize_skips == 1
+
+        cache.clear()
+        assert cache.oversize_skips == 1
+
+    def test_bundle_cache_uses_default_max_entry_weight(self) -> None:
+        """FluentBundle's internal cache uses default max_entry_weight."""
+        bundle = FluentBundle("en", cache=CacheConfig())
+        bundle.add_resource("msg = { $data }")
+
+        small_data = "x" * 100
+        bundle.format_pattern("msg", {"data": small_data})
+
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 1
+
+    @given(st.integers(min_value=1, max_value=1000))
+    def test_max_entry_weight_property(self, size: int) -> None:
+        """PROPERTY: max_entry_weight is correctly stored and returned."""
+        event(f"weight_size={size}")
+        cache = IntegrityCache(strict=False, max_entry_weight=size)
+        assert cache.max_entry_weight == size

@@ -17,6 +17,7 @@ from ftllexengine.runtime import FluentBundle
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import create_default_registry
+from ftllexengine.validation.resource import validate_resource
 
 
 class TestFluentBundleCreation:
@@ -2215,3 +2216,206 @@ class TestBundleHypothesisProperties:
             f"undefined term '-{term_b}'" in w.message
             for w in result.warnings
         )
+
+
+# ============================================================================
+# LOCALE VALIDATION AND BUNDLE INTEGRATION COVERAGE
+# ============================================================================
+
+
+class TestLocaleValidationAsciiOnly:
+    """Locale codes must be ASCII alphanumeric with underscore or hyphen separators."""
+
+    def test_valid_ascii_locales_accepted(self) -> None:
+        """Valid ASCII locale codes are accepted without error."""
+        valid_locales = [
+            "en",
+            "en_US",
+            "en-US",
+            "de_DE",
+            "lv_LV",
+            "zh_Hans_CN",
+            "pt_BR",
+            "ja_JP",
+            "ar_EG",
+        ]
+        for locale in valid_locales:
+            bundle = FluentBundle(locale)
+            assert bundle.locale == locale
+
+    def test_unicode_locale_rejected(self) -> None:
+        """Locale codes with non-ASCII characters raise ValueError."""
+        invalid_locales = [
+            "\xe9_FR",
+            "\u65e5\u672c\u8a9e",
+            "en_\xfc",
+            "\xe4\xf6\xfc",
+        ]
+        for locale in invalid_locales:
+            with pytest.raises(ValueError, match="must be ASCII alphanumeric"):
+                FluentBundle(locale)
+
+    def test_empty_locale_rejected(self) -> None:
+        """Empty locale code raises ValueError."""
+        with pytest.raises(ValueError, match="cannot be empty"):
+            FluentBundle("")
+
+    def test_invalid_format_rejected(self) -> None:
+        """Invalid locale code formats raise ValueError."""
+        invalid_formats = [
+            "_en",
+            "en_",
+            "en__US",
+            "en US",
+            "en.US",
+            "en@US",
+        ]
+        for locale in invalid_formats:
+            with pytest.raises(ValueError, match="Invalid locale code format"):
+                FluentBundle(locale)
+
+    @given(
+        st.text(
+            alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            min_size=1,
+            max_size=10,
+        )
+    )
+    def test_ascii_alphanumeric_accepted(self, locale: str) -> None:
+        """PROPERTY: Pure ASCII alphanumeric strings are valid locales."""
+        event(f"locale_len={len(locale)}")
+        bundle = FluentBundle(locale)
+        assert bundle.locale == locale
+
+
+class TestBundleOverwriteWarning:
+    """Overwriting an existing message or term in add_resource logs a WARNING."""
+
+    def test_message_overwrite_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Overwriting a message logs a warning with the message ID."""
+        bundle = FluentBundle("en")
+
+        with caplog.at_level(logging.WARNING):
+            bundle.add_resource("greeting = Hello")
+            bundle.add_resource("greeting = Goodbye")
+
+        warning_messages = [
+            record.message for record in caplog.records
+            if record.levelno == logging.WARNING
+        ]
+        assert any("Overwriting existing message 'greeting'" in msg for msg in warning_messages)
+
+    def test_term_overwrite_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Overwriting a term logs a warning with the term ID."""
+        bundle = FluentBundle("en")
+
+        with caplog.at_level(logging.WARNING):
+            bundle.add_resource("-brand = Acme")
+            bundle.add_resource("-brand = NewCorp")
+
+        warning_messages = [
+            record.message for record in caplog.records
+            if record.levelno == logging.WARNING
+        ]
+        assert any("Overwriting existing term '-brand'" in msg for msg in warning_messages)
+
+    def test_no_warning_for_new_entries(self, caplog: pytest.LogCaptureFixture) -> None:
+        """No overwrite warning when adding distinct entries."""
+        bundle = FluentBundle("en")
+
+        with caplog.at_level(logging.WARNING):
+            bundle.add_resource("greeting = Hello")
+            bundle.add_resource("farewell = Goodbye")
+
+        overwrite_warnings = [
+            record.message for record in caplog.records
+            if record.levelno == logging.WARNING and "Overwriting" in record.message
+        ]
+        assert len(overwrite_warnings) == 0
+
+    def test_last_write_wins_behavior_preserved(self) -> None:
+        """Last Write Wins behavior: last added resource wins on repeated key."""
+        bundle = FluentBundle("en")
+        bundle.add_resource("greeting = First")
+        bundle.add_resource("greeting = Second")
+        bundle.add_resource("greeting = Third")
+
+        result, _ = bundle.format_pattern("greeting")
+        assert result == "Third"
+
+
+class TestBundleIntegration:
+    """Integration tests via FluentBundle for multi-module coverage."""
+
+    def test_variant_key_failed_number_parse(self) -> None:
+        """Number-like variant key that fails parse falls through to identifier."""
+        bundle = FluentBundle("en_US")
+        bundle.add_resource(
+            "msg = { $val ->\n"
+            "    [-.test] Match\n"
+            "   *[other] Other\n"
+            "}\n"
+        )
+        result, _ = bundle.format_pattern(
+            "msg", {"val": "-.test"}
+        )
+        assert result is not None
+
+    def test_identifier_as_function_argument(self) -> None:
+        """Identifier becomes MessageReference in function call arguments."""
+        bundle = FluentBundle("en_US")
+
+        def test_func(val: str | int) -> str:
+            return str(val)
+
+        bundle.add_function("TEST", test_func)
+        bundle.add_resource("ref = value")
+        bundle.add_resource("msg = { TEST(ref) }")
+        result, errors = bundle.format_pattern("msg")
+        assert not errors
+        assert result is not None
+
+    def test_comment_with_crlf_ending(self) -> None:
+        """Comment with CRLF line ending is parsed correctly."""
+        bundle = FluentBundle("en_US")
+        bundle.add_resource("# Comment\r\nmsg = value")
+        result, errors = bundle.format_pattern("msg")
+        assert not errors
+        assert "value" in result
+
+    def test_full_coverage_integration(self) -> None:
+        """Integration test exercising parser, resolver, and validator together."""
+        bundle = FluentBundle("en_US")
+        bundle.add_resource(
+            "# Comment\n"
+            "msg1 = { $val }\n"
+            "msg2 = { NUMBER($val) }\n"
+            "msg3 = { -term }\n"
+            "msg4 = { other.attr }\n"
+            "sel = { 42 ->\n"
+            "    [42] Match\n"
+            "   *[other] Other\n"
+            "}\n"
+            "-brand = Firefox\n"
+            "    .version = 1.0\n"
+            "empty =\n"
+            "    .attr = Value\n"
+        )
+        r1, _ = bundle.format_pattern("msg1", {"val": "t"})
+        r2, _ = bundle.format_pattern("msg2", {"val": 42})
+        r3, _ = bundle.format_pattern("sel")
+        assert all(r is not None for r in [r1, r2, r3])
+
+        validation = validate_resource(
+            "msg = { $val }\n-term = Firefox\n"
+        )
+        assert validation is not None
+
+
+class TestBundleLocaleValidationBeforeLoading:
+    """Locale validation happens before any resource loading attempt."""
+
+    def test_locale_validation_before_resource_loading(self) -> None:
+        """Invalid locale raises ValueError immediately, before resource loading."""
+        with pytest.raises(ValueError, match="must be ASCII alphanumeric"):
+            FluentBundle("\xe9_FR")

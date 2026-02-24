@@ -33,7 +33,6 @@ Python 3.13+. Uses Babel for i18n.
 from __future__ import annotations
 
 import logging
-import math
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -371,7 +370,7 @@ class LocaleContext:
 
     def format_number(
         self,
-        value: int | float | Decimal,
+        value: int | Decimal,
         *,
         minimum_fraction_digits: int = 0,
         maximum_fraction_digits: int = 3,
@@ -383,7 +382,8 @@ class LocaleContext:
         Implements Fluent NUMBER function semantics using Babel.
 
         Args:
-            value: Number to format (int, float, or Decimal)
+            value: Number to format (int or Decimal). float is not accepted;
+                use Decimal(str(float_val)) to convert at system boundaries.
             minimum_fraction_digits: Minimum decimal places (default: 0)
             maximum_fraction_digits: Maximum decimal places (default: 3)
             use_grouping: Use thousands separator (default: True)
@@ -394,19 +394,20 @@ class LocaleContext:
 
         Examples:
             >>> ctx = LocaleContext.create('en-US')
-            >>> ctx.format_number(1234.5)
+            >>> from decimal import Decimal
+            >>> ctx.format_number(Decimal('1234.5'))
             '1,234.5'
 
             >>> ctx = LocaleContext.create('de-DE')
-            >>> ctx.format_number(1234.5)
+            >>> ctx.format_number(Decimal('1234.5'))
             '1.234,5'
 
             >>> ctx = LocaleContext.create('lv-LV')
-            >>> ctx.format_number(1234.5)
+            >>> ctx.format_number(Decimal('1234.5'))
             '1 234,5'
 
             >>> ctx = LocaleContext.create('en-US')
-            >>> ctx.format_number(-1234.56, pattern="#,##0.00;(#,##0.00)")
+            >>> ctx.format_number(Decimal('-1234.56'), pattern="#,##0.00;(#,##0.00)")
             '(1,234.56)'
 
         CLDR Compliance:
@@ -469,15 +470,9 @@ class LocaleContext:
                 format_pattern = f"{integer_part}.{required}{optional}"
 
             # Quantize value with ROUND_HALF_UP for consistent rounding.
-            # Skip quantization for special values (inf, -inf, NaN) that cannot
-            # be quantized. Decimal has its own special-value predicates; math.isinf
-            # and math.isnan raise TypeError on Decimal inputs.
-            is_special = False
-            if isinstance(value, Decimal):
-                is_special = not value.is_finite()
-            elif isinstance(value, float):
-                is_special = math.isinf(value) or math.isnan(value)
-            # Keep as Decimal to preserve precision (Babel format_decimal accepts Decimal)
+            # Skip quantization for non-finite Decimal values (Infinity, NaN).
+            # Keep as Decimal to preserve precision (Babel format_decimal accepts Decimal).
+            is_special = isinstance(value, Decimal) and not value.is_finite()
             if not is_special:
                 value = Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
 
@@ -650,7 +645,7 @@ class LocaleContext:
 
     def format_currency(
         self,
-        value: int | float | Decimal,
+        value: int | Decimal,
         *,
         currency: str,
         currency_display: Literal["symbol", "code", "name"] = "symbol",
@@ -661,7 +656,8 @@ class LocaleContext:
         Implements Fluent CURRENCY function semantics using Babel.
 
         Args:
-            value: Monetary amount (int, float, or Decimal)
+            value: Monetary amount (int or Decimal). float is not accepted;
+                use Decimal(str(float_val)) to convert at system boundaries.
             currency: ISO 4217 currency code (EUR, USD, JPY, BHD, etc.)
             currency_display: Display style for currency
                 - "symbol": Use currency symbol (default)
@@ -676,12 +672,13 @@ class LocaleContext:
             Formatted currency string according to locale rules
 
         Examples:
+            >>> from decimal import Decimal
             >>> ctx = LocaleContext.create('en-US')
-            >>> ctx.format_currency(123.45, currency='EUR')
+            >>> ctx.format_currency(Decimal('123.45'), currency='EUR')
             '€123.45'
 
             >>> ctx = LocaleContext.create('lv-LV')
-            >>> ctx.format_currency(123.45, currency='EUR')
+            >>> ctx.format_currency(Decimal('123.45'), currency='EUR')
             '123,45 €'
 
             >>> ctx = LocaleContext.create('ja-JP')
@@ -689,12 +686,12 @@ class LocaleContext:
             '¥12,345'
 
             >>> ctx = LocaleContext.create('ar-BH')
-            >>> ctx.format_currency(123.456, currency='BHD')
+            >>> ctx.format_currency(Decimal('123.456'), currency='BHD')
             '123.456 د.ب.'
 
             >>> # Custom pattern example
             >>> ctx = LocaleContext.create('en-US')
-            >>> ctx.format_currency(1234.56, currency='USD', pattern='#,##0.00 ¤')
+            >>> ctx.format_currency(Decimal('1234.56'), currency='USD', pattern='#,##0.00 ¤')
             '1,234.56 $'
 
         CLDR Compliance:

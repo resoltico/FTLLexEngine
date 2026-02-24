@@ -9,6 +9,7 @@ Python 3.13+.
 """
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, given, settings
@@ -140,7 +141,9 @@ class TestCurrencyCodeDisplayDecimals:
 
     def test_currency_code_display_bhd_three_decimals(self) -> None:
         """BHD with code display should use 3 decimal places."""
-        result = currency_format(123.456, "en-US", currency="BHD", currency_display="code")
+        result = currency_format(
+            Decimal("123.456"), "en-US", currency="BHD", currency_display="code"
+        )
 
         assert "BHD" in str(result)
         assert "123" in str(result)
@@ -149,7 +152,9 @@ class TestCurrencyCodeDisplayDecimals:
 
     def test_currency_code_display_eur_two_decimals(self) -> None:
         """EUR with code display should use 2 decimal places."""
-        result = currency_format(123.45, "en-US", currency="EUR", currency_display="code")
+        result = currency_format(
+            Decimal("123.45"), "en-US", currency="EUR", currency_display="code"
+        )
 
         assert "EUR" in str(result)
         assert "123" in str(result)
@@ -157,7 +162,9 @@ class TestCurrencyCodeDisplayDecimals:
 
     def test_currency_code_display_kwd_three_decimals(self) -> None:
         """KWD with code display should use 3 decimal places."""
-        result = currency_format(100.123, "en-US", currency="KWD", currency_display="code")
+        result = currency_format(
+            Decimal("100.123"), "en-US", currency="KWD", currency_display="code"
+        )
 
         assert "KWD" in str(result)
         assert "100" in str(result)
@@ -166,7 +173,9 @@ class TestCurrencyCodeDisplayDecimals:
 
     def test_currency_code_display_omr_three_decimals(self) -> None:
         """OMR with code display should use 3 decimal places."""
-        result = currency_format(50.789, "en-US", currency="OMR", currency_display="code")
+        result = currency_format(
+            Decimal("50.789"), "en-US", currency="OMR", currency_display="code"
+        )
 
         assert "OMR" in str(result)
         assert "50" in str(result)
@@ -175,7 +184,9 @@ class TestCurrencyCodeDisplayDecimals:
 
     def test_currency_symbol_display_still_works(self) -> None:
         """Symbol display continues to work correctly."""
-        result = currency_format(123.45, "en-US", currency="EUR", currency_display="symbol")
+        result = currency_format(
+            Decimal("123.45"), "en-US", currency="EUR", currency_display="symbol"
+        )
 
         assert "123" in str(result)
         assert "45" in str(result)
@@ -184,7 +195,9 @@ class TestCurrencyCodeDisplayDecimals:
 
     def test_currency_code_display_large_amount(self) -> None:
         """Large amounts with code display preserve grouping."""
-        result = currency_format(1234567.89, "en-US", currency="USD", currency_display="code")
+        result = currency_format(
+            Decimal("1234567.89"), "en-US", currency="USD", currency_display="code"
+        )
 
         assert "USD" in str(result)
         # Should have grouping (commas in en-US)
@@ -207,7 +220,7 @@ class TestCurrencyCodeDisplayLocaleContext:
     def test_locale_context_format_currency_code_bhd(self) -> None:
         """LocaleContext format_currency with code display for BHD."""
         ctx = LocaleContext.create("en-US")
-        result = ctx.format_currency(123.456, currency="BHD", currency_display="code")
+        result = ctx.format_currency(Decimal("123.456"), currency="BHD", currency_display="code")
 
         assert "BHD" in str(result)
         # BHD should have 3 decimal places
@@ -218,8 +231,12 @@ class TestCurrencyCodeDisplayLocaleContext:
         ctx_us = LocaleContext.create("en-US")
         ctx_de = LocaleContext.create("de-DE")
 
-        result_us = ctx_us.format_currency(1234.56, currency="EUR", currency_display="code")
-        result_de = ctx_de.format_currency(1234.56, currency="EUR", currency_display="code")
+        result_us = ctx_us.format_currency(
+            Decimal("1234.56"), currency="EUR", currency_display="code"
+        )
+        result_de = ctx_de.format_currency(
+            Decimal("1234.56"), currency="EUR", currency_display="code"
+        )
 
         # Both should have EUR code
         assert "EUR" in result_us
@@ -235,9 +252,12 @@ class TestCurrencyCodeDisplayLocaleContext:
 class TestCurrencyDecimalsPropertyBased:
     """Property-based tests for currency decimals."""
 
-    @given(st.floats(min_value=0.001, max_value=1000000, allow_nan=False, allow_infinity=False))
+    @given(st.decimals(
+        min_value=Decimal("0.001"), max_value=Decimal("1000000"),
+        allow_nan=False, allow_infinity=False,
+    ))
     @settings(max_examples=50)
-    def test_jpy_code_display_never_has_decimals(self, amount: float) -> None:
+    def test_jpy_code_display_never_has_decimals(self, amount: Decimal) -> None:
         """JPY code display never shows decimal places."""
         event("outcome=zero_decimals")
         result = currency_format(amount, "en-US", currency="JPY", currency_display="code")
@@ -255,9 +275,12 @@ class TestCurrencyDecimalsPropertyBased:
                 # Decimal part should be empty for JPY
                 assert parts[1] == "" or not parts[1].isdigit()
 
-    @given(st.floats(min_value=0.001, max_value=1000000, allow_nan=False, allow_infinity=False))
+    @given(st.decimals(
+        min_value=Decimal("0.001"), max_value=Decimal("1000000"),
+        allow_nan=False, allow_infinity=False,
+    ))
     @settings(max_examples=50)
-    def test_bhd_code_display_has_three_decimals(self, amount: float) -> None:
+    def test_bhd_code_display_has_three_decimals(self, amount: Decimal) -> None:
         """BHD code display shows exactly 3 decimal places."""
         event("outcome=three_decimals")
         result = currency_format(round(amount, 3), "en-US", currency="BHD", currency_display="code")

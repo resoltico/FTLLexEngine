@@ -7,6 +7,8 @@ Consolidates:
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
@@ -607,7 +609,7 @@ class TestStatefulErrorPaths:
         test_values: list[FluentValue] = [
             data.draw(st.text()),
             data.draw(st.integers()),
-            data.draw(st.floats(allow_nan=False, allow_infinity=False)),
+            data.draw(st.decimals(allow_nan=False, allow_infinity=False)),
             data.draw(st.booleans()),
             None,
         ]
@@ -695,12 +697,12 @@ class TestVariableResolution:
         var_value=st.one_of(
             st.text(min_size=1, max_size=50),
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
         ),
     )
     @settings(max_examples=500)
     def test_variable_value_preservation(
-        self, var_name: str, var_value: str | int | float
+        self, var_name: str, var_value: str | int | Decimal
     ) -> None:
         """Property: Variable values are preserved in resolution."""
         val_type = type(var_value).__name__

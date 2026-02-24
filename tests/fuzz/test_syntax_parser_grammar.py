@@ -15,6 +15,7 @@ test runs. Run via: ./scripts/fuzz_hypofuzz.sh --deep or pytest -m fuzz
 from __future__ import annotations
 
 import time
+from decimal import Decimal
 
 import pytest
 from hypothesis import HealthCheck, assume, event, example, given, settings, target
@@ -46,12 +47,15 @@ from tests.strategies import (
 
 
 def ftl_number_literal() -> st.SearchStrategy[str]:
-    """Generate FTL number literals (integers and floats)."""
+    """Generate FTL number literals (integers and decimals)."""
     return st.one_of(
         st.integers(min_value=-2_000_000_000, max_value=2_000_000_000).map(str),
-        st.floats(allow_nan=False, allow_infinity=False, width=64).map(
-            lambda f: f"{f:.10f}"
-        ),
+        st.decimals(
+            min_value=Decimal("-2000000000"),
+            max_value=Decimal("2000000000"),
+            allow_nan=False,
+            allow_infinity=False,
+        ).map(lambda d: format(d, "f")),
     )
 
 

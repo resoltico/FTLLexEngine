@@ -25,14 +25,21 @@ class TestNumberFormatBehavior:
     def test_number_format_with_invalid_locale_uses_fallback(self) -> None:
         """Verify number_format with invalid locale uses en_US fallback."""
         # Invalid locale should still format successfully using en_US fallback
-        result = number_format(1234.5, "invalid-locale")
+        result = number_format(Decimal("1234.5"), "invalid-locale")
         # Should contain the number (formatted with en_US rules)
         assert "1" in str(result)
         assert "234" in str(result)
 
-    @given(st.floats(allow_nan=False, allow_infinity=False, min_value=-1e10, max_value=1e10))
-    def test_number_format_always_returns_fluent_number(self, value: float) -> None:
-        """Property: number_format always returns a FluentNumber for any finite float."""
+    @given(
+        st.decimals(
+            allow_nan=False,
+            allow_infinity=False,
+            min_value=Decimal("-1e10"),
+            max_value=Decimal("1e10"),
+        )
+    )
+    def test_number_format_always_returns_fluent_number(self, value: Decimal) -> None:
+        """Property: number_format always returns a FluentNumber for any finite Decimal."""
         sign = "negative" if value < 0 else "non_negative"
         event(f"outcome={sign}")
         result = number_format(value, "en-US")
@@ -41,7 +48,7 @@ class TestNumberFormatBehavior:
     def test_number_format_invalid_locale_with_pattern(self) -> None:
         """Verify invalid locale with pattern still formats successfully."""
         result = number_format(
-            42.0,
+            Decimal("42"),
             "xx-INVALID",
             pattern="#,##0.00",
             minimum_fraction_digits=2,
@@ -52,7 +59,7 @@ class TestNumberFormatBehavior:
 
     def test_number_format_success_case_basic(self) -> None:
         """Verify number_format works correctly in success case."""
-        result = number_format(1234.5, "en-US", minimum_fraction_digits=2)
+        result = number_format(Decimal("1234.5"), "en-US", minimum_fraction_digits=2)
         # Should format with locale-specific formatting
         assert "1" in str(result)
         assert "234" in str(result)
@@ -120,17 +127,22 @@ class TestCurrencyFormatBehavior:
     def test_currency_format_with_invalid_locale(self) -> None:
         """Verify currency_format with invalid locale uses fallback."""
         # Invalid locale should still format successfully using en_US fallback
-        result = currency_format(123.45, "invalid-locale", currency="EUR")
+        result = currency_format(Decimal("123.45"), "invalid-locale", currency="EUR")
         # Should contain currency info (formatted with en_US rules)
         assert isinstance(result, FluentNumber)
         assert "123" in str(result) or "EUR" in str(result)
 
     @given(
-        st.floats(allow_nan=False, allow_infinity=False, min_value=0, max_value=1e10),
+        st.decimals(
+            allow_nan=False,
+            allow_infinity=False,
+            min_value=Decimal("0"),
+            max_value=Decimal("1e10"),
+        ),
         st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF"]),
     )
     def test_currency_format_always_returns_fluent_number(
-        self, value: float, currency: str,
+        self, value: Decimal, currency: str,
     ) -> None:
         """Property: currency_format always returns a FluentNumber."""
         event(f"currency={currency}")
@@ -140,7 +152,7 @@ class TestCurrencyFormatBehavior:
     def test_currency_format_invalid_locale_with_display_style(self) -> None:
         """Verify invalid locale with display style still formats successfully."""
         result = currency_format(
-            100.0,
+            Decimal("100"),
             "xx-INVALID",
             currency="EUR",
             currency_display="name",
@@ -151,7 +163,7 @@ class TestCurrencyFormatBehavior:
 
     def test_currency_format_success_case_basic(self) -> None:
         """Verify currency_format works correctly in success case."""
-        result = currency_format(123.45, "en-US", currency="USD")
+        result = currency_format(Decimal("123.45"), "en-US", currency="USD")
         # Should format with currency symbol or code
         assert "123" in str(result)
 
@@ -274,7 +286,9 @@ class TestNumberFormatPrecisionCalculation:
         # Input: 1.2 with min=0, max=3
         # Formatted: "1.2" (1 visible fraction digit)
         # Precision should be 1, not 0 (the minimum)
-        result = number_format(1.2, "en-US", minimum_fraction_digits=0, maximum_fraction_digits=3)
+        result = number_format(
+            Decimal("1.2"), "en-US", minimum_fraction_digits=0, maximum_fraction_digits=3
+        )
         assert result.precision == 1
         assert str(result) == "1.2"
 
@@ -290,7 +304,9 @@ class TestNumberFormatPrecisionCalculation:
         """Precision is 0 when formatting as integer."""
         # Input: 1.5 with max=0
         # Formatted: "2" (rounded, no fraction digits)
-        result = number_format(1.5, "en-US", minimum_fraction_digits=0, maximum_fraction_digits=0)
+        result = number_format(
+            Decimal("1.5"), "en-US", minimum_fraction_digits=0, maximum_fraction_digits=0
+        )
         assert result.precision == 0
         assert str(result) == "2"
 
@@ -298,7 +314,7 @@ class TestNumberFormatPrecisionCalculation:
         """Precision calculated correctly with comma decimal separator."""
         # German uses comma as decimal separator: 1.234,50
         result = number_format(
-            1234.5, "de-DE", minimum_fraction_digits=2, maximum_fraction_digits=2
+            Decimal("1234.5"), "de-DE", minimum_fraction_digits=2, maximum_fraction_digits=2
         )
         assert result.precision == 2
         # Should be formatted with comma decimal
@@ -308,7 +324,9 @@ class TestNumberFormatPrecisionCalculation:
         """Precision reflects actual digits when between min and max."""
         # Input: 1.23 with min=0, max=5
         # Formatted: "1.23" (2 visible fraction digits)
-        result = number_format(1.23, "en-US", minimum_fraction_digits=0, maximum_fraction_digits=5)
+        result = number_format(
+            Decimal("1.23"), "en-US", minimum_fraction_digits=0, maximum_fraction_digits=5
+        )
         assert result.precision == 2
         assert str(result) == "1.23"
 
@@ -322,9 +340,11 @@ class TestNumberFormatPrecisionCalculation:
 
     def test_precision_whole_number_with_decimal_input(self) -> None:
         """Precision is 0 for whole numbers without minimum fraction digits."""
-        # Input: 100.0 with min=0, max=3
-        # Formatted: "100" (no trailing .0)
-        result = number_format(100.0, "en-US", minimum_fraction_digits=0, maximum_fraction_digits=3)
+        # Input: 100 with min=0, max=3
+        # Formatted: "100" (no trailing zeros)
+        result = number_format(
+            Decimal("100"), "en-US", minimum_fraction_digits=0, maximum_fraction_digits=3
+        )
         assert result.precision == 0
         assert str(result) == "100"
 

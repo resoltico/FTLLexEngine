@@ -127,7 +127,7 @@ class TestLowercaseFunctionNames:
         """Lowercase alias for a builtin function resolves correctly."""
         bundle = FluentBundle("en_US")
 
-        def number_func(val: int | float) -> str:
+        def number_func(val: int | Decimal) -> str:
             return str(val)
 
         bundle.add_function("number", number_func)

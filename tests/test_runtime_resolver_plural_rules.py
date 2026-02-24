@@ -5,9 +5,11 @@ Tests:
 - Resolver boundary conditions with zero, one, and multiple arguments
 - Plural rule selection for English, Latvian, and Polish locales
 - Plural rules with decimal and negative number inputs
-- Resolver type handling for string, int, float, and bool values
+- Resolver type handling for string, int, Decimal, and bool values
 """
 
+
+from decimal import Decimal
 
 from ftllexengine.runtime import FluentBundle
 from ftllexengine.runtime.plural_rules import select_plural_category
@@ -184,12 +186,12 @@ class TestPluralRuleDecimalBoundaries:
     """Plural rule selection with decimal and negative number inputs."""
 
     def test_plural_rule_with_decimal_one(self) -> None:
-        """English: 1.0 is treated as 'one'."""
-        assert select_plural_category(1.0, "en") == "one"
+        """English: Decimal("1") (no visible fraction) is treated as 'one'."""
+        assert select_plural_category(Decimal("1"), "en") == "one"
 
     def test_plural_rule_with_decimal_other(self) -> None:
         """English: 1.5 is 'other' (fractional part makes it non-integer)."""
-        assert select_plural_category(1.5, "en") == "other"
+        assert select_plural_category(Decimal("1.5"), "en") == "other"
 
     def test_plural_rule_with_negative_one(self) -> None:
         """Negative numbers return a valid plural category."""
@@ -216,13 +218,13 @@ class TestResolverTypeChecks:
         result, _ = bundle.format_pattern("msg", {"num": 42})
         assert "42" in result
 
-    def test_resolver_with_float_value(self) -> None:
-        """Float values are converted to string (locale-dependent formatting)."""
+    def test_resolver_with_decimal_value(self) -> None:
+        """Decimal values are interpolated as-is (raw variable interpolation)."""
         bundle = FluentBundle("en")
         bundle.add_resource("msg = { $num }")
 
-        result, _ = bundle.format_pattern("msg", {"num": 3.14})
-        assert "3.14" in result or "3,14" in result
+        result, _ = bundle.format_pattern("msg", {"num": Decimal("3.14")})
+        assert "3.14" in result
 
     def test_resolver_with_bool_value(self) -> None:
         """Boolean values are converted to a string representation."""

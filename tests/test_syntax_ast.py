@@ -511,13 +511,12 @@ class TestNumberLiteralDataclass:
         assert lit.value == value
         assert lit.raw == raw
 
-    @given(st.floats(allow_nan=False, allow_infinity=False))
-    def test_number_literal_float_construction(self, value: float) -> None:
-        """Property: NumberLiteral accepts Decimal values for floats."""
-        raw = str(value)
-        decimal_value = Decimal(str(value))
-        lit = NumberLiteral(value=decimal_value, raw=raw)
-        assert lit.value == decimal_value
+    @given(st.decimals(allow_nan=False, allow_infinity=False))
+    def test_number_literal_decimal_construction(self, value: Decimal) -> None:
+        """Property: NumberLiteral accepts Decimal values."""
+        raw = format(value, "f")
+        lit = NumberLiteral(value=value, raw=raw)
+        assert lit.value == value
         assert lit.raw == raw
 
     def test_number_literal_guard_true(self) -> None:

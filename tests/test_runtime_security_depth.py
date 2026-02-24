@@ -11,6 +11,8 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
@@ -140,7 +142,7 @@ class TestResolverFunctionCallDepthTracking:
         bundle = FluentBundle("en_US")
 
         # Define a simple function that returns its input
-        def identity(val: int | float | str) -> str:
+        def identity(val: int | Decimal | str) -> str:
             return str(val)
 
         bundle.add_function("ID", identity)
@@ -201,7 +203,7 @@ class TestResolverFunctionCallDepthTracking:
         # Add to bundle with low depth limit using internal _messages dict
         bundle = FluentBundle("en_US", max_nesting_depth=50)
 
-        def identity(val: int | float | str) -> str:
+        def identity(val: int | Decimal | str) -> str:
             return str(val)
 
         bundle.add_function("ID", identity)

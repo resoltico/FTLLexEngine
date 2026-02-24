@@ -13,7 +13,6 @@ Python 3.13+.
 Reference: https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html
 """
 
-import math
 from decimal import ROUND_HALF_UP, Decimal
 
 from ftllexengine.core.babel_compat import get_unknown_locale_error_class, require_babel
@@ -23,14 +22,15 @@ __all__ = ["select_plural_category"]
 
 
 def select_plural_category(
-    n: int | float | Decimal,
+    n: int | Decimal,
     locale: str,
     precision: int | None = None,
 ) -> str:
     """Select CLDR plural category for number using Babel's CLDR data.
 
     Args:
-        n: Number to categorize
+        n: Number to categorize (int or Decimal). float is not accepted;
+            use Decimal(str(float_val)) to convert at system boundaries.
         locale: Locale code (e.g., "lv_LV", "en_US", "ar-SA")
         precision: Minimum fraction digits (for CLDR v operand), None if not specified.
             When set, number is formatted with this precision before plural matching.
@@ -68,7 +68,7 @@ def select_plural_category(
         - 200+ locales with correct rules
         - Automatic fallback to language-level rules
 
-        If locale parsing fails, falls back to simple one/other rule.
+        If locale parsing fails, falls back to CLDR root locale.
 
     Performance:
         Uses cached locale parsing via get_babel_locale() to avoid
@@ -91,21 +91,16 @@ def select_plural_category(
         # Fallback to CLDR root locale for unknown/invalid locales
         # CLDR root returns "other" for all values, which is the safest
         # default since it makes no assumptions about language-specific rules.
-        # The previous abs(n) == 1 heuristic was too simplistic and didn't
-        # handle precision-based rules (e.g., 1 vs 1.0 distinctions).
         try:
             locale_obj = get_babel_locale("root")
         except (unknown_locale_error_class, ValueError):  # pragma: no cover
             # Should not happen, but ultimate fallback
             return "other"
 
-    # NaN guard: NaN values cannot be categorized by CLDR plural rules.
-    # Babel's plural_rule() raises ValueError ("cannot convert ... NaN to integer")
-    # for both float('nan') and Decimal('NaN'). Per Fluent spec, resolution must
-    # never fail catastrophically. Return "other" (safest category) for NaN.
-    # Infinity is similarly non-categorizable by CLDR rules.
-    if isinstance(n, float) and (math.isnan(n) or math.isinf(n)):
-        return "other"
+    # Non-finite Decimal guard: NaN and Infinity cannot be categorized by CLDR rules.
+    # Babel's plural_rule() raises ValueError for non-finite Decimal values.
+    # Per Fluent spec, resolution must never fail catastrophically.
+    # Return "other" (safest category) for non-finite values.
     if isinstance(n, Decimal) and (n.is_nan() or n.is_infinite()):
         return "other"
 
@@ -120,11 +115,7 @@ def select_plural_category(
         # This ensures Babel's plural rule sees the correct v operand.
         # Example: 1 with precision=2 becomes Decimal("1.00"), which has v=2.
         # Example: 1.5 with precision=0 becomes Decimal("2"), which is integer.
-        # The quantize() method formats the Decimal with exact precision.
-
-        # Create quantizer with desired precision (e.g., 0.01 for 2 digits, 1 for 0 digits)
         quantizer = Decimal(10) ** -precision
-        # Convert number to Decimal and quantize
         # ROUND_HALF_UP matches the rounding mode used by locale_context.py
         # for number formatting, ensuring plural category and displayed number agree.
         decimal_value = Decimal(str(n)).quantize(quantizer, rounding=ROUND_HALF_UP)

@@ -26,6 +26,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Any
 
 from ftllexengine import FluentBundle
@@ -33,7 +34,7 @@ from ftllexengine import FluentBundle
 
 # Example 1: CURRENCY Formatting (EDUCATIONAL - Use Built-in CURRENCY() Instead!)
 def CURRENCY_CUSTOM_EXAMPLE(  # pylint: disable=invalid-name
-    amount: float, *, currency_code: str = "USD", locale: str = "en_US"
+    amount: int | Decimal, *, currency_code: str = "USD", locale: str = "en_US"
 ) -> str:
     """Format currency with CLDR-compliant locale-aware formatting.
 
@@ -139,7 +140,7 @@ def MARKDOWN(text: str, *, render: str = "html") -> str:  # pylint: disable=inva
 
 
 # Example 4: FILESIZE Formatting
-def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:  # pylint: disable=invalid-name
+def FILESIZE(bytes_count: int | Decimal, *, precision: int = 2) -> str:  # pylint: disable=invalid-name
     """Format file size in human-readable format.
 
     FTL function naming convention: UPPERCASE name.
@@ -151,19 +152,19 @@ def FILESIZE(bytes_count: int | float, *, precision: int = 2) -> str:  # pylint:
     Returns:
         Human-readable file size (e.g., "1.23 MB")
     """
-    bytes_count = float(bytes_count)
+    size = Decimal(bytes_count) if isinstance(bytes_count, int) else bytes_count
     units = ["B", "KB", "MB", "GB", "TB", "PB"]
 
     for unit in units:
-        if bytes_count < 1024.0:
-            return f"{bytes_count:.{precision}f} {unit}"
-        bytes_count /= 1024.0
+        if size < Decimal("1024"):
+            return f"{size:.{precision}f} {unit}"
+        size /= Decimal("1024")
 
-    return f"{bytes_count:.{precision}f} EB"
+    return f"{size:.{precision}f} EB"
 
 
 # Example 5: DURATION Formatting
-def DURATION(seconds: int | float, *, format_style: str = "long") -> str:  # noqa: PLR0912  # pylint: disable=invalid-name,too-many-branches
+def DURATION(seconds: int | Decimal, *, format_style: str = "long") -> str:  # noqa: PLR0912  # pylint: disable=invalid-name,too-many-branches
     """Format duration in human-readable format.
 
     FTL function naming convention: UPPERCASE name.
@@ -293,7 +294,7 @@ greet-formal = { GREETING($name, formal: "true") }
     print("\n" + "-" * 60)
     print("Example 1: CURRENCY Formatting (BUILT-IN)")
     print("-" * 60)
-    result, _ = bundle.format_pattern("product-price", {"amount": 1234.56})
+    result, _ = bundle.format_pattern("product-price", {"amount": Decimal("1234.56")})
     print(f"Product price: {result}")
     print("Note: Using built-in CURRENCY() function with CLDR-compliant formatting")
     # Output: Product price: €1,234.56

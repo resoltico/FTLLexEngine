@@ -183,7 +183,7 @@ class TestParseCurrencyHypothesis:
     @given(
         value=st.one_of(
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.lists(st.integers()),
             st.dictionaries(st.text(), st.integers()),
         ),
@@ -312,8 +312,8 @@ class TestCurrencyMetamorphicProperties:
         """parse(format(a)) < parse(format(b)) iff a < b (ordering preserved)."""
         from ftllexengine.runtime.functions import currency_format
 
-        formatted1 = str(currency_format(float(amount1), "en_US", currency=currency))
-        formatted2 = str(currency_format(float(amount2), "en_US", currency=currency))
+        formatted1 = str(currency_format(amount1, "en_US", currency=currency))
+        formatted2 = str(currency_format(amount2, "en_US", currency=currency))
 
         # $ and £ are ambiguous - specify default_currency
         result1, errors1 = parse_currency(formatted1, "en_US", default_currency=currency)
@@ -327,12 +327,12 @@ class TestCurrencyMetamorphicProperties:
         parsed1, _ = result1
         parsed2, _ = result2
 
-        # Ordering must be preserved (with small tolerance for float precision)
+        # Ordering must be preserved (with small tolerance for decimal precision)
         if amount1 < amount2 - Decimal("0.01"):
             assert parsed1 < parsed2
         elif amount1 > amount2 + Decimal("0.01"):
             assert parsed1 > parsed2
-        # Skip equality check for very close values due to float precision
+        # Skip equality check for very close values due to rounding in currency format
 
     @given(
         amount=st.decimals(min_value=Decimal("0.01"), max_value=Decimal("999999.99"), places=2),
@@ -347,8 +347,8 @@ class TestCurrencyMetamorphicProperties:
         from ftllexengine.runtime.functions import currency_format
 
         # Format in different locales
-        formatted1 = str(currency_format(float(amount), locale1, currency="EUR"))
-        formatted2 = str(currency_format(float(amount), locale2, currency="EUR"))
+        formatted1 = str(currency_format(amount, locale1, currency="EUR"))
+        formatted2 = str(currency_format(amount, locale2, currency="EUR"))
 
         # Parse with respective locales
         result1, errors1 = parse_currency(formatted1, locale1)
@@ -374,8 +374,8 @@ class TestCurrencyMetamorphicProperties:
         """parse(format(a)) + parse(format(a)) == parse(format(2*a)) (within precision)."""
         from ftllexengine.runtime.functions import currency_format
 
-        formatted1 = str(currency_format(float(amount), "en_US", currency="USD"))
-        formatted2 = str(currency_format(float(amount * 2), "en_US", currency="USD"))
+        formatted1 = str(currency_format(amount, "en_US", currency="USD"))
+        formatted2 = str(currency_format(amount * 2, "en_US", currency="USD"))
 
         # $ is ambiguous - specify default_currency
         result1, errors1 = parse_currency(formatted1, "en_US", default_currency="USD")
@@ -407,7 +407,7 @@ class TestCurrencyMetamorphicProperties:
         """Very large amounts should parse correctly (stress test)."""
         from ftllexengine.runtime.functions import currency_format
 
-        formatted = str(currency_format(float(amount), "en_US", currency=currency))
+        formatted = str(currency_format(amount, "en_US", currency=currency))
         # $ and £ are ambiguous - specify default_currency
         result, errors = parse_currency(formatted, "en_US", default_currency=currency)
 

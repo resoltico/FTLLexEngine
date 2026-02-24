@@ -214,7 +214,6 @@ class TestDiagnosticCodeEnum:
     def test_parsing_error_codes_in_range(self) -> None:
         """Parsing error codes are in 4000-4999 range."""
         parsing_codes = [
-            DiagnosticCode.PARSE_NUMBER_FAILED,
             DiagnosticCode.PARSE_DECIMAL_FAILED,
             DiagnosticCode.PARSE_DATE_FAILED,
             DiagnosticCode.PARSE_DATETIME_FAILED,

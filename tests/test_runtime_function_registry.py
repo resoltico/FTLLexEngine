@@ -7,6 +7,8 @@ Tests for:
 - __slots__ on IntrospectionVisitor and ReferenceExtractor
 """
 
+from decimal import Decimal
+
 import pytest
 
 from ftllexengine import FluentBundle
@@ -215,7 +217,7 @@ class TestCreateDefaultRegistryIntegration:
         registry = create_default_registry()
         bundle = FluentBundle("en", functions=registry)
         bundle.add_resource("amount = { NUMBER($value, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("amount", {"value": 1234.5})
+        result, errors = bundle.format_pattern("amount", {"value": Decimal("1234.5")})
 
         assert errors == ()
         assert "1,234.50" in result or "1234.50" in result
@@ -239,7 +241,7 @@ class TestCreateDefaultRegistryIntegration:
         registry = create_default_registry()
         bundle = FluentBundle("en", functions=registry)
         bundle.add_resource('price = { CURRENCY($amount, currency: "USD") }')
-        result, errors = bundle.format_pattern("price", {"amount": 99.99})
+        result, errors = bundle.format_pattern("price", {"amount": Decimal("99.99")})
 
         assert errors == ()
         assert "$" in result or "USD" in result

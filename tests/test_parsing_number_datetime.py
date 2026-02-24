@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
@@ -28,7 +29,7 @@ class TestNumberCustomPatterns:
         bundle.add_resource(
             'amount = { NUMBER($value, pattern: "#,##0.00;(#,##0.00)") }'
         )
-        result, errors = bundle.format_pattern("amount", {"value": -1234.56})
+        result, errors = bundle.format_pattern("amount", {"value": Decimal("-1234.56")})
         assert result == "(1,234.56)"
         assert errors == ()
 
@@ -38,7 +39,7 @@ class TestNumberCustomPatterns:
         bundle.add_resource(
             'amount = { NUMBER($value, pattern: "#,##0.00;(#,##0.00)") }'
         )
-        result, errors = bundle.format_pattern("amount", {"value": 1234.56})
+        result, errors = bundle.format_pattern("amount", {"value": Decimal("1234.56")})
         assert result == "1,234.56"
         assert errors == ()
 
@@ -64,27 +65,27 @@ class TestNumberCustomPatterns:
         """Custom pattern respects locale-specific decimal and grouping separators."""
         bundle_de = FluentBundle("de-DE", use_isolating=False)
         bundle_de.add_resource('amount = { NUMBER($value, pattern: "#,##0.00") }')
-        result, _ = bundle_de.format_pattern("amount", {"value": 1234.56})
+        result, _ = bundle_de.format_pattern("amount", {"value": Decimal("1234.56")})
         assert result == "1.234,56"
 
     def test_number_pattern_no_grouping(self) -> None:
         """Pattern without grouping separator omits the thousands separator."""
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource('amount = { NUMBER($value, pattern: "0.00") }')
-        result, errors = bundle.format_pattern("amount", {"value": 1234.56})
+        result, errors = bundle.format_pattern("amount", {"value": Decimal("1234.56")})
         assert result == "1234.56"
         assert errors == ()
 
     @given(
-        value=st.floats(
-            min_value=0.01,
-            max_value=1e12,
+        value=st.decimals(
+            min_value=Decimal("0.01"),
+            max_value=Decimal("1000000000000"),
             allow_nan=False,
             allow_infinity=False,
         )
     )
     @settings(max_examples=50)
-    def test_accounting_positive_never_has_parentheses(self, value: float) -> None:
+    def test_accounting_positive_never_has_parentheses(self, value: Decimal) -> None:
         """Property: positive values with accounting format never produce parentheses."""
         magnitude = "small" if value < 1_000 else "medium" if value < 1_000_000 else "large"
         event(f"magnitude={magnitude}")
@@ -98,15 +99,15 @@ class TestNumberCustomPatterns:
         assert ")" not in result
 
     @given(
-        value=st.floats(
-            min_value=-1e12,
-            max_value=-0.01,
+        value=st.decimals(
+            min_value=Decimal("-1000000000000"),
+            max_value=Decimal("-0.01"),
             allow_nan=False,
             allow_infinity=False,
         )
     )
     @settings(max_examples=50)
-    def test_accounting_negative_always_has_parentheses(self, value: float) -> None:
+    def test_accounting_negative_always_has_parentheses(self, value: Decimal) -> None:
         """Property: negative values with accounting format always produce parentheses."""
         magnitude = "small" if value > -1_000 else "medium" if value > -1_000_000 else "large"
         event(f"magnitude={magnitude}")
@@ -261,9 +262,9 @@ class TestPatternUseCases:
         bundle.add_resource(
             'balance = Balance: { NUMBER($amount, pattern: "#,##0.00;(#,##0.00)") }'
         )
-        result, _ = bundle.format_pattern("balance", {"amount": -5000.00})
+        result, _ = bundle.format_pattern("balance", {"amount": Decimal("-5000.00")})
         assert result == "Balance: (5,000.00)"
-        result, _ = bundle.format_pattern("balance", {"amount": 5000.00})
+        result, _ = bundle.format_pattern("balance", {"amount": Decimal("5000.00")})
         assert result == "Balance: 5,000.00"
 
     def test_precise_timestamp_with_seconds(self) -> None:

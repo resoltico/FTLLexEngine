@@ -15,10 +15,12 @@ Covers:
 - FormatCache invariants: transparency, isolation, LRU eviction, stats consistency
 - FormatCache invalidation: add_resource, add_function
 - FormatCache internals: __len__, properties, key uniqueness, attribute isolation
-- FormatCache type collision prevention: bool/int, int/float
+- FormatCache type collision prevention: bool/int, int/Decimal
 """
 
 from __future__ import annotations
+
+from decimal import Decimal
 
 import pytest
 from hypothesis import assume, event, given, settings
@@ -54,7 +56,7 @@ args_strategy = st.one_of(
         st.text(min_size=1),
         st.one_of(
             st.integers(),
-            st.floats(allow_nan=False, allow_infinity=False),
+            st.decimals(allow_nan=False, allow_infinity=False),
             st.text(),
         ),
         max_size=5,  # Keep practical bound for dict size
@@ -105,7 +107,7 @@ class TestCacheInvariants:
         self,
         msg_id: str,
         locale: str,
-        args: dict[str, int | float | str] | None,
+        args: dict[str, int | Decimal | str] | None,
         attr: str | None,
         value: tuple[str, tuple[()]],
     ) -> None:
@@ -413,7 +415,7 @@ class TestCacheRobustness:
             st.text(min_size=1),
             st.one_of(
                 st.integers(),
-                st.floats(allow_nan=False, allow_infinity=False),
+                st.decimals(allow_nan=False, allow_infinity=False),
                 st.text(),
                 st.booleans(),
                 st.none(),
@@ -423,7 +425,7 @@ class TestCacheRobustness:
     )
     @settings(max_examples=200)
     def test_cache_handles_various_arg_types(
-        self, args: dict[str, int | float | str | bool | None]
+        self, args: dict[str, int | Decimal | str | bool | None]
     ) -> None:
         """ROBUSTNESS: Cache handles various argument types."""
         cache = IntegrityCache(maxsize=100, strict=False)
@@ -604,9 +606,9 @@ class TestIntegrityCacheHypothesisProperties:
         assert entry is not None
         assert entry.as_result() == ("result", ())
 
-        # Float
-        cache.put("msg", {"float": 3.14}, None, "en", True, "result", ())
-        entry = cache.get("msg", {"float": 3.14}, None, "en", True)
+        # Decimal
+        cache.put("msg", {"decimal": Decimal("3.14")}, None, "en", True, "result", ())
+        entry = cache.get("msg", {"decimal": Decimal("3.14")}, None, "en", True)
         assert entry is not None
         assert entry.as_result() == ("result", ())
 
@@ -1070,18 +1072,18 @@ class TestCacheTypeCollisionPrevention:
         assert stats is not None
         assert stats["size"] == 2
 
-    def test_int_float_produce_different_cache_entries(self) -> None:
-        """Integer 1 and float 1.0 produce distinct cache entries.
+    def test_int_decimal_produce_different_cache_entries(self) -> None:
+        """Integer 1 and Decimal('1') produce distinct cache entries.
 
-        Without type tagging, hash(1) == hash(1.0) would cause collision.
+        Without type tagging, hash(1) == hash(Decimal('1')) would cause collision.
         """
         bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = { $v }")
 
         # Format with int first
         _result_int, _ = bundle.format_pattern("msg", {"v": 1})
-        # Format with float (would collide without type tagging)
-        _result_float, _ = bundle.format_pattern("msg", {"v": 1.0})
+        # Format with Decimal (would collide without type tagging)
+        _result_decimal, _ = bundle.format_pattern("msg", {"v": Decimal("1")})
 
         # Cache should have 2 entries
         stats = bundle.get_cache_stats()
@@ -1145,11 +1147,14 @@ class TestCacheTypeCollisionPrevention:
         assert stats["size"] == 2
         event(f"bool={b}")
 
-    @given(st.integers(), st.floats(allow_nan=False, allow_infinity=False))
-    def test_int_float_always_distinct_when_equal(self, i: int, f: float) -> None:
-        """PROPERTY: Int and float with same value produce distinct cache entries."""
-        # Only test when values are equal (and thus hash-equal)
-        if i != f:
+    @given(st.integers(), st.decimals(allow_nan=False, allow_infinity=False))
+    def test_int_decimal_always_distinct_when_equal(self, i: int, d: Decimal) -> None:
+        """PROPERTY: Int and Decimal with same numeric value produce distinct cache entries."""
+        # Only test when values are hash-equal (hash(n) == hash(Decimal(n)) in Python)
+        try:
+            if hash(i) != hash(d):
+                return
+        except (TypeError, ValueError):
             return
 
         bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
@@ -1157,9 +1162,9 @@ class TestCacheTypeCollisionPrevention:
 
         # Format both
         bundle.format_pattern("msg", {"v": i})
-        bundle.format_pattern("msg", {"v": f})
+        bundle.format_pattern("msg", {"v": d})
 
-        # Should be 2 entries despite equality
+        # Should be 2 entries despite hash equality
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["size"] == 2

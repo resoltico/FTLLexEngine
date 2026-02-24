@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.130.0"
 domain: parsing
-updated: "2026-02-21"
+updated: "2026-02-24"
 route:
-  keywords: [parsing, parse_number, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
+  keywords: [parsing, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
   questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
 ---
 
@@ -45,7 +45,7 @@ if is_valid_decimal(result):
     amount_us = result  # Decimal('1234.56')
 ```
 
-**Note**: Type guards (`is_valid_decimal`, `is_valid_number`) accept `None` and return `False`. This simplifies the pattern from `if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
+**Note**: Type guards (`is_valid_decimal`, `is_valid_date`, `is_valid_currency`) accept `None` and return `False`. This simplifies the pattern from `if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
 
 ### Bi-Directional Workflow
 
@@ -75,37 +75,6 @@ if is_valid_decimal(result):  # guards accept None, return False
 ---
 
 ## API Reference
-
-### parse_number()
-
-Parse locale-formatted number string to `float`.
-
-Returns `tuple[float | None, tuple[FrozenFluentError, ...]]`.
-
-```python
-from ftllexengine.parsing import parse_number
-# Use `if errors:` to check for parse errors
-
-# US English
-result, errors = parse_number("1,234.5", "en_US")
-# result → 1234.5, errors → ()
-
-# Latvian
-result, errors = parse_number("1 234,5", "lv_LV")
-# result → 1234.5, errors → ()
-
-# German
-result, errors = parse_number("1.234,5", "de_DE")
-# result → 1234.5, errors → ()
-
-# Error handling
-result, errors = parse_number("invalid", "en_US")
-if errors:
-    print(f"Parse error: {errors[0]}")
-    # result is None on parse failure
-```
-
-**When to use**: Display values, UI elements, non-financial data
 
 ### parse_decimal()
 
@@ -304,10 +273,9 @@ result, errors = parse_decimal("100,50", "lv_LV")
 if is_valid_decimal(result):  # guards accept None
     vat = result * Decimal("0.21")  # → Decimal('21.105') - exact
 
-# WRONG - Float loses precision
-from ftllexengine.parsing import parse_number
-result, _ = parse_number("100,50", "lv_LV")  # float
-vat = result * 0.21  # → 21.105000000000004 - precision loss!
+# WRONG - Float arithmetic loses precision
+amount = 100.50  # float
+vat = amount * 0.21  # → 21.105000000000004 - precision loss!
 ```
 
 **Impact**: Float precision loss accumulates in calculations and causes rounding errors in financial reports.
@@ -569,7 +537,7 @@ if is_valid_decimal(result):  # guards accept None
 
 ### BabelImportError When Parsing
 
-**Problem**: Calling `parse_number()`, `parse_date()`, or other parsing functions raises `BabelImportError`
+**Problem**: Calling `parse_decimal()`, `parse_date()`, or other parsing functions raises `BabelImportError`
 
 **Cause**: Parsing functions require Babel for CLDR locale data. Babel is not installed.
 
@@ -620,36 +588,37 @@ if errors:
 
 **Solution**:
 ```python
-from ftllexengine.parsing import parse_number
+from decimal import Decimal
+from ftllexengine.parsing import parse_decimal
 from ftllexengine.runtime.functions import number_format
 
 # Correct: Same locale throughout
 locale = "lv_LV"
-formatted = number_format(1234.56, f"{locale.replace('_', '-')}")
-result, errors = parse_number(formatted, locale)  # Same locale!
+formatted = str(number_format(Decimal("1234.56"), f"{locale.replace('_', '-')}"))
+result, errors = parse_decimal(formatted, locale)  # Same locale!
 
 # Wrong: Different locales
-formatted = number_format(1234.56, "lv-LV")
-result, errors = parse_number(formatted, "en_US")  # Different locale!
+formatted = str(number_format(Decimal("1234.56"), "lv-LV"))
+result, errors = parse_decimal(formatted, "en_US")  # Different locale!
 ```
 
-### Float Precision Loss
+### Float Arithmetic Precision Loss
 
 **Problem**: Calculations give unexpected results like `21.105000000000004`
 
-**Cause**: Using `float` instead of `Decimal` for financial data
+**Cause**: Using Python `float` arithmetic instead of `Decimal` for financial data
 
 **Solution**:
 ```python
 from decimal import Decimal
-from ftllexengine.parsing import parse_number, parse_decimal
+from ftllexengine.parsing import parse_decimal
 # Use `if errors:` to check for parse errors
 
-# Wrong: Float precision loss
-result, _ = parse_number("100,50", "lv_LV")  # float
-vat = result * 0.21  # 21.105000000000004
+# Wrong: Float arithmetic loses precision
+amount = 100.50  # float
+vat = amount * 0.21  # 21.105000000000004
 
-# Correct: Decimal precision
+# Correct: Decimal arithmetic is exact
 result, errors = parse_decimal("100,50", "lv_LV")
 if not errors:
     vat = result * Decimal("0.21")  # Decimal('21.105') - exact!
