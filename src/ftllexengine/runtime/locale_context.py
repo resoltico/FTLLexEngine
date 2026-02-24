@@ -87,12 +87,13 @@ class LocaleContext:
         - LocaleContext.cache_info(): Get detailed cache statistics
 
     Examples:
+        >>> from decimal import Decimal
         >>> ctx = LocaleContext.create('en-US')
-        >>> ctx.format_number(1234.5, use_grouping=True)
+        >>> ctx.format_number(Decimal('1234.5'), use_grouping=True)
         '1,234.5'
 
         >>> ctx = LocaleContext.create('lv-LV')
-        >>> ctx.format_number(1234.5, use_grouping=True)
+        >>> ctx.format_number(Decimal('1234.5'), use_grouping=True)
         '1 234,5'
 
         >>> # Invalid locales fall back to en_US with warning logged

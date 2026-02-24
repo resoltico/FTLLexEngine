@@ -2275,14 +2275,22 @@ class TestLocaleValidationAsciiOnly:
                 FluentBundle(locale)
 
     @given(
-        st.text(
-            alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-            min_size=1,
-            max_size=10,
+        st.builds(
+            lambda first, rest: first + rest,
+            first=st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                min_size=1,
+                max_size=1,
+            ),
+            rest=st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+                min_size=0,
+                max_size=9,
+            ),
         )
     )
     def test_ascii_alphanumeric_accepted(self, locale: str) -> None:
-        """PROPERTY: Pure ASCII alphanumeric strings are valid locales."""
+        """PROPERTY: ASCII alphanumeric strings starting with a letter are valid locales."""
         event(f"locale_len={len(locale)}")
         bundle = FluentBundle(locale)
         assert bundle.locale == locale

@@ -334,7 +334,7 @@ class TestCursorRobustness:
             result = cursor.peek(offset)
             assert result is None
 
-    @given(source=source_text, count=st.integers(min_value=0, max_value=1000))
+    @given(source=source_text, count=st.integers(min_value=1, max_value=1000))
     @settings(max_examples=100)
     def test_advance_clamps_at_eof(self, source: str, count: int) -> None:
         """PROPERTY: advance(count) clamps position at source length."""

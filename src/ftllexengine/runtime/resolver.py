@@ -883,24 +883,35 @@ class FluentResolver:
 
         float is not in FluentValue and is not handled here. Callers passing float
         will see a type error at the call site, not here.
+
+        Pattern order rationale:
+        - str before Sequence: str implements Sequence; must match str first to avoid
+          the collection guard path.
+        - bool before int: bool is a subclass of int; must match bool first to produce
+          "true"/"false" rather than "1"/"0".
+        - None as explicit case: avoids the collection guard and the str(None) path.
+        - Sequence | Mapping before the default str() fallback: guards against
+          exponential str() expansion on deeply shared collection structures.
         """
-        if isinstance(value, str):
-            return value
-        # Check bool BEFORE int (bool is a subclass of int in Python)
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, int):
-            return str(value)
-        if value is None:
-            return ""
-        # Guard against str() on collections (Sequence/Mapping). These are valid
-        # FluentValue types for passing structured data to custom functions, but
-        # str() on deeply nested/shared structures causes exponential expansion
-        # (e.g., DAG with depth 30 → 2^30 nodes in str() output).
-        if isinstance(value, (Sequence, Mapping)):
-            return f"[{type(value).__name__}]"
-        # Handles Decimal, datetime, date, FluentNumber, and any other types
-        return str(value)
+        match value:
+            case str():
+                return value
+            # bool must precede int: isinstance(True, int) is True.
+            case bool():
+                return "true" if value else "false"
+            case int():
+                return str(value)
+            case None:
+                return ""
+            # Guard against str() on collections (Sequence/Mapping). These are valid
+            # FluentValue types for passing structured data to custom functions, but
+            # str() on deeply nested/shared structures causes exponential expansion
+            # (e.g., DAG with depth 30 → 2^30 nodes in str() output).
+            case Sequence() | Mapping():
+                return f"[{type(value).__name__}]"
+            # Handles Decimal, datetime, date, FluentNumber, and any other types
+            case _:
+                return str(value)
 
     def _get_fallback_for_placeable(  # noqa: PLR0911 - fallback dispatch
         self, expr: Expression, depth: int = _FALLBACK_MAX_DEPTH

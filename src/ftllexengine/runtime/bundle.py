@@ -59,9 +59,12 @@ logger = logging.getLogger(__name__)
 _LOG_TRUNCATE_WARNING: int = 100
 
 # BCP 47 locale code pattern (ASCII-only alphanumerics with underscore/hyphen separators).
-# Rejects non-ASCII characters like accented letters (e.g., "e_FR" with accented e).
-# Uses \Z instead of $ to match only at end-of-string, not before trailing newline.
-_LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*\Z")
+# The first subtag MUST start with an ASCII letter per BCP 47: language subtags are
+# alpha-only (ISO 639), and numeric-only first subtags (e.g., "123_US") are not valid
+# locale codes. Rejects non-ASCII characters like accented letters (e.g., "e_FR" with
+# accented e). Uses \Z instead of $ to match only at end-of-string, not before trailing
+# newline.
+_LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z][a-zA-Z0-9]*([_-][a-zA-Z0-9]+)*\Z")
 
 
 @dataclass(slots=True)

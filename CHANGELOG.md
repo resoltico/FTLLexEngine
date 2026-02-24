@@ -10,6 +10,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.131.0] - 2026-02-24
+
+### Fixed
+
+- **`Cursor.advance()` rejects `count < 1`** (DEFECT-CURSOR-ADVANCE-GUARD-001):
+  - `Cursor.advance(count)` adds `count` to the current position, clamped to the source
+    length; a negative `count` silently moved the cursor backward (e.g., `advance(-1)` at
+    position 5 returned a cursor at position 4), violating the method's contract as a
+    forward-only advance operation; a zero `count` was a silent no-op that returned a
+    cursor at the same position, which is also semantically wrong (callers must advance
+    by at least one character); both cases left the parser in an internally inconsistent
+    forward-progress state without any signal to the caller
+  - Added `if count < 1: raise ValueError(f"advance() count must be >= 1, got {count}")`
+    at the top of `advance()`; the guard fires before any position arithmetic, so no
+    cursor mutation occurs on invalid input
+  - Location: `syntax/cursor.py`, `tests/test_syntax_cursor.py`
+
+- **`_introspection_cache` protected by `threading.Lock` under free-threaded Python**
+  (DEFECT-INTROSPECTION-GIL-RACE-001):
+  - The `WeakKeyDictionary` cache in `introspection/message.py` relied on CPython's GIL
+    making dict read/write sequences atomic at the bytecode level; this was documented as
+    an accepted race in v0.129.0 (ARCH-INTROSPECTION-GIL-DOC-001); under Python 3.13+
+    free-threaded mode (PEP 703, `--disable-gil`), GIL atomicity is absent and concurrent
+    `WeakKeyDictionary` writes can corrupt the dict's internal hash table; the "worst case
+    is redundant computation" justification held only under the GIL
+  - Added `_introspection_cache_lock: threading.Lock` alongside `_introspection_cache`;
+    `clear_introspection_cache()` acquires the lock before clearing; `introspect_message()`
+    uses a check-compute-store pattern: lock briefly to read the cache, compute the result
+    outside the lock (avoiding holding a lock during potentially slow AST traversal), lock
+    again to re-check and store (avoiding a lost-update race between the second check and
+    the store)
+  - Location: `introspection/message.py`, `tests/test_introspection_message.py`
+
+- **`_LOCALE_PATTERN` requires letter-start for BCP 47 first subtag**
+  (DEFECT-BUNDLE-LOCALE-PATTERN-001):
+  - `_LOCALE_PATTERN` in `bundle.py` used `[a-zA-Z0-9]+` for the first subtag, accepting
+    locale codes such as `"123_US"` or `"9de"` that begin with a digit; BCP 47 language
+    tags require the primary subtag to be a language code, which per ISO 639 begins with
+    a letter; a digit-starting locale would silently pass validation and be forwarded to
+    Babel's locale machinery, producing a Babel `UnknownLocaleError` deep in the call
+    stack with no attribution to the invalid input locale string
+  - Changed first subtag from `[a-zA-Z0-9]+` to `[a-zA-Z][a-zA-Z0-9]*`, requiring the
+    first character of the primary subtag to be a letter; subsequent characters and all
+    subsequent subtags remain unrestricted to alphanumeric for compatibility with valid
+    BCP 47 variant subtags that may begin with digits
+  - Location: `runtime/bundle.py`
+
+### Changed
+
+- **`_format_value()` in resolver refactored to `match/case` dispatch**
+  (ARCH-RESOLVER-FORMAT-VALUE-MATCH-001):
+  - `_format_value()` used a sequential `if isinstance(value, str):`/`elif isinstance()`
+    chain to dispatch over `FluentValue` variants; this pattern has higher cyclomatic
+    complexity than structural pattern matching and does not leverage the exhaustiveness
+    properties of `match/case`; the `bool` guard (required before `int` because
+    `isinstance(True, int)` is `True`) was buried as a comment, making the ordering
+    dependency invisible
+  - Refactored to `match value: case str(): ... case bool(): ... case int(): ...` dispatch;
+    the comment `# bool must precede int: isinstance(True, int) is True` is preserved as
+    an inline guard note in the `case bool()` arm; the `Sequence() | Mapping()` fallback
+    for non-string collections is preserved; behavior is identical to the previous
+    implementation
+  - Location: `runtime/resolver.py`
+
+- **`LocaleContext` class docstring examples corrected to use `Decimal`**
+  (CLARITY-LOCALE-CONTEXT-DOCSTRING-001):
+  - The class-level docstring in `locale_context.py` contained `format_number(1234.5, ...)`
+    examples using bare `float` literals; `float` was removed from `FluentValue` in v0.130.0
+    (ARCH-FLUENT-VALUE-NO-FLOAT-001) and from `LocaleContext.format_number`'s signature;
+    the docstring examples contradicted the live API and would mislead developers copying them
+  - Changed `1234.5` → `Decimal('1234.5')` in both `format_number` examples and added
+    `from decimal import Decimal` context to the code block
+  - Location: `runtime/locale_context.py`
+
 ## [0.130.0] - 2026-02-24
 
 ### Changed (BREAKING)

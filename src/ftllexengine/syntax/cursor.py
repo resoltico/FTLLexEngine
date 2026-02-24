@@ -167,7 +167,23 @@ class Cursor:
             0
             >>> cursor2.pos  # New cursor advanced
             1
+
+            >>> cursor.advance(0)  # Raises: must advance by at least 1
+            Traceback (most recent call last):
+            ...
+            ValueError: advance() count must be >= 1, got 0
+
+        Raises:
+            ValueError: If count < 1. Negative or zero advance is always a
+                programming error: the immutable cursor design guarantees forward
+                progress by construction; a zero or negative advance produces a
+                cursor at the same or earlier position, which can silently corrupt
+                parser state (e.g., advance(-1) at pos=0 yields Cursor(source, -1),
+                whose .current returns source[-1] — the last character).
         """
+        if count < 1:
+            msg = f"advance() count must be >= 1, got {count}"
+            raise ValueError(msg)
         new_pos = min(self.pos + count, len(self.source))
         return Cursor(self.source, new_pos)
 
@@ -180,30 +196,13 @@ class Cursor:
         Returns:
             Source substring from current position to end_pos
 
-        Usage:
-            Useful for extracting matched text after parsing:
-
-            >>> cursor = Cursor("hello world", 0)
-            >>> # Parse "hello"
-            >>> start = cursor.pos
-            >>> while not cursor.is_eof and cursor.current != ' ':
-            ...     cursor = cursor.advance()
-            >>> text = cursor.slice_to(cursor.pos)
-            >>> # Wait, that won't work because we need original cursor!
-
-            Better pattern:
-            >>> cursor = Cursor("hello world", 0)
-            >>> start_pos = cursor.pos
-            >>> while not cursor.is_eof and cursor.current != ' ':
-            ...     cursor = cursor.advance()
-            >>> text = Cursor("hello world", start_pos).slice_to(cursor.pos)
-
-            Or store start cursor:
+        Example:
             >>> cursor = Cursor("hello world", 0)
             >>> start_cursor = cursor
             >>> while not cursor.is_eof and cursor.current != ' ':
             ...     cursor = cursor.advance()
-            >>> text = start_cursor.slice_to(cursor.pos)
+            >>> start_cursor.slice_to(cursor.pos)
+            'hello'
         """
         return self.source[self.pos : end_pos]
 

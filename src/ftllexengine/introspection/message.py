@@ -15,6 +15,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import threading
 import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, assert_never
@@ -64,33 +65,30 @@ __all__ = [
 # collected. This avoids the id() reuse problem of regular dicts and provides
 # proper cache invalidation without manual management.
 #
-# Thread Safety (Accepted Race Condition):
-# WeakKeyDictionary is NOT thread-safe for concurrent writes. Concurrent
-# introspection of the same Message/Term from multiple threads may cause
-# race conditions during cache write operations.
+# Thread Safety:
+# All accesses to _introspection_cache are protected by _introspection_cache_lock.
+# This is required for correctness under Python 3.13+ free-threaded builds
+# (--disable-gil, PEP 703): without the lock, concurrent writes can corrupt
+# WeakKeyDictionary's internal state.
 #
-# This design accepts potential races for the following reasons:
-# - Introspection is a pure read operation on immutable AST nodes
-# - Worst case: redundant computation (cache miss), never data corruption
-# - Typical usage: read-mostly workload, concurrent introspection is rare
-# - Alternative (RLock): adds synchronization overhead for minimal benefit
-# - Alternative (thread-local cache): reduces hit rate, increases memory usage
+# Performance design (check-compute-store):
+# 1. Lock briefly to check cache (fast path: O(1), returns immediately on hit).
+# 2. Compute introspection result WITHOUT holding the lock (expensive AST traversal
+#    can run concurrently across threads without interference because introspection
+#    is a pure read on immutable AST nodes).
+# 3. Lock briefly to store result.
 #
-# GIL assumption: This design relies on CPython's Global Interpreter Lock (GIL)
-# making dict read/write operations atomic at the bytecode level. Under CPython
-# with the GIL, concurrent WeakKeyDictionary writes produce at worst a redundant
-# computation — the dict remains internally consistent. Under Python 3.13+
-# free-threaded mode (--disable-gil, PEP 703), GIL atomicity is absent and
-# concurrent writes to WeakKeyDictionary can corrupt its internal state. If
-# free-threaded Python support is required, replace this with a threading.Lock.
+# A second thread may compute the same result concurrently between steps 1 and 3.
+# On store, a re-check discards redundant computation. Worst case: one redundant
+# traversal per concurrent pair; no data corruption, no inconsistency.
 #
-# Trade-off: Lock-free reads provide better performance than synchronized access.
-# Occasional redundant computation under concurrent load is acceptable given the
-# rarity of pathological concurrent introspection scenarios. This is a permanent
-# architectural decision prioritizing common-case performance under CPython GIL.
+# Lock granularity: threading.Lock (non-reentrant) is sufficient. No code path
+# acquires the lock and then re-acquires it from the same thread. Lock overhead
+# is minimal for the fast-path check and store operations.
 _introspection_cache: weakref.WeakKeyDictionary[Message | Term, MessageIntrospection] = (
     weakref.WeakKeyDictionary()
 )
+_introspection_cache_lock: threading.Lock = threading.Lock()
 
 
 def clear_introspection_cache() -> None:
@@ -99,8 +97,11 @@ def clear_introspection_cache() -> None:
     Useful for testing or when memory pressure is a concern. In normal usage,
     the WeakKeyDictionary automatically cleans up entries when Message/Term
     objects are garbage collected.
+
+    Thread-safe. Acquires the cache lock before clearing.
     """
-    _introspection_cache.clear()
+    with _introspection_cache_lock:
+        _introspection_cache.clear()
 
 
 # ==============================================================================
@@ -632,12 +633,17 @@ def introspect_message(
         msg = f"Expected Message or Term, got {type(message).__name__}"  # type: ignore[unreachable]
         raise TypeError(msg)
 
-    # Check cache first
+    # Step 1: Check cache (lock briefly — O(1) dict lookup).
     if use_cache:
-        cached = _introspection_cache.get(message)
+        with _introspection_cache_lock:
+            cached = _introspection_cache.get(message)
         if cached is not None:
             return cached
 
+    # Step 2: Compute WITHOUT holding the lock.
+    # Introspection is a pure read on immutable AST nodes; concurrent traversal
+    # of the same node is safe. Two threads may compute simultaneously on a cache
+    # miss — the redundant result is discarded in step 3.
     visitor = IntrospectionVisitor()
 
     # Visit message value pattern via proper dispatch
@@ -657,9 +663,16 @@ def introspect_message(
         has_selectors=visitor.has_selectors,
     )
 
-    # Store in cache for future lookups
+    # Step 3: Store result (lock briefly — O(1) dict write).
+    # Re-check before storing: another thread may have stored the same result
+    # between step 1 and now. Discard redundant result; return whichever was
+    # stored first (both are identical since inputs are immutable).
     if use_cache:
-        _introspection_cache[message] = result
+        with _introspection_cache_lock:
+            existing = _introspection_cache.get(message)
+            if existing is not None:
+                return existing
+            _introspection_cache[message] = result
 
     return result
 

@@ -238,14 +238,31 @@ class TestCursorAdvance:
         assert new_cursor.pos == 3
         assert cursor is not new_cursor
 
-    def test_advance_zero_positions(self) -> None:
-        """Advance by 0 creates new cursor at same position."""
+    def test_advance_zero_positions_raises(self) -> None:
+        """Advance by 0 raises ValueError — zero advance is a no-op and always a bug."""
         cursor = Cursor("hello", 2)
 
-        new_cursor = cursor.advance(0)
+        with pytest.raises(ValueError, match="advance\\(\\) count must be >= 1, got 0"):
+            cursor.advance(0)
 
-        assert new_cursor.pos == 2
-        assert cursor.source == new_cursor.source
+    def test_advance_negative_positions_raises(self) -> None:
+        """Advance by negative count raises ValueError.
+
+        Negative advance is always a programming error: cursor.advance(-1) at
+        pos=0 would create Cursor(source, -1) which makes .current return
+        source[-1] (the last character), silently corrupting parser state.
+        """
+        cursor = Cursor("hello", 2)
+
+        with pytest.raises(ValueError, match="advance\\(\\) count must be >= 1, got -1"):
+            cursor.advance(-1)
+
+    def test_advance_large_negative_positions_raises(self) -> None:
+        """Advance by large negative count raises ValueError."""
+        cursor = Cursor("hello", 4)
+
+        with pytest.raises(ValueError, match="advance\\(\\) count must be >= 1, got -100"):
+            cursor.advance(-100)
 
 
 # ============================================================================

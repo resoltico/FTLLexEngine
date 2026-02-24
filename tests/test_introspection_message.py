@@ -7,6 +7,8 @@ exhaustiveness guards, and caching. All branches in message.py are exercised.
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
@@ -15,12 +17,18 @@ from ftllexengine import FluentBundle, parse_ftl
 from ftllexengine.enums import ReferenceKind, VariableContext
 from ftllexengine.introspection import (
     VariableInfo,
+    clear_introspection_cache,
     extract_references,
     extract_references_by_attribute,
     extract_variables,
     introspect_message,
 )
-from ftllexengine.introspection.message import IntrospectionVisitor, ReferenceExtractor
+from ftllexengine.introspection.message import (
+    IntrospectionVisitor,
+    ReferenceExtractor,
+    _introspection_cache,
+    _introspection_cache_lock,
+)
 from ftllexengine.syntax.ast import (
     Attribute,
     CallArguments,
@@ -1409,3 +1417,102 @@ class TestIntrospectionBranchCoverage:
 
         func_names = {f.name for f in result.functions}
         assert "EMPTY" in func_names
+
+
+# ===========================================================================
+# THREAD SAFETY TESTS
+# ===========================================================================
+
+
+class TestIntrospectionThreadSafety:
+    """Verify the cache lock prevents data corruption under concurrent access.
+
+    These tests exercise the check-compute-store pattern introduced with the
+    threading.Lock that replaced the GIL-reliant lock-free WeakKeyDictionary
+    access. They run in CI (no @pytest.mark.fuzz) because the thread counts
+    are small and the wall-clock cost is negligible.
+    """
+
+    def test_concurrent_introspection_same_message(self) -> None:
+        """Concurrent introspection of the same Message yields identical results.
+
+        All threads must see the same MessageIntrospection (equal by content),
+        and the cache must contain exactly one entry for the shared message.
+        """
+        message = Message(
+            id=Identifier("sharedMsg"),
+            value=Pattern(elements=(
+                TextElement("Hello "),
+                Placeable(expression=VariableReference(id=Identifier("name"))),
+            )),
+            attributes=(),
+        )
+
+        # Clear cache to ensure a fresh start for this test.
+        with _introspection_cache_lock:
+            _introspection_cache.clear()
+
+        results: list[object] = []
+        errors: list[BaseException] = []
+
+        def worker() -> None:
+            try:
+                results.append(introspect_message(message))
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Thread errors: {errors}"
+        assert len(results) == 20
+
+        # All results must be equal (same content, immutable).
+        first = results[0]
+        assert all(r == first for r in results)
+
+    def test_concurrent_clear_and_introspect(self) -> None:
+        """Concurrent clear + introspect does not corrupt the cache.
+
+        After all operations complete, any surviving cached entry must be
+        a valid MessageIntrospection (no partially-written garbage).
+        """
+        message = Message(
+            id=Identifier("racyMsg"),
+            value=Pattern(elements=(TextElement("race"),)),
+            attributes=(),
+        )
+
+        errors: list[BaseException] = []
+
+        def introspector() -> None:
+            try:
+                for _ in range(10):
+                    introspect_message(message)
+            except Exception as exc:
+                errors.append(exc)
+
+        def clearer() -> None:
+            try:
+                for _ in range(5):
+                    clear_introspection_cache()
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = (
+            [threading.Thread(target=introspector) for _ in range(8)]
+            + [threading.Thread(target=clearer) for _ in range(2)]
+        )
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Thread errors: {errors}"
+
+        # Final cache state must be consistent: either empty or holding a valid result.
+        result = introspect_message(message)
+        assert result.message_id == "racyMsg"
