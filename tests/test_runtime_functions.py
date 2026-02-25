@@ -5,12 +5,15 @@ Covers various parameter combinations and edge cases for locale-aware formatting
 
 import locale
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
 from babel import dates as babel_dates
+from hypothesis import event, given, settings
+from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.function_bridge import FluentNumber
@@ -576,3 +579,99 @@ class TestIsBuiltinWithLocaleRequirement:
 
         func_with_truthy._ftl_requires_locale = 1  # type: ignore[attr-defined]
         assert is_builtin_with_locale_requirement(func_with_truthy) is False
+
+
+# ============================================================================
+# datetime_format() with plain date objects
+# ============================================================================
+
+
+class TestDatetimeFunctionDateObject:
+    """Tests for datetime_format() accepting plain date (not datetime) values.
+
+    FluentValue includes datetime.date; datetime_format must handle it correctly:
+    - Date-only formatting (time_style=None): formatted identically to midnight datetime
+    - Date + time_style: date promoted to midnight datetime before Babel call
+    - Date + pattern: date promoted to midnight datetime before Babel call
+    """
+
+    # --- Unit tests (exact CLDR-mandated outputs) ---
+
+    def test_date_object_date_only_short(self) -> None:
+        """Plain date formats with short dateStyle — identical to midnight datetime."""
+        d = date(2025, 10, 27)
+        result = datetime_format(d, "en-US", date_style="short")
+        midnight = datetime(2025, 10, 27)  # noqa: DTZ001 - naive by design
+        assert result == datetime_format(midnight, "en-US", date_style="short")
+
+    def test_date_object_date_only_medium(self) -> None:
+        """Plain date formats with medium dateStyle."""
+        d = date(2025, 10, 27)
+        result = datetime_format(d, "en-US", date_style="medium")
+        assert "Oct" in result or "27" in result
+        assert "2025" in result
+
+    def test_date_object_with_time_style_does_not_raise(self) -> None:
+        """Plain date with time_style is promoted to midnight datetime."""
+        d = date(2025, 3, 15)
+        result = datetime_format(d, "en-US", time_style="short")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_date_object_with_pattern_returns_iso_date(self) -> None:
+        """Plain date with yyyy-MM-dd pattern returns ISO 8601 date string."""
+        d = date(2025, 6, 1)
+        result = datetime_format(d, "en-US", pattern="yyyy-MM-dd")
+        assert result == "2025-06-01"
+
+    def test_date_object_iso_pattern_zero_padded(self) -> None:
+        """Single-digit month and day are zero-padded in ISO pattern."""
+        d = date(2025, 1, 5)
+        result = datetime_format(d, "en-US", pattern="yyyy-MM-dd")
+        assert result == "2025-01-05"
+
+    # --- Property-based tests ---
+
+    @given(
+        d=st.dates(min_value=date(1900, 1, 1), max_value=date(2100, 12, 31)),
+        date_style=st.sampled_from(["short", "medium", "long", "full"]),
+    )
+    @settings(max_examples=200)
+    def test_property_date_equals_midnight_datetime_for_date_only(
+        self, d: date, date_style: Literal["short", "medium", "long", "full"]
+    ) -> None:
+        """PROPERTY: date-only formatting matches midnight datetime formatting.
+
+        Metamorphic invariant: date(Y,M,D) formatted date-only ==
+        datetime(Y,M,D,0,0,0) formatted date-only.
+        """
+        event(f"date_style={date_style}")
+        event(f"century={'20th' if d.year < 2000 else '21st'}")
+        midnight = datetime(d.year, d.month, d.day)  # noqa: DTZ001 - naive by design
+        result_date = datetime_format(d, "en-US", date_style=date_style)
+        result_midnight = datetime_format(midnight, "en-US", date_style=date_style)
+        assert result_date == result_midnight
+
+    @given(
+        d=st.dates(min_value=date(1970, 1, 1), max_value=date(2100, 12, 31)),
+        time_style=st.sampled_from(["short", "medium"]),
+    )
+    @settings(max_examples=200)
+    def test_property_date_with_time_style_returns_nonempty_str(
+        self, d: date, time_style: Literal["short", "medium", "long", "full"]
+    ) -> None:
+        """PROPERTY: date promoted to midnight when time_style set; always returns str."""
+        event(f"time_style={time_style}")
+        result = datetime_format(d, "en-US", time_style=time_style)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    @given(
+        d=st.dates(min_value=date(1000, 1, 1), max_value=date(9999, 12, 31)),
+    )
+    @settings(max_examples=200)
+    def test_property_date_iso_pattern_matches_isoformat(self, d: date) -> None:
+        """PROPERTY: pattern="yyyy-MM-dd" always produces date.isoformat()."""
+        event(f"year_range={'modern' if d.year >= 2000 else 'historical'}")
+        result = datetime_format(d, "en-US", pattern="yyyy-MM-dd")
+        assert result == d.isoformat()

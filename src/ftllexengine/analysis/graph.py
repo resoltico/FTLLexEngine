@@ -40,8 +40,9 @@ def entry_dependency_set(
         (e.g., ``frozenset({"msg:welcome", "term:brand"})``).
     """
     return frozenset(
-        {f"msg:{r}" for r in message_refs}
-        | {f"term:{r}" for r in term_refs}
+        f"{prefix}:{r}"
+        for prefix, refs in (("msg", message_refs), ("term", term_refs))
+        for r in refs
     )
 
 
@@ -101,19 +102,35 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
         tuple form.
 
     Complexity:
-        Time: O(V + E) where V = nodes, E = edges.
-        Space: O(V) for visited/recursion tracking.
+        Time: O(V * E) in the worst case (sparse graphs common in FTL
+        resources are well within practical bounds). Each node may be
+        explored once per distinct incoming path; cycles deduplicated via
+        canonical tuple.
+        Space: O(V) for path and recursion tracking.
+
+    Correctness:
+        The ``visited`` guard used in a simple DFS causes false negatives
+        when a graph has multiple paths to the same intermediate node that
+        closes a cycle. Example: A→B→D→A and A→C→D→A share node D; the
+        second cycle is missed if D is marked globally visited after the
+        first traversal. This implementation avoids that defect by NOT
+        applying a global visited guard on neighbors. Instead:
+        - ``rec_stack`` prevents re-entering nodes already on the current
+          DFS path (back-edge detection and termination guarantee).
+        - ``globally_visited`` tracks only start nodes whose reachable
+          subgraphs have been fully explored, safely pruning the outer
+          for-loop without suppressing intra-DFS re-exploration.
 
     Security:
         Uses iterative DFS to prevent stack overflow attacks via
         deeply nested dependency chains in untrusted FTL resources.
     """
-    visited: set[str] = set()
+    globally_visited: set[str] = set()
     cycles: list[list[str]] = []
     seen_canonical: set[tuple[str, ...]] = set()
 
     for start_node in dependencies:
-        if start_node in visited:
+        if start_node in globally_visited:
             continue
 
         path: list[str] = []
@@ -127,35 +144,38 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
             node, entering, neighbors = stack.pop()
 
             if entering:
-                if node in visited:
+                # Prevent re-entering a node already on the current DFS path.
+                # Without this guard the same node could be pushed repeatedly,
+                # creating an infinite exploration loop through the cycle.
+                if node in rec_stack:
                     continue
 
-                visited.add(node)
+                globally_visited.add(node)
                 rec_stack.add(node)
                 path.append(node)
 
                 stack.append((node, _EXITING, []))
 
                 for neighbor in neighbors:
-                    if neighbor not in visited:
+                    if neighbor in rec_stack:
+                        # Back edge: neighbor is an ancestor in the current path.
+                        cycle_start = path.index(neighbor)
+                        cycle = [*path[cycle_start:], neighbor]
+                        canonical = _canonicalize_cycle(cycle)
+                        if canonical not in seen_canonical:
+                            seen_canonical.add(canonical)
+                            cycles.append(cycle)
+                    else:
+                        # Push neighbor for exploration.
+                        # No globally_visited guard here: nodes reachable from
+                        # multiple branches of the current path must be explored
+                        # via each branch independently to find all cycles
+                        # (e.g., A→B→D→A and A→C→D→A both require exploring D).
                         stack.append((
                             neighbor,
                             _ENTERING,
                             list(dependencies.get(neighbor, set())),
                         ))
-                    elif neighbor in rec_stack:
-                        cycle_start = path.index(neighbor)
-                        cycle = [*path[cycle_start:], neighbor]
-
-                        canonical = _canonicalize_cycle(cycle)
-                        # pragma: no branch -- DFS guarantees each edge (node → neighbor)
-                        # in rec_stack is visited at most once per DFS start node.
-                        # The False branch (canonical already seen) is unreachable for
-                        # a single DFS pass; only reachable with a separate pre-loaded
-                        # seen_canonical, which this function never does.
-                        if canonical not in seen_canonical:  # pragma: no branch
-                            seen_canonical.add(canonical)
-                            cycles.append(cycle)
 
             else:
                 path.pop()

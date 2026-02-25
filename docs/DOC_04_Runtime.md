@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.133.0"
 domain: RUNTIME
-updated: "2026-02-24"
+updated: "2026-02-25"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?"]
@@ -28,12 +28,13 @@ class FluentNumber:
 ### Parameters
 | Field | Type | Req | Description |
 |:------|:-----|:----|:------------|
-| `value` | `int \| Decimal` | Y | Original numeric value for plural matching. |
+| `value` | `int \| Decimal` | Y | Original numeric value for plural matching. `bool` is rejected — use `int(b)` at call site. |
 | `formatted` | `str` | Y | Locale-formatted string for display. |
-| `precision` | `int \| None` | N | Minimum fraction digits for CLDR v operand in plural rules. None if not specified. |
+| `precision` | `int \| None` | N | Visible fraction digit count (CLDR v operand). Must be >= 0 when set. None if not specified. |
 
 ### Constraints
 - Return: Frozen dataclass instance.
+- Raises: `TypeError` if `value` is `bool` (no numeric localization semantics). `ValueError` if `precision < 0` (CLDR v operand is always non-negative).
 - State: Immutable. Safe for caching.
 - Thread: Safe.
 - Usage: Returned by `number_format()` and `currency_format()`. Preserves numeric identity and precision metadata for select expressions.
@@ -84,7 +85,7 @@ def number_format(
 ### Signature
 ```python
 def datetime_format(
-    value: datetime | str,
+    value: date | datetime | str,
     locale_code: str = "en-US",
     *,
     date_style: Literal["short", "medium", "long", "full"] = "medium",
@@ -96,15 +97,15 @@ def datetime_format(
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `value` | `datetime \| str` | Y | Datetime or ISO string. |
+| `value` | `date \| datetime \| str` | Y | Date, datetime, or ISO 8601 string. Plain `date` is promoted to midnight `datetime` when `time_style` or `pattern` is set. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `date_style` | `Literal[...]` | N | Date format style. |
 | `time_style` | `Literal[...] \| None` | N | Time format style. |
 | `pattern` | `str \| None` | N | Custom Babel datetime pattern. |
 
 ### Constraints
-- Return: Formatted datetime string.
-- Raises: Never. Invalid locales fall back to en_US; invalid ISO strings return best-effort formatted output.
+- Return: Formatted date/datetime string.
+- Raises: `FrozenFluentError` (FORMATTING) for invalid ISO 8601 strings. Invalid locales fall back to en_US.
 - State: None.
 - Thread: Safe.
 

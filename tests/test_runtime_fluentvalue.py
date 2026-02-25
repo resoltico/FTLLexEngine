@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
@@ -365,3 +366,115 @@ class TestFluentValueTypeDictAnnotation:
 
         assert result == "Hello World!"
         assert errors == ()
+
+
+# ============================================================================
+# FluentNumber.__post_init__ invariant enforcement
+# ============================================================================
+
+
+class TestFluentNumberValidation:
+    """Tests for FluentNumber construction invariants."""
+
+    # --- Unit tests (exact, regression-anchored) ---
+
+    def test_bool_true_raises_type_error(self) -> None:
+        """True is bool; NUMBER(True) would silently yield "1" instead of a
+        locale-formatted number — reject early with a clear message."""
+        with pytest.raises(TypeError, match="not bool"):
+            FluentNumber(True, "1", precision=0)
+
+    def test_bool_false_raises_type_error(self) -> None:
+        """False is bool; same misuse vector as True."""
+        with pytest.raises(TypeError, match="not bool"):
+            FluentNumber(False, "0", precision=0)
+
+    def test_negative_precision_raises_value_error(self) -> None:
+        """CLDR v operand counts visible fraction digits — always non-negative."""
+        with pytest.raises(ValueError, match="precision must be >= 0"):
+            FluentNumber(1, "1", precision=-1)
+
+    def test_large_negative_precision_raises_value_error(self) -> None:
+        """Highly negative precision is also rejected."""
+        with pytest.raises(ValueError, match="precision must be >= 0"):
+            FluentNumber(1, "1", precision=-1_000_000)
+
+    def test_valid_int_zero_precision(self) -> None:
+        """int value with precision=0 constructs without error."""
+        fn = FluentNumber(42, "42", precision=0)
+        assert fn.value == 42
+        assert fn.precision == 0
+
+    def test_valid_decimal_with_precision(self) -> None:
+        """Decimal value with positive precision constructs without error."""
+        fn = FluentNumber(Decimal("1.23"), "1.23", precision=2)
+        assert fn.value == Decimal("1.23")
+        assert fn.precision == 2
+
+    def test_none_precision_accepted(self) -> None:
+        """precision=None signals raw variable interpolation (not NUMBER())."""
+        fn = FluentNumber(1, "1")
+        assert fn.precision is None
+
+    def test_zero_int_accepted(self) -> None:
+        """Zero is a valid int value for NUMBER()."""
+        fn = FluentNumber(0, "0", precision=0)
+        assert fn.value == 0
+
+    def test_negative_int_accepted(self) -> None:
+        """Negative integers are valid values for NUMBER()."""
+        fn = FluentNumber(-42, "-42", precision=0)
+        assert fn.value == -42
+
+    # --- Property-based tests ---
+
+    @given(st.booleans())
+    @settings(max_examples=2)
+    def test_property_any_bool_raises_type_error(self, value: bool) -> None:
+        """PROPERTY: Any bool value is always rejected (True and False)."""
+        event(f"bool_value={value}")
+        with pytest.raises(TypeError):
+            FluentNumber(value, str(int(value)), precision=0)
+
+    @given(st.integers(max_value=-1))
+    @settings(max_examples=200)
+    def test_property_negative_precision_always_raises(self, precision: int) -> None:
+        """PROPERTY: Any negative precision always raises ValueError."""
+        event(f"precision_magnitude={'small' if precision >= -10 else 'large'}")
+        with pytest.raises(ValueError, match="precision must be >= 0"):
+            FluentNumber(1, "1", precision=precision)
+
+    @given(
+        value=st.integers(),
+        precision=st.one_of(st.none(), st.integers(min_value=0, max_value=20)),
+    )
+    @settings(max_examples=200)
+    def test_property_int_valid_inputs_always_construct(
+        self, value: int, precision: int | None
+    ) -> None:
+        """PROPERTY: Any int value with non-negative or None precision constructs."""
+        event(f"precision_type={'none' if precision is None else 'set'}")
+        event(f"value_sign={'neg' if value < 0 else 'nonneg'}")
+        fn = FluentNumber(value, str(value), precision=precision)
+        assert fn.value == value
+        assert fn.precision == precision
+
+    @given(
+        dvalue=st.decimals(
+            allow_nan=False,
+            allow_infinity=False,
+            min_value=Decimal("-1e15"),
+            max_value=Decimal("1e15"),
+        ),
+        precision=st.one_of(st.none(), st.integers(min_value=0, max_value=20)),
+    )
+    @settings(max_examples=200)
+    def test_property_decimal_valid_inputs_always_construct(
+        self, dvalue: Decimal, precision: int | None
+    ) -> None:
+        """PROPERTY: Any finite Decimal with non-negative or None precision constructs."""
+        event(f"precision_type={'none' if precision is None else 'set'}")
+        event(f"value_sign={'neg' if dvalue < 0 else 'nonneg'}")
+        fn = FluentNumber(dvalue, str(dvalue), precision=precision)
+        assert fn.value == dvalue
+        assert fn.precision == precision

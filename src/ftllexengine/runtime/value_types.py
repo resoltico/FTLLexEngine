@@ -55,14 +55,18 @@ class FluentNumber:
 
     Attributes:
         value: Original numeric value for matching. Always int or Decimal — never
-            float. Callers passing float to number_format() or currency_format()
-            receive a FluentNumber with Decimal(str(float_value)) stored here.
-            This preserves exact decimal representation with no float rounding.
+            float and never bool. IEEE 754 floating-point cannot represent most
+            decimal fractions exactly. Callers with float-typed values must convert
+            at the system boundary using Decimal(str(float_val)) before calling
+            number_format(). bool is a subtype of int but carries no numeric
+            localization semantics and is rejected to prevent silent misuse
+            (e.g., NUMBER(True) yielding "true" instead of a numeric format).
         formatted: Locale-formatted string for display
         precision: Visible fraction digit count (CLDR v operand), computed from
             the formatted string. This is the ACTUAL count of digits after the
             decimal separator, not the minimum_fraction_digits parameter.
             None if not specified (raw variable interpolation).
+            Must be >= 0 when set; negative precision has no CLDR meaning.
 
     Example:
         >>> fn = FluentNumber(value=1, formatted="1.00", precision=2)
@@ -83,6 +87,39 @@ class FluentNumber:
     value: int | Decimal
     formatted: str
     precision: int | None = None
+
+    def __post_init__(self) -> None:
+        """Enforce invariants on FluentNumber construction.
+
+        Raises:
+            TypeError: If value is bool (bool is int subtype but has no numeric
+                localization semantics; passing True/False to NUMBER() is a misuse).
+            TypeError: If value is not int or Decimal (defense-in-depth; the type
+                annotation already constrains this but runtime callers can bypass it).
+            ValueError: If precision is set and negative (CLDR v operand is a
+                non-negative count of visible fraction digits; negative values have
+                no meaning and indicate a construction error).
+        """
+        if isinstance(self.value, bool):
+            msg = (
+                "FluentNumber.value must be int or Decimal, not bool. "
+                "bool carries no numeric localization semantics. "
+                "Use int(your_bool) explicitly if you need 0 or 1."
+            )
+            raise TypeError(msg)
+        if not isinstance(self.value, (int, Decimal)):
+            msg = (  # type: ignore[unreachable]
+                f"FluentNumber.value must be int or Decimal, "
+                f"got {type(self.value).__name__}"
+            )
+            raise TypeError(msg)
+        if self.precision is not None and self.precision < 0:
+            msg = (
+                f"FluentNumber.precision must be >= 0, "
+                f"got {self.precision}. CLDR v operand counts visible "
+                f"fraction digits and is always non-negative."
+            )
+            raise ValueError(msg)
 
     def __str__(self) -> str:
         """Return formatted string for output."""

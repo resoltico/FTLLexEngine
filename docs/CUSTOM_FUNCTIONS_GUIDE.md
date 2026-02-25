@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.133.0"
 domain: custom-functions
-updated: "2026-02-24"
+updated: "2026-02-25"
 route:
   keywords: [custom functions, add_function, fluent functions, factory pattern, locale-aware, formatting functions]
   questions: ["how to create custom function?", "how to add custom function?", "how to make locale-aware function?"]
@@ -88,7 +88,7 @@ def MARKDOWN(text: str) -> str:
 
 ```python
 # VALID BUT NOT RECOMMENDED - lowercase/camelCase works but breaks convention
-def filesize(bytes_count: int | float) -> str:  # Works, but unconventional
+def filesize(bytes_count: int) -> str:  # Works, but unconventional
     ...
 
 def phoneNumber(number: str) -> str:  # Works, but unconventional

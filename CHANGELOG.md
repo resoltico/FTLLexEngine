@@ -10,6 +10,125 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.133.0] - 2026-02-25
+
+### Fixed
+
+- **`analysis/graph.py` `detect_cycles()` missed cycles sharing an intermediate node**
+  (DEFECT-GRAPH-DETECT-CYCLES-SHARED-NODE-001):
+  - `detect_cycles()` maintained a single module-level `visited` set that was checked before
+    pushing each neighbor onto the DFS stack; when two distinct cycles shared an intermediate
+    node (e.g., `A→B→D→A` and `A→C→D→A`), the first DFS branch marked `D` as visited; the
+    second branch found `D` already in `visited` and skipped it entirely, so the back edge
+    `D→A` for the second cycle was never encountered and the cycle was silently unreported;
+    dependency graphs produced by `FluentBundle.add_resource()` with cross-term references
+    could contain live circular dependencies that passed validation undetected, risking
+    non-terminating resolution at runtime
+  - Renamed the outer-loop guard set from `visited` to `globally_visited` and restricted
+    its use to the start-node deduplication check in the outer `for start_node in dependencies`
+    loop; removed the `if neighbor not in visited` guard that was incorrectly applied before
+    pushing neighbors — all neighbors are now always pushed so that every reachable path is
+    explored; the existing `if node in rec_stack: continue` guard on the ENTERING branch
+    provides the necessary termination guarantee by pruning already-active stack frames without
+    suppressing cross-branch exploration; added regression test
+    `test_shared_intermediate_node_both_cycles_found`
+  - Location: `analysis/graph.py`, `tests/test_runtime_analysis_graph.py`
+
+- **`runtime/value_types.py` `FluentNumber` accepted `bool` values and negative precision silently**
+  (DEFECT-VALUE-TYPES-FLUENT-NUMBER-INVARIANT-001):
+  - `FluentNumber` is a `frozen=True` dataclass but had no `__post_init__` validation;
+    constructing `FluentNumber(True, "1", precision=0)` succeeded silently even though `bool`
+    carries no numeric localization semantics (`True` formats as `"1"` and `False` as `"0"`,
+    bypassing locale-aware plural rules and grouping); `FluentNumber(1, "1", precision=-1)`
+    also succeeded despite CLDR v operand being a non-negative count of visible fraction
+    digits — negative precision is meaningless and indicates a construction error
+  - Added `__post_init__` that raises `TypeError` for `bool` values with a message explaining
+    the misuse (use `int(your_bool)` explicitly at the call site) and raises `ValueError` for
+    any negative `precision` with a message citing the CLDR v operand semantics; the defense-
+    in-depth `isinstance(value, (int, Decimal))` check is also present for runtime callers
+    bypassing the type annotation
+  - Location: `runtime/value_types.py`, `tests/test_runtime_fluentvalue.py`
+
+- **`runtime/locale_context.py` and `runtime/functions.py` `format_datetime` / `datetime_format` rejected plain `date` objects**
+  (DEFECT-LOCALE-CONTEXT-FORMAT-DATETIME-DATE-001):
+  - `format_datetime` in `LocaleContext` and `datetime_format` in `functions.py` declared
+    `value: datetime | str`; `FluentValue` includes `datetime.date` (a distinct type from
+    `datetime.datetime`); passing a plain `date` object (e.g., `date(2025, 10, 27)`) to
+    `format_datetime` with `time_style=None` was accidentally accepted because `isinstance`
+    narrowing fell through to the `else` branch and Babel's `format_date` accepts `date`
+    natively; however, with `time_style` set or a custom `pattern`, the code called
+    `babel_dates.format_datetime()` or `babel_dates.format_time()` with the raw `date`
+    object, causing `AttributeError` at runtime since those Babel calls require `datetime`
+  - Changed the `value` parameter type to `date | datetime | str` in both
+    `format_datetime` and `datetime_format`; added explicit promotion of plain `date` to
+    midnight `datetime(year, month, day)` (no tzinfo — the date carried no timezone, so
+    none is inferred) when `time_style` is not `None` or `pattern` is not `None`; the
+    `isinstance(value, datetime)` check is placed before `isinstance(value, date)` throughout
+    because `datetime` is a subtype of `date`; added unit and property-based tests covering
+    the equivalence invariant (date-only formatting equals midnight-datetime formatting),
+    `time_style` promotion, and the `yyyy-MM-dd` pattern oracle
+  - Location: `runtime/locale_context.py`, `runtime/functions.py`,
+    `tests/test_runtime_functions.py`
+
+- **`runtime/value_types.py` `FluentNumber.value` docstring described removed float-acceptance behavior**
+  (CLARITY-VALUE-TYPES-FLUENT-NUMBER-FLOAT-001):
+  - The `FluentNumber.value` attribute docstring stated "Callers passing float to
+    `number_format()` or `currency_format()` receive a `FluentNumber` with
+    `Decimal(str(float_value))` stored here. This preserves exact decimal representation with
+    no float rounding." — this behavior was removed in v0.130.0 (ARCH-FLUENT-VALUE-NO-FLOAT-001)
+    when `float` was excised from `FluentValue` and from the signatures of `number_format()`
+    and `currency_format()`; a developer reading the docstring would conclude that passing
+    `float` to `number_format()` was a supported path that auto-converts, when in fact it
+    raises `TypeError` at runtime
+  - Replaced the stale float-acceptance text with the boundary-conversion requirement:
+    "IEEE 754 floating-point cannot represent most decimal fractions exactly. Callers with
+    float-typed values must convert at the system boundary using `Decimal(str(float_val))`
+    before calling `number_format()`."
+  - Location: `runtime/value_types.py`
+
+### Changed
+
+- **`analysis/graph.py` `entry_dependency_set` eliminated intermediate mutable set allocations**
+  (PERF-ANALYSIS-GRAPH-ENTRY-DEPENDENCY-SET-001):
+  - `entry_dependency_set` constructed two intermediate mutable set comprehensions
+    (`{f"msg:{r}" for r in message_refs}` and `{f"term:{r}" for r in term_refs}`)
+    and unioned them before wrapping in `frozenset`, producing three allocations total;
+    replaced with a single generator expression iterating over both iterables in one pass
+    (`f"{prefix}:{r}" for prefix, refs in ... for r in refs`), which the `frozenset`
+    constructor consumes directly — two allocations eliminated with no behavior change
+  - Location: `analysis/graph.py`
+
+## [0.132.0] - 2026-02-24
+
+### Fixed
+
+- **`runtime/functions.py` module docstring examples used bare `float` literals**
+  (CLARITY-FUNCTIONS-DOCSTRING-FLOAT-001):
+  - The module-level docstring in `functions.py` showed `number_format(1234.5, "en-US", ...)` as the
+    usage example, and the Precision Calculation section used `1.2`, `1.0`, `1.00` as inline float
+    literals to illustrate rounding behavior; `float` was removed from `FluentValue` in v0.130.0
+    (ARCH-FLUENT-VALUE-NO-FLOAT-001) and from `number_format`'s own parameter type; the docstring
+    contradicted the live API signature (`value: int | Decimal`) and would cause a `TypeError` if
+    copied verbatim by a developer
+  - Changed the module-level example from `number_format(1234.5, ...)` to
+    `number_format(Decimal('1234.5'), ...)`; corrected the Precision Calculation inline illustration
+    from float literals to `Decimal('1.2')`, `Decimal('1.0')`, and `1` (int) respectively
+  - Location: `runtime/functions.py`
+
+- **`function_bridge.py` `call()` docstring listed `float` as a valid `FluentValue` return type**
+  (CLARITY-FUNCTION-BRIDGE-DOCSTRING-FLOAT-001):
+  - The `call()` method docstring in `function_bridge.py` stated "FluentValue (str, int, float,
+    Decimal, datetime, etc.)" as the description of the allowed return type for custom functions;
+    `float` was removed from `FluentValue` in v0.130.0 (ARCH-FLUENT-VALUE-NO-FLOAT-001); the
+    stale docstring made a false guarantee about accepted return types for `@fluent_function`
+    implementors — returning a `float` would be accepted by the decorator's signature but rejected
+    by the resolver at runtime when it attempts to format the value, producing a confusing
+    late-failure rather than a construction-time error
+  - Updated docstring to enumerate valid `FluentValue` members explicitly:
+    `str, int, Decimal, datetime, date, FluentNumber, or None`; added the statement
+    "float is not a valid FluentValue" to eliminate ambiguity
+  - Location: `runtime/function_bridge.py`
+
 ## [0.131.0] - 2026-02-24
 
 ### Fixed
@@ -4516,6 +4635,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.132.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.132.0
+[0.131.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.131.0
 [0.130.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.130.0
 [0.129.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.129.0
 [0.128.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.128.0

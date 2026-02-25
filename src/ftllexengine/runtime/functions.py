@@ -12,7 +12,7 @@ Architecture:
 
 Example:
     # Python API (snake_case):
-    number_format(1234.5, "en-US", minimum_fraction_digits=2)
+    number_format(Decimal('1234.5'), "en-US", minimum_fraction_digits=2)
 
     # FTL file (camelCase):
     price = { $amount NUMBER(minimumFractionDigits: 2) }
@@ -24,7 +24,7 @@ Python 3.13+. Uses Babel for i18n.
 
 import functools
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -175,9 +175,9 @@ def number_format(
         The precision (CLDR v operand) is computed from the ACTUAL formatted
         string, not from the minimum_fraction_digits parameter. This ensures
         correct plural category matching:
-        - number_format(1.2, min=0, max=3) -> "1.2" with precision=1 (not 0)
-        - number_format(1.0, min=0, max=3) -> "1" with precision=0
-        - number_format(1.00, min=2, max=2) -> "1.00" with precision=2
+        - number_format(Decimal('1.2'), min=0, max=3) -> "1.2" with precision=1 (not 0)
+        - number_format(Decimal('1.0'), min=0, max=3) -> "1" with precision=0
+        - number_format(1, min=2, max=2) -> "1.00" with precision=2
     """
     babel_numbers = get_babel_numbers()
     get_decimal_symbol = babel_numbers.get_decimal_symbol
@@ -230,20 +230,22 @@ def number_format(
 
 
 def datetime_format(
-    value: datetime | str,
+    value: date | datetime | str,
     locale_code: str = "en-US",
     *,
     date_style: Literal["short", "medium", "long", "full"] = "medium",
     time_style: Literal["short", "medium", "long", "full"] | None = None,
     pattern: str | None = None,
 ) -> str:
-    """Format datetime with locale-specific formatting.
+    """Format date or datetime with locale-specific formatting.
 
     Python-native API with snake_case parameters. FunctionRegistry bridges
     to FTL camelCase (dateStyle → date_style, timeStyle → time_style).
 
     Args:
-        value: datetime object or ISO string
+        value: date, datetime, or ISO 8601 string. Plain date objects are
+            accepted; when time_style or pattern is also requested, the date
+            is promoted to midnight datetime (00:00:00, no tzinfo).
         locale_code: BCP 47 locale identifier (e.g., 'en-US', 'de-DE')
         date_style: Date format style (default: "medium")
         time_style: Time format style (default: None - date only)
@@ -255,10 +257,10 @@ def datetime_format(
             - "EEEE, MMMM d, yyyy": Full format (Monday, January 28, 2025)
 
     Returns:
-        Formatted datetime string
+        Formatted date/datetime string
 
     Examples:
-        >>> from datetime import datetime, UTC
+        >>> from datetime import date, datetime, UTC
         >>> dt = datetime(2025, 10, 27, tzinfo=UTC)
         >>> datetime_format(dt, "en-US", date_style="short")
         '10/27/25'
@@ -269,6 +271,8 @@ def datetime_format(
         'Oct 27, 2025, 2:30 PM'
         >>> datetime_format(dt, "en-US", pattern="yyyy-MM-dd")
         '2025-10-27'
+        >>> datetime_format(date(2025, 10, 27), "en-US", date_style="short")
+        '10/27/25'
 
     FTL Usage:
         today = { $date DATETIME(dateStyle: "short") }

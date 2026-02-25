@@ -35,7 +35,7 @@ from __future__ import annotations
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, Literal
@@ -503,7 +503,7 @@ class LocaleContext:
 
     def format_datetime(
         self,
-        value: datetime | str,
+        value: date | datetime | str,
         *,
         date_style: Literal["short", "medium", "long", "full"] = "medium",
         time_style: Literal["short", "medium", "long", "full"] | None = None,
@@ -514,11 +514,18 @@ class LocaleContext:
         Implements Fluent DATETIME function semantics using Babel.
 
         Args:
-            value: datetime object or ISO 8601 string. Strings are converted
-                via datetime.fromisoformat() which accepts formats like:
-                - "2025-10-27" (date only)
+            value: date, datetime, or ISO 8601 string. FluentValue includes both
+                date and datetime, so both are accepted. Strings are converted via
+                datetime.fromisoformat() which accepts formats like:
+                - "2025-10-27" (date only, time defaults to 00:00:00)
                 - "2025-10-27T14:30:00" (date and time)
                 - "2025-10-27T14:30:00+00:00" (with timezone)
+
+                date objects (without time): for date-only formatting (time_style=None),
+                formatted directly. When time_style is also requested, the date is
+                promoted to midnight datetime (00:00:00, no tzinfo) so Babel can
+                format the time component. This is the natural behavior for a calendar
+                date with no intrinsic time.
             date_style: Date format style (default: "medium")
             time_style: Time format style (default: None - date only)
             pattern: Custom datetime pattern (overrides style parameters)
@@ -531,7 +538,7 @@ class LocaleContext:
                 (category=FORMATTING)
 
         Examples:
-            >>> from datetime import datetime, UTC
+            >>> from datetime import date, datetime, UTC
             >>> ctx = LocaleContext.create('en-US')
             >>> dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
             >>> ctx.format_datetime(dt, date_style='short')
@@ -545,14 +552,20 @@ class LocaleContext:
             >>> ctx.format_datetime(dt, pattern='yyyy-MM-dd')
             '2025-10-27'
 
+            >>> ctx = LocaleContext.create('en-US')
+            >>> ctx.format_datetime(date(2025, 10, 27), date_style='short')
+            '10/27/25'
+
         CLDR Compliance:
             Uses Babel's format_datetime() which implements CLDR rules.
             Matches Intl.DateTimeFormat behavior in JavaScript.
         """
         babel_dates = get_babel_dates()
 
-        # Type narrowing: convert str to datetime
-        dt_value: datetime
+        # Type narrowing: produce a datetime for all paths.
+        # datetime must be checked before date because datetime IS a date subtype;
+        # isinstance(some_datetime, date) is True, so order matters here.
+        dt_value: datetime | date
 
         if isinstance(value, str):
             try:
@@ -574,8 +587,23 @@ class LocaleContext:
                     str(diagnostic), ErrorCategory.FORMATTING,
                     diagnostic=diagnostic, context=context
                 ) from e
-        else:
+        elif isinstance(value, datetime):
+            # datetime is a subtype of date — must check datetime first
             dt_value = value
+        else:
+            # Plain date object.
+            dt_value = value
+
+        # Promote plain date to midnight datetime when a time component is needed.
+        # babel_dates.format_datetime() and format_time() require a datetime, not
+        # a bare date. A calendar date with no intrinsic time promotes to 00:00:00
+        # (no tzinfo — the date carried no timezone, so none is inferred).
+        if isinstance(dt_value, date) and not isinstance(dt_value, datetime) and (
+            time_style is not None or pattern is not None
+        ):
+            dt_value = datetime(  # noqa: DTZ001 - date carries no tz; midnight promotion is explicitly naive
+                dt_value.year, dt_value.month, dt_value.day
+            )
 
         try:
             # Use custom pattern if provided

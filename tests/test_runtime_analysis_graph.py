@@ -271,6 +271,29 @@ class TestDetectCyclesUnit:
         }
         assert detect_cycles(deps) == []
 
+    def test_shared_intermediate_node_both_cycles_found(self) -> None:
+        """Both cycles via shared intermediate node are detected.
+
+        A→B→D→A and A→C→D→A share node D. A simple DFS that marks D as
+        globally visited after the first traversal (via B) would skip D
+        when processing the C branch, missing the second cycle. This test
+        verifies both cycles are reported.
+        """
+        deps = {
+            "A": {"B", "C"},
+            "B": {"D"},
+            "C": {"D"},
+            "D": {"A"},
+        }
+        cycles = detect_cycles(deps)
+        keys = {make_cycle_key(c) for c in cycles}
+        # Both distinct cycles must be present
+        assert len(cycles) == 2, f"Expected 2 cycles, got {len(cycles)}: {keys}"
+        # Verify cycle membership: one contains B, one contains C
+        cycle_node_sets = [set(c) for c in cycles]
+        assert any("B" in s for s in cycle_node_sets), "Cycle via B not found"
+        assert any("C" in s for s in cycle_node_sets), "Cycle via C not found"
+
     def test_complex_multi_component(self) -> None:
         """Mixed graph with cycles, chains, and isolated nodes."""
         deps = {

@@ -317,7 +317,8 @@ class FunctionRegistry:
             named: Named arguments from FTL (camelCase)
 
         Returns:
-            Function result as FluentValue (str, int, float, Decimal, datetime, etc.).
+            Function result as FluentValue (str, int, Decimal, datetime, date,
+            FluentNumber, or None). float is not a valid FluentValue.
             The resolver will format non-string values to strings for final output.
 
         Raises:
