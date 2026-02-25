@@ -212,7 +212,7 @@ def parse_number(cursor: Cursor) -> ParseResult[str] | ParseError:
     return ParseResult(number_str, cursor)
 
 
-def parse_escape_sequence(  # noqa: PLR0911 - escape
+def parse_escape_sequence(  # noqa: PLR0911 - grammar dispatch: one return per escape sequence alternative (closed set)
     cursor: Cursor,
 ) -> tuple[str, Cursor] | ParseError:
     """Parse escape sequence after backslash in string.

@@ -148,20 +148,33 @@ class Cursor:
         """Peek at character with offset without advancing.
 
         Args:
-            offset: Offset from current position (0 = current, 1 = next)
+            offset: Offset from current position (0 = current, 1 = next).
+                Negative offsets return None — look-behind is not supported;
+                the parser is strictly forward-only.
 
         Returns:
-            Character at position + offset, or None if beyond EOF
+            Character at position + offset, or None if the target position is
+            before the source start (target_pos < 0) or beyond EOF
+            (target_pos >= len(source)).
 
         Note:
-            Returns None ONLY when peeking beyond EOF.
-            Use for lookahead: `if cursor.peek(1) == '=':`
+            Returns None when peeking before source start OR beyond EOF.
+            Use for lookahead: ``if cursor.peek(1) == '='``
 
-            Unlike old parser's _peek(), this is used for lookahead only.
-            For normal character access, use .current property.
+            For guaranteed-present character access (non-EOF position), use
+            the .current property instead.
+
+        Guard:
+            Without the ``target_pos < 0`` check, a negative offset whose
+            magnitude exceeds ``pos`` produces a negative index into
+            ``source``. Python's negative indexing would silently return a
+            character from the END of the source string — a wrong read with
+            no exception. Returning None for negative target positions is
+            consistent with the out-of-bounds EOF behaviour and makes any
+            inadvertent look-behind attempt safe-but-unproductive.
         """
         target_pos = self.pos + offset
-        if target_pos >= len(self.source):
+        if target_pos < 0 or target_pos >= len(self.source):
             return None
         return self.source[target_pos]
 

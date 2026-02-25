@@ -843,12 +843,13 @@ class IntegrityCache:
             and results in graceful cache bypass.
 
         Node Budget Protection:
-            A mutable counter shared across all recursive calls via closure
-            tracks total nodes visited. This prevents exponential expansion of
-            DAG structures where shared references are traversed independently
-            (e.g., l=[l,l] repeated 25 times creates 2^25 tree traversal
-            despite only 25 depth levels). The counter is fully encapsulated
-            inside the method and is not part of the public signature.
+            An integer counter in the enclosing scope, mutated by ``_go`` via
+            ``nonlocal``, tracks total nodes visited across all recursive calls.
+            This prevents exponential expansion of DAG structures where shared
+            references are traversed independently (e.g., l=[l,l] repeated 25
+            times creates 2^25 tree traversal despite only 25 depth levels).
+            The counter is fully encapsulated inside the method body and is not
+            part of the public signature.
 
         Args:
             value: Value to convert (typically FluentValue or nested collection)
@@ -861,12 +862,13 @@ class IntegrityCache:
             TypeError: If depth limit exceeded, node budget exceeded, or unknown type
         """
         # Node budget counter shared across all recursive calls via closure.
-        # Mutable list enables closure mutation without nonlocal for each recursive step.
-        _node_count: list[int] = [0]
+        # nonlocal allows _go to mutate _node_count in the enclosing _make_hashable scope.
+        _node_count: int = 0
 
         def _go(v: object, d: int) -> HashableValue:  # noqa: PLR0911, PLR0912 - type dispatch over closed FluentValue union
-            _node_count[0] += 1
-            if _node_count[0] > IntegrityCache._MAX_HASHABLE_NODES:
+            nonlocal _node_count
+            _node_count += 1
+            if _node_count > IntegrityCache._MAX_HASHABLE_NODES:
                 msg = (
                     "Node budget exceeded in cache key conversion "
                     "(possible DAG expansion attack)"

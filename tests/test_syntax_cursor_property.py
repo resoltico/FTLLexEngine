@@ -563,6 +563,37 @@ class TestCursorPeekMethod:
         else:
             assert result is None
 
+    @given(
+        source=st.text(min_size=1),
+        pos=st.integers(min_value=0, max_value=20),
+        offset=st.integers(min_value=-50, max_value=-1),
+    )
+    def test_peek_negative_offset_always_returns_none_or_valid(
+        self, source: str, pos: int, offset: int
+    ) -> None:
+        """Property: peek(offset) with negative offset returns None or in-bounds char.
+
+        Verifies the target_pos < 0 guard: negative offsets whose magnitude
+        exceeds pos must return None, never a character from the END of the source
+        (Python negative indexing trap).
+        """
+        pos = min(pos, len(source))
+        cursor = Cursor(source=source, pos=pos)
+        target_pos = pos + offset
+        result = cursor.peek(offset)
+
+        if target_pos < 0:
+            event("outcome=negative_target_returns_none")
+            # Without the guard this would silently return source[target_pos]
+            # (a character from the END of source). Must be None.
+            assert result is None
+        elif target_pos >= len(source):
+            event("outcome=beyond_eof_returns_none")
+            assert result is None
+        else:
+            event("outcome=in_bounds_lookbehind")
+            assert result == source[target_pos]
+
 
 class TestCursorAdvanceMethod:
     """Property-based tests for Cursor.advance() method."""

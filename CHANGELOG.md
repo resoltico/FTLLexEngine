@@ -10,6 +10,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.136.0] - 2026-02-25
+
+### Fixed
+
+- **`syntax/cursor.py` `Cursor.peek()` missing negative-offset guard allowed silent wrong-character read**
+  (DEFECT-CURSOR-PEEK-NEGATIVE-OFFSET-001):
+  - `peek(offset)` computed `target_pos = self.pos + offset` and then checked only
+    `target_pos >= len(self.source)` before returning `self.source[target_pos]`; when
+    `offset` is negative and its magnitude exceeds `pos` (e.g., `peek(-1)` at `pos=0`),
+    `target_pos` is negative; a negative index is not `>= len(source)`, so the guard was
+    bypassed and Python's negative-indexing convention silently returned a character from
+    the END of the source string (e.g., `source[-1]`) instead of raising or returning
+    `None`; this is a silent wrong-read — no exception, no diagnostic, corrupt data
+  - Added `target_pos < 0` to the guard: `if target_pos < 0 or target_pos >= len(self.source):
+    return None`; negative target positions are now treated identically to out-of-bounds
+    positions beyond EOF, consistently returning `None`; updated the docstring to document the
+    negative-offset semantics and the security rationale for the guard; added three unit tests
+    in `test_syntax_cursor.py` (negative offset at pos 0, negative offset at mid-source, exact
+    boundary where target_pos=0 is valid but target_pos=-1 is not); added a property test in
+    `test_syntax_cursor_property.py` that generates arbitrary negative offsets and verifies
+    the guard holds across all source lengths and cursor positions
+  - Location: `syntax/cursor.py`, `tests/test_syntax_cursor.py`,
+    `tests/test_syntax_cursor_property.py`
+
+- **`runtime/cache.py` `IntegrityCache._make_hashable` used Python-2 `list[int]` pattern instead of `nonlocal`**
+  (DEFECT-CACHE-MAKE-HASHABLE-LIST-COUNTER-001):
+  - `_make_hashable` encapsulated the node-budget counter as `_node_count: list[int] = [0]`
+    with `_node_count[0] += 1` inside the nested `_go` function; this is the Python 2
+    work-around for mutating an enclosing-scope variable from a nested function — it was
+    required before `nonlocal` existed; Python 3 provides `nonlocal` precisely for this
+    pattern; using a single-element list as a mutable integer container obscures intent,
+    introduces unnecessary heap allocation, and the accompanying comment ("Mutable list
+    enables closure mutation without nonlocal") was factually backwards — `nonlocal` is
+    the correct mechanism, not a thing to be avoided
+  - Replaced `_node_count: list[int] = [0]` with `_node_count: int = 0`; added
+    `nonlocal _node_count` at the top of `_go`; replaced `_node_count[0] += 1` with
+    `_node_count += 1` and `if _node_count[0] > ...` with `if _node_count > ...`; updated
+    the inline comment and docstring to describe the `nonlocal` pattern accurately
+  - Location: `runtime/cache.py`
+
+- **`syntax/parser/primitives.py` `parse_escape_sequence` noqa rationale too cryptic**
+  (DEFECT-PRIMITIVES-NOQA-RATIONALE-001):
+  - `# noqa: PLR0911 - escape` provided "escape" as the suppression rationale, leaving
+    readers unable to distinguish a legitimate architectural waiver from a casual suppression
+  - Expanded to `# noqa: PLR0911 - grammar dispatch: one return per escape sequence
+    alternative (closed set)`, which accurately describes the EBNF-driven structural
+    branching and marks the closed nature of the escape grammar
+  - Location: `syntax/parser/primitives.py`
+
 ## [0.135.0] - 2026-02-25
 
 ### Fixed
@@ -4841,6 +4890,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.136.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.136.0
+[0.135.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.135.0
 [0.134.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.134.0
 [0.133.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.133.0
 [0.132.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.132.0
