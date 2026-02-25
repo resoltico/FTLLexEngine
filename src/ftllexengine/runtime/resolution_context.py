@@ -27,6 +27,7 @@ from ftllexengine.diagnostics import (
     ErrorTemplate,
     FrozenFluentError,
 )
+from ftllexengine.integrity import DataIntegrityError, IntegrityContext
 
 __all__ = ["GlobalDepthGuard", "ResolutionContext"]
 
@@ -154,9 +155,40 @@ class ResolutionContext:
         self._seen.add(key)
 
     def pop(self) -> str:
-        """Pop message key from resolution stack."""
-        key = self._stack.pop()
-        self._seen.remove(key)  # remove() raises KeyError if absent, exposing state corruption
+        """Pop message key from resolution stack.
+
+        Raises:
+            DataIntegrityError: If the stack and lookup set are out of sync,
+                indicating internal state corruption. The stack is not mutated
+                when corruption is detected, leaving both structures consistent
+                for diagnostic inspection.
+        """
+        if not self._stack:
+            ctx = IntegrityContext(
+                component="resolution_context",
+                operation="pop",
+            )
+            msg = "Resolution stack underflow: pop() called on empty stack"
+            raise DataIntegrityError(msg, ctx)
+
+        # Peek before mutating: if the key is absent from the lookup set,
+        # the two structures are already out of sync. Raising here (before
+        # any mutation) preserves the pre-pop state for post-mortem inspection.
+        key = self._stack[-1]
+        if key not in self._seen:
+            ctx = IntegrityContext(
+                component="resolution_context",
+                operation="pop",
+                key=key,
+            )
+            msg = (
+                f"Resolution stack corrupted: key '{key}' present in stack "
+                f"but absent from lookup set. Stack: {list(self._stack)}"
+            )
+            raise DataIntegrityError(msg, ctx)
+
+        self._stack.pop()
+        self._seen.remove(key)
         return key
 
     def contains(self, key: str) -> bool:

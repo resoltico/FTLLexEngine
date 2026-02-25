@@ -10,6 +10,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.134.0] - 2026-02-25
+
+### Fixed
+
+- **`diagnostics/codes.py` `SourceSpan` accepted structurally invalid spans**
+  (DEFECT-DIAGNOSTICS-SOURCE-SPAN-INVARIANT-001):
+  - `SourceSpan` is a `frozen=True` dataclass with no `__post_init__` validation; constructing
+    `SourceSpan(start=-1, end=0, line=0, column=0)` succeeded silently; the sibling `ast.Span`
+    already enforced `start >= 0` and `end >= start` via `__post_init__`, creating an
+    inconsistency where diagnostic spans were unguarded while AST spans were validated;
+    downstream code (diagnostic formatters, hash computation, error reporting) assumed
+    `start >= 0`, `end >= start`, `line >= 1`, and `column >= 1` — passing invalid spans could
+    produce negative-offset formatting output or hash collisions between structurally distinct
+    spans
+  - Added `__post_init__` to `SourceSpan` enforcing four invariants: `start >= 0` (offsets are
+    non-negative), `end >= start` (span is non-empty or zero-length point), `line >= 1`
+    (1-indexed per FTL source model), `column >= 1` (1-indexed per FTL source model); raises
+    `ValueError` with a descriptive message for each violation; updated Hypothesis strategies in
+    `tests/test_diagnostics_property.py` to generate `column >= 1` and updated
+    `tests/test_integrity_metadata.py` to require `end >= start + 1` via `assume()`
+  - Location: `diagnostics/codes.py`, `tests/test_diagnostics_property.py`,
+    `tests/test_integrity_metadata.py`
+
+- **`diagnostics/errors.py` `FrozenFluentError.__hash__` discarded 8 bytes of BLAKE2b-128 hash**
+  (DEFECT-DIAGNOSTICS-FROZEN-ERROR-HASH-TRUNCATION-001):
+  - `__hash__` returned `int.from_bytes(self._content_hash[:8], "big")`, using only the first
+    8 bytes of the 16-byte BLAKE2b-128 content hash; the remaining 8 bytes were silently
+    discarded, reducing the effective collision space from 128 bits to 64 bits; for financial
+    applications using `FrozenFluentError` in sets or as dict keys, this doubled the birthday-
+    attack probability of accidental hash collisions between semantically distinct errors;
+    Python `int` is arbitrary-precision, so no truncation is required to store the full 128-bit
+    value — the truncation was purely unintentional
+  - Changed `__hash__` to return `int.from_bytes(self._content_hash, "big")` using all 16
+    bytes; Python's `hash()` protocol then applies `int.__hash__()` (Mersenne prime modular
+    reduction to 61 bits) on the returned value, distributing all 128 bits of BLAKE2b entropy
+    into the final 61-bit hash; updated `test_hash_returns_int_from_content_hash` to assert
+    `hash(error) == hash(int.from_bytes(error.content_hash, "big"))` reflecting the actual
+    hash derivation chain
+  - Location: `diagnostics/errors.py`, `tests/test_diagnostics_frozen_error.py`
+
+- **`runtime/resolution_context.py` `ResolutionContext.pop()` raised opaque `KeyError` on state corruption**
+  (DEFECT-RESOLUTION-CONTEXT-POP-INTEGRITY-001):
+  - `pop()` called `self._stack.pop()` first, then `self._seen.remove(key)`; if `_stack` and
+    `_seen` were out of sync (a DataIntegrityError condition), the `remove()` call raised a
+    bare `KeyError` with no context — the error was not part of the library's error taxonomy,
+    carried no `IntegrityContext`, and left `_stack` permanently mutated in a shorter-by-one
+    state while `_seen` remained unmodified, making the corruption worse; additionally, calling
+    `pop()` on an empty stack raised `IndexError` (another opaque Python builtin) rather than
+    the library's `DataIntegrityError`
+  - Rewrote `pop()` with a peek-before-mutate pattern: first check for empty stack and raise
+    `DataIntegrityError` with `operation="pop"` message "Resolution stack underflow"; then
+    peek at `self._stack[-1]` and verify key membership in `self._seen` before any mutation;
+    if the key is absent (state corruption), raise `DataIntegrityError` with the full stack
+    contents in the message for post-mortem inspection — neither `_stack` nor `_seen` is
+    modified when corruption is detected; only after both pre-conditions pass are the
+    structures mutated atomically (`_stack.pop()` + `_seen.remove(key)`)
+  - Location: `runtime/resolution_context.py`
+
 ## [0.133.0] - 2026-02-25
 
 ### Fixed
@@ -4635,6 +4693,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.134.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.134.0
+[0.133.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.133.0
 [0.132.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.132.0
 [0.131.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.131.0
 [0.130.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.130.0

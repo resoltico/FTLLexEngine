@@ -11,7 +11,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from hypothesis import event, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import (
@@ -543,6 +543,8 @@ class TestErrorContentHashIncludesAllDiagnosticFields:
         self, start: int, end: int, line: int, column: int
     ) -> None:
         """PROPERTY: Any span field change affects content hash."""
+        # span_diff uses start+1: end must be >= start+1 for both spans to be valid
+        assume(end >= start + 1)
         event(f"offset={start}")
         span = SourceSpan(start=start, end=end, line=line, column=column)
         diag = Diagnostic(code=DiagnosticCode.MESSAGE_NOT_FOUND, message="Test", span=span)

@@ -299,10 +299,14 @@ class FrozenFluentError(Exception):
     def __hash__(self) -> int:
         """Return hash based on content, not object identity.
 
+        Uses all 16 bytes of the BLAKE2b-128 content hash for maximum
+        collision resistance. Python int is arbitrary-precision, so
+        the full 128-bit hash space is preserved without truncation.
+
         Returns:
-            Integer hash derived from content hash
+            Integer hash derived from the full content hash
         """
-        return int.from_bytes(self._content_hash[:8], "big")
+        return int.from_bytes(self._content_hash, "big")
 
     def __eq__(self, other: object) -> bool:
         """Compare errors by content.

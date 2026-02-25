@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.133.0"
+version: "0.134.0"
 domain: RUNTIME
 updated: "2026-02-25"
 route:
@@ -686,8 +686,8 @@ def pop(self) -> str:
 
 ### Constraints
 - Return: Removed message key.
-- Raises: IndexError if stack empty.
-- State: Mutates stack.
+- Raises: `DataIntegrityError` if stack is empty (underflow) or if `_stack` and `_seen` are out of sync (state corruption). Peek-before-mutate: neither structure is modified when corruption is detected.
+- State: Mutates `_stack` and `_seen` atomically only after invariant verification.
 
 ---
 

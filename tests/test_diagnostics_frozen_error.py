@@ -1084,10 +1084,18 @@ class TestCompleteBranchCoverage:
             del error._category
 
     def test_hash_returns_int_from_content_hash(self) -> None:
-        """__hash__ returns int derived from first 8 bytes of content hash."""
+        """__hash__ derives from all 16 bytes of BLAKE2b-128 content hash.
+
+        Python's hash() protocol calls int.__hash__() on the returned integer,
+        reducing it via Mersenne prime modulus to a platform-sized hash value.
+        We verify the full 128-bit integer is used, not a truncated subset.
+        """
         error = FrozenFluentError("test", ErrorCategory.REFERENCE)
         h = hash(error)
-        expected = int.from_bytes(error.content_hash[:8], "big")
+        # __hash__ returns int.from_bytes(content_hash, "big") (all 16 bytes);
+        # Python's hash() then applies int.__hash__() which reduces via modulus.
+        # Compute the same reduction independently to verify full-hash derivation.
+        expected = hash(int.from_bytes(error.content_hash, "big"))
         assert h == expected
 
     def test_eq_compares_content_hash_for_matching_errors(self) -> None:

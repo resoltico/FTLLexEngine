@@ -32,9 +32,9 @@ error_messages = st.text(min_size=1, max_size=200)
 # Message IDs and reference names
 identifiers = st.from_regex(r"[a-z][a-z0-9_-]*", fullmatch=True)
 
-# Line and column numbers for SourceSpan
+# Line and column numbers for SourceSpan (both 1-indexed per SourceSpan invariants)
 line_numbers = st.integers(min_value=1, max_value=10000)
-column_numbers = st.integers(min_value=0, max_value=200)
+column_numbers = st.integers(min_value=1, max_value=200)
 byte_offsets = st.integers(min_value=0, max_value=100000)
 
 

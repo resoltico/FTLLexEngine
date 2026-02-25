@@ -170,6 +170,27 @@ class SourceSpan:
     line: int
     column: int
 
+    def __post_init__(self) -> None:
+        """Validate SourceSpan invariants.
+
+        Raises:
+            ValueError: If start is negative, end precedes start, line is
+                less than 1 (lines are 1-indexed), or column is less than 1
+                (columns are 1-indexed).
+        """
+        if self.start < 0:
+            msg = f"SourceSpan.start must be >= 0, got {self.start}"
+            raise ValueError(msg)
+        if self.end < self.start:
+            msg = f"SourceSpan.end ({self.end}) must be >= start ({self.start})"
+            raise ValueError(msg)
+        if self.line < 1:
+            msg = f"SourceSpan.line must be >= 1 (1-indexed), got {self.line}"
+            raise ValueError(msg)
+        if self.column < 1:
+            msg = f"SourceSpan.column must be >= 1 (1-indexed), got {self.column}"
+            raise ValueError(msg)
+
 
 @dataclass(frozen=True, slots=True)
 class Diagnostic:

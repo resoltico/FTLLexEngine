@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.134.0"
 domain: ERRORS
-updated: "2026-02-24"
+updated: "2026-02-25"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -95,7 +95,7 @@ class FrozenFluentError(Exception):
 - Exception Attributes: Python exception mechanism attributes (`__traceback__`, `__context__`, `__cause__`, `__suppress_context__`, `__notes__`) are allowed even after freeze to support exception chaining and Python 3.11+ exception groups.
 - Sealed: Cannot be subclassed. Use `ErrorCategory` for classification.
 - Content-Addressed: BLAKE2b-128 hash computed at construction for integrity verification.
-- Hashable: Can be used in sets and as dict keys. Hash based on content, not identity.
+- Hashable: Can be used in sets and as dict keys. Hash based on content, not identity. `__hash__` returns `int.from_bytes(content_hash, "big")` using all 16 bytes of the BLAKE2b-128 hash; Python's `hash()` protocol then reduces via `int.__hash__()` (Mersenne prime modulus).
 - Convenience Properties: `input_value`, `locale_code`, `parse_type` delegate to `context` (return empty string if context is None).
 - Hash Composition: Content hash includes ALL fields for complete audit trail integrity:
   - Core: `message`, `category.value`
@@ -704,8 +704,9 @@ class SourceSpan:
 | `column` | `int` | Y | Column number (1-indexed). |
 
 ### Constraints
-- Return: Immutable span record.
-- State: Frozen dataclass.
+- Immutable: Frozen dataclass. Mutation raises `FrozenInstanceError`.
+- Invariants (enforced by `__post_init__`): `start >= 0`; `end >= start`; `line >= 1` (1-indexed); `column >= 1` (1-indexed). Violation raises `ValueError`.
+- Import: `from ftllexengine.diagnostics import SourceSpan`
 
 ---
 
