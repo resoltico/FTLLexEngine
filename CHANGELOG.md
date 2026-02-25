@@ -10,6 +10,154 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.135.0] - 2026-02-25
+
+### Fixed
+
+- **`syntax/cursor.py` `Cursor` accepted negative and out-of-range positions silently**
+  (DEFECT-CURSOR-POSITION-INVARIANT-001):
+  - `Cursor` is a `frozen=True` dataclass with no `__post_init__` validation; constructing
+    `Cursor("hello", -1)` succeeded silently and returned `source[-1]` ("o") for `.current`
+    via Python's negative indexing, corrupting parser state without any error; constructing
+    `Cursor("hello", 10)` succeeded silently and appeared to be at EOF, allowing callers to
+    bypass explicit EOF position (`len(source)`) through arbitrary large values; `advance()`
+    already clamps to `len(source)`, so positions strictly beyond the source length can only
+    arise through direct construction errors — accepting them silently hid bugs
+  - Added `__post_init__` to `Cursor` enforcing two invariants: `pos >= 0` (negative positions
+    are Python indexing traps, not valid cursor positions) and `pos <= len(source)` (EOF is
+    exclusively `pos == len(source)`; strictly larger values are construction errors); raises
+    `ValueError` with a descriptive message for each violation; updated six tests in
+    `test_syntax_cursor.py` and `test_syntax_cursor_property.py` that relied on the old
+    permissive behavior — tests now verify `ValueError` is raised and property tests constrain
+    generated positions to the valid range `[0, len(source)]`
+  - Location: `syntax/cursor.py`, `tests/test_syntax_cursor.py`,
+    `tests/test_syntax_cursor_property.py`
+
+- **`syntax/parser/primitives.py` private `_ASCII_DIGITS` exposed in `__all__`**
+  (DEFECT-PRIMITIVES-PRIVATE-IN-ALL-001):
+  - `__all__` listed `"_ASCII_DIGITS"` alongside the six public exports; private names (leading
+    underscore) are excluded from `__all__` by convention — their presence signals that the
+    name is part of the public API, which `_ASCII_DIGITS` is not; tools that iterate `__all__`
+    for re-export or documentation generation (star imports, `sphinx-apidoc`, mypy strict mode)
+    would expose an internal constant as a documented public symbol
+  - Removed `"_ASCII_DIGITS"` from `__all__`; the constant remains accessible within the module
+    and to intra-package imports but no longer appears in the public interface
+  - Location: `syntax/parser/primitives.py`
+
+- **`runtime/cache.py` `IntegrityCache._make_hashable` leaked internal recursion counter through public signature**
+  (DEFECT-CACHE-MAKE-HASHABLE-COUNTER-LEAK-001):
+  - `_make_hashable` had signature `(value, depth, *, _counter: list[int] | None = None)`;
+    `_counter` was a mutable list used as a pass-by-reference integer counter shared across
+    recursive calls to enforce the node-budget DAG expansion protection; exposing it as a
+    keyword parameter leaked internal implementation state — callers could pass a pre-populated
+    counter to bypass the budget, or pass a list of the wrong shape and cause an `IndexError`;
+    the parameter was documented internally but was never intended to be part of the external
+    contract of a `@staticmethod`
+  - Refactored `_make_hashable` to define `_node_count: list[int] = [0]` as a local variable
+    and `_go(v, d)` as a nested function that closes over `_node_count`; the node budget and
+    recursion are fully encapsulated within the static method body; `_counter` removed from
+    the method signature entirely; the waiver comment on `_go` was updated to include a
+    rationale per the noqa audit requirement
+  - Location: `runtime/cache.py`
+
+- **`runtime/cache.py` stale `FormatCache` comment on `_CacheValue` type alias**
+  (DEFECT-CACHE-STALE-COMMENT-001):
+  - `_CacheValue` was annotated with `# Internal type alias for legacy cache values (for
+    FormatCache compatibility)`; `FormatCache` was removed from the codebase in a prior
+    release; the comment incorrectly implied a backwards-compatibility relationship with a
+    deleted class, misleading readers about the purpose of the alias
+  - Updated comment to `# Internal type alias for cache entry values returned by
+    IntegrityCacheEntry.as_result()`
+  - Location: `runtime/cache.py`
+
+- **`diagnostics/errors.py` `FrozenFluentError.__eq__` compared BLAKE2b hashes instead of fields**
+  (DEFECT-DIAGNOSTICS-FROZEN-ERROR-EQ-HASH-SEMANTICS-001):
+  - `__eq__` compared `self._content_hash == other._content_hash` (bytes equality) instead of
+    comparing the four defining fields directly; hash-based equality is probabilistically
+    correct — BLAKE2b-128 birthday bound is 2^64, making accidental collisions astronomically
+    unlikely — but semantically wrong: two objects with distinct fields that happen to produce
+    the same 128-bit hash (however improbable) would incorrectly compare equal; structural
+    equality based on field values is always correct regardless of hash collision probability
+  - Changed `__eq__` to compare `_message`, `_category`, `_diagnostic`, and `_context`
+    directly using `and`-chained equality; the hash/equality contract is preserved because
+    equal objects (identical fields) always produce identical content hashes, so `__hash__`
+    and `__eq__` remain consistent; added docstring explaining the rationale
+  - Location: `diagnostics/errors.py`
+
+- **`runtime/value_types.py` `FluentValue` union redundantly and misleadingly listed `bool`**
+  (DEFECT-VALUE-TYPES-BOOL-IN-UNION-001):
+  - The `FluentValue` union explicitly included `bool` alongside `int`; `bool` is a subtype of
+    `int` in Python, so type checkers already accept `bool` where `int` is expected — the
+    explicit listing was redundant; worse, it was misleading: `FluentNumber.__post_init__`
+    raises `TypeError` for `bool` values, meaning numeric functions (`NUMBER()`, `CURRENCY()`)
+    reject `bool` at runtime; a user reading the type annotation could reasonably conclude that
+    `bool` was a first-class supported value type when in reality it is only accepted by raw
+    string interpolation (via the inherited `int` branch) and rejected by all formatting
+    functions
+  - Removed `bool` from the explicit union; added a block comment explaining the design intent:
+    `bool` is absent because the explicit omission signals that it carries no numeric
+    localization semantics; callers must convert explicitly (`str(flag)` for "True"/"False",
+    `int(flag)` for 0/1)
+  - Location: `runtime/value_types.py`
+
+- **`analysis/graph.py` `_ENTERING` and `_EXITING` sentinel constants lacked `Final` type annotation**
+  (DEFECT-GRAPH-FINAL-CONSTANTS-001):
+  - `_ENTERING = True` and `_EXITING = False` are module-level boolean sentinels used as DFS
+    state markers in `detect_cycles()`; without `Final` annotations, type checkers treat them
+    as mutable `bool` variables rather than constants, losing the static guarantee that their
+    values are fixed; mypy strict mode and downstream analysis tools cannot enforce
+    immutability without `Final`
+  - Added `Final[bool]` annotation to both constants: `_ENTERING: Final[bool] = True` and
+    `_EXITING: Final[bool] = False`; added `Final` to the `from typing import` statement
+  - Location: `analysis/graph.py`
+
+- **`syntax/parser/primitives.py` `parse_escape_sequence` missing from `__all__`**
+  (DEFECT-PRIMITIVES-ESCAPE-NOT-IN-ALL-001):
+  - `parse_escape_sequence` is a public function (no leading underscore) and is heavily exercised
+    by integration tests and `parse_string_literal` — it handles `\"`, `\\`, `\n`, `\t`,
+    `\uXXXX`, and `\UXXXXXX` escape sequences in FTL string literals; it was absent from
+    `__all__`, meaning star imports, documentation generators, and mypy's strict re-export
+    checks would not expose it as part of the public API, inconsistent with its naming and usage
+  - Added `"parse_escape_sequence"` to `__all__` in alphabetical position between
+    `"is_identifier_start"` and `"parse_identifier"`
+  - Location: `syntax/parser/primitives.py`
+
+- **`runtime/cache.py` `IntegrityCache.get_stats()` returned imprecise `dict[str, int | float | bool]`**
+  (DEFECT-CACHE-STATS-IMPRECISE-TYPE-001):
+  - `get_stats()` was typed as `dict[str, int | float | bool]`, losing per-field type information;
+    callers could not tell which fields were `int`, which were `float`, and which were `bool`
+    without consulting the docstring; type checkers would accept `stats["write_once"] + 1` without
+    error even though `write_once` is a `bool` flag; for a financial-grade caching layer where
+    `corruption_detected`, `hits`, and `audit_entries` drive monitoring alerts, imprecise return
+    types are a reliability risk
+  - Added `CacheStats(TypedDict)` with 17 precisely-typed fields (`size: int`, `hit_rate: float`,
+    `write_once: bool`, etc.) and added it to `__all__`; updated `get_stats()` return type from
+    `dict[str, int | float | bool]` to `CacheStats`; added `LocalizationCacheStats(CacheStats)`
+    in `localization/orchestrator.py` extending `CacheStats` with `bundle_count: int` and added
+    it to `__all__`; updated `FluentBundle.get_cache_stats()` return type from
+    `dict[str, int | float | bool] | None` to `CacheStats | None` and
+    `FluentLocalization.get_cache_stats()` to `LocalizationCacheStats | None`; removed redundant
+    `int()` and `bool()` casts in `FluentLocalization.get_cache_stats()` that were necessary only
+    because the old dict type had no per-field precision; updated `test_localization_cache_stats.py`
+    to reference `LocalizationCacheStats` in the concurrent-reads type annotation
+  - Location: `runtime/cache.py`, `runtime/bundle.py`, `localization/orchestrator.py`,
+    `tests/test_localization_cache_stats.py`
+
+- **`tests/test_diagnostics_frozen_error.py` `_escape_control_chars` test helper incomplete**
+  (DEFECT-TEST-ESCAPE-CONTROL-CHARS-INCOMPLETE-001):
+  - `_escape_control_chars` in the test file was a mirror of `DiagnosticFormatter._escape_control_chars`
+    used in property test assertions; the test helper only escaped four characters (`\x1b`, `\r`,
+    `\n`, `\t`) via chained `.replace()` calls, while the production implementation uses
+    `str.translate()` with a full table covering all 32 C0 ASCII control characters (0x00-0x1F)
+    and DEL (0x7F); Hypothesis discovered `'\x1f'` (ASCII unit separator) as a falsifying example:
+    `_escape_control_chars('\x1f')` returned `'\x1f'` unchanged, but the formatter produced
+    `'\\x1f'`, causing `assert _escape_control_chars(diagnostic.message) in formatted` to fail
+  - Replaced the four-character chained-replace body with a module-level `str.maketrans()` table
+    `_TEST_CONTROL_TRANSLATE` that mirrors the production `_CONTROL_ESCAPE` construction exactly
+    (all 0x00-0x1F → `\\xNN`, 0x7F → `\\x7f`, with conventional overrides for 0x1B, 0x0D,
+    0x0A, 0x09); the function body is now `return text.translate(_TEST_CONTROL_TRANSLATE)`
+  - Location: `tests/test_diagnostics_frozen_error.py`
+
 ## [0.134.0] - 2026-02-25
 
 ### Fixed

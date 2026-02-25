@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.135.0"
 domain: TYPES
-updated: "2026-02-24"
+updated: "2026-02-25"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -848,7 +848,7 @@ Type alias for values passable to Fluent functions and format_pattern().
 ### Signature
 ```python
 type FluentValue = (
-    str | int | bool | Decimal | datetime | date | FluentNumber | None |
+    str | int | Decimal | datetime | date | FluentNumber | None |
     Sequence["FluentValue"] | Mapping[str, "FluentValue"]
 )
 ```
@@ -857,8 +857,7 @@ type FluentValue = (
 | Type | Description |
 |:-----|:------------|
 | `str` | String arguments. |
-| `int` | Integer arguments. |
-| `bool` | Boolean arguments. |
+| `int` | Integer arguments (includes `bool` via subtype; use `int(flag)` explicitly). |
 | `Decimal` | Precise decimal arguments (currency, any fractional value). |
 | `datetime` | Date-time arguments. |
 | `date` | Date-only arguments. |
@@ -870,6 +869,8 @@ type FluentValue = (
 ### Constraints
 - PEP 695 recursive type alias. Export: `from ftllexengine import FluentValue`.
 - Used for type-hinting resolver arguments: `args: dict[str, FluentValue]`.
+- `bool` is absent from the explicit union. `bool` is an `int` subtype so type checkers accept it; the explicit omission signals that `bool` has no numeric localization semantics. `NUMBER()` and `CURRENCY()` raise `TypeError` for `bool` at runtime. Convert explicitly: `int(flag)` or `str(flag)`.
+- `float` is absent. IEEE 754 cannot represent most decimal fractions exactly. Use `Decimal(str(float_val))` at system boundaries.
 - Collections: Arbitrarily nested structures supported (e.g., `{"items": [1, 2, {"nested": "value"}]}`).
 - Cache: Collections handled correctly by `_make_hashable()` for cache key generation.
 - Location: `runtime/value_types.py`, exported from package root.

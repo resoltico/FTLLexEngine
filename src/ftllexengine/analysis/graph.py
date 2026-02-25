@@ -10,6 +10,7 @@ Python 3.13+.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Final
 
 __all__ = [
     "detect_cycles",
@@ -17,8 +18,8 @@ __all__ = [
     "make_cycle_key",
 ]
 
-_ENTERING = True
-_EXITING = False
+_ENTERING: Final[bool] = True
+_EXITING: Final[bool] = False
 
 
 def entry_dependency_set(

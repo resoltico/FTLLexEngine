@@ -144,6 +144,14 @@ class FluentNumber:
 # must use int (for whole amounts) or Decimal (for fractional amounts).
 # At system boundaries, convert with Decimal(str(float_val)).
 #
+# bool is absent from the explicit union. bool is a subtype of int, so type
+# checkers already accept bool where int is expected. The explicit omission
+# signals intent: bool carries no numeric localization semantics. NUMBER() and
+# CURRENCY() reject bool at runtime (FluentNumber.__post_init__ raises TypeError).
+# For string interpolation of True/False, callers must convert explicitly:
+#   str(flag)  — renders as "True" / "False"
+#   int(flag)  — renders as 0 / 1
+#
 # Collections Support:
 #   Sequence[FluentValue] and Mapping[str, FluentValue] are supported for custom
 #   functions that need to pass structured data. The cache (_make_hashable) and
@@ -151,7 +159,6 @@ class FluentNumber:
 type FluentValue = (
     str
     | int
-    | bool
     | Decimal
     | datetime
     | date

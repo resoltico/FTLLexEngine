@@ -309,17 +309,31 @@ class FrozenFluentError(Exception):
         return int.from_bytes(self._content_hash, "big")
 
     def __eq__(self, other: object) -> bool:
-        """Compare errors by content.
+        """Compare errors by structural field equality.
+
+        Compares all four defining fields directly rather than relying on the
+        content hash. Hash-based equality is probabilistically correct (BLAKE2b-128
+        birthday bound is 2^64) but semantically wrong: two objects with different
+        fields that happen to collide would compare equal. Field comparison is
+        always structurally correct.
+
+        Consistency with __hash__: equal objects (identical fields) always produce
+        identical content hashes, so the hash/equality contract is satisfied.
 
         Args:
             other: Object to compare
 
         Returns:
-            True if other is a FrozenFluentError with identical content
+            True if other is a FrozenFluentError with identical fields
         """
         if not isinstance(other, FrozenFluentError):
             return NotImplemented
-        return self._content_hash == other._content_hash
+        return (
+            self._message == other._message
+            and self._category == other._category
+            and self._diagnostic == other._diagnostic
+            and self._context == other._context
+        )
 
     def __repr__(self) -> str:
         """Return detailed representation for debugging."""

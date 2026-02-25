@@ -50,6 +50,7 @@ from ftllexengine.localization.loading import (
 )
 from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
 from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache import CacheStats
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.rwlock import RWLock
 from ftllexengine.runtime.value_types import FluentValue
@@ -59,7 +60,18 @@ if TYPE_CHECKING:
     from ftllexengine.diagnostics import ValidationResult
     from ftllexengine.introspection import MessageIntrospection
 
-__all__ = ["FluentLocalization"]
+__all__ = ["FluentLocalization", "LocalizationCacheStats"]
+
+
+class LocalizationCacheStats(CacheStats, total=True):
+    """Aggregate cache statistics across all bundles in a FluentLocalization.
+
+    Extends CacheStats with an additional field tracking the number of
+    bundles contributing to the aggregated metrics.
+    """
+
+    bundle_count: int
+    """Number of initialized bundles contributing to these statistics."""
 
 
 class FluentLocalization:
@@ -957,7 +969,7 @@ class FluentLocalization:
             for bundle in self._bundles.values():
                 bundle.clear_cache()
 
-    def get_cache_stats(self) -> dict[str, int | float | bool] | None:
+    def get_cache_stats(self) -> LocalizationCacheStats | None:
         """Get aggregate cache statistics across all initialized bundles.
 
         Aggregates cache metrics from all bundles that have been created.
@@ -966,29 +978,11 @@ class FluentLocalization:
         can monitor corruption events, oversize skips, and audit state.
 
         Returns:
-            Dict with aggregated cache metrics, or None if caching disabled.
+            LocalizationCacheStats with aggregated metrics, or None if caching disabled.
             Numeric fields are summed across all bundles; boolean fields
             (write_once, strict, audit_enabled) reflect the first bundle's
             configuration (all bundles share the same CacheConfig).
-            Keys:
-            - size (int): Total cached entries across all bundles
-            - maxsize (int): Sum of maximum cache sizes
-            - max_entry_weight (int): Max entry weight (from first bundle)
-            - max_errors_per_entry (int): Max errors per entry (from first bundle)
-            - hits (int): Total cache hits
-            - misses (int): Total cache misses
-            - hit_rate (float): Weighted hit rate (0.0-100.0)
-            - unhashable_skips (int): Total uncacheable argument skips
-            - oversize_skips (int): Total entries skipped due to result weight
-            - error_bloat_skips (int): Total entries skipped due to error count/weight
-            - corruption_detected (int): Total checksum mismatches detected
-            - idempotent_writes (int): Total benign concurrent writes
-            - sequence (int): Sum of sequence numbers (total puts across bundles)
-            - write_once (bool): Write-once mode (from first bundle's config)
-            - strict (bool): Strict mode (from first bundle's config)
-            - audit_enabled (bool): Audit logging (from first bundle's config)
-            - audit_entries (int): Total audit log entries across all bundles
-            - bundle_count (int): Number of initialized bundles
+            See LocalizationCacheStats and CacheStats for field definitions.
 
         Thread-safe via internal RWLock (read lock).
 
@@ -1031,23 +1025,23 @@ class FluentLocalization:
             for bundle in self._bundles.values():
                 stats = bundle.get_cache_stats()
                 if stats is not None:
-                    total_size += int(stats["size"])
-                    total_maxsize += int(stats["maxsize"])
-                    total_hits += int(stats["hits"])
-                    total_misses += int(stats["misses"])
-                    total_unhashable += int(stats["unhashable_skips"])
-                    total_oversize += int(stats["oversize_skips"])
-                    total_error_bloat += int(stats["error_bloat_skips"])
-                    total_corruption += int(stats["corruption_detected"])
-                    total_idempotent += int(stats["idempotent_writes"])
-                    total_sequence += int(stats["sequence"])
-                    total_audit_entries += int(stats["audit_entries"])
+                    total_size += stats["size"]
+                    total_maxsize += stats["maxsize"]
+                    total_hits += stats["hits"]
+                    total_misses += stats["misses"]
+                    total_unhashable += stats["unhashable_skips"]
+                    total_oversize += stats["oversize_skips"]
+                    total_error_bloat += stats["error_bloat_skips"]
+                    total_corruption += stats["corruption_detected"]
+                    total_idempotent += stats["idempotent_writes"]
+                    total_sequence += stats["sequence"]
+                    total_audit_entries += stats["audit_entries"]
                     if is_first:
-                        first_write_once = bool(stats["write_once"])
-                        first_strict = bool(stats["strict"])
-                        first_audit_enabled = bool(stats["audit_enabled"])
-                        first_max_entry_weight = int(stats["max_entry_weight"])
-                        first_max_errors = int(stats["max_errors_per_entry"])
+                        first_write_once = stats["write_once"]
+                        first_strict = stats["strict"]
+                        first_audit_enabled = stats["audit_enabled"]
+                        first_max_entry_weight = stats["max_entry_weight"]
+                        first_max_errors = stats["max_errors_per_entry"]
                         is_first = False
 
             total_requests = total_hits + total_misses

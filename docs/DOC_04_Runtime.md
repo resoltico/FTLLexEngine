@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.134.0"
+version: "0.135.0"
 domain: RUNTIME
 updated: "2026-02-25"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
 ---
 
 # Runtime Reference
@@ -1363,13 +1363,47 @@ Get cache statistics including security parameters.
 
 ### Signature
 ```python
-def get_stats(self) -> dict[str, int | float | bool]:
+def get_stats(self) -> CacheStats:
 ```
 
 ### Constraints
-- Return: Dict with keys: size, maxsize, hits, misses, hit_rate, unhashable_skips, oversize_skips, error_bloat_skips, corruption_detected, idempotent_writes, sequence, max_entry_weight, max_errors_per_entry, write_once, strict, audit_enabled, audit_entries.
+- Return: `CacheStats` TypedDict snapshot with 17 precisely-typed fields. See `CacheStats`.
 - State: Read-only.
 - Thread: Safe.
+
+---
+
+## `CacheStats`
+
+TypedDict representing a cache statistics snapshot returned by `IntegrityCache.get_stats`.
+
+### Signature
+```python
+class CacheStats(TypedDict):
+    size: int
+    maxsize: int
+    max_entry_weight: int
+    max_errors_per_entry: int
+    hits: int
+    misses: int
+    hit_rate: float
+    unhashable_skips: int
+    oversize_skips: int
+    error_bloat_skips: int
+    corruption_detected: int
+    idempotent_writes: int
+    sequence: int
+    write_once: bool
+    strict: bool
+    audit_enabled: bool
+    audit_entries: int
+```
+
+### Constraints
+- Purpose: Precise per-field types for cache monitoring (hits/misses → int, hit_rate → float, write_once/strict/audit_enabled → bool).
+- Corruption: `corruption_detected` is the primary financial-grade alert field; non-zero requires investigation.
+- Import: `from ftllexengine.runtime.cache import CacheStats`
+- Extension: `LocalizationCacheStats(CacheStats)` adds `bundle_count: int` for multi-bundle aggregates.
 
 ---
 

@@ -49,6 +49,14 @@ class Cursor:
         4. EOF is a property - Not a return value
         5. current raises - No None handling needed!
 
+    Invariants:
+        pos >= 0: Negative positions cause source[-N] Python indexing,
+            which silently returns the wrong character from the end of source
+            instead of signalling an error. All valid positions are non-negative.
+        pos <= len(source): Positions beyond source length are clamped by
+            advance() and treated as EOF by is_eof; constructing with pos >
+            len(source) is rejected to make the invariant explicit.
+
     Example:
         >>> cursor = Cursor("hello", 0)
         >>> cursor.current  # Type: str (not str | None!)
@@ -71,6 +79,27 @@ class Cursor:
 
     source: str
     pos: int
+
+    def __post_init__(self) -> None:
+        """Enforce position invariants.
+
+        Raises:
+            ValueError: If pos is negative. Negative Python indexing on source
+                would silently return the wrong character from the end of the
+                string instead of raising an error.
+            ValueError: If pos exceeds len(source). Use len(source) for the
+                canonical EOF position. advance() always clamps to len(source),
+                so larger values only arise from programming errors at construction.
+        """
+        if self.pos < 0:
+            msg = f"Cursor position must be >= 0, got {self.pos}"
+            raise ValueError(msg)
+        if self.pos > len(self.source):
+            msg = (
+                f"Cursor position {self.pos} exceeds source length "
+                f"{len(self.source)}; use {len(self.source)} for the EOF position"
+            )
+            raise ValueError(msg)
 
     @property
     def is_eof(self) -> bool:

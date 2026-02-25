@@ -67,11 +67,15 @@ class TestCursorEOF:
 
         assert cursor.is_eof
 
-    def test_is_eof_true_beyond_end(self) -> None:
-        """is_eof is True beyond end of source."""
-        cursor = Cursor("hello", 10)
+    def test_construction_beyond_end_raises(self) -> None:
+        """Constructing a cursor with pos > len(source) raises ValueError.
 
-        assert cursor.is_eof
+        EOF is represented exclusively by pos == len(source). Positions beyond
+        the source length are construction errors: advance() always clamps to
+        len(source), so they cannot arise through normal cursor navigation.
+        """
+        with pytest.raises(ValueError, match="exceeds source length"):
+            Cursor("hello", 10)
 
     def test_is_eof_true_for_empty_source(self) -> None:
         """is_eof is True for empty source at position 0."""
@@ -113,12 +117,14 @@ class TestCursorCurrent:
         with pytest.raises(EOFError, match="Unexpected EOF"):
             _ = cursor.current
 
-    def test_current_raises_eof_error_beyond_end(self) -> None:
-        """Accessing current beyond EOF raises EOFError."""
-        cursor = Cursor("hello", 10)
+    def test_current_raises_value_error_beyond_end(self) -> None:
+        """Constructing cursor beyond end raises ValueError, not EOFError.
 
-        with pytest.raises(EOFError, match="Unexpected EOF"):
-            _ = cursor.current
+        The valid way to reach EOF is pos == len(source); positions strictly
+        greater are rejected at construction time so .current is never reached.
+        """
+        with pytest.raises(ValueError, match="exceeds source length"):
+            Cursor("hello", 10)
 
     def test_current_with_unicode(self) -> None:
         """Get current character with Unicode."""

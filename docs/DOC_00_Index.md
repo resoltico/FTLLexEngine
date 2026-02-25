@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.135.0"
 domain: INDEX
-updated: "2026-02-24"
+updated: "2026-02-25"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -213,7 +213,7 @@ ftllexengine/
     __init__.py            # FluentLocalization, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
     types.py               # PEP 695 type aliases: MessageId, LocaleCode, ResourceId, FTLSource
     loading.py             # ResourceLoader protocol, PathResourceLoader, LoadSummary, ResourceLoadResult, FallbackInfo
-    orchestrator.py        # FluentLocalization class
+    orchestrator.py        # FluentLocalization class, LocalizationCacheStats
   introspection/
     __init__.py            # Introspection API exports (message + ISO)
     message.py             # MessageIntrospection, introspect_message, extract_variables, extract_references, extract_references_by_attribute
@@ -247,7 +247,7 @@ ftllexengine/
   runtime/
     __init__.py            # Runtime exports
     bundle.py              # FluentBundle
-    cache.py               # IntegrityCache, IntegrityCacheEntry
+    cache.py               # IntegrityCache, IntegrityCacheEntry, CacheStats
     function_bridge.py     # FunctionRegistry, fluent_function
     function_metadata.py   # Function metadata helpers (requires_locale_injection, etc.)
     functions.py           # Built-in functions, create_default_registry, get_shared_registry
@@ -281,7 +281,7 @@ ftllexengine/
 
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
-| `FluentValue` | `str \| int \| bool \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
+| `FluentValue` | `str \| int \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
 | `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |

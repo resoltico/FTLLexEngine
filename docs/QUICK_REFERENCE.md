@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.135.0"
 domain: reference
-updated: "2026-02-24"
+updated: "2026-02-25"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -336,7 +336,7 @@ bundle.introspect_message(message_id: str) -> MessageIntrospection
 bundle.introspect_term(term_id: str) -> MessageIntrospection
 bundle.add_function(name: str, func: Callable) -> None
 bundle.clear_cache() -> None
-bundle.get_cache_stats() -> dict[str, Any]
+bundle.get_cache_stats() -> CacheStats | None
 bundle.get_babel_locale() -> str
 ```
 
@@ -387,7 +387,7 @@ l10n.introspect_message(message_id: str) -> MessageIntrospection
 l10n.introspect_term(term_id: str) -> MessageIntrospection | None
 l10n.add_function(name: str, func: Callable) -> None
 l10n.clear_cache() -> None
-l10n.get_cache_stats() -> dict[str, Any]
+l10n.get_cache_stats() -> LocalizationCacheStats | None
 l10n.get_load_summary() -> LoadSummary
 l10n.get_bundles() -> Generator[FluentBundle]
 l10n.get_babel_locale() -> str
@@ -678,7 +678,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
     return bundle
 ```
 
-**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | bool | Decimal | datetime | date | FluentNumber | None | Sequence[FluentValue] | Mapping[str, FluentValue]`.
+**`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | Decimal | datetime | date | FluentNumber | None | Sequence[FluentValue] | Mapping[str, FluentValue]`. (`bool` is absent: it is an `int` subtype accepted by raw interpolation but rejected by numeric formatting functions; convert explicitly with `int(flag)` or `str(flag)`.)
 
 **`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FrozenFluentError, ...]]`. Import from `ftllexengine.parsing`.
 

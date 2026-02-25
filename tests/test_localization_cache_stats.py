@@ -11,6 +11,7 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentLocalization
+from ftllexengine.localization.orchestrator import LocalizationCacheStats
 from ftllexengine.runtime.cache_config import CacheConfig
 
 
@@ -264,7 +265,7 @@ class TestGetCacheStatsThreadSafety:
         for _ in range(10):
             l10n.format_value("msg")
 
-        results: list[dict[str, int | float] | None] = []
+        results: list[LocalizationCacheStats | None] = []
         errors: list[Exception] = []
 
         def read_stats() -> None:

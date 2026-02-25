@@ -302,13 +302,27 @@ class TestCursorRobustness:
             cursor = Cursor(source, 0)
             assert cursor.is_eof is True
 
-    @given(source=source_text, pos=st.integers(min_value=0, max_value=1000))
+    @given(source=source_text)
     @settings(max_examples=100)
-    def test_position_beyond_end_is_eof(self, source: str, pos: int) -> None:
-        """PROPERTY: Position beyond end is EOF."""
-        if pos >= len(source):
-            cursor = Cursor(source, pos)
-            assert cursor.is_eof is True
+    def test_position_at_end_is_eof(self, source: str) -> None:
+        """PROPERTY: pos == len(source) is the canonical EOF position."""
+        event(f"source_len={len(source)}")
+        cursor = Cursor(source, len(source))
+        assert cursor.is_eof is True
+
+    @given(source=source_text, pos=st.integers(min_value=1, max_value=1000))
+    @settings(max_examples=100)
+    def test_position_strictly_beyond_end_raises(self, source: str, pos: int) -> None:
+        """PROPERTY: pos > len(source) raises ValueError at construction.
+
+        advance() always clamps to len(source), so positions strictly beyond
+        the source length cannot arise through normal cursor navigation and
+        indicate a construction error.
+        """
+        assume(pos > len(source))
+        event(f"excess={pos - len(source)}")
+        with pytest.raises(ValueError, match="exceeds source length"):
+            Cursor(source, pos)
 
     @given(source=source_text.filter(lambda s: len(s) > 0))
     @settings(max_examples=50)
@@ -358,6 +372,8 @@ class TestCursorIdempotence:
     @settings(max_examples=100)
     def test_is_eof_is_idempotent(self, source: str, pos: int) -> None:
         """PROPERTY: Multiple is_eof calls return same value."""
+        # Clamp pos to the valid range [0, len(source)]
+        pos = min(pos, len(source))
         cursor = Cursor(source, pos)
 
         result1 = cursor.is_eof
@@ -447,10 +463,10 @@ class TestCursorEOFProperty:
         cursor = Cursor(source="hello", pos=5)
         assert cursor.is_eof is True
 
-    def test_is_eof_beyond_end_of_string(self) -> None:
-        """Verify is_eof is True beyond end of string."""
-        cursor = Cursor(source="hello", pos=10)
-        assert cursor.is_eof is True
+    def test_construction_beyond_end_raises(self) -> None:
+        """Verify constructing cursor with pos > len(source) raises ValueError."""
+        with pytest.raises(ValueError, match="exceeds source length"):
+            Cursor(source="hello", pos=10)
 
     def test_is_eof_empty_string(self) -> None:
         """Verify is_eof is True for empty string at position 0."""
@@ -486,11 +502,14 @@ class TestCursorCurrentProperty:
         with pytest.raises(EOFError, match="EOF"):
             _ = cursor.current
 
-    def test_current_raises_beyond_eof(self) -> None:
-        """Verify current raises EOFError beyond EOF."""
-        cursor = Cursor(source="hello", pos=10)
-        with pytest.raises(EOFError, match="EOF"):
-            _ = cursor.current
+    def test_construction_beyond_eof_raises(self) -> None:
+        """Verify construction with pos beyond source length raises ValueError.
+
+        The valid range for pos is [0, len(source)]. Positions strictly greater
+        than len(source) are rejected at construction time.
+        """
+        with pytest.raises(ValueError, match="exceeds source length"):
+            Cursor(source="hello", pos=10)
 
     @given(
         st.text(min_size=1).flatmap(

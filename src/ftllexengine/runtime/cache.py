@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from threading import Lock
-from typing import final
+from typing import TypedDict, final
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT, MAX_DEPTH
 from ftllexengine.diagnostics import FrozenFluentError
@@ -52,11 +52,57 @@ from ftllexengine.integrity import (
 from ftllexengine.runtime.value_types import FluentNumber, FluentValue
 
 __all__ = [
+    "CacheStats",
     "HashableValue",
     "IntegrityCache",
     "IntegrityCacheEntry",
     "WriteLogEntry",
 ]
+
+class CacheStats(TypedDict):
+    """Typed statistics snapshot returned by IntegrityCache.get_stats().
+
+    All fields are point-in-time readings taken under the cache lock.
+    Use get_stats() (not individual properties) for a consistent snapshot.
+
+    Attributes:
+        size: Current number of cached entries.
+        maxsize: Maximum cache capacity.
+        max_entry_weight: Maximum memory weight for a single cached result.
+        max_errors_per_entry: Maximum errors stored per cache entry.
+        hits: Total cache hits since creation (not reset on clear()).
+        misses: Total cache misses since creation (not reset on clear()).
+        hit_rate: Hit rate as a percentage (0.0-100.0), rounded to 2 decimal places.
+        unhashable_skips: Puts skipped because the args could not be hashed.
+        oversize_skips: Puts skipped because the formatted string exceeded max_entry_weight.
+        error_bloat_skips: Puts skipped because the error collection exceeded weight limits.
+        corruption_detected: Number of BLAKE2b checksum mismatches detected.
+        idempotent_writes: Concurrent puts of identical content (benign races).
+        sequence: Monotonically increasing total-put counter (audit trail).
+        write_once: Whether write-once mode is enabled.
+        strict: Whether strict (fail-fast) mode is enabled.
+        audit_enabled: Whether the audit log is active.
+        audit_entries: Current number of entries in the audit log.
+    """
+
+    size: int
+    maxsize: int
+    max_entry_weight: int
+    max_errors_per_entry: int
+    hits: int
+    misses: int
+    hit_rate: float
+    unhashable_skips: int
+    oversize_skips: int
+    error_bloat_skips: int
+    corruption_detected: int
+    idempotent_writes: int
+    sequence: int
+    write_once: bool
+    strict: bool
+    audit_enabled: bool
+    audit_entries: int
+
 
 # Base overhead per FrozenFluentError object (dataclass, slots, references).
 # Dynamic weight calculation adds actual string lengths on top of this.
@@ -142,7 +188,7 @@ type HashableValue = (
 # 5-tuple: (message_id, args_tuple, attribute, locale_code, use_isolating)
 type _CacheKey = tuple[str, tuple[tuple[str, HashableValue], ...], str | None, str, bool]
 
-# Internal type alias for legacy cache values (for FormatCache compatibility)
+# Internal type alias for cache entry values returned by IntegrityCacheEntry.as_result()
 type _CacheValue = tuple[str, tuple[FrozenFluentError, ...]]
 
 
@@ -675,30 +721,16 @@ class IntegrityCache:
             # Note: sequence NOT reset (monotonic for audit trail)
             # Note: audit log NOT cleared (historical record)
 
-    def get_stats(self) -> dict[str, int | float | bool]:
+    def get_stats(self) -> CacheStats:
         """Get cache statistics.
 
-        Thread-safe. Returns current metrics including integrity stats.
+        Thread-safe. Returns a consistent snapshot taken under the lock.
+        All fields are read atomically; calling individual properties (e.g.,
+        .hits, .misses) gives weaker consistency across multiple calls.
 
         Returns:
-            Dict with keys:
-            - size (int): Current number of cached entries
-            - maxsize (int): Maximum cache capacity
-            - max_entry_weight (int): Maximum memory weight for cached results
-            - max_errors_per_entry (int): Maximum errors per cache entry
-            - hits (int): Number of cache hits
-            - misses (int): Number of cache misses
-            - hit_rate (float): Hit rate as percentage (0.0-100.0)
-            - unhashable_skips (int): Operations skipped due to unhashable args
-            - oversize_skips (int): Operations skipped due to result weight
-            - error_bloat_skips (int): Operations skipped due to error collection size
-            - corruption_detected (int): Number of checksum mismatches detected
-            - idempotent_writes (int): Concurrent writes with identical content (benign races)
-            - sequence (int): Current sequence number (total puts)
-            - write_once (bool): Whether write-once mode is enabled
-            - strict (bool): Whether strict mode is enabled
-            - audit_enabled (bool): Whether audit logging is enabled
-            - audit_entries (int): Number of audit log entries
+            CacheStats TypedDict with per-field type precision.
+            See CacheStats for field documentation.
         """
         with self._lock:
             total = self._hits + self._misses
@@ -777,8 +809,8 @@ class IntegrityCache:
     _MAX_HASHABLE_NODES: int = 10_000
 
     @staticmethod
-    def _make_hashable(  # noqa: PLR0911, PLR0912 - type dispatch requires multiple returns/branches
-        value: object, depth: int = MAX_DEPTH, *, _counter: list[int] | None = None
+    def _make_hashable(
+        value: object, depth: int = MAX_DEPTH
     ) -> HashableValue:
         """Convert potentially unhashable value to hashable equivalent.
 
@@ -811,16 +843,16 @@ class IntegrityCache:
             and results in graceful cache bypass.
 
         Node Budget Protection:
-            Uses a mutable counter to track total nodes visited across all
-            recursive calls. This prevents exponential expansion of DAG
-            structures where shared references are traversed independently
+            A mutable counter shared across all recursive calls via closure
+            tracks total nodes visited. This prevents exponential expansion of
+            DAG structures where shared references are traversed independently
             (e.g., l=[l,l] repeated 25 times creates 2^25 tree traversal
-            despite only 25 depth levels).
+            despite only 25 depth levels). The counter is fully encapsulated
+            inside the method and is not part of the public signature.
 
         Args:
             value: Value to convert (typically FluentValue or nested collection)
             depth: Remaining recursion depth (default: MAX_DEPTH)
-            _counter: Internal node counter for DAG expansion prevention
 
         Returns:
             Hashable equivalent of the value
@@ -828,121 +860,126 @@ class IntegrityCache:
         Raises:
             TypeError: If depth limit exceeded, node budget exceeded, or unknown type
         """
-        if _counter is None:
-            _counter = [0]
-        _counter[0] += 1
-        if _counter[0] > IntegrityCache._MAX_HASHABLE_NODES:
-            msg = "Node budget exceeded in cache key conversion (possible DAG expansion attack)"
-            raise TypeError(msg)
+        # Node budget counter shared across all recursive calls via closure.
+        # Mutable list enables closure mutation without nonlocal for each recursive step.
+        _node_count: list[int] = [0]
 
-        if depth <= 0:
-            msg = "Maximum nesting depth exceeded in cache key conversion"
-            raise TypeError(msg)
+        def _go(v: object, d: int) -> HashableValue:  # noqa: PLR0911, PLR0912 - type dispatch over closed FluentValue union
+            _node_count[0] += 1
+            if _node_count[0] > IntegrityCache._MAX_HASHABLE_NODES:
+                msg = (
+                    "Node budget exceeded in cache key conversion "
+                    "(possible DAG expansion attack)"
+                )
+                raise TypeError(msg)
+            if d <= 0:
+                msg = "Maximum nesting depth exceeded in cache key conversion"
+                raise TypeError(msg)
 
-        def _recurse(v: object) -> HashableValue:
-            return IntegrityCache._make_hashable(
-                v, depth - 1, _counter=_counter
-            )
+            def _recurse(x: object) -> HashableValue:
+                return _go(x, d - 1)
 
-        match value:
-            # str and None: return as-is. Must check str before Sequence (str is Sequence).
-            case str() | None:
-                return value
-            # Type-tag list and tuple distinctly: str([1,2])="[1, 2]" vs str((1,2))="(1, 2)"
-            case list():
-                return (
-                    "__list__",
-                    tuple(_recurse(v) for v in value),
-                )
-            case tuple():
-                return (
-                    "__tuple__",
-                    tuple(_recurse(v) for v in value),
-                )
-            case dict():
-                # Type-tag dict to distinguish from Mapping ABC (e.g., ChainMap).
-                # str(dict({"a": 1})) = "{'a': 1}" vs str(ChainMap({"a": 1})) = "ChainMap({'a': 1})"
-                # Both must produce distinct cache keys since formatting differs.
-                return (
-                    "__dict__",
-                    tuple(
-                        sorted(
-                            (k, _recurse(v)) for k, v in value.items()
-                        )
-                    ),
-                )
-            case set():
-                # Convert mutable set to immutable frozenset for hashability.
-                # Tag distinguishes from frozenset since str(set) != str(frozenset).
-                return (
-                    "__set__",
-                    frozenset(_recurse(v) for v in value),
-                )
-            case frozenset():
-                # Explicit frozenset case - already hashable but tag for type distinction.
-                # str(frozenset({1})) = "frozenset({1})" vs str({1}) = "{1}"
-                return (
-                    "__frozenset__",
-                    frozenset(_recurse(v) for v in value),
-                )
-            # Type-tagging for collision prevention: bool MUST be checked before int
-            # because bool is a subclass of int in Python. Without separate cases,
-            # True and 1 would hash-collide despite producing different formatted output.
-            case bool():
-                return ("__bool__", value)
-            case int():
-                return ("__int__", value)
-            # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
-            # CLDR plural rules use visible fraction digits (v operand) which differs
-            case Decimal():
-                # NaN normalization: Decimal("NaN").is_nan() for IEEE 754 compliance.
-                # Same rationale as float NaN - prevents cache pollution.
-                if value.is_nan():
-                    return ("__decimal__", "__NaN__")
-                return ("__decimal__", str(value))
-            case datetime():
-                # Include timezone info to distinguish same-instant different-offset datetimes.
-                # Two datetimes representing the same UTC instant but with different tzinfo
-                # compare equal, but they format to different local time strings.
-                tz_key = str(value.tzinfo) if value.tzinfo else "__naive__"
-                return ("__datetime__", value.isoformat(), tz_key)
-            case date():
-                # date has no timezone, isoformat is sufficient for unique key
-                return ("__date__", value.isoformat())
-            # FluentNumber: type-tag with underlying value type for financial precision
-            # Recursively normalize inner value to handle Decimal NaN correctly.
-            # Without this, FluentNumber(value=Decimal('NaN')...) creates unretrievable keys.
-            case FluentNumber():
-                return (
-                    "__fluentnumber__",
-                    type(value.value).__name__,
-                    _recurse(value.value),
-                    value.formatted,
-                    value.precision,
-                )
-            case _:
-                # Handle Mapping and Sequence ABCs for types like ChainMap, UserList.
-                # This fallback catches any Mapping/Sequence not matched above.
-                # Must be after specific type checks (dict, list, tuple, str).
-                if isinstance(value, Mapping):
-                    # Type-tag Mapping ABC to distinguish from dict.
+            match v:
+                # str and None: return as-is. Must check str before Sequence (str is Sequence).
+                case str() | None:
+                    return v
+                # Type-tag list and tuple distinctly: str([1,2])="[1, 2]" vs str((1,2))="(1, 2)"
+                case list():
                     return (
-                        "__mapping__",
+                        "__list__",
+                        tuple(_recurse(i) for i in v),
+                    )
+                case tuple():
+                    return (
+                        "__tuple__",
+                        tuple(_recurse(i) for i in v),
+                    )
+                case dict():
+                    # Type-tag dict to distinguish from Mapping ABC (e.g., ChainMap).
+                    # str(dict({"a": 1})) = "{'a': 1}" vs str(ChainMap({"a": 1})) differs.
+                    # Both must produce distinct cache keys since formatting differs.
+                    return (
+                        "__dict__",
                         tuple(
                             sorted(
-                                (k, _recurse(v))
-                                for k, v in value.items()
+                                (k, _recurse(val)) for k, val in v.items()
                             )
                         ),
                     )
-                if isinstance(value, Sequence):
-                    # Generic Sequence (UserList, etc.) - tag distinctly from list/tuple
+                case set():
+                    # Convert mutable set to immutable frozenset for hashability.
+                    # Tag distinguishes from frozenset since str(set) != str(frozenset).
                     return (
-                        "__seq__",
-                        tuple(_recurse(v) for v in value),
+                        "__set__",
+                        frozenset(_recurse(i) for i in v),
                     )
-                msg = f"Unknown type in cache key: {type(value).__name__}"
-                raise TypeError(msg)
+                case frozenset():
+                    # Explicit frozenset case - already hashable but tag for type distinction.
+                    # str(frozenset({1})) = "frozenset({1})" vs str({1}) = "{1}"
+                    return (
+                        "__frozenset__",
+                        frozenset(_recurse(i) for i in v),
+                    )
+                # Type-tagging for collision prevention: bool MUST be checked before int
+                # because bool is a subclass of int in Python. Without separate cases,
+                # True and 1 would hash-collide despite producing different formatted output.
+                case bool():
+                    return ("__bool__", v)
+                case int():
+                    return ("__int__", v)
+                # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
+                # CLDR plural rules use visible fraction digits (v operand) which differs
+                case Decimal():
+                    # NaN normalization: Decimal("NaN").is_nan() for IEEE 754 compliance.
+                    # Same rationale as float NaN - prevents cache pollution.
+                    if v.is_nan():
+                        return ("__decimal__", "__NaN__")
+                    return ("__decimal__", str(v))
+                case datetime():
+                    # Include timezone info to distinguish same-instant different-offset datetimes.
+                    # Two datetimes representing the same UTC instant but with different tzinfo
+                    # compare equal, but they format to different local time strings.
+                    tz_key = str(v.tzinfo) if v.tzinfo else "__naive__"
+                    return ("__datetime__", v.isoformat(), tz_key)
+                case date():
+                    # date has no timezone, isoformat is sufficient for unique key
+                    return ("__date__", v.isoformat())
+                # FluentNumber: type-tag with underlying value type for financial precision
+                # Recursively normalize inner value to handle Decimal NaN correctly.
+                # Without this, FluentNumber(value=Decimal('NaN')...) creates unretrievable keys.
+                case FluentNumber():
+                    return (
+                        "__fluentnumber__",
+                        type(v.value).__name__,
+                        _recurse(v.value),
+                        v.formatted,
+                        v.precision,
+                    )
+                case _:
+                    # Handle Mapping and Sequence ABCs for types like ChainMap, UserList.
+                    # This fallback catches any Mapping/Sequence not matched above.
+                    # Must be after specific type checks (dict, list, tuple, str).
+                    if isinstance(v, Mapping):
+                        # Type-tag Mapping ABC to distinguish from dict.
+                        return (
+                            "__mapping__",
+                            tuple(
+                                sorted(
+                                    (k, _recurse(val))
+                                    for k, val in v.items()
+                                )
+                            ),
+                        )
+                    if isinstance(v, Sequence):
+                        # Generic Sequence (UserList, etc.) - tag distinctly from list/tuple
+                        return (
+                            "__seq__",
+                            tuple(_recurse(i) for i in v),
+                        )
+                    msg = f"Unknown type in cache key: {type(v).__name__}"
+                    raise TypeError(msg)
+
+        return _go(value, depth)
 
     @staticmethod
     def _make_key(

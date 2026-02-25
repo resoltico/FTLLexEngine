@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.135.0"
 domain: CORE
-updated: "2026-02-22"
+updated: "2026-02-25"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
 ---
 
@@ -438,7 +438,7 @@ def clear_cache(self) -> None:
 
 ### Signature
 ```python
-def get_cache_stats(self) -> dict[str, int | float | bool] | None:
+def get_cache_stats(self) -> CacheStats | None:
 ```
 
 ### Parameters
@@ -446,24 +446,8 @@ def get_cache_stats(self) -> dict[str, int | float | bool] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Dict with 17 keys, or None if caching disabled.
-  - `size` (int): current number of cached entries
-  - `maxsize` (int): maximum cache capacity
-  - `max_entry_weight` (int): maximum memory weight per entry
-  - `max_errors_per_entry` (int): maximum errors per entry
-  - `hits` (int): total cache hits
-  - `misses` (int): total cache misses
-  - `hit_rate` (float, 0.0-100.0): hit rate as percentage
-  - `unhashable_skips` (int): operations skipped due to unhashable args
-  - `oversize_skips` (int): operations skipped due to result weight
-  - `error_bloat_skips` (int): operations skipped due to error count
-  - `corruption_detected` (int): checksum mismatches detected
-  - `idempotent_writes` (int): concurrent writes with identical content
-  - `sequence` (int): total put operations
-  - `write_once` (bool): write-once mode enabled
-  - `strict` (bool): strict mode enabled
-  - `audit_enabled` (bool): audit logging enabled
-  - `audit_entries` (int): current audit log entry count
+- Return: `CacheStats` TypedDict snapshot, or `None` if caching disabled. See `CacheStats` for all 17 fields with precise per-field types.
+- Import: `from ftllexengine.runtime.cache import CacheStats`
 - Raises: Never.
 - State: Read-only.
 - Thread: Safe.
@@ -1227,7 +1211,7 @@ def clear_cache(self) -> None:
 
 ### Signature
 ```python
-def get_cache_stats(self) -> dict[str, int | float | bool] | None:
+def get_cache_stats(self) -> LocalizationCacheStats | None:
 ```
 
 ### Parameters
@@ -1235,30 +1219,31 @@ def get_cache_stats(self) -> dict[str, int | float | bool] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Dict with 18 aggregated cache metrics, or None if caching disabled.
-  - `size` (int): total cached entries across all bundles
-  - `maxsize` (int): sum of maximum cache sizes
-  - `max_entry_weight` (int): max entry weight (from first bundle)
-  - `max_errors_per_entry` (int): max errors per entry (from first bundle)
-  - `hits` (int): total cache hits
-  - `misses` (int): total cache misses
-  - `hit_rate` (float, 0.0-100.0): weighted hit rate
-  - `unhashable_skips` (int): total uncacheable argument skips
-  - `oversize_skips` (int): total entries skipped due to result weight
-  - `error_bloat_skips` (int): total entries skipped due to error count
-  - `corruption_detected` (int): total checksum mismatches detected
-  - `idempotent_writes` (int): total benign concurrent writes
-  - `sequence` (int): sum of sequence numbers (total puts across bundles)
-  - `write_once` (bool): write-once mode (from first bundle's config)
-  - `strict` (bool): strict mode (from first bundle's config)
-  - `audit_enabled` (bool): audit logging (from first bundle's config)
-  - `audit_entries` (int): total audit log entries
-  - `bundle_count` (int): number of initialized bundles
-- Note: Boolean fields reflect first bundle config; all bundles share one CacheConfig.
+- Return: `LocalizationCacheStats` TypedDict with 18 aggregated fields, or `None` if caching disabled. Extends `CacheStats` with `bundle_count`. See `LocalizationCacheStats` for all fields.
+- Note: Numeric fields summed across all bundles; boolean fields reflect first bundle's `CacheConfig`.
 - Note: `bundle_count` reflects only initialized bundles, not total locales.
+- Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
 - Raises: None.
 - State: Reads cache statistics from all initialized bundles.
 - Thread: Safe.
+
+---
+
+## `LocalizationCacheStats`
+
+TypedDict representing aggregate cache statistics across all bundles in a `FluentLocalization`.
+
+### Signature
+```python
+class LocalizationCacheStats(CacheStats, total=True):
+    bundle_count: int
+```
+
+### Constraints
+- Purpose: Extends `CacheStats` with `bundle_count` for multi-bundle monitoring. All 17 `CacheStats` fields are inherited with the same semantics; numeric fields are summed across all bundles.
+- `bundle_count`: number of initialized bundles contributing to the aggregated statistics.
+- Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
+- Boolean fields: `write_once`, `strict`, `audit_enabled` reflect the first bundle's `CacheConfig` (all bundles share one config).
 
 ---
 

@@ -1323,16 +1323,19 @@ class TestRichDiagnosticHashProperties:
 # Diagnostic format_error() Properties (codes.py ecosystem)
 # =============================================================================
 
+# Translate table mirroring DiagnosticFormatter._CONTROL_ESCAPE:
+# maps every ASCII C0 control (0x00-0x1F) and DEL (0x7F) to a visible
+# escape sequence. The four most common use conventional notation; all others
+# use \xNN hex notation. This must stay in sync with formatter.py.
+_TEST_CONTROL_TRANSLATE = str.maketrans(
+    {c: f"\\x{c:02x}" for c in range(0x20)}
+    | {0x7F: "\\x7f", 0x1B: "\\x1b", 0x0D: "\\r", 0x0A: "\\n", 0x09: "\\t"}
+)
+
 
 def _escape_control_chars(text: str) -> str:
     """Mirror DiagnosticFormatter._escape_control_chars for test assertions."""
-    return (
-        text
-        .replace("\x1b", "\\x1b")
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-    )
+    return text.translate(_TEST_CONTROL_TRANSLATE)
 
 
 @pytest.mark.fuzz

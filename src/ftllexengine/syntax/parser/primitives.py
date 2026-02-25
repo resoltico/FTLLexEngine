@@ -28,9 +28,9 @@ from ftllexengine.core.identifier_validation import (
 from ftllexengine.syntax.cursor import Cursor, ParseError, ParseResult
 
 __all__ = [
-    "_ASCII_DIGITS",
     "is_identifier_char",
     "is_identifier_start",
+    "parse_escape_sequence",
     "parse_identifier",
     "parse_number",
     "parse_number_value",

@@ -36,7 +36,7 @@ from ftllexengine.integrity import (
     SyntaxIntegrityError,
 )
 from ftllexengine.introspection import extract_variables, introspect_message
-from ftllexengine.runtime.cache import IntegrityCache
+from ftllexengine.runtime.cache import CacheStats, IntegrityCache
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
@@ -1370,13 +1370,13 @@ class FluentBundle:
                 self._cache.clear()
                 logger.debug("Cache manually cleared")
 
-    def get_cache_stats(self) -> dict[str, int | float | bool] | None:
+    def get_cache_stats(self) -> CacheStats | None:
         """Get cache statistics.
 
         Returns:
-            Dict with cache metrics or None if caching disabled.
-            Keys: size (int), maxsize (int), hits (int), misses (int),
-                  hit_rate (float 0.0-100.0), unhashable_skips (int)
+            CacheStats snapshot, or None if caching is disabled.
+            All fields are read atomically under the cache lock.
+            See CacheStats for the complete field specification.
 
         Example:
             >>> bundle = FluentBundle("en", cache=CacheConfig())
