@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.136.0"
+version = "0.137.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -200,17 +200,6 @@ strict_equality = true
 module = "tests.*"
 disallow_untyped_defs = false
 warn_return_any = false
-
-[[tool.mypy.overrides]]
-module = "ftllexengine.syntax.visitor"
-# ASTTransformer.generic_visit and _transform_list require these suppressions:
-# - arg-type: visit() returns ASTNode union; pattern matching narrows at runtime but mypy
-#   cannot verify the correct subtype for each replace() field
-# - unreachable: _transform_list checks for None/list returns from subclass visit_* methods
-#   which are valid at runtime but typed as -> ASTNode in base class
-# Inline type:ignore per-line would require multiple comments - module override is cleaner.
-# ASTVisitor base class remains fully type-checked.
-disable_error_code = ["arg-type", "unreachable"]
 
 [[tool.mypy.overrides]]
 module = "babel.*"

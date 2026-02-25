@@ -20,6 +20,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC
 from decimal import Decimal
+from typing import Literal
 
 import pytest
 from hypothesis import event, given, settings
@@ -1276,12 +1277,18 @@ class TestEstimateErrorWeightWithContext:
     @given(
         input_val=st.text(min_size=0, max_size=100),
         locale=st.text(min_size=0, max_size=20),
-        parse_type=st.text(min_size=0, max_size=30),
+        parse_type=st.sampled_from(
+            ["", "currency", "date", "datetime", "decimal", "number"]
+        ),
         fallback=st.text(min_size=0, max_size=50),
     )
     @settings(max_examples=50)
     def test_property_error_weight_accounts_for_all_context_fields(
-        self, input_val: str, locale: str, parse_type: str, fallback: str
+        self,
+        input_val: str,
+        locale: str,
+        parse_type: Literal["", "currency", "date", "datetime", "decimal", "number"],
+        fallback: str,
     ) -> None:
         """PROPERTY: Error weight correctly accounts for all context field lengths."""
         context = FrozenErrorContext(
@@ -1480,7 +1487,7 @@ class TestErrorWeightAndVerifyIntegration:
         context = FrozenErrorContext(
             input_value=input_val,
             locale_code=locale,
-            parse_type="test",
+            parse_type="number",
             fallback_value="fallback",
         )
         error = FrozenFluentError(message, ErrorCategory.FORMATTING, context=context)
@@ -1488,7 +1495,7 @@ class TestErrorWeightAndVerifyIntegration:
         weight2 = _estimate_error_weight(error)
         assert weight1 == weight2
         assert weight1 > 0
-        min_weight = len(message) + len(input_val) + len(locale) + len("test") + len("fallback")
+        min_weight = len(message) + len(input_val) + len(locale) + len("number") + len("fallback")
         assert weight1 >= min_weight
         event(f"weight={weight1}")
 

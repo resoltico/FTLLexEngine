@@ -1,14 +1,91 @@
-<!--
-RETRIEVAL_HINTS:
-  keywords: [changelog, release notes, version history, breaking changes, migration, what's new]
-  answers: [what changed in version, breaking changes, release history, version changes]
--->
+---
+afad: "3.3"
+version: "0.137.0"
+domain: CHANGELOG
+updated: "2026-02-25"
+route:
+  keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
+  questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
+---
+
 # Changelog
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.137.0] - 2026-02-25
+
+### Fixed
+
+- **`syntax/ast.py` `NamedArgument.value` typed as `InlineExpression` instead of `FTLLiteral`**
+  (DEFECT-AST-NAMED-ARG-VALUE-TYPE-001):
+  - `NamedArgument.value` had type `InlineExpression` — a 7-member union covering
+    `StringLiteral | NumberLiteral | VariableReference | MessageReference | TermReference |
+    FunctionReference | SelectExpression`; the Fluent EBNF (`named-argument ::= identifier ":"
+    (StringLiteral | NumberLiteral)`) constrains named-argument values to literals only;
+    accepting any `InlineExpression` at the type level meant that callers could construct
+    syntactically invalid ASTs — `NamedArgument(name=id, value=VariableReference(...))` — without
+    any static type error, deferring the violation to serialization-time validation or runtime
+    silent misuse; this contradicts the principle that type annotations are structural contracts,
+    not documentation
+  - Introduced `type FTLLiteral = StringLiteral | NumberLiteral` (PEP 695 alias) in `syntax/ast.py`
+    and narrowed `NamedArgument.value` from `InlineExpression` to `FTLLiteral`; the type alias is
+    exported from `ftllexengine.syntax.ast` and re-exported from `ftllexengine.syntax`;
+    re-added serializer defense-in-depth check as `_assert_named_arg_value_is_literal(value: object,
+    ...)` — taking `object` (not `FTLLiteral`) so the `isinstance(value, (StringLiteral,
+    NumberLiteral))` check is not flagged as redundant by mypy strict; adjusted 12 test files that
+    constructed `NamedArgument` with `VariableReference` values — adversarial tests use
+    `cast(FTLLiteral, invalid_value)` to bypass the type system intentionally, non-adversarial tests
+    use valid `StringLiteral` or `NumberLiteral` values; corrected two `test_introspection_message.py`
+    tests that asserted the impossible (variables extracted from named-argument values) to reflect
+    correct Fluent spec behavior; removed now-unreachable `isinstance(named_arg.value,
+    FunctionReference)` check from `scripts/fuzz_atheris_corpus_health.py`; updated named-argument
+    generation strategy in `tests/strategies/ftl.py` to emit only `StringLiteral | NumberLiteral`
+  - Location: `syntax/ast.py`, `syntax/serializer.py`, `tests/strategies/ftl.py`,
+    `tests/test_syntax_visitor_transformer.py`, `tests/test_introspection_message.py`,
+    `tests/test_syntax_serializer_validation.py`, `tests/fuzz/test_syntax_serializer_property.py`,
+    `scripts/fuzz_atheris_corpus_health.py`
+
+- **`diagnostics/codes.py` `FrozenErrorContext.parse_type` typed as bare `str`**
+  (DEFECT-DIAGNOSTICS-PARSE-TYPE-STR-001):
+  - `FrozenErrorContext.parse_type` had type `str`, accepting any string value including
+    `"custom"`, `"t"`, `"\udc00 surrogate type"`, and the empty string; the field represents
+    the formatting type domain (`currency`, `date`, `datetime`, `decimal`, `number`, or empty
+    string for absent) — a closed set with exactly six valid string values; bare `str` concealed
+    this closed-set contract from static analysis, allowed tests to use arbitrary strings, and
+    meant callers received no compile-time feedback when supplying invalid values (e.g., wrong
+    locale, transposed argument); the `FrozenFluentError.parse_type` convenience property also
+    returned `str`, propagating the imprecise type to callers
+  - Narrowed to `Literal["", "currency", "date", "datetime", "decimal", "number"]`; the
+    `FrozenFluentError.parse_type` convenience property return type updated to match; updated all
+    call sites in tests and Hypothesis strategies to use `st.sampled_from([...])` with the valid
+    set (replacing `st.text()`), and `cast(Literal[...], parse_type)` where the strategy draws
+    from `st.sampled_from()` which mypy widens to `str`; corrected hardcoded invalid values in
+    `test_diagnostics_frozen_error.py` and `test_runtime_resolver_selection.py`
+  - Location: `diagnostics/codes.py`, `tests/strategies/diagnostics.py`,
+    `tests/test_diagnostics_codes.py`, `tests/test_diagnostics_frozen_error.py`,
+    `tests/test_runtime_resolver_selection.py`, `tests/test_runtime_cache_integrity.py`
+
+- **`pyproject.toml` module-level mypy `disable_error_code` override for `syntax/visitor.py`**
+  (DEFECT-VISITOR-MYPY-OVERRIDE-001):
+  - `pyproject.toml` contained `[[tool.mypy.overrides]]` disabling `["arg-type", "unreachable"]`
+    for the entire `ftllexengine.syntax.visitor` module; module-level overrides silence ALL
+    occurrences of the suppressed error code in the file — including future regressions introduced
+    by later changes — making them invisible to mypy; the two affected call sites in
+    `generic_visit()` that required `arg-type` suppression were a result of using string-form
+    generics `cast("tuple[Entry, ...]", ...)` which pylint counted as unused imports (since the
+    string form is not a runtime reference); the correct resolution was to use direct type
+    references `cast(tuple[Entry, ...], ...)`, which both mypy and pylint accept without
+    suppression; additionally, a now-redundant `cast(TransformerResult, self.visit(node))` in
+    `_transform_list` was removed (mypy strict's `warn_redundant_casts = true` flag detected it)
+  - Removed the 4-line `[[tool.mypy.overrides]]` block from `pyproject.toml`; changed
+    `cast("tuple[Entry, ...]", ...)` to `cast(tuple[Entry, ...], ...)` and
+    `cast("tuple[PatternElement, ...]", ...)` to `cast(tuple[PatternElement, ...], ...)` in
+    `syntax/visitor.py`; removed the redundant `cast(TransformerResult, ...)` wrapper in
+    `_transform_list`, keeping the local type annotation
+  - Location: `pyproject.toml`, `syntax/visitor.py`
 
 ## [0.136.0] - 2026-02-25
 
@@ -4890,6 +4967,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.137.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.137.0
 [0.136.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.136.0
 [0.135.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.135.0
 [0.134.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.134.0

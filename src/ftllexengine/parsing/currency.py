@@ -860,12 +860,12 @@ def parse_currency(
         diagnostic = ErrorTemplate.parse_currency_failed(  # pragma: no cover
             value, locale_code, "No currency symbol or code found",
         )
-        context = FrozenErrorContext(
+        context = FrozenErrorContext(  # pragma: no cover
             input_value=str(value),
             locale_code=locale_code,
             parse_type="currency",
         )
-        return (None, (FrozenFluentError(
+        return (None, (FrozenFluentError(  # pragma: no cover
             str(diagnostic),
             ErrorCategory.PARSE,
             diagnostic=diagnostic,
@@ -890,12 +890,12 @@ def parse_currency(
         diagnostic = ErrorTemplate.parse_currency_failed(  # pragma: no cover
             value, locale_code, "Currency resolution failed",
         )
-        context = FrozenErrorContext(
+        context = FrozenErrorContext(  # pragma: no cover
             input_value=str(value),
             locale_code=locale_code,
             parse_type="currency",
         )
-        return (None, (FrozenFluentError(
+        return (None, (FrozenFluentError(  # pragma: no cover
             str(diagnostic),
             ErrorCategory.PARSE,
             diagnostic=diagnostic,
@@ -919,12 +919,12 @@ def parse_currency(
         diagnostic = ErrorTemplate.parse_currency_failed(  # pragma: no cover
             value, locale_code, "Amount parsing failed",
         )
-        context = FrozenErrorContext(
+        context = FrozenErrorContext(  # pragma: no cover
             input_value=str(value),
             locale_code=locale_code,
             parse_type="currency",
         )
-        return (None, (FrozenFluentError(
+        return (None, (FrozenFluentError(  # pragma: no cover
             str(diagnostic),
             ErrorCategory.PARSE,
             diagnostic=diagnostic,

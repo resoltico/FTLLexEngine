@@ -113,6 +113,40 @@ def _validate_pattern(pattern: Pattern, context: str, depth_guard: DepthGuard) -
                 _validate_expression(element.expression, context, depth_guard)
 
 
+def _assert_named_arg_value_is_literal(
+    value: object, arg_name: str, context: str
+) -> None:
+    """Defense-in-depth check: named argument value must be StringLiteral or NumberLiteral.
+
+    NamedArgument.value is typed FTLLiteral (StringLiteral | NumberLiteral), which
+    enforces the spec constraint at the type level. However, Python type annotations
+    are not enforced at runtime: a frozen dataclass field can be bypassed via
+    object.__setattr__, deserialization, or direct AST construction.
+
+    This function accepts the value as ``object`` (not ``FTLLiteral``) so that the
+    isinstance check is not redundant from mypy's perspective — mypy cannot see
+    through the ``object`` parameter to know the value will always be FTLLiteral.
+    The check is a permanent last-line defense before invalid FTL is emitted.
+
+    Args:
+        value: The named argument value to check.
+        arg_name: The argument name (for error messages).
+        context: The call context (for error messages).
+
+    Raises:
+        SerializationValidationError: If value is not a literal.
+    """
+    if not isinstance(value, (StringLiteral, NumberLiteral)):
+        value_type = type(value).__name__
+        msg = (
+            f"Named argument '{arg_name}' in {context} has invalid value type "
+            f"'{value_type}'. Named argument values must be StringLiteral or "
+            f"NumberLiteral per FTL specification "
+            f'(NamedArgument ::= Identifier ":" (StringLiteral | NumberLiteral)).'
+        )
+        raise SerializationValidationError(msg)
+
+
 def _validate_call_arguments(
     args: CallArguments, context: str, depth_guard: DepthGuard
 ) -> None:
@@ -122,12 +156,16 @@ def _validate_call_arguments(
         NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)
 
     Enforces:
-    1. Named argument names must be unique (no duplicates)
-    2. Named argument values must be StringLiteral or NumberLiteral
+    1. Positional argument expressions are valid
+    2. Named argument names must be unique (no duplicates)
+    3. Named argument identifiers are valid
+    4. Named argument values are StringLiteral or NumberLiteral (defense-in-depth:
+       type annotation is FTLLiteral, but runtime bypass is possible via
+       object.__setattr__ on frozen dataclasses)
 
     The parser enforces these constraints during parsing, but programmatically
-    constructed ASTs may violate them. This validation catches such errors
-    before serialization produces invalid FTL.
+    constructed ASTs may violate the uniqueness, identifier, and literal-value constraints.
+    This validation catches such errors before serialization produces invalid FTL.
 
     Args:
         args: CallArguments to validate
@@ -142,7 +180,7 @@ def _validate_call_arguments(
         with depth_guard:
             _validate_expression(pos_arg, context, depth_guard)
 
-    # Validate named arguments with duplicate detection and type enforcement
+    # Validate named arguments with duplicate detection
     seen_names: set[str] = set()
     for named_arg in args.named:
         arg_name = named_arg.name.name
@@ -159,17 +197,9 @@ def _validate_call_arguments(
         # Validate the identifier
         _validate_identifier(named_arg.name, f"{context}, named argument")
 
-        # Per FTL spec, named argument values must be StringLiteral or NumberLiteral
-        if not isinstance(named_arg.value, (StringLiteral, NumberLiteral)):
-            value_type = type(named_arg.value).__name__
-            msg = (
-                f"Named argument '{arg_name}' in {context} has invalid value type "
-                f"'{value_type}'. Per FTL specification, named argument values must be "
-                "StringLiteral or NumberLiteral, not arbitrary expressions."
-            )
-            raise SerializationValidationError(msg)
-
-        # No need to recursively validate StringLiteral/NumberLiteral (they have no sub-expressions)
+        # Defense-in-depth: verify value is a literal (FTLLiteral type annotation is
+        # bypassable at runtime; this check is the serializer's last line of defense).
+        _assert_named_arg_value_is_literal(named_arg.value, arg_name, context)
 
 
 def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:

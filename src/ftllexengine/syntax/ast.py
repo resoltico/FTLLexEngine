@@ -44,6 +44,7 @@ __all__ = [
     "NamedArgument",
     # Type aliases
     "Entry",
+    "FTLLiteral",
     "PatternElement",
     "Expression",
     "InlineExpression",
@@ -550,10 +551,19 @@ class CallArguments:
 
 @dataclass(frozen=True, slots=True)
 class NamedArgument:
-    """Named argument: name: value"""
+    """Named argument: name: value
+
+    Per Fluent spec, named argument values are constrained to literals:
+        named-argument ::= identifier ":" literal
+        literal        ::= number-literal | quoted-literal
+    The value field therefore uses FTLLiteral (StringLiteral | NumberLiteral),
+    which is a strict subtype of InlineExpression. The parser enforces this
+    constraint; the type encodes it so that downstream code never needs to
+    handle the wider union for this field.
+    """
 
     name: Identifier
-    value: InlineExpression
+    value: FTLLiteral
     span: Span | None = None
 
 
@@ -574,6 +584,16 @@ type InlineExpression = (
     | Placeable
 )
 type VariantKey = Identifier | NumberLiteral
+
+# Per Fluent spec EBNF: named-argument ::= identifier ":" literal
+#                        literal        ::= number-literal | quoted-literal
+# Named argument values are constrained to literals only.
+# VariableReference, MessageReference, TermReference, FunctionReference,
+# and Placeable are INVALID named argument values and are rejected by the
+# parser. This alias encodes the constraint at the type level so that
+# downstream code (serializer, resolver, transformer) does not need to
+# handle the full InlineExpression union for NamedArgument.value.
+type FTLLiteral = StringLiteral | NumberLiteral
 
 # Complete ASTNode type - union of all AST node types
 # This replaces the forward declaration at the top of the file

@@ -24,6 +24,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import typing
+from typing import cast
 
 import pytest
 from hypothesis import HealthCheck, event, given, settings
@@ -34,6 +35,7 @@ from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     CallArguments,
     Comment,
+    FTLLiteral,
     FunctionReference,
     Identifier,
     Junk,
@@ -348,7 +350,7 @@ class TestValidationProperties:
                 named=(
                     NamedArgument(
                         name=Identifier(name="style"),
-                        value=VariableReference(id=Identifier(name="var")),  # Invalid!
+                        value=cast(FTLLiteral, VariableReference(id=Identifier(name="var"))),
                     ),
                 ),
             ),

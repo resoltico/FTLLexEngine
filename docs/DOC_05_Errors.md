@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.134.0"
+version: "0.137.0"
 domain: ERRORS
 updated: "2026-02-25"
 route:
@@ -79,7 +79,7 @@ class FrozenFluentError(Exception):
     @property
     def locale_code(self) -> str: ...
     @property
-    def parse_type(self) -> str: ...
+    def parse_type(self) -> Literal["", "currency", "date", "datetime", "decimal", "number"]: ...
 ```
 
 ### Parameters
@@ -136,7 +136,7 @@ Immutable context for parse/formatting errors.
 class FrozenErrorContext:
     input_value: str
     locale_code: str
-    parse_type: str
+    parse_type: Literal["", "currency", "date", "datetime", "decimal", "number"]
     fallback_value: str
 ```
 
@@ -145,11 +145,12 @@ class FrozenErrorContext:
 |:----------|:-----|:----|:------------|
 | `input_value` | `str` | Y | String that failed parsing/formatting. |
 | `locale_code` | `str` | Y | Locale used for parsing/formatting. |
-| `parse_type` | `str` | Y | Type (number/decimal/date/datetime/currency). |
+| `parse_type` | `Literal["", "currency", "date", "datetime", "decimal", "number"]` | Y | Formatting type domain; empty string when absent. |
 | `fallback_value` | `str` | Y | Value to use when formatting fails. |
 
 ### Constraints
 - Immutable: Frozen dataclass, cannot be modified.
+- `parse_type` is a closed `Literal` set: `""` (absent), `"currency"`, `"date"`, `"datetime"`, `"decimal"`, `"number"`. Any other value is a static type error.
 - Usage: Passed to `FrozenFluentError` for PARSE/FORMATTING errors.
 - Import: `from ftllexengine.diagnostics import FrozenErrorContext`
 

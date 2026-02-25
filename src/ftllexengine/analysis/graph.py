@@ -148,7 +148,10 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
                 # Prevent re-entering a node already on the current DFS path.
                 # Without this guard the same node could be pushed repeatedly,
                 # creating an infinite exploration loop through the cycle.
-                if node in rec_stack:
+                # Nodes in rec_stack are caught by the back-edge guard before
+                # being pushed (ENTERING), so this branch is a permanent safety
+                # net that cannot be triggered by the current algorithm.
+                if node in rec_stack:  # pragma: no cover
                     continue
 
                 globally_visited.add(node)

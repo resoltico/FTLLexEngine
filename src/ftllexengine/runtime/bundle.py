@@ -10,7 +10,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, NoReturn, assert_never
 
 from ftllexengine.constants import (
     DEFAULT_MAX_EXPANSION_SIZE,
@@ -733,6 +733,8 @@ class FluentBundle:
                     pending.junk.append(entry)
                 case Comment():
                     logger.debug("Skipping comment entry")
+                case _:  # pragma: no cover - Entry union is closed (Message|Term|Comment|Junk)
+                    assert_never(entry)
 
         return pending
 

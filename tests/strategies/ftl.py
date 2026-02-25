@@ -686,12 +686,13 @@ def ftl_named_arguments(draw: st.DrawFn) -> NamedArgument:
     Example: minimumFractionDigits: 2
     """
     name = draw(ftl_identifiers())
-    # Value must be an InlineExpression - use simple types to avoid recursion
+    # Per FTL spec EBNF: named-argument ::= identifier ":" literal
+    # where literal ::= number-literal | quoted-literal
+    # Named argument values are constrained to StringLiteral and NumberLiteral only.
     value = draw(
         st.one_of(
             ftl_string_literals(),
             ftl_number_literals(),
-            ftl_variable_references(),
         )
     )
     return NamedArgument(name=Identifier(name=name), value=value)

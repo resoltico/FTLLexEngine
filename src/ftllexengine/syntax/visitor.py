@@ -16,7 +16,7 @@ Python 3.13+.
 """
 
 from dataclasses import Field, fields, replace
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
@@ -26,14 +26,19 @@ from .ast import (
     Attribute,
     CallArguments,
     Comment,
+    Entry,
+    Expression,
+    FTLLiteral,
     FunctionReference,
     Identifier,
+    InlineExpression,
     Junk,
     Message,
     MessageReference,
     NamedArgument,
     NumberLiteral,
     Pattern,
+    PatternElement,
     Placeable,
     Resource,
     SelectExpression,
@@ -43,6 +48,7 @@ from .ast import (
     TextElement,
     VariableReference,
     Variant,
+    VariantKey,
 )
 
 __all__ = ["ASTTransformer", "ASTVisitor"]
@@ -383,169 +389,253 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
             New node with transformed children
         """
         # Depth guard is in visit() - every self.visit() call is protected
-        # Use pattern matching for type-safe child transformation
+        # Use pattern matching for type-safe child transformation.
+        #
+        # cast() is used throughout this method to tell mypy the precise field
+        # type that _validate_scalar_result() / _validate_optional_scalar_result()
+        # / _transform_list() produce at each replace() call site. These helpers
+        # all return broad types (ASTNode, ASTNode | None, tuple[ASTNode, ...])
+        # because they are general-purpose; the AST field types are narrower.
+        # The runtime type-validation logic in _validate_element_type() and
+        # _validate_scalar_result() ensures correctness; cast() communicates
+        # this to the type checker without relying on a module-level suppression
+        # that would hide unrelated future type errors in this file.
         match node:
             case Resource(entries=entries):
                 return replace(
                     node,
-                    entries=self._transform_list(
-                        entries,
-                        "Resource.entries",
-                        (Message, Term, Comment, Junk),
+                    entries=cast(
+                        tuple[Entry, ...],
+                        self._transform_list(
+                            entries, "Resource.entries", (Message, Term, Comment, Junk)
+                        ),
                     ),
                 )
             case Message(id=id_node, value=value, attributes=attrs, comment=comment):
-                # Message.value and Message.comment are optional - allow None returns
-                validated_value = (
-                    self._validate_optional_scalar_result(
-                        self.visit(value), "Message.value"
-                    )
-                    if value
-                    else None
-                )
-                validated_comment = (
-                    self._validate_optional_scalar_result(
-                        self.visit(comment), "Message.comment"
-                    )
-                    if comment
-                    else None
-                )
                 return replace(
                     node,
-                    id=self._validate_scalar_result(self.visit(id_node), "Message.id"),
-                    value=validated_value,
-                    attributes=self._transform_list(
-                        attrs, "Message.attributes", (Attribute,)
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(self.visit(id_node), "Message.id"),
                     ),
-                    comment=validated_comment,
+                    value=cast(
+                        "Pattern | None",
+                        (
+                            self._validate_optional_scalar_result(
+                                self.visit(value), "Message.value"
+                            )
+                            if value
+                            else None
+                        ),
+                    ),
+                    attributes=cast(
+                        "tuple[Attribute, ...]",
+                        self._transform_list(attrs, "Message.attributes", (Attribute,)),
+                    ),
+                    comment=cast(
+                        "Comment | None",
+                        (
+                            self._validate_optional_scalar_result(
+                                self.visit(comment), "Message.comment"
+                            )
+                            if comment
+                            else None
+                        ),
+                    ),
                 )
             case Term(id=id_node, value=value, attributes=attrs, comment=comment):
-                # Term.comment is optional - allow None returns
-                validated_comment = (
-                    self._validate_optional_scalar_result(
-                        self.visit(comment), "Term.comment"
-                    )
-                    if comment
-                    else None
-                )
                 return replace(
                     node,
-                    id=self._validate_scalar_result(self.visit(id_node), "Term.id"),
-                    value=self._validate_scalar_result(self.visit(value), "Term.value"),
-                    attributes=self._transform_list(
-                        attrs, "Term.attributes", (Attribute,)
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(self.visit(id_node), "Term.id"),
                     ),
-                    comment=validated_comment,
+                    value=cast(
+                        Pattern,
+                        self._validate_scalar_result(self.visit(value), "Term.value"),
+                    ),
+                    attributes=cast(
+                        "tuple[Attribute, ...]",
+                        self._transform_list(attrs, "Term.attributes", (Attribute,)),
+                    ),
+                    comment=cast(
+                        "Comment | None",
+                        (
+                            self._validate_optional_scalar_result(
+                                self.visit(comment), "Term.comment"
+                            )
+                            if comment
+                            else None
+                        ),
+                    ),
                 )
             case Pattern(elements=elements):
                 return replace(
                     node,
-                    elements=self._transform_list(
-                        elements, "Pattern.elements", (TextElement, Placeable)
+                    elements=cast(
+                        tuple[PatternElement, ...],
+                        self._transform_list(
+                            elements, "Pattern.elements", (TextElement, Placeable)
+                        ),
                     ),
                 )
             case Placeable(expression=expr):
-                validated_expr = self._validate_scalar_result(
-                    self.visit(expr), "Placeable.expression"
-                )
-                return replace(node, expression=validated_expr)
-            case SelectExpression(selector=selector, variants=variants):
-                validated_selector = self._validate_scalar_result(
-                    self.visit(selector), "SelectExpression.selector"
-                )
                 return replace(
                     node,
-                    selector=validated_selector,
-                    variants=self._transform_list(
-                        variants, "SelectExpression.variants", (Variant,)
+                    expression=cast(
+                        Expression,
+                        self._validate_scalar_result(self.visit(expr), "Placeable.expression"),
+                    ),
+                )
+            case SelectExpression(selector=selector, variants=variants):
+                return replace(
+                    node,
+                    selector=cast(
+                        InlineExpression,
+                        self._validate_scalar_result(
+                            self.visit(selector), "SelectExpression.selector"
+                        ),
+                    ),
+                    variants=cast(
+                        "tuple[Variant, ...]",
+                        self._transform_list(
+                            variants, "SelectExpression.variants", (Variant,)
+                        ),
                     ),
                 )
             case Variant(key=key, value=value):
                 return replace(
                     node,
-                    key=self._validate_scalar_result(self.visit(key), "Variant.key"),
-                    value=self._validate_scalar_result(self.visit(value), "Variant.value"),
+                    key=cast(
+                        VariantKey,
+                        self._validate_scalar_result(self.visit(key), "Variant.key"),
+                    ),
+                    value=cast(
+                        Pattern,
+                        self._validate_scalar_result(self.visit(value), "Variant.value"),
+                    ),
                 )
             case FunctionReference(id=id_node, arguments=args):
-                # FunctionReference.arguments is not optional - always present
-                func_validated_args = self._validate_scalar_result(
-                    self.visit(args), "FunctionReference.arguments"
-                )
                 return replace(
                     node,
-                    id=self._validate_scalar_result(self.visit(id_node), "FunctionReference.id"),
-                    arguments=func_validated_args,
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(
+                            self.visit(id_node), "FunctionReference.id"
+                        ),
+                    ),
+                    arguments=cast(
+                        CallArguments,
+                        self._validate_scalar_result(
+                            self.visit(args), "FunctionReference.arguments"
+                        ),
+                    ),
                 )
             case MessageReference(id=id_node, attribute=attr):
-                # MessageReference.attribute is optional - allow None returns
-                msg_validated_attr = (
-                    self._validate_optional_scalar_result(
-                        self.visit(attr), "MessageReference.attribute"
-                    )
-                    if attr
-                    else None
-                )
                 return replace(
                     node,
-                    id=self._validate_scalar_result(self.visit(id_node), "MessageReference.id"),
-                    attribute=msg_validated_attr,
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(
+                            self.visit(id_node), "MessageReference.id"
+                        ),
+                    ),
+                    attribute=cast(
+                        "Identifier | None",
+                        (
+                            self._validate_optional_scalar_result(
+                                self.visit(attr), "MessageReference.attribute"
+                            )
+                            if attr
+                            else None
+                        ),
+                    ),
                 )
             case TermReference(id=id_node, attribute=attr, arguments=args):
-                # TermReference.attribute and TermReference.arguments are optional
-                # Type narrowing needed because validator returns ASTNode | None
-                # but fields expect Identifier | None and CallArguments | None
-                term_validated_attr: Identifier | None = (
-                    self._validate_optional_scalar_result(
-                        self.visit(attr), "TermReference.attribute"
-                    )  # type: ignore[assignment]
-                    if attr
-                    else None
-                )
-                term_validated_args: CallArguments | None = (
-                    self._validate_optional_scalar_result(
-                        self.visit(args), "TermReference.arguments"
-                    )  # type: ignore[assignment]
-                    if args
-                    else None
-                )
                 return replace(
                     node,
-                    id=self._validate_scalar_result(self.visit(id_node), "TermReference.id"),
-                    attribute=term_validated_attr,
-                    arguments=term_validated_args,
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(
+                            self.visit(id_node), "TermReference.id"
+                        ),
+                    ),
+                    attribute=cast(
+                        "Identifier | None",
+                        (
+                            self._validate_optional_scalar_result(
+                                self.visit(attr), "TermReference.attribute"
+                            )
+                            if attr
+                            else None
+                        ),
+                    ),
+                    arguments=cast(
+                        "CallArguments | None",
+                        (
+                            self._validate_optional_scalar_result(
+                                self.visit(args), "TermReference.arguments"
+                            )
+                            if args
+                            else None
+                        ),
+                    ),
                 )
             case VariableReference(id=id_node):
-                validated_id = self._validate_scalar_result(
-                    self.visit(id_node), "VariableReference.id"
+                return replace(
+                    node,
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(
+                            self.visit(id_node), "VariableReference.id"
+                        ),
+                    ),
                 )
-                return replace(node, id=validated_id)
             case CallArguments(positional=pos, named=named):
                 return replace(
                     node,
-                    positional=self._transform_list(
-                        pos,
-                        "CallArguments.positional",
-                        (
-                            StringLiteral, NumberLiteral, VariableReference,
-                            MessageReference, TermReference, FunctionReference,
-                            Placeable,
+                    positional=cast(
+                        "tuple[InlineExpression, ...]",
+                        self._transform_list(
+                            pos,
+                            "CallArguments.positional",
+                            (
+                                StringLiteral, NumberLiteral, VariableReference,
+                                MessageReference, TermReference, FunctionReference,
+                                Placeable,
+                            ),
                         ),
                     ),
-                    named=self._transform_list(
-                        named, "CallArguments.named", (NamedArgument,)
+                    named=cast(
+                        "tuple[NamedArgument, ...]",
+                        self._transform_list(
+                            named, "CallArguments.named", (NamedArgument,)
+                        ),
                     ),
                 )
             case NamedArgument(name=name, value=value):
                 return replace(
                     node,
-                    name=self._validate_scalar_result(self.visit(name), "NamedArgument.name"),
-                    value=self._validate_scalar_result(self.visit(value), "NamedArgument.value"),
+                    name=cast(
+                        Identifier,
+                        self._validate_scalar_result(self.visit(name), "NamedArgument.name"),
+                    ),
+                    value=cast(
+                        FTLLiteral,
+                        self._validate_scalar_result(self.visit(value), "NamedArgument.value"),
+                    ),
                 )
             case Attribute(id=id_node, value=value):
                 return replace(
                     node,
-                    id=self._validate_scalar_result(self.visit(id_node), "Attribute.id"),
-                    value=self._validate_scalar_result(self.visit(value), "Attribute.value"),
+                    id=cast(
+                        Identifier,
+                        self._validate_scalar_result(self.visit(id_node), "Attribute.id"),
+                    ),
+                    value=cast(
+                        Pattern,
+                        self._validate_scalar_result(self.visit(value), "Attribute.value"),
+                    ),
                 )
             case _:
                 # Leaf nodes: Identifier, TextElement, StringLiteral,
@@ -577,7 +667,9 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
         """
         result: list[ASTNode] = []
         for node in nodes:
-            transformed = self.visit(node)
+            # ASTTransformer binds T=TransformerResult, so visit() returns
+            # TransformerResult = ASTNode | None | list[ASTNode] here.
+            transformed: TransformerResult = self.visit(node)
 
             # Pattern match on transformation result
             match transformed:

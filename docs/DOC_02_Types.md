@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.135.0"
+version: "0.137.0"
 domain: TYPES
 updated: "2026-02-25"
 route:
-  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
+  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
 ---
 
@@ -357,6 +357,28 @@ class NumberLiteral:
 
 ---
 
+## `FTLLiteral`
+
+Type alias for the closed set of values valid as named-argument values in Fluent call expressions.
+
+### Signature
+```python
+type FTLLiteral = StringLiteral | NumberLiteral
+```
+
+### Parameters
+| Type | Description |
+|:-----|:------------|
+| `StringLiteral` | Quoted string value. |
+| `NumberLiteral` | Numeric literal (int or Decimal). |
+
+### Constraints
+- FTL EBNF: `named-argument ::= identifier ":" (StringLiteral \| NumberLiteral)`.
+- `NamedArgument.value` is typed `FTLLiteral`; only these two variants are spec-compliant.
+- Import: `from ftllexengine.syntax.ast import FTLLiteral` or `from ftllexengine.syntax import FTLLiteral`.
+
+---
+
 ## `VariableReference`
 
 ### Signature
@@ -501,7 +523,7 @@ class CallArguments:
 @dataclass(frozen=True, slots=True)
 class NamedArgument:
     name: Identifier
-    value: InlineExpression
+    value: FTLLiteral
     span: Span | None = None
 ```
 
@@ -509,14 +531,15 @@ class NamedArgument:
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | `name` | `Identifier` | Y | Argument name. |
-| `value` | `InlineExpression` | Y | Argument value. |
+| `value` | `FTLLiteral` | Y | Literal argument value (StringLiteral or NumberLiteral). |
 | `span` | `Span \| None` | N | Source position. |
 
 ### Constraints
 - Return: Immutable named argument.
 - State: Frozen dataclass.
 - FTL EBNF: `NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)`.
-- Validation: `serialize(validate=True)` rejects values that are not StringLiteral or NumberLiteral.
+- Type enforced: `value` is `FTLLiteral = StringLiteral | NumberLiteral`; passing any other `InlineExpression` subtype is a static type error.
+- Defense: Serializer validates value type at runtime as defense-in-depth against `object.__setattr__` bypass.
 
 ---
 

@@ -240,7 +240,12 @@ class TestCallArgumentsTransformation:
     """Test CallArguments transformation (line 345)."""
 
     def test_transform_call_arguments(self) -> None:
-        """Transform CallArguments with positional and named arguments."""
+        """Transform CallArguments: positional args are visited, named arg names are visited.
+
+        Named arg values are FTLLiteral (StringLiteral | NumberLiteral) leaf nodes;
+        the transformer returns them unchanged (generic_visit returns leaf nodes as-is).
+        The identifier in named arg NAME is visited and uppercased.
+        """
         call_args = CallArguments(
             positional=(
                 VariableReference(id=Identifier(name="value")),
@@ -249,7 +254,7 @@ class TestCallArgumentsTransformation:
             named=(
                 NamedArgument(
                     name=Identifier(name="option"),
-                    value=VariableReference(id=Identifier(name="opt")),
+                    value=StringLiteral(value="opt_value"),
                 ),
             ),
         )
@@ -261,17 +266,22 @@ class TestCallArgumentsTransformation:
         assert result.positional[0].id.name == "VALUE"  # type: ignore[union-attr]
         assert result.positional[1].value == 42  # type: ignore[union-attr]
         assert result.named[0].name.name == "OPTION"
-        assert result.named[0].value.id.name == "OPT"  # type: ignore[union-attr]
+        # Literal value is a leaf node; returned unchanged by generic_visit
+        assert result.named[0].value == StringLiteral(value="opt_value")
 
 
 class TestNamedArgumentTransformation:
     """Test NamedArgument transformation (line 351)."""
 
     def test_transform_named_argument(self) -> None:
-        """Transform NamedArgument."""
+        """Transform NamedArgument: name identifier is visited; literal value is unchanged.
+
+        Named arg values are FTLLiteral (StringLiteral | NumberLiteral); generic_visit
+        returns leaf nodes as-is. The identifier in the name field is visited.
+        """
         named_arg = NamedArgument(
             name=Identifier(name="minimumFractionDigits"),
-            value=VariableReference(id=Identifier(name="precision")),
+            value=NumberLiteral(value=2, raw="2"),
         )
 
         transformer = UppercaseIdentifierTransformer()
@@ -279,7 +289,8 @@ class TestNamedArgumentTransformation:
 
         assert isinstance(result, NamedArgument)
         assert result.name.name == "MINIMUMFRACTIONDIGITS"
-        assert result.value.id.name == "PRECISION"  # type: ignore[union-attr]
+        # Literal value is a leaf node; returned unchanged
+        assert result.value == NumberLiteral(value=2, raw="2")
 
 
 class TestAttributeTransformation:

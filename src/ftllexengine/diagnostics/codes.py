@@ -51,13 +51,14 @@ class FrozenErrorContext:
     Attributes:
         input_value: String that failed to parse (empty if not applicable)
         locale_code: Locale used for parsing/formatting (empty if not applicable)
-        parse_type: Type of parsing attempted (number, date, currency)
+        parse_type: Type of parsing attempted; one of the known parse domains
+            or empty string when not applicable.
         fallback_value: Value to use in output when formatting fails
     """
 
     input_value: str = ""
     locale_code: str = ""
-    parse_type: str = ""
+    parse_type: Literal["", "currency", "date", "datetime", "decimal", "number"] = ""
     fallback_value: str = ""
 
 

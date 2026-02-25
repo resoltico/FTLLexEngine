@@ -273,17 +273,14 @@ def extract_features(resource: Resource) -> set[str]:  # noqa: PLR0915
                     features.add("term_arguments")
             case FunctionReference():
                 features.add("function_call")
-                # Check for function chaining
+                # Check for function chaining via positional arguments only.
+                # Named argument values are FTLLiteral (StringLiteral | NumberLiteral)
+                # per spec, so they can never contain nested FunctionReferences.
                 if node.arguments:
                     for pos_arg in node.arguments.positional:
                         if isinstance(pos_arg, FunctionReference):
                             features.add("function_chaining")
                             break
-                    if "function_chaining" not in features:  # Only check named if not already found
-                        for named_arg in node.arguments.named:
-                            if isinstance(named_arg.value, FunctionReference):
-                                features.add("function_chaining")
-                                break
             case StringLiteral():
                 features.add("string_literal")
                 value = node.value

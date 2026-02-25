@@ -22,6 +22,9 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from typing import Literal
+
+import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
@@ -121,14 +124,16 @@ class TestFrozenErrorContextDataclass:
     @given(
         input_value=st.text(max_size=100),
         locale_code=st.text(max_size=20),
-        parse_type=st.text(max_size=20),
+        parse_type=st.sampled_from(
+            ["", "currency", "date", "datetime", "decimal", "number"]
+        ),
         fallback_value=st.text(max_size=100),
     )
     def test_frozen_error_context_construction_with_values(
         self,
         input_value: str,
         locale_code: str,
-        parse_type: str,
+        parse_type: Literal["", "currency", "date", "datetime", "decimal", "number"],
         fallback_value: str,
     ) -> None:
         """PROPERTY: FrozenErrorContext construction preserves all arguments."""
@@ -307,6 +312,26 @@ class TestSourceSpanDataclass:
         assert span.line == line
         assert span.column == column
         event(f"span_length={length}")
+
+    def test_source_span_negative_start_raises(self) -> None:
+        """SourceSpan with negative start raises ValueError (lines 183-184)."""
+        with pytest.raises(ValueError, match="start must be >= 0"):
+            SourceSpan(start=-1, end=0, line=1, column=1)
+
+    def test_source_span_end_before_start_raises(self) -> None:
+        """SourceSpan with end < start raises ValueError (lines 186-187)."""
+        with pytest.raises(ValueError, match=r"end.*must be >= start"):
+            SourceSpan(start=5, end=4, line=1, column=1)
+
+    def test_source_span_line_zero_raises(self) -> None:
+        """SourceSpan with line < 1 raises ValueError (lines 189-190)."""
+        with pytest.raises(ValueError, match="line must be >= 1"):
+            SourceSpan(start=0, end=0, line=0, column=1)
+
+    def test_source_span_column_zero_raises(self) -> None:
+        """SourceSpan with column < 1 raises ValueError (lines 192-193)."""
+        with pytest.raises(ValueError, match="column must be >= 1"):
+            SourceSpan(start=0, end=0, line=1, column=0)
 
 
 # ============================================================================

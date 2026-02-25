@@ -1521,7 +1521,7 @@ class TestPlaceableWithFormattingError:
             context = FrozenErrorContext(
                 input_value="test",
                 locale_code="en",
-                parse_type="custom",
+                parse_type="number",
                 fallback_value="FALLBACK",
             )
             msg = "Custom formatting error"

@@ -358,7 +358,9 @@ class SemanticValidator:
     ) -> None:
         """Validate function/term call arguments.
 
-        Per spec, named argument names must be unique.
+        Per spec, named argument names must be unique. Named argument values are
+        FTLLiteral (StringLiteral | NumberLiteral) — leaf nodes with no sub-expressions
+        to validate. Only positional arguments require recursive expression validation.
         """
         # Check: named argument names must be unique
         seen_names: set[str] = set()
@@ -372,19 +374,16 @@ class SemanticValidator:
                 )
             seen_names.add(name)
 
-        # Validate each argument expression
-        # Track depth for each argument to prevent stack overflow on deeply nested arguments
+        # Validate positional argument expressions (may be nested/complex)
         for pos_arg in args.positional:
             with depth_guard:
                 self._validate_inline_expression(
                     pos_arg, errors, "call_argument", depth_guard
                 )
 
-        for named_arg in args.named:
-            with depth_guard:
-                self._validate_inline_expression(
-                    named_arg.value, errors, "call_argument", depth_guard
-                )
+        # Named argument values are FTLLiteral (StringLiteral | NumberLiteral).
+        # Literals are leaf nodes guaranteed valid by construction; no recursive
+        # validation is required or possible.
 
     # ========================================================================
     # SELECT EXPRESSION VALIDATION

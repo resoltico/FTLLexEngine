@@ -978,3 +978,38 @@ class TestOrchestrationProperties:
 
         assert value1 in result1 or value2 in result1
         assert value2 in result2
+
+
+# ===========================================================================
+# FORMATTING INTEGRITY ERROR RE-RAISE (lines 690-703)
+# ===========================================================================
+
+
+class TestFormattingIntegrityErrorReraise:
+    """FluentLocalization re-raises FormattingIntegrityError with corrected component.
+
+    Lines 690-703: the except FormattingIntegrityError block in format_pattern
+    fires when the bundle raises in strict mode and the message exists in the
+    bundle. The orchestrator must re-raise with component='localization'.
+    """
+
+    def test_strict_localization_reraises_with_localization_component(self) -> None:
+        """Strict FluentLocalization re-raises FormattingIntegrityError.
+
+        Covers lines 690-703: the except block that replaces the 'bundle'
+        component with 'localization' in the IntegrityContext before re-raising.
+        """
+        l10n = FluentLocalization(["en"], strict=True)
+        l10n.add_resource("en", "test-msg = Hello { $name }!")
+
+        # Calling format_pattern without the required $name argument causes
+        # VARIABLE_NOT_PROVIDED error. In strict mode the bundle raises
+        # FormattingIntegrityError, which the orchestrator catches and re-raises.
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_pattern("test-msg", {})
+
+        exc = exc_info.value
+        assert exc.context is not None
+        assert exc.context.component == "localization"
+        assert len(exc.fluent_errors) > 0
+        assert exc.message_id == "test-msg"

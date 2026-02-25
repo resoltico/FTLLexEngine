@@ -23,7 +23,7 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from hypothesis import event
 from hypothesis import strategies as st
@@ -105,7 +105,9 @@ def frozen_error_contexts(draw: st.DrawFn) -> FrozenErrorContext:
         case "all":
             input_value = draw(st.text(min_size=1, max_size=100))
             locale_code = draw(st.text(min_size=1, max_size=20))
-            parse_type = draw(st.text(min_size=1, max_size=20))
+            parse_type = draw(
+                st.sampled_from(["currency", "date", "datetime", "decimal", "number"])
+            )
             fallback_value = draw(
                 st.text(min_size=1, max_size=100)
             )
@@ -127,7 +129,9 @@ def frozen_error_contexts(draw: st.DrawFn) -> FrozenErrorContext:
                 else ""
             )
             parse_type = (
-                draw(st.text(min_size=1, max_size=20))
+                draw(st.sampled_from(
+                    ["currency", "date", "datetime", "decimal", "number"]
+                ))
                 if flags[2]
                 else ""
             )
@@ -140,7 +144,10 @@ def frozen_error_contexts(draw: st.DrawFn) -> FrozenErrorContext:
     return FrozenErrorContext(
         input_value=input_value,
         locale_code=locale_code,
-        parse_type=parse_type,
+        parse_type=cast(
+            Literal["", "currency", "date", "datetime", "decimal", "number"],
+            parse_type,
+        ),
         fallback_value=fallback_value,
     )
 

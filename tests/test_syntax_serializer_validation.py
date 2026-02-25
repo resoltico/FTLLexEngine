@@ -15,6 +15,7 @@ Python 3.13+.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import cast
 
 import pytest
 
@@ -22,6 +23,7 @@ from ftllexengine.syntax.ast import (
     Attribute,
     CallArguments,
     Comment,
+    FTLLiteral,
     FunctionReference,
     Identifier,
     Message,
@@ -572,7 +574,7 @@ class TestCallArgumentsValidation:
                 named=(
                     NamedArgument(
                         name=Identifier(name="style"),
-                        value=VariableReference(id=Identifier(name="styleVar")),  # INVALID!
+                        value=cast(FTLLiteral, VariableReference(id=Identifier(name="styleVar"))),
                     ),
                 ),
             ),
@@ -610,7 +612,7 @@ class TestCallArgumentsValidation:
                 named=(
                     NamedArgument(
                         name=Identifier(name="value"),
-                        value=inner_func,  # INVALID! Must be literal
+                        value=cast(FTLLiteral, inner_func),
                     ),
                 ),
             ),

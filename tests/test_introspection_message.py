@@ -8,11 +8,13 @@ exhaustiveness guards, and caching. All branches in message.py are exercised.
 from __future__ import annotations
 
 import threading
+from unittest.mock import patch
 
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
+import ftllexengine.introspection.message as _introspection_msg_mod
 from ftllexengine import FluentBundle, parse_ftl
 from ftllexengine.enums import ReferenceKind, VariableContext
 from ftllexengine.introspection import (
@@ -40,6 +42,7 @@ from ftllexengine.syntax.ast import (
     NumberLiteral,
     Pattern,
     Placeable,
+    StringLiteral,
     Term,
     TermReference,
     TextElement,
@@ -275,8 +278,13 @@ class TestFunctionIntrospection:
         result = introspect_message(msg)
         assert result.get_variable_names() == frozenset({"a", "b", "c"})
 
-    def test_function_variable_in_named_arg_value(self) -> None:
-        """Variable references in named argument values are extracted."""
+    def test_function_variable_in_positional_arg_with_literal_named_arg(self) -> None:
+        """Variable reference in positional arg is extracted; named arg literals are not.
+
+        Per FTL spec, named argument values are constrained to StringLiteral or
+        NumberLiteral. They cannot be VariableReferences. Only positional arguments
+        contribute variable names when they contain VariableReference nodes.
+        """
         func_ref = FunctionReference(
             id=Identifier(name="CUSTOM"),
             arguments=CallArguments(
@@ -284,17 +292,25 @@ class TestFunctionIntrospection:
                 named=(
                     NamedArgument(
                         name=Identifier(name="opt"),
-                        value=VariableReference(id=Identifier(name="y")),
+                        value=StringLiteral(value="opt_value"),
                     ),
                 ),
             ),
         )
         msg = _make_message("test", value=_make_pattern(Placeable(expression=func_ref)))
         info = introspect_message(msg, use_cache=False)
-        assert info.get_variable_names() == frozenset({"x", "y"})
+        # Only "x" from positional arg; named arg literal value contributes nothing
+        assert info.get_variable_names() == frozenset({"x"})
 
-    def test_function_all_named_args_with_variables(self) -> None:
-        """All named argument variable references are extracted."""
+    def test_function_named_args_with_literals_do_not_contribute_variable_names(
+        self,
+    ) -> None:
+        """Named argument literal values do not contribute to variable_names.
+
+        Per FTL spec, named argument values are always literals (StringLiteral or
+        NumberLiteral), never VariableReferences. Variables from positional args
+        are extracted; named arg literal values are not variable references.
+        """
         func_ref = FunctionReference(
             id=Identifier(name="FUNC"),
             arguments=CallArguments(
@@ -302,14 +318,14 @@ class TestFunctionIntrospection:
                 named=(
                     NamedArgument(
                         name=Identifier(name="a"),
-                        value=VariableReference(id=Identifier(name="x")),
+                        value=StringLiteral(value="first"),
                     ),
                     NamedArgument(
                         name=Identifier(name="b"),
-                        value=VariableReference(id=Identifier(name="y")),
+                        value=StringLiteral(value="second"),
                     ),
                     NamedArgument(
-                        name=Identifier(name="literal"),
+                        name=Identifier(name="n"),
                         value=NumberLiteral(value=42, raw="42"),
                     ),
                 ),
@@ -317,7 +333,8 @@ class TestFunctionIntrospection:
         )
         msg = _make_message("test", value=_make_pattern(Placeable(expression=func_ref)))
         info = introspect_message(msg, use_cache=False)
-        assert info.get_variable_names() == frozenset({"val", "x", "y"})
+        # Only "val" from positional arg; named arg literal values contribute nothing
+        assert info.get_variable_names() == frozenset({"val"})
         assert "FUNC" in info.get_function_names()
 
     def test_nested_message_reference_in_function_arg(self) -> None:
@@ -1516,3 +1533,64 @@ class TestIntrospectionThreadSafety:
         # Final cache state must be consistent: either empty or holding a valid result.
         result = introspect_message(message)
         assert result.message_id == "racyMsg"
+
+
+# ===========================================================================
+# DOUBLE-CHECK CACHE HIT (line 674)
+# ===========================================================================
+
+
+class TestCacheDoubleCheckHit:
+    """Covers introspect_message line 674: the locked double-check cache hit.
+
+    Line 674 fires only when another thread stores the result between step 1
+    (initial pre-lock miss check) and step 3 (locked store). The test uses
+    a mock lock that pre-fills the cache before the double-check code runs,
+    exactly simulating the winning-race scenario.
+    """
+
+    def test_double_check_returns_preexisting_result(self) -> None:
+        """Line 674: double-check inside lock returns pre-filled entry.
+
+        The mock lock pre-fills _introspection_cache[msg] on __enter__,
+        simulating another thread winning the race. introspect_message must
+        return the pre-filled result rather than overwriting it.
+        """
+        msg = _parse_message("dc-test = { $var }")
+        clear_introspection_cache()
+
+        # Compute reference result (no cache interaction)
+        expected = introspect_message(msg, use_cache=False)
+        clear_introspection_cache()
+
+        # Capture original lock before patching
+        orig_lock = _introspection_msg_mod._introspection_cache_lock
+
+        class _RaceLock:
+            """Simulates a concurrent thread storing the result first."""
+
+            def __enter__(self) -> object:
+                orig_lock.acquire()
+                # Pre-fill cache to simulate the winning-race thread
+                _introspection_msg_mod._introspection_cache[msg] = expected
+                return self
+
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc_val: BaseException | None,
+                exc_tb: object,
+            ) -> None:
+                orig_lock.release()
+
+        with patch.object(
+            _introspection_msg_mod, "_introspection_cache_lock", _RaceLock()
+        ):
+            # Step 1: cache is empty -> misses
+            # Step 2: computation proceeds normally
+            # Step 3: _RaceLock.__enter__ pre-fills cache -> double-check hits line 674
+            result = introspect_message(msg, use_cache=True)
+
+        assert result.message_id == expected.message_id
+        assert result.get_variable_names() == expected.get_variable_names()
+        clear_introspection_cache()

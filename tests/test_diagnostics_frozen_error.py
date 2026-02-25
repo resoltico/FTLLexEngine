@@ -58,7 +58,9 @@ def optional_contexts(draw: st.DrawFn) -> FrozenErrorContext | None:
         return FrozenErrorContext(
             input_value=draw(st.text(min_size=0, max_size=50)),
             locale_code=draw(st.text(min_size=1, max_size=10)),
-            parse_type=draw(st.text(min_size=1, max_size=20)),
+            parse_type=draw(st.sampled_from(
+                ["", "currency", "date", "datetime", "decimal", "number"]
+            )),
             fallback_value=draw(st.text(min_size=0, max_size=50)),
         )
     return None
@@ -783,7 +785,7 @@ class TestCompleteBranchCoverage:
         context = FrozenErrorContext(
             input_value="\ud800 surrogate input",
             locale_code="en_US",
-            parse_type="\udc00 surrogate type",
+            parse_type="currency",
             fallback_value="\ud800\udc00 surrogate fallback",
         )
         error_with_context = FrozenFluentError(
@@ -1561,13 +1563,13 @@ class TestHashCollisionResistanceProperties:
         ctx1 = FrozenErrorContext(
             input_value=a,
             locale_code=b,
-            parse_type="t",
+            parse_type="date",
             fallback_value="f",
         )
         ctx2 = FrozenErrorContext(
             input_value=a_shifted,
             locale_code=b_shifted,
-            parse_type="t",
+            parse_type="date",
             fallback_value="f",
         )
 
