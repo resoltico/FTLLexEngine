@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.139.0"
+version: "0.140.0"
 domain: "architecture"
 updated: "2026-02-26"
 route: "/docs/data-integrity"
@@ -20,7 +20,8 @@ The system separates two distinct safety concerns: formatting error handling and
 
 | Failure Mode | Default Behavior | Strict Mode (`strict=True`) |
 |:-------------|:-----------------|:----------------------------|
-| Missing translation | Return placeholder `{$var}` + error | Raise `FormattingIntegrityError` |
+| Missing message | Return placeholder `{message-id}` + error | Raise `FormattingIntegrityError` |
+| Missing variable | Return placeholder `{$var}` + error | Raise `FormattingIntegrityError` |
 | Cache corruption | Raise `CacheCorruptionError` (always) | Raise `CacheCorruptionError` |
 | Error mutation | Immutable `FrozenFluentError` (always) | Immutable `FrozenFluentError` |
 
@@ -52,9 +53,10 @@ The system separates two distinct safety concerns: formatting error handling and
 |  +------------------------------------------------------------+  |
 |                               |                                   |
 |  +------------------------------------------------------------+  |
-|  |                  Integrity Exception Layer                  |  |
+|  |       Integrity Exception Layer (cross-cutting)            |  |
 |  |  Responsibility: System failure signaling (not Fluent)     |  |
 |  |  Types: DataIntegrityError hierarchy                       |  |
+|  |  Used by: Strict Mode Layer and Cache Layer                |  |
 |  +------------------------------------------------------------+  |
 +------------------------------------------------------------------+
 ```
@@ -269,7 +271,7 @@ DataIntegrityError (base - immutable after construction)
 | Component | Lock Type | Rationale |
 |:----------|:----------|:----------|
 | `FluentBundle._rwlock` | Custom `RWLock` | High-concurrency format operations; read-heavy; writer-preference; reentrant reads supported (custom function re-entry); write reentrancy and downgrade prohibited |
-| `FluentLocalization._lock` | Custom `RWLock` | Concurrent format reads; exclusive writes for add_resource/add_function |
+| `FluentLocalization._lock` | Custom `RWLock` | Brief read lock for bundle map lookup; write lock for lazy bundle creation; exclusive writes for add_resource/add_function |
 | `IntegrityCache._lock` | `threading.Lock` | Short operations; no reentrant acquisition in the call path; `RLock` thread-tracking overhead eliminated |
 | `LocaleContext._cache_lock` | `threading.Lock` | Class-level LRU cache; two sequential (never nested) acquisitions; `RLock` thread-tracking overhead unnecessary |
 

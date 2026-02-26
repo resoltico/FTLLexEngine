@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.139.0"
+version: "0.140.0"
 domain: architecture
 updated: "2026-02-26"
 route:
@@ -22,7 +22,7 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 | Component | Thread-Safe | Async-Safe | Notes |
 |:----------|:------------|:-----------|:------|
 | `FluentBundle` | Yes (all ops) | Yes | RWLock-protected reads and writes |
-| `FluentLocalization` | Yes (all ops) | Yes | RWLock-protected; concurrent format reads |
+| `FluentLocalization` | Yes (all ops) | Yes | RWLock-protected bundle map; brief per-operation lock for bundle lookup |
 | `FluentParserV1` | Yes | Yes | Stateless parsing |
 | `IntegrityCache` | Yes | Yes | Lock-protected |
 | `FunctionRegistry` | Copy-on-write | Copy-on-write | Copied on bundle init |
@@ -75,10 +75,11 @@ except TimeoutError:
 
 ## FluentLocalization Thread Safety
 
-`FluentLocalization` is **fully thread-safe** for all operations via internal RWLock.
+`FluentLocalization` is **fully thread-safe** for all operations via internal RWLock. The RWLock protects the bundle map; per-bundle formatting is independently protected by each bundle's own RWLock.
 
 **Guarantees**:
-- All read operations (`format_value()`, `format_pattern()`, `has_message()`, `get_cache_stats()`) acquire read lock (concurrent)
+- `format_value()`, `format_pattern()`, `has_message()`: briefly acquire read lock per bundle map lookup only; actual formatting proceeds under the per-bundle RWLock after the bundle reference is retrieved
+- `get_cache_stats()`: acquires read lock for the full duration to produce a consistent aggregate snapshot
 - All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
 - Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers already holding the write lock (`add_resource`) use `_create_bundle()` directly (no lock re-acquisition)
 - Context manager (`with l10n:`) is a no-op for structured scoping only

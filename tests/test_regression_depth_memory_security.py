@@ -243,9 +243,12 @@ class TestSecCacheErrorBloat001:
         cached = cache.get("msg", None, None, "en", True)
         assert cached is None
 
-        # Verify skip was counted
+        # Verify skip was counted under combined_weight_skips:
+        # 25 errors with 100-char messages pass the count check (25 <= 100),
+        # but combined weight (100 formatted + 25 * 200 per error = 5100) exceeds limit.
         stats = cache.get_stats()
-        assert stats["error_bloat_skips"] == 1
+        assert stats["combined_weight_skips"] == 1
+        assert stats["error_bloat_skips"] == 0
 
     def test_cache_accepts_reasonable_error_collections(self) -> None:
         """IntegrityCache caches results with reasonable error counts."""

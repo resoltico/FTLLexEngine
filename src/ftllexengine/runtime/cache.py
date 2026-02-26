@@ -74,10 +74,22 @@ class CacheStats(TypedDict):
         misses: Total cache misses since creation (not reset on clear()).
         hit_rate: Hit rate as a percentage (0.0-100.0), rounded to 2 decimal places.
         unhashable_skips: Puts skipped because the args could not be hashed.
-        oversize_skips: Puts skipped because the formatted string exceeded max_entry_weight.
-        error_bloat_skips: Puts skipped because the error collection exceeded weight limits.
+        oversize_skips: Puts skipped because the formatted string alone exceeded
+            max_entry_weight (before errors are considered).
+        error_bloat_skips: Puts skipped because the number of errors exceeded
+            max_errors_per_entry.
+        combined_weight_skips: Puts skipped because len(formatted) + total error
+            weight exceeded max_entry_weight (formatted alone was within limit but
+            combined content was not). Distinct from oversize_skips and error_bloat_skips
+            to enable accurate diagnosis: high combined_weight_skips points to the
+            combination of message length and error payload, not one alone.
         corruption_detected: Number of BLAKE2b checksum mismatches detected.
         idempotent_writes: Concurrent puts of identical content (benign races).
+        write_once_conflicts: True write-once violations: different content attempted
+            for an existing key under write_once=True. In strict mode these raise
+            WriteConflictError; in non-strict mode they are silently rejected. This
+            counter increments for both modes, enabling detection of data races without
+            requiring the audit log.
         sequence: Monotonically increasing total-put counter (audit trail).
         write_once: Whether write-once mode is enabled.
         strict: Whether strict (fail-fast) mode is enabled.
@@ -97,6 +109,8 @@ class CacheStats(TypedDict):
     error_bloat_skips: int
     corruption_detected: int
     idempotent_writes: int
+    write_once_conflicts: int
+    combined_weight_skips: int
     sequence: int
     write_once: bool
     strict: bool
@@ -161,9 +175,16 @@ def _estimate_error_weight(error: FrozenFluentError) -> int:
 
 # Type alias for hashable values produced by _make_hashable().
 # Recursive definition: primitives plus tuple/frozenset of self.
-# Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged.
 #
-# Type-Tagging for Collision Prevention:
+# Type-Tagging: _make_hashable never returns primitive types (int, bool, Decimal,
+# datetime, date, FluentNumber) directly. Every non-string, non-None value is
+# converted to a type-tagged tuple: e.g., 1 -> ("__int__", 1), True -> ("__bool__",
+# True), Decimal("1.5") -> ("__decimal__", "1.5"). These primitives appear in the
+# union because the tagged tuples contain them as second/subsequent elements, and
+# HashableValue is recursive — tuple["HashableValue", ...] must accept int, bool, etc.
+# as inner elements. str and None are the only types returned directly (as-is).
+#
+# Collision Prevention Rationale:
 #   Python's hash equality means hash(1) == hash(True), causing cache collisions
 #   when these values produce different formatted outputs.
 #   To prevent this, _make_hashable() returns type-tagged tuples for bool/int:
@@ -427,7 +448,9 @@ class IntegrityCache:
 
     Memory Protection:
         The max_entry_weight parameter prevents unbounded memory usage.
-        Weight is calculated as: len(formatted_str) + (len(errors) * 200).
+        Weight is calculated as: len(formatted_str) + sum(_estimate_error_weight(e)
+        for e in errors), where _estimate_error_weight measures actual error content
+        (message text, diagnostic fields, resolution path strings, context fields).
 
     Integrity Guarantees:
         - Checksums computed on put(), verified on get()
@@ -447,6 +470,7 @@ class IntegrityCache:
     __slots__ = (
         "_audit_log",
         "_cache",
+        "_combined_weight_skips",
         "_corruption_detected",
         "_error_bloat_skips",
         "_hits",
@@ -462,6 +486,7 @@ class IntegrityCache:
         "_strict",
         "_unhashable_skips",
         "_write_once",
+        "_write_once_conflicts",
     )
 
     def __init__(
@@ -523,8 +548,10 @@ class IntegrityCache:
         self._unhashable_skips = 0
         self._oversize_skips = 0
         self._error_bloat_skips = 0
+        self._combined_weight_skips = 0
         self._corruption_detected = 0
         self._idempotent_writes = 0
+        self._write_once_conflicts = 0
         self._sequence = 0
 
     def get(
@@ -632,11 +659,15 @@ class IntegrityCache:
                 self._error_bloat_skips += 1
             return
 
-        # Dynamic weight calculation based on actual error content
+        # Dynamic weight calculation based on actual error content.
+        # Formatted string already passed the per-string check above; this fires when
+        # the combined total (formatted + error payload) exceeds the limit.
+        # Counted separately from error_bloat_skips so operators can distinguish
+        # "too many errors" (error_bloat) from "combined content too heavy" (combined_weight).
         total_weight = len(formatted) + sum(_estimate_error_weight(e) for e in errors)
         if total_weight > self._max_entry_weight:
             with self._lock:
-                self._error_bloat_skips += 1
+                self._combined_weight_skips += 1
             return
 
         key = self._make_key(message_id, args, attribute, locale_code, use_isolating)
@@ -666,6 +697,7 @@ class IntegrityCache:
 
                 # TRUE CONFLICT: Different content for same key
                 self._audit("WRITE_ONCE_CONFLICT", key, existing)
+                self._write_once_conflicts += 1
 
                 if self._strict:
                     context = IntegrityContext(
@@ -747,8 +779,10 @@ class IntegrityCache:
                 "unhashable_skips": self._unhashable_skips,
                 "oversize_skips": self._oversize_skips,
                 "error_bloat_skips": self._error_bloat_skips,
+                "combined_weight_skips": self._combined_weight_skips,
                 "corruption_detected": self._corruption_detected,
                 "idempotent_writes": self._idempotent_writes,
+                "write_once_conflicts": self._write_once_conflicts,
                 "sequence": self._sequence,
                 "write_once": self._write_once,
                 "strict": self._strict,
@@ -1074,6 +1108,24 @@ class IntegrityCache:
         """Number of benign concurrent writes with identical content. Thread-safe."""
         with self._lock:
             return self._idempotent_writes
+
+    @property
+    def error_bloat_skips(self) -> int:
+        """Number of puts skipped due to excess error count. Thread-safe."""
+        with self._lock:
+            return self._error_bloat_skips
+
+    @property
+    def combined_weight_skips(self) -> int:
+        """Number of puts skipped due to combined formatted+error weight. Thread-safe."""
+        with self._lock:
+            return self._combined_weight_skips
+
+    @property
+    def write_once_conflicts(self) -> int:
+        """Number of true write-once conflicts (different content, same key). Thread-safe."""
+        with self._lock:
+            return self._write_once_conflicts
 
     @property
     def write_once(self) -> bool:

@@ -981,7 +981,10 @@ class TestIntegrityCacheErrorBloatProtection:
         )
         cache.put("msg", None, None, "en", True, "x" * 100, errors)
         assert cache.size == 0
-        assert cache.get_stats()["error_bloat_skips"] == 1
+        # 10 errors pass the count check (10 <= 50), but combined weight
+        # (100 formatted + 10 * 200 per error = 2100) exceeds max_entry_weight=2000.
+        assert cache.get_stats()["combined_weight_skips"] == 1
+        assert cache.get_stats()["error_bloat_skips"] == 0
 
     def test_put_accepts_reasonable_error_collections(self) -> None:
         """put() caches results with error counts and weights within limits."""

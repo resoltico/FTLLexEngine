@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.139.0"
+version: "0.140.0"
 domain: CHANGELOG
 updated: "2026-02-26"
 route:
@@ -14,6 +14,71 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.140.0] - 2026-02-26
+
+### Fixed
+
+- **`localization/orchestrator.py` `FluentLocalization.format_pattern`: strict mode not enforced on
+  two early-return paths** (DEFECT-ORCHESTRATOR-STRICT-ENFORCEMENT-001):
+  - `format_pattern` validated two conditions before entering the main resolution path — (1) that
+    `args` is a `Mapping` or `None` via `_check_mapping_arg`, and (2) that `attribute` is `str` or
+    `None` — and returned `(FALLBACK_INVALID, tuple(errors))` on failure for both; neither path
+    checked `self._strict`, so a `FluentLocalization(strict=True)` instance silently returned a
+    fallback value instead of raising `FormattingIntegrityError`; this violated the architecture
+    invariant: "When `strict=True`, NO formatting operation returns a fallback value"
+  - `FluentBundle._format_pattern_impl` handles the equivalent validation paths correctly — all
+    early returns check `self._strict` before returning; the `FluentLocalization` paths were
+    inconsistent with this contract
+  - Added `if self._strict: self._raise_strict_error(...)` before both early returns, using
+    `errors[-1]` (the error appended by `_check_mapping_arg`) for the invalid-args path and a
+    locally constructed `FrozenFluentError` for the invalid-attribute path; the fix is structurally
+    identical to the existing strict-mode enforcement in `_format_pattern_impl`
+  - Location: `localization/orchestrator.py` `FluentLocalization.format_pattern` (lines guarding
+    `_check_mapping_arg` failure and non-`str` attribute)
+
+- **`runtime/cache.py` `IntegrityCache`: four defects corrected in `IntegrityCache`**
+  (DEFECT-CACHE-OBSERVABILITY-001 through DEFECT-CACHE-OBSERVABILITY-004):
+
+  - **DEFECT-CACHE-OBSERVABILITY-001 — `write_once_conflicts` counter missing**: True write-once
+    violations (different content attempted for an existing key under `write_once=True`) were
+    silently rejected in non-strict mode with only an audit log entry and no counter; production
+    deployments without audit logging had no observable signal for data races; added
+    `_write_once_conflicts` counter, incremented unconditionally for true conflicts before the
+    `strict` branch — strict mode raises `WriteConflictError` AND increments, non-strict mode
+    silently rejects AND increments; exposed as `get_stats()["write_once_conflicts"]` and
+    `cache.write_once_conflicts` property; the `FluentLocalization.get_cache_stats()` aggregates
+    this counter across all bundles
+
+  - **DEFECT-CACHE-OBSERVABILITY-002 — `HashableValue` comment was incorrect**: line-164 comment
+    stated "Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged" —
+    factually wrong; `_make_hashable()` never returns these types directly; all are converted to
+    type-tagged tuples (e.g., `Decimal("1.5")` → `("__decimal__", "1.5")`); the primitives appear
+    in the `HashableValue` union because tagged tuples contain them as inner elements (the union is
+    recursive); corrected to accurately describe type-tagging semantics and explain why primitives
+    appear in the union
+
+  - **DEFECT-CACHE-OBSERVABILITY-003 — class docstring memory formula was stale**: `IntegrityCache`
+    class docstring stated `"Weight is calculated as: len(formatted_str) + (len(errors) * 200)"` —
+    the static `200` coefficient was removed in a prior version when dynamic weight calculation via
+    `_estimate_error_weight()` was introduced; corrected to `"len(formatted_str) +
+    sum(_estimate_error_weight(e) for e in errors)"` with a description of the function's scope
+
+  - **DEFECT-CACHE-OBSERVABILITY-004 — `_error_bloat_skips` conflated two distinct skip causes**:
+    `put()` has three independent weight guards; check 2 (`len(errors) > max_errors_per_entry`) and
+    check 3 (`total_weight > max_entry_weight`) both incremented `_error_bloat_skips`; high
+    `_error_bloat_skips` was ambiguous — it could indicate too many errors (pointing at error
+    diagnostic tuning) or a long formatted string combined with moderate errors (pointing at message
+    length); split into two counters: `_error_bloat_skips` for check 2 (error count exceeded) and
+    `_combined_weight_skips` for check 3 (combined formatted+error weight exceeded); both exposed
+    via `get_stats()` and dedicated properties; `FluentLocalization.get_cache_stats()` aggregates
+    both; four pre-existing tests that asserted `error_bloat_skips == 1` for scenarios where check 3
+    fired (combined weight) corrected to assert `combined_weight_skips == 1`
+
+  - **Missing properties added**: `error_bloat_skips`, `combined_weight_skips`, and
+    `write_once_conflicts` were counter slots with no public property accessor, inconsistent with all
+    other counter fields (`hits`, `misses`, `oversize_skips`, `corruption_detected`,
+    `idempotent_writes`); all three properties added
 
 ## [0.139.0] - 2026-02-26
 
@@ -5083,6 +5148,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.140.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.140.0
 [0.139.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.139.0
 [0.138.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.138.0
 [0.137.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.137.0

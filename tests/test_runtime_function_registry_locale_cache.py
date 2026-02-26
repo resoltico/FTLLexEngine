@@ -203,10 +203,12 @@ class TestFormatCacheHitRate:
             "max_entry_weight",
             "oversize_skips",
             "error_bloat_skips",
+            "combined_weight_skips",
             "max_errors_per_entry",
             # IntegrityCache-specific keys
             "corruption_detected",
             "idempotent_writes",
+            "write_once_conflicts",
             "sequence",
             "write_once",
             "strict",
@@ -225,10 +227,12 @@ class TestFormatCacheHitRate:
         assert isinstance(stats["max_entry_weight"], int)
         assert isinstance(stats["oversize_skips"], int)
         assert isinstance(stats["error_bloat_skips"], int)
+        assert isinstance(stats["combined_weight_skips"], int)
         assert isinstance(stats["max_errors_per_entry"], int)
         # IntegrityCache-specific types
         assert isinstance(stats["corruption_detected"], int)
         assert isinstance(stats["idempotent_writes"], int)
+        assert isinstance(stats["write_once_conflicts"], int)
         assert isinstance(stats["sequence"], int)
         assert isinstance(stats["write_once"], bool)
         assert isinstance(stats["strict"], bool)

@@ -468,6 +468,44 @@ class TestStrictMode:
         assert ctx.actual == "<1 error>"
         assert ctx.expected == "<no errors>"
 
+    def test_strict_raises_on_invalid_args_type(self) -> None:
+        """Strict mode raises FormattingIntegrityError for invalid args type."""
+        l10n = FluentLocalization(["en"], strict=True)
+        l10n.add_resource("en", "hello = Hello\n")
+
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_pattern("hello", "not-a-mapping")  # type: ignore[arg-type]
+
+        err = exc_info.value
+        assert len(err.fluent_errors) == 1
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.component == "localization"
+
+    def test_strict_raises_on_invalid_attribute_type(self) -> None:
+        """Strict mode raises FormattingIntegrityError for invalid attribute type."""
+        l10n = FluentLocalization(["en"], strict=True)
+        l10n.add_resource("en", "hello = Hello\n")
+
+        with pytest.raises(FormattingIntegrityError) as exc_info:
+            l10n.format_pattern(
+                "hello", attribute=42  # type: ignore[arg-type]
+            )
+
+        err = exc_info.value
+        assert len(err.fluent_errors) == 1
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.component == "localization"
+
+    def test_non_strict_returns_fallback_on_invalid_args_type(self) -> None:
+        """Non-strict mode returns fallback for invalid args type without raising."""
+        l10n = FluentLocalization(["en"], strict=False)
+        l10n.add_resource("en", "hello = Hello\n")
+
+        _, errors = l10n.format_pattern("hello", "not-a-mapping")  # type: ignore[arg-type]
+        assert len(errors) == 1
+
     def test_strict_non_strict_returns_fallback(self) -> None:
         """Non-strict mode returns fallback value without raising."""
         l10n = FluentLocalization(["en"], strict=False)

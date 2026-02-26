@@ -560,8 +560,13 @@ class FluentLocalization:
     ) -> NoReturn:
         """Raise FormattingIntegrityError for strict mode.
 
-        Called from _handle_message_not_found which produces exactly one
-        error (message not found or invalid message ID).
+        Called from three single-error paths:
+          - format_pattern: invalid args type (not a Mapping or None)
+          - format_pattern: invalid attribute type (not str or None)
+          - _handle_message_not_found: message not found or invalid message ID
+
+        Each call site produces exactly one error, matching the single-error
+        signature. The single-error constraint is enforced by the type signature.
 
         Args:
             message_id: The message ID that failed
@@ -671,6 +676,8 @@ class FluentLocalization:
         errors: list[FrozenFluentError] = []
 
         if not self._check_mapping_arg(args, errors):
+            if self._strict:
+                self._raise_strict_error(message_id, FALLBACK_INVALID, errors[-1])
             return (FALLBACK_INVALID, tuple(errors))
 
         # Validate attribute is None or a string
@@ -680,11 +687,12 @@ class FluentLocalization:
                 code=DiagnosticCode.INVALID_ARGUMENT,
                 message=f"Invalid attribute type: expected str or None, got {attr_type}",
             )
-            errors.append(
-                FrozenFluentError(
-                    str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
-                )
+            attr_error = FrozenFluentError(
+                str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
             )
+            errors.append(attr_error)
+            if self._strict:
+                self._raise_strict_error(message_id, FALLBACK_INVALID, attr_error)
             return (FALLBACK_INVALID, tuple(errors))
 
         for locale in self._locales:
@@ -1018,8 +1026,10 @@ class FluentLocalization:
             total_unhashable = 0
             total_oversize = 0
             total_error_bloat = 0
+            total_combined_weight = 0
             total_corruption = 0
             total_idempotent = 0
+            total_write_once_conflicts = 0
             total_sequence = 0
             total_audit_entries = 0
             # Boolean fields: representative from first bundle (all share same CacheConfig)
@@ -1040,8 +1050,10 @@ class FluentLocalization:
                     total_unhashable += stats["unhashable_skips"]
                     total_oversize += stats["oversize_skips"]
                     total_error_bloat += stats["error_bloat_skips"]
+                    total_combined_weight += stats["combined_weight_skips"]
                     total_corruption += stats["corruption_detected"]
                     total_idempotent += stats["idempotent_writes"]
+                    total_write_once_conflicts += stats["write_once_conflicts"]
                     total_sequence += stats["sequence"]
                     total_audit_entries += stats["audit_entries"]
                     if is_first:
@@ -1066,8 +1078,10 @@ class FluentLocalization:
                 "unhashable_skips": total_unhashable,
                 "oversize_skips": total_oversize,
                 "error_bloat_skips": total_error_bloat,
+                "combined_weight_skips": total_combined_weight,
                 "corruption_detected": total_corruption,
                 "idempotent_writes": total_idempotent,
+                "write_once_conflicts": total_write_once_conflicts,
                 "sequence": total_sequence,
                 "write_once": first_write_once,
                 "strict": first_strict,

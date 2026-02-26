@@ -11,6 +11,8 @@ Financial-grade integrity verification tests:
 - _estimate_error_weight with context, diagnostic, and resolution path
 - IntegrityCacheEntry.verify() defense-in-depth against corrupted errors
 - Property getters (corruption_detected, write_once, strict)
+- write_once_conflicts counter (true conflicts, both strict and non-strict)
+- combined_weight_skips counter (distinct from oversize_skips and error_bloat_skips)
 """
 
 from __future__ import annotations
@@ -269,6 +271,17 @@ class TestWriteOnceStrictMode:
         assert entry is not None
         assert entry.formatted == "Original"
 
+    def test_write_once_conflict_counter_incremented_before_raise(self) -> None:
+        """write_once_conflicts is incremented before WriteConflictError is raised."""
+        cache = IntegrityCache(write_once=True, strict=True)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+
+        with contextlib.suppress(WriteConflictError):
+            cache.put("msg", None, None, "en", True, "World", ())
+
+        # Counter must be observable even after an exception was raised
+        assert cache.write_once_conflicts == 1
+
 
 class TestWriteOnceNonStrictMode:
     """Test write-once semantics in non-strict mode."""
@@ -298,6 +311,46 @@ class TestWriteOnceNonStrictMode:
         assert entry1.formatted == "First"
         assert entry2 is not None
         assert entry2.formatted == "Second"
+
+    def test_write_once_conflict_counter_incremented(self) -> None:
+        """True write-once conflicts increment write_once_conflicts counter."""
+        cache = IntegrityCache(write_once=True, strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+
+        # Different content for same key = true conflict
+        cache.put("msg", None, None, "en", True, "World", ())
+
+        stats = cache.get_stats()
+        assert stats["write_once_conflicts"] == 1
+
+    def test_write_once_conflict_counter_multiple(self) -> None:
+        """write_once_conflicts accumulates across repeated true conflicts."""
+        cache = IntegrityCache(write_once=True, strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+
+        for i in range(5):
+            cache.put("msg", None, None, "en", True, f"World-{i}", ())
+
+        assert cache.write_once_conflicts == 5
+
+    def test_write_once_conflict_not_incremented_for_idempotent(self) -> None:
+        """Idempotent writes do NOT increment write_once_conflicts."""
+        cache = IntegrityCache(write_once=True, strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", True, "Hello", ())  # Idempotent
+
+        assert cache.write_once_conflicts == 0
+        assert cache.idempotent_writes == 1
+
+    def test_write_once_conflict_counter_preserved_on_clear(self) -> None:
+        """clear() preserves cumulative write_once_conflicts counter."""
+        cache = IntegrityCache(write_once=True, strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", True, "World", ())  # Conflict
+
+        assert cache.write_once_conflicts == 1
+        cache.clear()
+        assert cache.write_once_conflicts == 1
 
 
 class TestWriteOnceDisabled:
@@ -575,6 +628,8 @@ class TestIntegrityStats:
         assert "strict" in stats
         assert "audit_enabled" in stats
         assert "audit_entries" in stats
+        assert "write_once_conflicts" in stats
+        assert "combined_weight_skips" in stats
 
         # Verify types
         assert isinstance(stats["corruption_detected"], int)
@@ -583,11 +638,15 @@ class TestIntegrityStats:
         assert isinstance(stats["strict"], bool)
         assert isinstance(stats["audit_enabled"], bool)
         assert isinstance(stats["audit_entries"], int)
+        assert isinstance(stats["write_once_conflicts"], int)
+        assert isinstance(stats["combined_weight_skips"], int)
 
         # Verify values reflect configuration
         assert stats["write_once"] is True
         assert stats["strict"] is True
         assert stats["audit_enabled"] is True
+        assert stats["write_once_conflicts"] == 0
+        assert stats["combined_weight_skips"] == 0
 
     def test_corruption_counter_accumulates(self) -> None:
         """corruption_detected counter accumulates across multiple corruptions."""
@@ -1190,6 +1249,47 @@ class TestIntegrityCachePropertyGetters:
         cache.get("msg3", None, None, "en", True)
         assert cache.corruption_detected == 3
 
+    def test_error_bloat_skips_property(self) -> None:
+        """error_bloat_skips property reflects excess-error-count skip count."""
+        cache = IntegrityCache(strict=False, max_errors_per_entry=2)
+        errors = tuple(
+            FrozenFluentError(f"err-{i}", ErrorCategory.REFERENCE) for i in range(3)
+        )
+        assert cache.error_bloat_skips == 0
+
+        cache.put("msg", None, None, "en", True, "Hello", errors)
+        assert cache.error_bloat_skips == 1
+
+    def test_combined_weight_skips_property_initial_zero(self) -> None:
+        """combined_weight_skips property starts at zero."""
+        cache = IntegrityCache(strict=False)
+        assert cache.combined_weight_skips == 0
+
+    def test_combined_weight_skips_property_incremented(self) -> None:
+        """combined_weight_skips property reflects combined-weight skip count."""
+        # max_entry_weight=200: formatted (100 chars) passes check 1,
+        # but combined with error overhead (100 base + 150 msg = 250), total=350 fails.
+        cache = IntegrityCache(strict=False, max_entry_weight=200)
+        error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
+        assert cache.combined_weight_skips == 0
+
+        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+        assert cache.combined_weight_skips == 1
+
+    def test_write_once_conflicts_property_initial_zero(self) -> None:
+        """write_once_conflicts property starts at zero."""
+        cache = IntegrityCache(write_once=True, strict=False)
+        assert cache.write_once_conflicts == 0
+
+    def test_write_once_conflicts_property_incremented(self) -> None:
+        """write_once_conflicts property reflects true conflict count."""
+        cache = IntegrityCache(write_once=True, strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+        assert cache.write_once_conflicts == 0
+
+        cache.put("msg", None, None, "en", True, "World", ())
+        assert cache.write_once_conflicts == 1
+
 
 class TestIntegrityCacheEdgeCases:
     """Additional edge cases for complete coverage."""
@@ -1601,3 +1701,75 @@ class TestCacheEntrySizeLimit:
         event(f"weight_size={size}")
         cache = IntegrityCache(strict=False, max_entry_weight=size)
         assert cache.max_entry_weight == size
+
+    def test_combined_weight_skips_counter_incremented(self) -> None:
+        """Entries skipped due to combined weight increment combined_weight_skips.
+
+        Scenario: formatted string (100 chars) passes check 1 (len <= max_entry_weight=200).
+        Error overhead = 100 (base) + 150 (message) = 250. Total = 350 > 200 fails check 3.
+        """
+        cache = IntegrityCache(strict=False, max_entry_weight=200)
+        error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
+
+        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+
+        stats = cache.get_stats()
+        assert stats["combined_weight_skips"] == 1
+        assert stats["oversize_skips"] == 0
+        assert stats["error_bloat_skips"] == 0
+        assert stats["size"] == 0
+
+    def test_combined_weight_skips_distinct_from_oversize_skips(self) -> None:
+        """oversize_skips and combined_weight_skips are separate, distinct counters."""
+        cache = IntegrityCache(strict=False, max_entry_weight=200)
+        heavy_error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
+
+        # Check 1 (oversize): formatted string alone exceeds max_entry_weight
+        cache.put("over-msg", None, None, "en", True, "x" * 201, ())
+
+        # Check 3 (combined_weight): formatted OK, but combined total exceeds limit
+        cache.put("combined-msg", None, None, "en", True, "x" * 100, (heavy_error,))
+
+        stats = cache.get_stats()
+        assert stats["oversize_skips"] == 1
+        assert stats["combined_weight_skips"] == 1
+
+    def test_combined_weight_skips_distinct_from_error_bloat_skips(self) -> None:
+        """error_bloat_skips and combined_weight_skips are separate, distinct counters."""
+        cache = IntegrityCache(strict=False, max_entry_weight=200, max_errors_per_entry=2)
+        heavy_error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
+
+        # Check 2 (error_bloat): too many errors by count
+        many_errors = tuple(
+            FrozenFluentError(f"e-{i}", ErrorCategory.REFERENCE) for i in range(3)
+        )
+        cache.put("bloat-msg", None, None, "en", True, "Hello", many_errors)
+
+        # Check 3 (combined_weight): error count OK (1 <= 2), combined weight fails
+        cache.put("combined-msg", None, None, "en", True, "x" * 100, (heavy_error,))
+
+        stats = cache.get_stats()
+        assert stats["error_bloat_skips"] == 1
+        assert stats["combined_weight_skips"] == 1
+
+    def test_combined_weight_skips_preserved_on_clear(self) -> None:
+        """clear() preserves cumulative combined_weight_skips counter."""
+        cache = IntegrityCache(strict=False, max_entry_weight=200)
+        error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
+
+        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+        assert cache.combined_weight_skips == 1
+
+        cache.clear()
+        assert cache.combined_weight_skips == 1
+
+    def test_get_stats_includes_combined_weight_skips(self) -> None:
+        """get_stats() reports combined_weight_skips alongside related skip counters."""
+        cache = IntegrityCache(strict=False, max_entry_weight=200)
+        error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
+
+        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+
+        stats = cache.get_stats()
+        assert "combined_weight_skips" in stats
+        assert stats["combined_weight_skips"] == 1

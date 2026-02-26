@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.137.0"
+version: "0.140.0"
 domain: ERRORS
-updated: "2026-02-25"
+updated: "2026-02-26"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ImmutabilityViolationError, DataIntegrityError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic]
   questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?"]
@@ -279,7 +279,7 @@ class FormattingIntegrityError(DataIntegrityError):
 | `message_id` | `str` | N | Message ID that failed to format. |
 
 ### Constraints
-- Purpose: Raised by `FluentBundle.format_pattern()` in strict mode when formatting errors occur.
+- Purpose: Raised by `FluentBundle.format_pattern()` and `FluentLocalization.format_pattern()` / `format_value()` in strict mode when formatting errors occur.
 - Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
 - Sealed: `@final` decorator prevents subclassing.
 - Financial: Financial applications require fail-fast behavior. Silent fallback values are unacceptable when formatting monetary amounts.
