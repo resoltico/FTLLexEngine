@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.139.0"
 domain: "architecture"
-updated: "2026-02-24"
+updated: "2026-02-26"
 route: "/docs/data-integrity"
 ---
 
@@ -10,17 +10,21 @@ route: "/docs/data-integrity"
 
 This document describes the architectural design for data integrity in FTLLexEngine.
 
-## Design Principle: Fail-Fast Data Safety
+## Design Principle: Configurable Data Safety
 
-For financial applications, silent data corruption is catastrophic. The system is designed to **fail loudly and immediately** rather than propagate incorrect data.
+The system separates two distinct safety concerns: formatting error handling and cache integrity.
 
-| Failure Mode | Non-Financial App | Financial App |
-|:-------------|:------------------|:--------------|
-| Missing translation | Show fallback | Unacceptable |
-| Cache corruption | Return stale data | Unacceptable |
-| Error mutation | Log and continue | Unacceptable |
+**Formatting error handling** is opt-in via `strict=False` (default) or `strict=True`. The Fluent specification defines fallback behavior — returning a result with a placeholder like `{$amount}` alongside errors as data. This is intentional. The default is spec-compliant; strict mode is the financial-grade upgrade.
 
-**Rationale:** A bank displaying "$1,000" when the actual value is "$10,000" due to a silent fallback is worse than displaying an error. Financial applications must know immediately when something is wrong.
+**Cache integrity** is always-on by default (`integrity_strict=True`). Cache corruption is a system-level failure independent of how an application handles formatting errors.
+
+| Failure Mode | Default Behavior | Strict Mode (`strict=True`) |
+|:-------------|:-----------------|:----------------------------|
+| Missing translation | Return placeholder `{$var}` + error | Raise `FormattingIntegrityError` |
+| Cache corruption | Raise `CacheCorruptionError` (always) | Raise `CacheCorruptionError` |
+| Error mutation | Immutable `FrozenFluentError` (always) | Immutable `FrozenFluentError` |
+
+**Rationale for strict mode:** A bank displaying `{$amount}` when a variable is missing may display no financial figure at all — which is worse than an explicit error. Financial applications that cannot tolerate any silent fallback should enable `strict=True` to guarantee that every successful `format_pattern()` return is a correct, fully-resolved result.
 
 ## Architecture Overview
 
@@ -264,10 +268,10 @@ DataIntegrityError (base - immutable after construction)
 
 | Component | Lock Type | Rationale |
 |:----------|:----------|:----------|
-| `FluentBundle._rwlock` | Custom `RWLock` | High-concurrency format operations; read-heavy; writer-preference |
+| `FluentBundle._rwlock` | Custom `RWLock` | High-concurrency format operations; read-heavy; writer-preference; reentrant reads supported (custom function re-entry); write reentrancy and downgrade prohibited |
 | `FluentLocalization._lock` | Custom `RWLock` | Concurrent format reads; exclusive writes for add_resource/add_function |
 | `IntegrityCache._lock` | `threading.Lock` | Short operations; no reentrant acquisition in the call path; `RLock` thread-tracking overhead eliminated |
-| `LocaleContext._cache_lock` | `threading.RLock` | Class-level LRU cache; infrequent writes |
+| `LocaleContext._cache_lock` | `threading.Lock` | Class-level LRU cache; two sequential (never nested) acquisitions; `RLock` thread-tracking overhead unnecessary |
 
 ### Context Manager Semantics
 

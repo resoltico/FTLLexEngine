@@ -77,32 +77,6 @@ class TestRWLockMutualExclusionProperties:
         assert acquired
         event(f"reentry_depth={reentry_depth}")
 
-    @given(reentry_depth=st.integers(min_value=1, max_value=10))
-    @settings(max_examples=50, deadline=None)
-    def test_write_reentrancy_depth_preserved(self, reentry_depth: int) -> None:
-        """Property: Write lock can be acquired N times by same thread.
-
-        For any N >= 1, same thread can acquire write lock N times
-        and must release N times before lock is fully released.
-        """
-        lock = RWLock()
-
-        def acquire_n_times(depth: int) -> None:
-            if depth == 0:
-                return
-            with lock.write():
-                acquire_n_times(depth - 1)
-
-        # Acquire recursively
-        acquire_n_times(reentry_depth)
-
-        # Lock should be fully released - new writer can acquire
-        acquired = False
-        with lock.write():
-            acquired = True
-        assert acquired
-        event(f"reentry_depth={reentry_depth}")
-
     @given(
         initial_readers=st.integers(min_value=0, max_value=5),
         subsequent_readers=st.integers(min_value=0, max_value=5),
@@ -208,52 +182,6 @@ class TestRWLockBalanceProperties:
             pass
         event(f"op_count={len(balanced_ops)}")
 
-    @given(
-        operations=st.lists(
-            st.sampled_from(["acquire_write", "release_write"]),
-            min_size=2,
-            max_size=20,
-        )
-    )
-    @settings(max_examples=100, deadline=None)
-    def test_balanced_write_operations_maintain_consistency(
-        self, operations: list[str]
-    ) -> None:
-        """Property: Balanced write acquire/release sequences maintain consistency.
-
-        For any sequence of balanced write acquire/release operations,
-        the lock should return to unlocked state.
-        """
-        lock = RWLock()
-
-        # Balance the operations
-        balance = 0
-        balanced_ops = []
-        for op in operations:
-            if op == "acquire_write":
-                balanced_ops.append(op)
-                balance += 1
-            elif op == "release_write" and balance > 0:
-                balanced_ops.append(op)
-                balance -= 1
-
-        # Add releases to balance
-        balanced_ops.extend(["release_write"] * balance)
-
-        if not balanced_ops:
-            return
-
-        # Execute balanced operations
-        for op in balanced_ops:
-            if op == "acquire_write":
-                lock._acquire_write()
-            elif op == "release_write":
-                lock._release_write()
-
-        # Lock should be free
-        with lock.write():
-            pass
-        event(f"op_count={len(balanced_ops)}")
 
 
 @pytest.mark.fuzz
@@ -294,29 +222,21 @@ class TestRWLockContextManagerProperties:
 
     @given(
         exception_type=st.sampled_from([ValueError, RuntimeError, KeyError]),
-        reentry_depth=st.integers(min_value=0, max_value=5),
     )
     @settings(max_examples=50, deadline=None)
     def test_write_lock_released_on_exception(
-        self, exception_type: type[Exception], reentry_depth: int
+        self, exception_type: type[Exception]
     ) -> None:
-        """Property: Write lock always released on exception, regardless of reentry depth.
+        """Property: Write lock is released when exception propagates.
 
-        For any exception type and any reentry depth, the lock must be
-        fully released when exception propagates.
+        For any exception type, the write lock must be fully released
+        when an exception propagates through the lock context manager.
         """
         lock = RWLock()
 
-        def acquire_with_exception(depth: int) -> None:
-            if depth == 0:
-                msg = "Test exception"
-                raise exception_type(msg)
-            with lock.write():
-                acquire_with_exception(depth - 1)
-
-        # Should raise exception but release all locks
-        with contextlib.suppress(exception_type):
-            acquire_with_exception(reentry_depth)
+        with contextlib.suppress(exception_type), lock.write():
+            msg = "Test exception"
+            raise exception_type(msg)
 
         # Lock should be free
         with lock.write():

@@ -10,11 +10,11 @@ Targets: ftllexengine.runtime.rwlock.RWLock
 
 Concern boundary: This fuzzer stress-tests the RWLock concurrency primitive
 directly. Tests reader/writer mutual exclusion, reader concurrency, writer
-preference, reentrant readers, reentrant writers, write-to-read downgrading,
-read-to-write upgrade rejection, timeout behavior, negative timeout rejection,
-release-without-acquire rejection, zero-timeout non-blocking paths, and
-deadlock detection. Distinct from runtime/cache fuzzers which exercise
-locking only as a side effect.
+preference, reentrant readers, read-to-write upgrade rejection,
+write-to-write reentry rejection, write-to-read downgrade rejection,
+timeout behavior, negative timeout rejection, release-without-acquire
+rejection, zero-timeout non-blocking paths, and deadlock detection.
+Distinct from runtime/cache fuzzers which exercise locking only as a side effect.
 
 Metrics:
 - Pattern coverage (reader_writer_exclusion, reentrant_reads, etc.)
@@ -108,18 +108,17 @@ _THREAD_TIMEOUT = 2.0
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     # Cheap: single-threaded, no thread creation, sub-0.02ms
     ("reentrant_reads", 5),
-    ("reentrant_writes", 5),
+    ("write_reentry_rejection", 4),
+    ("downgrade_rejection", 4),
     ("negative_timeout", 4),
     ("release_without_acquire", 4),
     ("upgrade_rejection", 8),
     ("zero_timeout_nonblocking", 5),
-    ("write_to_read_downgrade", 10),
     # Medium: multi-threaded but bounded
     ("rapid_lock_cycling", 8),
     ("cross_thread_handoff", 6),
     ("concurrent_readers", 12),
     ("timeout_acquisition", 8),
-    ("downgrade_then_contention", 8),
     # Expensive: multi-threaded with sleeps, barriers, contention
     ("reader_writer_exclusion", 15),
     ("writer_preference", 10),
@@ -376,46 +375,6 @@ def _pattern_reentrant_reads(fdp: atheris.FuzzedDataProvider) -> None:
         raise LockFuzzError(msg)
 
 
-def _pattern_reentrant_writes(fdp: atheris.FuzzedDataProvider) -> None:
-    """Same thread can acquire write lock multiple times."""
-    lock = RWLock()
-    depth = fdp.ConsumeIntInRange(2, 15)
-
-    acquired_depths: list[int] = []
-
-    def acquire_recursively(remaining: int) -> None:
-        with lock.write():
-            acquired_depths.append(remaining)
-            if remaining > 0:
-                acquire_recursively(remaining - 1)
-
-    acquire_recursively(depth)
-
-    if len(acquired_depths) != depth + 1:
-        msg = f"Reentrant writes failed: expected {depth + 1} depths, got {len(acquired_depths)}"
-        raise LockFuzzError(msg)
-
-
-def _pattern_write_to_read_downgrade(fdp: atheris.FuzzedDataProvider) -> None:
-    """Writer can acquire read locks; they persist after write release."""
-    lock = RWLock()
-    read_locks_held = fdp.ConsumeIntInRange(1, 5)
-
-    with lock.write():
-        # Acquire read locks while holding write
-        for _ in range(read_locks_held):
-            lock._acquire_read()
-
-    # After write released, the read locks should have converted to regular reads.
-    # Release the converted reads.
-    for _ in range(read_locks_held):
-        lock._release_read()
-
-    # Lock should be fully free now -- verify by acquiring write
-    with lock.write():
-        pass
-
-
 def _pattern_upgrade_rejection(_fdp: atheris.FuzzedDataProvider) -> None:
     """Read-to-write upgrade must raise RuntimeError."""
     lock = RWLock()
@@ -431,6 +390,42 @@ def _pattern_upgrade_rejection(_fdp: atheris.FuzzedDataProvider) -> None:
 
     if not upgrade_rejected:
         msg = "Read-to-write upgrade was NOT rejected"
+        raise LockFuzzError(msg)
+
+
+def _pattern_write_reentry_rejection(_fdp: atheris.FuzzedDataProvider) -> None:
+    """Write-to-write reentry must raise RuntimeError."""
+    lock = RWLock()
+    reentry_rejected = False
+
+    with lock.write():
+        try:
+            lock._acquire_write()
+            # If we get here, reentry was not rejected -- invariant breach
+            lock._release_write()
+        except RuntimeError:
+            reentry_rejected = True
+
+    if not reentry_rejected:
+        msg = "Write-to-write reentry was NOT rejected"
+        raise LockFuzzError(msg)
+
+
+def _pattern_downgrade_rejection(_fdp: atheris.FuzzedDataProvider) -> None:
+    """Write-to-read downgrade must raise RuntimeError."""
+    lock = RWLock()
+    downgrade_rejected = False
+
+    with lock.write():
+        try:
+            lock._acquire_read()
+            # If we get here, downgrade was not rejected -- invariant breach
+            lock._release_read()
+        except RuntimeError:
+            downgrade_rejected = True
+
+    if not downgrade_rejected:
+        msg = "Write-to-read downgrade was NOT rejected"
         raise LockFuzzError(msg)
 
 
@@ -475,8 +470,10 @@ def _pattern_rapid_lock_cycling(fdp: atheris.FuzzedDataProvider) -> None:
         raise LockFuzzError(msg)
 
 
-def _pattern_mixed_contention(fdp: atheris.FuzzedDataProvider) -> None:
-    """Mixed operations: reads, writes, reentrancy, downgrade, upgrade attempt."""
+def _pattern_mixed_contention(  # noqa: PLR0915 - 6 distinct op types; each prohibition case requires try/except + violation recording
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Mixed operations: reads, writes, reentrancy, prohibition checks, upgrade attempt."""
     lock = RWLock()
     violations: list[str] = []
     violations_lock = threading.Lock()
@@ -503,19 +500,31 @@ def _pattern_mixed_contention(fdp: atheris.FuzzedDataProvider) -> None:
                         with lock.write():
                             time.sleep(0.0001)
                     case 2:
-                        # Reentrant read
+                        # Reentrant read (permitted)
                         with lock.read(), lock.read():
                             pass
                     case 3:
-                        # Reentrant write
-                        with lock.write(), lock.write():
-                            pass
+                        # Write-to-write reentry must raise RuntimeError
+                        with lock.write():
+                            try:
+                                lock._acquire_write()
+                                lock._release_write()
+                                with violations_lock:
+                                    violations.append("Write reentry not rejected")
+                            except RuntimeError:
+                                pass
                     case 4:
-                        # Write-to-read downgrade
-                        with lock.write(), lock.read():
-                            pass
+                        # Write-to-read downgrade must raise RuntimeError
+                        with lock.write():
+                            try:
+                                lock._acquire_read()
+                                lock._release_read()
+                                with violations_lock:
+                                    violations.append("Downgrade not rejected")
+                            except RuntimeError:
+                                pass
                     case _:
-                        # Upgrade attempt (should be rejected)
+                        # Read-to-write upgrade must raise RuntimeError
                         try:
                             with lock.read():
                                 lock._acquire_write()
@@ -769,72 +778,21 @@ def _pattern_zero_timeout_nonblocking(fdp: atheris.FuzzedDataProvider) -> None:
         raise LockFuzzError(msg)
 
 
-def _pattern_downgrade_then_contention(fdp: atheris.FuzzedDataProvider) -> None:
-    """Write-to-read downgrade under contention from other threads."""
-    lock = RWLock()
-    read_count = fdp.ConsumeIntInRange(1, 5)
-    num_contenders = fdp.ConsumeIntInRange(2, 4)
-    contender_results: list[str] = []
-    results_lock = threading.Lock()
-    _track_threads(num_contenders)
-
-    # Main thread: acquire write, then acquire reads, then release write
-    with lock.write():
-        for _ in range(read_count):
-            lock._acquire_read()
-
-    # Now the main thread holds read_count converted read locks.
-    # Other threads should be able to read but not write.
-
-    def contender(cid: int) -> None:
-        try:
-            # Attempt write -- should block until all reads released
-            with lock.write(timeout=0.5), results_lock:
-                contender_results.append(f"W{cid}")
-        except TimeoutError:
-            with results_lock:
-                contender_results.append(f"T{cid}")
-
-    threads = [
-        threading.Thread(target=contender, args=(i,), daemon=True)
-        for i in range(num_contenders)
-    ]
-
-    for t in threads:
-        t.start()
-
-    # Give contenders time to queue up, then release reads
-    time.sleep(0.01)
-    for _ in range(read_count):
-        lock._release_read()
-
-    if not _join_threads(threads):
-        _domain.deadlocks_detected += 1
-        return
-
-    # At least one contender should have acquired write (after reads released)
-    write_successes = sum(1 for r in contender_results if r.startswith("W"))
-    if write_successes == 0 and num_contenders > 0:
-        msg = f"No contender acquired write after downgrade release ({contender_results})"
-        raise LockFuzzError(msg)
-
-
 # --- Pattern dispatch ---
 
 
 _PATTERN_DISPATCH: dict[str, Any] = {
     "reentrant_reads": _pattern_reentrant_reads,
-    "reentrant_writes": _pattern_reentrant_writes,
+    "write_reentry_rejection": _pattern_write_reentry_rejection,
+    "downgrade_rejection": _pattern_downgrade_rejection,
     "negative_timeout": _pattern_negative_timeout,
     "release_without_acquire": _pattern_release_without_acquire,
     "upgrade_rejection": _pattern_upgrade_rejection,
     "zero_timeout_nonblocking": _pattern_zero_timeout_nonblocking,
-    "write_to_read_downgrade": _pattern_write_to_read_downgrade,
     "rapid_lock_cycling": _pattern_rapid_lock_cycling,
     "cross_thread_handoff": _pattern_cross_thread_handoff,
     "concurrent_readers": _pattern_concurrent_readers,
     "timeout_acquisition": _pattern_timeout_acquisition,
-    "downgrade_then_contention": _pattern_downgrade_then_contention,
     "reader_writer_exclusion": _pattern_reader_writer_exclusion,
     "writer_preference": _pattern_writer_preference,
     "reader_starvation": _pattern_reader_starvation,

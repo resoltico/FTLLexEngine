@@ -5,12 +5,12 @@ Tests verify:
 - Exclusive writer access
 - Writer preference (prevents starvation)
 - Reentrant read locks
-- Reentrant write locks
 - Read-to-write upgrade rejection
+- Write-to-write reentry rejection
+- Write-to-read downgrade rejection
 - Deadlock prevention
 - Thread safety
 - Error handling
-- Lock downgrading (write-to-read)
 """
 
 import threading
@@ -132,7 +132,7 @@ class TestRWLockBasics:
 
 
 class TestRWLockReentrancy:
-    """Test reentrant read lock behavior."""
+    """Test reentrant read lock behavior and lock acquisition prohibitions."""
 
     def test_same_thread_multiple_read_locks(self) -> None:
         """Same thread can acquire read lock multiple times (reentrant)."""
@@ -193,71 +193,6 @@ class TestRWLockReentrancy:
         assert "inner" in results
         assert results.count("simple") == 2
 
-    def test_same_thread_multiple_write_locks(self) -> None:
-        """Same thread can acquire write lock multiple times (reentrant)."""
-        lock = RWLock()
-        depth = 0
-
-        with lock.write():
-            depth += 1
-            with lock.write():
-                depth += 1
-                with lock.write():
-                    depth += 1
-
-        assert depth == 3
-
-    def test_reentrant_write_release_order(self) -> None:
-        """Reentrant write locks release in correct order."""
-        lock = RWLock()
-        release_order = []
-
-        with lock.write():
-            release_order.append("outer-enter")
-            with lock.write():
-                release_order.append("inner-enter")
-            release_order.append("inner-exit")
-        release_order.append("outer-exit")
-
-        assert release_order == ["outer-enter", "inner-enter", "inner-exit", "outer-exit"]
-
-    def test_reentrant_write_blocks_other_writers(self) -> None:
-        """Reentrant write locks still block other writers."""
-        lock = RWLock()
-        writer1_acquired = threading.Event()
-        writer2_blocked = threading.Event()
-        writer2_completed = threading.Event()
-
-        def writer1() -> None:
-            with lock.write():
-                writer1_acquired.set()
-                # Reentrant write
-                with lock.write():
-                    time.sleep(0.05)  # Hold both locks
-
-        def writer2() -> None:
-            writer1_acquired.wait()
-            writer2_blocked.set()
-            with lock.write():
-                writer2_completed.set()
-
-        thread1 = threading.Thread(target=writer1)
-        thread2 = threading.Thread(target=writer2)
-
-        thread1.start()
-        thread2.start()
-
-        # Verify writer2 is blocked
-        time.sleep(0.02)
-        assert writer2_blocked.is_set()
-        assert not writer2_completed.is_set()
-
-        thread1.join()
-        thread2.join()
-
-        # Writer2 completed after writer1 released
-        assert writer2_completed.is_set()
-
     def test_read_to_write_upgrade_rejected(self) -> None:
         """Read-to-write lock upgrade raises RuntimeError."""
         lock = RWLock()
@@ -276,6 +211,46 @@ class TestRWLockReentrancy:
             RuntimeError,
             match="Release read lock before acquiring write lock",
         ), lock.write():
+            pass
+
+    def test_write_to_write_reentry_rejected(self) -> None:
+        """Write-to-write reentry raises RuntimeError."""
+        lock = RWLock()
+
+        with lock.write(), pytest.raises(
+            RuntimeError,
+            match="Cannot acquire write lock: already holding write lock",
+        ), lock.write():
+            pass  # Should never reach here
+
+    def test_write_to_write_reentry_rejected_with_message(self) -> None:
+        """Write-to-write reentry error message includes guidance."""
+        lock = RWLock()
+
+        with lock.write(), pytest.raises(
+            RuntimeError,
+            match="Release the write lock before acquiring it again",
+        ), lock.write():
+            pass
+
+    def test_write_to_read_downgrade_rejected(self) -> None:
+        """Write-to-read downgrade raises RuntimeError."""
+        lock = RWLock()
+
+        with lock.write(), pytest.raises(
+            RuntimeError,
+            match="Cannot acquire read lock while holding write lock",
+        ), lock.read():
+            pass  # Should never reach here
+
+    def test_write_to_read_downgrade_rejected_with_message(self) -> None:
+        """Write-to-read downgrade error message includes guidance."""
+        lock = RWLock()
+
+        with lock.write(), pytest.raises(
+            RuntimeError,
+            match="Release the write lock before acquiring a read lock",
+        ), lock.read():
             pass
 
 

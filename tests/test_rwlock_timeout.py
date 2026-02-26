@@ -6,8 +6,7 @@ Tests verify:
 - Timeout of zero is non-blocking attempt
 - Negative timeout raises ValueError
 - None timeout preserves indefinite blocking
-- Reentrant acquisition ignores timeout (no waiting)
-- Lock downgrading ignores timeout (no waiting)
+- Reentrant read acquisition ignores timeout (no waiting)
 - TimeoutError does not corrupt internal state (_waiting_writers counter)
 - Property-based timeout invariants
 """
@@ -211,13 +210,6 @@ class TestWriteTimeout:
         with pytest.raises(ValueError, match="non-negative"), lock.write(timeout=-1.0):
             pass  # pragma: no cover
 
-    def test_write_timeout_reentrant_ignores_timeout(self) -> None:
-        """Reentrant write acquisition does not wait, timeout irrelevant."""
-        lock = RWLock()
-
-        with lock.write(), lock.write(timeout=0.0):
-            pass  # Should not raise
-
     def test_write_timeout_none_waits_indefinitely(self) -> None:
         """None timeout (default) waits indefinitely."""
         lock = RWLock()
@@ -352,17 +344,6 @@ class TestTimeoutStateConsistency:
         with lock.write():
             acquired = True
         assert acquired
-
-
-class TestTimeoutDowngrading:
-    """Test timeout interaction with lock downgrading."""
-
-    def test_downgrade_read_ignores_timeout(self) -> None:
-        """Read acquisition during write hold does not wait (timeout irrelevant)."""
-        lock = RWLock()
-
-        with lock.write(), lock.read(timeout=0.0):
-            pass  # Should not raise; downgrading is immediate
 
 
 class TestTimeoutProperties:

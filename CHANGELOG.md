@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.138.0"
+version: "0.139.0"
 domain: CHANGELOG
 updated: "2026-02-26"
 route:
@@ -14,6 +14,50 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.139.0] - 2026-02-26
+
+### Changed
+
+- **`runtime/rwlock.py` `RWLock`: removed reentrant write lock and write-to-read downgrade support**
+  (REFACTOR-RWLOCK-DEAD-COMPLEXITY-001):
+  - `RWLock` supported two advanced features: (1) reentrant write acquisition — a thread holding the
+    write lock could acquire it again recursively, tracked via `_writer_reentry_count`; (2) write-to-read
+    downgrade — a thread holding the write lock could acquire read locks (tracked via
+    `_writer_held_reads`), which converted to regular read locks after the write lock was released;
+    both features were unused by any production call site (`FluentBundle`, `FluentLocalization`, and
+    all delegate modules exclusively use `.read()` and `.write()` context managers at a single level);
+    reentrant read acquisition remains supported — it is legitimately needed for custom functions
+    that call back into `format_pattern` — but reentrant writes and downgrade were pure dead
+    complexity adding 40+ lines of branching to the hot lock path and two extra internal state slots
+  - Removed `_writer_held_reads` and `_writer_reentry_count` from `__slots__`, eliminating all
+    associated bookkeeping from `_acquire_read`, `_release_read`, `_acquire_write`, and
+    `_release_write`; replaced both features with explicit `RuntimeError` on the prohibited code
+    paths — `_acquire_write` now raises "Cannot acquire write lock: already holding write lock."
+    on reentrant acquisition, and `_acquire_read` raises "Cannot acquire read lock while holding
+    write lock." on downgrade attempt; both errors are raised before any state mutation, leaving
+    the lock in a consistent state; `_release_write` simplified from 14 lines to 5 (no reentrant
+    counter decrement, no downgrade conversion, direct `_active_writer = 0` + `notify_all()`)
+  - Location: `runtime/rwlock.py` `__slots__`, `_acquire_read`, `_release_read`, `_acquire_write`,
+    `_release_write`
+
+- **`localization/orchestrator.py` `FluentLocalization`: extracted `_create_bundle` to eliminate
+  RWLock downgrade dependency** (REFACTOR-ORCHESTRATOR-LOCK-SPLIT-001):
+  - `add_resource` held `self._lock.write()` and called `_get_or_create_bundle(locale)`, which
+    begins with `with self._lock.read():`; with write-to-read downgrade removed from `RWLock`, this
+    would raise `RuntimeError` at runtime; `_get_or_create_bundle` used downgrading semantics to
+    allow callers holding the write lock to short-circuit into the fast (read) path, but this
+    implicit coupling was undocumented and depended on a feature that was never part of the public
+    lock contract
+  - Extracted `_create_bundle(locale: LocaleCode) -> FluentBundle` — a private method that creates
+    and registers a bundle for a locale with no locking (assumes write lock is already held by the
+    caller); refactored `_get_or_create_bundle` to use `_create_bundle` for the slow path (write
+    lock acquired internally via double-checked locking); updated `add_resource` and `add_function`
+    to call `_create_bundle` directly when a bundle does not yet exist, removing the implicit
+    downgrade dependency; the lock protocol is now explicit: `_create_bundle` is only called under
+    write lock, `_get_or_create_bundle` manages its own locking for call sites that hold no lock
+  - Location: `localization/orchestrator.py` `_create_bundle` (new), `_get_or_create_bundle`,
+    `add_resource`, `add_function`
 
 ## [0.138.0] - 2026-02-26
 
@@ -5039,6 +5083,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.139.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.139.0
 [0.138.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.138.0
 [0.137.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.137.0
 [0.136.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.136.0

@@ -5,8 +5,6 @@ This module provides a readers-writer lock that allows:
 - Exclusive writer access (add_resource, add_function)
 - Writer preference to prevent starvation
 - Reentrant reader locks (same thread can acquire read lock multiple times)
-- Reentrant writer locks (same thread can acquire write lock multiple times)
-- Write-to-read lock downgrading (writer can acquire read locks)
 - Optional timeout for lock acquisition (raises TimeoutError)
 - Proper deadlock avoidance
 
@@ -15,18 +13,21 @@ Architecture:
     Writers are prioritized when waiting to prevent indefinite write starvation
     in read-heavy workloads.
 
-Lock Downgrading:
-    A thread holding the write lock can acquire read locks without blocking.
-    This enables write-then-read patterns where a thread modifies data, then
-    reads it back for validation. When the write lock is released, any held
-    read locks automatically convert to regular reader locks.
-
-Upgrade Limitation:
+Upgrade and Downgrade Limitations:
     Read-to-write lock upgrades are not supported. A thread holding a read lock
     cannot acquire the write lock (raises RuntimeError). This prevents deadlock
     scenarios where the thread would wait for itself to release the read lock.
     Release the read lock before acquiring the write lock, or restructure code
     to acquire write lock first.
+
+    Write-to-read lock downgrading is not supported. A thread holding the write
+    lock cannot acquire the read lock (raises RuntimeError). FluentBundle write
+    paths (add_resource, add_function) are single-level operations that do not
+    need to read-validate while holding the write lock.
+
+    Write lock reentrancy is not supported. A thread holding the write lock
+    cannot acquire the write lock again (raises RuntimeError). FluentBundle write
+    paths are single-level operations; nested write acquisition is a design error.
 
 Python 3.13+.
 """
@@ -51,17 +52,14 @@ class RWLock:
     Writers have priority to prevent starvation in read-heavy workloads.
 
     Thread Safety:
-        All methods are thread-safe. The lock is reentrant for readers
-        and writers (same thread can acquire read or write lock multiple times).
+        All methods are thread-safe. The read lock is reentrant: the same
+        thread can acquire it multiple times and must release it the same
+        number of times.
 
-    Lock Downgrading:
-        A thread holding the write lock can acquire read locks without blocking.
-        When the write lock is released, held read locks remain valid as regular
-        reader locks. This enables write-then-read validation patterns.
-
-    Upgrade Limitation:
-        Read-to-write lock upgrades are not supported. A thread holding a read
-        lock cannot acquire the write lock (raises RuntimeError).
+    Limitations:
+        Read-to-write upgrades are prohibited: raises RuntimeError.
+        Write-to-read downgrades are prohibited: raises RuntimeError.
+        Write lock reentrancy is prohibited: raises RuntimeError.
 
     Example:
         >>> lock = RWLock()
@@ -76,17 +74,10 @@ class RWLock:
         ...     # Modify data
         ...     pass
         >>>
-        >>> # Reentrant write locks work
-        >>> with lock.write():
-        ...     with lock.write():  # Same thread can reacquire
-        ...         # Still exclusive
-        ...         pass
-        >>>
-        >>> # Write-to-read downgrading works
-        >>> with lock.write():
-        ...     # Modify data
-        ...     with lock.read():  # Can acquire read while holding write
-        ...         # Validate changes
+        >>> # Reentrant read locks work
+        >>> with lock.read():
+        ...     with lock.read():  # Same thread can reacquire
+        ...         # Still shared
         ...         pass
     """
 
@@ -96,8 +87,6 @@ class RWLock:
         "_condition",
         "_reader_threads",
         "_waiting_writers",
-        "_writer_held_reads",
-        "_writer_reentry_count",
     )
 
     def __init__(self) -> None:
@@ -118,13 +107,6 @@ class RWLock:
         # This enables reentrant read locks (same thread acquiring multiple times)
         self._reader_threads: dict[int, int] = {}
 
-        # Track write lock reentry count for write reentrancy
-        self._writer_reentry_count: int = 0
-
-        # Track read locks acquired while holding write lock (lock downgrading)
-        # When writer releases, these convert to regular reader locks
-        self._writer_held_reads: int = 0
-
     @contextmanager
     def read(self, timeout: float | None = None) -> Generator[None]:
         """Acquire read lock (shared access).
@@ -138,6 +120,7 @@ class RWLock:
                 specifies deadline; 0.0 is a non-blocking attempt.
 
         Raises:
+            RuntimeError: If thread holds write lock (downgrade prohibited).
             TimeoutError: If lock cannot be acquired within timeout.
             ValueError: If timeout is negative.
 
@@ -164,7 +147,7 @@ class RWLock:
 
         Only one thread can hold write lock at a time.
         Blocks until all readers release their locks.
-        Reentrant: same thread can acquire write lock multiple times.
+        Non-reentrant: raises RuntimeError if called while already holding write lock.
 
         Args:
             timeout: Maximum seconds to wait for lock acquisition.
@@ -173,6 +156,7 @@ class RWLock:
 
         Raises:
             RuntimeError: If thread attempts read-to-write lock upgrade.
+            RuntimeError: If thread already holds the write lock.
             TimeoutError: If lock cannot be acquired within timeout.
             ValueError: If timeout is negative.
 
@@ -197,16 +181,16 @@ class RWLock:
         """Acquire read lock (internal implementation).
 
         Blocks if:
-        - A writer is active (unless current thread IS the active writer)
+        - A writer is active
         - Writers are waiting (writer preference to prevent starvation)
 
         Allows reentrant acquisition by same thread.
-        Allows lock downgrading (write lock holder can acquire read locks).
 
         Args:
             timeout: Maximum seconds to wait. None waits indefinitely.
 
         Raises:
+            RuntimeError: If thread holds write lock (downgrade prohibited).
             TimeoutError: If lock cannot be acquired within timeout.
             ValueError: If timeout is negative.
         """
@@ -222,12 +206,14 @@ class RWLock:
                 self._reader_threads[current_thread_id] += 1
                 return
 
-            # Lock downgrading: writer can acquire read locks without blocking
-            # These reads are tracked separately and convert to regular reads
-            # when the write lock is released
+            # Prohibit write-to-read downgrade. FluentBundle writers are single-level
+            # operations; they do not need to read-validate while holding the write lock.
             if self._active_writer == current_thread_id:
-                self._writer_held_reads += 1
-                return
+                msg = (
+                    "Cannot acquire read lock while holding write lock. "
+                    "Release the write lock before acquiring a read lock."
+                )
+                raise RuntimeError(msg)
 
             # Compute deadline for timeout-aware waiting
             deadline = (
@@ -253,17 +239,11 @@ class RWLock:
         """Release read lock (internal implementation).
 
         Handles reentrant lock releases correctly.
-        Handles writer-held reads (lock downgrading) correctly.
         Notifies waiting writers when last reader exits.
         """
         current_thread_id = threading.get_ident()
 
         with self._condition:
-            # Check if this is a writer-held read (lock downgrading case)
-            if self._active_writer == current_thread_id and self._writer_held_reads > 0:
-                self._writer_held_reads -= 1
-                return
-
             if current_thread_id not in self._reader_threads:
                 msg = "Thread does not hold read lock"
                 raise RuntimeError(msg)
@@ -285,13 +265,14 @@ class RWLock:
 
         Blocks until all readers release their locks.
         Only one writer can be active at a time.
-        Reentrant: same thread can acquire write lock multiple times.
+        Non-reentrant: raises RuntimeError if called while already holding write lock.
 
         Args:
             timeout: Maximum seconds to wait. None waits indefinitely.
 
         Raises:
             RuntimeError: If thread attempts read-to-write lock upgrade.
+            RuntimeError: If thread already holds the write lock.
             TimeoutError: If lock cannot be acquired within timeout.
             ValueError: If timeout is negative.
         """
@@ -310,10 +291,14 @@ class RWLock:
                 )
                 raise RuntimeError(msg)
 
-            # Check if this thread already holds the write lock (reentrant case)
+            # Prohibit write lock reentrancy. FluentBundle write paths are single-level
+            # operations; nested write acquisition is a design error, not a feature.
             if self._active_writer == current_thread_id:
-                self._writer_reentry_count += 1
-                return
+                msg = (
+                    "Cannot acquire write lock: already holding write lock. "
+                    "Release the write lock before acquiring it again."
+                )
+                raise RuntimeError(msg)
 
             # Compute deadline for timeout-aware waiting
             deadline = (
@@ -351,9 +336,7 @@ class RWLock:
     def _release_write(self) -> None:
         """Release write lock (internal implementation).
 
-        Handles reentrant lock releases correctly.
-        Converts writer-held reads to regular reader locks when fully released.
-        Notifies all waiting readers and writers when fully released.
+        Notifies all waiting readers and writers when released.
         """
         current_thread_id = threading.get_ident()
 
@@ -361,19 +344,6 @@ class RWLock:
             if self._active_writer != current_thread_id:
                 msg = "Thread does not hold write lock"
                 raise RuntimeError(msg)
-
-            # Handle reentrant release
-            if self._writer_reentry_count > 0:
-                self._writer_reentry_count -= 1
-                return
-
-            # Convert writer-held reads to regular reader locks
-            # This enables lock downgrading: writer can acquire reads, release write,
-            # and continue as a reader without blocking
-            if self._writer_held_reads > 0:
-                self._active_readers += 1
-                self._reader_threads[current_thread_id] = self._writer_held_reads
-                self._writer_held_reads = 0
 
             # Release write lock
             self._active_writer = None

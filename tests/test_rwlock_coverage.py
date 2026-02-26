@@ -113,6 +113,50 @@ class TestRWLockErrorHandling:
             ):
                 lock._acquire_write()
 
+    def test_write_reentry_raises_runtime_error(self) -> None:
+        """Attempting to acquire write lock while already holding it raises RuntimeError."""
+        lock = RWLock()
+
+        with lock.write():  # noqa: SIM117
+            with pytest.raises(
+                RuntimeError,
+                match="Cannot acquire write lock: already holding write lock",
+            ):
+                lock._acquire_write()
+
+    def test_write_reentry_error_message(self) -> None:
+        """Write reentry error includes helpful message."""
+        lock = RWLock()
+
+        with lock.write():  # noqa: SIM117
+            with pytest.raises(
+                RuntimeError,
+                match="Release the write lock before acquiring it again",
+            ):
+                lock._acquire_write()
+
+    def test_read_during_write_raises_runtime_error(self) -> None:
+        """Attempting to acquire read lock while holding write lock raises RuntimeError."""
+        lock = RWLock()
+
+        with lock.write():  # noqa: SIM117
+            with pytest.raises(
+                RuntimeError,
+                match="Cannot acquire read lock while holding write lock",
+            ):
+                lock._acquire_read()
+
+    def test_read_during_write_error_message(self) -> None:
+        """Write-to-read downgrade error includes helpful message."""
+        lock = RWLock()
+
+        with lock.write():  # noqa: SIM117
+            with pytest.raises(
+                RuntimeError,
+                match="Release the write lock before acquiring a read lock",
+            ):
+                lock._acquire_read()
+
     def test_reentrant_read_over_release_raises(self) -> None:
         """Over-releasing reentrant read lock raises RuntimeError."""
         lock = RWLock()
@@ -126,21 +170,6 @@ class TestRWLockErrorHandling:
         # Outer released - now over-release
         with pytest.raises(RuntimeError, match="does not hold read lock"):
             lock._release_read()
-
-    def test_reentrant_write_over_release_raises(self) -> None:
-        """Over-releasing reentrant write lock raises RuntimeError."""
-        lock = RWLock()
-
-        # Intentionally nested to test reentrant release tracking
-        with lock.write():  # noqa: SIM117
-            with lock.write():
-                pass
-            # Inner released
-
-        # Outer released - now over-release
-        with pytest.raises(RuntimeError, match="does not hold write lock"):
-            lock._release_write()
-
 
 
 class TestRWLockBoundaryConditions:
@@ -160,7 +189,6 @@ class TestRWLockBoundaryConditions:
 
         assert lock._active_writer is None
         assert lock._waiting_writers == 0
-        assert lock._writer_reentry_count == 0
 
     def test_single_thread_read_write_interleaving(self) -> None:
         """Single thread can interleave read and write acquisitions."""
@@ -219,20 +247,14 @@ class TestRWLockBoundaryConditions:
         with lock.write():
             pass
 
-    def test_nested_empty_context_managers(self) -> None:
-        """Nested empty context managers work correctly."""
+    def test_nested_reentrant_reads(self) -> None:
+        """Nested reentrant read context managers work correctly."""
         lock = RWLock()
 
         # Intentionally nested to test reentrant empty contexts
         with lock.read():  # noqa: SIM117
             with lock.read():
                 with lock.read():
-                    pass
-
-        # Intentionally nested to test reentrant empty contexts
-        with lock.write():  # noqa: SIM117
-            with lock.write():
-                with lock.write():
                     pass
 
 
@@ -319,125 +341,6 @@ class TestRWLockThreadSafetyEdgeCases:
         # All released
         assert lock._active_readers == 0
 
-    def test_writer_reentry_count_consistency(self) -> None:
-        """_writer_reentry_count remains consistent with nested writes."""
-        lock = RWLock()
-
-        with lock.write():
-            assert lock._writer_reentry_count == 0
-            with lock.write():
-                assert lock._writer_reentry_count == 1
-                with lock.write():
-                    assert lock._writer_reentry_count == 2
-                assert lock._writer_reentry_count == 1
-            assert lock._writer_reentry_count == 0
-
-        assert lock._writer_reentry_count == 0
-
-
-class TestRWLockDowngradingEdgeCases:
-    """Test edge cases specific to lock downgrading."""
-
-    def test_writer_held_reads_zero_after_full_release(self) -> None:
-        """_writer_held_reads is 0 after all locks released."""
-        lock = RWLock()
-
-        with lock.write():
-            lock._acquire_read()
-            lock._acquire_read()
-            lock._release_read()
-            lock._release_read()
-            assert lock._writer_held_reads == 0
-
-    def test_partial_downgrade_release_before_write_release(self) -> None:
-        """Can partially release downgraded reads before releasing write."""
-        lock = RWLock()
-
-        with lock.write():
-            lock._acquire_read()
-            lock._acquire_read()
-            lock._acquire_read()
-
-            lock._release_read()
-            assert lock._writer_held_reads == 2
-
-            lock._release_read()
-            assert lock._writer_held_reads == 1
-
-        # Last read converts on write release
-        lock._release_read()
-
-    def test_full_downgrade_release_before_write_release(self) -> None:
-        """Can fully release all downgraded reads before releasing write."""
-        lock = RWLock()
-
-        with lock.write():
-            lock._acquire_read()
-            lock._acquire_read()
-
-            lock._release_read()
-            lock._release_read()
-
-            assert lock._writer_held_reads == 0
-
-        # No conversion needed - no writer_held_reads
-
-    def test_downgrade_with_exception_cleans_state(self) -> None:
-        """Exception during downgrade converts writer-held reads correctly."""
-        lock = RWLock()
-        thread_id = threading.get_ident()
-
-        try:
-            with lock.write():
-                lock._acquire_read()
-                lock._acquire_read()
-                msg = "Test error"
-                raise ValueError(msg)
-        except ValueError:
-            pass
-
-        # Write lock released, but writer-held reads converted to regular reads
-        assert lock._active_writer is None
-        assert lock._writer_held_reads == 0
-        assert lock._active_readers == 1  # Converted from writer-held reads
-        assert lock._reader_threads[thread_id] == 2  # Count of converted reads
-
-        # Clean up converted read locks
-        lock._release_read()
-        lock._release_read()
-
-        # Now all locks fully released
-        assert lock._active_readers == 0
-
-    def test_reentrant_write_with_downgrade_state(self) -> None:
-        """Reentrant write with downgrade maintains correct state."""
-        lock = RWLock()
-
-        with lock.write():
-            lock._acquire_read()
-            assert lock._writer_held_reads == 1
-
-            with lock.write():  # Reentrant
-                lock._acquire_read()
-                assert lock._writer_held_reads == 2
-            # Inner write released
-
-            assert lock._writer_held_reads == 2
-            lock._release_read()
-            lock._release_read()
-
-    def test_conversion_with_zero_writer_held_reads(self) -> None:
-        """Write release with zero writer_held_reads doesn't create reader."""
-        lock = RWLock()
-        thread_id = threading.get_ident()
-
-        with lock.write():
-            pass  # No downgrade reads
-
-        # No conversion should have occurred
-        assert thread_id not in lock._reader_threads
-        assert lock._active_readers == 0
-
 
 class TestRWLockStateConsistency:
     """Test internal state consistency."""
@@ -473,13 +376,7 @@ class TestRWLockStateConsistency:
         lock._acquire_write()
         assert lock._active_writer == current_thread_id
 
-        lock._acquire_write()  # Reentrant
-        assert lock._active_writer == current_thread_id
-
-        lock._release_write()  # Release reentrant
-        assert lock._active_writer == current_thread_id
-
-        lock._release_write()  # Release outer
+        lock._release_write()
         assert lock._active_writer is None
 
     def test_condition_variable_notifications(self) -> None:

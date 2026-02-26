@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.135.0"
+version: "0.139.0"
 domain: RUNTIME
-updated: "2026-02-25"
+updated: "2026-02-26"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
@@ -1073,13 +1073,14 @@ class RWLock:
 
 ### Constraints
 - Return: RWLock instance.
-- State: Tracks active readers, active writer (as `int` thread identity), waiting writers, reader thread counts, writer reentry count, writer-held reads.
-- Thread: Safe for all operations. Reentrant for both readers and writers (same thread can reacquire locks multiple times).
+- State: Tracks active readers, active writer (as `int` thread identity), waiting writers, reader thread counts.
+- Thread: Safe for all operations. Read lock is reentrant (same thread can reacquire multiple times). Write lock is non-reentrant.
 - Purpose: Allows multiple concurrent readers OR single exclusive writer.
 - Timeout: Optional `timeout` parameter on `read()` and `write()`. `None` (default) waits indefinitely; `0.0` is non-blocking; positive float is deadline in seconds. Raises `TimeoutError` on expiry, `ValueError` if negative.
 - Writer Preference: Writers are prioritized when waiting to prevent reader starvation.
-- Lock Downgrading: Write-to-read downgrade supported. A thread holding the write lock can acquire read locks without blocking. When the write lock is released, held read locks convert to regular reader locks.
-- Upgrade Limitation: Read-to-write lock upgrades are prohibited. Thread holding read lock cannot acquire write lock (raises RuntimeError).
+- Upgrade Limitation: Read-to-write lock upgrades are prohibited (raises RuntimeError).
+- Downgrade Limitation: Write-to-read lock downgrade is prohibited (raises RuntimeError).
+- Reentry Limitation: Write lock cannot be reacquired by the same thread (raises RuntimeError).
 - Usage: FluentBundle uses RWLock internally for concurrent format operations.
 - Import: `from ftllexengine.runtime.rwlock import RWLock`
 ---

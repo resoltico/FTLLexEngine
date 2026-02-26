@@ -1,12 +1,10 @@
-"""Regression tests for RWLock write-to-read downgrade, CURRENCY returning
-FluentNumber, identifier/attribute spans, message attributes in arguments,
-plural rounding mode, and StringLiteral guard method.
+"""Regression tests for CURRENCY returning FluentNumber, identifier/attribute spans,
+message attributes in arguments, plural rounding mode, and StringLiteral guard method.
 """
 
 from __future__ import annotations
 
 import inspect
-import threading
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
@@ -14,7 +12,6 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.runtime.cache import IntegrityCache
-from ftllexengine.runtime.rwlock import RWLock
 from ftllexengine.syntax.ast import (
     Message,
     NumberLiteral,
@@ -22,75 +19,6 @@ from ftllexengine.syntax.ast import (
     StringLiteral,
 )
 from ftllexengine.syntax.parser import FluentParserV1
-
-# ---------------------------------------------------------------------------
-# ARCH-RWLOCK-DEAD-004: Write-to-read lock downgrading
-# ---------------------------------------------------------------------------
-
-
-class TestRWLockWriteToReadDowngrade:
-    """Write lock holder can acquire nested read locks without deadlock."""
-
-    def test_write_then_read_does_not_deadlock(self) -> None:
-        """Thread holding write lock can acquire read lock."""
-        lock = RWLock()
-        read_acquired = False
-
-        with lock.write(), lock.read():
-            read_acquired = True
-
-        assert read_acquired
-
-    def test_multiple_nested_reads_under_write(self) -> None:
-        """Multiple nested read acquisitions under write lock."""
-        lock = RWLock()
-        count = 0
-
-        with lock.write(), lock.read():
-            count += 1
-            with lock.read():
-                count += 1
-
-        assert count == 2
-
-    def test_write_release_converts_held_reads(self) -> None:
-        """After write release, writer-held reads become regular reads."""
-        lock = RWLock()
-        result: list[str] = []
-        barrier = threading.Barrier(2, timeout=5)
-
-        def writer() -> None:
-            with lock.write(), lock.read():
-                result.append("write+read")
-            result.append("writer_done")
-            barrier.wait()
-
-        def reader() -> None:
-            barrier.wait()
-            with lock.read():
-                result.append("reader")
-
-        t1 = threading.Thread(target=writer)
-        t2 = threading.Thread(target=reader)
-        t1.start()
-        t2.start()
-        t1.join(timeout=5)
-        t2.join(timeout=5)
-
-        assert "write+read" in result
-        assert "writer_done" in result
-        assert "reader" in result
-
-    def test_reentrant_write_with_read_downgrade(self) -> None:
-        """Reentrant write lock combined with read downgrade."""
-        lock = RWLock()
-        acquired = False
-
-        with lock.write(), lock.write(), lock.read():
-            acquired = True
-
-        assert acquired
-
 
 # ---------------------------------------------------------------------------
 # API-CURR-TYPE-003: CURRENCY returns FluentNumber

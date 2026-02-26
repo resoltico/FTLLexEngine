@@ -215,20 +215,40 @@ class FluentLocalization:
                     result = self._load_single_resource(locale, resource_id, resource_loader)
                     self._load_results.append(result)
 
+    def _create_bundle(self, locale: LocaleCode) -> FluentBundle:
+        """Create and register a bundle for locale. Caller must hold write lock.
+
+        Applies any pending functions registered before bundle creation.
+
+        Args:
+            locale: Locale code (must be in _locales tuple)
+
+        Returns:
+            Newly created and registered FluentBundle instance
+        """
+        bundle = FluentBundle(
+            locale,
+            use_isolating=self._use_isolating,
+            cache=self._cache_config,
+            strict=self._strict,
+        )
+        for name, func in self._pending_functions.items():
+            bundle.add_function(name, func)
+        self._bundles[locale] = bundle
+        return bundle
+
     def _get_or_create_bundle(self, locale: LocaleCode) -> FluentBundle:
         """Get existing bundle or create one lazily.
 
-        This implements lazy bundle initialization to reduce memory usage
-        when fallback locales are rarely accessed.
-
-        When a new bundle is created, any pending functions (registered via
-        add_function before the bundle was accessed) are automatically applied.
+        Implements lazy bundle initialization to reduce memory usage when
+        fallback locales are rarely accessed.
 
         Thread-safe via double-checked locking: read lock for the common
         already-initialized case (allows concurrent format operations), write
-        lock only when a new bundle must be created. Callers already holding
-        the write lock (add_resource, add_function) use RWLock downgrading
-        semantics: _acquire_read short-circuits via _writer_held_reads.
+        lock only when a new bundle must be created.
+
+        Must be called WITHOUT holding any lock. Use _create_bundle() directly
+        when already holding the write lock.
 
         Args:
             locale: Locale code (must be in _locales tuple)
@@ -236,9 +256,7 @@ class FluentLocalization:
         Returns:
             FluentBundle instance for the locale
         """
-        # Fast path: read lock allows concurrent format operations once all
-        # bundles are initialized. The write-lock-holder path (add_resource,
-        # add_function) uses RWLock downgrading and is also safe here.
+        # Fast path: read lock allows concurrent format operations.
         with self._lock.read():
             if locale in self._bundles:
                 return self._bundles[locale]
@@ -249,18 +267,7 @@ class FluentLocalization:
         with self._lock.write():
             if locale in self._bundles:  # pragma: no cover
                 return self._bundles[locale]
-
-            bundle = FluentBundle(
-                locale,
-                use_isolating=self._use_isolating,
-                cache=self._cache_config,
-                strict=self._strict,
-            )
-            # Apply any pending functions that were registered before bundle creation
-            for name, func in self._pending_functions.items():
-                bundle.add_function(name, func)
-            self._bundles[locale] = bundle
-            return bundle
+            return self._create_bundle(locale)
 
     def _load_single_resource(
         self,
@@ -483,11 +490,12 @@ class FluentLocalization:
                 msg = f"Locale '{locale}' not in fallback chain {self._locales}"
                 raise ValueError(msg)
 
-            # _get_or_create_bundle uses double-checked locking: it first
-            # acquires a read lock (downgrading from this write lock via
-            # RWLock._writer_held_reads), then a write lock if needed (reentrant).
-            bundle = self._get_or_create_bundle(locale)
-            return bundle.add_resource(ftl_source)
+            # Direct lookup/create under write lock. _get_or_create_bundle cannot
+            # be used here because it acquires a read lock, and RWLock prohibits
+            # acquiring a read lock while holding the write lock.
+            if locale not in self._bundles:
+                self._create_bundle(locale)
+            return self._bundles[locale].add_resource(ftl_source)
 
     def _handle_message_not_found(
         self,

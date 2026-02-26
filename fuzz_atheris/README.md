@@ -1,8 +1,8 @@
 ---
-afad: "3.2"
-version: "0.112.0"
+afad: "3.3"
+version: "0.139.0"
 domain: fuzzing
-updated: "2026-02-18"
+updated: "2026-02-26"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -24,7 +24,7 @@ route:
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 18 (.bin) | Fiscal calendar arithmetic, contracts |
 | `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity` | 25 | 68 (.ftl) + 13 (.bin) | Semantic validation, strict mode, cross-resource |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
-| `fuzz_lock.py` | `runtime.rwlock` | 17 | 32 (.bin) | RWLock concurrency primitives |
+| `fuzz_lock.py` | `runtime.rwlock` | 15 | 32 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `parsing.numbers` | 19 | 70 (.txt) | Locale-aware numeric parsing |
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
@@ -402,7 +402,7 @@ Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookup
 
 ## `fuzz_lock`
 
-Target: `runtime.rwlock.RWLock`, `with_read_lock`, `with_write_lock` -- reader/writer exclusion, reentrancy, downgrading, timeout, deadlock detection, negative timeout rejection, release-without-acquire rejection, zero-timeout non-blocking paths.
+Target: `runtime.rwlock.RWLock` -- reader/writer exclusion, reentrant reads, write-reentry rejection, write-to-read downgrade rejection, read-to-write upgrade rejection, timeout, deadlock detection, negative timeout rejection, release-without-acquire rejection, zero-timeout non-blocking paths.
 
 Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `LockMetrics` dataclass (deadlocks detected, timeouts, thread creation count, max concurrent threads). Weight skew detection compares actual vs intended pattern distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default. Corpus retention rate and eviction tracking enabled.
 
@@ -413,22 +413,20 @@ Ordered cheapest-first. Pattern selection uses deterministic round-robin through
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `reentrant_reads` | 5 | Same thread acquires read lock N times |
-| `reentrant_writes` | 5 | Same thread acquires write lock N times |
+| `write_reentry_rejection` | 4 | Write-to-write reentry raises RuntimeError |
+| `downgrade_rejection` | 4 | Write-to-read downgrade raises RuntimeError |
 | `negative_timeout` | 4 | Negative timeout raises ValueError, lock still usable |
 | `release_without_acquire` | 4 | Release without acquire raises RuntimeError, lock still usable |
 | `upgrade_rejection` | 8 | Read-to-write upgrade raises RuntimeError |
-| `decorator_correctness` | 6 | with_read_lock/with_write_lock return values |
 | `zero_timeout_nonblocking` | 5 | timeout=0.0 fails immediately when lock held, sub-1ms |
-| `write_to_read_downgrade` | 10 | Writer acquires reads, persist after write release |
 | `rapid_lock_cycling` | 8 | Shared counter correct after rapid cycles |
 | `cross_thread_handoff` | 6 | Rapid write handoff between threads, no lost entries |
 | `concurrent_readers` | 12 | Multiple readers hold lock simultaneously |
 | `timeout_acquisition` | 8 | TimeoutError raised, lock usable after timeout |
-| `downgrade_then_contention` | 8 | Converted reads block writers, properly releasable |
 | `reader_writer_exclusion` | 15 | No concurrent reader+writer, no multi-writer |
 | `writer_preference` | 10 | Waiting writer blocks new readers (fuzz-controlled timing) |
 | `reader_starvation` | 6 | Continuous readers cannot starve waiting writer |
-| `mixed_contention` | 7 | All operations interleaved across threads |
+| `mixed_contention` | 7 | All prohibition checks and permitted ops interleaved across threads |
 
 ### Allowed Exceptions
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.139.0"
 domain: architecture
-updated: "2026-02-22"
+updated: "2026-02-26"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -47,16 +47,18 @@ FTLLexEngine provides explicit thread-safety guarantees for different components
 - `add_resource()` - Parses outside lock (stateless parser), acquires write lock for registration only
 - `add_function()` - Acquires write lock for registry mutation
 
-**Write-to-Read Downgrading**:
-A thread holding the write lock can acquire read locks without blocking. When the write lock is released, held read locks convert to regular reader locks. This enables write-then-read validation patterns.
+**Acquisition Limitations**:
+The following acquisition patterns raise `RuntimeError`:
+- Read-to-write upgrade: a thread holding a read lock cannot acquire the write lock (deadlock prevention).
+- Write-to-read downgrade: a thread holding the write lock cannot acquire a read lock. FluentBundle write paths are single-level operations; they do not need to read-validate while holding the write lock.
+- Write lock reentrancy: a thread holding the write lock cannot acquire it again. FluentBundle write paths (`add_resource`, `add_function`) are single-level; nested acquisition is a design error.
 
-**Reentrancy Limitation**:
-Calling write operations (`add_resource()`, `add_function()`) from within format operations raises `RuntimeError`. This includes calls from custom functions invoked during formatting. The RWLock does not support read-to-write lock upgrading (deadlock prevention).
+Read lock reentrancy is supported: a thread holding a read lock can acquire it again (enables custom function re-entry into `format_pattern`).
 
 If you need lazy-loading patterns, load resources before formatting or use a separate bundle instance.
 
 **Timeout Support**:
-`RWLock.read()` and `RWLock.write()` accept an optional `timeout` parameter (seconds). `None` (default) waits indefinitely. `0.0` attempts non-blocking acquisition. Positive float sets a deadline. Raises `TimeoutError` on expiry. Reentrant and downgrading acquisitions never wait, so timeout is irrelevant in those paths. On write timeout, the internal `_waiting_writers` counter is correctly decremented (via `try/finally`), preventing reader starvation from abandoned writes.
+`RWLock.read()` and `RWLock.write()` accept an optional `timeout` parameter (seconds). `None` (default) waits indefinitely. `0.0` attempts non-blocking acquisition. Positive float sets a deadline. Raises `TimeoutError` on expiry. Reentrant read acquisitions never wait, so timeout is irrelevant in that path. On write timeout, the internal `_waiting_writers` counter is correctly decremented (via `try/finally`), preventing reader starvation from abandoned writes.
 
 ```python
 lock = RWLock()
@@ -78,7 +80,7 @@ except TimeoutError:
 **Guarantees**:
 - All read operations (`format_value()`, `format_pattern()`, `has_message()`, `get_cache_stats()`) acquire read lock (concurrent)
 - All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
-- Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers holding the write lock use RWLock downgrading semantics
+- Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers already holding the write lock (`add_resource`) use `_create_bundle()` directly (no lock re-acquisition)
 - Context manager (`with l10n:`) is a no-op for structured scoping only
 
 **Context Manager Semantics**:
