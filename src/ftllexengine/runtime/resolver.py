@@ -466,16 +466,16 @@ class FluentResolver:
             diag = ErrorTemplate.cyclic_reference(cycle_path)
             cycle_error = FrozenFluentError(str(diag), ErrorCategory.CYCLIC, diagnostic=diag)
             errors.append(cycle_error)
-            # term_key already has '-' prefix, strip it for the template
-            return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
+            # term_key always starts with exactly one '-' prefix; removeprefix is precise.
+            return FALLBACK_MISSING_TERM.format(name=term_key.removeprefix("-"))
 
         # Check for maximum depth
         if context.is_depth_exceeded():
             diag = ErrorTemplate.max_depth_exceeded(term_key, context.max_depth)
             depth_error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             errors.append(depth_error)
-            # term_key already has '-' prefix, strip it for the template
-            return FALLBACK_MISSING_TERM.format(name=term_key.lstrip("-"))
+            # term_key always starts with exactly one '-' prefix; removeprefix is precise.
+            return FALLBACK_MISSING_TERM.format(name=term_key.removeprefix("-"))
 
         # Evaluate term arguments - terms are ISOLATED from calling context
         # Per Fluent spec: terms can ONLY access explicitly passed arguments
@@ -881,14 +881,21 @@ class FluentResolver:
         - Sequence/Mapping: type name (collections are for function args, not display)
         - None: empty string
 
-        float is not in FluentValue and is not handled here. Callers passing float
-        will see a type error at the call site, not here.
+        float is not in FluentValue and is explicitly rejected here at runtime.
+        Mypy strict mode catches float misuse at statically typed call sites, but
+        custom functions registered via FunctionRegistry return Python values through
+        function_bridge.py without return-type validation — a float return bypasses
+        mypy entirely. Without this guard, float silently produces IEEE 754 noise
+        (e.g., "3.1400000000000001") in financial output. Use int for whole amounts
+        or Decimal for fractional amounts.
 
         Pattern order rationale:
         - str before Sequence: str implements Sequence; must match str first to avoid
           the collection guard path.
         - bool before int: bool is a subclass of int; must match bool first to produce
           "true"/"false" rather than "1"/"0".
+        - float before the wildcard: explicit rejection with a diagnostic message;
+          float is not in FluentValue but the wildcard would silently accept it.
         - None as explicit case: avoids the collection guard and the str(None) path.
         - Sequence | Mapping before the default str() fallback: guards against
           exponential str() expansion on deeply shared collection structures.
@@ -903,13 +910,25 @@ class FluentResolver:
                 return str(value)
             case None:
                 return ""
+            # Explicit float rejection. Statically unreachable for typed callers
+            # (FluentValue excludes float), but custom functions registered via
+            # FunctionRegistry return untyped Python values — a float return bypasses
+            # mypy and would silently reach str() without this guard, producing IEEE
+            # 754 noise in financial output (e.g., "3.1400000000000001").
+            case float():
+                msg = (
+                    f"float value {value!r} is not a valid FluentValue. "
+                    "IEEE 754 float cannot represent most decimal fractions exactly. "
+                    "Use int for whole amounts or decimal.Decimal for fractional amounts."
+                )
+                raise TypeError(msg)
             # Guard against str() on collections (Sequence/Mapping). These are valid
             # FluentValue types for passing structured data to custom functions, but
             # str() on deeply nested/shared structures causes exponential expansion
             # (e.g., DAG with depth 30 → 2^30 nodes in str() output).
             case Sequence() | Mapping():
                 return f"[{type(value).__name__}]"
-            # Handles Decimal, datetime, date, FluentNumber, and any other types
+            # Handles Decimal, datetime, date, and FluentNumber via __str__.
             case _:
                 return str(value)
 
@@ -962,5 +981,20 @@ class FluentResolver:
                 # Provide context by showing the selector expression
                 selector_fallback = self._get_fallback_for_placeable(expr.selector, depth - 1)
                 return f"{{{selector_fallback} -> ...}}"
+            case Placeable():
+                # Nested placeable: delegate to the inner expression
+                return self._get_fallback_for_placeable(expr.expression, depth - 1)
+            case StringLiteral():
+                # Literal string value is the best fallback for a failed string literal
+                return expr.value
+            case NumberLiteral():
+                # Raw source representation is the best fallback for a failed number literal
+                return expr.raw
             case _:
-                return FALLBACK_INVALID
+                # Statically unreachable (Expression union is exhaustively covered above),
+                # but defensively necessary: _get_fallback_for_placeable is an error-recovery
+                # function whose contract is to ALWAYS return a string. Tests intentionally
+                # bypass the type system (passing Mock objects) to verify graceful degradation.
+                # assert_never() would change the contract from "always return" to "may raise",
+                # breaking the fallback guarantee. This wildcard is the safety net.
+                return FALLBACK_INVALID  # type: ignore[unreachable]

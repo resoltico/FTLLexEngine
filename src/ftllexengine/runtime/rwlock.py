@@ -339,9 +339,14 @@ class RWLock:
                 self._active_writer = current_thread_id
 
             finally:
-                # Decrement waiting writers count
-                # Runs on both success and TimeoutError, keeping counter consistent
+                # Decrement waiting writers count and notify waiting readers.
+                # Runs on both success and TimeoutError, keeping counter consistent.
+                # notify_all() is required here: readers blocked in _acquire_read spin
+                # on `while ... or self._waiting_writers > 0`. When a writer times out
+                # and decrements _waiting_writers, no other thread issues a notification,
+                # so those readers remain stuck indefinitely without this call.
                 self._waiting_writers -= 1
+                self._condition.notify_all()
 
     def _release_write(self) -> None:
         """Release write lock (internal implementation).

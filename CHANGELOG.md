@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.137.0"
+version: "0.138.0"
 domain: CHANGELOG
-updated: "2026-02-25"
+updated: "2026-02-26"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,78 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.138.0] - 2026-02-26
+
+### Fixed
+
+- **`runtime/rwlock.py` `RWLock._acquire_write` liveness bug: writer timeout silently blocks waiting readers**
+  (DEFECT-RWLOCK-WRITER-TIMEOUT-LIVENESS-001):
+  - `_acquire_write` decremented `_waiting_writers` in its `finally` block (correct for counter
+    consistency) but did not call `self._condition.notify_all()`; readers blocked in `_acquire_read`
+    spin on `while ... or self._waiting_writers > 0: self._condition.wait()` — when a writer timed
+    out and decremented the counter, no notification was issued, so those readers remained stuck
+    indefinitely (no other code path would wake them) until an unrelated writer or reader operation
+    happened to trigger a notification; this is a liveness bug: under moderate write contention with
+    timeouts, reader threads accumulate in a permanently blocked state
+  - Added `self._condition.notify_all()` immediately after `self._waiting_writers -= 1` in the
+    `finally` block with an explanatory comment documenting the invariant; the fix is correct for
+    both the success path (writer acquired the lock; `_release_write` will call `notify_all` when
+    releasing, but the writer-count decrement happens before acquisition so an early notification is
+    harmless) and the timeout path (the counter change must be broadcast to unblock waiting readers)
+  - Location: `runtime/rwlock.py` `_acquire_write` finally block
+
+- **`runtime/resolver.py` `_get_fallback_for_placeable` incomplete dispatch for `Placeable`,
+  `StringLiteral`, and `NumberLiteral`** (DEFECT-RESOLVER-FALLBACK-DISPATCH-001):
+  - `_get_fallback_for_placeable` dispatches over `Expression` (a closed 8-variant union:
+    `SelectExpression | StringLiteral | NumberLiteral | VariableReference | MessageReference |
+    TermReference | FunctionReference | Placeable`) to produce a human-readable fallback string when
+    a placeable fails to resolve; three variants — `Placeable`, `StringLiteral`, `NumberLiteral` —
+    were absent from the match and fell through to `case _: return FALLBACK_INVALID`, producing
+    `{???}` instead of a meaningful diagnostic; nested `Placeable` expressions (valid per Fluent
+    grammar: `InlineExpression` includes `Placeable`) gave `{???}` where the inner expression could
+    have been described; `StringLiteral` gave `{???}` where the raw string value is more useful;
+    `NumberLiteral` gave `{???}` where the raw source representation is more useful; `{???}` is
+    opaque — a translator debugging a failed placeable has no information about what failed
+  - Added three explicit match cases: `case Placeable()` delegates recursively to
+    `self._get_fallback_for_placeable(expr.expression, depth - 1)` so the inner expression is
+    described; `case StringLiteral()` returns `expr.value` (the literal string content);
+    `case NumberLiteral()` returns `expr.raw` (the original source representation); the `case _:`
+    wildcard is retained with `# type: ignore[unreachable]` — the union is now statically
+    exhaustive, but `_get_fallback_for_placeable` is an error-recovery function whose contract is
+    to always return a string; tests intentionally bypass the type system (passing `Mock` objects)
+    to verify graceful degradation, so the wildcard safety net must be preserved
+  - Location: `runtime/resolver.py` `_get_fallback_for_placeable`
+
+- **`runtime/resolver.py` `_format_value` silently converts `float` via `str()` instead of rejecting it**
+  (DEFECT-RESOLVER-FORMAT-VALUE-FLOAT-001):
+  - `_format_value` matched `Decimal`, `datetime`, `date`, and `FluentNumber` explicitly and delegated
+    the remainder to `case _: return str(value)`; `float` is absent from the `FluentValue` union
+    (excluded for IEEE 754 precision reasons), so typed callers are caught by mypy strict mode — but
+    custom functions registered via `FunctionRegistry` return raw Python values through
+    `function_bridge.py` without return-type validation; a custom function returning `float` bypasses
+    mypy entirely and reaches `str(value)`, silently producing output like `"3.1400000000000001"` in
+    financial context; the system accepts imprecise input without signaling the error to the implementor
+  - Added explicit `case float():` arm before the wildcard that raises `TypeError` with a diagnostic
+    message identifying the float value and directing the implementor to `int` (whole amounts) or
+    `decimal.Decimal` (fractional amounts); mypy does not flag `case float()` as unreachable in this
+    context, so no suppression is required; no behavioral change for well-typed callers
+  - Location: `runtime/resolver.py` `_format_value`
+
+- **`runtime/resolver.py` `_resolve_term_reference` uses `lstrip("-")` instead of
+  `removeprefix("-")`** (DEFECT-RESOLVER-TERM-KEY-LSTRIP-001):
+  - Two call sites used `term_key.lstrip("-")` to strip the leading dash from a term key before
+    formatting a fallback message; `str.lstrip(chars)` strips ALL leading characters in the given
+    charset — for a term key like `"--double-dash"` (which cannot be produced by the parser but
+    could be constructed programmatically), `lstrip("-")` produces `"double-dash"` while
+    `removeprefix("-")` produces `"-double-dash"`, correctly removing only the one structural dash
+    added by `f"-{term_id}"` or `f"-{term_id}.{attr}"`; `lstrip` conflates "strip leading separator"
+    with "strip all occurrences", an imprecision that obscures the one-dash invariant
+  - Replaced both `term_key.lstrip("-")` with `term_key.removeprefix("-")` and updated the adjacent
+    comments to document the one-dash invariant; `removeprefix` is semantically exact: it removes
+    exactly one leading `"-"` or nothing, matching the construction invariant of
+    `f"-{term_id}"` / `f"-{term_id}.{attr}"`
+  - Location: `runtime/resolver.py` `_resolve_term_reference` (two call sites)
 
 ## [0.137.0] - 2026-02-25
 
@@ -4967,6 +5039,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.138.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.138.0
 [0.137.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.137.0
 [0.136.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.136.0
 [0.135.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.135.0
