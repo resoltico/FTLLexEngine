@@ -484,3 +484,126 @@ class TestRWLockFairness:
 
         for thread in reader_threads:
             thread.join()
+
+
+class TestRWLockInspection:
+    """Tests for RWLock state inspection properties.
+
+    Covers reader_count, writer_active, and writers_waiting.
+    """
+
+    def test_reader_count_zero_when_idle(self) -> None:
+        """reader_count is 0 when no thread holds a read lock."""
+        lock = RWLock()
+        assert lock.reader_count == 0
+
+    def test_reader_count_one_inside_read(self) -> None:
+        """reader_count is 1 while one thread holds a read lock."""
+        lock = RWLock()
+        with lock.read():
+            assert lock.reader_count == 1
+        assert lock.reader_count == 0
+
+    def test_reader_count_reentrant_read_still_one(self) -> None:
+        """Reentrant read by the same thread counts as one reader, not two."""
+        lock = RWLock()
+        with lock.read():
+            with lock.read():
+                assert lock.reader_count == 1
+            assert lock.reader_count == 1
+        assert lock.reader_count == 0
+
+    def test_reader_count_concurrent_readers(self) -> None:
+        """reader_count reflects all concurrent readers."""
+        lock = RWLock()
+        # Two-phase barrier: phase 1 ensures all are inside the lock before
+        # any appends; phase 2 holds all inside until every thread has appended,
+        # preventing any thread from releasing its read lock prematurely.
+        barrier = threading.Barrier(3)
+        observed_counts: list[int] = []
+
+        def reader() -> None:
+            with lock.read():
+                barrier.wait()  # Phase 1: all three inside simultaneously
+                observed_counts.append(lock.reader_count)
+                barrier.wait()  # Phase 2: hold lock until all have appended
+
+        threads = [threading.Thread(target=reader) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert all(c == 3 for c in observed_counts), (
+            f"Expected 3 readers, got {observed_counts}"
+        )
+
+    def test_writer_active_false_when_idle(self) -> None:
+        """writer_active is False when no thread holds the write lock."""
+        lock = RWLock()
+        assert lock.writer_active is False
+
+    def test_writer_active_true_inside_write(self) -> None:
+        """writer_active is True while a thread holds the write lock."""
+        lock = RWLock()
+        with lock.write():
+            assert lock.writer_active is True
+        assert lock.writer_active is False
+
+    def test_writer_active_false_inside_read(self) -> None:
+        """writer_active is False when only a read lock is held."""
+        lock = RWLock()
+        with lock.read():
+            assert lock.writer_active is False
+
+    def test_writers_waiting_zero_when_idle(self) -> None:
+        """writers_waiting is 0 when no thread is blocked on write lock."""
+        lock = RWLock()
+        assert lock.writers_waiting == 0
+
+    def test_writers_waiting_increments_under_read_contention(self) -> None:
+        """writers_waiting is >= 1 while a writer is blocked by an active reader.
+
+        Synchronization protocol:
+          1. Reader acquires lock, signals main thread.
+          2. Main thread starts writer thread (will block on write lock).
+          3. Main thread sleeps 50ms — enough time for writer to enter
+             _acquire_write and block on the condition variable.
+          4. Main thread samples writers_waiting (must be 1).
+          5. Main thread signals reader to release, unblocking the writer.
+        """
+        lock = RWLock()
+        reader_holding = threading.Event()
+        reader_can_release = threading.Event()
+
+        def blocking_reader() -> None:
+            with lock.read():
+                reader_holding.set()
+                reader_can_release.wait()  # Hold until main thread says release
+
+        def waiting_writer() -> None:
+            with lock.write():
+                pass  # Acquire and immediately release
+
+        r = threading.Thread(target=blocking_reader)
+        r.start()
+
+        reader_holding.wait()  # Reader is holding the read lock
+
+        w = threading.Thread(target=waiting_writer)
+        w.start()
+
+        # 50ms is ample time for waiting_writer to enter _acquire_write and block
+        # on the condition variable (which increments _waiting_writers).
+        time.sleep(0.05)
+        observed_waiting = lock.writers_waiting
+
+        reader_can_release.set()  # Release reader; writer can now acquire lock
+
+        r.join()
+        w.join()
+
+        assert observed_waiting >= 1, (
+            f"writers_waiting never >= 1: observed={observed_waiting}"
+        )
+        assert lock.writers_waiting == 0  # Back to 0 after writer completes

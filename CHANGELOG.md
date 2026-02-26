@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.140.0"
+version: "0.141.0"
 domain: CHANGELOG
 updated: "2026-02-26"
 route:
@@ -14,6 +14,60 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.141.0] - 2026-02-26
+
+### Fixed
+
+- **`runtime/cache.py` `IntegrityCache.get`: unhashable bypass incorrectly counted as a cache miss**
+  (DEFECT-CACHE-HITRATE-001):
+  - `get()` incremented `_misses` when `_make_key` returned `None` (unhashable argument); this
+    included unhashable bypasses in the miss denominator of `hit_rate`, deflating the reported rate
+    for any workload that passes non-standard argument types; an unhashable bypass is not a cache
+    miss — no key was constructed or looked up; the correct counter is `_unhashable_skips`, which
+    was already incremented on the bypass path
+  - Removed the erroneous `self._misses += 1` from the unhashable-bypass branch; `CacheStats.misses`
+    now counts only true cache misses (hashable key looked up but not found or corrupted);
+    `CacheStats.hit_rate` is now computed as `hits / (hits + misses)` where `misses` excludes
+    unhashable bypasses — operators should consult `unhashable_skips` to diagnose unhashable argument
+    patterns, and `hit_rate` to diagnose insufficient cache size
+  - Location: `runtime/cache.py` `IntegrityCache.get` (unhashable-bypass branch)
+
+- **`runtime/cache.py` `IntegrityCacheEntry._compute_checksum`: sequence encoded as signed integer**
+  (DEFECT-CACHE-SEQUENCE-UNSIGNED-001):
+  - `_compute_checksum` called `sequence.to_bytes(8, "big", signed=True)`; the sequence is a
+    monotonically increasing non-negative counter — using `signed=True` halved the effective range
+    (uint64: 0..2^64-1, int64: 0..2^63-1); no negative sequence is ever produced, so the signed
+    encoding provided no benefit and wasted half the available counter space
+  - Changed to `sequence.to_bytes(8, "big")` (unsigned); checksums produced by the old signed
+    encoding are not persisted (the cache is in-memory only), so no migration is required
+  - Location: `runtime/cache.py` `IntegrityCacheEntry._compute_checksum`
+
+### Added
+
+- **`runtime/rwlock.py` `RWLock`: state inspection properties** (ENHANCEMENT-RWLOCK-OBSERVABILITY-001):
+  - Added three thread-safe read-only properties for production monitoring and testing:
+    - `reader_count: int` — number of distinct threads currently holding read locks (a reentrant
+      reader counts as one); returns 0 when no readers are active
+    - `writer_active: bool` — `True` if any thread currently holds the write lock
+    - `writers_waiting: int` — number of threads blocked waiting to acquire the write lock; non-zero
+      means new readers are also blocked (writer preference); useful for diagnosing write starvation
+      or write-heavy contention patterns
+  - All three properties acquire `self._condition` for an atomic point-in-time snapshot
+  - Location: `runtime/rwlock.py` `RWLock` (three new `@property` methods)
+
+- **`integrity.py` `DataIntegrityError`: runtime `@final` enforcement via `__init_subclass__`**
+  (ENHANCEMENT-INTEGRITY-FINAL-ENFORCEMENT-001):
+  - `typing.final` sets `__final__ = True` on decorated classes but provides static-analysis-only
+    enforcement (mypy); a runtime subclassing attempt on any of the six `@final` subclasses would
+    succeed silently at runtime; added `__init_subclass__` to `DataIntegrityError` that detects
+    `__final__ = True` on the immediate parent MRO entry and raises `TypeError` at class-definition
+    time, making `@final` enforcement dual-layer: mypy (static) + `__init_subclass__` (runtime)
+  - The six `@final` subclasses (`CacheCorruptionError`, `FormattingIntegrityError`,
+    `ImmutabilityViolationError`, `IntegrityCheckFailedError`, `SyntaxIntegrityError`,
+    `WriteConflictError`) are now prohibited at both the type-checker and interpreter level;
+    `DataIntegrityError` itself remains subclassable (it is not `@final`)
+  - Location: `integrity.py` `DataIntegrityError.__init_subclass__`
 
 ## [0.140.0] - 2026-02-26
 
@@ -5148,6 +5202,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.141.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.141.0
 [0.140.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.140.0
 [0.139.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.139.0
 [0.138.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.138.0

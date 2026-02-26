@@ -791,10 +791,12 @@ class TestUnhashableHandling:
     """
 
     def test_get_with_unknown_type_skips_cache(self) -> None:
-        """get() with unknown type arg skips cache and increments unhashable_skips.
+        """get() with unknown type arg bypasses cache and increments unhashable_skips.
 
         UnknownType is not recognized by _make_hashable's match/case dispatch,
         triggering TypeError("Unknown type in cache key") → _make_key returns None.
+        An unhashable bypass is not a cache miss: no key was looked up, so misses
+        is not incremented. Only unhashable_skips reflects the event.
         """
         cache = IntegrityCache(strict=False)
 
@@ -805,7 +807,7 @@ class TestUnhashableHandling:
         result = cache.get("msg", args, None, "en", True)  # type: ignore[arg-type]
         assert result is None
         assert cache.unhashable_skips == 1
-        assert cache.misses == 1
+        assert cache.misses == 0
         assert cache.hits == 0
 
     def test_put_with_unhashable_hash_raises_skips_cache(self) -> None:
@@ -866,7 +868,11 @@ class TestUnhashableHandling:
         assert cache.unhashable_skips == 1
 
     def test_get_stats_includes_unhashable_skips(self) -> None:
-        """get_stats() includes accurate unhashable_skips count."""
+        """get_stats() reflects unhashable bypasses in unhashable_skips, not misses.
+
+        Unhashable args bypass the cache entirely; no key lookup occurs.
+        misses counts only true cache misses (key looked up, not found).
+        """
         cache = IntegrityCache(strict=False, maxsize=100)
 
         class UnhashableClass:
@@ -878,7 +884,7 @@ class TestUnhashableHandling:
         stats = cache.get_stats()
         assert "unhashable_skips" in stats
         assert stats["unhashable_skips"] == 1
-        assert stats["misses"] == 1
+        assert stats["misses"] == 0
 
     def test_hashable_args_do_not_increment_unhashable_skips(self) -> None:
         """Fully hashable primitive args never increment unhashable_skips."""
@@ -1083,12 +1089,79 @@ class TestIntegrityCacheProperties:
         assert cache.hits == 2
 
     def test_misses_increments_on_cache_miss(self) -> None:
-        """misses property increments each time get() finds no entry."""
+        """misses increments only for true cache misses, not unhashable bypasses."""
         cache = IntegrityCache(strict=False)
         cache.get("msg1", None, None, "en", True)
         assert cache.misses == 1
         cache.get("msg2", None, None, "en", True)
         assert cache.misses == 2
+
+    def test_misses_not_incremented_for_unhashable_bypass(self) -> None:
+        """Unhashable args bypass the cache entirely; misses is not incremented.
+
+        An unhashable bypass is not a cache miss: no key was constructed or
+        looked up. Only unhashable_skips reflects the event. Conflating them
+        would deflate hit_rate and mislead operators about cache efficiency.
+        """
+        cache = IntegrityCache(strict=False)
+
+        class UnknownType:
+            pass
+
+        cache.get("msg", {"x": UnknownType()}, None, "en", True)  # type: ignore[dict-item]
+        assert cache.unhashable_skips == 1
+        assert cache.misses == 0
+
+    def test_hit_rate_excludes_unhashable_bypasses(self) -> None:
+        """hit_rate is computed over hashable interactions only: hits / (hits + misses).
+
+        Unhashable bypasses do not count as misses, so they do not dilute the
+        rate. A cache with one hashable hit and one unhashable bypass reports
+        hit_rate=100.0, not 50.0.
+        """
+        cache = IntegrityCache(strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.get("msg", None, None, "en", True)  # hit
+
+        class UnknownType:
+            pass
+
+        cache.get("msg", {"x": UnknownType()}, None, "en", True)  # type: ignore[dict-item]
+
+        stats = cache.get_stats()
+        assert stats["hits"] == 1
+        assert stats["misses"] == 0
+        assert stats["unhashable_skips"] == 1
+        assert stats["hit_rate"] == 100.0
+
+    def test_hit_rate_zero_on_all_true_misses(self) -> None:
+        """hit_rate is 0.0 when all interactions are true misses (no unhashable)."""
+        cache = IntegrityCache(strict=False)
+        cache.get("absent", None, None, "en", True)
+        stats = cache.get_stats()
+        assert stats["hits"] == 0
+        assert stats["misses"] == 1
+        assert stats["hit_rate"] == 0.0
+
+    def test_hit_rate_correct_mixed_hits_and_misses(self) -> None:
+        """hit_rate is accurate across a mix of hits, misses, and unhashable bypasses."""
+        cache = IntegrityCache(strict=False)
+        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.get("msg", None, None, "en", True)   # hit
+        cache.get("msg", None, None, "en", True)   # hit
+        cache.get("absent", None, None, "en", True)  # miss
+
+        class UnknownType:
+            pass
+
+        cache.get("msg", {"x": UnknownType()}, None, "en", True)  # type: ignore[dict-item]
+
+        stats = cache.get_stats()
+        assert stats["hits"] == 2
+        assert stats["misses"] == 1
+        assert stats["unhashable_skips"] == 1
+        # hit_rate = 2 / (2 + 1) * 100 = 66.67%
+        assert stats["hit_rate"] == round(2 / 3 * 100, 2)
 
     def test_unhashable_skips_increments_on_skip(self) -> None:
         """unhashable_skips increments for both get() and put() skips."""

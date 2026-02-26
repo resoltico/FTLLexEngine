@@ -71,8 +71,14 @@ class CacheStats(TypedDict):
         max_entry_weight: Maximum memory weight for a single cached result.
         max_errors_per_entry: Maximum errors stored per cache entry.
         hits: Total cache hits since creation (not reset on clear()).
-        misses: Total cache misses since creation (not reset on clear()).
-        hit_rate: Hit rate as a percentage (0.0-100.0), rounded to 2 decimal places.
+        misses: True cache misses since creation: key was hashable, looked up,
+            but not found (or found corrupted in non-strict mode). Unhashable
+            bypasses are excluded; those increment unhashable_skips only. Not
+            reset on clear().
+        hit_rate: Hit rate as a percentage (0.0-100.0), rounded to 2 decimal
+            places. Computed over hashable-key interactions only:
+            hits / (hits + misses). Unhashable bypasses do not affect this
+            metric, so the rate reflects true cache efficiency.
         unhashable_skips: Puts skipped because the args could not be hashed.
         oversize_skips: Puts skipped because the formatted string alone exceeded
             max_entry_weight (before errors are considered).
@@ -321,7 +327,7 @@ class IntegrityCacheEntry:
             2. errors: Count + each error as (b"\\x01" + content_hash) using
                FrozenFluentError.content_hash (BLAKE2b-128, always present)
             3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
-            4. sequence: Entry sequence number (8-byte signed big-endian)
+            4. sequence: Entry sequence number (8-byte unsigned big-endian)
 
         Args:
             formatted: Formatted message string
@@ -340,7 +346,7 @@ class IntegrityCacheEntry:
         IntegrityCacheEntry._feed_errors(h, errors)
         # Include metadata fields for complete audit trail integrity
         h.update(struct.pack(">d", created_at))  # 8-byte big-endian IEEE 754 double
-        h.update(sequence.to_bytes(8, "big", signed=True))  # 8-byte signed int
+        h.update(sequence.to_bytes(8, "big"))  # 8-byte unsigned int; sequence is always >= 0
         return h.digest()
 
     def verify(self) -> bool:
@@ -584,7 +590,11 @@ class IntegrityCache:
         if key is None:
             with self._lock:
                 self._unhashable_skips += 1
-                self._misses += 1
+            # Unhashable args bypass the cache entirely: no key exists, no
+            # lookup occurs. This is not a cache miss — it is a cache bypass.
+            # Counting it as a miss would deflate hit_rate and mislead operators
+            # into diagnosing insufficient cache size when the real issue is
+            # an unhashable argument type. unhashable_skips is the correct counter.
             return None
 
         with self._lock:

@@ -351,3 +351,43 @@ class RWLock:
             # Notify all waiting threads (readers and writers)
             # Writer preference handled in _acquire_read logic
             self._condition.notify_all()
+
+    @property
+    def reader_count(self) -> int:
+        """Number of distinct threads currently holding read locks.
+
+        Thread-safe point-in-time snapshot. A thread holding a reentrant
+        read lock (acquired multiple times) counts as one reader.
+
+        Returns:
+            Non-negative integer; 0 when no readers are active.
+        """
+        with self._condition:
+            return self._active_readers
+
+    @property
+    def writer_active(self) -> bool:
+        """True if any thread currently holds the write lock.
+
+        Thread-safe point-in-time snapshot. Useful for production monitoring
+        to detect write lock contention or stalled writers.
+
+        Returns:
+            True if write lock is held, False otherwise.
+        """
+        with self._condition:
+            return self._active_writer is not None
+
+    @property
+    def writers_waiting(self) -> int:
+        """Number of threads currently blocked waiting to acquire the write lock.
+
+        Thread-safe point-in-time snapshot. A non-zero value means new readers
+        are also being blocked (writer preference). Useful for diagnosing write
+        starvation or identifying write-heavy contention patterns.
+
+        Returns:
+            Non-negative integer; 0 when no writers are waiting.
+        """
+        with self._condition:
+            return self._waiting_writers

@@ -84,13 +84,37 @@ class DataIntegrityError(Exception):
     This exception is immutable after construction to prevent
     tampering with error evidence.
 
-    Subclasses are @final to prevent further inheritance.
+    Subclasses are @final to prevent further inheritance. Both static
+    analysis (mypy) and runtime (__init_subclass__) enforce finality on
+    the six direct subclasses.
 
     Attributes:
         context: Structured diagnostic context for post-mortem analysis
     """
 
     __slots__ = ("_context", "_frozen")
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Enforce @final on DataIntegrityError subclasses at class-definition time.
+
+        Python's @final decorator (typing module) sets __final__ = True on
+        the decorated class. When a class attempts to subclass a @final
+        DataIntegrityError subclass, this hook detects the __final__ marker
+        on the immediate parent and raises TypeError before the subclass
+        is created, providing runtime enforcement complementary to mypy's
+        static analysis.
+
+        Args:
+            **kwargs: Forwarded to super().__init_subclass__.
+
+        Raises:
+            TypeError: If the immediate parent is a @final DataIntegrityError subclass.
+        """
+        super().__init_subclass__(**kwargs)
+        parent = cls.__mro__[1]
+        if getattr(parent, "__final__", False):
+            msg = f"{parent.__name__} is @final and cannot be subclassed"
+            raise TypeError(msg)
 
     # Type annotations for __slots__ attributes (mypy requirement)
     _context: IntegrityContext | None

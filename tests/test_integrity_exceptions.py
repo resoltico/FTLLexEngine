@@ -310,19 +310,13 @@ class TestCacheCorruptionError:
         assert error.context.component == context.component
 
     def test_final_decorator_type_hint(self) -> None:
-        """CacheCorruptionError is @final (type checker enforcement only).
+        """CacheCorruptionError is @final (enforced by mypy and __init_subclass__).
 
-        The @final decorator is a type hint for static analyzers.
-        It does not prevent runtime subclassing in Python.
-        Type checkers like mypy will flag subclassing attempts.
+        The @final decorator sets __final__ = True for static analyzers.
+        __init_subclass__ also raises TypeError at class-definition time,
+        so runtime subclassing is now prohibited (not just a type hint).
         """
-        # This will pass at runtime but fail mypy type checking
-        # pylint: disable=unused-variable,subclassed-final-class
-        class TestSubclassError(CacheCorruptionError):  # type: ignore[misc]
-            pass
-
-        # Verify @final is present for type checkers
-        assert hasattr(CacheCorruptionError, "__final__")
+        assert getattr(CacheCorruptionError, "__final__", False) is True
 
     @given(message=error_messages())
     @settings(max_examples=50)
@@ -352,12 +346,8 @@ class TestImmutabilityViolationError:
         assert str(error) == message
 
     def test_final_decorator_type_hint(self) -> None:
-        """ImmutabilityViolationError is @final (type checker enforcement only)."""
-        # pylint: disable=unused-variable,subclassed-final-class
-        class TestSubclassError(ImmutabilityViolationError):  # type: ignore[misc]
-            pass
-
-        assert hasattr(ImmutabilityViolationError, "__final__")
+        """ImmutabilityViolationError is @final (enforced by mypy and __init_subclass__)."""
+        assert getattr(ImmutabilityViolationError, "__final__", False) is True
 
     def test_used_for_mutation_detection(self) -> None:
         """ImmutabilityViolationError is raised when mutations detected."""
@@ -393,12 +383,8 @@ class TestIntegrityCheckFailedError:
         assert error.context is context
 
     def test_final_decorator_type_hint(self) -> None:
-        """IntegrityCheckFailedError is @final (type checker enforcement only)."""
-        # pylint: disable=unused-variable,subclassed-final-class
-        class TestSubclassError(IntegrityCheckFailedError):  # type: ignore[misc]
-            pass
-
-        assert hasattr(IntegrityCheckFailedError, "__final__")
+        """IntegrityCheckFailedError is @final (enforced by mypy and __init_subclass__)."""
+        assert getattr(IntegrityCheckFailedError, "__final__", False) is True
 
 
 # =============================================================================
@@ -483,12 +469,8 @@ class TestWriteConflictError:
         assert f"new_seq={new_seq}" in r
 
     def test_final_decorator_type_hint(self) -> None:
-        """WriteConflictError is @final (type checker enforcement only)."""
-        # pylint: disable=unused-variable,subclassed-final-class
-        class TestSubclassError(WriteConflictError):  # type: ignore[misc]
-            pass
-
-        assert hasattr(WriteConflictError, "__final__")
+        """WriteConflictError is @final (enforced by mypy and __init_subclass__)."""
+        assert getattr(WriteConflictError, "__final__", False) is True
 
     @given(
         message=error_messages(),
@@ -608,12 +590,8 @@ class TestFormattingIntegrityError:
         assert "error_count=3" in r
 
     def test_final_decorator_type_hint(self) -> None:
-        """FormattingIntegrityError is @final (type checker enforcement only)."""
-        # pylint: disable=unused-variable,subclassed-final-class
-        class TestSubclassError(FormattingIntegrityError):  # type: ignore[misc]
-            pass
-
-        assert hasattr(FormattingIntegrityError, "__final__")
+        """FormattingIntegrityError is @final (enforced by mypy and __init_subclass__)."""
+        assert getattr(FormattingIntegrityError, "__final__", False) is True
 
     @given(message=error_messages())
     @settings(max_examples=50)
@@ -720,12 +698,8 @@ class TestSyntaxIntegrityError:
         assert f"source_path={path!r}" in r
 
     def test_final_decorator_type_hint(self) -> None:
-        """SyntaxIntegrityError is @final (type checker enforcement only)."""
-        # pylint: disable=unused-variable,subclassed-final-class
-        class TestSubclassError(SyntaxIntegrityError):  # type: ignore[misc]
-            pass
-
-        assert hasattr(SyntaxIntegrityError, "__final__")
+        """SyntaxIntegrityError is @final (enforced by mypy and __init_subclass__)."""
+        assert getattr(SyntaxIntegrityError, "__final__", False) is True
 
     @given(message=error_messages())
     @settings(max_examples=50)
@@ -920,3 +894,51 @@ class TestEdgeCases:
         except DataIntegrityError as error:
             # With 'from None', __context__ is suppressed
             assert error.__suppress_context__ is True  # noqa: PT017
+
+
+class TestDataIntegrityErrorFinalEnforcement:
+    """Runtime @final enforcement on DataIntegrityError subclasses.
+
+    Python's @final decorator sets __final__ = True on the class. The
+    __init_subclass__ hook on DataIntegrityError detects this marker and
+    raises TypeError at class-definition time, preventing runtime subclassing
+    of all six @final subclasses.
+    """
+
+    def test_subclassing_cache_corruption_error_raises(self) -> None:
+        """Subclassing CacheCorruptionError raises TypeError at class-definition time."""
+        with pytest.raises(TypeError, match="CacheCorruptionError is @final"):
+            type("Sub", (CacheCorruptionError,), {})
+
+    def test_subclassing_immutability_violation_error_raises(self) -> None:
+        """Subclassing ImmutabilityViolationError raises TypeError."""
+        with pytest.raises(TypeError, match="ImmutabilityViolationError is @final"):
+            type("Sub", (ImmutabilityViolationError,), {})
+
+    def test_subclassing_integrity_check_failed_error_raises(self) -> None:
+        """Subclassing IntegrityCheckFailedError raises TypeError."""
+        with pytest.raises(TypeError, match="IntegrityCheckFailedError is @final"):
+            type("Sub", (IntegrityCheckFailedError,), {})
+
+    def test_subclassing_write_conflict_error_raises(self) -> None:
+        """Subclassing WriteConflictError raises TypeError."""
+        with pytest.raises(TypeError, match="WriteConflictError is @final"):
+            type("Sub", (WriteConflictError,), {})
+
+    def test_subclassing_formatting_integrity_error_raises(self) -> None:
+        """Subclassing FormattingIntegrityError raises TypeError."""
+        with pytest.raises(TypeError, match="FormattingIntegrityError is @final"):
+            type("Sub", (FormattingIntegrityError,), {})
+
+    def test_subclassing_syntax_integrity_error_raises(self) -> None:
+        """Subclassing SyntaxIntegrityError raises TypeError."""
+        with pytest.raises(TypeError, match="SyntaxIntegrityError is @final"):
+            type("Sub", (SyntaxIntegrityError,), {})
+
+    def test_subclassing_data_integrity_error_itself_allowed(self) -> None:
+        """DataIntegrityError itself is not @final; direct subclassing is permitted."""
+        # This must not raise — DataIntegrityError is the extensible base.
+        sub_cls = type("SubError", (DataIntegrityError,), {"__slots__": ()})
+        instance = sub_cls("test")
+        assert str(instance) == "test"
+        assert isinstance(instance, DataIntegrityError)

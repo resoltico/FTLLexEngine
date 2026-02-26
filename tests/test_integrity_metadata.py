@@ -166,26 +166,31 @@ class TestCacheChecksumIncludesMetadata:
         )
         assert checksum != checksum_diff
 
-    def test_checksum_includes_signed_sequence(self) -> None:
-        """Checksum computation handles negative sequence numbers.
+    def test_checksum_distinguishes_sequence_values(self) -> None:
+        """Checksum computation distinguishes different sequence numbers.
 
-        Sequence is encoded as 8-byte signed big-endian integer.
+        Sequence is encoded as an 8-byte unsigned big-endian integer.
+        Sequences are always non-negative (monotonic counter); the unsigned
+        encoding doubles the available range compared to signed encoding.
         """
         formatted = "Test"
         errors: tuple[FrozenFluentError, ...] = ()
         created_at = 12345.0
-        seq_positive = 1
-        seq_negative = -1
 
-        checksum_pos = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, seq_positive
+        checksum_0 = IntegrityCacheEntry._compute_checksum(
+            formatted, errors, created_at, 0
         )
-        checksum_neg = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, seq_negative
+        checksum_1 = IntegrityCacheEntry._compute_checksum(
+            formatted, errors, created_at, 1
+        )
+        checksum_large = IntegrityCacheEntry._compute_checksum(
+            formatted, errors, created_at, 2**63  # Fits in unsigned 64-bit only
         )
 
-        # Positive and negative sequences produce different checksums
-        assert checksum_pos != checksum_neg
+        # All three sequences produce distinct checksums
+        assert checksum_0 != checksum_1
+        assert checksum_0 != checksum_large
+        assert checksum_1 != checksum_large
 
 
 # ============================================================================
