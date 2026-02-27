@@ -1142,11 +1142,11 @@ class TestUnknownLocaleErrorHandling:
 
 
 class TestClearAllCachesIntegration:
-    """Tests for clear_all_caches integration with ISO caches."""
+    """Tests for clear_module_caches integration with ISO caches."""
 
-    def test_clear_all_caches_includes_iso_cache(self) -> None:
-        """clear_all_caches should clear ISO introspection caches."""
-        from ftllexengine import clear_all_caches  # noqa: PLC0415
+    def test_clear_module_caches_includes_iso_cache(self) -> None:
+        """clear_module_caches should clear ISO introspection caches."""
+        from ftllexengine import clear_module_caches  # noqa: PLC0415
         from ftllexengine.introspection.iso import _get_territory_impl  # noqa: PLC0415
 
         # Populate ISO cache
@@ -1163,7 +1163,7 @@ class TestClearAllCachesIntegration:
         assert info_before.currsize > 0
 
         # Clear ALL caches (not just ISO)
-        clear_all_caches()
+        clear_module_caches()
 
         # Verify ISO cache is now empty
         info_after = _get_territory_impl.cache_info()

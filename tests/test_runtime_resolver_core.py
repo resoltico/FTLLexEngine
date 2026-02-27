@@ -637,7 +637,7 @@ class TestMessageReferenceEdgeCases:
 
     def test_format_nonexistent_message_raises_error(self) -> None:
         """Formatting non-existent message raises FluentReferenceError."""
-        bundle = FluentBundle("en", use_isolating=False)
+        bundle = FluentBundle("en", use_isolating=False, strict=False)
         bundle.add_resource("hello = Hello")
 
         result, errors = bundle.format_pattern("missing", {})
@@ -730,7 +730,7 @@ class TestFunctionArityValidation:
 
     def test_number_with_zero_args_fails(self) -> None:
         """NUMBER function with 0 positional args fails with arity error."""
-        bundle = FluentBundle("en", use_isolating=False)
+        bundle = FluentBundle("en", use_isolating=False, strict=False)
         bundle.add_resource("""bad = { NUMBER() }""")
 
         _result, errors = bundle.format_pattern("bad", {})

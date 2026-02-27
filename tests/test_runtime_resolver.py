@@ -32,7 +32,7 @@ class TestFluentResolverVariableSubstitution:
     @pytest.fixture
     def bundle(self) -> Any:
         """Create bundle with variable messages."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource("""
 greeting = Hello, { $name }!
 welcome = Welcome, { $firstName } { $lastName }!
@@ -266,7 +266,7 @@ class TestFluentResolverErrorHandling:
     @pytest.fixture
     def bundle(self) -> Any:
         """Create bundle for error testing."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource("""
 good-msg = This works
 """)
@@ -315,7 +315,7 @@ class TestFluentResolverMessageAttributes:
     @pytest.fixture
     def bundle(self) -> Any:
         """Create bundle with attributes."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource("""
 login-button = Login
     .aria-label = Login button
@@ -526,7 +526,7 @@ class TestFluentResolverAdvancedFeatures:
 
     def test_attribute_not_found_raises_error(self) -> None:
         """Resolver raises error when requested attribute doesn't exist."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource("""
 button = Save
     .tooltip = Click to save

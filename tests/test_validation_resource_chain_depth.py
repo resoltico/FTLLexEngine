@@ -584,7 +584,7 @@ class TestValidationChainDepth:
         ]
         assert len(chain_warnings) >= 1
 
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(ftl_source)
         _, errors = bundle.format_pattern(f"msg-{chain_length - 1}")
         depth_errors = [

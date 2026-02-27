@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.139.0"
+version: "0.142.0"
 domain: RUNTIME
-updated: "2026-02-26"
+updated: "2026-02-27"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
@@ -1105,7 +1105,7 @@ def read(self, timeout: float | None = None) -> Generator[None, None, None]:
 - State: Increments active readers count. Reentrant for same thread.
 - Thread: Safe. Multiple threads can hold read locks concurrently.
 - Blocks: When writer is active or writers are waiting (writer preference).
-- Raises: `TimeoutError` if lock not acquired within timeout. `ValueError` if timeout negative.
+- Raises: `RuntimeError` if thread holds write lock (downgrade prohibited). `TimeoutError` if lock not acquired within timeout. `ValueError` if timeout negative.
 - Usage: `with lock.read(): # read data` or `with lock.read(timeout=1.0): # bounded wait`
 
 ---
@@ -1127,11 +1127,65 @@ def write(self, timeout: float | None = None) -> Generator[None, None, None]:
 
 ### Constraints
 - Return: Context manager yielding None.
-- State: Sets active writer. Blocks all other readers and writers. Reentrant (same thread can acquire multiple times).
+- State: Sets active writer. Blocks all other readers and writers. Non-reentrant: raises `RuntimeError` if called while already holding write lock.
 - Thread: Safe. Only one thread can hold write lock at a time.
 - Blocks: Until all readers release their locks.
-- Raises: `RuntimeError` if thread attempts read-to-write lock upgrade. `TimeoutError` if lock not acquired within timeout. `ValueError` if timeout negative.
+- Raises: `RuntimeError` if thread attempts read-to-write lock upgrade. `RuntimeError` if thread already holds the write lock. `TimeoutError` if lock not acquired within timeout. `ValueError` if timeout negative.
 - Usage: `with lock.write(): # modify data` or `with lock.write(timeout=2.0): # bounded wait`
+
+---
+
+## `RWLock.reader_count`
+
+Read-only snapshot of the number of threads currently holding read locks.
+
+### Signature
+```python
+@property
+def reader_count(self) -> int:
+```
+
+### Constraints
+- Return: Non-negative integer; 0 when no readers are active.
+- State: Thread-safe point-in-time snapshot. A thread holding a reentrant read lock (acquired multiple times) counts as one reader.
+- Thread: Safe.
+- Usage: Production monitoring for read lock contention.
+
+---
+
+## `RWLock.writer_active`
+
+Read-only flag indicating whether any thread currently holds the write lock.
+
+### Signature
+```python
+@property
+def writer_active(self) -> bool:
+```
+
+### Constraints
+- Return: True if write lock is held, False otherwise.
+- State: Thread-safe point-in-time snapshot.
+- Thread: Safe.
+- Usage: Production monitoring to detect write lock contention or stalled writers.
+
+---
+
+## `RWLock.writers_waiting`
+
+Read-only snapshot of the number of threads currently blocked waiting for the write lock.
+
+### Signature
+```python
+@property
+def writers_waiting(self) -> int:
+```
+
+### Constraints
+- Return: Non-negative integer; 0 when no writers are waiting.
+- State: Thread-safe point-in-time snapshot. A non-zero value means new readers are also being blocked (writer preference).
+- Thread: Safe.
+- Usage: Diagnosing write starvation or identifying write-heavy contention patterns.
 
 ---
 

@@ -593,8 +593,8 @@ class TestEntryIntegrationViaBundle:
         assert "Attribute" in result
 
     def test_malformed_attribute(self) -> None:
-        """Message with malformed attribute."""
-        bundle = FluentBundle("en_US")
+        """Message with malformed attribute uses soft-error recovery (strict=False)."""
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(
             "\nmsg = Value\n    .attr Missing equals sign\n"
         )

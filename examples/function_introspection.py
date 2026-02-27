@@ -260,7 +260,7 @@ def demonstrate_safe_function_use() -> None:
     else:
         print("[ERROR] CURRENCY function not available!")
         print("Fallback: using plain number formatting")
-        bundle.add_resource("price = ${$amount}")
+        bundle.add_resource("price = { $amount }")
 
     # Output:
     # [OK] CURRENCY function available, safe to use

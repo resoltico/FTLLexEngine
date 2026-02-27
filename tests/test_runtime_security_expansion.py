@@ -29,7 +29,7 @@ class TestBillionLaughsPrevention:
         lines.append("m25 = BOOM")
         ftl = "\n".join(lines)
 
-        bundle = FluentBundle("en_US", max_expansion_size=100_000)
+        bundle = FluentBundle("en_US", max_expansion_size=100_000, strict=False)
         bundle.add_resource(ftl)
         _result, errors = bundle.format_pattern("m0")
 
@@ -52,7 +52,7 @@ class TestBillionLaughsPrevention:
 
     def test_custom_expansion_budget(self) -> None:
         """Custom expansion budget is respected."""
-        bundle = FluentBundle("en_US", max_expansion_size=10)
+        bundle = FluentBundle("en_US", max_expansion_size=10, strict=False)
         bundle.add_resource("long-msg = This is a long message that exceeds budget")
         _result, errors = bundle.format_pattern("long-msg")
         # The message itself exceeds 10 chars
@@ -79,7 +79,7 @@ class TestBillionLaughsPrevention:
 
         # Budget smaller than 2^depth
         budget = min(2**depth - 1, 10_000)
-        bundle = FluentBundle("en_US", max_expansion_size=budget)
+        bundle = FluentBundle("en_US", max_expansion_size=budget, strict=False)
         bundle.add_resource(ftl)
         _result, errors = bundle.format_pattern("m0")
 

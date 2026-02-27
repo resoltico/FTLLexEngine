@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.141.0"
+version: "0.142.0"
 domain: CHANGELOG
-updated: "2026-02-26"
+updated: "2026-02-27"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,65 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.142.0] - 2026-02-27
+
+### Breaking Changes
+
+- **`ftllexengine.clear_all_caches` renamed to `ftllexengine.clear_module_caches`**
+  (RENAME-CLEAR-CACHES-001):
+  - The function `clear_all_caches()` is renamed to `clear_module_caches()` to accurately
+    describe its scope: it clears module-level library caches, not bundle-level caches
+    (per-bundle `IntegrityCache` instances are unaffected and must be cleared via
+    `bundle.clear_cache()`); the old name implied broader scope than the function delivers
+  - Update all call sites: `from ftllexengine import clear_module_caches`
+  - Location: `__init__.py`, `__init__.pyi`
+
+### Fixed
+
+- **`runtime/bundle.py` `_PendingRegistration.overwrite_warnings`: untyped tuple narrowed**
+  (DEFECT-BUNDLE-OVERWRITE-TYPE-001):
+  - `overwrite_warnings` field was typed as `list[tuple[str, str]]`; the first element is always
+    one of the string literals `"message"` or `"term"` — a fact encoded structurally in the two
+    `case` branches that append to this list, but invisible to mypy; narrowed to
+    `list[tuple[Literal["message", "term"], str]]` to make the invariant machine-checked
+  - Location: `runtime/bundle.py` `_PendingRegistration.overwrite_warnings`
+
+- **`runtime/resolution_context.py` `ResolutionContext.pop`: `IntegrityContext` missing timestamps**
+  (DEFECT-RESOLUTION-CONTEXT-TIMESTAMP-001):
+  - Both `IntegrityContext` instances constructed in `pop()` omitted the `timestamp` field;
+    `IntegrityContext.timestamp` is the primary diagnostic signal for post-mortem ordering of
+    integrity events in production; all other `IntegrityContext` constructions in the runtime layer
+    include `timestamp=time.monotonic()`, making the two omissions in `pop()` inconsistent
+  - Added `import time` and `timestamp=time.monotonic()` to both `IntegrityContext` constructions
+    (stack-underflow path and stack-corruption path)
+  - Location: `runtime/resolution_context.py` `ResolutionContext.pop`
+
+- **`runtime/functions.py`: broad `except Exception` narrowed in `parse_pattern` fallback paths**
+  (DEFECT-FUNCTIONS-BROAD-EXCEPT-001):
+  - `number_format` and `currency_format` each contained `except Exception` when catching
+    `parse_pattern` failures during max-fraction-digits extraction; `Exception` catches unexpected
+    errors (programming bugs, memory issues proxied via exceptions) that should propagate, not be
+    silently swallowed into a WARNING log; Babel's `parse_pattern` raises `ValueError` for malformed
+    format strings and `AttributeError` for non-string inputs — both expected failure modes
+  - Narrowed to `except (ValueError, AttributeError)` in both functions; unexpected exceptions
+    now propagate correctly; the `# pylint: disable=broad-exception-caught` suppression was removed
+    (no longer needed)
+  - Location: `runtime/functions.py` `number_format` (line ~211), `currency_format` (line ~396)
+
+### Changed
+
+- **`FluentBundle` and `FluentLocalization` default `strict` parameter changed to `True`**
+  (CHANGE-STRICT-DEFAULT-001):
+  - Both `FluentBundle.__init__` and `FluentLocalization.__init__` now default to `strict=True`
+    instead of `strict=False`; financial applications require fail-fast behavior — silent fallbacks
+    mask formatting errors that would otherwise go undetected in production
+  - `strict=True` raises `FormattingIntegrityError` when `format_pattern` / `format_value`
+    encounters any error (missing message, missing variable, cyclic reference, depth limit exceeded,
+    unknown function); `strict=True` also raises `SyntaxIntegrityError` when `add_resource` produces
+    any junk entries (invalid FTL syntax)
+  - Applications using soft-error recovery (returning `(fallback, errors)` tuples) must pass
+    `strict=False` explicitly; new applications default to financial-grade fail-fast behavior
 
 ## [0.141.0] - 2026-02-26
 
@@ -5202,6 +5261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.142.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.142.0
 [0.141.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.141.0
 [0.140.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.140.0
 [0.139.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.139.0

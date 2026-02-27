@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.135.0"
+version: "0.142.0"
 domain: CORE
-updated: "2026-02-25"
+updated: "2026-02-27"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -65,7 +65,7 @@ class FluentBundle:
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
         max_expansion_size: int | None = None,
-        strict: bool = False,
+        strict: bool = True,
     ) -> None: ...
 ```
 
@@ -79,16 +79,15 @@ class FluentBundle:
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10,000,000). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 | `max_expansion_size` | `int \| None` | N | Maximum total characters produced during resolution (default: 1,000,000). Prevents Billion Laughs DoS. |
-| `strict` | `bool` | N | Fail-fast mode: raises FormattingIntegrityError on ANY error. |
+| `strict` | `bool` | N | Fail-fast mode (default `True`): raises `FormattingIntegrityError` on ANY error; raises `SyntaxIntegrityError` when `add_resource` produces junk. Pass `False` for soft-error recovery (returns `(fallback, errors)` tuple). |
 
 ### Constraints
 - Return: FluentBundle instance.
 - Raises: `ValueError` on invalid locale format (must be ASCII alphanumeric with underscore/hyphen separators) or locale code exceeding 1000 characters (DoS prevention).
 - State: Creates internal message/term registries.
 - Thread: Always thread-safe via internal RWLock.
-- Context: Supports context manager protocol (__enter__/__exit__). Both are no-ops; use for structured scoping only.
 - Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`. `FluentValue` from `ftllexengine.runtime.value_types`.
-- Strict: When `strict=True`, any formatting error raises `FormattingIntegrityError` instead of returning fallback. Errors are cached before raising; subsequent cache hits re-raise without re-resolution.
+- Strict: Default `strict=True` raises `FormattingIntegrityError` on any resolution error and `SyntaxIntegrityError` on junk FTL. Use `strict=False` for soft-error recovery; errors are then returned as a tuple. Errors are cached before raising; subsequent cache hits re-raise without re-resolution.
 - Cache: Security parameters expose `IntegrityCache` features for financial-grade applications.
 
 ---
@@ -107,7 +106,7 @@ def for_system_locale(
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
     max_expansion_size: int | None = None,
-    strict: bool = False,
+    strict: bool = True,
 ) -> FluentBundle:
 ```
 
@@ -120,58 +119,12 @@ def for_system_locale(
 | `max_source_size` | `int \| None` | N | Maximum FTL source length in characters (default: 10,000,000). |
 | `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth (default: 100). |
 | `max_expansion_size` | `int \| None` | N | Maximum total characters during resolution (default: 1,000,000). |
-| `strict` | `bool` | N | Enable strict mode (fail-fast on errors). |
+| `strict` | `bool` | N | Fail-fast mode (default `True`): raises on errors. Pass `False` for soft-error recovery. |
 
 ### Constraints
 - Return: FluentBundle with system locale.
 - Raises: `RuntimeError` if locale cannot be determined.
 - State: Delegates to `get_system_locale(raise_on_failure=True)`.
-- Thread: Safe.
-
----
-
-## `FluentBundle.__enter__`
-
-### Signature
-```python
-def __enter__(self) -> FluentBundle:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Return: Self (FluentBundle instance).
-- Raises: None.
-- State: No-op. Does not modify any bundle state.
-- Thread: Safe.
-
----
-
-## `FluentBundle.__exit__`
-
-### Signature
-```python
-def __exit__(
-    self,
-    exc_type: type[BaseException] | None,
-    exc_val: BaseException | None,
-    exc_tb: object | None,
-) -> None:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `exc_type` | `type[BaseException] \| None` | N | Exception type. |
-| `exc_val` | `BaseException \| None` | N | Exception value. |
-| `exc_tb` | `object \| None` | N | Traceback object. |
-
-### Constraints
-- Return: None (does not suppress exceptions).
-- Raises: None.
-- State: No-op. Does not clear cache or modify any bundle state. Cache is managed at mutation time (`add_resource`, `add_function` clear cache immediately).
 - Thread: Safe.
 
 ---
@@ -226,7 +179,7 @@ def format_pattern(
 
 ### Constraints
 - Return: Tuple of (formatted_string, errors).
-- Raises: `FormattingIntegrityError` in strict mode if ANY error occurs. In non-strict mode (default), never raises; all errors collected in tuple.
+- Raises: `FormattingIntegrityError` in strict mode (default) if ANY error occurs. In non-strict mode (`strict=False`), never raises; all errors collected in tuple.
 - State: Read-only (may update cache).
 - Thread: Safe for concurrent reads.
 - Duplicate Attributes: When message has duplicate attributes with same name, last attribute wins (per Fluent spec).
@@ -663,7 +616,7 @@ class FluentLocalization:
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
-        strict: bool = False,
+        strict: bool = True,
     ) -> None: ...
 ```
 
@@ -676,14 +629,13 @@ class FluentLocalization:
 | `use_isolating` | `bool` | N | Wrap interpolated values in bidi marks. |
 | `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables (default). |
 | `on_fallback` | `Callable[[FallbackInfo], None] \| None` | N | Callback on fallback locale resolution. |
-| `strict` | `bool` | N | Enable strict mode for all bundles. |
+| `strict` | `bool` | N | Fail-fast mode (default `True`): raises `FormattingIntegrityError` on errors. Pass `False` for soft-error recovery. |
 
 ### Constraints
 - Return: FluentLocalization instance.
 - Raises: `ValueError` if locales empty, invalid locale format, or resource_ids without loader. Locale codes must match `[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*` (BCP 47 subset).
 - State: Lazy bundle initialization. Bundles created on first access. Locale format validated eagerly at construction.
 - Thread: Safe (RWLock-protected; concurrent reads, exclusive writes).
-- Context: Supports context manager protocol (__enter__/__exit__). Both are no-ops; use for structured scoping only.
 - Fallback: `on_fallback` invoked when message resolved from non-primary locale.
 - Strict: When True, all underlying FluentBundle instances use strict mode. `_handle_message_not_found` raises `FormattingIntegrityError`.
 
@@ -1388,13 +1340,13 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 
 ---
 
-## `clear_all_caches`
+## `clear_module_caches`
 
 Function that clears all module-level caches in the library.
 
 ### Signature
 ```python
-def clear_all_caches() -> None:
+def clear_module_caches() -> None:
 ```
 
 ### Constraints
@@ -1403,7 +1355,7 @@ def clear_all_caches() -> None:
 - State: Clears currency caches, date caches, locale cache, LocaleContext cache, message introspection cache, and ISO introspection cache.
 - Thread: Safe (each cache has internal thread safety).
 - Babel: Clears Babel-related caches only if Babel was used.
-- Import: `from ftllexengine import clear_all_caches`
+- Import: `from ftllexengine import clear_module_caches`
 
 ---
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.137.0"
+version: "0.142.0"
 domain: INDEX
-updated: "2026-02-25"
+updated: "2026-02-27"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -24,7 +24,7 @@ from ftllexengine import (
     validate_resource,  # FTL resource validation (no Babel required)
     FluentValue,       # Type alias for function argument values
     fluent_function,   # Decorator for custom functions
-    clear_all_caches,  # Clear all library caches
+    clear_module_caches,  # Clear all library caches
     # Errors
     FrozenFluentError,  # Immutable error type with ErrorCategory
     ErrorCategory,      # Error classification enum

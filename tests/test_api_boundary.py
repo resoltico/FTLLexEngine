@@ -25,8 +25,8 @@ class TestFluentBundleBoundaryValidation:
     """Test API boundary validation in FluentBundle."""
 
     def test_format_pattern_with_invalid_args_type(self) -> None:
-        """format_pattern returns error when args is not a Mapping."""
-        bundle = FluentBundle("en")
+        """format_pattern returns error when args is not a Mapping (strict=False)."""
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello { $name }")
 
         # Pass a list instead of dict/Mapping
@@ -38,8 +38,8 @@ class TestFluentBundleBoundaryValidation:
         assert "list" in str(errors[0])
 
     def test_format_pattern_with_invalid_attribute_type(self) -> None:
-        """format_pattern returns error when attribute is not a string."""
-        bundle = FluentBundle("en")
+        """format_pattern returns error when attribute is not a string (strict=False)."""
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello\n    .tooltip = Tooltip text")
 
         # Pass an int instead of string for attribute
@@ -73,8 +73,8 @@ class TestFluentBundleBoundaryValidation:
         assert errors == ()
 
     def test_format_pattern_with_tuple_args_type(self) -> None:
-        """format_pattern returns error when args is a tuple (non-Mapping)."""
-        bundle = FluentBundle("en")
+        """format_pattern returns error when args is a tuple (non-Mapping, strict=False)."""
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello")
 
         # Pass a tuple instead of dict/Mapping
@@ -89,8 +89,8 @@ class TestFluentLocalizationBoundaryValidation:
     """Test API boundary validation in FluentLocalization."""
 
     def test_format_value_with_invalid_args_type(self) -> None:
-        """format_value returns error when args is not a Mapping."""
-        l10n = FluentLocalization(["en"])
+        """format_value returns error when args is not a Mapping (strict=False)."""
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = Hello { $name }")
 
         # Pass a string instead of dict/Mapping
@@ -102,8 +102,8 @@ class TestFluentLocalizationBoundaryValidation:
         assert "str" in str(errors[0])
 
     def test_format_pattern_with_invalid_args_type(self) -> None:
-        """format_pattern returns error when args is not a Mapping."""
-        l10n = FluentLocalization(["en"])
+        """format_pattern returns error when args is not a Mapping (strict=False)."""
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = Hello { $name }")
 
         # Pass a set instead of dict/Mapping
@@ -115,8 +115,8 @@ class TestFluentLocalizationBoundaryValidation:
         assert "set" in str(errors[0])
 
     def test_format_pattern_with_invalid_attribute_type(self) -> None:
-        """format_pattern returns error when attribute is not a string."""
-        l10n = FluentLocalization(["en"])
+        """format_pattern returns error when attribute is not a string (strict=False)."""
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = Hello\n    .tooltip = Tooltip")
 
         # Pass a float instead of string for attribute

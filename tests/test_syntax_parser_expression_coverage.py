@@ -240,9 +240,9 @@ class TestAdditionalUncoveredLines:
         assert result.value.id.name == "lowercase"
 
     def test_named_argument_not_identifier_line_367(self) -> None:
-        """Test named argument when name is not identifier (line 367)."""
+        """Test named argument when name is not identifier (line 367), soft recovery."""
         # This is hard to trigger directly, but we can test via function call
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # Try to use a non-identifier as named argument name
         ftl = """msg = {NUMBER($val, $var: 2)}"""
         bundle.add_resource(ftl)
@@ -253,8 +253,8 @@ class TestAdditionalUncoveredLines:
         assert result is not None
 
     def test_named_argument_value_not_literal_line_394(self) -> None:
-        """Test named argument with non-literal value."""
-        bundle = FluentBundle("en_US")
+        """Test named argument with non-literal value, soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         # Named argument values must be literals, not variables
         ftl = """msg = {NUMBER($val, style: $var)}"""
         bundle.add_resource(ftl)
@@ -419,8 +419,8 @@ class TestAdditionalUncoveredLines:
         assert len(resource.entries) >= 1
 
     def test_positional_after_named_argument_line_402(self) -> None:
-        """Test positional argument after named argument (line 402)."""
-        bundle = FluentBundle("en_US")
+        """Test positional argument after named argument (line 402), soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         # Positional args must come before named args
         ftl = """msg = {NUMBER(style: "percent", $val)}"""
         bundle.add_resource(ftl)

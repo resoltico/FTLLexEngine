@@ -1267,15 +1267,15 @@ class TestExpressionsIntegration:
     """Integration tests via FluentBundle for expression paths."""
 
     def test_function_name_not_uppercase(self) -> None:
-        """Lowercase function name fails."""
-        bundle = FluentBundle("en_US")
+        """Lowercase function name fails, soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("msg = { lowercase() }")
         result, errors = bundle.format_pattern("msg")
         assert len(errors) > 0 or "{" in result
 
     def test_function_missing_paren(self) -> None:
-        """UPPERCASE without paren treated as message reference."""
-        bundle = FluentBundle("en_US")
+        """UPPERCASE without paren treated as message reference, soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("msg = { NUMBER }")
         result, errors = bundle.format_pattern("msg")
         assert "{NUMBER}" in result or len(errors) > 0
@@ -1320,8 +1320,8 @@ class TestExpressionsIntegration:
         assert result is not None
 
     def test_function_with_multiple_args(self) -> None:
-        """Function call with multiple named arguments."""
-        bundle = FluentBundle("en_US")
+        """Function call with multiple named arguments, soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(
             'msg = {NUMBER(42, style: "percent")}'
         )
@@ -1372,8 +1372,8 @@ class TestExpressionsIntegration:
         assert result is not None
 
     def test_select_missing_arrow(self) -> None:
-        """Select expression without -> operator."""
-        bundle = FluentBundle("en_US")
+        """Select expression without -> operator, soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(
             "msg = {NUMBER(1)\n"
             "    [one] One\n"
@@ -1384,8 +1384,8 @@ class TestExpressionsIntegration:
         assert result is not None
 
     def test_select_missing_default_via_bundle(self) -> None:
-        """Select without default variant via bundle."""
-        bundle = FluentBundle("en_US")
+        """Select without default variant via bundle, soft recovery."""
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(
             "msg = {NUMBER(1) ->\n"
             "    [one] One\n"

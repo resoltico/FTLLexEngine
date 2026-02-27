@@ -56,7 +56,7 @@ from .syntax import serialize as serialize_ftl
 from .validation import validate_resource as validate_resource
 
 # Cache management
-def clear_all_caches() -> None: ...
+def clear_module_caches() -> None: ...
 
 # Version and specification information
 __version__: str
@@ -91,7 +91,7 @@ __all__: list[str] = [
     "serialize_ftl",
     "validate_resource",
     # Utility
-    "clear_all_caches",
+    "clear_module_caches",
     # Metadata
     "__fluent_spec_version__",
     "__recommended_encoding__",

@@ -24,7 +24,7 @@ RETRIEVAL_HINTS:
 
 - **Bidirectional** -- Format data for display *and* parse user input back to Python types
 - **Thread-safe** -- No global state. 100 concurrent requests, zero locale conflicts
-- **Strict mode** -- Opt-in fail-fast. Errors raise exceptions, not silent `{$amount}` fallbacks
+- **Strict by default** -- Errors raise exceptions, not silent `{$amount}` fallbacks. Pass `strict=False` for soft error recovery
 - **Introspectable** -- Query what variables a message needs before you call it
 - **Declarative grammar** -- Plurals, gender, cases in `.ftl` files. Code stays clean
 - **Decimal precision** -- `Decimal` throughout. No float math, no rounding surprises
@@ -278,30 +278,32 @@ if not errors:
 ### No Silent Failures in Space
 
 > [!NOTE]
-> A missing variable normally returns a fallback string like `"Contract: 500 bags at {!CURRENCY}/lb"`. In financial systems or mission-critical operations, displaying this to a user is unacceptable.
+> A missing variable returns a fallback string like `"Contract: 500 bags at {!CURRENCY}/lb"`. In financial systems or mission-critical operations, displaying this to a user is unacceptable.
 
-Enable `strict=True`. FTLLexEngine raises immediately -- no bad data reaches the user.
+`FluentBundle` defaults to `strict=True`. On any formatting error, FTLLexEngine raises immediately -- no bad data reaches the user.
 
 ```python
 from decimal import Decimal
 from ftllexengine import CacheConfig, FluentBundle, FormattingIntegrityError
 
-# strict=True raises on ANY formatting error instead of returning fallback
-# integrity_strict=True (default) raises on cache corruption/write conflicts
-bundle = FluentBundle("en_US", strict=True, cache=CacheConfig())
+# strict=True is the DEFAULT: raises FormattingIntegrityError on ANY formatting error
+bundle = FluentBundle("en_US", cache=CacheConfig())
 bundle.add_resource('confirm = Contract: { $bags } bags at { CURRENCY($price, currency: "USD") }/lb')
 
-# Works normally
+# Works normally when all variables are provided
 result, _ = bundle.format_pattern("confirm", {"bags": 500, "price": Decimal("4.25")})
 # "Contract: 500 bags at $4.25/lb"
 
-# Missing variable? Raises immediately
+# Missing variable raises immediately (default strict=True behavior)
 try:
     bundle.format_pattern("confirm", {"bags": 500})  # forgot $price
 except FormattingIntegrityError as e:
     print(f"HALT: {e.message_id} failed")
     # e.fallback_value = "Contract: 500 bags at {!CURRENCY}/lb"
     # e.fluent_errors = (FrozenFluentError(...),)
+
+# For soft error recovery, pass strict=False to get (fallback, errors) tuples
+soft_bundle = FluentBundle("en_US", strict=False)
 ```
 
 ---

@@ -15,7 +15,6 @@ import pytest
 from ftllexengine import FluentLocalization
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.runtime.bundle import FluentBundle
-from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax.ast import Message, Term
 from ftllexengine.syntax.parser import FluentParserV1
 
@@ -346,20 +345,3 @@ class TestValidationCRLFNormalization:
 
         # Error should be on line 3 (after two line breaks)
         assert errors_with_line[0].line == 3
-
-
-class TestBundleContextManagerCacheClearing:
-    """Tests for context manager no-op behavior."""
-
-    def test_context_manager_exit_is_noop_no_exceptions(self) -> None:
-        """Context manager exit is a no-op: cache is preserved, no exceptions."""
-        with FluentBundle("en", cache=CacheConfig()) as bundle:
-            bundle.add_resource("msg = Hello")
-
-            # Format to populate cache (add_resource clears then repopulate)
-            bundle.format_pattern("msg")
-            stats_during = bundle.get_cache_stats()
-            assert stats_during is not None
-            assert stats_during["size"] >= 0
-
-        # __exit__ is a no-op; no exceptions and cache is preserved.

@@ -17,6 +17,7 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import time
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 
@@ -129,18 +130,19 @@ class ResolutionContext:
         max_depth: Maximum resolution depth (prevents stack overflow)
         max_expression_depth: Maximum expression nesting depth
         max_expansion_size: Maximum total characters in resolved output (DoS prevention)
-        _stack: Mutable resolution stack for cycle detection (private; use push/pop/resolution_path)
-        _seen: O(1) membership set for cycle detection (private)
-        _total_chars: Running count of resolved characters (private)
+        _stack: Mutable resolution stack for cycle detection — always starts empty;
+            not an init parameter to prevent bypass of cycle-detection invariants.
+        _seen: O(1) membership set for cycle detection (private, always starts empty)
+        _total_chars: Running count of resolved characters (private, always starts at zero)
         _expression_guard: DepthGuard for expression depth tracking (private)
     """
 
-    _stack: list[str] = field(default_factory=list)
+    _stack: list[str] = field(init=False, default_factory=list)
     _seen: set[str] = field(init=False, default_factory=set)
     max_depth: int = MAX_DEPTH
     max_expression_depth: int = MAX_DEPTH
     max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE
-    _total_chars: int = 0
+    _total_chars: int = field(init=False, default=0)
     _expression_guard: DepthGuard = field(init=False)
 
     def __post_init__(self) -> None:
@@ -167,6 +169,7 @@ class ResolutionContext:
             ctx = IntegrityContext(
                 component="resolution_context",
                 operation="pop",
+                timestamp=time.monotonic(),
             )
             msg = "Resolution stack underflow: pop() called on empty stack"
             raise DataIntegrityError(msg, ctx)
@@ -180,6 +183,7 @@ class ResolutionContext:
                 component="resolution_context",
                 operation="pop",
                 key=key,
+                timestamp=time.monotonic(),
             )
             msg = (
                 f"Resolution stack corrupted: key '{key}' present in stack "

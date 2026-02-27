@@ -116,10 +116,7 @@ class TestCacheEnabled:
     def test_cache_miss_different_message_id(self) -> None:
         """Cache miss when message_id differs."""
         bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
-        bundle.add_resource("""
-            msg1 = Message 1
-            msg2 = Message 2
-        """)
+        bundle.add_resource("msg1 = Message 1\nmsg2 = Message 2\n")
 
         bundle.format_pattern("msg1")
         bundle.format_pattern("msg2")
@@ -132,11 +129,11 @@ class TestCacheEnabled:
     def test_cache_miss_different_attribute(self) -> None:
         """Cache miss when attribute differs."""
         bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
-        bundle.add_resource("""
-            msg = Hello
-                .tooltip = Tooltip text
-                .aria-label = Aria label
-        """)
+        bundle.add_resource(
+            "msg = Hello\n"
+            "    .tooltip = Tooltip text\n"
+            "    .aria-label = Aria label\n"
+        )
 
         bundle.format_pattern("msg")
         bundle.format_pattern("msg", attribute="tooltip")
@@ -606,53 +603,53 @@ class TestCurrencyCachesClear:
 
 
 class TestClearAllCaches:
-    """Test ftllexengine.clear_all_caches() unified function."""
+    """Test ftllexengine.clear_module_caches() unified function."""
 
     def test_clear_all_empty_is_noop(self) -> None:
         """Clearing all caches when empty does not raise."""
-        ftllexengine.clear_all_caches()
-        ftllexengine.clear_all_caches()  # Multiple clears are safe
+        ftllexengine.clear_module_caches()
+        ftllexengine.clear_module_caches()  # Multiple clears are safe
 
     def test_clear_all_clears_locale_cache(self) -> None:
-        """clear_all_caches() clears locale cache."""
+        """clear_module_caches() clears locale cache."""
         # Populate locale cache
         get_babel_locale("en_US")
         assert _get_babel_locale_normalized.cache_info().currsize >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()
+        ftllexengine.clear_module_caches()
 
         # Locale cache should be empty
         assert _get_babel_locale_normalized.cache_info().currsize == 0
 
     def test_clear_all_clears_date_caches(self) -> None:
-        """clear_all_caches() clears date pattern caches."""
+        """clear_module_caches() clears date pattern caches."""
         # Populate date caches
         _get_date_patterns("en_US")
         _get_datetime_patterns("en_US")
         assert _get_date_patterns.cache_info().currsize >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()
+        ftllexengine.clear_module_caches()
 
         # Date caches should be empty
         assert _get_date_patterns.cache_info().currsize == 0
         assert _get_datetime_patterns.cache_info().currsize == 0
 
     def test_clear_all_clears_currency_caches(self) -> None:
-        """clear_all_caches() clears currency caches."""
+        """clear_module_caches() clears currency caches."""
         # Populate currency caches
         _get_currency_pattern()
         assert _get_currency_pattern.cache_info().currsize >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()
+        ftllexengine.clear_module_caches()
 
         # Currency caches should be empty
         assert _get_currency_pattern.cache_info().currsize == 0
 
     def test_clear_all_clears_locale_context_cache(self) -> None:
-        """clear_all_caches() clears LocaleContext cache."""
+        """clear_module_caches() clears LocaleContext cache."""
         from ftllexengine.runtime.locale_context import LocaleContext
 
         # Populate LocaleContext cache
@@ -663,7 +660,7 @@ class TestClearAllCaches:
         assert size >= 1
 
         # Clear all
-        ftllexengine.clear_all_caches()
+        ftllexengine.clear_module_caches()
 
         # LocaleContext cache should be empty
         info_after = LocaleContext.cache_info()
@@ -672,7 +669,7 @@ class TestClearAllCaches:
         assert size_after == 0
 
     def test_clear_all_clears_introspection_cache(self) -> None:
-        """clear_all_caches() clears introspection cache."""
+        """clear_module_caches() clears introspection cache."""
         from ftllexengine.introspection import introspect_message
         from ftllexengine.syntax.ast import Message
         from ftllexengine.syntax.parser import FluentParserV1
@@ -686,7 +683,7 @@ class TestClearAllCaches:
         result1 = introspect_message(message)
 
         # Clear all caches
-        ftllexengine.clear_all_caches()
+        ftllexengine.clear_module_caches()
 
         # After clear, introspecting same message should create new result
         result2 = introspect_message(message)
@@ -699,9 +696,9 @@ class TestClearAllCaches:
 class TestCacheLifecycleExport:
     """Test that cache lifecycle functions are properly exported."""
 
-    def test_clear_all_caches_in_all(self) -> None:
-        """clear_all_caches is in ftllexengine.__all__."""
-        assert "clear_all_caches" in ftllexengine.__all__
+    def test_clear_module_caches_in_all(self) -> None:
+        """clear_module_caches is in ftllexengine.__all__."""
+        assert "clear_module_caches" in ftllexengine.__all__
 
     def test_clear_functions_importable_from_parsing(self) -> None:
         """Cache clear functions are importable from parsing module."""
@@ -746,14 +743,14 @@ class TestCacheLifecycleIdempotency:
         assert _get_currency_pattern.cache_info().currsize == 0
 
     def test_clear_all_idempotent(self) -> None:
-        """Multiple clear_all_caches calls are equivalent to single call."""
+        """Multiple clear_module_caches calls are equivalent to single call."""
         get_babel_locale("en_US")
         _get_date_patterns("en_US")
         _get_currency_pattern()
 
-        ftllexengine.clear_all_caches()
-        ftllexengine.clear_all_caches()
-        ftllexengine.clear_all_caches()
+        ftllexengine.clear_module_caches()
+        ftllexengine.clear_module_caches()
+        ftllexengine.clear_module_caches()
 
         assert _get_babel_locale_normalized.cache_info().currsize == 0
         assert _get_date_patterns.cache_info().currsize == 0

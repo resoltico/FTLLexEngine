@@ -28,10 +28,10 @@ from ftllexengine.runtime.cache_config import CacheConfig
 class TestStrictModeProperty:
     """Test strict property reflects initialization state."""
 
-    def test_strict_mode_disabled_by_default(self) -> None:
-        """Default bundle has strict=False."""
+    def test_strict_mode_enabled_by_default(self) -> None:
+        """Default bundle has strict=True (fail-fast for financial-grade safety)."""
         bundle = FluentBundle("en")
-        assert bundle.strict is False
+        assert bundle.strict is True
 
     def test_strict_mode_enabled_when_requested(self) -> None:
         """Bundle with strict=True has strict property True."""

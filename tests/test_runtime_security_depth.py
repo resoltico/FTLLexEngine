@@ -139,7 +139,7 @@ class TestResolverFunctionCallDepthTracking:
 
     def test_resolver_handles_nested_function_calls(self) -> None:
         """Resolver should handle nested function calls without stack overflow."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         # Define a simple function that returns its input
         def identity(val: int | Decimal | str) -> str:
@@ -201,7 +201,7 @@ class TestResolverFunctionCallDepthTracking:
         )
 
         # Add to bundle with low depth limit using internal _messages dict
-        bundle = FluentBundle("en_US", max_nesting_depth=50)
+        bundle = FluentBundle("en_US", max_nesting_depth=50, strict=False)
 
         def identity(val: int | Decimal | str) -> str:
             return str(val)
@@ -394,7 +394,7 @@ class TestSelectorExpressionDepthGuard:
             value=Pattern(elements=(Placeable(expression=nested),)),
             attributes=(),
         )
-        bundle = FluentBundle("en_US", max_nesting_depth=50)
+        bundle = FluentBundle("en_US", max_nesting_depth=50, strict=False)
         bundle._messages["msg"] = msg  # pylint: disable=protected-access
 
         # Must not raise RecursionError; may return error or fallback

@@ -10,7 +10,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, NoReturn, assert_never
+from typing import TYPE_CHECKING, Literal, NoReturn, assert_never
 
 from ftllexengine.constants import (
     DEFAULT_MAX_EXPANSION_SIZE,
@@ -82,7 +82,7 @@ class _PendingRegistration:
     msg_deps: dict[str, frozenset[str]] = field(default_factory=dict)
     term_deps: dict[str, frozenset[str]] = field(default_factory=dict)
     junk: list[Junk] = field(default_factory=list)
-    overwrite_warnings: list[tuple[str, str]] = field(default_factory=list)
+    overwrite_warnings: list[tuple[Literal["message", "term"], str]] = field(default_factory=list)
 
 
 class FluentBundle:
@@ -116,7 +116,7 @@ class FluentBundle:
 
     Parser Security:
         Configurable limits prevent DoS attacks:
-        - max_source_size: Maximum FTL source length in characters (default: 10 MiB / 10,485,760 chars)
+        - max_source_size: Maximum FTL source length in characters (default: 10,000,000)
         - max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
     Examples:
@@ -208,7 +208,7 @@ class FluentBundle:
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
         max_expansion_size: int | None = None,
-        strict: bool = False,
+        strict: bool = True,
     ) -> None:
         """Initialize bundle for locale.
 
@@ -225,17 +225,17 @@ class FluentBundle:
                       pre-registered custom functions or override default behavior.
                       The registry is copied on construction; later mutations to the
                       original have no effect on this bundle.
-            max_source_size: Maximum FTL source length in characters (default: 10 MiB / 10,485,760 chars).
+            max_source_size: Maximum FTL source length in characters (default: 10,000,000).
                             Set to 0 to disable limit (not recommended for untrusted input).
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } } structures.
             max_expansion_size: Maximum total characters produced during resolution (default: 1,000,000).
                                Prevents Billion Laughs attacks via exponentially expanding message references.
-            strict: Enable strict mode for financial applications (default: False).
+            strict: Fail-fast on formatting errors (default: True).
                    When True, format_pattern raises FormattingIntegrityError on ANY error
-                   instead of returning fallback values. Use for monetary/critical data
-                   where silent fallbacks are unacceptable. Also affects cache corruption
-                   handling: raises CacheCorruptionError instead of silent eviction.
+                   instead of returning fallback values. Set to False only for development
+                   or when soft error recovery is explicitly required. Also affects cache
+                   corruption handling: raises CacheCorruptionError instead of silent eviction.
 
         Raises:
             ValueError: If locale code is empty or has invalid format
@@ -260,8 +260,8 @@ class FluentBundle:
             >>> # Stricter limits for untrusted input
             >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
             >>>
-            >>> # Financial-grade strict mode with write-once cache
-            >>> bundle = FluentBundle("en", strict=True, cache=CacheConfig(write_once=True))
+            >>> # Financial-grade: default strict=True with write-once cache
+            >>> bundle = FluentBundle("en", cache=CacheConfig(write_once=True))
             >>>
             >>> # Audit-enabled cache for compliance
             >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
@@ -509,7 +509,7 @@ class FluentBundle:
         max_source_size: int | None = None,
         max_nesting_depth: int | None = None,
         max_expansion_size: int | None = None,
-        strict: bool = False,
+        strict: bool = True,
     ) -> FluentBundle:
         """Factory method to create a FluentBundle using the system locale.
 
@@ -523,9 +523,9 @@ class FluentBundle:
                 ``None`` disables caching (default).
             functions: Custom FunctionRegistry to use (default: standard registry).
                       Copied on construction; later mutations to the original have no effect.
-            max_source_size: Maximum FTL source size in characters (default: 10 MiB / 10,485,760 chars)
+            max_source_size: Maximum FTL source size in characters (default: 10,000,000)
             max_nesting_depth: Maximum placeable nesting depth (default: 100)
-            strict: Enable strict mode (fail-fast on errors, strict cache corruption handling)
+            strict: Fail-fast mode (default True): raises on formatting errors. Pass False for soft error recovery.
 
         Returns:
             Configured FluentBundle instance for system locale
@@ -569,36 +569,6 @@ class FluentBundle:
                 f"messages={len(self._messages)}, "
                 f"terms={len(self._terms)})"
             )
-
-    def __enter__(self) -> FluentBundle:
-        """Enter context manager.
-
-        Enables use of FluentBundle with 'with' statement for structured
-        resource loading patterns. Does not acquire locks or modify state.
-
-        Returns:
-            Self (the FluentBundle instance)
-
-        Example:
-            >>> with FluentBundle("en_US") as bundle:
-            ...     bundle.add_resource("hello = Hello")
-            ...     result, _ = bundle.format_pattern("hello")
-        """
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object | None,
-    ) -> None:
-        """Exit context manager. Does not suppress exceptions.
-
-        Args:
-            exc_type: Exception type (if any)
-            exc_val: Exception value (if any)
-            exc_tb: Exception traceback (if any)
-        """
 
     def get_babel_locale(self) -> str:
         """Get the Babel locale identifier for this bundle (introspection API).
@@ -925,17 +895,16 @@ class FluentBundle:
                 The exception carries the original errors, fallback value, and message ID.
 
         Note:
-            In non-strict mode (default), this method handles expected formatting
-            errors gracefully. All anticipated errors (missing messages, variables,
-            references) are collected and returned in the errors list. The formatted
-            string always contains a readable fallback value per Fluent specification.
-
-            In strict mode (bundle.strict=True), FormattingIntegrityError is raised
-            immediately when ANY error occurs. This is required for financial applications
+            In strict mode (default: strict=True), FormattingIntegrityError is raised
+            immediately when ANY error occurs. This is the default for financial applications
             where silent fallbacks are unacceptable. The exception provides:
             - fluent_errors: The original FrozenFluentError instances
-            - fallback_value: What would have been returned in non-strict mode
+            - fallback_value: What would have been returned in soft mode
             - message_id: The message that failed to format
+
+            In soft error mode (strict=False), formatting errors are collected and
+            returned in the errors tuple. The formatted string always contains a
+            readable fallback value per Fluent specification.
 
             If an attribute name is duplicated within a message (validation warning),
             the last definition is used during resolution (last-wins semantics).
@@ -959,10 +928,10 @@ class FluentBundle:
             >>> assert result == 'Saglabā pašreizējo ierakstu datubāzē'
             >>> assert errors == ()
 
-            >>> # Strict mode - raises on errors
-            >>> strict_bundle = FluentBundle("en", strict=True)
-            >>> strict_bundle.add_resource('msg = Hello { $name }!')
-            >>> strict_bundle.format_pattern("msg", {})  # Raises FormattingIntegrityError
+            >>> # Default strict=True - raises on errors (no missing $name)
+            >>> bundle_strict = FluentBundle("en")
+            >>> bundle_strict.add_resource('msg = Hello { $name }!')
+            >>> bundle_strict.format_pattern("msg", {})  # Raises FormattingIntegrityError
         """
         with self._rwlock.read():
             return self._format_pattern_impl(message_id, args, attribute)

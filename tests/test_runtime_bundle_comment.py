@@ -81,7 +81,7 @@ msg3 = Third
 
         Comprehensive test ensuring Comment case handles all loop positions.
         """
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         ftl_source = """
 ### Top comment

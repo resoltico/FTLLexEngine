@@ -45,8 +45,9 @@ def example_1_basic_fallback() -> None:
     print("Example 1: Basic Fallback (lv → en)")
     print("=" * 60)
 
-    # Create localization with fallback chain: Latvian → English
-    l10n = FluentLocalization(["lv", "en"])
+    # strict=False: this example formats a non-existent message to demonstrate
+    # the fallback/error return value; strict=True (default) would raise instead.
+    l10n = FluentLocalization(["lv", "en"], strict=False)
 
     # Latvian translations (incomplete)
     l10n.add_resource(

@@ -132,7 +132,7 @@ class FluentLocalization:
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
-        strict: bool = False,
+        strict: bool = True,
     ) -> None:
         """Initialize multi-locale localization.
 
@@ -149,10 +149,11 @@ class FluentLocalization:
                         debugging and monitoring which messages are missing translations.
                         The callback receives a FallbackInfo with requested_locale,
                         resolved_locale, and message_id.
-            strict: Enable strict mode for fail-fast integrity (default: False).
+            strict: Fail-fast on formatting errors (default: True).
                    When True, syntax errors in resources raise SyntaxIntegrityError
                    and formatting errors raise FormattingIntegrityError.
-                   Financial applications should enable this for data integrity.
+                   Set to False only for development or when soft error recovery
+                   is explicitly required.
 
         Raises:
             ValueError: If locales is empty
@@ -896,42 +897,6 @@ class FluentLocalization:
             except KeyError:
                 continue
         return None
-
-    def __enter__(self) -> FluentLocalization:
-        """Enter context manager.
-
-        No-op: mutations (add_resource, add_function, clear_cache) clear
-        affected caches immediately when called. Deferred cache clearing
-        on exit would only re-evict entries populated by concurrent readers
-        between the mutation and the context exit — invalidating valid work.
-
-        Use the context manager for structured scoping and ``with``-statement
-        readability; not for cache management.
-
-        Returns:
-            Self (the FluentLocalization instance)
-
-        Example:
-            >>> with FluentLocalization(['en'], cache=CacheConfig()) as l10n:
-            ...     l10n.add_resource('en', 'hello = Hello')
-        """
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object,
-    ) -> None:
-        """Exit context manager.
-
-        No-op: see __enter__ for rationale. Does not suppress exceptions.
-
-        Args:
-            exc_type: Exception type (if any)
-            exc_val: Exception value (if any)
-            exc_tb: Exception traceback (if any)
-        """
 
     def get_babel_locale(self) -> str:
         """Get Babel locale identifier from primary bundle.

@@ -413,7 +413,7 @@ class TestStrictMode:
         l10n_strict = FluentLocalization(["en"], strict=True)
         l10n_default = FluentLocalization(["en"])
         assert l10n_strict.strict is True
-        assert l10n_default.strict is False
+        assert l10n_default.strict is True
 
     def test_strict_raises_on_missing_message(self) -> None:
         """Strict mode raises FormattingIntegrityError for missing messages."""
@@ -513,124 +513,6 @@ class TestStrictMode:
         result, errors = l10n.format_value("nonexistent")
         assert "nonexistent" in result
         assert len(errors) == 1
-
-
-class TestContextManager:
-    """Tests for FluentLocalization context manager cache tracking."""
-
-    def test_enter_returns_self(self) -> None:
-        """__enter__ returns the FluentLocalization instance."""
-        l10n = FluentLocalization(["en"])
-        with l10n as ctx:
-            assert ctx is l10n
-
-    def test_usable_inside_context(self) -> None:
-        """Formatting works inside context manager."""
-        l10n = FluentLocalization(["en"])
-        l10n.add_resource("en", "msg = Hello\n")
-        with l10n:
-            result, _ = l10n.format_value("msg")
-            assert result == "Hello"
-
-    def test_usable_after_exception_in_context(self) -> None:
-        """Localization remains usable after exception in context."""
-        l10n = FluentLocalization(["en"])
-        try:
-            with l10n:
-                msg = "test"
-                raise ValueError(msg)
-        except ValueError:
-            pass
-        l10n.add_resource("en", "msg = Works\n")
-        result, _ = l10n.format_value("msg")
-        assert result == "Works"
-
-    def test_exit_is_noop_does_not_clear_cache(self) -> None:
-        """__exit__ is a no-op: cache populated inside the context is preserved."""
-        l10n = FluentLocalization(["en"], cache=CacheConfig())
-        l10n.add_resource("en", "msg = Original\n")
-
-        with l10n:
-            l10n.add_resource("en", "msg2 = Added\n")
-            # add_resource clears the cache immediately; format repopulates it
-            l10n.format_value("msg")
-            stats_inside = l10n.get_cache_stats()
-            assert stats_inside is not None
-            assert stats_inside["size"] > 0
-
-        # __exit__ is a no-op; valid cached result is preserved
-        stats_after = l10n.get_cache_stats()
-        assert stats_after is not None
-        assert stats_after["size"] > 0
-
-    def test_read_only_context_preserves_cache(self) -> None:
-        """__exit__ is a no-op: cache is always preserved on context exit."""
-        l10n = FluentLocalization(["en"], cache=CacheConfig())
-        l10n.add_resource("en", "msg = Hello\n")
-
-        # Warm cache
-        l10n.format_value("msg")
-        stats = l10n.get_cache_stats()
-        assert stats is not None
-        cached_size = stats["size"]
-        assert cached_size > 0
-
-        with l10n:
-            l10n.format_value("msg")
-        # Cache preserved (no modifications in context)
-        stats_after = l10n.get_cache_stats()
-        assert stats_after is not None
-        assert stats_after["size"] >= cached_size
-
-    def test_add_function_clears_cache_immediately_not_on_exit(self) -> None:
-        """add_function clears cache immediately; __exit__ does not clear again."""
-        l10n = FluentLocalization(["en"], cache=CacheConfig())
-        l10n.add_resource("en", "msg = Hello\n")
-
-        # Warm cache
-        l10n.format_value("msg")
-
-        with l10n:
-            def _custom(val: str) -> str:
-                return val.upper()
-            l10n.add_function("CUSTOM", _custom)
-            # Cache is already cleared immediately by add_function
-            # Re-populate by formatting
-            l10n.format_value("msg")
-            stats_inside = l10n.get_cache_stats()
-            assert stats_inside is not None
-            assert stats_inside["size"] > 0
-
-        # __exit__ is a no-op; re-populated cache entry is preserved
-        stats_after = l10n.get_cache_stats()
-        assert stats_after is not None
-        assert stats_after["size"] > 0
-
-    def test_clear_cache_is_immediate_not_deferred_to_exit(self) -> None:
-        """clear_cache empties cache immediately; __exit__ does not re-clear."""
-        l10n = FluentLocalization(["en"], cache=CacheConfig())
-        l10n.add_resource("en", "msg = Hello\n")
-
-        # Warm cache
-        l10n.format_value("msg")
-
-        with l10n:
-            l10n.clear_cache()
-            # Cache is immediately empty after clear_cache
-            stats_inside = l10n.get_cache_stats()
-            assert stats_inside is not None
-            assert stats_inside["size"] == 0
-            # Re-populate inside the context
-            l10n.format_value("msg")
-            stats_repopulated = l10n.get_cache_stats()
-            assert stats_repopulated is not None
-            assert stats_repopulated["size"] > 0
-
-        # __exit__ is a no-op; re-populated cache is preserved
-        stats_after = l10n.get_cache_stats()
-        assert stats_after is not None
-        assert stats_after["size"] > 0
-
 
 
 
@@ -782,7 +664,7 @@ class TestFormatPattern:
 
     def test_format_pattern_not_found_returns_braced_id(self) -> None:
         """format_pattern returns {message_id} when not found in any locale."""
-        l10n = FluentLocalization(["en", "de"])
+        l10n = FluentLocalization(["en", "de"], strict=False)
         result, errors = l10n.format_pattern("missing")
         assert result == "{missing}"
         assert len(errors) == 1
@@ -853,7 +735,7 @@ class TestOrchestrationProperties:
             else "long"
         )
         event(f"value_len={val_class}")
-        l10n = FluentLocalization(locales)
+        l10n = FluentLocalization(locales, strict=False)
         ftl_source = f"{message_id} = {message_value}"
         l10n.add_resource(locales[0], ftl_source)
         result, errors = l10n.format_value(message_id)
@@ -896,7 +778,7 @@ class TestOrchestrationProperties:
         event(f"num_messages={num_messages}")
         has_fallback = len(locales) > 1
         event(f"has_fallback={has_fallback}")
-        l10n = FluentLocalization(locales)
+        l10n = FluentLocalization(locales, strict=False)
 
         msg_ids = [f"msg-{i}" for i in range(num_messages)]
 

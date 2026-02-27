@@ -43,7 +43,7 @@ class TestFluentBundleAddResource:
     @pytest.fixture
     def bundle(self) -> Any:
         """Create bundle for testing."""
-        return FluentBundle("lv_LV")
+        return FluentBundle("lv_LV", strict=False)
 
     def test_add_resource_simple_message(self, bundle: Any) -> None:
         """add_resource parses and registers simple message."""
@@ -106,7 +106,7 @@ class TestFluentBundleFormatPattern:
     @pytest.fixture
     def bundle(self) -> Any:
         """Create bundle with sample messages."""
-        bundle = FluentBundle("lv_LV")
+        bundle = FluentBundle("lv_LV", strict=False)
         bundle.add_resource("""
 hello = Sveiki, pasaule!
 welcome = Laipni lūdzam, { $name }!
@@ -268,7 +268,7 @@ class TestFluentBundleErrorHandling:
     @pytest.fixture
     def bundle(self) -> Any:
         """Create bundle with test message."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("test = Test message")
         return bundle
 
@@ -324,7 +324,7 @@ class TestFluentBundleErrorHandling:
 
     def test_add_resource_with_terms_and_junk(self) -> None:
         """add_resource handles mix of messages, terms, and junk."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         source = """
 message1 = Hello
@@ -412,7 +412,7 @@ class TestFluentBundleEdgeCases:
 
     def test_format_pattern_with_recursion_error(self) -> None:
         """Bundle handles RecursionError gracefully (line 152-155)."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         # While we can't easily create a RecursionError through normal means,
         # we can test that other error types return fallback
@@ -447,7 +447,7 @@ class TestFluentBundleEdgeCases:
 
     def test_add_resource_with_invalid_fluent_syntax(self) -> None:
         """Bundle handles completely invalid Fluent syntax."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         # This would trigger parser error recovery
         source = """
@@ -463,7 +463,7 @@ another-valid = Also works
 
     def test_format_pattern_with_keyerror_from_resolver(self) -> None:
         """Bundle handles KeyError from resolver (lines 148-151)."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("needs-var = Value: { $required }")
 
         # Missing required variable triggers KeyError path
@@ -477,7 +477,7 @@ another-valid = Also works
 
     def test_format_pattern_with_attribute_error_from_resolver(self) -> None:
         """Bundle handles AttributeError from resolver (lines 148-151)."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("""
 msg = Test message
     .tooltip = Tooltip text
@@ -812,7 +812,7 @@ class TestBundlePropertyAccessors:
         """strict property returns the strict mode boolean."""
         assert FluentBundle("en", strict=True).strict is True
         assert FluentBundle("en", strict=False).strict is False
-        assert FluentBundle("en").strict is False
+        assert FluentBundle("en").strict is True
 
     def test_cache_enabled_property(self) -> None:
         """cache_enabled property reflects configuration."""
@@ -946,12 +946,12 @@ class TestBundleLocaleValidation:
 
 
 # =============================================================================
-# Special Methods (__repr__, __enter__, __exit__)
+# Special Methods (__repr__)
 # =============================================================================
 
 
 class TestBundleSpecialMethods:
-    """Test special methods for complete coverage."""
+    """Test __repr__ for complete coverage."""
 
     def test_repr_shows_locale_and_counts(self) -> None:
         """__repr__ returns string with locale and message/term counts."""
@@ -969,73 +969,6 @@ class TestBundleSpecialMethods:
         repr_str = repr(bundle)
         assert "messages=2" in repr_str
         assert "terms=1" in repr_str
-
-    def test_context_manager_enter_returns_self(self) -> None:
-        """__enter__ returns the bundle instance."""
-        bundle = FluentBundle("en")
-        with bundle as ctx:
-            assert ctx is bundle
-
-    def test_context_manager_exit_is_noop_does_not_clear_cache(self) -> None:
-        """__exit__ is a no-op: cache populated inside the context is preserved."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        with bundle:
-            bundle.add_resource("msg = Hello")
-            # add_resource clears the cache; format_pattern re-populates it
-            bundle.format_pattern("msg")
-            assert bundle.cache_usage == 1
-        # __exit__ is a no-op; valid cached result is preserved
-        assert bundle.cache_usage == 1
-
-    def test_context_manager_exit_preserves_cache_for_read_only_use(self) -> None:
-        """__exit__ is a no-op: cache is always preserved on context exit."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        bundle.add_resource("msg = Hello")
-        bundle.format_pattern("msg")
-        assert bundle.cache_usage == 1
-
-        with bundle:
-            bundle.format_pattern("msg")
-        assert bundle.cache_usage == 1
-
-    def test_context_manager_can_be_nested_and_reused(self) -> None:
-        """Context manager is a no-op: safe to nest and reuse without side effects."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        with bundle:
-            bundle.add_resource("msg1 = Hello")
-        # add_resource cleared the cache; nothing was cached so usage is 0
-        assert bundle.cache_usage == 0
-
-        bundle.add_resource("msg2 = World")
-        bundle.format_pattern("msg2")
-        assert bundle.cache_usage == 1
-
-        with bundle:
-            bundle.format_pattern("msg2")
-        # __exit__ is a no-op; cached entry is preserved
-        assert bundle.cache_usage == 1
-
-    def test_context_manager_preserves_messages_and_terms(self) -> None:
-        """Context manager exit preserves messages and terms."""
-        bundle = FluentBundle("en")
-        bundle.add_resource("msg = Hello\n-term = Term")
-        count_before = len(bundle.get_message_ids())
-
-        with bundle:
-            pass
-
-        assert len(bundle.get_message_ids()) == count_before
-        result, _ = bundle.format_pattern("msg")
-        assert result == "Hello"
-
-    def test_context_manager_exit_without_cache(self) -> None:
-        """Context manager works when cache is disabled."""
-        bundle = FluentBundle("en")
-        bundle.add_resource("msg = Test")
-        with bundle:
-            pass
-        result, _ = bundle.format_pattern("msg")
-        assert result == "Test"
 
 
 # =============================================================================
@@ -1259,14 +1192,14 @@ class TestBundleTypeValidation:
 
     def test_format_pattern_empty_message_id(self) -> None:
         """format_pattern with empty message ID returns fallback."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         result, errors = bundle.format_pattern("")
         assert result == "{???}"
         assert len(errors) == 1
 
     def test_format_pattern_invalid_args_type(self) -> None:
         """format_pattern with non-Mapping args returns fallback."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello")
         result, errors = bundle.format_pattern("msg", [])  # type: ignore[arg-type]
         assert result == "{???}"
@@ -1274,7 +1207,7 @@ class TestBundleTypeValidation:
 
     def test_format_pattern_invalid_attribute_type(self) -> None:
         """format_pattern with non-string attribute returns fallback."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello")
         result, errors = bundle.format_pattern(
             "msg", {}, attribute=123  # type: ignore[arg-type]
@@ -1569,12 +1502,11 @@ class TestBundleCacheManagement:
         bundle.clear_cache()
         assert bundle.get_cache_stats() is None
 
-    def test_clear_cache_marks_modified(self) -> None:
-        """clear_cache marks bundle as modified for context manager."""
+    def test_clear_cache_resets_to_empty(self) -> None:
+        """clear_cache resets the format cache to empty state."""
         bundle = FluentBundle("en", cache=CacheConfig())
         bundle.add_resource("msg = Hello")
-        with bundle:
-            bundle.clear_cache()
+        bundle.clear_cache()
         assert bundle.cache_usage == 0
 
     def test_get_cache_stats_returns_dict_when_enabled(self) -> None:
@@ -1739,7 +1671,7 @@ class TestBundleFormatting:
 
     def test_format_pattern_handles_recursion_error(self) -> None:
         """format_pattern catches RecursionError from circular refs."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg1 = { msg2 }\nmsg2 = { msg1 }\n")
         _result, errors = bundle.format_pattern("msg1")
         assert len(errors) > 0
@@ -1778,17 +1710,6 @@ class TestBundleCustomFunctions:
         bundle.add_function("CUSTOM", CUSTOM)
         assert bundle.cache_usage == 0
 
-    def test_add_function_marks_modified(self) -> None:
-        """add_function marks bundle as modified for context manager."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-
-        def CUSTOM(v: Any) -> str:
-            return str(v)
-
-        with bundle:
-            bundle.add_function("CUSTOM", CUSTOM)
-        assert bundle.cache_usage == 0
-
     def test_add_function_without_cache(self) -> None:
         """add_function works when cache is disabled."""
         bundle = FluentBundle("en", use_isolating=False)
@@ -1818,7 +1739,7 @@ class TestBundleCustomFunctions:
     def test_init_copies_registry_for_isolation(self) -> None:
         """FluentBundle creates copy of registry for isolation."""
         original = create_default_registry()
-        bundle = FluentBundle("en", functions=original)
+        bundle = FluentBundle("en", strict=False, functions=original)
 
         def new_func(_val: int) -> str:
             return "new"
@@ -2357,7 +2278,7 @@ class TestBundleIntegration:
 
     def test_variant_key_failed_number_parse(self) -> None:
         """Number-like variant key that fails parse falls through to identifier."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(
             "msg = { $val ->\n"
             "    [-.test] Match\n"

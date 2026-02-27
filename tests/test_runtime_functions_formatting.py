@@ -183,12 +183,12 @@ class TestNumberFormatPatternExceptionHandling:
             assert call_count == 2
 
     def test_number_format_pattern_exception_with_various_errors(self) -> None:
-        """Verify exception handling works for various exception types."""
+        """Verify exception handling works for ValueError and AttributeError."""
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
         error_msg = "Test error"
 
-        # Test that broad Exception catch works for different error types
-        for exception_class in (ValueError, TypeError, AttributeError, RuntimeError):
+        # Test that (ValueError, AttributeError) catch works for documented error types
+        for exception_class in (ValueError, AttributeError):
             call_count = 0
 
             def parse_pattern_side_effect(
@@ -226,7 +226,7 @@ class TestNumberFormatPatternExceptionHandling:
             call_count += 1
             if call_count == 1:
                 return original_parse(pattern)
-            raise RuntimeError(error_msg)
+            raise ValueError(error_msg)
 
         with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
             result = number_format(value, "en-US", pattern="#,##0.00")
@@ -296,11 +296,11 @@ class TestCurrencyFormatPatternExceptionHandling:
             assert call_count == 2
 
     def test_currency_format_pattern_exception_with_various_errors(self) -> None:
-        """Verify exception handling works for various exception types."""
+        """Verify exception handling works for documented exception types."""
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
         error_msg = "Test error"
 
-        for exception_class in (ValueError, TypeError, AttributeError, RuntimeError):
+        for exception_class in (ValueError, AttributeError):
             call_count = 0
 
             def parse_pattern_side_effect(
@@ -343,7 +343,7 @@ class TestCurrencyFormatPatternExceptionHandling:
             call_count += 1
             if call_count == 1:
                 return original_parse(pattern)
-            raise RuntimeError(error_msg)
+            raise ValueError(error_msg)
 
         with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
             result = currency_format(

@@ -45,7 +45,7 @@ class TestNestingDepthControl:
         """Test deeply nested placeables hit depth limit."""
         # Create parser with very low limit
         parser = FluentParserV1(max_nesting_depth=3)
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # Create deeply nested placeables
         nested = "{ " * 10 + "text" + " }" * 10
         # Parse with custom parser
@@ -130,7 +130,7 @@ class TestSelectExpressionValidation:
 
     def test_select_no_default_variant(self) -> None:
         """Test select expression without default variant fails."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # No default marker (*)
         bundle.add_resource("""
 msg = { $val ->
@@ -144,7 +144,7 @@ msg = { $val ->
 
     def test_select_multiple_defaults(self) -> None:
         """Test select expression with multiple defaults fails."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # Multiple default markers
         bundle.add_resource("""
 msg = { $val ->
@@ -157,7 +157,7 @@ msg = { $val ->
 
     def test_select_empty_variants(self) -> None:
         """Test select expression with no variants fails."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("msg = { $val -> }")
         result, errors = bundle.format_pattern("msg", {"val": "test"})
         assert "{" in result or len(errors) > 0
@@ -191,7 +191,7 @@ class TestTermReferenceEdgeCases:
 
     def test_term_reference_missing_closing_paren(self) -> None:
         """Test term reference with unclosed argument list."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("-brand = Firefox")
         bundle.add_resource('msg = { -brand(case: "nominative" }')
         result, errors = bundle.format_pattern("msg")
@@ -204,7 +204,7 @@ class TestCallArgumentsEdgeCases:
 
     def test_named_arg_requires_literal_value(self) -> None:
         """Test that named arguments require literal values (not references)."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # Named arg with variable reference (invalid per FTL spec)
         bundle.add_resource("msg = { NUMBER($val, precision: $digits) }")
         result, errors = bundle.format_pattern("msg", {"val": 42, "digits": 2})
@@ -213,7 +213,7 @@ class TestCallArgumentsEdgeCases:
 
     def test_positional_after_named_fails(self) -> None:
         """Test that positional args after named args fails."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # Positional after named (invalid)
         bundle.add_resource("msg = { FUNC(name: 1, $val) }")
         result, errors = bundle.format_pattern("msg", {"val": 42})
@@ -221,7 +221,7 @@ class TestCallArgumentsEdgeCases:
 
     def test_duplicate_named_arg_fails(self) -> None:
         """Test duplicate named argument names fail."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         # Duplicate named arg
         bundle.add_resource('msg = { FUNC($val, style: "a", style: "b") }')
         result, errors = bundle.format_pattern("msg", {"val": 42})
@@ -233,7 +233,7 @@ class TestCallArgumentsEdgeCases:
     def test_positional_args_property(self, values: list[int]) -> None:
         """PROPERTY: Multiple positional args parse correctly."""
         event(f"arg_count={len(values)}")
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         def test_func(*args: int | str) -> str:
             return f"Called with {len(args)} args"

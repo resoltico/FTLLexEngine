@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.140.0"
+version: "0.142.0"
 domain: "architecture"
-updated: "2026-02-26"
+updated: "2026-02-27"
 route: "/docs/data-integrity"
 ---
 
@@ -14,18 +14,18 @@ This document describes the architectural design for data integrity in FTLLexEng
 
 The system separates two distinct safety concerns: formatting error handling and cache integrity.
 
-**Formatting error handling** is opt-in via `strict=False` (default) or `strict=True`. The Fluent specification defines fallback behavior — returning a result with a placeholder like `{$amount}` alongside errors as data. This is intentional. The default is spec-compliant; strict mode is the financial-grade upgrade.
+**Formatting error handling** defaults to fail-fast (`strict=True`). On any formatting error, `FormattingIntegrityError` is raised immediately. Soft error recovery (returning a placeholder like `{$amount}` alongside errors as data) is opt-in via `strict=False`. The Fluent specification defines fallback behavior as valid — FTLLexEngine defaults to the stricter interpretation to prevent silent data errors in production.
 
 **Cache integrity** is always-on by default (`integrity_strict=True`). Cache corruption is a system-level failure independent of how an application handles formatting errors.
 
-| Failure Mode | Default Behavior | Strict Mode (`strict=True`) |
-|:-------------|:-----------------|:----------------------------|
-| Missing message | Return placeholder `{message-id}` + error | Raise `FormattingIntegrityError` |
-| Missing variable | Return placeholder `{$var}` + error | Raise `FormattingIntegrityError` |
-| Cache corruption | Raise `CacheCorruptionError` (always) | Raise `CacheCorruptionError` |
-| Error mutation | Immutable `FrozenFluentError` (always) | Immutable `FrozenFluentError` |
+| Failure Mode | Default (`strict=True`) | Soft Mode (`strict=False`) |
+|:-------------|:------------------------|:---------------------------|
+| Missing message | Raise `FormattingIntegrityError` | Return placeholder `{message-id}` + error |
+| Missing variable | Raise `FormattingIntegrityError` | Return placeholder `{$var}` + error |
+| Cache corruption | Raise `CacheCorruptionError` (always) | Raise `CacheCorruptionError` (always) |
+| Error mutation | Immutable `FrozenFluentError` (always) | Immutable `FrozenFluentError` (always) |
 
-**Rationale for strict mode:** A bank displaying `{$amount}` when a variable is missing may display no financial figure at all — which is worse than an explicit error. Financial applications that cannot tolerate any silent fallback should enable `strict=True` to guarantee that every successful `format_pattern()` return is a correct, fully-resolved result.
+**Rationale for strict default:** A bank displaying `{$amount}` when a variable is missing may show no financial figure at all — which is worse than an explicit error. By defaulting to `strict=True`, FTLLexEngine guarantees that every successful `format_pattern()` return is a correct, fully-resolved result. Applications that prefer graceful degradation opt in to soft mode with `strict=False`.
 
 ## Architecture Overview
 
@@ -67,26 +67,26 @@ The system separates two distinct safety concerns: formatting error handling and
 
 **Responsibility:** Provide fail-fast behavior at both bundle and localization levels.
 
-**Design Decision:** Strict mode is opt-in (`strict=False` default), not the only mode.
+**Design Decision:** Strict mode is the default (`strict=True`). Soft error recovery is opt-out via `strict=False`.
 
-**Why not fail-fast by default?**
+**Why fail-fast by default?**
 
-The Fluent specification itself defines fallback behavior. When formatting fails, you get a result (with placeholder like `{$amount}`) AND errors returned as data. This is intentional:
+Silent fallbacks are the primary source of data errors in localized applications. When formatting fails and returns `{$amount}`, the application may render no financial figure at all without any indication that something went wrong. Defaulting to fail-fast eliminates this silent failure class.
 
 | Consideration | Rationale |
 |:--------------|:----------|
-| Fluent philosophy | "Errors as data" - caller decides severity, not the library |
-| Development workflow | Seeing `{$missing}` in UI identifies issues without crashing the app |
-| Graceful degradation | Some apps prefer "something shows" over "nothing shows" |
-| Domain-specific severity | Missing greeting is annoying; missing balance is catastrophic |
+| Financial safety | Missing balance variable must not silently render as `{$amount}` |
+| Explicit opt-out | Applications that prefer graceful degradation set `strict=False` deliberately |
+| Spec compliance | Fluent spec defines fallback behavior; FTLLexEngine enforces it only when explicitly requested |
+| Development feedback | Errors surface immediately rather than appearing as mysterious placeholders in the UI |
 
-**Why offer strict mode at all?**
+**Why offer soft mode at all?**
 
-Some applications cannot tolerate silent fallbacks. A missing variable returning `{$amount}` could display wrong data to users. These apps need a guarantee: if `format_pattern()` returns, the result is correct.
+Some applications — particularly those with partially-translated resources or during migration — prefer graceful degradation: show something rather than crash. These applications opt in to soft mode:
 
-**Activation:**
-- `FluentBundle(..., strict=True)` - explicit opt-in
-- `FluentLocalization(..., strict=True)` - propagates to all bundles
+**Soft mode activation:**
+- `FluentBundle(..., strict=False)` - explicit opt-out to soft error recovery
+- `FluentLocalization(..., strict=False)` - propagates to all bundles
 - Combine with `cache=CacheConfig()` for caching
 
 **Invariant:** When `strict=True`, NO formatting operation returns a fallback value. Every error path raises `FormattingIntegrityError`. This invariant holds at both levels:
@@ -99,8 +99,8 @@ These are independent concerns controlled by separate parameters:
 
 | Parameter | Controls | Default |
 |:----------|:---------|:--------|
-| `FluentBundle(strict=...)` | Formatting error handling (raise vs return fallback) | `False` |
-| `FluentLocalization(strict=...)` | Propagated to each bundle | `False` |
+| `FluentBundle(strict=...)` | Formatting error handling (raise vs return fallback) | `True` |
+| `FluentLocalization(strict=...)` | Propagated to each bundle | `True` |
 | `CacheConfig(integrity_strict=...)` | Cache corruption response (raise vs evict) | `True` |
 
 **Rationale:** Cache corruption is a system-level integrity failure independent of how an application handles formatting errors. A non-strict application (returning fallbacks for missing translations) should still detect and report cache corruption. The default `integrity_strict=True` ensures this.
@@ -173,7 +173,7 @@ config = CacheConfig(
     integrity_strict=True,   # Cache corruption: raise (default)
     enable_audit=True,
 )
-bundle = FluentBundle("en", cache=config, strict=True)
+bundle = FluentBundle("en", cache=config)  # strict=True is the default
 ```
 
 **Checksum Composition:**
@@ -274,21 +274,6 @@ DataIntegrityError (base - immutable after construction)
 | `FluentLocalization._lock` | Custom `RWLock` | Brief read lock for bundle map lookup; write lock for lazy bundle creation; exclusive writes for add_resource/add_function |
 | `IntegrityCache._lock` | `threading.Lock` | Short operations; no reentrant acquisition in the call path; `RLock` thread-tracking overhead eliminated |
 | `LocaleContext._cache_lock` | `threading.Lock` | Class-level LRU cache; two sequential (never nested) acquisitions; `RLock` thread-tracking overhead unnecessary |
-
-### Context Manager Semantics
-
-`FluentBundle.__enter__` returns `self`; `__exit__` is a no-op. The context manager exists solely to enable `with bundle as b:` syntax for structured scoping.
-
-Cache invalidation is not deferred to context exit. `add_resource()` and `add_function()` clear the cache immediately on modification, so the cache is always consistent at the point of mutation.
-
-```python
-with bundle as b:
-    b.add_resource(...)   # Cache cleared immediately by add_resource
-    b.format_pattern(...) # Cache populated from fresh bundle state
-# __exit__ is a no-op; cache is preserved
-```
-
-`FluentLocalization` has identical semantics: `__enter__` returns `self`; `__exit__` is a no-op. Both classes are safe to use with `with` for structured scoping only.
 
 ## Security Model
 

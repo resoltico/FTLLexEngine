@@ -14,7 +14,7 @@ import tempfile
 from decimal import Decimal
 from pathlib import Path
 
-from ftllexengine import FluentBundle
+from ftllexengine import FluentBundle, validate_resource
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.runtime.cache_config import CacheConfig
 
@@ -193,7 +193,10 @@ print("\n" + "=" * 50)
 print("Example 8: Proper Error Handling")
 print("=" * 50)
 
-error_bundle = FluentBundle("en", use_isolating=False)
+# strict=False: soft error recovery mode - format_pattern returns (fallback, errors)
+# instead of raising FormattingIntegrityError. Required here to demonstrate
+# error inspection via the returned errors tuple.
+error_bundle = FluentBundle("en", use_isolating=False, strict=False)
 error_bundle.add_resource("""
 welcome = Hello, { $name }!
 missing-var = Value: { $undefined }
@@ -250,15 +253,16 @@ result, _ = system_bundle.format_pattern("system-locale", {"locale": system_bund
 print(result)
 # Output: Detected system locale: en_US (or your system locale)
 
-# Example 10: Strict Mode (Fail-Fast)
+# Example 10: Strict Mode (Fail-Fast) - the default
 print("\n" + "=" * 50)
 print("Example 10: Strict Mode (Fail-Fast)")
 print("=" * 50)
 
-# In strict mode, ANY error raises an exception instead of returning a fallback
-# Use this when silent fallbacks are unacceptable (e.g., displaying "{$amount}")
+# strict=True is the DEFAULT. ANY formatting error raises FormattingIntegrityError
+# instead of returning a fallback string. Use strict=False only when soft error
+# recovery (returning fallback + errors tuple) is explicitly needed.
 
-strict_bundle = FluentBundle("en", strict=True, use_isolating=False)
+strict_bundle = FluentBundle("en", use_isolating=False)  # strict=True is the default
 strict_bundle.add_resource("""
 amount = Total: { $value }
 """)
@@ -274,33 +278,36 @@ except FormattingIntegrityError as e:
     print(f"[FAIL-FAST] {e.message_id}: {len(e.fluent_errors)} error(s)")
     print(f"  Fallback would have been: {e.fallback_value!r}")
 
-# Example 11: Context Manager Support
+# Example 11: Resource Introspection
 print("\n" + "=" * 50)
-print("Example 11: Context Manager Support")
+print("Example 11: Resource Introspection")
 print("=" * 50)
 
-# Context manager clears format cache on exit but preserves messages/terms
-# Bundle remains fully usable after exiting the with block
-with FluentBundle("en", use_isolating=False, cache=CacheConfig()) as ctx_bundle:
-    ctx_bundle.add_resource("""
-ctx-hello = Hello from context manager!
-ctx-goodbye = Goodbye, { $name }!
+# FluentBundle provides introspection APIs for auditing and validation
+intr_bundle = FluentBundle("en", use_isolating=False)
+intr_bundle.add_resource("""
+greeting = Hello, { $name }!
+farewell = Goodbye, { $name }!
+-app-name = MyApp
 """)
 
-    result, _ = ctx_bundle.format_pattern("ctx-hello")
-    print(result)
-    # Output: Hello from context manager!
+# Enumerate all message IDs (terms starting with - are excluded)
+message_ids = intr_bundle.get_message_ids()
+print(f"Message IDs: {sorted(message_ids)}")
+# Output: ['farewell', 'greeting']
 
-    result, _ = ctx_bundle.format_pattern("ctx-goodbye", {"name": "World"})
-    print(result)
-    # Output: Goodbye, World!
+# Check if specific messages exist
+print(f"has greeting: {intr_bundle.has_message('greeting')}")
+print(f"has missing: {intr_bundle.has_message('missing')}")
 
-# Bundle remains usable after exiting - only cache is cleared
-result, _ = ctx_bundle.format_pattern("ctx-hello")
-print(f"After with block: {result}")
-# Output: Hello from context manager!
+# Validate FTL source before loading into a bundle
+valid_result = validate_resource("valid = Hello, { $name }!\n")
+print(f"Valid FTL: {valid_result.is_valid}")
 
-print("[OK] Context manager exited cleanly (cache cleared, messages preserved)")
+invalid_result = validate_resource("broken = { }")  # Empty placeable
+print(f"Invalid FTL: {invalid_result.is_valid}, errors: {len(invalid_result.errors)}")
+
+print("[OK] Resource introspection APIs working")
 
 # Example 12: Cache Security Parameters (Financial-Grade)
 print("\n" + "=" * 50)

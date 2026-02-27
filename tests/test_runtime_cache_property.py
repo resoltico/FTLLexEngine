@@ -704,7 +704,7 @@ class TestCacheProperties:
         ftl_placeholders = " ".join([f"{{ ${k} }}" for k in ftl_vars])
         ftl_source = f"msg = Test {ftl_placeholders}"
 
-        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False, strict=False)
         bundle.add_resource(ftl_source)
 
         # Format with args1
@@ -935,7 +935,7 @@ class TestCacheInternalProperties:
 
         Property: Distinct args → distinct cache keys → separate entries.
         """
-        bundle = FluentBundle("en", cache=CacheConfig(size=100), use_isolating=False)
+        bundle = FluentBundle("en", cache=CacheConfig(size=100), use_isolating=False, strict=False)
         bundle.add_resource("msg = { $a } { $b } { $c }")
         cache = bundle._cache
         assert cache is not None  # Type narrowing for mypy

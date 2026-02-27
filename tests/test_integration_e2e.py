@@ -205,7 +205,7 @@ class TestParseFormatWithVariables:
         """Missing variables produce fallback with error."""
         ftl_source = "greeting = Hello, { $name }!"
 
-        bundle = FluentBundle("en-US", use_isolating=False)
+        bundle = FluentBundle("en-US", strict=False, use_isolating=False)
         bundle.add_resource(ftl_source)
 
         result, errors = bundle.format_pattern("greeting")
@@ -525,7 +525,7 @@ class TestParseFormatErrorHandling:
         """Missing message returns fallback string with error."""
         ftl_source = "hello = Hello!"
 
-        bundle = FluentBundle("en-US", use_isolating=False)
+        bundle = FluentBundle("en-US", strict=False, use_isolating=False)
         bundle.add_resource(ftl_source)
 
         result, errors = bundle.format_pattern("nonexistent")
@@ -540,7 +540,7 @@ class TestParseFormatErrorHandling:
 button = Click
     .title = Button title
 """
-        bundle = FluentBundle("en-US", use_isolating=False)
+        bundle = FluentBundle("en-US", strict=False, use_isolating=False)
         bundle.add_resource(ftl_source)
 
         _, errors = bundle.format_pattern("button", attribute="nonexistent")
@@ -558,7 +558,7 @@ button = Click
         ftl_source = """
 msg = { missing-ref }
 """
-        bundle = FluentBundle("en-US", use_isolating=False)
+        bundle = FluentBundle("en-US", strict=False, use_isolating=False)
         bundle.add_resource(ftl_source)
 
         _, errors = bundle.format_pattern("msg")
@@ -963,7 +963,7 @@ class TestValidationRuntimeConsistency:
         )
         assert has_chain_warning
 
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(ftl_source)
         _, errors = bundle.format_pattern(f"msg-{chain_length - 1}")
         has_depth_error = any(

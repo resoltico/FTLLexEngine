@@ -137,7 +137,7 @@ class TestResolutionBehavioralContracts:
 
     def test_self_referencing_message_produces_errors(self) -> None:
         """Self-referencing message is cycle-detected and produces errors."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = { msg }")
         _result, errors = bundle.format_pattern("msg")
         assert len(errors) > 0
@@ -153,7 +153,7 @@ class TestResolutionBehavioralContracts:
 
     def test_missing_variables_produce_errors_and_fallback_text(self) -> None:
         """All missing variables produce per-variable errors and fallback text."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = { $a } { $b } { $c }")
         result, errors = bundle.format_pattern("msg", {})
         assert len(errors) == 3
@@ -171,7 +171,7 @@ class TestResolutionBehavioralContracts:
 
     def test_term_with_no_matching_variant_uses_default(self) -> None:
         """Term with selector: no match falls back to the default variant."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(
             "-brand = { $case ->\n    [nominative] Firefox\n   *[other] Firefox\n}\n"
             "msg = { -brand }\n"
@@ -188,7 +188,7 @@ class TestResolutionBehavioralContracts:
         has_numeric = any(isinstance(v, (int, Decimal)) for v in args.values())
         arg_kind = "numeric" if has_numeric else "strings"
         event(f"arg_kind={arg_kind}")
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = { $x } and { $y }\n")
         result, errors = bundle.format_pattern("msg", args)
         assert isinstance(result, str)
@@ -246,14 +246,14 @@ class TestBundleBehavioralContracts:
 
     def test_format_nonexistent_message_returns_fallback(self) -> None:
         """Nonexistent message produces bracketed key fallback with one error."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         result, errors = bundle.format_pattern("nonexistent")
         assert "{nonexistent}" in result
         assert len(errors) == 1
 
     def test_format_nonexistent_attribute_returns_non_empty(self) -> None:
         """Nonexistent attribute on existing message returns a non-empty result."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Base value")
         result, _errors = bundle.format_pattern("msg", attribute="nonexistent")
         assert len(result) > 0

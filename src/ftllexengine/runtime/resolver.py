@@ -542,38 +542,32 @@ class FluentResolver:
         Returns:
             Matching variant or None if no exact match found.
         """
+        # Compute numeric selector once before the loop. Only int, Decimal, and FluentNumber
+        # are valid numeric selector types (float is excluded from FluentValue).
+        # bool is excluded: isinstance(True, int) is True but str(True) == "True" is not
+        # a valid Decimal literal. FluentNumber wraps NUMBER()-formatted values while
+        # preserving the original numeric value for matching (.value attribute).
+        numeric_for_match: int | Decimal | None = None
+        if isinstance(selector_value, FluentNumber):
+            numeric_for_match = selector_value.value
+        elif isinstance(selector_value, (int, Decimal)) and not isinstance(selector_value, bool):
+            numeric_for_match = selector_value
+
+        # Pre-convert selector to Decimal once for all NumberLiteral comparisons in the loop.
+        # Decimal(raw_str) per variant still executes inside the loop since raw_str varies.
+        # NumberLiteral.__post_init__ guarantees raw is a parseable finite number.
+        sel_decimal: Decimal | None = None
+        if numeric_for_match is not None:
+            sel_decimal = Decimal(str(numeric_for_match))
+
         for variant in variants:
             match variant.key:
                 case Identifier(name=key_name):
                     if key_name == selector_str:
                         return variant
                 case NumberLiteral(raw=raw_str):
-                    # Handle int, Decimal, and FluentNumber for exact numeric match.
-                    # float is not in FluentValue: only int and Decimal are valid numeric types.
-                    # Use NumberLiteral.raw (exact source string) for key comparison.
-                    # Note: Exclude bool since isinstance(True, int) is True in Python,
-                    # but str(True) == "True" which is not a valid Decimal.
-                    #
-                    # FluentNumber wraps formatted numbers (from NUMBER() function) while
-                    # preserving the original numeric value for matching. Extract .value
-                    # for numeric comparison so [1000] matches FluentNumber(1000, "1,000").
-                    numeric_for_match: int | Decimal | None = None
-                    if isinstance(selector_value, FluentNumber):
-                        numeric_for_match = selector_value.value
-                    elif (
-                        isinstance(selector_value, (int, Decimal))
-                        and not isinstance(selector_value, bool)
-                    ):
-                        numeric_for_match = selector_value
-
-                    if numeric_for_match is not None:
-                        # Use raw string for key to preserve exact source precision.
-                        # NumberLiteral.__post_init__ guarantees raw is a parseable
-                        # finite number, so Decimal(raw_str) always succeeds here.
-                        key_decimal = Decimal(raw_str)
-                        sel_decimal = Decimal(str(numeric_for_match))
-                        if key_decimal == sel_decimal:
-                            return variant
+                    if sel_decimal is not None and Decimal(raw_str) == sel_decimal:
+                        return variant
         return None
 
     def _find_plural_variant(

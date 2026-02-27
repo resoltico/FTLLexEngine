@@ -12,7 +12,7 @@ Public API:
     validate_resource - Validate FTL resource for semantic errors (no external dependencies)
     FluentValue - Type alias for values accepted by formatting functions
     fluent_function - Decorator for custom functions (locale injection support)
-    clear_all_caches - Clear all module-level caches (memory management)
+    clear_module_caches - Clear all module-level caches (memory management)
 
 Fiscal Calendar (no Babel dependency):
     FiscalCalendar - Configuration for fiscal year boundaries
@@ -184,7 +184,7 @@ def __getattr__(name: str) -> object:
     raise AttributeError(msg)
 
 
-def clear_all_caches() -> None:
+def clear_module_caches() -> None:
     """Clear all module-level caches in the library.
 
     Provides unified cache management for long-running applications. Clears:
@@ -213,7 +213,7 @@ def clear_all_caches() -> None:
 
     Example:
         >>> import ftllexengine
-        >>> ftllexengine.clear_all_caches()  # Reclaim memory from all caches
+        >>> ftllexengine.clear_module_caches()  # Reclaim memory from all caches
     """
     # Import and clear each cache module.
     # Order: parsing caches first (depend on locale cache), then locale, then introspection.
@@ -308,7 +308,7 @@ __all__ = [
     "serialize_ftl",
     "validate_resource",
     # Utility
-    "clear_all_caches",
+    "clear_module_caches",
     # Metadata
     "__fluent_spec_version__",
     "__recommended_encoding__",

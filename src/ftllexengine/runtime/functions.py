@@ -208,7 +208,7 @@ def number_format(
             parsed = parse_pattern(pattern)
             # frac_prec is (min_frac, max_frac) tuple
             max_frac = parsed.frac_prec[1]
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (ValueError, AttributeError):
             # Malformed pattern: fall back to uncapped counting.
             # Babel format_number already handled the pattern successfully,
             # so parse_pattern failure is unexpected but not fatal.
@@ -393,7 +393,7 @@ def currency_format(
         try:
             parsed = parse_pattern(pattern)
             max_frac = parsed.frac_prec[1]
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (ValueError, AttributeError):
             # Logged at WARNING: same rationale as number_format — the
             # formatted output is correct but the CLDR v operand may be
             # inflated for patterns with ICU single-quote literals.

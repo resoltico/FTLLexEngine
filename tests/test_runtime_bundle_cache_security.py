@@ -217,7 +217,7 @@ class TestCacheMaxErrorsPerEntry:
     def test_entries_with_many_errors_not_cached(self) -> None:
         """Entries with excessive errors are computed but not cached."""
         cfg = CacheConfig(max_errors_per_entry=1)  # Very strict
-        bundle = FluentBundle("en", cache=cfg)
+        bundle = FluentBundle("en", cache=cfg, strict=False)
 
         bundle.add_resource("msg = { $a } { $b } { $c }")
 

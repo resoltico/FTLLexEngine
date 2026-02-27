@@ -57,20 +57,24 @@ if TYPE_CHECKING:
 
 
 def example_1_format_never_raises() -> None:
-    """Property: format_pattern() never raises exceptions.
+    """Property: format_pattern() never raises in soft error mode.
 
-    This is a critical property of FTLLexEngine - formatting should always
-    return a usable string and collect errors in a list, never crash.
+    In strict=False mode, FTLLexEngine always returns a usable string and
+    collects errors in a tuple. In strict=True (default), FormattingIntegrityError
+    is raised on any error (including missing message IDs).
     """
     print("=" * 70)
-    print("Example 1: format_pattern() Never Raises Exceptions")
+    print("Example 1: format_pattern() Never Raises in Soft Mode")
     print("=" * 70)
 
     @given(message_id=st.text(), args=st.dictionaries(st.text(), st.text()))
     @settings(max_examples=100)
     def test_format_never_raises(message_id: str, args: dict[str, str]) -> None:
-        """Format never raises, even with random inputs."""
-        bundle = FluentBundle("en", use_isolating=False)
+        """In soft mode (strict=False), format_pattern returns errors as data."""
+        # strict=False: soft error recovery mode returns (fallback, errors) tuple
+        # even when message_id is missing or args are invalid. strict=True (default)
+        # would raise FormattingIntegrityError on missing message IDs.
+        bundle = FluentBundle("en", use_isolating=False, strict=False)
         bundle.add_resource("test = Test message")
 
         # Should never raise, even with garbage inputs
@@ -83,7 +87,7 @@ def example_1_format_never_raises() -> None:
 
     # Run the property test
     test_format_never_raises()
-    print("Property verified: format_pattern() never raises exceptions\n")
+    print("Property verified: format_pattern() never raises in soft mode (strict=False)\n")
 
 
 # ==============================================================================
@@ -292,7 +296,7 @@ def example_6_stateful_bundle_testing() -> None:
     a sequence of operations maintains bundle invariants.
     """
     print("=" * 70)
-    print("Example 6: Stateful Property Testing (Advanced)")
+    print("Example 6: Stateful Property Testing (Advanced, strict=False)")
     print("=" * 70)
 
     class BundleStateMachine(RuleBasedStateMachine):
@@ -315,7 +319,10 @@ def example_6_stateful_bundle_testing() -> None:
         # per Hypothesis documentation, not a code smell.
         def init_bundle(self) -> None:
             """Initialize bundle state."""
-            self.bundle = FluentBundle("en", use_isolating=False)  # type: ignore[assignment,method-assign,unused-ignore]
+            # strict=False: add_message rule uses arbitrary text() values which can
+            # contain unmatched { } characters, producing junk FTL entries. strict=True
+            # (default) would raise SyntaxIntegrityError on junk during add_resource().
+            self.bundle = FluentBundle("en", use_isolating=False, strict=False)  # type: ignore[assignment,method-assign,unused-ignore]
             # mypy: @initialize() sets instance attributes, but mypy sees bundle as a method.
             # Different mypy versions report this as either 'assignment' or 'method-assign'.
             # The type: ignore is justified - this is Hypothesis's RuleBasedStateMachine design.

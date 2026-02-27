@@ -37,7 +37,7 @@ class TestArchDepthBypass001:
         ftl_source = "\n".join(messages)
 
         # Bundle with restrictive depth limit (20)
-        bundle = FluentBundle("en", max_nesting_depth=20)
+        bundle = FluentBundle("en", max_nesting_depth=20, strict=False)
         bundle.add_resource(ftl_source)
 
         # Should produce error due to depth limit when resolving msg0
@@ -56,7 +56,7 @@ class TestArchDepthBypass001:
 
         ftl_source = f"deep = {nested_pattern}"
 
-        bundle = FluentBundle("en")  # Default MAX_DEPTH
+        bundle = FluentBundle("en", strict=False)  # Default MAX_DEPTH
         bundle.add_resource(ftl_source)
 
         _result, errors = bundle.format_pattern("deep")

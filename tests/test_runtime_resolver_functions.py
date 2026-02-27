@@ -36,7 +36,7 @@ class TestCallFunctionSafeLocaleInjected:
 
     def test_unknown_function_produces_fallback(self) -> None:
         """Calling an unregistered function produces fallback error string."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("msg = { NONEXISTENT($x) }")
         result, errors = bundle.format_pattern("msg", {"x": 42})
         assert "NONEXISTENT" in result
@@ -44,7 +44,7 @@ class TestCallFunctionSafeLocaleInjected:
 
     def test_builtin_with_wrong_arity_produces_error(self) -> None:
         """Built-in function with wrong arity produces structured error."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("msg = { NUMBER() }")
         _result, errors = bundle.format_pattern("msg")
         assert len(errors) > 0
@@ -60,7 +60,7 @@ class TestCallFunctionSafeCustomFunction:
             msg = "intentional error"
             raise ValueError(msg)
 
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_function("BADFUNC", bad_func)
         bundle.add_resource("msg = { BADFUNC($x) }")
         _result, errors = bundle.format_pattern("msg", {"x": 42})

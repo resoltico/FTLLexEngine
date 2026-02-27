@@ -209,7 +209,7 @@ class TestFormatValueInvalidArgsTypeValidation:
 
     def test_format_value_list_args_explicit(self) -> None:
         """format_value with list args returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test")
 
         result, errors = l10n.format_value("msg", [1, 2, 3])  # type: ignore[arg-type]
@@ -221,7 +221,7 @@ class TestFormatValueInvalidArgsTypeValidation:
 
     def test_format_value_string_args_explicit(self) -> None:
         """format_value with string args returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test")
 
         result, errors = l10n.format_value("msg", "invalid")  # type: ignore[arg-type]
@@ -231,7 +231,7 @@ class TestFormatValueInvalidArgsTypeValidation:
 
     def test_format_value_int_args_explicit(self) -> None:
         """format_value with int args returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test")
 
         result, errors = l10n.format_value("msg", 42)  # type: ignore[arg-type]
@@ -261,7 +261,7 @@ class TestFormatPatternInvalidArgsTypeValidation:
     ) -> None:
         """format_pattern with non-Mapping args returns error."""
         event(f"args_type={type(invalid_args).__name__}")
-        l10n = FluentLocalization([locale])
+        l10n = FluentLocalization([locale], strict=False)
         l10n.add_resource(locale, f"{message_id} = test")
 
         result, errors = l10n.format_pattern(message_id, invalid_args)  # type: ignore[arg-type]
@@ -272,7 +272,7 @@ class TestFormatPatternInvalidArgsTypeValidation:
 
     def test_format_pattern_list_args_explicit(self) -> None:
         """format_pattern with list args returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test")
 
         result, errors = l10n.format_pattern("msg", [1, 2, 3])  # type: ignore[arg-type]
@@ -287,7 +287,7 @@ class TestFormatPatternInvalidAttributeTypeValidation:
 
     def test_format_pattern_int_attribute_explicit(self) -> None:
         """format_pattern with int attribute returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test\n  .attr = value")
 
         result, errors = l10n.format_pattern("msg", None, attribute=42)  # type: ignore[arg-type]
@@ -298,7 +298,7 @@ class TestFormatPatternInvalidAttributeTypeValidation:
 
     def test_format_pattern_list_attribute_explicit(self) -> None:
         """format_pattern with list attribute returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test\n  .attr = value")
 
         result, errors = l10n.format_pattern(
@@ -310,7 +310,7 @@ class TestFormatPatternInvalidAttributeTypeValidation:
 
     def test_format_pattern_dict_attribute_explicit(self) -> None:
         """format_pattern with dict attribute returns error."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = test\n  .attr = value")
 
         result, errors = l10n.format_pattern(
@@ -617,10 +617,10 @@ class TestFluentLocalizationAddFunction:
 
     def test_add_function_applies_to_existing_bundles(self) -> None:
         """add_function applies to already-created bundles."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = { CUSTOM($val) }")
 
-        # Format once to create bundle
+        # Format once to create bundle (CUSTOM not yet registered, may error)
         _result, _errors = l10n.format_value("msg", {"val": "test"})
 
         # Now add function

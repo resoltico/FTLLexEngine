@@ -1498,7 +1498,7 @@ class TestResolverErrorPaths:
   *[b] Default
 }
 """
-        bundle = FluentBundle("en", use_isolating=False)
+        bundle = FluentBundle("en", use_isolating=False, strict=False)
         bundle.add_resource(ftl)
 
         result, errors = bundle.format_pattern("test", {})

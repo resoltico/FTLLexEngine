@@ -189,7 +189,7 @@ class TestDirectCycles:
 
     def test_message_references_itself(self) -> None:
         """Direct cycle: message references itself."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("self = { self }")
 
         result, errors = bundle.format_pattern("self")
@@ -204,7 +204,7 @@ class TestDirectCycles:
 
     def test_term_references_itself(self) -> None:
         """Direct cycle: term references itself."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 -self = { -self }
@@ -223,7 +223,7 @@ class TestIndirectCycles:
 
     def test_two_message_cycle(self) -> None:
         """Indirect cycle: a -> b -> a."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 msg-a = { msg-b }
@@ -243,7 +243,7 @@ msg-b = { msg-a }
 
     def test_three_message_cycle(self) -> None:
         """Indirect cycle: a -> b -> c -> a."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 msg-a = { msg-b }
@@ -259,7 +259,7 @@ msg-c = { msg-a }
 
     def test_term_to_message_cycle(self) -> None:
         """Mixed cycle: term -> message -> term."""
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 -brand = { product }
@@ -303,7 +303,7 @@ class TestDeepChains:
             else:
                 messages.append(f"msg{i} = End")
 
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("\n".join(messages))
 
         result, errors = bundle.format_pattern("msg0")
@@ -358,7 +358,7 @@ m4 = Final value
 
     def test_deep_chain_hits_limit(self) -> None:
         """Chain exceeding MAX_DEPTH returns error."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         depth = MAX_DEPTH + 10
         lines = []
         for i in range(depth - 1):
@@ -388,7 +388,7 @@ m4 = Final value
 
     def test_depth_limit_error_message_contains_depth_info(self) -> None:
         """Error message for depth limit references depth."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         depth = MAX_DEPTH + 5
         lines = []
         for i in range(depth - 1):
@@ -404,7 +404,7 @@ m4 = Final value
 
     def test_cyclic_detected_before_depth(self) -> None:
         """Cyclic reference is detected before hitting depth limit."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(
             """
 a = { b }
@@ -520,7 +520,7 @@ class TestSelectExpressionDepthLimit:
 
     def test_deep_nesting_triggers_depth_limit(self) -> None:
         """SelectExpression nested beyond MAX_DEPTH triggers depth limit."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         message = self._create_nested_select_ast(depth=MAX_DEPTH + 10)
         bundle._messages["nested"] = message
 
@@ -532,7 +532,7 @@ class TestSelectExpressionDepthLimit:
 
     def test_exact_max_depth_boundary(self) -> None:
         """Behavior at exactly MAX_DEPTH does not crash."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         message = self._create_nested_select_ast(depth=MAX_DEPTH)
         bundle._messages["nested"] = message
 
@@ -583,7 +583,7 @@ class TestNestedPlaceableDepthLimit:
 
     def test_deep_placeable_nesting_triggers_limit(self) -> None:
         """Deep placeable nesting triggers depth limit."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         message = self._create_nested_placeable_ast(depth=MAX_DEPTH + 10)
         bundle._messages["nested"] = message
 
@@ -632,7 +632,7 @@ class TestMixedNestingDepthLimit:
 
     def test_combined_nesting_exceeds_limit(self) -> None:
         """Combined nesting exceeding MAX_DEPTH produces depth error."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         message = self._create_mixed_nesting_ast(
             select_depth=MAX_DEPTH // 2 + 10,
             placeable_depth=MAX_DEPTH // 2 + 10,
@@ -649,7 +649,7 @@ class TestDepthLimitWithCustomLimit:
 
     def test_custom_lower_depth_limit(self) -> None:
         """Custom lower depth limit triggers earlier than default."""
-        bundle = FluentBundle("en_US", max_nesting_depth=10)
+        bundle = FluentBundle("en_US", max_nesting_depth=10, strict=False)
 
         inner_pattern = Pattern(elements=(TextElement(value="inner"),))
         current_pattern = inner_pattern

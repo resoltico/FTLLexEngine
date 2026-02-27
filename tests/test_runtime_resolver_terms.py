@@ -467,7 +467,7 @@ class TestTermReferencePositionalArguments:
 
         Covers ARCH-TERM-POSITIONAL-DISCARD-001 diagnostic path.
         """
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 -my-term = Term value
@@ -482,7 +482,7 @@ msg = { -my-term($arg1, $arg2) }
 
     def test_term_reference_positional_args_trigger_errors(self) -> None:
         """Term reference positional args collect errors when variables missing."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 -my-term = Term value
@@ -495,7 +495,7 @@ msg = { -my-term($missing_var) }
 
     def test_term_reference_positional_args_emit_warning(self) -> None:
         """Term positional args emit warning (per Fluent spec, terms only accept named args)."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 -my-term = Term value
@@ -512,7 +512,7 @@ msg = { -my-term("val1", "val2") }
 
     def test_term_reference_positional_args_warning_count(self) -> None:
         """Warning message includes count of positional arguments ignored."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 -brand = Firefox
@@ -538,7 +538,7 @@ class TestTermCyclicReferenceCoverage:
 
     def test_term_direct_self_reference(self) -> None:
         """Term referencing itself directly produces CYCLIC error."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 -recursive = { -recursive }
@@ -553,7 +553,7 @@ msg = { -recursive }
 
     def test_term_indirect_cycle(self) -> None:
         """Terms forming indirect cycle (A -> B -> A) produce CYCLIC error."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 -termA = { -termB }
@@ -715,7 +715,7 @@ class TestResolverFormattingErrorFallback:
 
     def test_formatting_error_uses_fallback_value(self) -> None:
         """FormattingError fallback value is used in pattern resolution (line 312)."""
-        bundle = FluentBundle("en", use_isolating=False)
+        bundle = FluentBundle("en", use_isolating=False, strict=False)
         bundle.add_resource(
             """
 msg = Value: { NUMBER($value, minimumFractionDigits: "invalid") }
@@ -752,7 +752,7 @@ status = { -app.version } - { $count ->
 
     def test_error_recovery_with_fallback(self) -> None:
         """Error handling produces fallback for missing reference."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource("msg = Value: { missing }")
 
         result, errors = bundle.format_pattern("msg")
@@ -796,7 +796,7 @@ class TestResolverFullIntegration:
 
     def test_error_in_placeable_produces_fallback(self) -> None:
         """Error in placeable resolution produces fallback."""
-        bundle = FluentBundle("en_US", use_isolating=False)
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         bundle.add_resource("msg = Start { $missing } End")
 
         result, errors = bundle.format_pattern("msg")

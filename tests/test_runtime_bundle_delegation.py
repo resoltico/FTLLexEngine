@@ -163,7 +163,7 @@ class TestTermOverwritingWarning:
         assume(all(tid.isidentifier() for tid in term_ids))
         event(f"term_count={len(term_ids)}")
 
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         # Add initial terms
         for tid in term_ids:

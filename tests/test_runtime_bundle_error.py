@@ -51,7 +51,7 @@ class TestBundleJunkEntryWithSourcePath:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Junk entry with source_path logs warning (line 333)."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         # Create FTL with syntax error that becomes Junk
         # The key is to trigger add_resource_from_source which provides source_path
@@ -118,7 +118,7 @@ class TestBundleTermReferencesValidation:
 
     def test_term_references_undefined_message_warning_line_467(self) -> None:
         """Term referencing undefined message triggers warning (line 467)."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         # This test should already be covered by test_bundle_coverage.py
         # but let's be explicit about hitting line 467
@@ -135,7 +135,7 @@ welcome = { -brand }
 
     def test_term_references_undefined_term_warning_line_475(self) -> None:
         """Term referencing undefined term triggers warning (line 475)."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         # Explicitly target line 475
         ftl = """

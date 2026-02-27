@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.135.0"
+version: "0.142.0"
 domain: reference
-updated: "2026-02-25"
+updated: "2026-02-27"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -307,7 +307,7 @@ FluentBundle(
     max_source_size: int | None = None,
     max_nesting_depth: int | None = None,
     max_expansion_size: int | None = None,
-    strict: bool = False,
+    strict: bool = True,
 )
 ```
 
@@ -368,7 +368,7 @@ FluentLocalization(
     use_isolating: bool = True,
     cache: CacheConfig | None = None,
     on_fallback: Callable[[FallbackInfo], None] | None = None,
-    strict: bool = False,
+    strict: bool = True,
 )
 ```
 
@@ -726,10 +726,10 @@ def get_bundle() -> FluentBundle:
 Clear module-level caches for testing, hot-reload, or memory management.
 
 ```python
-from ftllexengine import clear_all_caches
+from ftllexengine import clear_module_caches
 
 # Clear all library caches in one call
-clear_all_caches()
+clear_module_caches()
 ```
 
 **Individual Cache Clear Functions**:
@@ -800,16 +800,17 @@ bundle = FluentBundle("ar_EG")  # use_isolating=True by default
 - Unit tests (exact assertions)
 - LTR-only applications (verifiable constraint)
 
-### Errors Never Raise Exceptions (Non-Strict Mode)
+### Errors Raise in Strict Mode (Default)
 
 ```python
-# In non-strict mode (default), format_pattern() returns (result, errors) tuple
-# In strict mode (strict=True), format_pattern() raises FormattingIntegrityError on ANY error
+# In strict mode (default), format_pattern() raises FormattingIntegrityError on ANY error
+# In non-strict mode (strict=False), format_pattern() returns (result, errors) tuple
+bundle = FluentBundle("en", strict=False)  # opt in to soft-error recovery
 result, errors = bundle.format_pattern("missing-message")
 # result → "{missing-message}"  # Readable fallback
 # errors → (FrozenFluentError(...),)  # category=ErrorCategory.REFERENCE
 
-# Always check errors in production
+# Always check errors in non-strict production code
 if errors:
     logger.warning(f"Translation errors: {errors}")
 ```

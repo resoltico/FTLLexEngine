@@ -371,7 +371,7 @@ class TestFinancialBundleOperations:
         locale: str,
     ) -> None:
         """Property: Currency formatting never crashes for valid inputs."""
-        bundle = FluentBundle(locale, use_isolating=False)
+        bundle = FluentBundle(locale, use_isolating=False, strict=False)
 
         bundle.add_resource(f'price = {{ CURRENCY($amount, currency: "{currency}") }}')
 
@@ -425,7 +425,7 @@ items = { $count ->
         net_amount: Decimal,
     ) -> None:
         """Property: VAT calculations format correctly."""
-        bundle = FluentBundle("lv_LV", use_isolating=False)
+        bundle = FluentBundle("lv_LV", use_isolating=False, strict=False)
 
         bundle.add_resource("vat = VAT: { NUMBER($vat, minimumFractionDigits: 2) }")
 
@@ -532,7 +532,7 @@ class TestBundleEdgeCases:
 
     def test_empty_bundle_operations(self) -> None:
         """Empty bundle operations work correctly."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         # Validate empty resource
         result = bundle.validate_resource("")
@@ -726,7 +726,7 @@ class TestMessageFormatting:
         self, msg_id: str, locale: str
     ) -> None:
         """PROPERTY: Formatting missing message returns fallback."""
-        bundle = FluentBundle(locale)
+        bundle = FluentBundle(locale, strict=False)
 
         result, errors = bundle.format_pattern(msg_id)
 
@@ -826,7 +826,7 @@ class TestVariableSubstitution:
         self, msg_id: str, var_name: str
     ) -> None:
         """PROPERTY: Missing variables generate errors."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(f"{msg_id} = Value: {{ ${var_name} }}")
 
         result, errors = bundle.format_pattern(msg_id, {})
@@ -1391,7 +1391,7 @@ class TestErrorMessageFormatting:
         self, msg_id: str, unknown_func: str
     ) -> None:
         """PROPERTY: Unknown functions generate errors."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(
             f"{msg_id} = {{ {unknown_func.upper()}($var) }}"
         )
@@ -1412,7 +1412,7 @@ class TestErrorMessageFormatting:
         self, msg_id: str, unknown_term: str
     ) -> None:
         """PROPERTY: Unknown terms generate errors."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(f"{msg_id} = {{ -{unknown_term} }}")
 
         result, errors = bundle.format_pattern(msg_id)
@@ -1488,7 +1488,7 @@ class TestAttributeEdgeCases:
         self, msg_id: str, attr_name: str
     ) -> None:
         """PROPERTY: Missing attributes generate errors."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(f"{msg_id} = Value")
 
         result, errors = bundle.format_pattern(msg_id, attribute=attr_name)
@@ -1661,7 +1661,7 @@ class TestCircularReferenceDetection:
 
     def test_direct_circular_reference(self) -> None:
         """Direct circular reference is detected."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(
             """
 msg1 = { msg2 }
@@ -1677,7 +1677,7 @@ msg2 = { msg1 }
 
     def test_circular_term_reference(self) -> None:
         """Circular term references are detected."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(
             """
 -term1 = { -term2 }
@@ -1693,7 +1693,7 @@ msg = { -term1 }
 
     def test_nested_circular_reference(self) -> None:
         """Nested circular references are detected."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(
             """
 msg1 = { msg2 }
@@ -2077,7 +2077,7 @@ class TestAdditionalErrorRecovery:
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_deeply_nested_missing_references(self, depth: int) -> None:
         """PROPERTY: Deeply nested missing references are handled."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         # Create chain with missing link
         messages = [f"msg{i} = {{ msg{i+1} }}" for i in range(depth)]
@@ -2101,7 +2101,7 @@ class TestAdditionalErrorRecovery:
         self, msg_id: str, func_name: str
     ) -> None:
         """PROPERTY: Unknown functions are handled gracefully."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource(f"{msg_id} = {{ {func_name.upper()}($var) }}")
 
         result, _errors = bundle.format_pattern(msg_id, {"var": 123})
@@ -2386,7 +2386,7 @@ class TestFunctionArgumentEdgeCases:
 
     def test_function_with_missing_required_option(self) -> None:
         """Function with missing required option is handled."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = { CURRENCY($amt) }")
 
         result, _errors = bundle.format_pattern("msg", {"amt": Decimal("99.99")})
@@ -2575,7 +2575,7 @@ class TestAdditionalRobustness:
 
     def test_empty_message_value(self) -> None:
         """Empty message values are handled."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = ")
 
         result, _errors = bundle.format_pattern("msg")
@@ -2655,7 +2655,7 @@ class TestBundleMessageRegistry:
     def test_unregistered_message_raises_error(self, msg_id: str) -> None:
         """Property: Accessing unregistered message raises FrozenFluentError."""
         event(f"msg_id_len={len(msg_id)}")
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         nonexistent_id = f"never_registered_{msg_id}"
 
@@ -2731,7 +2731,7 @@ class TestBundleVariableInterpolation:
     ) -> None:
         """Property: Missing variables cause graceful degradation, not crash."""
         event(f"var_name_len={len(var_name)}")
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         ftl_source = f"{msg_id} = Value: {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
@@ -2944,7 +2944,7 @@ class TestBundleErrorHandling:
         self, msg_id: str, exception_message: str
     ) -> None:
         """Property: format_pattern never raises unexpected exceptions."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
 
         def failing_function() -> str:
             raise ValueError(exception_message)

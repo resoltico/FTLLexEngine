@@ -101,7 +101,7 @@ class TestFluentBundleFunctionsParameter:
     def test_registry_is_copied(self) -> None:
         """Registry is copied, not used directly."""
         registry = create_default_registry()
-        bundle = FluentBundle("en", functions=registry)
+        bundle = FluentBundle("en", functions=registry, strict=False)
 
         # Modify original registry after bundle creation
         def new_func(value: str) -> str:

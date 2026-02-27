@@ -20,7 +20,7 @@ class TestResolverErrorPaths:
 
     def test_resolver_missing_message_reference(self) -> None:
         """Referencing a non-existent message inside a pattern returns a fallback string."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = { nonexistent }")
 
         result, _ = bundle.format_pattern("msg")
@@ -28,7 +28,7 @@ class TestResolverErrorPaths:
 
     def test_resolver_missing_variable_in_args(self) -> None:
         """Missing variable uses a fallback representation, not a hard error."""
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         result, _ = bundle.format_pattern("msg", {})

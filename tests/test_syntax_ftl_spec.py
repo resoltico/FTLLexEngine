@@ -150,14 +150,14 @@ class TestLineEndingsInStringLiterals:
 
     def test_carriage_return_rejected(self) -> None:
         """CR in source is normalized to LF, which is then rejected in string literals."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource('msg = { "line1\rline2" }')
         result, errors = bundle.format_pattern("msg")
         assert len(errors) > 0 or "{" in result
 
     def test_crlf_rejected(self) -> None:
         """CRLF in source is normalized to LF, which is then rejected in string literals."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource('msg = { "line1\r\nline2" }')
         result, errors = bundle.format_pattern("msg")
         assert len(errors) > 0 or "{" in result
@@ -184,7 +184,7 @@ class TestTabInVariantMarker:
 
     def test_tab_before_asterisk_rejected(self) -> None:
         """Tab before *[other] variant marker produces a parse error."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         ftl = "msg = { $n ->\n\t*[other] value\n}"
         bundle.add_resource(ftl)
         result, errors = bundle.format_pattern("msg", {"n": 1})
@@ -209,7 +209,7 @@ class TestTermScopeIsolation:
 
     def test_term_cannot_access_external_variable(self) -> None:
         """Term resolving { $name } does not see the caller's $name argument."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("""
 -greeting = Hello { $name }
 msg = { -greeting }
@@ -230,7 +230,7 @@ msg = { -greeting(who: "Friend") }
 
     def test_nested_terms_isolated(self) -> None:
         """Nested term references each maintain their own scope isolation."""
-        bundle = FluentBundle("en_US")
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource("""
 -inner = Inner { $val }
 -outer = Outer { -inner }

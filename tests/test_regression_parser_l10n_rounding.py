@@ -77,7 +77,7 @@ class TestLoadSummaryJunkHandling:
             (base / "en" / "test.ftl").write_text("valid = OK\ninvalid { syntax", encoding="utf-8")
 
             loader = PathResourceLoader(str(base / "{locale}"))
-            l10n = FluentLocalization(["en"], ["test.ftl"], loader)
+            l10n = FluentLocalization(["en"], ["test.ftl"], loader, strict=False)
 
             summary = l10n.get_load_summary()
 
@@ -95,7 +95,7 @@ class TestLoadSummaryJunkHandling:
             (base / "en" / "test.ftl").write_text("valid = OK\ninvalid { syntax", encoding="utf-8")
 
             loader = PathResourceLoader(str(base / "{locale}"))
-            l10n = FluentLocalization(["en"], ["test.ftl"], loader)
+            l10n = FluentLocalization(["en"], ["test.ftl"], loader, strict=False)
 
             summary = l10n.get_load_summary()
 

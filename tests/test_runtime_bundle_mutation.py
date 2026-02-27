@@ -79,7 +79,7 @@ class TestAddResourceTypeValidation:
 
         Whitespace-only source should work.
         """
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("   \n\t  ")
         assert len(bundle.get_message_ids()) == 0
 
@@ -88,7 +88,7 @@ class TestAddResourceTypeValidation:
 
         Source with only junk entries should not crash.
         """
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         # Invalid syntax creates junk
         bundle.add_resource("??? invalid !!!!")
         # Should have zero valid messages
@@ -214,7 +214,7 @@ class TestFormatPatternErrorHandling:
 
         Formatting missing message should raise FrozenFluentError.
         """
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         result, errors = bundle.format_pattern("nonexistent")
         assert len(errors) == 1
@@ -229,7 +229,7 @@ class TestFormatPatternErrorHandling:
 
         Empty message ID should raise FrozenFluentError.
         """
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         result, errors = bundle.format_pattern("")
         assert len(errors) == 1
@@ -267,7 +267,7 @@ class TestFormatPatternErrorHandling:
 
         Missing variable in args should use fallback.
         """
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         # Missing $name variable
@@ -454,7 +454,7 @@ class TestErrorMessageContent:
 
         Missing message error should include message ID.
         """
-        bundle = FluentBundle("en")
+        bundle = FluentBundle("en", strict=False)
 
         result, errors = bundle.format_pattern("missing-message")
         assert len(errors) == 1

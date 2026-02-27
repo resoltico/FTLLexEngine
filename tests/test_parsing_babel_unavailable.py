@@ -239,7 +239,7 @@ items = { $count ->
         _bc._babel_available = None
         try:
             with patch.object(builtins, "__import__", side_effect=mock_import):
-                bundle = FluentBundle("en_US")
+                bundle = FluentBundle("en_US", strict=False)
                 bundle.add_resource(ftl)
 
                 # Format with numeric argument (should trigger plural matching)

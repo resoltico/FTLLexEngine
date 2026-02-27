@@ -464,7 +464,7 @@ def main() -> None:  # noqa: PLR0915  # pylint: disable=too-many-statements,too-
     print("               request handlers for read-only operations")
 
     print("\n" + "=" * 70)
-    print("[SUCCESS] Benchmarks complete!")
+    print("[OK] Benchmarks complete!")
     print("=" * 70)
 
 

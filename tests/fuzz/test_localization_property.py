@@ -789,40 +789,6 @@ class TestFluentLocalizationIntrospectTerm:
         assert info is None
 
 
-class TestFluentLocalizationContextManager:
-    """Tests for __enter__/__exit__ (lines 1221-1222, 1231)."""
-
-    @given(locales=locale_chains(min_size=1, max_size=2))
-    def test_context_manager_protocol(
-        self, locales: list[str],
-    ) -> None:
-        """FluentLocalization supports with statement."""
-        event("outcome=context_manager")
-        l10n = FluentLocalization(locales)
-        l10n.add_resource(locales[0], "msg = Hello\n")
-        with l10n as ctx:
-            assert ctx is l10n
-            result, _ = ctx.format_value("msg")
-            assert result == "Hello"
-
-    @given(locales=locale_chains(min_size=1, max_size=2))
-    def test_context_manager_releases_lock_on_exception(
-        self, locales: list[str],
-    ) -> None:
-        """Lock released even if exception occurs inside with block."""
-        event("outcome=exception_release")
-        l10n = FluentLocalization(locales)
-        try:
-            with l10n:
-                msg = "test error"
-                raise ValueError(msg)
-        except ValueError:
-            pass
-        # Lock should be released - this call should not deadlock
-        l10n.add_resource(locales[0], "msg = Works\n")
-        result, _ = l10n.format_value("msg")
-        assert result == "Works"
-
 
 # ---------------------------------------------------------------------------
 # Resource loading and load summary

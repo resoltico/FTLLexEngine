@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.140.0"
+version: "0.142.0"
 domain: architecture
-updated: "2026-02-26"
+updated: "2026-02-27"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -82,25 +82,9 @@ except TimeoutError:
 - `get_cache_stats()`: acquires read lock for the full duration to produce a consistent aggregate snapshot
 - All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
 - Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers already holding the write lock (`add_resource`) use `_create_bundle()` directly (no lock re-acquisition)
-- Context manager (`with l10n:`) is a no-op for structured scoping only
 
-**Context Manager Semantics**:
-Both `FluentBundle` and `FluentLocalization` have identical context manager behavior: `__enter__`/`__exit__` are no-ops. The `with obj:` syntax is supported for structured scoping only; no locking or cache management occurs on entry or exit.
-
-Cache invalidation is immediate. `add_resource()`, `add_function()`, and `clear_cache()` clear the relevant cache as part of the mutation — not deferred to context exit.
-
-```python
-# Both FluentBundle and FluentLocalization: context manager is a no-op
-with bundle:
-    bundle.add_resource("msg = Hello\n")  # Cache cleared immediately by add_resource
-    result, _ = bundle.format_pattern("msg")  # Cache populated
-# __exit__ is a no-op; cache entry is preserved
-
-with l10n:
-    l10n.add_resource("en", "msg = Hello\n")  # Cache cleared immediately by add_resource
-    result, _ = l10n.format_value("msg")  # Cache populated
-# __exit__ is a no-op; cache entry is preserved
-```
+**Cache Invalidation**:
+`add_resource()`, `add_function()`, and `clear_cache()` clear the relevant cache as part of the mutation — not deferred to any exit point.
 
 ---
 

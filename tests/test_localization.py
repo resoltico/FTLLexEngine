@@ -149,7 +149,7 @@ class TestFallbackChain:
 
     def test_message_not_found_in_any_locale(self) -> None:
         """Message not found in any locale returns fallback."""
-        l10n = FluentLocalization(["lv", "en"])
+        l10n = FluentLocalization(["lv", "en"], strict=False)
         l10n.add_resource("lv", "hello = Sveiki!")
         l10n.add_resource("en", "hello = Hello!")
 
@@ -202,7 +202,7 @@ class TestFormatValue:
 
     def test_format_propagates_bundle_errors(self) -> None:
         """Format propagates errors from FluentBundle."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "msg = Hello, { $name }!")
 
         # Missing required variable
@@ -213,7 +213,7 @@ class TestFormatValue:
 
     def test_empty_message_id_returns_fallback(self) -> None:
         """Empty message ID returns graceful fallback."""
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         l10n.add_resource("en", "hello = Hello!")
 
         result, errors = l10n.format_value("")
@@ -980,7 +980,7 @@ class TestCrossFileDepthValidation:
 
     def test_very_deep_reference_chain_is_limited(self) -> None:
         """Reference chains exceeding max_nesting_depth produce errors, not stack overflow."""
-        bundle = FluentBundle("en", use_isolating=False, max_nesting_depth=10)
+        bundle = FluentBundle("en", use_isolating=False, max_nesting_depth=10, strict=False)
 
         # Build a chain deeper than max_nesting_depth
         bundle.add_resource("level0 = Base")
@@ -1047,7 +1047,7 @@ class TestCrossFileDepthValidation:
         Even when circular references are created by adding resources
         separately, the resolver should detect and break the cycle.
         """
-        l10n = FluentLocalization(["en"], use_isolating=False)
+        l10n = FluentLocalization(["en"], use_isolating=False, strict=False)
 
         # Create circular reference: msg1 -> msg2 -> msg3 -> msg1
         l10n.add_resource("en", "msg1 = Start: { msg2 }")

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.130.0"
+version: "0.142.0"
 domain: parsing
-updated: "2026-02-24"
+updated: "2026-02-27"
 route:
   keywords: [parsing, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
   questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
