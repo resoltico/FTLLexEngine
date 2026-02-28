@@ -42,6 +42,7 @@ from .ast import (
     Placeable,
     Resource,
     SelectExpression,
+    SelectorExpression,
     StringLiteral,
     Term,
     TermReference,
@@ -491,7 +492,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     selector=cast(
-                        InlineExpression,
+                        SelectorExpression,
                         self._validate_scalar_result(
                             self.visit(selector), "SelectExpression.selector"
                         ),
@@ -595,7 +596,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     positional=cast(
-                        "tuple[InlineExpression, ...]",
+                        tuple[InlineExpression, ...],
                         self._transform_list(
                             pos,
                             "CallArguments.positional",

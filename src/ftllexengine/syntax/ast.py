@@ -4,6 +4,16 @@ Complete implementation of Fluent 1.0 AST spec.
 Includes type guards as static methods (eliminates circular imports).
 
 Python 3.13+. Zero external dependencies.
+
+Type Alias Hierarchy:
+    SelectorExpression - restricted set valid as SelectExpression.selector
+    InlineExpression   - all inline expressions (superset of SelectorExpression)
+    Expression         - InlineExpression | SelectExpression (top-level expression type)
+    PatternElement     - TextElement | Placeable
+    Entry              - Message | Term | Comment | Junk
+    FTLLiteral         - StringLiteral | NumberLiteral
+    VariantKey         - Identifier | NumberLiteral
+    ASTNode            - union of all AST node types
 """
 
 from __future__ import annotations
@@ -48,6 +58,7 @@ __all__ = [
     "PatternElement",
     "Expression",
     "InlineExpression",
+    "SelectorExpression",
     "VariantKey",
     "ASTNode",
 ]
@@ -356,9 +367,19 @@ class SelectExpression:
             [one] 1 item
            *[other] { $count } items
         }
+
+    Selector constraint:
+        ``selector`` is typed as ``SelectorExpression``, a restricted subset
+        of ``InlineExpression`` that excludes ``Placeable``. The Fluent spec
+        EBNF technically permits any ``inline-expression`` as a selector, but
+        the Fluent Guide limits useful selectors to variable references, string
+        and number literals, message/term references, and function calls. The
+        FTL parser enforces this restriction at parse time; this type encodes
+        the constraint so that programmatic AST construction receives static
+        analysis feedback when an invalid selector type is used.
     """
 
-    selector: InlineExpression
+    selector: SelectorExpression
     variants: tuple[Variant, ...]
     span: Span | None = None
 
@@ -570,6 +591,19 @@ class NamedArgument:
 # ============================================================================
 # TYPE ALIASES
 # ============================================================================
+
+# Selector expressions: restricted subset of InlineExpression valid as SelectExpression.selector.
+# The Fluent Guide limits selectors to these 6 concrete types. Placeable is excluded: the parser
+# checks is_valid_selector before constructing SelectExpression and never places Placeable there.
+# This alias propagates the restriction to programmatic AST construction via static analysis.
+type SelectorExpression = (
+    StringLiteral
+    | NumberLiteral
+    | VariableReference
+    | MessageReference
+    | TermReference
+    | FunctionReference
+)
 
 type Entry = Message | Term | Comment | Junk
 type PatternElement = TextElement | Placeable

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: architecture
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]

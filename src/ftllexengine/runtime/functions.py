@@ -10,6 +10,11 @@ Architecture:
     - No N802/N803 violations!
     - Locale-aware via LocaleContext (thread-safe, CLDR-based)
 
+Canonical import path: ``from ftllexengine.runtime import number_format, currency_format``
+(and similar). All public functions are re-exported from ``ftllexengine.runtime.__all__``.
+Importing from this private submodule (``ftllexengine.runtime.functions``) is unsupported
+and may break without notice.
+
 Example:
     # Python API (snake_case):
     number_format(Decimal('1234.5'), "en-US", minimum_fraction_digits=2)

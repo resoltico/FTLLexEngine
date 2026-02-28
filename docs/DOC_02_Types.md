@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: TYPES
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -252,7 +252,7 @@ class Placeable:
 ```python
 @dataclass(frozen=True, slots=True)
 class SelectExpression:
-    selector: InlineExpression
+    selector: SelectorExpression
     variants: tuple[Variant, ...]
     span: Span | None = None
 
@@ -263,7 +263,7 @@ class SelectExpression:
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `selector` | `InlineExpression` | Y | Value to select on. |
+| `selector` | `SelectorExpression` | Y | Value to select on (InlineExpression minus Placeable). |
 | `variants` | `tuple[Variant, ...]` | Y | Selection variants. |
 | `span` | `Span \| None` | N | Source position (start/end). |
 
@@ -271,6 +271,7 @@ class SelectExpression:
 - Return: Immutable select expression.
 - State: Frozen dataclass.
 - Validation: `__post_init__` validates that variants is non-empty and exactly one default variant exists. Raises `ValueError` on constraint violation.
+- Selector: `selector` is typed `SelectorExpression`, a restricted subset of `InlineExpression` that excludes `Placeable`. The parser enforces this; programmatic construction via `object.__setattr__` bypass is rejected at validation time.
 
 ---
 
@@ -854,13 +855,27 @@ type InlineExpression = (
     StringLiteral | NumberLiteral | VariableReference |
     MessageReference | TermReference | FunctionReference | Placeable
 )
+type SelectorExpression = (
+    StringLiteral | NumberLiteral | VariableReference |
+    MessageReference | TermReference | FunctionReference
+)
+type FTLLiteral = StringLiteral | NumberLiteral
 type VariantKey = Identifier | NumberLiteral
-type ASTNode = Resource | Message | Term | ... # Union of all AST types
+type ASTNode = (
+    Resource | Message | Term | Attribute | Comment | Junk |
+    Pattern | TextElement | Placeable | SelectExpression | Variant |
+    StringLiteral | NumberLiteral | VariableReference | MessageReference |
+    TermReference | FunctionReference | CallArguments | NamedArgument |
+    Identifier | Annotation | Span
+)
 ```
 
 ### Constraints
 - PEP 695 type aliases. Cannot use with isinstance().
-- Use pattern matching or .guard() methods for runtime checks.
+- Use pattern matching or `.guard()` methods for runtime checks.
+- `SelectorExpression`: Subset of `InlineExpression` excluding `Placeable`; used as `SelectExpression.selector` type.
+- `FTLLiteral`: Subset of `InlineExpression` restricted to literal values; used as `NamedArgument.value` type.
+- `ASTNode`: Union of all 21 AST node types (includes `Span` and `Annotation` utility nodes).
 
 ---
 

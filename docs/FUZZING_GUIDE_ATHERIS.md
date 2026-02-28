@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: fuzzing
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus, workers, metrics]
   questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?", "how do atheris workers work?", "why are metrics wrong with multiple workers?"]

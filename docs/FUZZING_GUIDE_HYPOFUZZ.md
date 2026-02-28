@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: fuzzing
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [fuzzing, hypothesis, hypofuzz, property-based, testing, coverage, metrics, workers]
   questions: ["how to run hypothesis tests?", "how to use hypofuzz?", "how to reproduce hypothesis failures?", "how to see strategy metrics?", "why does --metrics use pytest instead of hypofuzz?"]

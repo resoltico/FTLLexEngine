@@ -29,6 +29,7 @@ Exceptions:
     FrozenFluentError - Immutable, sealed error type
     ErrorCategory - Error classification enum (REFERENCE, RESOLUTION, CYCLIC, PARSE, FORMATTING)
     FrozenErrorContext - Immutable context for parse/formatting errors
+    ParseTypeLiteral - Type alias for the parse_type field of FrozenErrorContext
 
 Data Integrity:
     DataIntegrityError - Base for system integrity failures
@@ -86,6 +87,7 @@ from .diagnostics import (
     ErrorCategory,
     FrozenErrorContext,
     FrozenFluentError,
+    ParseTypeLiteral,
 )
 from .integrity import (
     CacheCorruptionError,
@@ -284,6 +286,7 @@ __all__ = [
     "ErrorCategory",
     "FrozenErrorContext",
     "FrozenFluentError",
+    "ParseTypeLiteral",
     # Data integrity exceptions
     "CacheCorruptionError",
     "DataIntegrityError",

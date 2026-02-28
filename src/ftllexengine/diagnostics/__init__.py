@@ -11,6 +11,7 @@ from .codes import (
     DiagnosticCode,
     ErrorCategory,
     FrozenErrorContext,
+    ParseTypeLiteral,
     SourceSpan,
 )
 from .errors import FrozenFluentError
@@ -36,6 +37,7 @@ __all__ = [
     "ErrorCategory",
     "FrozenErrorContext",
     "FrozenFluentError",
+    "ParseTypeLiteral",
     # Validation
     "ValidationError",
     "ValidationResult",

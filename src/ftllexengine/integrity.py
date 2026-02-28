@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from ftllexengine.syntax.ast import Junk
 
 __all__ = [
-    "PYTHON_EXCEPTION_ATTRS",
     "CacheCorruptionError",
     "DataIntegrityError",
     "FormattingIntegrityError",

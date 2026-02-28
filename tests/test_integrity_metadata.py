@@ -14,6 +14,7 @@ from __future__ import annotations
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_FORMAT_DIGITS
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -22,6 +23,10 @@ from ftllexengine.diagnostics import (
     SourceSpan,
 )
 from ftllexengine.runtime.cache import IntegrityCacheEntry
+
+# Sentinel key_hash for test entries that do not exercise key binding.
+# Must be 8 bytes (BLAKE2b-8 digest size) to satisfy IntegrityCacheEntry invariants.
+_NO_KEY_HASH: bytes = b"\x00" * 8
 
 # ============================================================================
 # SEC-METADATA-INTEGRITY-GAP-001: Cache checksum includes metadata
@@ -49,10 +54,10 @@ class TestCacheChecksumIncludesMetadata:
         seq1, seq2 = 1, 2
 
         checksum1 = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, seq1
+            formatted, errors, created_at, seq1, _NO_KEY_HASH
         )
         checksum2 = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, seq2
+            formatted, errors, created_at, seq2, _NO_KEY_HASH
         )
 
         # Different sequences must produce different checksums
@@ -71,10 +76,10 @@ class TestCacheChecksumIncludesMetadata:
         ts2 = 12345.67891  # Slightly different
 
         checksum1 = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, ts1, sequence
+            formatted, errors, ts1, sequence, _NO_KEY_HASH
         )
         checksum2 = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, ts2, sequence
+            formatted, errors, ts2, sequence, _NO_KEY_HASH
         )
 
         # Different timestamps must produce different checksums
@@ -82,7 +87,7 @@ class TestCacheChecksumIncludesMetadata:
 
     def test_checksum_validates_with_metadata(self) -> None:
         """Entry verify() method uses metadata in checksum validation."""
-        entry = IntegrityCacheEntry.create("Test content", (), sequence=42)
+        entry = IntegrityCacheEntry.create("Test content", (), sequence=42, key_hash=_NO_KEY_HASH)
 
         # Entry should validate correctly
         assert entry.verify() is True
@@ -94,6 +99,7 @@ class TestCacheChecksumIncludesMetadata:
             checksum=entry.checksum,  # Original checksum
             created_at=entry.created_at + 100.0,  # Tampered timestamp
             sequence=entry.sequence,
+            key_hash=entry.key_hash,
         )
 
         # Corrupted entry should fail validation
@@ -101,7 +107,7 @@ class TestCacheChecksumIncludesMetadata:
 
     def test_checksum_detects_sequence_tampering(self) -> None:
         """verify() detects sequence number tampering."""
-        entry = IntegrityCacheEntry.create("Content", (), sequence=100)
+        entry = IntegrityCacheEntry.create("Content", (), sequence=100, key_hash=_NO_KEY_HASH)
 
         # Create entry with tampered sequence
         tampered = IntegrityCacheEntry(
@@ -110,6 +116,7 @@ class TestCacheChecksumIncludesMetadata:
             checksum=entry.checksum,
             created_at=entry.created_at,
             sequence=999,  # Tampered sequence
+            key_hash=entry.key_hash,
         )
 
         # Tampered entry should fail validation
@@ -129,18 +136,18 @@ class TestCacheChecksumIncludesMetadata:
         errors: tuple[FrozenFluentError, ...] = ()
 
         checksum_original = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, sequence
+            formatted, errors, created_at, sequence, _NO_KEY_HASH
         )
 
         # Same content, different sequence
         checksum_diff_seq = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, sequence + 1
+            formatted, errors, created_at, sequence + 1, _NO_KEY_HASH
         )
         assert checksum_original != checksum_diff_seq
 
         # Same content, different timestamp
         checksum_diff_ts = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at + 0.001, sequence
+            formatted, errors, created_at + 0.001, sequence, _NO_KEY_HASH
         )
         assert checksum_original != checksum_diff_ts
 
@@ -156,13 +163,13 @@ class TestCacheChecksumIncludesMetadata:
 
         # Compute checksum
         checksum = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, sequence
+            formatted, errors, created_at, sequence, _NO_KEY_HASH
         )
 
         # Verify checksum changes when timestamp changes by smallest representable amount
         # IEEE 754 double has ~15-17 significant digits
         checksum_diff = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at + 1e-10, sequence
+            formatted, errors, created_at + 1e-10, sequence, _NO_KEY_HASH
         )
         assert checksum != checksum_diff
 
@@ -178,13 +185,13 @@ class TestCacheChecksumIncludesMetadata:
         created_at = 12345.0
 
         checksum_0 = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, 0
+            formatted, errors, created_at, 0, _NO_KEY_HASH
         )
         checksum_1 = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, 1
+            formatted, errors, created_at, 1, _NO_KEY_HASH
         )
         checksum_large = IntegrityCacheEntry._compute_checksum(
-            formatted, errors, created_at, 2**63  # Fits in unsigned 64-bit only
+            formatted, errors, created_at, 2**63, _NO_KEY_HASH  # Fits in unsigned 64-bit only
         )
 
         # All three sequences produce distinct checksums
@@ -622,6 +629,7 @@ class TestIntegrityIntegration:
             formatted="{test}",
             errors=(error,),
             sequence=1,
+            key_hash=_NO_KEY_HASH,
         )
 
         # Entry should validate correctly
@@ -650,9 +658,33 @@ class TestIntegrityIntegration:
         assert error1.content_hash != error2.content_hash
 
         # Create cache entries
-        entry1 = IntegrityCacheEntry.create("{test}", (error1,), sequence=1)
-        entry2 = IntegrityCacheEntry.create("{test}", (error2,), sequence=1)
+        entry1 = IntegrityCacheEntry.create("{test}", (error1,), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create("{test}", (error2,), sequence=1, key_hash=_NO_KEY_HASH)
 
         # Cache entries should have different checksums
         # (even though formatted text and sequence are the same)
         assert entry1.checksum != entry2.checksum
+
+
+# ============================================================================
+# Constant documentation sync
+# ============================================================================
+
+
+class TestConstantDocumentationSync:
+    """Tests that pinned constants match their documented values.
+
+    Prevents silent drift between constants.py and documentation.
+    A financial limit that differs from its documented value can mislead
+    consumers into expecting clamping that does not occur.
+    """
+
+    def test_max_format_digits_is_100(self) -> None:
+        """MAX_FORMAT_DIGITS is 100 per DOC_04_Runtime.md Constraints section.
+
+        Guards against silent value drift between the source constant and
+        the documented API surface. If this test fails, update
+        DOC_04_Runtime.md Constraints to match the new value, then update
+        this assertion.
+        """
+        assert MAX_FORMAT_DIGITS == 100

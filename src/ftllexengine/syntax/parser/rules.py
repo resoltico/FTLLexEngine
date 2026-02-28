@@ -32,6 +32,7 @@ Security:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.enums import CommentType
@@ -49,6 +50,7 @@ from ftllexengine.syntax.ast import (
     Pattern,
     Placeable,
     SelectExpression,
+    SelectorExpression,
     Span,
     StringLiteral,
     Term,
@@ -973,7 +975,7 @@ def parse_variant(
 
 def parse_select_expression(
     cursor: Cursor,
-    selector: InlineExpression,
+    selector: SelectorExpression,
     start_pos: int,
     context: ParseContext | None = None,
 ) -> ParseResult[SelectExpression] | None:
@@ -1723,7 +1725,10 @@ def parse_placeable(
             cursor = next_cursor.advance()  # Skip ->
 
             select_result = parse_select_expression(
-                cursor, expression, expr_start_pos, nested_context
+                cursor,
+                cast(SelectorExpression, expression),  # Narrowed: is_valid_selector verified above
+                expr_start_pos,
+                nested_context,
             )
             if select_result is None:
                 return select_result

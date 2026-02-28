@@ -741,6 +741,7 @@ def _simulate_corruption(bundle: FluentBundle) -> None:
             checksum=entry.checksum,
             created_at=entry.created_at,
             sequence=entry.sequence,
+            key_hash=entry.key_hash,
         )
         bundle._cache._cache[key] = corrupted
 

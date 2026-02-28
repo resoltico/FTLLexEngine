@@ -14,9 +14,8 @@ import tempfile
 from decimal import Decimal
 from pathlib import Path
 
-from ftllexengine import FluentBundle, validate_resource
+from ftllexengine import CacheConfig, FluentBundle, validate_resource
 from ftllexengine.integrity import FormattingIntegrityError
-from ftllexengine.runtime.cache_config import CacheConfig
 
 # Example 1: Simple message
 print("=" * 50)

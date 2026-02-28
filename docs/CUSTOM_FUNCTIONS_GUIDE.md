@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: custom-functions
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [custom functions, add_function, fluent functions, factory pattern, locale-aware, formatting functions]
   questions: ["how to create custom function?", "how to add custom function?", "how to make locale-aware function?"]
@@ -126,9 +126,9 @@ def PHONE(number: str) -> str:  # pylint: disable=invalid-name
 FTL function calls use **named parameters** for all arguments except the first:
 
 ```ftl
-# FTL syntax
+# FTL syntax (camelCase for multi-word parameter names)
 file-size = { FILESIZE($bytes, precision: 2) }
-phone = { PHONE($number, format_style: "international") }
+phone = { PHONE($number, formatStyle: "international") }
 ```
 
 **Python implementation should use keyword-only arguments** after the first parameter (recommended for clarity):
@@ -549,7 +549,7 @@ def PHONE(number: str, *, format_style: str = "international") -> str:
 ```python
 bundle.add_function("PHONE", PHONE)
 bundle.add_resource("""
-support-phone = Call us at { PHONE($number, format_style: "international") }
+support-phone = Call us at { PHONE($number, formatStyle: "international") }
 """)
 
 result, _ = bundle.format_pattern("support-phone", {"number": "15551234567"})
@@ -703,7 +703,7 @@ def DURATION(seconds: int | Decimal, *, format_style: str = "long") -> str:
 ```python
 bundle.add_function("DURATION", DURATION)
 bundle.add_resource("""
-video-duration = Duration: { DURATION($seconds, format_style: "short") }
+video-duration = Duration: { DURATION($seconds, formatStyle: "short") }
 """)
 
 result, _ = bundle.format_pattern("video-duration", {"seconds": 3725})

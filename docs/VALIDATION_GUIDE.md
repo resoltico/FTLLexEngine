@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: validation
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [validation, validate_resource, SemanticValidator, duplicate, cycle detection, FTL validation]
   questions: ["how to validate FTL?", "what validation checks exist?", "where is duplicate detection?", "how to detect cycles?"]
@@ -26,24 +26,28 @@ This separation follows single-responsibility principle: each validator handles 
 
 ## Validation Responsibility Matrix
 
+Function names prefixed with `_` are internal implementation details. They are listed
+for traceability only; direct calls or imports of private functions are unsupported.
+
 | Check | Module | Function/Class | Scope |
 |:------|:-------|:---------------|:------|
-| Syntax errors (Junk) | `validation.resource` | `_extract_syntax_errors()` | Resource |
-| Duplicate message IDs | `validation.resource` | `_collect_entries()` | Resource |
-| Duplicate term IDs | `validation.resource` | `_collect_entries()` | Resource |
-| Duplicate attribute IDs | `validation.resource` | `_collect_entries()` | Entry |
-| Messages without value/attrs | `validation.resource` | `_collect_entries()` | Entry |
-| Shadow warnings | `validation.resource` | `_collect_entries()` | Resource |
-| Undefined message refs | `validation.resource` | `_check_undefined_references()` | Resource |
-| Undefined term refs | `validation.resource` | `_check_undefined_references()` | Resource |
-| Circular references | `validation.resource` | `_detect_circular_references()` | Resource |
-| Long reference chains | `validation.resource` | `_detect_long_chains()` | Resource |
+| Syntax errors (Junk) | `validation.resource` | `_extract_syntax_errors()` (internal) | Resource |
+| Duplicate message IDs | `validation.resource` | `_collect_entries()` (internal) | Resource |
+| Duplicate term IDs | `validation.resource` | `_collect_entries()` (internal) | Resource |
+| Duplicate attribute IDs | `validation.resource` | `_collect_entries()` (internal) | Entry |
+| Messages without value/attrs | `validation.resource` | `_collect_entries()` (internal) | Entry |
+| Shadow warnings | `validation.resource` | `_collect_entries()` (internal) | Resource |
+| Undefined message refs | `validation.resource` | `_check_undefined_references()` (internal) | Resource |
+| Undefined term refs | `validation.resource` | `_check_undefined_references()` (internal) | Resource |
+| Circular references | `validation.resource` | `_detect_circular_references()` (internal) | Resource |
+| Long reference chains | `validation.resource` | `_detect_long_chains()` (internal) | Resource |
 | Term missing value | `syntax.validator` | `SemanticValidator` | Node |
 | Select without default | `syntax.validator` | `SemanticValidator` | Node |
 | Select without variants | `syntax.validator` | `SemanticValidator` | Node |
 | Duplicate variant keys | `syntax.validator` | `SemanticValidator` | Node |
 | Duplicate named arguments | `syntax.validator` | `SemanticValidator` | Node |
 | Term positional args warning | `syntax.validator` | `SemanticValidator` | Node |
+| Placeable as selector (bypass guard) | `syntax.validator` | `SemanticValidator` | Node |
 
 ---
 
@@ -119,8 +123,8 @@ source = """
 hello = { greeting }
 -missing = { -nonexistent }
 """
-# Warning: VALIDATION_UNDEFINED_MESSAGE - "Message 'hello' references undefined message 'greeting'"
-# Warning: VALIDATION_UNDEFINED_TERM - "Term '-missing' references undefined term '-nonexistent'"
+# Warning: VALIDATION_UNDEFINED_REFERENCE - "Message 'hello' references undefined message 'greeting'"
+# Warning: VALIDATION_UNDEFINED_REFERENCE - "Term '-missing' references undefined term '-nonexistent'"
 ```
 
 ### Pass 4: Circular Reference Detection
@@ -133,7 +137,7 @@ a = { b }
 b = { c }
 c = { a }
 """
-# Warning: VALIDATION_CIRCULAR_REF - "Circular reference detected: a -> b -> c -> a"
+# Warning: VALIDATION_CIRCULAR_REFERENCE - "Circular reference detected: a -> b -> c -> a"
 ```
 
 **Cross-Type Cycles**: The validator builds a unified graph to detect cycles spanning both messages and terms:

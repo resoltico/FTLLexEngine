@@ -1,9 +1,11 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: "architecture"
-updated: "2026-02-27"
-route: "/docs/data-integrity"
+updated: "2026-02-28"
+route:
+  keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCache, CacheCorruptionError, WriteConflictError, BLAKE2b, checksum, write-once, idempotent, RWLock, security, FormattingIntegrityError, SyntaxIntegrityError]
+  questions: ["how does data integrity work?", "what is strict mode?", "how does cache checksum verification work?", "what is write-once mode?", "how to detect cache corruption?", "what is the data integrity architecture?"]
 ---
 
 # Data Integrity Architecture
@@ -288,7 +290,7 @@ DataIntegrityError (base - immutable after construction)
 | Cache poisoning | Checksum verification on every read |
 | Data race overwrites | Write-once semantics option |
 | Metadata tampering | Complete field coverage in checksums/hashes |
-| Diagnostic field tampering | All 11 Diagnostic fields included in error hash |
+| Diagnostic field tampering | All 12 Diagnostic fields included in error hash |
 | Timestamp/sequence forgery | Metadata included in cache checksum |
 | Field concatenation collision | Length-prefixing prevents `("ab","c")` = `("a","bc")` |
 | Type confusion in cache keys | Type-tagging distinguishes `1` from `1.0` from `True` |

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.127.0"
+version: "0.143.0"
 domain: examples
-updated: "2026-02-22"
+updated: "2026-02-28"
 route:
   keywords: [type checking, mypy, strict, threading, examples, stubs]
   questions: ["how to type check examples?", "how to use mypy with examples?", "how to type threading.local?"]
@@ -147,6 +147,6 @@ $ python examples/thread_safety.py
 
 ---
 
-**Last Updated**: 2026-02-22
+**Last Updated**: 2026-02-28
 **Python Version**: 3.13+
 **Mypy Version**: Compatible with latest stable mypy

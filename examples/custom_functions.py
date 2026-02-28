@@ -269,17 +269,20 @@ if __name__ == "__main__":
     # Create locale-aware function for English
     bundle.add_function("GREETING", make_greeting_function(bundle.locale))
 
-    # Add FTL resource using built-in and custom functions
+    # Add FTL resource using built-in and custom functions.
+    # FTL named argument convention: multi-word parameter names use camelCase.
+    # The registry maps FTL camelCase → Python snake_case automatically.
+    # Example: FTL formatStyle → Python format_style
     bundle.add_resource("""
 # E-commerce examples (using BUILT-IN CURRENCY function)
 product-price = { CURRENCY($amount, currency: "EUR") }
-support-phone = Call us at { PHONE($number, format_style: "international") }
+support-phone = Call us at { PHONE($number, formatStyle: "international") }
 
 # File management
 file-info = { $filename } ({ FILESIZE($bytes) })
 
 # Video player
-video-duration = Duration: { DURATION($seconds, format_style: "short") }
+video-duration = Duration: { DURATION($seconds, formatStyle: "short") }
 
 # Rich text
 welcome-message = { MARKDOWN($text, render: "html") }

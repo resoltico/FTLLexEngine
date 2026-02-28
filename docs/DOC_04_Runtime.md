@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: RUNTIME
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
@@ -75,7 +75,7 @@ def number_format(
 - State: None.
 - Thread: Safe.
 - Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
-- Bounds: Fraction digit parameters clamped to `MAX_FORMAT_DIGITS` (20). Values exceeding the limit are silently clamped.
+- Bounds: Fraction digit parameters clamped to `MAX_FORMAT_DIGITS` (100). Values exceeding the limit are silently clamped.
 - Rounding: Uses CLDR half-up rounding (2.5->3, 3.5->4). Matches Intl.NumberFormat behavior.
 
 ---
@@ -980,13 +980,13 @@ MAX_DEPTH: int = 100
 ### `MAX_FORMAT_DIGITS`
 
 ```python
-MAX_FORMAT_DIGITS: int = 20
+MAX_FORMAT_DIGITS: int = 100
 ```
 
 | Attribute | Value |
 |:----------|:------|
 | Type | `int` |
-| Value | 20 |
+| Value | 100 |
 | Location | `ftllexengine.constants` |
 
 - Purpose: Upper bound on `minimum_fraction_digits` and `maximum_fraction_digits` in `number_format()` and `currency_format()`.
@@ -1422,7 +1422,7 @@ def get_stats(self) -> CacheStats:
 ```
 
 ### Constraints
-- Return: `CacheStats` TypedDict snapshot with 17 precisely-typed fields. See `CacheStats`.
+- Return: `CacheStats` TypedDict snapshot with 19 precisely-typed fields. See `CacheStats`.
 - State: Read-only.
 - Thread: Safe.
 
@@ -1447,6 +1447,8 @@ class CacheStats(TypedDict):
     error_bloat_skips: int
     corruption_detected: int
     idempotent_writes: int
+    write_once_conflicts: int
+    combined_weight_skips: int
     sequence: int
     write_once: bool
     strict: bool
@@ -1457,6 +1459,8 @@ class CacheStats(TypedDict):
 ### Constraints
 - Purpose: Precise per-field types for cache monitoring (hits/misses → int, hit_rate → float, write_once/strict/audit_enabled → bool).
 - Corruption: `corruption_detected` is the primary financial-grade alert field; non-zero requires investigation.
+- Conflicts: `write_once_conflicts` counts PUT attempts on an existing key when `write_once=True`; non-zero may indicate bugs in calling code.
+- Weight: `combined_weight_skips` counts PUT rejections where the entry weight (size + error count) exceeds `max_entry_weight`; non-zero indicates entries too large for the configured cache policy.
 - Import: `from ftllexengine.runtime.cache import CacheStats`
 - Extension: `LocalizationCacheStats(CacheStats)` adds `bundle_count: int` for multi-bundle aggregates.
 
@@ -1493,31 +1497,35 @@ class IntegrityCacheEntry:
     checksum: bytes
     created_at: float
     sequence: int
+    key_hash: bytes
+    content_hash: bytes  # field(init=False) — computed in __post_init__, not an __init__ parameter
 ```
 
 ### Constraints
 - Return: Frozen dataclass instance.
 - Immutable: All fields are read-only after creation.
-- Checksum: BLAKE2b-128 hash of all fields (content + metadata) for complete audit trail integrity.
+- Init: `key_hash` is a required `__init__` parameter (BLAKE2b-8 hash of the cache key, for privacy-preserving audit). `content_hash` is NOT an `__init__` parameter; it is computed in `__post_init__` as a BLAKE2b-128 hash of `(formatted, errors)`.
+- Checksum: BLAKE2b-128 hash of all init fields (content + metadata) for complete audit trail integrity.
 - Import: `from ftllexengine.runtime.cache import IntegrityCacheEntry`
 
 ---
 
 ## `IntegrityCacheEntry.content_hash`
 
-Property returning content-only hash for idempotent write detection.
+Computed field holding content-only hash for idempotent write detection.
 
 ### Signature
 ```python
-@property
-def content_hash(self) -> bytes:
+content_hash: bytes  # field(init=False, repr=False, compare=False, hash=False)
 ```
 
 ### Constraints
-- Return: 16-byte BLAKE2b digest of (formatted, errors) only.
-- Excludes: Does NOT include metadata (created_at, sequence).
-- Purpose: Two entries with identical content have identical content_hash regardless of when they were created.
-- Usage: Used by IntegrityCache.put() for idempotent write detection in thundering herd scenarios.
+- Type: `bytes` — dataclass `field(init=False)`, set by `__post_init__` via `object.__setattr__()`.
+- Value: 16-byte BLAKE2b digest of `(formatted, errors)` only.
+- Excludes: Does NOT include metadata (`created_at`, `sequence`, `key_hash`).
+- Purpose: Two entries with identical content have identical `content_hash` regardless of when they were created.
+- Usage: Used by `IntegrityCache.put()` for idempotent write detection in thundering herd scenarios.
+- Note: Because `repr=False, compare=False, hash=False`, this field is excluded from `__repr__`, `__eq__`, and `__hash__`; it participates only in integrity lookups.
 
 ---
 
@@ -1595,7 +1603,7 @@ def clear(self) -> None:
 
 ### Constraints
 - Return: None.
-- State: Removes all cached entries from the LRU store. All counters (hits, misses, unhashable_skips, oversize_skips, error_bloat_skips, corruption_detected, idempotent_writes) and sequence number accumulate across `clear()` calls; they are never reset. Audit log is NOT cleared (historical record).
+- State: Removes all cached entries from the LRU store. All counters (hits, misses, unhashable_skips, oversize_skips, error_bloat_skips, corruption_detected, idempotent_writes, write_once_conflicts, combined_weight_skips) and sequence number accumulate across `clear()` calls; they are never reset. Audit log is NOT cleared (historical record).
 - Thread: Safe.
 - Usage: Called automatically by FluentBundle on `add_resource()` or `add_function()`.
 

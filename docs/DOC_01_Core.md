@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: CORE
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
@@ -399,7 +399,7 @@ def get_cache_stats(self) -> CacheStats | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: `CacheStats` TypedDict snapshot, or `None` if caching disabled. See `CacheStats` for all 17 fields with precise per-field types.
+- Return: `CacheStats` TypedDict snapshot, or `None` if caching disabled. See `CacheStats` for all 19 fields with precise per-field types.
 - Import: `from ftllexengine.runtime.cache import CacheStats`
 - Raises: Never.
 - State: Read-only.
@@ -1171,7 +1171,7 @@ def get_cache_stats(self) -> LocalizationCacheStats | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: `LocalizationCacheStats` TypedDict with 18 aggregated fields, or `None` if caching disabled. Extends `CacheStats` with `bundle_count`. See `LocalizationCacheStats` for all fields.
+- Return: `LocalizationCacheStats` TypedDict with 20 aggregated fields, or `None` if caching disabled. Extends `CacheStats` with `bundle_count`. See `LocalizationCacheStats` for all fields.
 - Note: Numeric fields summed across all bundles; boolean fields reflect first bundle's `CacheConfig`.
 - Note: `bundle_count` reflects only initialized bundles, not total locales.
 - Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
@@ -1192,7 +1192,7 @@ class LocalizationCacheStats(CacheStats, total=True):
 ```
 
 ### Constraints
-- Purpose: Extends `CacheStats` with `bundle_count` for multi-bundle monitoring. All 17 `CacheStats` fields are inherited with the same semantics; numeric fields are summed across all bundles.
+- Purpose: Extends `CacheStats` with `bundle_count` for multi-bundle monitoring. All 19 `CacheStats` fields are inherited with the same semantics; numeric fields are summed across all bundles.
 - `bundle_count`: number of initialized bundles contributing to the aggregated statistics.
 - Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
 - Boolean fields: `write_once`, `strict`, `audit_enabled` reflect the first bundle's `CacheConfig` (all bundles share one config).

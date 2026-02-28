@@ -1,3 +1,12 @@
+<!--
+RETRIEVAL_HINTS:
+  keywords: [examples, quickstart, custom functions, localization, FluentBundle, FluentLocalization,
+             FTL, parse, serialize, AST, thread safety, property testing, benchmarks]
+  answers: ["how to run examples?", "what examples are available?", "how to use FluentBundle?",
+            "how to load FTL from files?", "how to write custom functions?",
+            "how to do property-based testing?", "how to handle bidirectional formatting?"]
+  related: [docs/DOC_00_Index.md, docs/CUSTOM_FUNCTIONS_GUIDE.md, docs/QUICK_REFERENCE.md]
+-->
 # ftllexengine Examples
 
 Comprehensive examples demonstrating all FTLLexEngine features.
@@ -54,7 +63,7 @@ from ftllexengine.syntax import ASTVisitor, ASTTransformer
 from ftllexengine.syntax.ast import Message, Term, VariableReference
 
 # Parse FTL to AST
-resource = parse_ftl(ftl_source)
+resource_ast = parse_ftl(ftl_source)
 
 # Traverse AST
 class MyVisitor(ASTVisitor):
@@ -62,7 +71,7 @@ class MyVisitor(ASTVisitor):
         print(f"Found message: {node.id.name}")
 
 # Serialize back to FTL
-ftl_output = serialize_ftl(resource)
+ftl_output = serialize_ftl(resource_ast)
 ```
 
 ### Error Handling
@@ -117,8 +126,8 @@ from ftllexengine import parse_ftl
 from ftllexengine.introspection import introspect_message, extract_variables
 
 # Module-level introspection (works with AST nodes)
-resource = parse_ftl(ftl_source)
-msg = resource.entries[0]
+resource_ast = parse_ftl(ftl_source)
+msg = resource_ast.entries[0]
 variables = extract_variables(msg)
 
 # Bundle method (works with message IDs)

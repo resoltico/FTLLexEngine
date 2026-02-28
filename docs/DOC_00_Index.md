@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: INDEX
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -66,6 +66,7 @@ from ftllexengine.syntax.ast import (
     CallArguments, NamedArgument, Span, Annotation,
     # Type aliases (PEP 695)
     Entry, Expression, PatternElement, InlineExpression, VariantKey,
+    SelectorExpression, FTLLiteral, ASTNode,
 )
 ```
 
@@ -115,6 +116,7 @@ from ftllexengine.enums import (
     CommentType,       # COMMENT, GROUP, RESOURCE
     VariableContext,   # PATTERN, SELECTOR, VARIANT, FUNCTION_ARG
     ReferenceKind,     # MESSAGE, TERM
+    LoadStatus,        # SUCCESS, PARTIAL, FAILED
 )
 ```
 
@@ -292,7 +294,10 @@ ftllexengine/
 | `Entry` | `Message \| Term \| Comment \| Junk` | syntax/ast.py |
 | `PatternElement` | `TextElement \| Placeable` | syntax/ast.py |
 | `Expression` | `SelectExpression \| InlineExpression` | syntax/ast.py |
-| `InlineExpression` | Union of inline AST types | syntax/ast.py |
+| `InlineExpression` | Union of inline AST types (superset of SelectorExpression) | syntax/ast.py |
+| `SelectorExpression` | Restricted subset of InlineExpression valid as SelectExpression.selector (excludes Placeable) | syntax/ast.py |
+| `FTLLiteral` | `StringLiteral \| NumberLiteral` | syntax/ast.py |
+| `ASTNode` | Union of all AST node types | syntax/ast.py |
 | `VariantKey` | `Identifier \| NumberLiteral` | syntax/ast.py |
 
 ---

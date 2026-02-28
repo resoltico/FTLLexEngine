@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: CHANGELOG
 updated: "2026-02-27"
 route:
@@ -14,6 +14,134 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.143.0] - 2026-02-28
+
+### Breaking Changes
+
+- **`IntegrityCacheEntry.create` signature: added required `key_hash` parameter**
+  (ARCH-CACHE-KEY-BINDING-001):
+  - `create(formatted, errors, sequence)` → `create(formatted, errors, sequence, key_hash)`
+  - `key_hash` is a BLAKE2b-8 digest of the cache key computed at `put()` time; binds each
+    entry cryptographically to its storage position for key confusion detection
+  - `IntegrityCache.put()` / `IntegrityCache.get()` handle this automatically; only callers
+    constructing `IntegrityCacheEntry` objects directly (e.g., tests, fuzz harnesses) must
+    pass a 8-byte `key_hash`; use `b"\x00" * 8` as a sentinel for entries that do not require
+    key binding verification (test-only construction)
+  - Location: `runtime/cache.py` `IntegrityCacheEntry.create`, `IntegrityCacheEntry._compute_checksum`
+
+- **`syntax.ast.SelectExpression.selector` narrowed from `InlineExpression` to `SelectorExpression`**
+  (ARCH-SELECTOR-TYPE-001):
+  - `selector: InlineExpression` → `selector: SelectorExpression`
+  - `SelectorExpression` is a new type alias for the 6 concrete types the Fluent spec permits
+    as select expression selectors: `StringLiteral | NumberLiteral | VariableReference |
+    MessageReference | TermReference | FunctionReference`; `Placeable` is excluded — the
+    parser's `is_valid_selector` check already rejects it at parse time, now also enforced
+    at the type level
+  - Code constructing `SelectExpression` objects via `object.__new__` bypass or direct
+    construction must use a valid `SelectorExpression` value for `selector`
+  - Location: `syntax/ast.py` `SelectExpression.selector`, new type alias `SelectorExpression`
+
+### Fixed
+
+- **`runtime/cache.py` `IntegrityCache.get`: key confusion not detected**
+  (FIX-CACHE-KEY-BINDING-001):
+  - `IntegrityCacheEntry.verify()` checked internal consistency (checksum covered content +
+    metadata) but could not detect key confusion — a scenario where an entry is moved to a
+    different cache slot (e.g., via memory corruption, deserialization collision, or hash
+    table corruption); `verify()` would return `True` even for a correctly-checksummed entry
+    stored under the wrong key
+  - Added `key_hash: bytes` field to `IntegrityCacheEntry`: BLAKE2b-8 digest of the cache
+    key, included in `_compute_checksum` as a 5th hash input; `IntegrityCache.get()` now
+    verifies `entry.key_hash` matches `_compute_key_hash(key)` after the integrity check
+    passes, using constant-time `hmac.compare_digest`; mismatch increments
+    `corruption_detected` and raises `CacheCorruptionError` in strict mode or evicts silently
+    in non-strict mode
+  - Location: `runtime/cache.py` `IntegrityCacheEntry`, `IntegrityCache.get`, `IntegrityCache._compute_key_hash`
+
+- **`syntax/ast.py` `SelectExpression.selector`: `Placeable` admitted at type level**
+  (FIX-SELECTOR-TYPE-001):
+  - `selector: InlineExpression` included `Placeable` in the union (per EBNF `inline-expression`
+    grammar) but the Fluent Guide and `is_valid_selector` check at parse time reject `Placeable`
+    as a selector; the mismatch allowed adversarial AST construction with a `Placeable` selector
+    that passed type checking but failed at runtime
+  - Introduced `SelectorExpression` type alias restricted to the 6 spec-valid selector types;
+    narrowed `SelectExpression.selector` to `SelectorExpression`; propagated type through
+    `parser/rules.py` (cast at call site with rationale comment) and `visitor.py`
+  - Added defense-in-depth check in `syntax/validator.py` `_validate_select_expression`:
+    emits `VALIDATION_PLACEABLE_SELECTOR` (code 5011) if `selector` is a `Placeable` at
+    runtime (guards against `object.__new__` bypass)
+  - Location: `syntax/ast.py`, `syntax/__init__.py`, `syntax/parser/rules.py`, `syntax/visitor.py`, `syntax/validator.py`
+
+### Added
+
+- **`SelectorExpression` type alias exported from `ftllexengine.syntax`**
+  (ARCH-SELECTOR-TYPE-001):
+  - `type SelectorExpression = StringLiteral | NumberLiteral | VariableReference | MessageReference | TermReference | FunctionReference`
+  - Provides a named type for the restricted set of expressions valid as `SelectExpression.selector`;
+    import via `from ftllexengine.syntax import SelectorExpression`
+  - Location: `syntax/ast.py`, re-exported from `syntax/__init__.py`
+
+- **`diagnostics.DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR` (code 5011)**
+  (FIX-SELECTOR-TYPE-001):
+  - New validation error code emitted when a `SelectExpression.selector` is a `Placeable`
+    (defense-in-depth guard in `syntax/validator.py`)
+  - Location: `diagnostics/codes.py`
+
+- **`diagnostics.ParseTypeLiteral` type alias**
+  (OBS-CODES-003):
+  - `type ParseTypeLiteral = Literal["", "currency", "date", "datetime", "decimal", "number"]`
+  - Explicit named alias for the `parse_type` field of `FrozenErrorContext`; the `""` absent
+    sentinel is now self-documenting from the alias name rather than hidden inside a bare
+    `Literal[...]` annotation
+  - Export: `from ftllexengine.diagnostics import ParseTypeLiteral`
+    (also re-exported from the top-level `ftllexengine` package)
+  - Location: `diagnostics/codes.py`, `diagnostics/__init__.py`, `__init__.py`
+
+### Changed
+
+- **`diagnostics.DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR` reclassified from warning to error range**
+  (OBS-CODES-006):
+  - Code changed from `5110` (validation warning range 5100-5199) to `5011` (validation error
+    range 5000-5099); a `Placeable` used as a `SelectExpression` selector is a Fluent spec
+    violation, not a structural hint — misclassification as a warning understated the severity
+  - Slot `5110` is now unassigned; a comment marks the gap to prevent accidental reuse
+  - `VALIDATION_PLACEABLE_SELECTOR` is emitted only by the defense-in-depth bypass guard in
+    `SemanticValidator` (not by the resource-level validator), so all existing callers must
+    update any literal `5110` comparisons to `5011`
+  - Location: `diagnostics/codes.py`
+
+- **`integrity.PYTHON_EXCEPTION_ATTRS` removed from `__all__`**
+  (OBS-INTEGRITY-002):
+  - `PYTHON_EXCEPTION_ATTRS` is an internal implementation constant (frozenset of exception
+    machinery attribute names required to stay mutable during exception propagation); it has no
+    consumer-facing semantics and must not be imported by application code
+  - The constant remains module-level and accessible for internal use; only removed from the
+    exported public API surface
+  - Location: `integrity.py`
+
+- **`diagnostics.DiagnosticCode` gap at `4001` documented**
+  (OBS-CODES-001):
+  - Added inline comment `# 4001: not assigned (gap intentional)` before `PARSE_DECIMAL_FAILED
+    = 4002`; previously the enum jumped silently from the range comment to 4002, creating risk
+    of accidental reuse
+  - Location: `diagnostics/codes.py`
+
+### Internal
+
+- **`validation/resource.py` responsibility matrix annotated with "internal" qualifier**
+  (OBS-VALIDATION-007):
+  - `VALIDATION_GUIDE.md` responsibility matrix now explicitly labels private functions
+    (`_extract_syntax_errors`, `_collect_entries`, `_check_undefined_references`,
+    `_detect_circular_references`, `_detect_long_chains`) as "(internal)"; a note states
+    these are listed for traceability only and direct imports are unsupported
+  - Added missing row: `Placeable as selector (bypass guard)` | `syntax.validator` | `SemanticValidator`
+
+- **`parsing/guards.py` and `runtime/functions.py` canonical import path documented**
+  (OBS-IMPORT-008):
+  - Both private submodule docstrings now state the canonical public import path
+    (`from ftllexengine.parsing import ...` and `from ftllexengine.runtime import ...`)
+    and explicitly note that direct imports from the private submodule are unsupported
 
 ## [0.142.0] - 2026-02-27
 

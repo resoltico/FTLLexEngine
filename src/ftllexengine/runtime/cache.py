@@ -230,12 +230,18 @@ class IntegrityCacheEntry:
     Attributes:
         formatted: Formatted message string
         errors: Tuple of FrozenFluentError instances (immutable)
-        checksum: BLAKE2b-128 hash of (formatted, errors, created_at, sequence)
+        checksum: BLAKE2b-128 hash of (formatted, errors, created_at, sequence, key_hash)
         created_at: Monotonic timestamp when entry was created (time.monotonic())
         sequence: Monotonically increasing sequence number for audit trail
+        key_hash: BLAKE2b-8 hash of the cache key computed at put() time. Included
+            in the checksum to make the entry tamper-evident: the key_hash field cannot
+            be altered without invalidating the checksum. IntegrityCache.get() verifies
+            entry.key_hash matches the lookup key's hash (key confusion detection).
         content_hash: BLAKE2b-128 hash of (formatted, errors) only. Computed once
             at construction via __post_init__; not part of the constructor signature.
-            Used for idempotent write detection without recomputation.
+            Used for idempotent write detection without recomputation. Intentionally
+            key-agnostic: same content under any key has the same content_hash, which
+            is correct for the thundering-herd idempotency check in write_once mode.
     """
 
     formatted: str
@@ -243,6 +249,7 @@ class IntegrityCacheEntry:
     checksum: bytes
     created_at: float
     sequence: int
+    key_hash: bytes
     # Computed once from (formatted, errors) at construction; not an __init__ parameter.
     # Stored to avoid BLAKE2b recomputation on every put() idempotency check.
     # Uses object.__setattr__ because frozen=True prevents normal assignment in __post_init__.
@@ -260,6 +267,7 @@ class IntegrityCacheEntry:
         formatted: str,
         errors: tuple[FrozenFluentError, ...],
         sequence: int,
+        key_hash: bytes,
     ) -> IntegrityCacheEntry:
         """Create entry with computed checksum.
 
@@ -270,19 +278,22 @@ class IntegrityCacheEntry:
             formatted: Formatted message string
             errors: Tuple of FrozenFluentError instances
             sequence: Sequence number for audit trail
+            key_hash: BLAKE2b-8 hash of the cache key (from IntegrityCache._compute_key_hash).
+                Binds the entry to its storage position for key confusion detection.
 
         Returns:
             New IntegrityCacheEntry with computed checksum and content_hash
         """
         # Capture timestamp BEFORE computing checksum to ensure consistency
         created_at = time.monotonic()
-        checksum = cls._compute_checksum(formatted, errors, created_at, sequence)
+        checksum = cls._compute_checksum(formatted, errors, created_at, sequence, key_hash)
         return cls(
             formatted=formatted,
             errors=errors,
             checksum=checksum,
             created_at=created_at,
             sequence=sequence,
+            key_hash=key_hash,
         )
 
     @staticmethod
@@ -312,8 +323,9 @@ class IntegrityCacheEntry:
         errors: tuple[FrozenFluentError, ...],
         created_at: float,
         sequence: int,
+        key_hash: bytes,
     ) -> bytes:
-        """Compute BLAKE2b-128 hash of cache entry (content + metadata).
+        """Compute BLAKE2b-128 hash of cache entry (content + metadata + key binding).
 
         Uses BLAKE2b with 128-bit (16 byte) digest for fast cryptographic
         hashing. This provides collision resistance sufficient for integrity
@@ -328,12 +340,16 @@ class IntegrityCacheEntry:
                FrozenFluentError.content_hash (BLAKE2b-128, always present)
             3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
             4. sequence: Entry sequence number (8-byte unsigned big-endian)
+            5. key_hash: Cache key binding (8 bytes, BLAKE2b-8 of storage key).
+               Including key_hash makes it tamper-evident: moving this entry to a
+               different cache slot and altering key_hash would break the checksum.
 
         Args:
             formatted: Formatted message string
             errors: Tuple of errors to include in hash
             created_at: Monotonic timestamp when entry was created
             sequence: Sequence number for audit trail
+            key_hash: BLAKE2b-8 hash of cache key (8 bytes, fixed length)
 
         Returns:
             16-byte BLAKE2b digest
@@ -347,6 +363,7 @@ class IntegrityCacheEntry:
         # Include metadata fields for complete audit trail integrity
         h.update(struct.pack(">d", created_at))  # 8-byte big-endian IEEE 754 double
         h.update(sequence.to_bytes(8, "big"))  # 8-byte unsigned int; sequence is always >= 0
+        h.update(key_hash)  # 8 bytes, fixed length; no length prefix needed
         return h.digest()
 
     def verify(self) -> bool:
@@ -364,9 +381,9 @@ class IntegrityCacheEntry:
         expected_content = self._compute_content_hash(self.formatted, self.errors)
         if not hmac.compare_digest(self.content_hash, expected_content):
             return False
-        # Verify full checksum (includes metadata)
+        # Verify full checksum (includes metadata and key binding)
         expected = self._compute_checksum(
-            self.formatted, self.errors, self.created_at, self.sequence
+            self.formatted, self.errors, self.created_at, self.sequence, self.key_hash
         )
         if not hmac.compare_digest(self.checksum, expected):
             return False
@@ -626,6 +643,32 @@ class IntegrityCache:
                 self._misses += 1
                 return None
 
+            # KEY BINDING CHECK: Verify entry is stored under the correct key.
+            # Detects key confusion where an entry is moved to a different cache slot
+            # while its checksum remains internally consistent (verify() above only
+            # checks that the stored key_hash matches the checksum, not that the
+            # stored key_hash matches the CURRENT lookup key).
+            expected_key_hash = IntegrityCache._compute_key_hash(key)
+            if not hmac.compare_digest(entry.key_hash, expected_key_hash):
+                self._corruption_detected += 1
+                self._audit("CORRUPTION", key, entry)
+
+                if self._strict:
+                    context = IntegrityContext(
+                        component="cache",
+                        operation="get",
+                        key=message_id,
+                        expected=expected_key_hash.hex(),
+                        actual=entry.key_hash.hex(),
+                        timestamp=time.monotonic(),
+                    )
+                    msg = f"Cache key confusion detected for '{message_id}'"
+                    raise CacheCorruptionError(msg, context=context)
+                # Non-strict: evict entry with wrong key binding, return miss
+                del self._cache[key]
+                self._misses += 1
+                return None
+
             # Move to end (mark as recently used) and record hit
             self._cache.move_to_end(key)
             self._hits += 1
@@ -729,7 +772,9 @@ class IntegrityCache:
 
             # Increment sequence for new entry
             self._sequence += 1
-            entry = IntegrityCacheEntry.create(formatted, errors, self._sequence)
+            entry = IntegrityCacheEntry.create(
+                formatted, errors, self._sequence, IntegrityCache._compute_key_hash(key)
+            )
 
             # LRU eviction only when adding a new key (not updating an existing one).
             # Without this guard, updating an existing key in a full cache would
@@ -1026,6 +1071,28 @@ class IntegrityCache:
                     raise TypeError(msg)
 
         return _go(value, depth)
+
+    @staticmethod
+    def _compute_key_hash(key: _CacheKey) -> bytes:
+        """Compute BLAKE2b-8 hash of a cache key for entry binding.
+
+        Returns an 8-byte digest used to bind an IntegrityCacheEntry to its
+        storage position. Called by put() to compute the key_hash stored in the
+        entry, and by get() to verify the stored key_hash matches the lookup key.
+
+        8-byte (64-bit) digest provides sufficient collision resistance for
+        integrity binding while keeping per-entry memory overhead minimal.
+
+        Args:
+            key: Cache key tuple (message_id, args_tuple, attribute, locale_code, use_isolating)
+
+        Returns:
+            8-byte BLAKE2b digest
+        """
+        return hashlib.blake2b(
+            str(key).encode("utf-8", errors="surrogatepass"),
+            digest_size=8,
+        ).digest()
 
     @staticmethod
     def _make_key(

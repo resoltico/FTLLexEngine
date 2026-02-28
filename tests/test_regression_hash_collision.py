@@ -16,6 +16,10 @@ from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode, FrozenErrorContext
 from ftllexengine.runtime.cache import IntegrityCache, IntegrityCacheEntry
 
+# Sentinel key_hash for test entries that do not exercise key binding.
+# Must be 8 bytes (BLAKE2b-8 digest size) to satisfy IntegrityCacheEntry invariants.
+_NO_KEY_HASH: bytes = b"\x00" * 8
+
 # ============================================================================
 # SEC-CACHE-COLLISION-001: dict/ChainMap TYPE-TAGGING TESTS
 # ============================================================================
@@ -153,20 +157,22 @@ class TestHashCompositionTypeMarkers:
         """Errors with content_hash property produce different checksums."""
         # FrozenFluentError has content_hash property
         error_with_hash = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
-        entry1 = IntegrityCacheEntry.create("Hello", (error_with_hash,), sequence=1)
+        entry1 = IntegrityCacheEntry.create(
+            "Hello", (error_with_hash,), sequence=1, key_hash=_NO_KEY_HASH
+        )
 
         # MockError without content_hash (fallback to str encoding)
         # We verify that different errors produce different checksums
         # MockError can't be used since IntegrityCacheEntry expects FrozenFluentError
         error2 = FrozenFluentError("Different error", ErrorCategory.RESOLUTION)
-        entry2 = IntegrityCacheEntry.create("Hello", (error2,), sequence=1)
+        entry2 = IntegrityCacheEntry.create("Hello", (error2,), sequence=1, key_hash=_NO_KEY_HASH)
 
         assert entry1.checksum != entry2.checksum
 
     def test_content_hash_used_in_checksum(self) -> None:
         """Error content_hash is included in checksum computation."""
         error = FrozenFluentError("Test", ErrorCategory.REFERENCE)
-        entry = IntegrityCacheEntry.create("Hello", (error,), sequence=1)
+        entry = IntegrityCacheEntry.create("Hello", (error,), sequence=1, key_hash=_NO_KEY_HASH)
 
         # Verify entry validates (checksum includes error hash)
         assert entry.verify() is True

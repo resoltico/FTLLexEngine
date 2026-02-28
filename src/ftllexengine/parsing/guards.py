@@ -8,12 +8,16 @@ Particularly useful with mypy --strict for financial applications.
 
 Python 3.13+ with TypeIs support (PEP 742).
 
+Canonical import path: ``from ftllexengine.parsing import is_valid_decimal`` (and
+similar). All guards are re-exported from ``ftllexengine.parsing.__all__``. Importing
+from this private submodule (``ftllexengine.parsing.guards``) is unsupported and may
+break without notice.
+
 Note: All guards accept None and return False. This simplifies the pattern from
 `if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
 
 Example:
-    >>> from ftllexengine.parsing import parse_decimal
-    >>> from ftllexengine.parsing.guards import is_valid_decimal
+    >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal
     >>> result, errors = parse_decimal("1,234.56", "en_US")
     >>> if is_valid_decimal(result):
     ...     # mypy knows result is finite Decimal

@@ -46,6 +46,10 @@ from ftllexengine.runtime.cache import (
 )
 from ftllexengine.runtime.cache_config import CacheConfig
 
+# Sentinel key_hash for unit tests that verify checksum mechanics but do not
+# need meaningful key binding (all-zeros = "unbound test entry").
+_NO_KEY_HASH: bytes = b"\x00" * 8
+
 # ============================================================================
 # CHECKSUM VERIFICATION TESTS
 # ============================================================================
@@ -56,7 +60,7 @@ class TestChecksumComputation:
 
     def test_checksum_computed_on_create(self) -> None:
         """IntegrityCacheEntry.create() computes checksum."""
-        entry = IntegrityCacheEntry.create("Hello", (), sequence=1)
+        entry = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.checksum is not None
         assert len(entry.checksum) == 16  # BLAKE2b-128 = 16 bytes
 
@@ -66,33 +70,35 @@ class TestChecksumComputation:
         Checksums now include created_at and sequence for complete audit trail integrity.
         Identical content with different metadata produces different checksums.
         """
-        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1)
-        entry2 = IntegrityCacheEntry.create("Hello", (), sequence=2)
+        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create("Hello", (), sequence=2, key_hash=_NO_KEY_HASH)
         # Checksums differ because sequence is different (and created_at likely differs)
         assert entry1.checksum != entry2.checksum
 
     def test_different_content_different_checksum(self) -> None:
         """Different content produces different checksums."""
-        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1)
-        entry2 = IntegrityCacheEntry.create("World", (), sequence=1)
+        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create("World", (), sequence=1, key_hash=_NO_KEY_HASH)
         assert entry1.checksum != entry2.checksum
 
     def test_errors_affect_checksum(self) -> None:
         """Errors are included in checksum computation."""
         error = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
-        entry_no_errors = IntegrityCacheEntry.create("Hello", (), sequence=1)
-        entry_with_errors = IntegrityCacheEntry.create("Hello", (error,), sequence=1)
+        entry_no_errors = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry_with_errors = IntegrityCacheEntry.create(
+            "Hello", (error,), sequence=1, key_hash=_NO_KEY_HASH
+        )
         assert entry_no_errors.checksum != entry_with_errors.checksum
 
     def test_verify_returns_true_for_valid_entry(self) -> None:
         """verify() returns True for uncorrupted entry."""
-        entry = IntegrityCacheEntry.create("Hello", (), sequence=1)
+        entry = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.verify() is True
 
     def test_entry_as_result_preserves_content(self) -> None:
         """as_result() returns correct (formatted, errors) pair."""
         errors = (FrozenFluentError("Test", ErrorCategory.REFERENCE),)
-        entry = IntegrityCacheEntry.create("Hello", errors, sequence=1)
+        entry = IntegrityCacheEntry.create("Hello", errors, sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.as_result() == ("Hello", errors)
 
     @given(st.text(min_size=0, max_size=1000))
@@ -105,7 +111,7 @@ class TestChecksumComputation:
         checksums due to different timestamps. We verify that each entry's
         checksum validates correctly.
         """
-        entry = IntegrityCacheEntry.create(text, (), sequence=1)
+        entry = IntegrityCacheEntry.create(text, (), sequence=1, key_hash=_NO_KEY_HASH)
         # Each entry should validate its own checksum correctly
         assert entry.verify() is True
         event(f"text_len={len(text)}")
@@ -135,6 +141,7 @@ class TestCorruptionDetectionStrictMode:
             checksum=original_entry.checksum,  # Wrong checksum for new content
             created_at=original_entry.created_at,
             sequence=original_entry.sequence,
+            key_hash=original_entry.key_hash,
         )
         cache._cache[key] = corrupted
 
@@ -159,6 +166,7 @@ class TestCorruptionDetectionStrictMode:
             checksum=entry.checksum,
             created_at=entry.created_at,
             sequence=entry.sequence,
+            key_hash=entry.key_hash,
         )
         cache._cache[key] = corrupted
 
@@ -189,6 +197,7 @@ class TestCorruptionDetectionNonStrictMode:
             checksum=entry.checksum,
             created_at=entry.created_at,
             sequence=entry.sequence,
+            key_hash=entry.key_hash,
         )
         cache._cache[key] = corrupted
 
@@ -221,6 +230,7 @@ class TestCorruptionDetectionNonStrictMode:
             checksum=entry.checksum,
             created_at=entry.created_at,
             sequence=entry.sequence,
+            key_hash=entry.key_hash,
         )
         cache._cache[key] = corrupted
 
@@ -493,6 +503,7 @@ class TestAuditLoggingCorruption:
             checksum=entry.checksum,
             created_at=entry.created_at,
             sequence=entry.sequence,
+            key_hash=entry.key_hash,
         )
         cache._cache[key] = corrupted
 
@@ -664,6 +675,7 @@ class TestIntegrityStats:
                 checksum=entry.checksum,
                 created_at=entry.created_at,
                 sequence=entry.sequence,
+                key_hash=entry.key_hash,
             )
             cache._cache[key] = corrupted
 
@@ -685,7 +697,7 @@ class TestContentHash:
 
     def test_content_hash_computed(self) -> None:
         """IntegrityCacheEntry has content_hash property."""
-        entry = IntegrityCacheEntry.create("Hello", (), sequence=1)
+        entry = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
         content_hash = entry.content_hash
         assert content_hash is not None
         assert len(content_hash) == 16  # BLAKE2b-128
@@ -696,8 +708,8 @@ class TestContentHash:
         This is critical for idempotent write detection: concurrent threads
         computing the same formatted result should produce matching content hashes.
         """
-        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1)
-        entry2 = IntegrityCacheEntry.create("Hello", (), sequence=2)
+        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create("Hello", (), sequence=2, key_hash=_NO_KEY_HASH)
 
         # Full checksums differ (include metadata)
         assert entry1.checksum != entry2.checksum
@@ -707,16 +719,18 @@ class TestContentHash:
 
     def test_different_content_different_hash(self) -> None:
         """Entries with different content have different content hashes."""
-        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1)
-        entry2 = IntegrityCacheEntry.create("World", (), sequence=1)
+        entry1 = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create("World", (), sequence=1, key_hash=_NO_KEY_HASH)
 
         assert entry1.content_hash != entry2.content_hash
 
     def test_errors_affect_content_hash(self) -> None:
         """Errors are included in content hash computation."""
         error = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
-        entry_no_errors = IntegrityCacheEntry.create("Hello", (), sequence=1)
-        entry_with_errors = IntegrityCacheEntry.create("Hello", (error,), sequence=1)
+        entry_no_errors = IntegrityCacheEntry.create("Hello", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry_with_errors = IntegrityCacheEntry.create(
+            "Hello", (error,), sequence=1, key_hash=_NO_KEY_HASH
+        )
 
         assert entry_no_errors.content_hash != entry_with_errors.content_hash
 
@@ -724,8 +738,8 @@ class TestContentHash:
     @settings(max_examples=30)
     def test_content_hash_deterministic(self, text: str) -> None:
         """PROPERTY: Content hash is deterministic for same content."""
-        entry1 = IntegrityCacheEntry.create(text, (), sequence=1)
-        entry2 = IntegrityCacheEntry.create(text, (), sequence=999)
+        entry1 = IntegrityCacheEntry.create(text, (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create(text, (), sequence=999, key_hash=_NO_KEY_HASH)
 
         assert entry1.content_hash == entry2.content_hash
         event(f"text_len={len(text)}")
@@ -1057,7 +1071,9 @@ class TestIntegrityCacheEntryContentHash:
     def test_compute_checksum_uses_error_content_hash(self) -> None:
         """_compute_checksum uses error.content_hash when available."""
         error = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
-        entry = IntegrityCacheEntry.create("formatted text", (error,), sequence=1)
+        entry = IntegrityCacheEntry.create(
+            "formatted text", (error,), sequence=1, key_hash=_NO_KEY_HASH
+        )
         assert entry.checksum is not None
         assert len(entry.checksum) == 16  # BLAKE2b-128
         assert entry.verify() is True
@@ -1069,7 +1085,9 @@ class TestIntegrityCacheEntryContentHash:
             FrozenFluentError("Error 2", ErrorCategory.RESOLUTION),
             FrozenFluentError("Error 3", ErrorCategory.CYCLIC),
         )
-        entry = IntegrityCacheEntry.create("formatted text", errors, sequence=1)
+        entry = IntegrityCacheEntry.create(
+            "formatted text", errors, sequence=1, key_hash=_NO_KEY_HASH
+        )
         assert entry.checksum is not None
         assert entry.verify() is True
 
@@ -1086,9 +1104,9 @@ class TestIntegrityCacheEntryContentHash:
             FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
             for i in range(error_count)
         )
-        entry = IntegrityCacheEntry.create("formatted", errors, sequence=1)
+        entry = IntegrityCacheEntry.create("formatted", errors, sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.verify() is True
-        entry2 = IntegrityCacheEntry.create("formatted", errors, sequence=1)
+        entry2 = IntegrityCacheEntry.create("formatted", errors, sequence=1, key_hash=_NO_KEY_HASH)
         assert entry2.verify() is True
         event(f"error_count={error_count}")
 
@@ -1200,6 +1218,7 @@ class TestIntegrityCachePropertyGetters:
             checksum=original_entry.checksum,
             created_at=original_entry.created_at,
             sequence=original_entry.sequence,
+            key_hash=original_entry.key_hash,
         )
         cache._cache[key] = corrupted
         cache.get("msg", None, None, "en", True)
@@ -1241,6 +1260,7 @@ class TestIntegrityCachePropertyGetters:
                 checksum=entry.checksum,
                 created_at=entry.created_at,
                 sequence=entry.sequence,
+                key_hash=entry.key_hash,
             )
         cache.get("msg1", None, None, "en", True)
         assert cache.corruption_detected == 1
@@ -1297,8 +1317,8 @@ class TestIntegrityCacheEdgeCases:
     def test_entry_with_empty_errors_differs_from_entry_with_error(self) -> None:
         """Entries with empty vs non-empty errors tuples have distinct checksums."""
         error = FrozenFluentError("Test", ErrorCategory.REFERENCE)
-        entry1 = IntegrityCacheEntry.create("text", (), sequence=1)
-        entry2 = IntegrityCacheEntry.create("text", (error,), sequence=2)
+        entry1 = IntegrityCacheEntry.create("text", (), sequence=1, key_hash=_NO_KEY_HASH)
+        entry2 = IntegrityCacheEntry.create("text", (error,), sequence=2, key_hash=_NO_KEY_HASH)
         assert entry1.checksum != entry2.checksum
 
     def test_cache_stats_includes_all_integrity_fields(self) -> None:
@@ -1494,7 +1514,7 @@ class TestCacheEntryVerifyWithCorruptedError:
         the stored _content_hash, causing verify_integrity() to return False.
         """
         error = FrozenFluentError("Test error 2", ErrorCategory.REFERENCE)
-        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1)
+        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1, key_hash=_NO_KEY_HASH)
         object.__setattr__(error, "_frozen", False)
         object.__setattr__(error, "_message", "corrupted message")
         object.__setattr__(error, "_frozen", True)
@@ -1504,7 +1524,7 @@ class TestCacheEntryVerifyWithCorruptedError:
     def test_verify_detects_corruption_defense_in_depth(self) -> None:
         """IntegrityCacheEntry.verify() provides defense-in-depth error verification."""
         error = FrozenFluentError("Original message", ErrorCategory.REFERENCE)
-        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1)
+        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.verify() is True
         object.__setattr__(error, "_frozen", False)
         object.__setattr__(error, "_message", "Corrupted by memory error")
@@ -1519,7 +1539,7 @@ class TestCacheEntryVerifyWithCorruptedError:
             FrozenFluentError("Error 2", ErrorCategory.FORMATTING),
             FrozenFluentError("Error 3", ErrorCategory.CYCLIC),
         )
-        entry = IntegrityCacheEntry.create("Result", errors, sequence=1)
+        entry = IntegrityCacheEntry.create("Result", errors, sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.verify() is True
 
     def test_verify_returns_false_if_any_error_corrupted(self) -> None:
@@ -1527,7 +1547,9 @@ class TestCacheEntryVerifyWithCorruptedError:
         error1 = FrozenFluentError("Error 1", ErrorCategory.REFERENCE)
         error2 = FrozenFluentError("Error 2", ErrorCategory.FORMATTING)
         error3 = FrozenFluentError("Error 3", ErrorCategory.CYCLIC)
-        entry = IntegrityCacheEntry.create("Result", (error1, error2, error3), sequence=1)
+        entry = IntegrityCacheEntry.create(
+            "Result", (error1, error2, error3), sequence=1, key_hash=_NO_KEY_HASH
+        )
         object.__setattr__(error2, "_frozen", False)
         object.__setattr__(error2, "_content_hash", b"bad_hash_xxxxxxx")
         object.__setattr__(error2, "_frozen", True)
@@ -1571,7 +1593,7 @@ class TestErrorWeightAndVerifyIntegration:
         )
         assert weight == expected
         assert error.verify_integrity() is True
-        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1)
+        entry = IntegrityCacheEntry.create("Result", (error,), sequence=1, key_hash=_NO_KEY_HASH)
         assert entry.verify() is True
 
     @given(

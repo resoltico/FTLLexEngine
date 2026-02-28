@@ -400,7 +400,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 33
+        assert len(ftllexengine.__all__) == 34
 
     def test_lazy_exports_are_in_all(self) -> None:
         """Lazy-loaded symbols (FluentBundle, FluentLocalization, etc.) are in __all__."""

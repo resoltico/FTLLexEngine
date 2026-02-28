@@ -13,6 +13,7 @@ __all__ = [
     "DiagnosticCode",
     "ErrorCategory",
     "FrozenErrorContext",
+    "ParseTypeLiteral",
     "SourceSpan",
 ]
 
@@ -41,6 +42,12 @@ class ErrorCategory(StrEnum):
     FORMATTING = "formatting"
 
 
+# Type alias for the parse_type field in FrozenErrorContext.
+# Empty string "" is the absent sentinel meaning "not applicable" (no parse type
+# associated with this error), not an empty string value.
+type ParseTypeLiteral = Literal["", "currency", "date", "datetime", "decimal", "number"]
+
+
 @dataclass(frozen=True, slots=True)
 class FrozenErrorContext:
     """Immutable context for parse/formatting errors.
@@ -51,14 +58,14 @@ class FrozenErrorContext:
     Attributes:
         input_value: String that failed to parse (empty if not applicable)
         locale_code: Locale used for parsing/formatting (empty if not applicable)
-        parse_type: Type of parsing attempted; one of the known parse domains
-            or empty string when not applicable.
+        parse_type: Type of parsing attempted; one of the known parse domains,
+            or ``""`` (empty string sentinel) when not applicable.
         fallback_value: Value to use in output when formatting fails
     """
 
     input_value: str = ""
     locale_code: str = ""
-    parse_type: Literal["", "currency", "date", "datetime", "decimal", "number"] = ""
+    parse_type: ParseTypeLiteral = ""
     fallback_value: str = ""
 
 
@@ -110,6 +117,7 @@ class DiagnosticCode(Enum):
     PARSE_NESTING_DEPTH_EXCEEDED = 3005  # Nesting depth limit exceeded
 
     # Parsing errors (4000-4999) - Bi-directional localization
+    # 4001: not assigned (gap intentional)
     PARSE_DECIMAL_FAILED = 4002
     PARSE_DATE_FAILED = 4003
     PARSE_DATETIME_FAILED = 4004
@@ -128,13 +136,14 @@ class DiagnosticCode(Enum):
     # Codes 5008-5009: E0008 (unresolved variable), E0009 (missing default)
     #     are represented at runtime via VARIABLE_NOT_PROVIDED (1005) and
     #     NO_VARIANTS (2002) respectively.
-    # Codes 5011-5013: E0011-E0013 are not defined by the Fluent spec
+    # Codes 5012-5013: E0012-E0013 are not defined by the Fluent spec
     #     valid.md as of the current implementation revision.
     VALIDATION_TERM_NO_VALUE = 5004
     VALIDATION_SELECT_NO_DEFAULT = 5005
     VALIDATION_SELECT_NO_VARIANTS = 5006
     VALIDATION_VARIANT_DUPLICATE = 5007
     VALIDATION_NAMED_ARG_DUPLICATE = 5010
+    VALIDATION_PLACEABLE_SELECTOR = 5011
 
     # Validation warnings (5100-5199) - Resource-level validation
     # These are structural checks beyond Fluent spec requirements
@@ -148,6 +157,7 @@ class DiagnosticCode(Enum):
     VALIDATION_DUPLICATE_ATTRIBUTE = 5107
     VALIDATION_SHADOW_WARNING = 5108
     VALIDATION_TERM_POSITIONAL_ARGS = 5109
+    # 5110: not assigned (VALIDATION_PLACEABLE_SELECTOR reclassified to error range, code 5011)
 
 
 @dataclass(frozen=True, slots=True)

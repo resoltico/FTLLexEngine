@@ -63,6 +63,9 @@ _VALIDATION_MESSAGES: dict[DiagnosticCode, str] = {
         "Variant keys must be unique within select expression"
     ),
     DiagnosticCode.VALIDATION_NAMED_ARG_DUPLICATE: "Duplicate named argument",
+    DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR: (
+        "Placeable is not valid as a select expression selector"
+    ),
 }
 
 
@@ -409,6 +412,15 @@ class SemanticValidator:
         (e.g., deserialization, test fixtures, adversarial input). This validator is the
         last defense before invalid FTL is emitted. The checks are intentional and permanent.
         """
+        # Defense-in-depth: SelectorExpression excludes Placeable at the type level.
+        # Guards against object.__new__ bypass (deserialization or adversarial construction).
+        # The parser's is_valid_selector check already prevents this at parse time.
+        # Widened to `object` so mypy does not flag this guard as statically unreachable;
+        # the check is intentional and permanent — not dead code.
+        selector_guard: object = select.selector
+        if isinstance(selector_guard, Placeable):
+            self._add_error(errors, DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR)
+
         # Validate selector using the general dispatcher so that nested SelectExpressions
         # (e.g., from direct AST construction) are handled gracefully rather than
         # falling through to the exhaustiveness-guard raise in _validate_inline_expression.

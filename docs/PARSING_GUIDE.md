@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.142.0"
+version: "0.143.0"
 domain: parsing
-updated: "2026-02-27"
+updated: "2026-02-28"
 route:
   keywords: [parsing, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
   questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
@@ -32,7 +32,7 @@ FTLLexEngine provides comprehensive **bi-directional localization**: both format
 
 ```python
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 # Parse locale-formatted number
 result, errors = parse_decimal("1 234,56", "lv_LV")
@@ -53,7 +53,7 @@ if is_valid_decimal(result):
 from decimal import Decimal
 from ftllexengine import FluentBundle
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 # Create bundle
 bundle = FluentBundle("lv_LV")
@@ -85,7 +85,7 @@ Returns `tuple[Decimal | None, tuple[FrozenFluentError, ...]]`.
 ```python
 from decimal import Decimal
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 # Financial precision - no float rounding errors
 result, errors = parse_decimal("100,50", "lv_LV")
@@ -110,7 +110,7 @@ Returns `tuple[date | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_date
-from ftllexengine.parsing.guards import is_valid_date
+from ftllexengine.parsing import is_valid_date
 
 # US format (MM/DD/YYYY)
 result, errors = parse_date("1/28/2025", "en_US")
@@ -153,7 +153,7 @@ Returns `tuple[datetime | None, tuple[FrozenFluentError, ...]]`.
 ```python
 from datetime import timezone
 from ftllexengine.parsing import parse_datetime
-from ftllexengine.parsing.guards import is_valid_datetime
+from ftllexengine.parsing import is_valid_datetime
 
 # Parse datetime
 result, errors = parse_datetime("1/28/2025 14:30", "en_US")
@@ -180,7 +180,7 @@ Returns `tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]`.
 
 ```python
 from ftllexengine.parsing import parse_currency
-from ftllexengine.parsing.guards import is_valid_currency
+from ftllexengine.parsing import is_valid_currency
 
 # Unambiguous symbols - work without default_currency
 result, errors = parse_currency("€100.50", "en_US")
@@ -244,7 +244,7 @@ result, errors = parse_decimal(formatted, "en_US")  # Wrong locale!
 
 ```python
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 # Check errors tuple instead of try/except
 result, errors = parse_decimal(user_input, locale)
@@ -266,7 +266,7 @@ process_payment(result)
 ```python
 from decimal import Decimal
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 # CORRECT - Decimal for financial data
 result, errors = parse_decimal("100,50", "lv_LV")
@@ -283,7 +283,7 @@ vat = amount * 0.21  # → 21.105000000000004 - precision loss!
 **Note on Special Values**: Babel's `parse_decimal()` accepts `NaN`, `Infinity`, and `Inf` (case-insensitive) as valid Decimal values per IEEE 754 standard. Use `is_valid_decimal()` to reject these for financial data:
 
 ```python
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 result, errors = parse_decimal(user_input, locale)
 
@@ -299,7 +299,7 @@ if not is_valid_decimal(result):
 
 ```python
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 def parse_user_amount(input_str: str, locale: str) -> Decimal | None:
     # Trim whitespace
@@ -328,8 +328,8 @@ if amount is None:
 ```python
 from decimal import Decimal
 from ftllexengine.parsing import parse_currency
-from ftllexengine.runtime.functions import currency_format
-from ftllexengine.parsing.guards import is_valid_currency
+from ftllexengine.runtime import currency_format
+from ftllexengine.parsing import is_valid_currency
 
 # Verify roundtrip in tests
 def test_roundtrip():
@@ -352,7 +352,7 @@ def test_roundtrip():
 from decimal import Decimal
 from ftllexengine import FluentBundle
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 bundle = FluentBundle("lv_LV")
 bundle.add_resource("""
@@ -398,7 +398,7 @@ result = process_invoice("1 234,56")
 ```python
 from decimal import Decimal
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 def validate_amount_field(input_value: str, locale: str) -> tuple[Decimal | None, str | None]:
     """Validate and parse amount input field.
@@ -446,7 +446,7 @@ process_payment(amount)
 
 ```python
 from ftllexengine.parsing import parse_decimal, parse_date
-from ftllexengine.parsing.guards import is_valid_date, is_valid_decimal
+from ftllexengine.parsing import is_valid_date, is_valid_decimal
 
 def import_transactions_csv(csv_path: str, locale: str) -> tuple[list[dict], list[str]]:
     """Import financial transactions from CSV."""
@@ -511,7 +511,7 @@ parsed = babel_parse_decimal(user_input, locale="lv_LV")
 ```python
 from ftllexengine import FluentBundle
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 # Formatting: FTLLexEngine
 bundle = FluentBundle("lv_LV")
@@ -590,7 +590,7 @@ if errors:
 ```python
 from decimal import Decimal
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.runtime.functions import number_format
+from ftllexengine.runtime import number_format
 
 # Correct: Same locale throughout
 locale = "lv_LV"
@@ -633,7 +633,7 @@ if not errors:
 **Solution**:
 ```python
 from ftllexengine.parsing import parse_decimal
-from ftllexengine.parsing.guards import is_valid_decimal
+from ftllexengine.parsing import is_valid_decimal
 
 result, errors = parse_decimal(user_input, locale)
 
@@ -656,7 +656,7 @@ if not is_valid_decimal(result):
 **Solution**:
 ```python
 from ftllexengine.parsing import parse_date
-from ftllexengine.parsing.guards import is_valid_date
+from ftllexengine.parsing import is_valid_date
 
 # US: Interprets as month-first (Jan 2)
 result, _ = parse_date("01/02/2025", "en_US")  # → date(2025, 1, 2)
