@@ -148,6 +148,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         entry_dependency_set,
         make_cycle_key,
     )
+    from ftllexengine.constants import MAX_DETECTED_CYCLES
 
 
 # --- Error types ---
@@ -155,6 +156,23 @@ with atheris.instrument_imports(include=["ftllexengine"]):
 
 class GraphFuzzError(Exception):
     """Invariant violation in graph algorithm."""
+
+
+# --- Invariant helpers ---
+
+
+def _assert_cycle_bound(cycles: list[list[str]], context: str) -> None:
+    """Assert that detect_cycles() respects MAX_DETECTED_CYCLES.
+
+    Raises GraphFuzzError if the invariant is violated, triggering a fuzzer
+    finding. Under correct production code this should never fire.
+    """
+    if len(cycles) > MAX_DETECTED_CYCLES:
+        msg = (
+            f"detect_cycles exceeded MAX_DETECTED_CYCLES={MAX_DETECTED_CYCLES}"
+            f" in {context}: got {len(cycles)}"
+        )
+        raise GraphFuzzError(msg)
 
 
 # --- Constants ---
@@ -369,6 +387,7 @@ def _pattern_detect_self_loops(fdp: atheris.FuzzedDataProvider) -> None:
             deps.setdefault(node, set()).add(target)
 
     cycles = detect_cycles(deps)
+    _assert_cycle_bound(cycles, "detect_self_loops")
 
     # Each self-loop should produce a cycle
     for node in self_loop_nodes:
@@ -389,6 +408,7 @@ def _pattern_detect_simple_cycles(fdp: atheris.FuzzedDataProvider) -> None:
         deps[nodes[i]] = {nodes[(i + 1) % n]}
 
     cycles = detect_cycles(deps)
+    _assert_cycle_bound(cycles, "detect_simple_cycles")
 
     if not cycles:
         msg = f"Failed to detect cycle in {deps}"
@@ -428,6 +448,7 @@ def _pattern_detect_dag_no_cycles(fdp: atheris.FuzzedDataProvider) -> None:
                 deps[nodes[i]].add(nodes[j])
 
     cycles = detect_cycles(deps)
+    _assert_cycle_bound(cycles, "detect_dag_no_cycles")
 
     if cycles:
         msg = f"DAG produced cycles: {cycles}"
@@ -460,6 +481,7 @@ def _pattern_detect_disconnected(fdp: atheris.FuzzedDataProvider) -> None:
             deps[c3_nodes[i]] = {c3_nodes[(i + 1) % c3_size]}
 
     cycles = detect_cycles(deps)
+    _assert_cycle_bound(cycles, "detect_disconnected")
 
     # Must find at least the first cycle
     if not cycles:
@@ -474,6 +496,7 @@ def _pattern_detect_dense_mesh(fdp: atheris.FuzzedDataProvider) -> None:
     deps = _build_random_graph(fdp, n, edges)
 
     cycles = detect_cycles(deps)
+    _assert_cycle_bound(cycles, "detect_dense_mesh")
 
     # Validate all cycles
     for cycle in cycles:
@@ -502,6 +525,7 @@ def _pattern_detect_deep_chain(fdp: atheris.FuzzedDataProvider) -> None:
         deps[nodes[-1]].add(nodes[back_target])
 
     cycles = detect_cycles(deps)
+    _assert_cycle_bound(cycles, "detect_deep_chain")
 
     if has_backedge and not cycles:
         msg = f"Deep chain with back-edge: no cycle detected (depth={depth})"
@@ -567,6 +591,7 @@ def _pattern_adversarial_graph(fdp: atheris.FuzzedDataProvider) -> None:
                 for node in nodes
             }
             cycles = detect_cycles(deps)
+            _assert_cycle_bound(cycles, f"adversarial_graph/complete_K{n}")
             # Complete graph with n>=3 must have cycles
             if not cycles:
                 msg = f"Complete graph K{n} has no cycles"
@@ -584,6 +609,7 @@ def _pattern_adversarial_graph(fdp: atheris.FuzzedDataProvider) -> None:
             back_leaf = fdp.PickValueInList(leaves)
             deps[back_leaf].add(hub)
             cycles = detect_cycles(deps)
+            _assert_cycle_bound(cycles, "adversarial_graph/star")
             if not cycles:
                 msg = "Star with back-edge: no cycle detected"
                 raise GraphFuzzError(msg)
@@ -592,6 +618,7 @@ def _pattern_adversarial_graph(fdp: atheris.FuzzedDataProvider) -> None:
             # Empty graph
             deps = {}
             cycles = detect_cycles(deps)
+            _assert_cycle_bound(cycles, "adversarial_graph/empty")
             if cycles:
                 msg = f"Empty graph has cycles: {cycles}"
                 raise GraphFuzzError(msg)
@@ -601,6 +628,7 @@ def _pattern_adversarial_graph(fdp: atheris.FuzzedDataProvider) -> None:
             n = fdp.ConsumeIntInRange(1, 10)
             deps = {f"sink_{i}": set() for i in range(n)}
             cycles = detect_cycles(deps)
+            _assert_cycle_bound(cycles, "adversarial_graph/sinks")
             if cycles:
                 msg = f"Sink-only graph has cycles: {cycles}"
                 raise GraphFuzzError(msg)
@@ -613,6 +641,7 @@ def _pattern_adversarial_graph(fdp: atheris.FuzzedDataProvider) -> None:
                 "c": {"undefined_2", "a"},
             }
             cycles = detect_cycles(deps)
+            _assert_cycle_bound(cycles, "adversarial_graph/undefined_targets")
             # c -> a -> c is a cycle (a -> b -> undefined_1 is not)
             found_ac_cycle = any(
                 "a" in cycle and "c" in cycle for cycle in cycles

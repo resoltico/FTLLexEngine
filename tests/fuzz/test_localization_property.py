@@ -536,18 +536,24 @@ class TestFluentLocalizationOrchestration:
 
     @given(mid=message_ids())
     def test_missing_message_returns_braced_id(self, mid: str) -> None:
-        """Missing message returns {message_id} per Fluent convention."""
+        """Missing message returns {message_id} per Fluent convention.
+
+        strict=False: missing-message error returned in tuple, not raised.
+        """
         event("outcome=missing_message")
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         result, errors = l10n.format_value(mid)
         assert result == f"{{{mid}}}"
         assert len(errors) == 1
 
     @given(mid=st.just(""))
     def test_empty_message_id_returns_fallback(self, mid: str) -> None:
-        """Empty message ID returns {???} fallback."""
+        """Empty message ID returns {???} fallback.
+
+        strict=False: invalid-ID error returned in tuple, not raised.
+        """
         event("outcome=empty_id")
-        l10n = FluentLocalization(["en"])
+        l10n = FluentLocalization(["en"], strict=False)
         result, errors = l10n.format_value(mid)
         assert result == "{???}"
         assert len(errors) == 1
@@ -1030,9 +1036,12 @@ class TestValidationEdgeCases:
     def test_format_value_invalid_args_type(
         self, locale: str, invalid_args: int | str | list[int] | bool,
     ) -> None:
-        """format_value with non-Mapping args returns error."""
+        """format_value with non-Mapping args returns error.
+
+        strict=False: invalid-args error returned in tuple, not raised.
+        """
         event("outcome=invalid_args")
-        l10n = FluentLocalization([locale])
+        l10n = FluentLocalization([locale], strict=False)
         l10n.add_resource(locale, "msg = test")
         result, errors = l10n.format_value(
             "msg", invalid_args,  # type: ignore[arg-type]
@@ -1049,9 +1058,12 @@ class TestValidationEdgeCases:
         locale: str,
         invalid_attr: int | Decimal | list[str] | dict[str, str],
     ) -> None:
-        """format_pattern with non-str attribute returns error."""
+        """format_pattern with non-str attribute returns error.
+
+        strict=False: invalid-attribute error returned in tuple, not raised.
+        """
         event("outcome=invalid_attr")
-        l10n = FluentLocalization([locale])
+        l10n = FluentLocalization([locale], strict=False)
         l10n.add_resource(locale, "msg = test\n    .a = v")
         result, errors = l10n.format_pattern(
             "msg", None,

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.139.0"
+version: "0.145.0"
 domain: fuzzing
-updated: "2026-02-26"
+updated: "2026-03-02"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -22,7 +22,7 @@ route:
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
 | `fuzz_currency.py` | `parsing.currency` | 16 | 65 (.txt) | Currency symbol extraction |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 18 (.bin) | Fiscal calendar arithmetic, contracts |
-| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity` | 25 | 68 (.ftl) + 13 (.bin) | Semantic validation, strict mode, cross-resource |
+| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 19 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
 | `fuzz_lock.py` | `runtime.rwlock` | 15 | 32 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `parsing.numbers` | 19 | 70 (.txt) | Locale-aware numeric parsing |
@@ -113,9 +113,11 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 Target: `runtime.functions` (NUMBER, DATETIME, CURRENCY) -- direct Babel formatting API boundary testing.
 
-Concern boundary: This fuzzer stress-tests the Babel formatting boundary by calling NUMBER, DATETIME, and CURRENCY functions directly through the Python API. This is distinct from fuzz_runtime which invokes these functions through FTL syntax and the resolver stack. Direct API testing isolates the Babel layer from resolver/cache behavior and enables: fuzz-generated Babel pattern strings (pattern= parameter), FluentNumber precision (CLDR v operand) correctness verification, currency-specific decimal digit enforcement (JPY=0, BHD=3), type coercion across int/float/Decimal/FluentNumber inputs, cross-locale formatting consistency, and edge value handling (NaN, Inf, -0.0, extreme magnitudes). FunctionRegistry lifecycle, parameter mapping, and locale injection protocol are covered by fuzz_bridge.py.
+Concern boundary: This fuzzer stress-tests the Babel formatting boundary by calling NUMBER, DATETIME, and CURRENCY functions directly through the Python API. This is distinct from fuzz_runtime which invokes these functions through FTL syntax and the resolver stack. Direct API testing isolates the Babel layer from resolver/cache behavior and enables: fuzz-generated Babel pattern strings (pattern= parameter), FluentNumber precision (CLDR v operand) correctness verification, currency-specific decimal digit enforcement (JPY=0, BHD=3), ROUND_HALF_UP rounding oracle verification (NUMBER and CURRENCY), type coercion across int/float/Decimal/FluentNumber inputs, cross-locale formatting consistency, and edge value handling (NaN, Inf, -0.0, extreme magnitudes). FunctionRegistry lifecycle, parameter mapping, and locale injection protocol are covered by fuzz_bridge.py.
 
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `BuiltinsMetrics` dataclass (per-function call counts, precision checks/violations, cross-locale tests, type coercion tests, determinism tests, custom pattern tests, edge value tracking). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `BuiltinsMetrics` dataclass (per-function call counts, precision checks/violations, cross-locale tests, type coercion tests, custom pattern tests, edge value tracking, rounding oracle checks/violations, min_gt_max coverage). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+Run this fuzzer in isolation: `./scripts/fuzz_atheris.sh builtins` (uses `.venv-atheris`, independent of the project venv). Linting of this directory is covered by `./scripts/lint.sh` (auto-discovers all directories with `.py` files).
 
 ### Patterns
 
@@ -125,8 +127,8 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `number_basic` | 12 | Result is FluentNumber, fraction/grouping variation |
-| `number_precision` | 15 | CLDR v operand non-negative, min_frac consistency |
+| `number_basic` | 12 | Result is FluentNumber, fraction/grouping variation; independent min/max draws |
+| `number_precision` | 15 | CLDR v operand non-negative; ROUND_HALF_UP oracle (all ASCII-digit locales); independent min/max draws (covers min > max clamp path) |
 | `number_edges` | 8 | NaN, Inf, -0.0, huge, tiny stability |
 | `number_type_variety` | 8 | int/float/Decimal/FluentNumber all produce FluentNumber |
 
@@ -143,7 +145,7 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `currency_codes` | 12 | FluentNumber result, valid/fuzzed ISO codes |
-| `currency_precision` | 10 | Currency-specific decimals (JPY=0, BHD=3) |
+| `currency_precision` | 10 | Currency-specific decimals (JPY=0, BHD=3); ROUND_HALF_UP oracle (all ASCII-digit locales) |
 | `currency_cross_locale` | 8 | Same currency formatted across locales |
 
 **CROSS-CUTTING (3)** - Multi-function and consistency:
@@ -151,12 +153,22 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `custom_pattern` | 8 | Custom Babel patterns for all 3 functions |
-| `cross_locale_consistency` | 8 | Same value, 3+ locales, deterministic results |
+| `cross_locale_consistency` | 8 | Same value, 3+ locales, deterministic results; independent min/max draws |
 | `error_paths` | 5 | Negative/huge fraction digits, empty/invalid currency |
 
 ### Allowed Exceptions
 
 `ValueError`, `TypeError`, `OverflowError`, `InvalidOperation`, `OSError`, `ArithmeticError` -- invalid inputs and Babel formatting limitations.
+
+### Rounding Oracle Design
+
+`number_precision` and `currency_precision` include a ROUND_HALF_UP oracle that verifies the pre-quantization applied in `locale_context.py`. ROUND_HALF_UP pre-quantization runs before Babel (not inside it) and applies to every locale; the oracle covers all locales where digit extraction is possible.
+
+**Digit extraction** (`_extract_oracle_digits`): Uses `babel.numbers.get_decimal_symbol(locale)` and `get_group_symbol(locale)` to normalize the formatted string for any locale. Normalization removes group separators first (critical for de-DE where group separator is `.`), replaces the decimal separator with ASCII `.`, then strips all remaining non-digit characters (currency codes, whitespace, signs). Locales with non-ASCII digits (ar-EG Arabic-Indic, hi-IN Devanagari) are detected via `c.isdigit() and not c.isascii()` and skipped. Unknown locales (Babel raises `UnknownLocaleError`) are skipped via `except ValueError`.
+
+**Oracle check**: For each non-NaN/non-Inf Decimal result where `_extract_oracle_digits` returns a value: `expected = abs(val).quantize(10^-precision, rounding=ROUND_HALF_UP)` is compared against the extracted digits. NaN and Infinity skip the oracle via `InvalidOperation` from `quantize()`.
+
+**Input domain**: `min_frac` and `max_frac` are drawn independently (not `max_frac = ConsumeIntInRange(min_frac, N)`). This ensures the `min > max` clamping path in `format_number()` is exercised — a path that previously could trigger incorrect digit counts.
 
 ---
 
@@ -315,15 +327,15 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ## `fuzz_integrity`
 
-Target: `validation.validate_resource` (standalone 6-pass validation), `syntax.validator.SemanticValidator` (E0001-E0013), `integrity` (DataIntegrityError hierarchy), `FluentBundle` strict mode (SyntaxIntegrityError, FormattingIntegrityError).
+Target: `validation.validate_resource` (standalone 6-pass validation), `syntax.validator.SemanticValidator` (E0001-E0013), `integrity` (DataIntegrityError hierarchy), `FluentBundle` strict mode (SyntaxIntegrityError, FormattingIntegrityError), `diagnostics.errors.FrozenFluentError` (integrity, immutability, sealed type, hash stability).
 
-Concern boundary: Validation gauntlet -- semantic integrity checks, cross-resource validation with `known_messages`/`known_terms`/`known_msg_deps`, chain depth limits (>MAX_DEPTH), strict mode DataIntegrityError triggering. Distinct from fuzz_graph (direct cycle detection API) and fuzz_runtime (resolver stack, not validation).
+Concern boundary: Validation gauntlet -- semantic integrity checks, cross-resource validation with `known_messages`/`known_terms`/`known_msg_deps`, chain depth limits (>MAX_DEPTH), strict mode DataIntegrityError triggering, and FrozenFluentError Error Layer properties. Distinct from fuzz_graph (direct cycle detection API) and fuzz_runtime (resolver stack, not validation).
 
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `IntegrityMetrics` dataclass (validation codes, strict mode exceptions, cross-resource conflicts, chain depth violations). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `IntegrityMetrics` dataclass (validation codes, strict mode exceptions, cross-resource conflicts, chain depth violations, FrozenFluentError coverage counters). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
-25 patterns across 4 categories:
+29 patterns across 5 categories:
 
 **VALIDATION (10)** - Standalone `validate_resource()`:
 
@@ -369,6 +381,15 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 | `cross_cycle` | 10 | Cross-resource cycle via known_msg_deps |
 | `cross_undefined` | 8 | Reference resolved by known_messages |
 | `cross_chain_depth` | 6 | Chain depth spanning resources |
+
+**FROZEN_ERROR (4)** - FrozenFluentError Error Layer:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `frozen_error_integrity` | 8 | verify_integrity() True for uncorrupted errors across all ErrorCategory values |
+| `frozen_error_immutability` | 8 | setattr and delattr raise ImmutabilityViolationError after construction |
+| `frozen_error_sealed` | 6 | type() subclassing raises TypeError (fuzzed subclass name) |
+| `frozen_error_hash_stability` | 6 | hash() and content_hash stable across repeated calls |
 
 ### Allowed Exceptions
 

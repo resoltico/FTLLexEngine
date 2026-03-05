@@ -8,6 +8,7 @@ Critical function_bridge functions tested:
 """
 
 import random
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, given, settings
@@ -20,7 +21,7 @@ from ftllexengine.runtime.function_bridge import (
     FunctionRegistry,
     fluent_function,
 )
-from tests.strategies import snake_case_identifiers
+from tests.strategies import fluent_numbers, snake_case_identifiers
 
 pytestmark = pytest.mark.fuzz
 
@@ -542,3 +543,39 @@ class TestFluentNumberProperties:
         with pytest.raises(AttributeError):
             fn.formatted = "x"  # type: ignore[misc]
         event("outcome=immutable_enforced")
+
+
+class TestFluentNumberStrategyProperties:
+    """Property tests using fluent_numbers() strategy for HypoFuzz coverage.
+
+    These tests drive bridge_fnum_type and bridge_fnum_precision events
+    through the full range of precision categories including precision=None.
+    """
+
+    @given(fn=fluent_numbers())
+    @settings(max_examples=300, deadline=None)
+    def test_fluent_number_value_type(self, fn: FluentNumber) -> None:
+        """Property: fluent_numbers() produces int or Decimal values."""
+        is_decimal = isinstance(fn.value, Decimal)
+        event(f"outcome=decimal={is_decimal}")
+        assert isinstance(fn.value, (int, Decimal))
+        assert isinstance(fn.formatted, str)
+        assert len(fn.formatted) > 0
+
+    @given(fn=fluent_numbers())
+    @settings(max_examples=300, deadline=None)
+    def test_fluent_number_precision_optional(self, fn: FluentNumber) -> None:
+        """Property: fluent_numbers() generates both None and int precision."""
+        has_precision = fn.precision is not None
+        event(f"outcome=has_precision={has_precision}")
+        assert fn.precision is None or isinstance(fn.precision, int)
+        if fn.precision is not None:
+            assert fn.precision >= 0
+
+    @given(fn=fluent_numbers())
+    @settings(max_examples=200, deadline=None)
+    def test_fluent_number_str_is_formatted(self, fn: FluentNumber) -> None:
+        """Property: str(FluentNumber) returns the formatted string."""
+        result = str(fn)
+        event(f"outcome=formatted_len={len(result)}")
+        assert result == fn.formatted

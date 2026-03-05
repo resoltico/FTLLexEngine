@@ -241,6 +241,81 @@ class TestCorruptionDetectionNonStrictMode:
 
 
 # ============================================================================
+# KEY BINDING CONFUSION TESTS (lines 653-670)
+# ============================================================================
+
+
+class TestKeyBindingConfusion:
+    """Cover the key-binding confusion check (lines 652-670).
+
+    The key-binding check fires when an entry's stored key_hash doesn't match
+    the hash of the lookup key.  This is distinct from a checksum mismatch:
+    the entry is internally consistent (verify() passes) but is stored under
+    the wrong key slot — a sign of active tampering or memory corruption.
+
+    Strategy: put an entry under key B, inject it into the slot for key A,
+    then call get(key A).  verify() passes (entry_b is internally valid) but
+    the key_hash bound to key B != _compute_key_hash(key A).
+    """
+
+    @staticmethod
+    def _inject_key_confused_entry(cache: IntegrityCache) -> None:
+        """Put msg-b, then move its entry into the msg-a slot."""
+        cache.put("msg-b", None, None, "en", True, "Hello B", ())
+        key_b: tuple = ("msg-b", (), None, "en", True)
+        key_a: tuple = ("msg-a", (), None, "en", True)
+        # Inject entry_b under key_a — checksum is valid but key_hash is wrong
+        cache._cache[key_a] = cache._cache[key_b]
+
+    def test_key_confusion_strict_raises(self) -> None:
+        """strict=True raises CacheCorruptionError on key-binding mismatch."""
+        cache = IntegrityCache(strict=True)
+        self._inject_key_confused_entry(cache)
+
+        with pytest.raises(CacheCorruptionError) as exc_info:
+            cache.get("msg-a", None, None, "en", True)
+
+        assert "key confusion" in str(exc_info.value).lower()
+        assert exc_info.value.context is not None
+        assert exc_info.value.context.component == "cache"
+        assert exc_info.value.context.operation == "get"
+
+    def test_key_confusion_strict_increments_counter(self) -> None:
+        """Key-binding confusion increments corruption_detected counter."""
+        cache = IntegrityCache(strict=True)
+        self._inject_key_confused_entry(cache)
+
+        with contextlib.suppress(CacheCorruptionError):
+            cache.get("msg-a", None, None, "en", True)
+
+        assert cache.get_stats()["corruption_detected"] == 1
+
+    def test_key_confusion_non_strict_returns_none(self) -> None:
+        """strict=False evicts the confused entry and returns None."""
+        cache = IntegrityCache(strict=False)
+        self._inject_key_confused_entry(cache)
+
+        result = cache.get("msg-a", None, None, "en", True)
+
+        assert result is None
+        stats = cache.get_stats()
+        assert stats["corruption_detected"] == 1
+        assert stats["misses"] == 1
+
+    def test_key_confusion_non_strict_evicts_entry(self) -> None:
+        """Non-strict key confusion removes the confused entry from the cache."""
+        cache = IntegrityCache(strict=False)
+        self._inject_key_confused_entry(cache)
+
+        key_a: tuple = ("msg-a", (), None, "en", True)
+        assert key_a in cache._cache  # Injected entry is present
+
+        cache.get("msg-a", None, None, "en", True)
+
+        assert key_a not in cache._cache
+
+
+# ============================================================================
 # WRITE-ONCE SEMANTICS TESTS
 # ============================================================================
 

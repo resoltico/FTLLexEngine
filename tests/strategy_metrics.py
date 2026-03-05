@@ -513,11 +513,12 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
     },
     # Graph strategies
     "strategy=graph_": {
-        "empty": 0.20,
-        "linear": 0.20,
-        "ring": 0.20,
-        "star": 0.20,
-        "dag": 0.20,
+        "empty": 0.18,
+        "linear": 0.18,
+        "ring": 0.18,
+        "star": 0.18,
+        "dag": 0.18,
+        "complete": 0.10,
     },
     "strategy=cycle_": {
         "self_loop": 1 / 3,
@@ -743,6 +744,7 @@ EXPECTED_EVENTS: set[str] = {
     "l10n_term_count=2",
     "l10n_term_count=3",
     # Graph analysis strategy events
+    "strategy=graph_complete",
     "strategy=graph_empty",
     "strategy=graph_linear",
     "strategy=graph_ring",

@@ -34,11 +34,12 @@ import atexit
 import gc
 import logging
 import pathlib
+import re
 import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from math import isinf, isnan
 from typing import TYPE_CHECKING, Any
 
@@ -108,6 +109,13 @@ class BuiltinsMetrics:
     edge_nan_count: int = 0
     edge_inf_count: int = 0
     edge_zero_count: int = 0
+
+    # Rounding oracle: ROUND_HALF_UP verification
+    rounding_oracle_checks: int = 0
+    rounding_oracle_violations: int = 0
+
+    # Input domain coverage: min_frac > max_frac cases
+    min_gt_max_tests: int = 0
 
 
 # --- Global State ---
@@ -193,6 +201,13 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["edge_inf_count"] = _domain.edge_inf_count
     stats["edge_zero_count"] = _domain.edge_zero_count
 
+    # Rounding oracle
+    stats["rounding_oracle_checks"] = _domain.rounding_oracle_checks
+    stats["rounding_oracle_violations"] = _domain.rounding_oracle_violations
+
+    # Input domain coverage
+    stats["min_gt_max_tests"] = _domain.min_gt_max_tests
+
     return stats
 
 
@@ -274,11 +289,13 @@ def _pick_locale(fdp: atheris.FuzzedDataProvider) -> str:
 
 
 def _make_decimal(fdp: atheris.FuzzedDataProvider) -> Decimal:
-    """Generate a Decimal from fuzzed float, handling NaN/Inf."""
-    try:
-        return Decimal(str(fdp.ConsumeFloat()))
-    except InvalidOperation:
-        return Decimal("0")
+    """Generate a Decimal from fuzzed float, including NaN and Infinity.
+
+    Decimal(str(float('nan'))) -> Decimal('NaN') and
+    Decimal(str(float('inf'))) -> Decimal('Infinity') without raising;
+    no exception handler needed.
+    """
+    return Decimal(str(fdp.ConsumeFloat()))
 
 
 def _values_match(a: object, b: object) -> bool:
@@ -295,6 +312,52 @@ def _values_match(a: object, b: object) -> bool:
     return a == b
 
 
+def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
+    """Extract absolute numeric digits from a formatted string for oracle comparison.
+
+    Uses Babel to look up locale-specific decimal and grouping separators.
+    Returns None when digit extraction is not possible (non-ASCII digits,
+    ambiguous separators, or unknown locale).
+
+    The extraction algorithm:
+    1. Skip if any digit character is non-ASCII (e.g., ar-EG Arabic-Indic,
+       hi-IN Devanagari); these cannot be compared against ASCII oracle values.
+    2. Look up locale decimal and group symbols via Babel.
+    3. Remove group separators (critical for de-DE where group sep is '.').
+    4. Replace decimal separator with ASCII '.'.
+    5. Strip all remaining non-digit, non-dot characters (currency codes,
+       whitespace, signs) via regex. Whitespace-based group separators
+       (lv-LV, fr-FR thin-space) are handled by this final strip.
+    """
+    # Skip locales where any digit character is non-ASCII.
+    if any(c.isdigit() and not c.isascii() for c in formatted):
+        return None
+    try:
+        # Deferred import: Babel is optional at ftllexengine package level.
+        # At fuzzing time Babel is always present (required by the functions
+        # under test), but the import is deferred to match project conventions.
+        from babel.numbers import get_decimal_symbol, get_group_symbol  # noqa: PLC0415
+        # Babel expects underscore-separated locale IDs ('en_US', 'de_DE');
+        # ftllexengine uses BCP 47 hyphen-separated codes ('en-US', 'de-DE').
+        babel_locale = locale.replace("-", "_")
+        decimal_sym = get_decimal_symbol(babel_locale)
+        group_sym = get_group_symbol(babel_locale)
+    except ValueError:
+        # Babel raises UnknownLocaleError (ValueError subclass) for invalid locales.
+        return None
+    # Guard: ambiguous separators (same symbol for both) cannot be parsed reliably.
+    if decimal_sym == group_sym:
+        return None
+    # Step 1: remove group separators before replacing decimal separator.
+    # This is critical when group_sym == '.' (e.g., de-DE): removing it first
+    # prevents '1.234,56' → '1.234.56' (two dots, wrong result).
+    normalized = formatted.replace(group_sym, "").replace(decimal_sym, ".")
+    # Step 2: strip all remaining non-digit, non-dot characters (currency codes,
+    # whitespace, signs). Handles whitespace-variant group seps (lv-LV, fr-FR).
+    digits = re.sub(r"[^\d.]", "", normalized)
+    return digits if digits else None
+
+
 # =============================================================================
 # Pattern implementations
 # =============================================================================
@@ -305,7 +368,7 @@ def _pattern_number_basic(fdp: atheris.FuzzedDataProvider) -> None:
     locale = _pick_locale(fdp)
     val = _make_decimal(fdp)
     min_frac = fdp.ConsumeIntInRange(0, 10)
-    max_frac = fdp.ConsumeIntInRange(min_frac, 20)
+    max_frac = fdp.ConsumeIntInRange(0, 20)  # Independent: allows min > max (clamp path)
     grouping = fdp.ConsumeBool()
 
     _domain.number_calls += 1
@@ -337,7 +400,9 @@ def _pattern_number_precision(fdp: atheris.FuzzedDataProvider) -> None:
     )
 
     min_frac = fdp.ConsumeIntInRange(0, 6)
-    max_frac = fdp.ConsumeIntInRange(min_frac, 10)
+    max_frac = fdp.ConsumeIntInRange(0, 10)  # Independent: allows min > max (clamp path)
+    if min_frac > max_frac:
+        _domain.min_gt_max_tests += 1
 
     _domain.number_calls += 1
     _domain.precision_checks += 1
@@ -359,6 +424,33 @@ def _pattern_number_precision(fdp: atheris.FuzzedDataProvider) -> None:
         )
         raise BuiltinsFuzzError(msg)
 
+    # Rounding oracle: verify ROUND_HALF_UP is used across all ASCII-digit locales.
+    # ROUND_HALF_UP pre-quantization in locale_context.py runs before Babel, so it
+    # applies to every locale. _extract_oracle_digits handles locale-specific decimal
+    # and group separators; it returns None for non-ASCII-digit locales (ar-EG, hi-IN).
+    # NaN guard is explicit: Decimal.quantize() does NOT raise InvalidOperation for
+    # quiet NaN -- it silently propagates and returns Decimal('NaN'). Only Infinity
+    # raises InvalidOperation. Without the is_nan() check, the oracle compares
+    # 'NaN' against whatever Babel emits for NaN input, producing a false violation.
+    val_d = result.value
+    if isinstance(val_d, Decimal) and result.precision is not None and not val_d.is_nan():
+        prec = result.precision
+        try:
+            expected = abs(val_d).quantize(Decimal(10) ** -prec, rounding=ROUND_HALF_UP)
+        except InvalidOperation:
+            pass  # Infinity: skip oracle
+        else:
+            digits_only = _extract_oracle_digits(result.formatted, locale)
+            if digits_only is not None:
+                _domain.rounding_oracle_checks += 1
+                if digits_only != str(expected):
+                    _domain.rounding_oracle_violations += 1
+                    msg = (
+                        f"Rounding oracle: got {digits_only!r}, expected {str(expected)!r} "
+                        f"for val={val_d}, locale={locale}, min={min_frac}, max={max_frac}"
+                    )
+                    raise BuiltinsFuzzError(msg)
+
 
 def _pattern_number_edges(fdp: atheris.FuzzedDataProvider) -> None:
     """Edge float values: NaN, Inf, -0.0, huge, tiny."""
@@ -373,11 +465,9 @@ def _pattern_number_edges(fdp: atheris.FuzzedDataProvider) -> None:
     elif val_float == 0.0:
         _domain.edge_zero_count += 1
 
-    try:
-        val = Decimal(str(val_float))
-    except InvalidOperation:
-        # NaN/Inf as Decimal raises -- test with float directly
-        val = Decimal("0")
+    # Decimal(str(float)) never raises for NaN/Inf:
+    # float('nan') -> 'nan' -> Decimal('NaN'), float('inf') -> Decimal('Infinity').
+    val = Decimal(str(val_float))
 
     _domain.number_calls += 1
     number_format(
@@ -595,6 +685,36 @@ def _pattern_currency_precision(fdp: atheris.FuzzedDataProvider) -> None:
         )
         raise BuiltinsFuzzError(msg)
 
+    # Rounding oracle: verify ROUND_HALF_UP for known currency decimal counts.
+    # ROUND_HALF_UP pre-quantization applies to all locales; _extract_oracle_digits
+    # handles locale-specific separators (de-DE dot-group/comma-decimal, lv-LV
+    # space-group/comma-decimal, etc.) and skips non-ASCII-digit locales.
+    # NaN guard is explicit: Decimal.quantize() silently propagates quiet NaN
+    # (returns Decimal('NaN')) instead of raising InvalidOperation. Only Infinity
+    # raises. Without is_nan(), the oracle fires a false violation when Babel
+    # formats NaN differently from str(Decimal('NaN')).
+    if isinstance(result, FluentNumber) and result.precision is not None:
+        val_d = result.value
+        if isinstance(val_d, Decimal) and not val_d.is_nan():
+            expected_prec = currency_decimals[currency]
+            quantizer = Decimal(10) ** -expected_prec
+            try:
+                expected = abs(val_d).quantize(quantizer, rounding=ROUND_HALF_UP)
+            except InvalidOperation:
+                pass  # Infinity: skip oracle
+            else:
+                digits_only = _extract_oracle_digits(result.formatted, locale)
+                if digits_only is not None:
+                    _domain.rounding_oracle_checks += 1
+                    if digits_only != str(expected):
+                        _domain.rounding_oracle_violations += 1
+                        msg = (
+                            f"Currency rounding oracle: got {digits_only!r}, "
+                            f"expected {str(expected)!r} "
+                            f"for currency={currency}, val={val_d}, locale={locale}"
+                        )
+                        raise BuiltinsFuzzError(msg)
+
 
 def _pattern_currency_cross_locale(fdp: atheris.FuzzedDataProvider) -> None:
     """Same currency amount formatted across multiple locales.
@@ -695,7 +815,7 @@ def _pattern_cross_locale_consistency(fdp: atheris.FuzzedDataProvider) -> None:
     """
     val = _make_decimal(fdp)
     min_frac = fdp.ConsumeIntInRange(0, 4)
-    max_frac = fdp.ConsumeIntInRange(min_frac, 8)
+    max_frac = fdp.ConsumeIntInRange(0, 8)  # Independent: allows min > max (clamp path)
 
     _domain.cross_locale_tests += 1
     num_locales = fdp.ConsumeIntInRange(3, 8)

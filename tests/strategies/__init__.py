@@ -32,7 +32,7 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - source_spans, frozen_error_contexts, diagnostics, diagnostic_codes
     - error_categories, validation_errors, validation_warnings
     - validation_results, diagnostic_formatters, frozen_fluent_errors
-    - dependency_graphs, cycle_paths, namespace_ref_pairs
+    - complete_graphs, dependency_graphs, cycle_paths, namespace_ref_pairs
     - validation_resource_sources, semantic_validation_resources
 """
 
@@ -167,6 +167,7 @@ from .ftl import (
 
 # Graph analysis strategies
 from .graph import (
+    complete_graphs,
     cycle_paths,
     dependency_graphs,
     namespace_ref_pairs,
@@ -381,6 +382,7 @@ __all__ = [
     "FailingResourceLoader",
     # Graph analysis strategies
     "node_names",
+    "complete_graphs",
     "dependency_graphs",
     "cycle_paths",
     "namespace_ref_pairs",

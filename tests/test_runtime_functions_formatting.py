@@ -147,12 +147,14 @@ class TestNumberFormatPatternExceptionHandling:
     def test_number_format_with_pattern_parse_exception_falls_back(self) -> None:
         """Verify parse_pattern exception during max_frac extraction is handled.
 
-        This tests lines 205-209: Exception handling in number_format.
-        The parse_pattern call on line 202 (for extracting max_frac metadata)
-        may fail even if formatting succeeds. When it does, the function falls
-        back to uncapped precision counting.
+        The call sequence for a custom pattern is:
+        1. locale_context.format_number: ROUND_HALF_UP pre-quantization (parse_pattern)
+        2. babel.format_decimal: internal pattern parsing for formatting (parse_pattern)
+        3. functions.number_format: precision metadata extraction (parse_pattern)
+        Calls 1 and 2 must succeed for formatting to complete; only call 3 fails.
         """
-        # Create a mock that succeeds for formatting but fails for metadata extraction
+        # Create a mock that succeeds for pre-quantization and formatting but
+        # fails for metadata extraction in functions.py
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
 
         call_count = 0
@@ -161,10 +163,10 @@ class TestNumberFormatPatternExceptionHandling:
         def parse_pattern_side_effect(pattern: str) -> NumberPattern:
             nonlocal call_count
             call_count += 1
-            # First call (inside format_number in LocaleContext): succeed
-            if call_count == 1:
+            # Calls 1-2 (pre-quantization + format_decimal internal): succeed
+            if call_count <= 2:
                 return original_parse(pattern)
-            # Second call (line 202 in functions.py): fail
+            # Call 3 (functions.py metadata extraction): fail
             raise ValueError(error_msg)
 
         with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
@@ -179,11 +181,17 @@ class TestNumberFormatPatternExceptionHandling:
             # Should return FluentNumber with formatted value
             assert isinstance(result, FluentNumber)
             assert "123" in str(result)
-            # parse_pattern was called twice (once for format, once for metadata)
-            assert call_count == 2
+            # parse_pattern was called three times (pre-quantization, format, metadata)
+            assert call_count == 3
 
     def test_number_format_pattern_exception_with_various_errors(self) -> None:
-        """Verify exception handling works for ValueError and AttributeError."""
+        """Verify exception handling works for ValueError and AttributeError.
+
+        The call sequence for a custom pattern is:
+        1. locale_context.format_number: ROUND_HALF_UP pre-quantization
+        2. babel.format_decimal: internal pattern parsing for formatting
+        3. functions.number_format: precision metadata extraction (this call fails)
+        """
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
         error_msg = "Test error"
 
@@ -197,7 +205,8 @@ class TestNumberFormatPatternExceptionHandling:
             ) -> NumberPattern:
                 nonlocal call_count
                 call_count += 1
-                if call_count == 1:
+                # Calls 1-2 (pre-quantization + format_decimal internal): succeed
+                if call_count <= 2:
                     return original_parse(pattern)
                 raise exc_class(error_msg)
 
@@ -224,7 +233,8 @@ class TestNumberFormatPatternExceptionHandling:
         def parse_pattern_side_effect(pattern: str) -> NumberPattern:
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
+            # Calls 1-2 (pre-quantization + format_decimal internal): succeed
+            if call_count <= 2:
                 return original_parse(pattern)
             raise ValueError(error_msg)
 
@@ -267,7 +277,11 @@ class TestCurrencyFormatPatternExceptionHandling:
     def test_currency_format_with_pattern_parse_exception_falls_back(self) -> None:
         """Verify parse_pattern exception during max_frac extraction is handled.
 
-        This tests lines 372-376: Exception handling in currency_format.
+        The call sequence for a custom pattern is:
+        1. locale_context.format_currency: ROUND_HALF_UP pre-quantization (parse_pattern)
+        2. babel.format_currency: internal pattern parsing for formatting (parse_pattern)
+        3. functions.currency_format: precision metadata extraction (parse_pattern)
+        Calls 1 and 2 must succeed for formatting to complete; only call 3 fails.
         """
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
 
@@ -277,10 +291,10 @@ class TestCurrencyFormatPatternExceptionHandling:
         def parse_pattern_side_effect(pattern: str) -> NumberPattern:
             nonlocal call_count
             call_count += 1
-            # First call (inside format_currency in LocaleContext): succeed
-            if call_count == 1:
+            # Calls 1-2 (pre-quantization + format_currency internal): succeed
+            if call_count <= 2:
                 return original_parse(pattern)
-            # Second call (line 373 in functions.py): fail
+            # Call 3 (functions.py metadata extraction): fail
             raise ValueError(error_msg)
 
         with patch("babel.numbers.parse_pattern", side_effect=parse_pattern_side_effect):
@@ -293,10 +307,17 @@ class TestCurrencyFormatPatternExceptionHandling:
 
             assert isinstance(result, FluentNumber)
             assert "100" in str(result) or "USD" in str(result)
-            assert call_count == 2
+            # parse_pattern was called three times (pre-quantization, format, metadata)
+            assert call_count == 3
 
     def test_currency_format_pattern_exception_with_various_errors(self) -> None:
-        """Verify exception handling works for documented exception types."""
+        """Verify exception handling works for documented exception types.
+
+        The call sequence for a custom pattern is:
+        1. locale_context.format_currency: ROUND_HALF_UP pre-quantization
+        2. babel.format_currency: internal pattern parsing for formatting
+        3. functions.currency_format: precision metadata extraction (this call fails)
+        """
         original_parse = __import__("babel.numbers", fromlist=["parse_pattern"]).parse_pattern
         error_msg = "Test error"
 
@@ -309,7 +330,8 @@ class TestCurrencyFormatPatternExceptionHandling:
             ) -> NumberPattern:
                 nonlocal call_count
                 call_count += 1
-                if call_count == 1:
+                # Calls 1-2 (pre-quantization + format_currency internal): succeed
+                if call_count <= 2:
                     return original_parse(pattern)
                 raise exc_class(error_msg)
 
@@ -341,7 +363,8 @@ class TestCurrencyFormatPatternExceptionHandling:
         def parse_pattern_side_effect(pattern: str) -> NumberPattern:
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
+            # Calls 1-2 (pre-quantization + format_currency internal): succeed
+            if call_count <= 2:
                 return original_parse(pattern)
             raise ValueError(error_msg)
 

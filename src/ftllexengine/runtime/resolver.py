@@ -883,13 +883,19 @@ class FluentResolver:
         (e.g., "3.1400000000000001") in financial output. Use int for whole amounts
         or Decimal for fractional amounts.
 
+        The float case raises FrozenFluentError (not TypeError) so callers'
+        ``except FrozenFluentError`` handlers catch it and return a graceful
+        fallback per Fluent spec requirement that resolution never fails
+        catastrophically. TypeError would escape those handlers entirely.
+
         Pattern order rationale:
         - str before Sequence: str implements Sequence; must match str first to avoid
           the collection guard path.
         - bool before int: bool is a subclass of int; must match bool first to produce
           "true"/"false" rather than "1"/"0".
-        - float before the wildcard: explicit rejection with a diagnostic message;
-          float is not in FluentValue but the wildcard would silently accept it.
+        - float before the wildcard: explicit rejection as FrozenFluentError so the
+          caller's error handler catches it; float is not in FluentValue but the
+          wildcard would silently accept it.
         - None as explicit case: avoids the collection guard and the str(None) path.
         - Sequence | Mapping before the default str() fallback: guards against
           exponential str() expansion on deeply shared collection structures.
@@ -909,13 +915,15 @@ class FluentResolver:
             # FunctionRegistry return untyped Python values — a float return bypasses
             # mypy and would silently reach str() without this guard, producing IEEE
             # 754 noise in financial output (e.g., "3.1400000000000001").
+            # FrozenFluentError (not TypeError) ensures callers' except handlers
+            # catch this and produce a graceful fallback per Fluent spec.
             case float():
                 msg = (
                     f"float value {value!r} is not a valid FluentValue. "
                     "IEEE 754 float cannot represent most decimal fractions exactly. "
                     "Use int for whole amounts or decimal.Decimal for fractional amounts."
                 )
-                raise TypeError(msg)
+                raise FrozenFluentError(msg, ErrorCategory.RESOLUTION)
             # Guard against str() on collections (Sequence/Mapping). These are valid
             # FluentValue types for passing structured data to custom functions, but
             # str() on deeply nested/shared structures causes exponential expansion

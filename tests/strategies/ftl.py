@@ -602,33 +602,41 @@ def fluent_numbers(draw: st.DrawFn) -> FluentNumber:
     value_type = draw(st.sampled_from(["int", "decimal"]))
     event(f"bridge_fnum_type={value_type}")
 
-    value: int | Decimal
-    if value_type == "int":
-        value = draw(st.integers(min_value=-999999, max_value=999999))
-        formatted = str(value)
-        precision = 0
-    else:
-        places = draw(st.integers(min_value=0, max_value=6))
-        int_part = draw(
-            st.integers(min_value=-999999, max_value=999999)
-        )
-        if places > 0:
-            frac = draw(
-                st.integers(min_value=0, max_value=10**places - 1)
-            )
-            frac_str = str(frac).zfill(places)
-            value = Decimal(f"{int_part}.{frac_str}")
-            formatted = str(value)
-        else:
-            value = Decimal(int_part)
-            formatted = str(value)
-        precision = places
+    # Draw precision category first for bucket-first uniform distribution.
+    # "none" represents FluentNumber.precision=None (unspecified precision).
+    prec_cat = draw(st.sampled_from(["none", "0", "low", "high"]))
 
-    prec_cat = "none" if precision is None else (
-        "0" if precision == 0 else (
-            "low" if precision <= 2 else "high"
+    precision: int | None
+    places: int
+    if prec_cat == "none":
+        precision = None
+        places = 0
+    elif prec_cat == "0":
+        precision = 0
+        places = 0
+    elif prec_cat == "low":
+        precision = draw(st.integers(min_value=1, max_value=2))
+        places = precision
+    else:  # high
+        precision = draw(st.integers(min_value=3, max_value=6))
+        places = precision
+
+    value: int | Decimal
+    int_part = draw(st.integers(min_value=-999999, max_value=999999))
+    if value_type == "int":
+        value = int_part
+        formatted = str(value)
+    elif places > 0:
+        frac = draw(
+            st.integers(min_value=0, max_value=10**places - 1)
         )
-    )
+        frac_str = str(frac).zfill(places)
+        value = Decimal(f"{int_part}.{frac_str}")
+        formatted = str(value)
+    else:
+        value = Decimal(int_part)
+        formatted = str(value)
+
     event(f"bridge_fnum_precision={prec_cat}")
 
     return FluentNumber(

@@ -354,8 +354,12 @@ class TestConcurrentErrorHandling:
     def test_concurrent_missing_messages(
         self, worker_count: int
     ) -> None:
-        """Property: Missing message errors are consistent."""
-        bundle = FluentBundle("en-US", use_isolating=False)
+        """Property: Missing message errors are consistent.
+
+        strict=False: missing-message errors returned in tuple across threads,
+        not raised as FormattingIntegrityError.
+        """
+        bundle = FluentBundle("en-US", use_isolating=False, strict=False)
         bundle.add_resource("exists = This exists")
 
         results: list[tuple[str, int]] = []
@@ -394,8 +398,12 @@ class TestConcurrentErrorHandling:
     def test_concurrent_missing_variables(
         self, worker_count: int
     ) -> None:
-        """Property: Missing variable errors are thread-safe."""
-        bundle = FluentBundle("en-US", use_isolating=False)
+        """Property: Missing variable errors are thread-safe.
+
+        strict=False: missing-variable errors returned in tuple across threads,
+        not raised as FormattingIntegrityError.
+        """
+        bundle = FluentBundle("en-US", use_isolating=False, strict=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
         results: list[tuple[str, int]] = []
@@ -452,7 +460,10 @@ class TestConcurrentMutation:
         Reader threads call format_pattern() while writer threads
         call add_resource() to add new messages.
         """
-        bundle = FluentBundle("en-US", use_isolating=False)
+        # strict=False: readers probe soft-error return API for messages that
+        # may not yet exist (dyn1/dyn2/dyn3 added concurrently by writers);
+        # missing message errors must be in the tuple, not raised.
+        bundle = FluentBundle("en-US", use_isolating=False, strict=False)
         bundle.add_resource("initial = Initial message")
 
         results: list[tuple[str, str]] = []

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.145.0"
 domain: CHANGELOG
-updated: "2026-02-27"
+updated: "2026-03-01"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,206 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.145.0] - 2026-03-05
+
+### Fixed
+
+- **`runtime/locale_context.py` `format_number` and `format_currency`: ROUND_HALF_EVEN instead of ROUND_HALF_UP**
+  (FIX-ROUNDING-001):
+  - Babel's `format_decimal()` and `format_currency()` call `Decimal.quantize()` internally using
+    Python's default `decimal.Context` rounding mode, which is `ROUND_HALF_EVEN` (banker's rounding);
+    midpoint values — exactly halfway between two representable values — are rounded to the nearest
+    even digit rather than always away from zero: `Decimal("1.225")` with `"#,##0.00"` produces `"1.22"`
+    (not `"1.23"`) and `Decimal("123.445")` in USD produces `"$123.44"` (not `"$123.45"`);
+    financial applications universally expect `ROUND_HALF_UP` for displayed amounts
+  - Root cause: Babel exposes no `rounding` parameter in `format_decimal` or `format_currency`;
+    there is no hook to override the rounding mode post-hoc
+  - Fix: pre-quantize every value to its exact display precision with `Decimal.quantize(...,
+    rounding=ROUND_HALF_UP)` before passing to Babel; since the value is already rounded to the
+    correct number of decimal places, Babel performs no further rounding and produces the correct result
+  - For `format_number` with a custom pattern: extract `max_frac` from
+    `babel_numbers.parse_pattern(pattern).frac_prec[1]` and use it as the quantization target;
+    if `parse_pattern` fails, log a `WARNING` and skip pre-quantization (Babel's ROUND_HALF_EVEN
+    will be used as a documented fallback)
+  - For `format_number` with standard parameters: the existing ROUND_HALF_UP path already
+    quantized the value before Babel — this case was already correct; only the custom-pattern
+    fast-path bypassed quantization (now fixed)
+  - For `format_currency` with a custom pattern: same `parse_pattern(pattern).frac_prec[1]`
+    extraction approach as `format_number`
+  - For `format_currency` without a custom pattern: use
+    `babel_numbers.get_currency_precision(currency)` (CLDR-authoritative digit count per currency)
+    as the quantization target; note: `get_currency_precision` takes only the currency code —
+    there is no `locale` parameter
+  - Non-finite `Decimal` values (`Infinity`, `-Infinity`, `NaN`) bypass pre-quantization;
+    `quantize()` raises `InvalidOperation` on non-finite values, so the `is_special` guard
+    preserves the existing pass-through behavior for these edge cases
+  - Location: `runtime/locale_context.py` `LocaleContext.format_number`, `LocaleContext.format_currency`
+
+- **`runtime/locale_context.py` `format_number`: `minimumFractionDigits > maximumFractionDigits` produces semantically wrong output**
+  (FIX-DIGIT-CLAMP-001):
+  - When `minimumFractionDigits > maximumFractionDigits` (e.g., `min=3, max=2`), the quantizer
+    used `max` decimal places (rounds to 2) but the format pattern required `min` mandatory digit
+    positions ("000"); this produced a value like `1.23` formatted as `"1.230"` — three decimal
+    places in the output when the caller specified `maximumFractionDigits: 2`
+  - The combination arises naturally from FTL: `NUMBER($n, minimumFractionDigits: 4)` uses the
+    default `maximumFractionDigits: 3`, giving `min=4 > max=3`; the caller's intent is clearly
+    "at least 4 decimal places" — raising an error would be incorrect
+  - Fix: silently clamp `maximum_fraction_digits = max(minimum_fraction_digits, maximum_fraction_digits)`
+    after the individual range validations; matches JavaScript's `Intl.NumberFormat` semantics
+    (specifying `minimumFractionDigits: 4` without `maximumFractionDigits` yields 4 decimal places)
+  - Location: `runtime/locale_context.py` `LocaleContext.format_number`
+
+- **`runtime/bundle.py`: non-strict bundle raises `CacheCorruptionError` when cache is enabled**
+  (FIX-CACHE-STRICT-GATE-001):
+  - `FluentBundle.__init__` passed `cache.integrity_strict` (default: `True`) directly to
+    `IntegrityCache(strict=...)`, making the cache unconditionally strict regardless of the
+    bundle's own `strict` parameter; when `FluentBundle(strict=False, cache=CacheConfig())` was
+    used and a cache entry was corrupted, `IntegrityCache.get()` raised `CacheCorruptionError`
+    which propagated uncaught out of `format_pattern`, violating the non-strict bundle's contract
+    of never raising exceptions
+  - The `bundle.py` docstring (line: `strict` parameter description) and the cache initialization
+    comment both stated that `strict=False` causes "silent cache eviction" — the code implemented
+    the opposite, meaning two internal documentation sources described the correct behavior and the
+    implementation was wrong
+  - Root cause: `CacheConfig.integrity_strict` defaults to `True`; the bundle constructor used
+    it as-is instead of AND-gating it with the bundle's `strict` flag; the `CacheConfig` docstring
+    also incorrectly claimed `integrity_strict` was "independent of FluentBundle's `strict`
+    parameter", contradicting the bundle's own documented behavior
+  - Fix: apply an AND-gate at the `IntegrityCache` construction site:
+    `strict=cache.integrity_strict and strict`; when the bundle is non-strict, the cache is always
+    lenient (silent eviction) regardless of `CacheConfig.integrity_strict`; when the bundle is
+    strict, `CacheConfig.integrity_strict` is the user's explicit fine-grained control; corrected
+    `CacheConfig` docstring to describe this AND-gate relationship
+  - Location: `runtime/bundle.py` `FluentBundle.__init__` cache initialization;
+    `runtime/cache_config.py` `CacheConfig.integrity_strict` docstring
+
+- **`analysis/graph.py` `detect_cycles`: out-of-memory on dense and complete graphs**
+  (FIX-GRAPH-OOM-001):
+  - `detect_cycles` intentionally omits a globally-visited guard on neighbor pushes so that
+    cycles through shared nodes are found (e.g., A→B→D→A and A→C→D→A both require exploring
+    D independently via B and via C); in adversarial dense graphs this causes O(n!) DFS
+    work-queue growth — each node is pushed once per distinct incoming path — resulting in
+    multi-gigabyte RSS growth that exhausts the libFuzzer 4 GB limit before the algorithm
+    terminates
+  - Fix: two cooperating bounds added to `detect_cycles`:
+    1. `MAX_DETECTED_CYCLES = 1000` (new `constants.py` constant): once this many unique cycles
+       are collected, both the inner while-loop and the outer for-loop exit immediately; FTL
+       validation requires actionable diagnostics — 1000 unique cycles already indicates an
+       adversarially pathological resource; legitimate FTL resources (typically <200 messages,
+       sparse cross-references) produce far fewer
+    2. `MAX_GRAPH_DFS_STACK = 100_000` (new `constants.py` constant): neighbors are not pushed
+       when the DFS work queue already holds this many entries; bounds memory to
+       O(100_000 × ~200 bytes) ≈ 20 MB regardless of graph density; legitimate FTL graphs
+       never approach this limit (max stack depth ≈ 2 × node_count for sparse graphs)
+  - `fuzz_atheris/fuzz_graph.py`: added `_assert_cycle_bound` helper and post-call invariant
+    checks to all `detect_cycles()` call sites across the fuzzing patterns; violations raise
+    `GraphFuzzError` as findings
+  - Tests: renamed `test_runtime_analysis_graph.py` → `test_analysis_graph.py` and
+    `tests/fuzz/test_runtime_analysis_graph_property.py` →
+    `tests/fuzz/test_analysis_graph_property.py` per §5.1 naming (package is `analysis`, not
+    `runtime`); added `TestDetectCyclesBounded` (6 unit + 2 property tests) verifying K4/K8/K10
+    and star-with-self-loops terminate within bounds; added `complete_graphs` Hypothesis strategy
+    generating K_n adversarial graphs
+  - Location: `analysis/graph.py` `detect_cycles`; `constants.py` `MAX_DETECTED_CYCLES`,
+    `MAX_GRAPH_DFS_STACK`
+
+- **`introspection/iso.py` `get_territory`, `get_currency`, `get_territory_currencies`: Unicode casefold expansion bypasses type guard**
+  (FIX-ISO-CASEFOLD-001):
+  - Python's `str.upper()` can expand a single character into multiple characters; the LATIN
+    SMALL LETTER SHARP S `'ß'` (U+00DF, len=1) uppercases to `'SS'` (len=2), which is the
+    valid ISO 3166-1 alpha-2 code for South Sudan; `get_territory('ß')` called
+    `_get_territory_impl('SS', locale)`, found South Sudan in CLDR, and returned a
+    `TerritoryInfo` object — despite `'ß'` being a length-1 non-ASCII character
+  - `is_valid_territory_code('ß')` correctly returned `False` (length check:
+    `len('ß') == 1 ≠ 2`), but `get_territory('ß')` returned a non-None result; this
+    violated the API invariant "if the type guard returns False, the lookup must return None"
+  - The same expansion vector is latent in `get_currency`: a 2-char input where `upper()`
+    produces a valid 3-char currency code (e.g., `'ßD'.upper() == 'SSD'`) would bypass the
+    currency type guard in the same way
+  - Fix: add raw-length guards to all three public functions before calling `.upper()`:
+    `get_territory` returns `None` when `len(code) != 2`; `get_currency` returns `None` when
+    `len(code) != 3`; `get_territory_currencies` returns `()` when `len(territory) != 2`; this
+    makes every public lookup function consistent with its corresponding type guard
+  - Tests: added `test_casefold_expansion_returns_none` to `TestGetTerritory` and
+    `TestGetCurrency`; added `test_casefold_expansion_returns_empty` to
+    `TestGetTerritoryCurrencies`; added `test_type_guard_lookup_consistency_casefold` to
+    `TestTypeGuards` asserting the guard/lookup invariant for `'ß'` and `'ßD'`
+  - Location: `introspection/iso.py` `get_territory`, `get_currency`, `get_territory_currencies`
+
+- **`fuzz_atheris/fuzz_scope.py`: all FluentBundle instances use strict=True (default), breaking soft-error return API**
+  (FIX-SCOPE-FUZZER-STRICT-001):
+  - `fuzz_scope.py` was written when `strict=False` was the `FluentBundle` default; since
+    v0.143.0 the default is `strict=True`; patterns that intentionally produce formatting
+    errors (`_pattern_adversarial_scope` case 0 — term scope isolation; case 1 — missing
+    variable; `_pattern_depth_guard_boundary` cases 0/1 — self-reference/mutual recursion)
+    now raise `FormattingIntegrityError` instead of returning the error in the
+    `(result, errors)` tuple; `FormattingIntegrityError` is not a `FrozenFluentError`
+    subclass and is not in `_ALLOWED_EXCEPTIONS`, so it propagated uncaught and was
+    recorded as a contract violation after 96 iterations
+  - Root cause: `strict=True` is now the default; every call site that uses
+    `result, errors = bundle.format_pattern(...)` (the soft-error return API) requires a
+    `strict=False` bundle; the file header explicitly states this fuzzer "focuses exclusively
+    on the resolver's scoping invariants" and is "distinct from fuzz_runtime.py which
+    exercises... strict mode", confirming that strict mode is intentionally out of scope
+  - Fix: added `strict=False` to all 17 `FluentBundle(...)` instantiations in
+    `fuzz_scope.py`; both the `"en-US"` forms (15 call sites) and the two
+    `_pick_locale(fdp)`-based forms; `FormattingIntegrityError` violations are now
+    returned in the soft-error tuple as the patterns expect
+  - Location: `fuzz_atheris/fuzz_scope.py` all `FluentBundle(...)` construction sites
+
+## [0.144.0] - 2026-03-01
+
+### Fixed
+
+- **`runtime/resolver.py` `_format_value`: float raises `TypeError` that escapes error handlers**
+  (FIX-RESOLVER-FLOAT-001):
+  - The `case float():` branch in `_format_value` raised `TypeError`, which is not a subclass
+    of `FrozenFluentError`; in `_resolve_select_expression`, `_format_value(selector_value)` is
+    called outside any `try/except FrozenFluentError` block, so a float selector value would
+    propagate as an uncaught `TypeError` through the entire call stack, violating the Fluent
+    spec requirement that resolution never fails catastrophically
+  - Changed `raise TypeError(msg)` to `raise FrozenFluentError(msg, ErrorCategory.RESOLUTION)`;
+    `FrozenFluentError` propagates up through `_resolve_expression` to `_resolve_pattern`'s
+    handler which collects the error and returns a graceful fallback string, matching spec behavior
+  - Updated `_format_value` docstring to explain why `FrozenFluentError` is used instead of
+    `TypeError`: callers' `except FrozenFluentError` handlers must catch the float rejection to
+    satisfy the never-fail-catastrophically contract
+  - Location: `runtime/resolver.py` `FluentResolver._format_value`
+
+- **`runtime/bundle.py` `strict` property docstring: incorrect default example**
+  (FIX-BUNDLE-DOCS-001):
+  - `FluentBundle.__init__` signature has `strict: bool = True` as the default, but the
+    `strict` property's docstring example showed `FluentBundle("en")` returning `False` for
+    `bundle.strict`; any user copying the example would receive the wrong mental model
+  - Changed the example output from `False` to `True`
+  - Location: `runtime/bundle.py` `FluentBundle.strict` property docstring
+
+- **`runtime/bundle.py` `_collect_pending_entries`: O(N) debug log for comments**
+  (FIX-BUNDLE-COMMENT-LOG-001):
+  - `_collect_pending_entries` emitted `logger.debug("Skipping comment entry")` for every
+    `Comment` AST node in a parsed resource; FTL files routinely contain many comments (section
+    headers, attribution, translator notes), so a single `add_resource()` call with 50 comments
+    would generate 50 debug lines with zero diagnostic value, polluting structured log pipelines
+    in production; comments carry no runtime state and their presence in `_collect_pending_entries`
+    is expected, normal behavior, not a noteworthy event
+  - Changed the branch to `pass` with a clarifying inline comment; the silent skip is the
+    correct observable behavior
+  - Location: `runtime/bundle.py` `FluentBundle._collect_pending_entries`
+
+### Changed
+
+- **`constants.py` `DEFAULT_MAX_EXPANSION_SIZE`: documented conservative accounting semantics**
+  (ARCH-EXPANSION-DOCS-001):
+  - The `DEFAULT_MAX_EXPANSION_SIZE` comment did not explain that the expansion budget is a
+    conservative upper bound rather than an exact character count; nested message references
+    pass the same `ResolutionContext` to inner `resolve_message()` calls, so the inner
+    `_resolve_pattern` charges its output against the shared budget, then the outer
+    `_resolve_pattern` charges the same characters again when it processes the Placeable result;
+    the double-count means the resolver halts before the true expanded character count reaches
+    the limit — safe by design, but previously undocumented
+  - Added an explanatory block comment directly on the constant; no behavior change
+  - Location: `constants.py` `DEFAULT_MAX_EXPANSION_SIZE`
 
 ## [0.143.0] - 2026-02-28
 
@@ -5389,6 +5589,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.145.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.145.0
+[0.144.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.144.0
+[0.143.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.143.0
 [0.142.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.142.0
 [0.141.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.141.0
 [0.140.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.140.0

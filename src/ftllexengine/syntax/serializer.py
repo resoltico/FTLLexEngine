@@ -202,7 +202,9 @@ def _validate_call_arguments(
         _assert_named_arg_value_is_literal(named_arg.value, arg_name, context)
 
 
-def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard) -> None:
+def _validate_expression(  # noqa: PLR0912 - validation dispatch over closed Expression union type
+    expr: Expression, context: str, depth_guard: DepthGuard
+) -> None:
     """Validate an Expression recursively.
 
     Args:
@@ -212,8 +214,23 @@ def _validate_expression(expr: Expression, context: str, depth_guard: DepthGuard
     """
     match expr:
         case SelectExpression():
-            # Invariant: SelectExpression.__post_init__ guarantees exactly one default
-            # variant at construction time. No redundant check needed here.
+            # Defense-in-depth: __post_init__ validates at construction time, but
+            # programmatically built ASTs (e.g., in tests or external tooling) can
+            # bypass __post_init__ via object.__new__. Verify the invariant here as
+            # a last guard before emitting invalid FTL.
+            n_defaults = sum(1 for v in expr.variants if v.default)
+            if n_defaults == 0:
+                msg = (
+                    f"SelectExpression in {context} has no default variant. "
+                    "Exactly one variant must be marked as default."
+                )
+                raise SerializationValidationError(msg)
+            if n_defaults > 1:
+                msg = (
+                    f"SelectExpression in {context} has {n_defaults} default variants. "
+                    "Exactly one variant must be marked as default."
+                )
+                raise SerializationValidationError(msg)
             # Validate selector expression and variant keys
             with depth_guard:
                 _validate_expression(expr.selector, context, depth_guard)

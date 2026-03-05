@@ -87,11 +87,17 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 
     @initialize()
     def setup_bundle(self) -> None:
-        """Initialize bundle with default settings."""
+        """Initialize bundle with default settings.
+
+        strict=False: state machine tests the soft-error return API for
+        unknown messages; missing message errors must be in the tuple, not
+        raised.
+        """
         self._fluent_bundle = FluentBundle(
             "en-US",
             cache=CacheConfig(size=50),
             use_isolating=False,
+            strict=False,
         )
         self.known_messages: dict[str, str] = {}  # msg_id -> expected_pattern
         self.known_variables: dict[str, str] = {}  # msg_id -> var_name

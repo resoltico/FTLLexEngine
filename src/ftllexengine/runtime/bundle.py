@@ -320,12 +320,19 @@ class FluentBundle:
         self._cache: IntegrityCache | None = None
 
         if cache is not None:
+            # The bundle's strict flag gates cache exception propagation: a
+            # non-strict bundle must never raise CacheCorruptionError from
+            # format_pattern. When strict=False, corruption is always handled
+            # by silent eviction regardless of CacheConfig.integrity_strict.
+            # When strict=True, CacheConfig.integrity_strict is the user's
+            # explicit fine-grained control (AND-gate: both must be True for
+            # CacheCorruptionError to propagate).
             self._cache = IntegrityCache(
                 maxsize=cache.size,
                 max_entry_weight=cache.max_entry_weight,
                 max_errors_per_entry=cache.max_errors_per_entry,
                 write_once=cache.write_once,
-                strict=cache.integrity_strict,
+                strict=cache.integrity_strict and strict,
                 enable_audit=cache.enable_audit,
                 max_audit_entries=cache.max_audit_entries,
             )
@@ -389,7 +396,7 @@ class FluentBundle:
             True
             >>> bundle_normal = FluentBundle("en")
             >>> bundle_normal.strict
-            False
+            True
         """
         return self._strict
 
@@ -702,7 +709,7 @@ class FluentBundle:
                 case Junk():
                     pending.junk.append(entry)
                 case Comment():
-                    logger.debug("Skipping comment entry")
+                    pass  # Comments carry no runtime state; silently skip.
                 case _:  # pragma: no cover - Entry union is closed (Message|Term|Comment|Junk)
                     assert_never(entry)
 

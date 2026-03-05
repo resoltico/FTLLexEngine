@@ -281,6 +281,13 @@ def get_territory(
 
     Thread-safe. Results cached per normalized (code, locale) pair.
     """
+    # Guard: ISO 3166-1 alpha-2 codes are exactly 2 characters before uppercasing.
+    # str.upper() can expand single characters (e.g., 'ß' → 'SS'), so checking the
+    # raw length prevents a length-1 input from matching a valid 2-char territory code
+    # via Unicode casefold expansion. This keeps get_territory consistent with the
+    # is_valid_territory_code type guard, which also checks len(value) == 2.
+    if len(code) != 2:
+        return None
     return _get_territory_impl(code.upper(), normalize_locale(locale))
 
 
@@ -338,6 +345,12 @@ def get_currency(
 
     Thread-safe. Results cached per normalized (code, locale) pair.
     """
+    # Guard: ISO 4217 currency codes are exactly 3 characters before uppercasing.
+    # str.upper() can expand single characters (e.g., 'ß' → 'SS'), so a 2-char
+    # input could produce a valid 3-char code via casefold expansion. Checking the
+    # raw length keeps get_currency consistent with is_valid_currency_code.
+    if len(code) != 3:
+        return None
     return _get_currency_impl(code.upper(), normalize_locale(locale))
 
 
@@ -498,6 +511,10 @@ def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:
 
     Thread-safe. Result cached per normalized territory code.
     """
+    # Guard: ISO 3166-1 alpha-2 codes are exactly 2 characters before uppercasing.
+    # Mirrors the guard in get_territory to prevent casefold expansion mismatches.
+    if len(territory) != 2:
+        return ()
     return _get_territory_currencies_impl(territory.upper())
 
 

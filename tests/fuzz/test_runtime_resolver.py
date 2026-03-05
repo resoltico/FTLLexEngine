@@ -134,8 +134,12 @@ class TestFormatPatternProperties:
         deadline=None,
     )
     def test_format_never_crashes(self, ftl: str, args: dict[str, str | int | Decimal]) -> None:
-        """Property: format_pattern never raises, always returns (str, tuple)."""
-        bundle = FluentBundle("en-US")
+        """Property: format_pattern never raises, always returns (str, tuple).
+
+        strict=False: testing soft-error return semantics; all errors (missing
+        variable, missing message) must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(ftl)
 
         # Get first message ID
@@ -168,8 +172,12 @@ class TestFormatPatternProperties:
     def test_references_resolve_or_error(
         self, ftl: str, args: dict[str, str | int | Decimal]
     ) -> None:
-        """Property: Message references either resolve or produce errors, never crash."""
-        bundle = FluentBundle("en-US")
+        """Property: Message references either resolve or produce errors, never crash.
+
+        strict=False: testing soft-error return semantics; cycle and reference
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(ftl)
 
         resource = bundle._parser.parse(ftl)
@@ -198,8 +206,12 @@ class TestFormatPatternProperties:
     def test_select_expressions_always_resolve(
         self, ftl: str, args: dict[str, str | int | Decimal]
     ) -> None:
-        """Property: Select expressions always resolve to a variant."""
-        bundle = FluentBundle("en-US")
+        """Property: Select expressions always resolve to a variant.
+
+        strict=False: testing soft-error return semantics; missing variable
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(ftl)
 
         resource = bundle._parser.parse(ftl)
@@ -217,8 +229,12 @@ class TestFormatPatternProperties:
     @given(st.text(min_size=1, max_size=100))
     @settings(max_examples=200, deadline=None)
     def test_missing_message_returns_id(self, msg_id: str) -> None:
-        """Property: Missing message returns the message ID as fallback."""
-        bundle = FluentBundle("en-US")
+        """Property: Missing message returns the message ID as fallback.
+
+        strict=False: testing soft-error return semantics; missing message
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("other = value")
 
         # Filter to valid identifiers
@@ -243,8 +259,12 @@ class TestErrorCollectionProperties:
     @given(format_arguments())
     @settings(max_examples=200, deadline=None)
     def test_missing_variable_collected(self, args: dict[str, str | int | Decimal]) -> None:
-        """Property: Missing variables produce errors but don't crash."""
-        bundle = FluentBundle("en-US")
+        """Property: Missing variables produce errors but don't crash.
+
+        strict=False: testing soft-error return semantics; missing variable
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("msg = Hello { $missing_var }!")
 
         result, errors = bundle.format_pattern("msg", args)
@@ -261,12 +281,16 @@ class TestErrorCollectionProperties:
     @given(st.lists(st.sampled_from(["a", "b", "c", "d", "e"]), min_size=1, max_size=5))
     @settings(max_examples=100, deadline=None)
     def test_multiple_errors_collected(self, var_names: list[str]) -> None:
-        """Property: Multiple errors are collected, not just the first."""
+        """Property: Multiple errors are collected, not just the first.
+
+        strict=False: testing soft-error return semantics; multiple missing
+        variable errors must be returned in the tuple, not raised.
+        """
         # Create message with multiple variable references
         placeholders = " ".join(f"{{ ${v} }}" for v in var_names)
         ftl = f"msg = {placeholders}"
 
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(ftl)
 
         # Call with no arguments - all variables missing

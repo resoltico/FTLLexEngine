@@ -186,8 +186,7 @@ class TestCommentEntryHandling:
     """Test Comment entry handling in _register_resource (line 701->652 branch)."""
 
     def test_resource_with_standalone_comment_processed(self, caplog: Any) -> None:
-        """Resource with standalone comment is processed without registration."""
-        # Set caplog to capture DEBUG level
+        """Resource with standalone comment is processed; comment produces no log."""
         caplog.set_level(logging.DEBUG)
 
         bundle = FluentBundle("en")
@@ -205,13 +204,11 @@ hello = World
         # Verify message was added
         assert bundle.has_message("hello")
 
-        # Verify comment skip was logged (debug level)
-        debug_records = [r for r in caplog.records if r.levelname == "DEBUG"]
-        assert any("Skipping comment entry" in r.message for r in debug_records)
+        # Comments are silently discarded — no log line emitted for them.
+        assert not any("comment" in r.message.lower() for r in caplog.records)
 
     def test_resource_with_only_comments_no_messages(self, caplog: Any) -> None:
-        """Resource containing only comments produces no messages."""
-        # Set caplog to capture DEBUG level
+        """Resource containing only comments produces no messages and no logs."""
         caplog.set_level(logging.DEBUG)
 
         bundle = FluentBundle("en")
@@ -228,9 +225,8 @@ hello = World
         # No messages should be added
         assert len(bundle.get_message_ids()) == 0
 
-        # Comment skip should be logged
-        debug_records = [r for r in caplog.records if r.levelname == "DEBUG"]
-        assert any("Skipping comment entry" in r.message for r in debug_records)
+        # Comments are silently discarded — no log line emitted for them.
+        assert not any("comment" in r.message.lower() for r in caplog.records)
 
     def test_mixed_comments_and_messages_processed_correctly(self) -> None:
         """Resource with mixed comments and messages processes only messages."""

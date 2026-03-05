@@ -214,7 +214,7 @@ def _pattern_term_arg_isolation(fdp: atheris.FuzzedDataProvider) -> None:
         f"-brand = {{ ${var} }}\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern("msg", {var: outer_val})
@@ -253,7 +253,7 @@ def _pattern_variable_shadowing(fdp: atheris.FuzzedDataProvider) -> None:
         f"-term = {{ ${var} }}\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern("msg", {var: ext_val})
@@ -281,7 +281,7 @@ def _pattern_message_ref_scope(fdp: atheris.FuzzedDataProvider) -> None:
         f"{msg_b} = {{ ${var} }}\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern(msg_a, {var: val})
@@ -313,7 +313,7 @@ def _pattern_select_scope(fdp: atheris.FuzzedDataProvider) -> None:
         f"}}\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern(
@@ -345,7 +345,7 @@ def _pattern_attribute_scope(fdp: atheris.FuzzedDataProvider) -> None:
         f"    .{attr_name} = Attr {{ ${var} }}\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     # Test message value
@@ -380,8 +380,8 @@ def _pattern_bidi_isolation(fdp: atheris.FuzzedDataProvider) -> None:
     ftl = f"msg = {{ ${var} }}\n"
 
     bundle = FluentBundle(
-        _pick_locale(fdp), use_isolating=use_isolating
-    )
+        _pick_locale(fdp), use_isolating=use_isolating, strict=False
+    )  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern("msg", {var: val})
@@ -416,7 +416,7 @@ def _pattern_function_arg_scope(fdp: atheris.FuzzedDataProvider) -> None:
 
     ftl = f"msg = {{ NUMBER(${var}) }}\n"
 
-    bundle = FluentBundle(_pick_locale(fdp), use_isolating=False)
+    bundle = FluentBundle(_pick_locale(fdp), use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern("msg", {var: num_val})
@@ -456,7 +456,7 @@ def _pattern_nested_term_scope(fdp: atheris.FuzzedDataProvider) -> None:
         f"-inner = {{ ${var} }}\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern("msg", {})
@@ -489,7 +489,7 @@ def _pattern_scope_chain(fdp: atheris.FuzzedDataProvider) -> None:
 
     ftl = "\n".join(lines) + "\n"
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result, errors = bundle.format_pattern(ids[0], {var: val})
@@ -514,7 +514,7 @@ def _pattern_cross_message_isolation(fdp: atheris.FuzzedDataProvider) -> None:
         "msg-beta = { $" + var + " }\n"
     )
 
-    bundle = FluentBundle("en-US", use_isolating=False)
+    bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
     bundle.add_resource(ftl)
 
     result_a, errors_a = bundle.format_pattern("msg-alpha", {var: val_a})
@@ -551,7 +551,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
         case 0:
             # Self-referencing message
             ftl = "msg = { msg }\n"
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             bundle.add_resource(ftl)
             result, errors = bundle.format_pattern("msg", {})
             # Must have errors (cyclic reference detected)
@@ -562,7 +562,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
         case 1:
             # Mutual recursion: a -> b -> a
             ftl = "msg-a = { msg-b }\nmsg-b = { msg-a }\n"
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             bundle.add_resource(ftl)
             result, errors = bundle.format_pattern("msg-a", {})
             if not errors:
@@ -578,7 +578,7 @@ def _pattern_depth_guard_boundary(fdp: atheris.FuzzedDataProvider) -> None:
             lines.append(f"d{depth} = leaf")
             ftl = "\n".join(lines) + "\n"
 
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             bundle.add_resource(ftl)
             result, errors = bundle.format_pattern("d0", {})
             # Either resolves to "leaf" or hits depth limit -- both acceptable
@@ -596,7 +596,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
         case 0:
             # Term with no arguments -- $var should be missing
             ftl = "msg = { -brand }\n-brand = { $missing }\n"
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             bundle.add_resource(ftl)
             result, errors = bundle.format_pattern("msg", {"missing": "LEAKED"})
             # The term should NOT see the outer "missing" variable
@@ -611,7 +611,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
             val_a = _gen_value(fdp)
 
             ftl = f"msg = {{ ${var_a} }} {{ ${var_b} }}\n"
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             bundle.add_resource(ftl)
             result, errors = bundle.format_pattern("msg", {var_a: val_a})
             # Should have at least one error for missing var_b
@@ -624,7 +624,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
             # Empty string variable value
             var = _pick_var(fdp)
             ftl = f"msg = [{{ ${var} }}]\n"
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             bundle.add_resource(ftl)
             result, errors = bundle.format_pattern("msg", {var: ""})
             if not errors and result != "[]":
@@ -634,7 +634,7 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
         case _:
             # Fuzzed variable name as FTL input
             raw = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 30))
-            bundle = FluentBundle("en-US", use_isolating=False)
+            bundle = FluentBundle("en-US", use_isolating=False, strict=False)  # soft-error API
             with contextlib.suppress(*_ALLOWED_EXCEPTIONS):
                 bundle.add_resource(f"msg = {{ ${raw} }}\n")
                 bundle.format_pattern("msg", {raw: "test"})

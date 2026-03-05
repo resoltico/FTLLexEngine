@@ -1567,12 +1567,23 @@ class TestCacheDoubleCheckHit:
         orig_lock = _introspection_msg_mod._introspection_cache_lock
 
         class _RaceLock:
-            """Simulates a concurrent thread storing the result first."""
+            """Simulates a concurrent thread winning the race at Step 3.
+
+            introspect_message acquires the lock TWICE per call with use_cache=True:
+            - First acquisition: Step 1 read-check (cache is empty, should miss)
+            - Second acquisition: Step 3 write-check (pre-fill simulates the race)
+            Pre-filling on the first acquisition would cause an early return at the
+            Step 1 hit (line 641), bypassing the double-check at line 674 entirely.
+            """
+
+            def __init__(self) -> None:
+                self._call_count = 0
 
             def __enter__(self) -> object:
                 orig_lock.acquire()
-                # Pre-fill cache to simulate the winning-race thread
-                _introspection_msg_mod._introspection_cache[msg] = expected
+                self._call_count += 1
+                if self._call_count == 2:  # Step 3 write-check only
+                    _introspection_msg_mod._introspection_cache[msg] = expected
                 return self
 
             def __exit__(
@@ -1586,9 +1597,9 @@ class TestCacheDoubleCheckHit:
         with patch.object(
             _introspection_msg_mod, "_introspection_cache_lock", _RaceLock()
         ):
-            # Step 1: cache is empty -> misses
+            # Step 1: first __enter__ — cache is empty, miss, continue to Step 2
             # Step 2: computation proceeds normally
-            # Step 3: _RaceLock.__enter__ pre-fills cache -> double-check hits line 674
+            # Step 3: second __enter__ pre-fills cache — double-check hits line 674
             result = introspect_message(msg, use_cache=True)
 
         assert result.message_id == expected.message_id

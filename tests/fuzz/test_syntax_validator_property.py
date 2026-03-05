@@ -21,13 +21,7 @@ class TestSemanticValidatorFuzz:
 
     These tests are skipped in normal CI and run only with HypoFuzz or
     explicit -m fuzz invocation.
-
-    FUZZ: run with ./scripts/fuzz_hypofuzz.sh --deep or pytest -m fuzz
     """
-
-    pytestmark = pytest.mark.skip(
-        reason="FUZZ: run with ./scripts/fuzz_hypofuzz.sh --deep or pytest -m fuzz"
-    )
 
     @given(resource=semantic_validation_resources())
     def test_fuzz_semantic_validator_all_variants(

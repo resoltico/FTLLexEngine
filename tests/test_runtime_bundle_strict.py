@@ -328,32 +328,33 @@ class TestStrictModeWithCaching:
 
 
 class TestStrictModeCachePropagation:
-    """Test that cache integrity_strict is independent of bundle strict.
+    """Test AND-gate between bundle strict and CacheConfig.integrity_strict.
 
-    Cache integrity (checksum verification, corruption detection) is
-    controlled by CacheConfig.integrity_strict (default: True), NOT by
-    FluentBundle's strict parameter. This separation ensures cache
-    corruption is always detected regardless of formatting error handling.
+    The effective cache strictness is ``CacheConfig.integrity_strict AND bundle.strict``.
+    When bundle strict=False, the cache is always lenient (silent eviction) regardless of
+    CacheConfig.integrity_strict, so CacheCorruptionError never propagates out of
+    format_pattern. When bundle strict=True, CacheConfig.integrity_strict is the
+    user's explicit fine-grained control.
     """
 
     def test_strict_bundle_has_strict_cache_by_default(self) -> None:
-        """Default CacheConfig has integrity_strict=True regardless of bundle strict."""
+        """strict=True bundle with default CacheConfig yields strict cache (True AND True)."""
         bundle = FluentBundle("en", strict=True, cache=CacheConfig())
 
         cache = bundle._cache  # pylint: disable=protected-access
         assert cache is not None
         assert cache.strict is True
 
-    def test_non_strict_bundle_has_strict_cache_by_default(self) -> None:
-        """Non-strict bundle still gets integrity-strict cache by default."""
+    def test_non_strict_bundle_has_lenient_cache(self) -> None:
+        """strict=False bundle always yields lenient cache (True AND False = False)."""
         bundle = FluentBundle("en", strict=False, cache=CacheConfig())
 
         cache = bundle._cache  # pylint: disable=protected-access
         assert cache is not None
-        assert cache.strict is True
+        assert cache.strict is False
 
     def test_cache_integrity_strict_can_be_disabled(self) -> None:
-        """CacheConfig(integrity_strict=False) disables cache integrity checks."""
+        """CacheConfig(integrity_strict=False) disables cache integrity checks (False AND True)."""
         config = CacheConfig(integrity_strict=False)
         bundle = FluentBundle("en", strict=True, cache=config)
 
@@ -362,20 +363,20 @@ class TestStrictModeCachePropagation:
         assert cache.strict is False
 
     def test_strict_cache_stats_reflects_mode(self) -> None:
-        """Cache stats reflect integrity_strict setting."""
+        """Cache stats reflect effective strict=True when both flags are True."""
         bundle = FluentBundle("en", strict=True, cache=CacheConfig())
 
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["strict"] is True
 
-    def test_non_strict_cache_stats_reflects_integrity_strict(self) -> None:
-        """Non-strict bundle cache stats reflect integrity_strict=True default."""
+    def test_non_strict_cache_stats_reflects_lenient(self) -> None:
+        """Non-strict bundle cache stats reflect effective strict=False (AND-gate)."""
         bundle = FluentBundle("en", strict=False, cache=CacheConfig())
 
         stats = bundle.get_cache_stats()
         assert stats is not None
-        assert stats["strict"] is True
+        assert stats["strict"] is False
 
 
 # ============================================================================

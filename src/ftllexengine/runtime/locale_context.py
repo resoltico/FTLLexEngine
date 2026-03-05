@@ -428,12 +428,36 @@ class LocaleContext:
                 f"got {maximum_fraction_digits}"
             )
             raise ValueError(msg)
+        # When minimum exceeds maximum (e.g., minimumFractionDigits: 4 with
+        # default maximumFractionDigits: 3), clamp maximum up to minimum.
+        # Matches JavaScript Intl.NumberFormat semantics: specifying only
+        # minimumFractionDigits=4 should yield 4 decimal places, not an error.
+        maximum_fraction_digits = max(maximum_fraction_digits, minimum_fraction_digits)
 
         babel_numbers = get_babel_numbers()
 
         try:
-            # Use custom pattern if provided
+            # Use custom pattern if provided.
+            # Pre-quantize with ROUND_HALF_UP before passing to Babel to
+            # override Babel's default ROUND_HALF_EVEN rounding semantics.
+            # Financial applications expect ROUND_HALF_UP (e.g., 1.225 → 1.23,
+            # not 1.22). Babel does not expose a rounding mode parameter.
             if pattern is not None:
+                max_frac: int | None = None
+                try:
+                    max_frac = babel_numbers.parse_pattern(pattern).frac_prec[1]
+                except (ValueError, AttributeError, IndexError):
+                    logger.warning(
+                        "parse_pattern failed for NUMBER pattern %r; "
+                        "ROUND_HALF_UP pre-quantization skipped — "
+                        "Babel's default ROUND_HALF_EVEN will be used",
+                        pattern,
+                    )
+                is_special = isinstance(value, Decimal) and not value.is_finite()
+                if not is_special and max_frac is not None:
+                    value = Decimal(str(value)).quantize(
+                        Decimal(10) ** -max_frac, rounding=ROUND_HALF_UP
+                    )
                 return str(
                     babel_numbers.format_decimal(
                         value,
@@ -734,6 +758,41 @@ class LocaleContext:
         babel_numbers = get_babel_numbers()
 
         try:
+            # Pre-quantize with ROUND_HALF_UP before passing to Babel.
+            # Babel's format_currency() uses Python Decimal.quantize() internally
+            # with the default context rounding mode (ROUND_HALF_EVEN). Financial
+            # applications expect ROUND_HALF_UP for midpoint values (e.g., 1.225 →
+            # 1.23, not 1.22). Pre-quantizing to the exact display precision with
+            # ROUND_HALF_UP ensures Babel receives a value that needs no further
+            # rounding, making the displayed result deterministic and financially
+            # correct regardless of Babel's internal rounding mode.
+            is_special = isinstance(value, Decimal) and not value.is_finite()
+            if not is_special:
+                if pattern is not None:
+                    # Custom pattern: extract max fraction digits for pre-quantization.
+                    max_frac_c: int | None = None
+                    try:
+                        max_frac_c = babel_numbers.parse_pattern(pattern).frac_prec[1]
+                    except (ValueError, AttributeError, IndexError):
+                        logger.warning(
+                            "parse_pattern failed for CURRENCY pattern %r; "
+                            "ROUND_HALF_UP pre-quantization skipped — "
+                            "Babel's default ROUND_HALF_EVEN will be used",
+                            pattern,
+                        )
+                    if max_frac_c is not None:
+                        value = Decimal(str(value)).quantize(
+                            Decimal(10) ** -max_frac_c, rounding=ROUND_HALF_UP
+                        )
+                else:
+                    # Standard/name/code format: use CLDR currency precision.
+                    # get_currency_precision() returns the CLDR-defined number of
+                    # decimal places for this currency (e.g., 0 for JPY, 3 for BHD).
+                    prec = babel_numbers.get_currency_precision(currency)
+                    value = Decimal(str(value)).quantize(
+                        Decimal(10) ** -prec, rounding=ROUND_HALF_UP
+                    )
+
             # Use custom pattern if provided (overrides currency_display)
             if pattern is not None:
                 return str(

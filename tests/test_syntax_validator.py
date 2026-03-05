@@ -2198,3 +2198,60 @@ class TestValidatorBranchCoverageExtended:
         result = validator.validate(resource)
 
         assert result is not None
+
+
+# ============================================================================
+# DEFENSE-IN-DEPTH: PLACEABLE AS SELECTOR GUARD (validator.py:421-422)
+# ============================================================================
+
+
+class TestPlaceableAsSelectorDefenseGuard:
+    """Validator defense-in-depth: Placeable used as SelectExpression selector.
+
+    The SelectorExpression type alias excludes Placeable at the type level, so
+    normal construction cannot produce this state. However, deserialization or
+    object.__setattr__ bypass can. The validator re-checks this invariant at
+    line 420-422 via a widened ``object`` guard to avoid mypy unreachable
+    detection while still catching adversarial ASTs at runtime.
+
+    Covers validator.py:422 (``self._add_error(errors, VALIDATION_PLACEABLE_SELECTOR)``).
+    """
+
+    def test_placeable_as_selector_adds_error(self) -> None:
+        """Validator adds VALIDATION_PLACEABLE_SELECTOR error when selector is a Placeable."""
+        # Build a valid SelectExpression first, then bypass __post_init__ to
+        # inject a Placeable as the selector — this is the adversarial path.
+        valid_select = SelectExpression(
+            selector=VariableReference(id=Identifier("count")),
+            variants=(
+                Variant(
+                    key=Identifier("other"),
+                    value=Pattern(elements=(TextElement("Other"),)),
+                    default=True,
+                ),
+            ),
+        )
+        # Bypass __post_init__: inject a Placeable as the selector
+        nested_literal = Placeable(
+            expression=VariableReference(id=Identifier("nested"))
+        )
+        object.__setattr__(valid_select, "selector", nested_literal)
+
+        message = Message(
+            id=Identifier("msg"),
+            value=Pattern(elements=(Placeable(expression=valid_select),)),
+            attributes=(),
+        )
+        resource = Resource(entries=(message,))
+
+        validator = SemanticValidator()
+        result = validator.validate(resource)
+
+        assert result is not None
+        # _add_error stores Annotation.code as DiagnosticCode.name (str), not enum.
+        # Errors from SemanticValidator appear in result.annotations, not result.errors.
+        selector_errors = [
+            a for a in result.annotations
+            if a.code == DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR.name
+        ]
+        assert len(selector_errors) == 1

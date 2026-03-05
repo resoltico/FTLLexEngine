@@ -21,9 +21,25 @@ from ftllexengine.diagnostics import (
     DiagnosticFormatter,
     ErrorCategory,
     ErrorTemplate,
+    FrozenErrorContext,
     FrozenFluentError,
+    SourceSpan,
+    ValidationError,
+    ValidationResult,
+    ValidationWarning,
 )
 from ftllexengine.runtime.bundle import FluentBundle
+from tests.strategies import (
+    diagnostics as gen_diagnostics,
+)
+from tests.strategies import (
+    frozen_error_contexts,
+    frozen_fluent_errors,
+    source_spans,
+    validation_errors,
+    validation_results,
+    validation_warnings,
+)
 
 # Mark all tests in this file as fuzzing tests
 pytestmark = pytest.mark.fuzz
@@ -167,8 +183,12 @@ class TestDiagnosticIntegration:
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
     @settings(max_examples=100, deadline=None)
     def test_missing_message_diagnostic(self, msg_id: str) -> None:
-        """Property: Missing messages produce diagnostics."""
-        bundle = FluentBundle("en-US")
+        """Property: Missing messages produce diagnostics.
+
+        strict=False: tests the soft-error return contract — errors are
+        returned in the tuple, not raised as FormattingIntegrityError.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("other = value")
 
         _, errors = bundle.format_pattern(msg_id)
@@ -186,8 +206,12 @@ class TestDiagnosticIntegration:
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
     @settings(max_examples=100, deadline=None)
     def test_missing_variable_diagnostic(self, var_name: str) -> None:
-        """Property: Missing variables produce diagnostics."""
-        bundle = FluentBundle("en-US")
+        """Property: Missing variables produce diagnostics.
+
+        strict=False: tests the soft-error return contract — missing variable
+        errors are returned in the tuple, not raised as FormattingIntegrityError.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(f"msg = Hello {{ ${var_name} }}")
 
         result, errors = bundle.format_pattern("msg", {})
@@ -201,8 +225,12 @@ class TestDiagnosticIntegration:
             event("outcome=missing_var_no_diagnostic")
 
     def test_syntax_error_diagnostic(self) -> None:
-        """Syntax errors in resource produce diagnostics."""
-        bundle = FluentBundle("en-US")
+        """Syntax errors in resource produce diagnostics.
+
+        strict=False: add_resource with syntax errors returns junk silently;
+        strict=True raises SyntaxIntegrityError, testing a different contract.
+        """
+        bundle = FluentBundle("en-US", strict=False)
 
         # This should produce parse errors (junk)
         bundle.add_resource("!invalid = syntax here")
@@ -214,8 +242,11 @@ class TestDiagnosticIntegration:
         assert result == "This works"
 
     def test_cycle_error_diagnostic(self) -> None:
-        """Cyclic references produce diagnostics."""
-        bundle = FluentBundle("en-US")
+        """Cyclic references produce diagnostics.
+
+        strict=False: cycle errors are returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 a = { b }
@@ -280,8 +311,11 @@ class TestDiagnosticEdgeCases:
     """Tests for diagnostic edge cases."""
 
     def test_empty_message_id(self) -> None:
-        """Empty message ID handling."""
-        bundle = FluentBundle("en-US")
+        """Empty message ID handling.
+
+        strict=False: invalid-ID errors are returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("msg = value")
 
         # Empty string as message ID
@@ -291,8 +325,11 @@ class TestDiagnosticEdgeCases:
         assert len(errors) > 0
 
     def test_unicode_in_error_message(self) -> None:
-        """Unicode characters in error context."""
-        bundle = FluentBundle("en-US")
+        """Unicode characters in error context.
+
+        strict=False: missing-message error returned in tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("msg = value")
 
         # Unicode message ID
@@ -317,3 +354,90 @@ class TestDiagnosticEdgeCases:
             error = FrozenFluentError(f"test{char}id", ErrorCategory.REFERENCE)
             error_str = str(error)
             assert isinstance(error_str, str)
+
+
+# -----------------------------------------------------------------------------
+# Strategy-Driven Property Tests (for HypoFuzz event coverage)
+# -----------------------------------------------------------------------------
+
+
+class TestDiagnosticStrategyProperties:
+    """Property tests using diagnostics strategies for HypoFuzz coverage.
+
+    Each test exercises one strategy function to ensure its events fire
+    during --deep --metrics runs: diag_span_size, diag_ctx_fields,
+    diag_severity, diag_has_span, diag_verr_location, diag_vwarn_severity,
+    diag_vresult_valid, diag_frozen_error_variant, diag_error_cat.
+    """
+
+    @given(span=source_spans())
+    @settings(max_examples=200, deadline=None)
+    def test_source_span_invariants(self, span: SourceSpan) -> None:
+        """Property: source_spans() produces structurally valid SourceSpan."""
+        event(f"outcome=span_range={span.end - span.start}")
+        assert span.start >= 0
+        assert span.end >= span.start
+        assert span.line >= 1
+        assert span.column >= 1
+
+    @given(ctx=frozen_error_contexts())
+    @settings(max_examples=200, deadline=None)
+    def test_frozen_error_context_invariants(
+        self, ctx: FrozenErrorContext
+    ) -> None:
+        """Property: frozen_error_contexts() produces valid FrozenErrorContext."""
+        event(f"outcome=has_locale={bool(ctx.locale_code)}")
+        assert isinstance(ctx.input_value, str)
+        assert isinstance(ctx.locale_code, str)
+        assert isinstance(ctx.fallback_value, str)
+
+    @given(diag=gen_diagnostics())
+    @settings(max_examples=200, deadline=None)
+    def test_diagnostic_invariants(self, diag: Diagnostic) -> None:
+        """Property: diagnostics() produces valid Diagnostic objects."""
+        event(f"outcome=has_span={diag.span is not None}")
+        assert isinstance(diag.message, str)
+        assert diag.severity in ("error", "warning")
+        assert isinstance(diag.code, DiagnosticCode)
+
+    @given(verr=validation_errors())
+    @settings(max_examples=200, deadline=None)
+    def test_validation_error_invariants(self, verr: ValidationError) -> None:
+        """Property: validation_errors() produces valid ValidationError objects."""
+        has_loc = verr.line is not None
+        event(f"outcome=has_location={has_loc}")
+        assert isinstance(verr.message, str)
+        assert isinstance(verr.code, DiagnosticCode)
+
+    @given(vwarn=validation_warnings())
+    @settings(max_examples=200, deadline=None)
+    def test_validation_warning_invariants(
+        self, vwarn: ValidationWarning
+    ) -> None:
+        """Property: validation_warnings() produces valid ValidationWarning objects."""
+        event(f"outcome=severity={vwarn.severity.value}")
+        assert isinstance(vwarn.message, str)
+        assert isinstance(vwarn.code, DiagnosticCode)
+
+    @given(vresult=validation_results())
+    @settings(max_examples=200, deadline=None)
+    def test_validation_result_invariants(
+        self, vresult: ValidationResult
+    ) -> None:
+        """Property: validation_results() produces valid ValidationResult objects."""
+        event(f"outcome=is_valid={vresult.is_valid}")
+        assert isinstance(vresult.errors, tuple)
+        assert isinstance(vresult.warnings, tuple)
+        if vresult.is_valid:
+            assert len(vresult.errors) == 0
+
+    @given(err=frozen_fluent_errors())
+    @settings(max_examples=200, deadline=None)
+    def test_frozen_fluent_error_invariants(
+        self, err: FrozenFluentError
+    ) -> None:
+        """Property: frozen_fluent_errors() produces valid FrozenFluentError."""
+        event(f"outcome=has_diagnostic={err.diagnostic is not None}")
+        assert isinstance(str(err), str)
+        assert len(str(err)) > 0
+        assert isinstance(err.category, ErrorCategory)

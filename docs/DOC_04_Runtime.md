@@ -75,8 +75,9 @@ def number_format(
 - State: None.
 - Thread: Safe.
 - Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
-- Bounds: Fraction digit parameters clamped to `MAX_FORMAT_DIGITS` (100). Values exceeding the limit are silently clamped.
-- Rounding: Uses CLDR half-up rounding (2.5->3, 3.5->4). Matches Intl.NumberFormat behavior.
+- Bounds: Fraction digit parameters clamped to `MAX_FORMAT_DIGITS` (100). Values exceeding the limit are rejected with `ValueError`.
+- Clamp: When `minimum_fraction_digits > maximum_fraction_digits`, `maximum` is silently raised to `minimum`. Matches JavaScript `Intl.NumberFormat` semantics: `NUMBER($n, minimumFractionDigits: 4)` yields 4 decimal places, not an error.
+- Rounding: Pre-quantizes with `ROUND_HALF_UP` to exact display precision before passing to Babel. Babel's default `ROUND_HALF_EVEN` (banker's rounding) is bypassed entirely. Midpoint values round away from zero: `Decimal("1.225")` → `"1.23"`. Non-finite `Decimal` values (`Infinity`, `NaN`) bypass quantization.
 
 ---
 
@@ -139,6 +140,7 @@ def currency_format(
 - Raises: Never. Invalid locales fall back to en_US with a logged warning.
 - State: None.
 - Thread: Safe.
+- Rounding: Pre-quantizes with `ROUND_HALF_UP` to exact display precision before passing to Babel. For standard format: uses `get_currency_precision(currency)` (CLDR digit count, e.g., 0 for JPY, 3 for BHD, 2 for USD). For custom `pattern`: extracts max fraction digits from the pattern via `parse_pattern`. Babel's default `ROUND_HALF_EVEN` is bypassed. Midpoint values round away from zero: `Decimal("123.445")` in USD → `"$123.45"`. Non-finite `Decimal` values bypass quantization.
 
 ---
 

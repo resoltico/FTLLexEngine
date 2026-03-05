@@ -541,11 +541,30 @@ def build_base_stats_dict(
     for pattern, count in sorted(state.pattern_coverage.items()):
         stats[f"{coverage_prefix}{pattern}"] = count
 
-    # Error distribution
+    # Error distribution.
+    # When few unique errors: emit each entry individually (diagnostic detail).
+    # When many unique errors (e.g., fuzz-generated locale strings produce
+    # thousands of distinct UnknownLocaleError messages): aggregate by exception
+    # class name to keep the JSON output bounded and readable.
+    # Key format written by fuzzers: "{ClassName}_{message_fragment}".
+    # Exception class names use PascalCase (no underscores), so split("_")[0]
+    # reliably extracts the class name.
+    max_inline_errors = 30
     stats["error_types"] = len(state.error_counts)
-    for error_type, count in sorted(state.error_counts.items()):
-        clean_key = error_type[:50].replace("<", "").replace(">", "")
-        stats[f"error_{clean_key}"] = count
+    if len(state.error_counts) <= max_inline_errors:
+        for error_type, count in sorted(state.error_counts.items()):
+            clean_key = error_type[:50].replace("<", "").replace(">", "")
+            stats[f"error_{clean_key}"] = count
+    else:
+        type_totals: dict[str, int] = {}
+        type_unique: dict[str, int] = {}
+        for error_type, count in state.error_counts.items():
+            class_name = error_type.split("_")[0]
+            type_totals[class_name] = type_totals.get(class_name, 0) + count
+            type_unique[class_name] = type_unique.get(class_name, 0) + 1
+        for class_name in sorted(type_totals):
+            stats[f"error_{class_name}"] = type_totals[class_name]
+            stats[f"error_{class_name}_unique"] = type_unique[class_name]
 
     # Corpus stats with retention metrics
     corpus_total = sum(len(b) for b in state.corpus_pattern_buckets.values())

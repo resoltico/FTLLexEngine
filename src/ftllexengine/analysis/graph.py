@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Final
 
+from ftllexengine.constants import MAX_DETECTED_CYCLES, MAX_GRAPH_DFS_STACK
+
 __all__ = [
     "detect_cycles",
     "entry_dependency_set",
@@ -87,27 +89,30 @@ def make_cycle_key(cycle: Sequence[str]) -> str:
 
 
 def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
-    """Detect all cycles in a dependency graph using iterative DFS.
+    """Detect cycles in a dependency graph using bounded iterative DFS.
 
     Implements iterative DFS with explicit stack to avoid RecursionError
-    on deep graphs (>1000 nodes in linear chain).
+    on deep graphs (>1000 nodes in linear chain). Returns up to
+    ``MAX_DETECTED_CYCLES`` unique cycles; exits early once that limit is
+    reached, as FTL validation requires actionable diagnostics rather than
+    exhaustive cycle enumeration.
 
     Args:
         dependencies: Mapping from node ID to set of referenced node IDs.
                      Example: ``{"a": {"b", "c"}, "b": {"c"}, "c": {"a"}}``
 
     Returns:
-        List of cycles, where each cycle is a list of node IDs forming
-        the cycle path (closed: last element repeats first). Empty list
-        if no cycles detected. Cycles are deduplicated via canonical
-        tuple form.
+        List of up to ``MAX_DETECTED_CYCLES`` cycles, where each cycle is
+        a list of node IDs forming the cycle path (closed: last element
+        repeats first). Empty list if no cycles detected. Cycles are
+        deduplicated via canonical tuple form.
 
     Complexity:
-        Time: O(V * E) in the worst case (sparse graphs common in FTL
-        resources are well within practical bounds). Each node may be
-        explored once per distinct incoming path; cycles deduplicated via
-        canonical tuple.
-        Space: O(V) for path and recursion tracking.
+        Time: O(V * E) for typical sparse FTL graphs. In adversarial dense
+        graphs (complete K_n), exploration is bounded by ``MAX_GRAPH_DFS_STACK``
+        work-queue entries and ``MAX_DETECTED_CYCLES`` cycle collection.
+        Space: O(MAX_GRAPH_DFS_STACK) worst case for the DFS work queue;
+        O(V) for path and rec_stack tracking.
 
     Correctness:
         The ``visited`` guard used in a simple DFS causes false negatives
@@ -121,10 +126,15 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
         - ``globally_visited`` tracks only start nodes whose reachable
           subgraphs have been fully explored, safely pruning the outer
           for-loop without suppressing intra-DFS re-exploration.
+        - ``MAX_GRAPH_DFS_STACK`` prevents the O(n!) work-queue growth that
+          occurs in dense graphs where every node is reachable via
+          exponentially many distinct paths.
 
     Security:
         Uses iterative DFS to prevent stack overflow attacks via
         deeply nested dependency chains in untrusted FTL resources.
+        ``MAX_DETECTED_CYCLES`` and ``MAX_GRAPH_DFS_STACK`` prevent memory
+        exhaustion from adversarial complete or near-complete graphs.
     """
     globally_visited: set[str] = set()
     cycles: list[list[str]] = []
@@ -133,6 +143,8 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
     for start_node in dependencies:
         if start_node in globally_visited:
             continue
+        if len(cycles) >= MAX_DETECTED_CYCLES:
+            break
 
         path: list[str] = []
         rec_stack: set[str] = set()
@@ -141,7 +153,7 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
             (start_node, _ENTERING, list(dependencies.get(start_node, set())))
         ]
 
-        while stack:
+        while stack and len(cycles) < MAX_DETECTED_CYCLES:
             node, entering, neighbors = stack.pop()
 
             if entering:
@@ -161,25 +173,31 @@ def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
                 stack.append((node, _EXITING, []))
 
                 for neighbor in neighbors:
-                    if neighbor in rec_stack:
-                        # Back edge: neighbor is an ancestor in the current path.
-                        cycle_start = path.index(neighbor)
-                        cycle = [*path[cycle_start:], neighbor]
-                        canonical = _canonicalize_cycle(cycle)
-                        if canonical not in seen_canonical:
-                            seen_canonical.add(canonical)
-                            cycles.append(cycle)
-                    else:
-                        # Push neighbor for exploration.
+                    if neighbor not in rec_stack:
+                        # Forward/cross edge: push for exploration if budget allows.
                         # No globally_visited guard here: nodes reachable from
                         # multiple branches of the current path must be explored
                         # via each branch independently to find all cycles
                         # (e.g., A→B→D→A and A→C→D→A both require exploring D).
-                        stack.append((
-                            neighbor,
-                            _ENTERING,
-                            list(dependencies.get(neighbor, set())),
-                        ))
+                        # MAX_GRAPH_DFS_STACK caps the work queue: without it,
+                        # dense graphs cause O(n!) queue growth as every node
+                        # is re-pushed for each distinct incoming path.
+                        if len(stack) < MAX_GRAPH_DFS_STACK:
+                            stack.append((
+                                neighbor,
+                                _ENTERING,
+                                list(dependencies.get(neighbor, set())),
+                            ))
+                        continue
+                    # Back edge: neighbor is an ancestor in the current path.
+                    cycle_start = path.index(neighbor)
+                    cycle = [*path[cycle_start:], neighbor]
+                    canonical = _canonicalize_cycle(cycle)
+                    if canonical not in seen_canonical:
+                        seen_canonical.add(canonical)
+                        cycles.append(cycle)
+                        if len(cycles) >= MAX_DETECTED_CYCLES:
+                            break
 
             else:
                 path.pop()

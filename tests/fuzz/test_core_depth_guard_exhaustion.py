@@ -229,7 +229,9 @@ class TestResolverDepthExhaustion:
 
         source = "\n".join(lines)
 
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; depth-exceeded
+        # errors must be returned in the tuple, not raised as exceptions.
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(source)
 
         try:
@@ -253,7 +255,9 @@ msg-a = { msg-b }
 msg-b = { msg-c }
 msg-c = { msg-a }
 """
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return; cycle errors must be
+        # returned in the tuple, not raised as FormattingIntegrityError.
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(source)
 
         # Should not crash or infinite loop
@@ -271,7 +275,9 @@ msg-c = { msg-a }
         """Resolver detects self-referencing messages."""
         source = "msg = Value { msg }"
 
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return; self-reference errors must
+        # be returned in the tuple, not raised as FormattingIntegrityError.
+        bundle = FluentBundle("en_US", strict=False)
         bundle.add_resource(source)
 
         result, errors = bundle.format_pattern("msg", {})

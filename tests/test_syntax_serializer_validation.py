@@ -778,3 +778,82 @@ class TestCallArgumentsValidation:
 
         # Should catch the first duplicate
         assert "Duplicate named argument 'x'" in str(exc_info.value)
+
+
+# ============================================================================
+# SERIALIZER DEFENSE-IN-DEPTH: BYPASS __post_init__ INVARIANTS
+# ============================================================================
+
+
+class TestSelectExpressionSerializerGuard:
+    """Serializer defense-in-depth against SelectExpression with invalid variant counts.
+
+    SelectExpression enforces invariants in __post_init__, but external tooling
+    or direct object construction can bypass it via object.__setattr__. The
+    serializer re-validates in _validate_expression (serializer.py:222-233)
+    before emitting FTL to prevent corrupt output.
+    """
+
+    @staticmethod
+    def _build_select_with_variants(variants: tuple[Variant, ...]) -> Resource:
+        """Build a Resource containing a SelectExpression with the given variants.
+
+        Uses a valid 1-default SelectExpression initially, then replaces variants
+        via object.__setattr__ to bypass __post_init__ validation.
+        """
+        placeholder_variant = Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="other"),)),
+            default=True,
+        )
+        select = SelectExpression(
+            selector=VariableReference(id=Identifier(name="count")),
+            variants=(placeholder_variant,),
+        )
+        # Bypass __post_init__ to inject invalid variant set
+        object.__setattr__(select, "variants", variants)
+        message = Message(
+            id=Identifier(name="msg"),
+            value=Pattern(elements=(Placeable(expression=select),)),
+            attributes=(),
+        )
+        return Resource(entries=(message,))
+
+    def test_zero_default_variants_raises_serialization_error(self) -> None:
+        """Serializer raises SerializationValidationError when no variant is marked default.
+
+        Covers serializer.py:222-227 (n_defaults == 0 guard).
+        """
+        no_default_variant = Variant(
+            key=Identifier(name="one"),
+            value=Pattern(elements=(TextElement(value="One"),)),
+            default=False,
+        )
+        resource = self._build_select_with_variants((no_default_variant,))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        assert "no default variant" in str(exc_info.value).lower()
+
+    def test_multiple_default_variants_raises_serialization_error(self) -> None:
+        """Serializer raises SerializationValidationError when two variants are marked default.
+
+        Covers serializer.py:228-233 (n_defaults > 1 guard).
+        """
+        default_one = Variant(
+            key=Identifier(name="one"),
+            value=Pattern(elements=(TextElement(value="One"),)),
+            default=True,
+        )
+        default_two = Variant(
+            key=Identifier(name="other"),
+            value=Pattern(elements=(TextElement(value="Other"),)),
+            default=True,
+        )
+        resource = self._build_select_with_variants((default_one, default_two))
+
+        with pytest.raises(SerializationValidationError) as exc_info:
+            serialize(resource, validate=True)
+
+        assert "2 default variants" in str(exc_info.value)

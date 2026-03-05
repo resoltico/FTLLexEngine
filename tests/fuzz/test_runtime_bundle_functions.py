@@ -206,8 +206,12 @@ class TestFunctionErrorHandlingProperties:
     @given(st.text(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=None)
     def test_throwing_function_caught(self, value: str) -> None:
-        """Property: Exceptions in functions are caught, not propagated."""
-        bundle = FluentBundle("en-US")
+        """Property: Exceptions in functions are caught, not propagated.
+
+        strict=False: testing soft-error return semantics; function errors must
+        be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_function("THROW", throwing_function)
         bundle.add_resource("msg = { THROW($val) }")
 
@@ -234,8 +238,12 @@ class TestFunctionErrorHandlingProperties:
         event("outcome=none_return_handled")
 
     def test_missing_function_error(self) -> None:
-        """Missing function produces error, not crash."""
-        bundle = FluentBundle("en-US")
+        """Missing function produces error, not crash.
+
+        strict=False: testing soft-error return semantics; missing function
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("msg = { UNDEFINED($val) }")
 
         result, errors = bundle.format_pattern("msg", {"val": "test"})
@@ -302,8 +310,12 @@ class TestBuiltinFunctionProperties:
     @given(st.text(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=None)
     def test_number_function_invalid_input(self, s: str) -> None:
-        """Property: NUMBER function handles non-numeric input gracefully."""
-        bundle = FluentBundle("en-US")
+        """Property: NUMBER function handles non-numeric input gracefully.
+
+        strict=False: testing soft-error return semantics; invalid-input errors
+        must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("num = { NUMBER($n) }")
 
         result, _ = bundle.format_pattern("num", {"n": s})
@@ -328,8 +340,12 @@ class TestFunctionArgumentVariations:
         assert "42" in result
 
     def test_function_missing_required_arg(self) -> None:
-        """Function with missing required argument."""
-        bundle = FluentBundle("en-US")
+        """Function with missing required argument.
+
+        strict=False: testing soft-error return semantics; missing variable
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("num = { NUMBER($n) }")
 
         result, _ = bundle.format_pattern("num", {})  # Missing $n

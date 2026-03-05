@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.145.0"
 domain: fuzzing
-updated: "2026-02-28"
+updated: "2026-03-04"
 route:
   keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus, workers, metrics]
   questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?", "how do atheris workers work?", "why are metrics wrong with multiple workers?"]
@@ -77,6 +77,8 @@ Should list all available fuzzing targets.
 | `./scripts/fuzz_atheris.sh perf` | Performance/ReDoS fuzzing |
 | `./scripts/fuzz_atheris.sh iso` | ISO introspection fuzzing |
 | `./scripts/fuzz_atheris.sh fiscal` | Fiscal calendar fuzzing |
+| `./scripts/fuzz_atheris.sh graph` | Dependency graph algorithm fuzzing |
+| `./scripts/fuzz_atheris.sh builtins` | Built-in function rounding oracle fuzzing |
 | `./scripts/fuzz_atheris.sh --list` | List crashes and findings |
 | `./scripts/fuzz_atheris.sh --corpus` | Check seed corpus health |
 | `./scripts/fuzz_atheris.sh --replay TARGET` | Replay findings without Atheris |
@@ -102,6 +104,8 @@ Targets are dynamically discovered from `fuzz_atheris/fuzz_*.py` files:
 | `lock` | Concurrency | RWLock timeout and contention paths |
 | `roundtrip` | Convergence | Parser-serializer round-trip consistency |
 | `serializer` | AST-construction | Serializer idempotence via programmatic AST |
+| `graph` | Algorithms | Dependency graph cycle detection, adversarial topologies |
+| `builtins` | Functions | NUMBER/CURRENCY/DATETIME rounding oracles, locale coverage |
 
 ---
 

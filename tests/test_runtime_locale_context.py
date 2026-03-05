@@ -1598,3 +1598,137 @@ class TestLocaleContextCurrencyCodeFallback:
             assert isinstance(result, str)
         finally:
             object.__setattr__(ctx, "_babel_locale", original_babel_locale)
+
+
+class TestLocaleContextParsePatternFailure:
+    """Cover parse_pattern exception handlers in format_number and format_currency.
+
+    locale_context.py:449-450 — format_number custom pattern: parse_pattern raises,
+    warning is logged, pre-quantization is skipped, Babel's ROUND_HALF_EVEN is used.
+
+    locale_context.py:776-777 — format_currency custom pattern: same handler.
+
+    locale_context.py:783->797 — False branch of ``if max_frac_c is not None:``:
+    parse_pattern failed (max_frac_c=None), skip quantization, but still call
+    format_currency with the pattern at line 797.
+    """
+
+    def test_format_number_parse_pattern_raises_falls_through(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """format_number logs warning and falls through when parse_pattern raises ValueError.
+
+        The mock raises only on call 1 (pre-quantization in locale_context) and
+        passes through to the real parse_pattern on subsequent calls (Babel's internal
+        format_decimal call and the CLDR precision extraction call).
+        """
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_parse = babel_numbers.parse_pattern
+        call_count = [0]
+
+        def _raise_first_call_only(pat: str) -> object:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                msg = "synthetic failure"
+                raise ValueError(msg)
+            return original_parse(pat)
+
+        monkeypatch.setattr(babel_numbers, "parse_pattern", _raise_first_call_only)
+
+        with caplog.at_level(logging.WARNING):
+            result = ctx.format_number(Decimal("1.225"), pattern="#,##0.00")
+
+        assert isinstance(result, str)
+        assert "parse_pattern failed" in caplog.text
+        assert call_count[0] >= 1
+
+    def test_format_number_parse_pattern_attribute_error_falls_through(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """format_number logs warning and falls through when parse_pattern raises AttributeError.
+
+        The mock raises only on call 1 (pre-quantization in locale_context) and
+        passes through to the real parse_pattern on subsequent calls.
+        """
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_parse = babel_numbers.parse_pattern
+        call_count = [0]
+
+        def _raise_first_call_only(pat: str) -> object:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                msg = "synthetic failure"
+                raise AttributeError(msg)
+            return original_parse(pat)
+
+        monkeypatch.setattr(babel_numbers, "parse_pattern", _raise_first_call_only)
+
+        with caplog.at_level(logging.WARNING):
+            result = ctx.format_number(Decimal("1.5"), pattern="#,##0.00")
+
+        assert isinstance(result, str)
+        assert "parse_pattern failed" in caplog.text
+
+    def test_format_currency_parse_pattern_raises_falls_through(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """format_currency logs warning and still formats when parse_pattern raises ValueError.
+
+        Covers locale_context.py:776-777 (exception handler) and locale_context.py:783->797
+        (False branch of ``if max_frac_c is not None:`` — skips quantization, formats anyway).
+
+        The mock raises only on call 1 (pre-quantization in locale_context) and
+        passes through to the real parse_pattern on subsequent calls.
+        """
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_parse = babel_numbers.parse_pattern
+        call_count = [0]
+
+        def _raise_first_call_only(pat: str) -> object:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                msg = "synthetic failure"
+                raise ValueError(msg)
+            return original_parse(pat)
+
+        monkeypatch.setattr(babel_numbers, "parse_pattern", _raise_first_call_only)
+
+        with caplog.at_level(logging.WARNING):
+            result = ctx.format_currency(
+                Decimal("1.225"), currency="USD", pattern="#,##0.00 ¤"
+            )
+
+        assert isinstance(result, str)
+        assert "parse_pattern failed" in caplog.text
+
+    def test_format_currency_parse_pattern_attribute_error_falls_through(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """format_currency logs warning and still formats when parse_pattern raises AttributeError.
+
+        Covers locale_context.py:776-777 (exception handler) and locale_context.py:783->797
+        (False branch of ``if max_frac_c is not None:`` — skips quantization, formats anyway).
+
+        The mock raises only on call 1 (pre-quantization in locale_context) and
+        passes through to the real parse_pattern on subsequent calls.
+        """
+        ctx = LocaleContext.create_or_raise("en_US")
+        original_parse = babel_numbers.parse_pattern
+        call_count = [0]
+
+        def _raise_first_call_only(pat: str) -> object:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                msg = "synthetic failure"
+                raise AttributeError(msg)
+            return original_parse(pat)
+
+        monkeypatch.setattr(babel_numbers, "parse_pattern", _raise_first_call_only)
+
+        with caplog.at_level(logging.WARNING):
+            result = ctx.format_currency(
+                Decimal("2.5"), currency="USD", pattern="#,##0.00 ¤"
+            )
+
+        assert isinstance(result, str)
+        assert "parse_pattern failed" in caplog.text

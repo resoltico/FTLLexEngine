@@ -32,8 +32,9 @@ class CacheConfig:
         integrity_strict: If True, raise CacheCorruptionError on checksum
             mismatch and WriteConflictError on write-once violations
             (default: True). If False, silently evict corrupted entries
-            and ignore write conflicts. Independent of FluentBundle's
-            ``strict`` parameter which controls formatting error behavior.
+            and ignore write conflicts. Acts as an upper bound: when
+            FluentBundle ``strict=False``, the cache is always lenient
+            regardless of this setting (AND-gate with bundle strict mode).
         enable_audit: Maintain audit log of all cache operations (default: False).
         max_audit_entries: Maximum audit log entries before oldest eviction
             (default: 10000). Only relevant when ``enable_audit=True``.

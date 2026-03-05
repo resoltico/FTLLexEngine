@@ -18,13 +18,17 @@ class TestCycleDetectionProperties:
     @given(st.integers(min_value=2, max_value=20))
     @settings(max_examples=50, deadline=None)
     def test_generated_cycle_detected(self, cycle_length: int) -> None:
-        """Property: Generated cycles of any length are detected."""
+        """Property: Generated cycles of any length are detected.
+
+        strict=False: testing soft-error return semantics; cycle errors must
+        be returned in the tuple, not raised.
+        """
         messages = []
         for i in range(cycle_length):
             next_idx = (i + 1) % cycle_length
             messages.append(f"msg{i} = {{ msg{next_idx} }}")
 
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("\n".join(messages))
 
         result, errors = bundle.format_pattern("msg0")
@@ -37,7 +41,11 @@ class TestCycleDetectionProperties:
     @given(st.integers(min_value=2, max_value=10), st.integers(min_value=0, max_value=5))
     @settings(max_examples=50, deadline=None)
     def test_partial_cycle_detected(self, chain_length: int, cycle_entry: int) -> None:
-        """Property: Cycles entered partway through resolution are detected."""
+        """Property: Cycles entered partway through resolution are detected.
+
+        strict=False: testing soft-error return semantics; cycle errors must
+        be returned in the tuple, not raised.
+        """
         cycle_entry = min(cycle_entry, chain_length - 1)
         messages = []
         for i in range(chain_length):
@@ -46,7 +54,7 @@ class TestCycleDetectionProperties:
             else:
                 messages.append(f"msg{i} = {{ msg{cycle_entry} }}")
 
-        bundle = FluentBundle("en-US")
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource("\n".join(messages))
 
         result, errors = bundle.format_pattern("msg0")
@@ -95,8 +103,12 @@ class TestComplexCyclePatterns:
     """Tests for complex cycle patterns."""
 
     def test_diamond_with_cycle(self) -> None:
-        """Diamond pattern where branches meet at cycle point."""
-        bundle = FluentBundle("en-US")
+        """Diamond pattern where branches meet at cycle point.
+
+        strict=False: testing soft-error return semantics; cycle errors must
+        be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 top = { left } and { right }
@@ -112,8 +124,12 @@ bottom = { top }
         assert len(errors) > 0
 
     def test_multiple_independent_cycles(self) -> None:
-        """Multiple independent cycles in same resource are each detected."""
-        bundle = FluentBundle("en-US")
+        """Multiple independent cycles in same resource are each detected.
+
+        strict=False: testing soft-error return semantics; cycle errors must
+        be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 cycle1-a = { cycle1-b }
@@ -137,8 +153,12 @@ safe = No cycle here
         assert result3 == "No cycle here"
 
     def test_cycle_in_select_branch(self) -> None:
-        """Cycle only triggered in specific select branch."""
-        bundle = FluentBundle("en-US")
+        """Cycle only triggered in specific select branch.
+
+        strict=False: testing soft-error return semantics; cycle errors must
+        be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 branched = { $type ->
@@ -157,8 +177,12 @@ cyclic = { branched }
         assert len(errors_cycle) > 0
 
     def test_cycle_in_attribute(self) -> None:
-        """Cycle through attribute reference is detected."""
-        bundle = FluentBundle("en-US")
+        """Cycle through attribute reference is detected.
+
+        strict=False: testing soft-error return semantics; missing message
+        errors must be returned in the tuple, not raised.
+        """
+        bundle = FluentBundle("en-US", strict=False)
         bundle.add_resource(
             """
 msg = Value

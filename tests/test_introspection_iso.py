@@ -174,6 +174,19 @@ class TestGetTerritory:
             assert result.alpha2 == code
             assert len(result.name) > 0
 
+    def test_casefold_expansion_returns_none(self) -> None:
+        """get_territory returns None for inputs that expand via str.upper().
+
+        'ß' (U+00DF, LATIN SMALL LETTER SHARP S) has len 1 but upper() returns
+        'SS' (len 2), which is the valid ISO 3166-1 code for South Sudan. The
+        raw input 'ß' is not a valid territory code and must return None.
+        Regression for FIX-ISO-CASEFOLD-001.
+        """
+        # 'ß'.upper() == 'SS' (South Sudan) — must not be returned
+        assert get_territory("ß") is None
+        # Confirm 'SS' itself IS valid (South Sudan exists in CLDR)
+        assert get_territory("SS") is not None
+
 
 class TestGetCurrency:
     """Tests for get_currency() function."""
@@ -263,6 +276,19 @@ class TestGetCurrency:
         assert clf.decimal_digits == 4
         assert uyw is not None
         assert uyw.decimal_digits == 4
+
+    def test_casefold_expansion_returns_none(self) -> None:
+        """get_currency returns None for inputs that expand via str.upper().
+
+        A 2-char input whose upper() produces a valid 3-char currency code
+        must return None — the raw input is not a valid currency code.
+        Regression for FIX-ISO-CASEFOLD-001.
+        """
+        # 'ßD' has len 2; 'ßD'.upper() == 'SSD' (not a valid code, but the
+        # pattern is guarded). Verify the length guard returns None for any
+        # wrong-length input regardless of what upper() produces.
+        assert get_currency("ß") is None    # len 1
+        assert get_currency("ßD") is None   # len 2, 'ßD'.upper() = 'SSD'
 
 
 class TestListTerritories:
@@ -392,6 +418,17 @@ class TestGetTerritoryCurrencies:
         # Verify it's immutable (tuple cannot be modified)
         # Callers can convert to list if mutation is needed: list(result)
 
+    def test_casefold_expansion_returns_empty(self) -> None:
+        """get_territory_currencies returns () for inputs that expand via str.upper().
+
+        'ß' (len 1) uppercases to 'SS' (South Sudan, valid), but the raw
+        input is not a valid territory code. Must return empty tuple.
+        Regression for FIX-ISO-CASEFOLD-001.
+        """
+        assert get_territory_currencies("ß") == ()
+        # Confirm 'SS' itself returns currencies (South Sudan uses USD)
+        assert get_territory_currencies("SS") != ()
+
 
 class TestTypeGuards:
     """Tests for type guard functions."""
@@ -445,6 +482,20 @@ class TestTypeGuards:
         """is_valid_currency_code is case insensitive."""
         assert is_valid_currency_code("usd") is True
         assert is_valid_currency_code("Usd") is True
+
+    def test_type_guard_lookup_consistency_casefold(self) -> None:
+        """Type guard and lookup agree for inputs that expand under str.upper().
+
+        If is_valid_territory_code(v) is False, get_territory(v) must be None.
+        'ß' (len 1, upper() = 'SS') violated this invariant before FIX-ISO-CASEFOLD-001.
+        """
+        assert is_valid_territory_code("ß") is False
+        assert get_territory("ß") is None
+
+        assert is_valid_currency_code("ß") is False
+        assert get_currency("ß") is None
+        assert is_valid_currency_code("ßD") is False
+        assert get_currency("ßD") is None
 
 
 class TestCaching:

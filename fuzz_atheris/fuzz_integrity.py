@@ -11,26 +11,30 @@ Targets:
 - ftllexengine.syntax.validator.SemanticValidator (Fluent spec E0001-E0013)
 - ftllexengine.integrity (DataIntegrityError hierarchy)
 - FluentBundle strict mode (SyntaxIntegrityError, FormattingIntegrityError)
+- ftllexengine.diagnostics.errors.FrozenFluentError (integrity, immutability, sealed type)
 
 Concern boundary: This fuzzer targets the validation gauntlet -- semantic integrity
 checks, cross-resource validation, chain depth limits, strict mode enforcement,
-and DataIntegrityError triggering. This is distinct from:
+DataIntegrityError triggering, and FrozenFluentError Error Layer properties. This
+is distinct from:
 - fuzz_roundtrip: Parser-serializer convergence (no validation checks)
 - fuzz_structured: Grammar coverage (no cross-resource, no strict mode)
 - fuzz_runtime: Resolver/cache stack (runtime, not validation)
 - fuzz_graph: Direct cycle detection API (algorithm, not integration)
 
-Pattern categories (25 patterns):
+Pattern categories (29 patterns):
 - VALIDATION (10): Standalone validate_resource() with various inputs
 - SEMANTIC (6): SemanticValidator (E0001-E0013) targeted violations
 - STRICT_MODE (5): DataIntegrityError triggering in strict FluentBundle
 - CROSS_RESOURCE (4): Multi-resource dependency and conflict scenarios
+- FROZEN_ERROR (4): FrozenFluentError integrity, immutability, sealed type, hash stability
 
 Metrics:
 - Validation code classification (VALIDATION_*, E0001-E0013)
 - Strict mode exception tracking (SyntaxIntegrityError, FormattingIntegrityError)
 - Cross-resource conflict detection
 - Chain depth violation detection
+- FrozenFluentError Error Layer verification (integrity, immutability, sealed, hash)
 - Real memory usage (RSS via psutil)
 - Performance profiling (min/mean/median/p95/p99/max)
 
@@ -93,10 +97,11 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.constants import MAX_DEPTH
-    from ftllexengine.diagnostics.errors import FrozenFluentError
+    from ftllexengine.diagnostics.errors import ErrorCategory, FrozenFluentError
     from ftllexengine.integrity import (
         DataIntegrityError,
         FormattingIntegrityError,
+        ImmutabilityViolationError,
         SyntaxIntegrityError,
     )
     from ftllexengine.runtime.bundle import FluentBundle
@@ -140,6 +145,12 @@ class IntegrityMetrics:
     strict_mode_tests: int = 0
     non_strict_tests: int = 0
 
+    # FrozenFluentError (Error Layer) coverage
+    frozen_error_integrity_checks: int = 0
+    frozen_error_mutation_blocks: int = 0
+    frozen_error_subclass_blocks: int = 0
+    frozen_error_hash_stable_checks: int = 0
+
 
 # --- Global State ---
 _state = BaseFuzzerState(
@@ -153,7 +164,7 @@ _parser = FluentParserV1(max_source_size=1024 * 1024, max_nesting_depth=100)
 
 
 # --- Pattern Weights ---
-# 25 patterns across 4 categories
+# 29 patterns across 5 categories
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     # VALIDATION (10 patterns) - Standalone validate_resource()
     ("valid_simple", 8),
@@ -184,6 +195,11 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("cross_cycle", 10),
     ("cross_undefined", 8),
     ("cross_chain_depth", 6),
+    # FROZEN_ERROR (4 patterns) - FrozenFluentError Error Layer coverage
+    ("frozen_error_integrity", 8),
+    ("frozen_error_immutability", 8),
+    ("frozen_error_sealed", 6),
+    ("frozen_error_hash_stability", 6),
 )
 
 _PATTERN_NAMES = tuple(name for name, _ in _PATTERN_WEIGHTS)
@@ -217,6 +233,10 @@ def _build_stats_dict() -> FuzzStats:
     stats["chain_depth_violations"] = _domain.chain_depth_violations
     stats["strict_mode_tests"] = _domain.strict_mode_tests
     stats["non_strict_tests"] = _domain.non_strict_tests
+    stats["frozen_error_integrity_checks"] = _domain.frozen_error_integrity_checks
+    stats["frozen_error_mutation_blocks"] = _domain.frozen_error_mutation_blocks
+    stats["frozen_error_subclass_blocks"] = _domain.frozen_error_subclass_blocks
+    stats["frozen_error_hash_stable_checks"] = _domain.frozen_error_hash_stable_checks
 
     # Top validation codes
     for code, count in sorted(
@@ -383,10 +403,12 @@ def _pattern_chain_depth_limit(fdp: atheris.FuzzedDataProvider) -> None:
     ftl = "\n".join(lines) + "\n"
     result = validate_resource(ftl, parser=_parser)
     _track_validation_result(result)
-    # Check if chain depth warning was emitted
+    # Check if chain depth warning was emitted.
+    # DiagnosticCode is an integer Enum; str() produces "DiagnosticCode.NAME"
+    # which contains the symbolic name for string containment checks.
     if hasattr(result, "warnings"):
         for w in result.warnings:
-            if "CHAIN_DEPTH" in getattr(w, "code", ""):
+            if "CHAIN_DEPTH" in str(getattr(w, "code", "")):
                 _domain.chain_depth_violations += 1
 
 
@@ -499,8 +521,9 @@ def _pattern_strict_format_cycle(fdp: atheris.FuzzedDataProvider) -> None:
     _domain.strict_mode_tests += 1
     locale = _generate_locale(fdp)
     try:
-        # Non-strict add to get cyclic messages in
+        # Non-strict bundle: load cyclic messages that strict mode would reject
         bundle_nonstrict = FluentBundle(locale, strict=False)
+        _domain.non_strict_tests += 1
         bundle_nonstrict.add_resource("a = { b }\nb = { a }\n")
         # Try to format (would trigger cycle detection)
         bundle_nonstrict.format_pattern("a", {})
@@ -559,10 +582,11 @@ def _pattern_cross_shadow(fdp: atheris.FuzzedDataProvider) -> None:
         known_messages=frozenset([f"msg_{idx}"]),
     )
     _track_validation_result(result)
-    # Check for shadow warning
+    # Check for shadow warning.
+    # DiagnosticCode is an integer Enum; str() produces "DiagnosticCode.NAME".
     if hasattr(result, "warnings"):
         for w in result.warnings:
-            if "SHADOW" in getattr(w, "code", ""):
+            if "SHADOW" in str(getattr(w, "code", "")):
                 _domain.cross_resource_conflicts += 1
 
 
@@ -582,10 +606,11 @@ def _pattern_cross_cycle(fdp: atheris.FuzzedDataProvider) -> None:
         known_msg_deps={f"msg_{idx}_a": frozenset({f"msg:msg_{idx}_b"})},
     )
     _track_validation_result(result)
-    # Check for circular reference
+    # Check for circular reference.
+    # DiagnosticCode is an integer Enum; str() produces "DiagnosticCode.NAME".
     if hasattr(result, "warnings"):
         for w in result.warnings:
-            if "CIRCULAR" in getattr(w, "code", ""):
+            if "CIRCULAR" in str(getattr(w, "code", "")):
                 _domain.cross_resource_conflicts += 1
 
 
@@ -634,6 +659,91 @@ def _pattern_cross_chain_depth(fdp: atheris.FuzzedDataProvider) -> None:
     _track_validation_result(result)
 
 
+# FROZEN_ERROR patterns (FrozenFluentError Error Layer coverage)
+
+# ErrorCategory variants for construction diversity
+_FROZEN_CATEGORIES: tuple[ErrorCategory, ...] = (
+    ErrorCategory.REFERENCE,
+    ErrorCategory.RESOLUTION,
+    ErrorCategory.CYCLIC,
+    ErrorCategory.PARSE,
+    ErrorCategory.FORMATTING,
+)
+
+
+def _pattern_frozen_error_integrity(fdp: atheris.FuzzedDataProvider) -> None:
+    """Error Layer: verify_integrity() always returns True for uncorrupted FrozenFluentError."""
+    category = fdp.PickValueInList(list(_FROZEN_CATEGORIES))
+    message = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 100))
+    error = FrozenFluentError(message, category)
+    result = error.verify_integrity()
+    if not result:
+        msg = f"verify_integrity() returned False for uncorrupted error: {error!r}"
+        raise RuntimeError(msg)
+    _domain.frozen_error_integrity_checks += 1
+
+
+def _pattern_frozen_error_immutability(fdp: atheris.FuzzedDataProvider) -> None:
+    """Error Layer: FrozenFluentError rejects setattr and delattr after construction."""
+    category = fdp.PickValueInList(list(_FROZEN_CATEGORIES))
+    error = FrozenFluentError("immutability-probe", category)
+
+    # Attempt setattr: must raise ImmutabilityViolationError
+    raised_set = False
+    try:
+        error._message = "modified"
+    except ImmutabilityViolationError:
+        raised_set = True
+    if not raised_set:
+        msg = "setattr on frozen FrozenFluentError did not raise ImmutabilityViolationError"
+        raise RuntimeError(msg)
+
+    # Attempt delattr: must also raise ImmutabilityViolationError
+    raised_del = False
+    try:
+        del error._message
+    except ImmutabilityViolationError:
+        raised_del = True
+    if not raised_del:
+        msg = "delattr on frozen FrozenFluentError did not raise ImmutabilityViolationError"
+        raise RuntimeError(msg)
+
+    _domain.frozen_error_mutation_blocks += 1
+
+
+def _pattern_frozen_error_sealed(fdp: atheris.FuzzedDataProvider) -> None:
+    """Error Layer: FrozenFluentError cannot be subclassed (TypeError at class creation)."""
+    # Fuzz the subclass name; TypeError must be raised regardless of name
+    name = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 20)) or "Sub"
+    raised = False
+    try:
+        type(name, (FrozenFluentError,), {})
+    except TypeError:
+        raised = True
+    if not raised:
+        msg = "Subclassing FrozenFluentError did not raise TypeError"
+        raise RuntimeError(msg)
+    _domain.frozen_error_subclass_blocks += 1
+
+
+def _pattern_frozen_error_hash_stability(fdp: atheris.FuzzedDataProvider) -> None:
+    """Error Layer: hash() and content_hash are stable across repeated calls."""
+    category = fdp.PickValueInList(list(_FROZEN_CATEGORIES))
+    message = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 50))
+    error = FrozenFluentError(message, category)
+    hash1 = hash(error)
+    hash2 = hash(error)
+    ch1 = error.content_hash
+    ch2 = error.content_hash
+    if hash1 != hash2:
+        msg = f"Hash instability: {hash1} != {hash2}"
+        raise RuntimeError(msg)
+    if ch1 != ch2:
+        msg = f"content_hash instability: {ch1!r} != {ch2!r}"
+        raise RuntimeError(msg)
+    _domain.frozen_error_hash_stable_checks += 1
+
+
 # --- Pattern Dispatch ---
 _PATTERN_DISPATCH: dict[str, Any] = {
     # VALIDATION
@@ -665,6 +775,11 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "cross_cycle": _pattern_cross_cycle,
     "cross_undefined": _pattern_cross_undefined,
     "cross_chain_depth": _pattern_cross_chain_depth,
+    # FROZEN_ERROR
+    "frozen_error_integrity": _pattern_frozen_error_integrity,
+    "frozen_error_immutability": _pattern_frozen_error_immutability,
+    "frozen_error_sealed": _pattern_frozen_error_sealed,
+    "frozen_error_hash_stability": _pattern_frozen_error_hash_stability,
 }
 
 
@@ -689,7 +804,8 @@ def test_one_input(data: bytes) -> None:
     - Memory: Tracks RSS via psutil (every 100 iterations)
     - Validation: Error/warning/annotation code tracking
     - DataIntegrity: Exception type counting
-    - Patterns: 25 integrity-focused pattern types
+    - FrozenFluentError: Error Layer integrity, immutability, sealed type, hash stability
+    - Patterns: 29 integrity-focused pattern types
     """
     if _state.iterations == 0:
         _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
@@ -722,7 +838,7 @@ def test_one_input(data: bytes) -> None:
 
     finally:
         is_interesting = (
-            pattern.startswith(("strict_", "cross_"))
+            pattern.startswith(("strict_", "cross_", "frozen_error_"))
             or "chain_depth" in pattern
             or (time.perf_counter() - start_time) * 1000 > 10.0
         )
@@ -766,8 +882,8 @@ def main() -> None:
     sys.argv = [sys.argv[0], *remaining]
 
     print_fuzzer_banner(
-        title="Semantic Validation Fuzzer (Atheris)",
-        target="validate_resource, SemanticValidator, DataIntegrityError",
+        title="Semantic Validation and Data Integrity Fuzzer (Atheris)",
+        target="validate_resource, SemanticValidator, DataIntegrityError, FrozenFluentError",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
     )

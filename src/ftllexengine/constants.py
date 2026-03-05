@@ -37,6 +37,9 @@ __all__ = [
     "MAX_FORMAT_DIGITS",
     # Resolution limits
     "DEFAULT_MAX_EXPANSION_SIZE",
+    # Analysis limits
+    "MAX_DETECTED_CYCLES",
+    "MAX_GRAPH_DFS_STACK",
     # Fallback strings
     "FALLBACK_INVALID",
     "FALLBACK_MISSING_MESSAGE",
@@ -201,7 +204,56 @@ MAX_FORMAT_DIGITS: int = 100
 # an expansion budget, 25 levels of binary fan-out produce 2^25 = 33M copies.
 # 1MB character budget is generous for legitimate use (typical messages <1KB)
 # while preventing resource exhaustion from adversarial input.
+#
+# CONSERVATIVE ACCOUNTING (safe upper bound):
+# Nested message references pass the same ResolutionContext to inner
+# resolve_message() calls, so the inner _resolve_pattern charges every
+# character it produces against the shared budget. The outer _resolve_pattern
+# then charges the final Placeable result (the same characters, already
+# counted) a second time. This deliberate double-count makes the budget a
+# safe upper bound rather than an exact character count: the resolver halts
+# before the true expansion reaches the limit. No remediation is needed —
+# the guarantee ("never exceed N total expanded chars") is monotone and
+# sound; changing to exact accounting would reduce the safety margin.
 DEFAULT_MAX_EXPANSION_SIZE: int = 1_000_000
+
+# ============================================================================
+# ANALYSIS LIMITS
+# ============================================================================
+#
+# Bounds for detect_cycles() in analysis/graph.py.
+#
+# WHY TWO LIMITS?
+#
+# detect_cycles() intentionally omits a globally-visited guard on neighbor
+# pushes to find all cycles through shared intermediate nodes (e.g., both
+# A→B→D→A and A→C→D→A require exploring D independently from B and C). In
+# adversarial dense graphs this causes O(n!) DFS stack growth: each node is
+# pushed once per distinct incoming path, making stack size superexponential.
+# A complete graph K_20 exhausts 4 GB before completing without bounds.
+#
+# MAX_DETECTED_CYCLES bounds cycle collection:
+#   - Once this many unique cycles are found, the DFS exits immediately.
+#   - FTL validation needs actionable diagnostics, not exhaustive enumeration.
+#   - 1000 unique cycles already signals an adversarially pathological resource.
+#   - All legitimate FTL resources (typically <200 messages) produce far fewer.
+#
+# MAX_GRAPH_DFS_STACK bounds work-queue memory:
+#   - Neighbors are not pushed when the DFS stack already holds this many
+#     entries; existing EXITING entries (stack cleanup) are always processed.
+#   - At ~200 bytes per entry, 100 000 entries ≈ 20 MB — safe upper bound.
+#   - Legitimate FTL graphs with N nodes and sparse edges never approach this:
+#     max stack size ≈ 2 x N (one ENTERING + one EXITING per node).
+#
+# ============================================================================
+
+# Maximum unique cycles collected before detect_cycles() returns early.
+# FTL resources with more than 1000 distinct dependency cycles are adversarial.
+MAX_DETECTED_CYCLES: int = 1_000
+
+# Maximum DFS work-stack entries in detect_cycles() before neighbor pushes stop.
+# Prevents memory exhaustion from O(n!) stack growth in dense/complete graphs.
+MAX_GRAPH_DFS_STACK: int = 100_000
 
 # ============================================================================
 # FALLBACK STRINGS

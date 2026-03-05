@@ -1,9 +1,10 @@
-"""Property-based and unit tests for ``ftllexengine.analysis.graph``.
+"""Unit and property-based tests for ``ftllexengine.analysis.graph``.
 
 Covers the public API surface:
 - ``entry_dependency_set``: Namespace-prefixed dependency construction
 - ``make_cycle_key``: Canonical cycle display key
-- ``detect_cycles``: Iterative DFS cycle detection
+- ``detect_cycles``: Iterative DFS cycle detection, including bounded
+  behaviour under adversarial dense inputs
 
 Python 3.13+.
 """
@@ -18,7 +19,9 @@ from ftllexengine.analysis.graph import (
     entry_dependency_set,
     make_cycle_key,
 )
+from ftllexengine.constants import MAX_DETECTED_CYCLES, MAX_GRAPH_DFS_STACK
 from tests.strategies.graph import (
+    complete_graphs,
     cycle_paths,
     dependency_graphs,
     namespace_ref_pairs,
@@ -422,3 +425,80 @@ class TestDetectCyclesProperties:
             deps[node] = {chain[i + 1]}
         deps[chain[-1]] = set()
         assert detect_cycles(deps) == []
+
+
+class TestDetectCyclesBounded:
+    """Tests verifying bounded behaviour under adversarial dense inputs.
+
+    detect_cycles() intentionally omits the globally-visited guard on
+    neighbor pushes (to find cycles through shared nodes). This causes
+    O(n!) DFS work-queue growth in complete graphs without the
+    MAX_GRAPH_DFS_STACK and MAX_DETECTED_CYCLES limits. These tests
+    verify that both limits hold under adversarial topologies.
+    """
+
+    def test_complete_graph_k4_terminates_bounded(self) -> None:
+        """Complete graph K4 terminates and respects cycle count limit."""
+        deps = {f"k{i}": {f"k{j}" for j in range(4) if j != i} for i in range(4)}
+        cycles = detect_cycles(deps)
+        assert len(cycles) >= 1
+        assert len(cycles) <= MAX_DETECTED_CYCLES
+
+    def test_complete_graph_k8_terminates_bounded(self) -> None:
+        """Complete graph K8 terminates without memory exhaustion."""
+        deps = {f"k{i}": {f"k{j}" for j in range(8) if j != i} for i in range(8)}
+        cycles = detect_cycles(deps)
+        assert len(cycles) >= 1
+        assert len(cycles) <= MAX_DETECTED_CYCLES
+
+    def test_complete_graph_k10_terminates_bounded(self) -> None:
+        """Complete graph K10 terminates — previously OOMed at K15+."""
+        deps = {f"k{i}": {f"k{j}" for j in range(10) if j != i} for i in range(10)}
+        cycles = detect_cycles(deps)
+        assert len(cycles) >= 1
+        assert len(cycles) <= MAX_DETECTED_CYCLES
+
+    def test_self_loop_star_terminates_bounded(self) -> None:
+        """Star graph with back-edge and many self-loops stays bounded."""
+        hub = "hub"
+        leaves = [f"leaf_{i}" for i in range(30)]
+        deps: dict[str, set[str]] = {hub: set(leaves)}
+        for leaf in leaves:
+            deps[leaf] = {hub, leaf}  # self-loop + back-edge to hub
+        cycles = detect_cycles(deps)
+        assert len(cycles) >= 1
+        assert len(cycles) <= MAX_DETECTED_CYCLES
+
+    def test_max_detected_cycles_constant_value(self) -> None:
+        """MAX_DETECTED_CYCLES is a positive integer."""
+        assert isinstance(MAX_DETECTED_CYCLES, int)
+        assert MAX_DETECTED_CYCLES > 0
+
+    def test_max_graph_dfs_stack_constant_value(self) -> None:
+        """MAX_GRAPH_DFS_STACK is a positive integer."""
+        assert isinstance(MAX_GRAPH_DFS_STACK, int)
+        assert MAX_GRAPH_DFS_STACK > 0
+
+    @given(graph=complete_graphs(max_nodes=10))
+    @settings(max_examples=100)
+    def test_property_complete_graph_cycle_count_bounded(
+        self, graph: dict[str, set[str]]
+    ) -> None:
+        """PROPERTY: Complete K_n graphs never exceed MAX_DETECTED_CYCLES."""
+        n = len(graph)
+        event(f"node_count={n}")
+        cycles = detect_cycles(graph)
+        event(f"cycle_count={len(cycles)}")
+        assert len(cycles) >= 1, f"K_{n} must have at least one cycle"
+        assert len(cycles) <= MAX_DETECTED_CYCLES
+
+    @given(graph=dependency_graphs())
+    @settings(max_examples=300)
+    def test_property_any_graph_cycle_count_bounded(
+        self, graph: dict[str, set[str]]
+    ) -> None:
+        """PROPERTY: Any generated graph never exceeds MAX_DETECTED_CYCLES."""
+        event(f"node_count={len(graph)}")
+        cycles = detect_cycles(graph)
+        event(f"cycle_count={len(cycles)}")
+        assert len(cycles) <= MAX_DETECTED_CYCLES

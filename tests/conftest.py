@@ -417,7 +417,13 @@ def _write_metrics_report() -> None:
     print(f"Categories:        {cats_obs} observed / {cats_exp} expected", file=sys.stderr)
     if report.weight_skew_detected:
         skew_count = len(report.skew_patterns)
-        print(f"[WARN] Skew:       {skew_count} patterns", file=sys.stderr)
+        print(f"[WARN] Skew:       {skew_count} pattern(s):", file=sys.stderr)
+        for _skew_pat in report.skew_patterns:
+            print(f"  - {_skew_pat}", file=sys.stderr)
+        print(
+            "  Full details: .hypothesis/strategy_metrics.json",
+            file=sys.stderr,
+        )
     if report.coverage_gaps:
         gap_count = len(report.coverage_gaps)
         gap_lines = [f"  - {g}" for g in report.coverage_gaps]

@@ -778,9 +778,12 @@ class TestCacheInvalidationProperties:
         num_resources=st.integers(min_value=1, max_value=10),
     )
     def test_invalidation_on_add_resource(self, num_resources: int) -> None:
-        """Cache is cleared every time add_resource is called.
+        """Cache entries are cleared every time add_resource is called.
 
-        Property: After add_resource(), cache size = 0 and stats reset.
+        Property: After add_resource(), cache size = 0 and cumulative
+        hits/misses are unchanged (add_resource itself does not format
+        anything).  Stats are cumulative by design — they are NOT reset on
+        clear so production observability is preserved across invalidations.
         """
         bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
         bundle.add_resource("msg = Hello")
@@ -797,9 +800,11 @@ class TestCacheInvalidationProperties:
 
             stats_after = bundle.get_cache_stats()
             assert stats_after is not None
-            assert stats_after["size"] == 0  # Cache cleared
-            assert stats_after["hits"] == 0  # Stats reset
-            assert stats_after["misses"] == 0
+            assert stats_after["size"] == 0  # Cache entries cleared
+            # Cumulative stats are preserved across clear (design intent: production
+            # observability must not be reset by routine cache invalidation).
+            assert stats_after["hits"] == stats_before["hits"]
+            assert stats_after["misses"] == stats_before["misses"]
         event(f"num_resources={num_resources}")
 
     @given(

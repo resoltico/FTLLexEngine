@@ -8,11 +8,14 @@ Consolidates:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
 from ftllexengine.diagnostics import ErrorCategory
+from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.resolution_context import ResolutionContext
 from ftllexengine.runtime.resolver import FluentResolver
@@ -446,3 +449,85 @@ def test_select_expression_no_match_no_default_uses_first() -> None:
     result, errors = resolver.resolve_message(message, args={"value": "no-match"})
     assert "first" in result
     assert len(errors) == 0
+
+
+# ============================================================================
+# FLOAT REJECTION IN _format_value (resolver.py:920-926)
+# ============================================================================
+
+
+class TestFloatRejectionInFormatValue:
+    """Cover the case float(): guard in _format_value.
+
+    Custom functions bypass mypy's FluentValue type constraint and can return
+    a raw float. The guard raises FrozenFluentError(RESOLUTION) to prevent
+    IEEE 754 noise in financial output (e.g., "3.1400000000000001").
+    """
+
+    def test_custom_function_returning_float_raises_resolution_error(self) -> None:
+        """Custom function returning float triggers FrozenFluentError(RESOLUTION)."""
+        # Returns float intentionally to trigger the case float(): guard.
+        # FluentValue excludes float; the Any annotation bypasses mypy at the
+        # call site so the runtime guard is what we're testing here.
+        def float_func(_val: object) -> Any:
+            return 3.14
+
+        bundle = FluentBundle("en-US", strict=False)
+        bundle.add_function("FLOATFUNC", float_func)
+        bundle.add_resource("msg = { FLOATFUNC($x) }")
+
+        _result, errors = bundle.format_pattern("msg", {"x": 1})
+        # Non-strict: FrozenFluentError is caught and converted to fallback + error entry
+        assert len(errors) >= 1
+        assert any(e.category == ErrorCategory.RESOLUTION for e in errors)
+
+    def test_custom_function_returning_float_strict_raises(self) -> None:
+        """Custom function returning float raises FormattingIntegrityError in strict mode."""
+        def float_func(_val: object) -> Any:
+            return 2.718
+
+        bundle = FluentBundle("en-US", strict=True)
+        bundle.add_function("FLOATFUNC", float_func)
+        bundle.add_resource("msg = { FLOATFUNC($x) }")
+
+        with pytest.raises(FormattingIntegrityError):
+            bundle.format_pattern("msg", {"x": 1})
+
+
+# ============================================================================
+# StringLiteral FALLBACK IN _get_fallback_for_placeable (resolver.py:989-991)
+# ============================================================================
+
+
+class TestStringLiteralFallbackDispatch:
+    """Cover case StringLiteral(): in _get_fallback_for_placeable.
+
+    StringLiteral is a valid Expression variant; _get_fallback_for_placeable
+    must return expr.value directly when the placeable contains a literal string.
+    Triggered when a StringLiteral is used as an expression inside a placeable
+    that fails during resolution and falls back to _get_fallback_for_placeable.
+    """
+
+    def test_string_literal_fallback_returns_value(self) -> None:
+        """_get_fallback_for_placeable returns StringLiteral.value directly."""
+        resolver = FluentResolver(
+            locale="en",
+            messages={},
+            terms={},
+            function_registry=FunctionRegistry(),
+        )
+        literal = StringLiteral(value="hello fallback")
+        result = resolver._get_fallback_for_placeable(literal)  # pylint: disable=protected-access
+        assert result == "hello fallback"
+
+    def test_string_literal_fallback_empty_string(self) -> None:
+        """_get_fallback_for_placeable handles empty StringLiteral correctly."""
+        resolver = FluentResolver(
+            locale="en",
+            messages={},
+            terms={},
+            function_registry=FunctionRegistry(),
+        )
+        literal = StringLiteral(value="")
+        result = resolver._get_fallback_for_placeable(literal)  # pylint: disable=protected-access
+        assert result == ""
