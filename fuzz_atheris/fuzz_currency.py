@@ -1,16 +1,41 @@
 #!/usr/bin/env python3
 # FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: currency - Currency symbol & numeric extraction
+# FUZZ_PLUGIN: currency - CURRENCY Function Runtime Formatting (Oracle)
 # Intentional: This header is intentionally placed for dynamic plugin discovery.
 # CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
 # FUZZ_PLUGIN_HEADER_END
-"""Currency Parsing Fuzzer (Atheris).
+"""CURRENCY Function Runtime Formatting Oracle Fuzzer (Atheris).
 
-Targets: ftllexengine.parsing.currency.parse_currency
-Tests tiered loading, ambiguous symbol resolution, and numeric extraction.
+Targets: ftllexengine.runtime.functions.currency_format
 
-Shared infrastructure from fuzz_common (BaseFuzzerState, round-robin scheduling,
-stratified corpus, metrics). Domain-specific metrics in CurrencyMetrics.
+Concern boundary: This fuzzer provides deep oracle-based testing of the CURRENCY
+function's runtime formatting path. It is complementary to fuzz_builtins (which
+covers the full Babel boundary including NUMBER and DATETIME) and
+fuzz_locale_context (which covers LocaleContext.format_currency direct API with
+ROUND_HALF_UP oracle). This fuzzer specializes on CURRENCY-specific coverage gaps:
+
+- Custom pattern= path oracle (highest priority): the v0.145.0 ROUND_HALF_EVEN bug
+  existed specifically on the format_currency(pattern=...) code path.
+  fuzz_locale_context case 7 tests pattern= but WITHOUT an oracle.
+  fuzz_builtins does not test currency pattern= at all.
+- 3-decimal currencies (BHD, KWD, OMR): rounding boundary at 3 decimal places
+  (x.xxx5) is distinct from the 2-decimal case and must be verified independently.
+- 0-decimal currencies (JPY, KRW): rounding at 0 decimal places (x.5) must use
+  ROUND_HALF_UP; ROUND_HALF_EVEN would round 2.5 -> 2 incorrectly.
+- Display mode value preservation: currency_format with display='code'/'name'
+  must produce the same FluentNumber.precision as with display='symbol'.
+- Negative amounts and large amounts (>1e6) for each oracle path.
+- Locale matrix: same currency must produce consistent precision across locales.
+
+Patterns (8):
+- currency_pattern_oracle: custom pattern= path with ROUND_HALF_UP oracle (weight 16)
+- currency_boundary_values: x.y5 boundary values per currency precision (weight 15)
+- currency_3decimal_oracle: BHD/KWD/OMR with 3-decimal oracle (weight 13)
+- currency_0decimal_oracle: JPY/KRW with 0-decimal oracle (weight 12)
+- currency_display_preservation: display mode precision consistency (weight 11)
+- currency_negative_oracle: negative amounts with ROUND_HALF_UP (weight 11)
+- currency_large_oracle: amounts > 1e6 with oracle (weight 11)
+- currency_locale_matrix: same value/currency across multiple locales (weight 11)
 
 Requires Python 3.13+ (uses PEP 695 type aliases).
 """
@@ -22,14 +47,15 @@ import atexit
 import gc
 import logging
 import pathlib
+import re
 import sys
 import time
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -48,6 +74,7 @@ except ImportError:
 from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
     GC_INTERVAL,
     BaseFuzzerState,
+    FuzzStats,
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
@@ -69,41 +96,43 @@ import atheris  # noqa: E402  # pylint: disable=C0412,C0413
 
 
 @dataclass
-class CurrencyMetrics:
-    """Domain-specific metrics for currency fuzzer."""
+class CurrencyFormatMetrics:
+    """Domain-specific metrics for currency_format oracle fuzzer."""
 
-    fast_tier_hits: int = 0
-    full_tier_hits: int = 0
-    ambiguous_resolutions: int = 0
-    locale_inferences: int = 0
+    currency_calls: int = 0
+    oracle_checks: int = 0
+    oracle_violations: int = 0
+    boundary_hits: int = 0
+    pattern_calls: int = 0
+    three_decimal_tests: int = 0
+    zero_decimal_tests: int = 0
+    display_preservation_checks: int = 0
+    large_value_tests: int = 0
 
 
 class CurrencyFuzzError(Exception):
-    """Raised when an unexpected exception or invariant breach is detected."""
+    """Raised when a CURRENCY function formatting invariant is violated."""
 
 
 # --- Constants ---
 
-ALLOWED_EXCEPTIONS = (ValueError, TypeError, UnicodeEncodeError)
+_ALLOWED_EXCEPTIONS = (
+    ValueError,
+    TypeError,
+    OverflowError,
+    ArithmeticError,
+    InvalidOperation,
+)
 
-# Pattern definitions with weights (name, weight)
-_PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
-    ("unambiguous_unicode", 8),
-    ("ambiguous_dollar", 8),
-    ("ambiguous_pound", 7),
-    ("ambiguous_yen_yuan", 7),
-    ("ambiguous_kr", 7),
-    ("comma_decimal", 7),
-    ("period_grouping", 7),
-    ("negative_format", 8),
-    ("explicit_iso_code", 7),
-    ("invalid_iso_code", 7),
-    ("whitespace_variation", 7),
-    ("edge_case", 5),
-    ("raw_bytes", 10),
-    ("fullwidth_digits", 5),
-    ("code_symbol_combo", 5),
-    ("special_number", 5),
+_PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
+    ("currency_pattern_oracle", 16),
+    ("currency_boundary_values", 15),
+    ("currency_3decimal_oracle", 13),
+    ("currency_0decimal_oracle", 12),
+    ("currency_display_preservation", 11),
+    ("currency_negative_oracle", 11),
+    ("currency_large_oracle", 11),
+    ("currency_locale_matrix", 11),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -111,8 +140,71 @@ _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
     [weight for _, weight in _PATTERN_WEIGHTS],
 )
 
-# Map pattern name to match/case index for _generate_currency_input
-_PATTERN_INDEX: dict[str, int] = {name: i for i, (name, _) in enumerate(_PATTERN_WEIGHTS)}
+# Validated locales (ASCII-digit only): non-ASCII-digit locales (ar-EG, hi-IN)
+# are excluded to avoid false oracle rejections. They are covered by
+# fuzz_locale_context which uses Babel's own normalization.
+_VALID_LOCALES: tuple[str, ...] = (
+    "en-US", "en-GB", "de-DE", "fr-FR", "es-ES",
+    "ja-JP", "zh-CN", "ko-KR",
+    "sv-SE", "nb-NO", "pt-BR", "nl-NL",
+)
+
+# Currency codes grouped by CLDR decimal precision.
+# Precision is derived at oracle time via babel.numbers.get_currency_precision()
+# to stay in sync with CLDR rather than maintaining a parallel table.
+_CURRENCIES_0_DECIMAL: tuple[str, ...] = ("JPY", "KRW")
+_CURRENCIES_2_DECIMAL: tuple[str, ...] = ("USD", "EUR", "GBP", "AUD", "CAD", "CHF")
+_CURRENCIES_3_DECIMAL: tuple[str, ...] = ("BHD", "KWD", "OMR")
+_ALL_CURRENCIES: tuple[str, ...] = (
+    *_CURRENCIES_0_DECIMAL,
+    *_CURRENCIES_2_DECIMAL,
+    *_CURRENCIES_3_DECIMAL,
+)
+
+# Currency display modes for display preservation test.
+_DISPLAY_MODES: tuple[str, ...] = ("symbol", "code", "name")
+
+# Custom Babel currency patterns with known maximum fraction digit counts.
+# The pattern= code path calls parse_pattern() for pre-quantization (v0.145.0
+# fix). The oracle verifies ROUND_HALF_UP at the known max_frac precision.
+# Used with 2-decimal currencies (USD, EUR) where the pattern precision is known.
+_CURRENCY_PATTERNS_WITH_PREC: tuple[tuple[str, int], ...] = (
+    ("#,##0.00 \u00a4", 2),
+    ("\u00a4#,##0.00", 2),
+    ("\u00a4 #,##0.##", 2),
+    ("#,##0.00\u00a4", 2),
+    ("\u00a4#,##0", 0),
+    ("\u00a4#,##0.000", 3),
+    ("#,##0.0 \u00a4", 1),
+    ("\u00a40.00", 2),
+)
+
+# Rounding boundary values by precision level.
+# Each value falls exactly at the midpoint where ROUND_HALF_EVEN and
+# ROUND_HALF_UP diverge. Organized as (precision, value_string) pairs.
+_BOUNDARY_VALUES_BY_PREC: tuple[tuple[int, str], ...] = (
+    # Precision 0 (JPY, KRW): x.5 boundaries
+    (0, "0.5"), (0, "1.5"), (0, "2.5"), (0, "10.5"), (0, "100.5"),
+    (0, "999.5"), (0, "1000.5"),
+    # Precision 2 (USD, EUR, etc.): x.005 boundaries
+    (2, "0.005"), (2, "0.015"), (2, "0.025"), (2, "1.005"), (2, "9.995"),
+    (2, "10.005"), (2, "100.005"), (2, "999.995"),
+    # Precision 3 (BHD, KWD, OMR): x.0005 boundaries
+    (3, "0.0005"), (3, "0.0015"), (3, "0.0025"), (3, "1.0005"), (3, "9.9995"),
+    (3, "10.0005"), (3, "999.9995"),
+)
+
+# Large currency amounts (> 1e6) for grouping separator stress testing.
+# Large values exercise group-separator handling in _extract_oracle_digits
+# (de-DE uses '.' as group sep which conflicts with decimal '.').
+_LARGE_AMOUNTS: tuple[str, ...] = (
+    "1000000.50",
+    "9999999.99",
+    "1234567.005",
+    "10000000.00",
+    "99999999.995",
+    "1000000000.50",
+)
 
 
 # --- Module State ---
@@ -121,33 +213,32 @@ _state = BaseFuzzerState(
     checkpoint_interval=500,
     seed_corpus_max_size=500,
     fuzzer_name="currency",
-    fuzzer_target="parse_currency (tiered loading, ambiguous resolution, numeric extraction)",
-    pattern_intended_weights={name: float(weight) for name, weight in _PATTERN_WEIGHTS},
+    fuzzer_target="currency_format (CURRENCY function ROUND_HALF_UP oracle)",
+    pattern_intended_weights={name: float(w) for name, w in _PATTERN_WEIGHTS},
 )
-_domain = CurrencyMetrics()
+_domain = CurrencyFormatMetrics()
 
 _REPORT_DIR = pathlib.Path(".fuzz_atheris_corpus") / "currency"
 _REPORT_FILENAME = "fuzz_currency_report.json"
 
 
-def _build_stats_dict() -> dict[str, Any]:
+def _build_stats_dict() -> FuzzStats:
     """Build complete stats dictionary including domain metrics."""
     stats = build_base_stats_dict(_state)
-    stats["fast_tier_hits"] = _domain.fast_tier_hits
-    stats["full_tier_hits"] = _domain.full_tier_hits
-    stats["ambiguous_resolutions"] = _domain.ambiguous_resolutions
-    stats["locale_inferences"] = _domain.locale_inferences
-
-    # Tier ratio (domain-specific derived metric)
-    total_tier_hits = _domain.fast_tier_hits + _domain.full_tier_hits
-    if total_tier_hits > 0:
-        stats["fast_tier_ratio"] = round(_domain.fast_tier_hits / total_tier_hits, 3)
-
+    stats["currency_calls"] = _domain.currency_calls
+    stats["oracle_checks"] = _domain.oracle_checks
+    stats["oracle_violations"] = _domain.oracle_violations
+    stats["boundary_hits"] = _domain.boundary_hits
+    stats["pattern_calls"] = _domain.pattern_calls
+    stats["three_decimal_tests"] = _domain.three_decimal_tests
+    stats["zero_decimal_tests"] = _domain.zero_decimal_tests
+    stats["display_preservation_checks"] = _domain.display_preservation_checks
+    stats["large_value_tests"] = _domain.large_value_tests
     return stats
 
 
 def _emit_checkpoint() -> None:
-    """Emit periodic checkpoint (uses checkpoint markers)."""
+    """Emit periodic checkpoint."""
     stats = _build_stats_dict()
     emit_checkpoint_report(_state, stats, _REPORT_DIR, _REPORT_FILENAME)
 
@@ -165,285 +256,331 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.diagnostics.errors import FrozenFluentError
-    from ftllexengine.parsing.currency import parse_currency
-
-# --- Test Locales (comprehensive set including RTL and edge cases) ---
-TEST_LOCALES: Sequence[str] = (
-    # Major Latin-script locales
-    "en-US",
-    "en-CA",
-    "en-GB",
-    "de-DE",
-    "fr-FR",
-    "es-ES",
-    # Asian locales (CJK)
-    "zh-CN",
-    "zh-TW",
-    "ja-JP",
-    "ko-KR",
-    # RTL locales
-    "ar-EG",
-    "ar-SA",
-    "he-IL",
-    # Nordic (for kr symbol)
-    "sv-SE",
-    "nb-NO",
-    "da-DK",
-    "is-IS",
-    # Edge cases
-    "lv-LV",  # Latvian (specific formatting)
-    "root",  # CLDR root fallback
-)
-
-# --- Comprehensive Currency Symbols ---
-# Unambiguous Unicode symbols (fast tier candidates)
-UNAMBIGUOUS_SYMBOLS: Sequence[str] = (
-    "\u20ac",  # Euro
-    "\u20b9",  # Indian Rupee
-    "\u20bd",  # Russian Ruble
-    "\u20ba",  # Turkish Lira
-    "\u20aa",  # Israeli Shekel
-    "\u20a6",  # Nigerian Naira
-    "\u20b1",  # Philippine Peso
-    "\u20bf",  # Bitcoin
-    "\u20ab",  # Vietnamese Dong
-    "\u20b4",  # Ukrainian Hryvnia
-    "\u20b8",  # Kazakh Tenge
-    "\u20bc",  # Azerbaijani Manat
-)
-
-# Ambiguous symbols (require locale for disambiguation)
-AMBIGUOUS_SYMBOLS: Sequence[str] = (
-    "$",  # USD, CAD, AUD, etc.
-    "\u00a3",  # GBP, EGP, GIP, etc.
-    "\u00a5",  # JPY, CNY
-    "kr",  # SEK, NOK, DKK, ISK
-    "R$",  # BRL
-    "R",  # ZAR
-)
-
-# Valid ISO 4217 codes for testing
-ISO_CODES: Sequence[str] = (
-    "USD", "EUR", "GBP", "JPY", "CNY", "INR", "AUD", "CAD",
-    "CHF", "HKD", "SGD", "SEK", "NOK", "DKK", "NZD", "ZAR",
-)
-
-# Invalid codes for error path testing
-INVALID_ISO_CODES: Sequence[str] = (
-    "US", "EURO", "GB", "XYZ", "1234", "usd", "Us", "",
-    "ABCD", "A", "AB",
-)
+    from ftllexengine.runtime.function_bridge import FluentNumber
+    from ftllexengine.runtime.functions import currency_format
 
 
-def _generate_currency_input(  # noqa: PLR0911, PLR0912, PLR0915
-    fdp: atheris.FuzzedDataProvider,
-    pattern_name: str,
-) -> tuple[str, str]:
-    """Generate currency input string for a given pattern.
+# --- Oracle Helpers ---
 
-    Returns:
-        (input_string, locale)
+
+def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
+    """Extract absolute numeric digits from a formatted string for oracle comparison.
+
+    Uses Babel to look up locale-specific decimal and grouping separators.
+    Returns None when digit extraction is not possible (non-ASCII digits,
+    ambiguous separators, or unknown locale).
+
+    Algorithm:
+    1. Skip locales where any digit is non-ASCII (ar-EG, hi-IN, etc.).
+    2. Look up decimal and group symbols via Babel's public API.
+    3. Remove group separators (critical for de-DE where group sep is '.').
+    4. Replace decimal separator with ASCII '.'.
+    5. Strip remaining non-digit non-dot characters via regex.
+       Handles multi-character currency symbols (A$, CA$) that would break
+       manual str.replace() chaining.
     """
-    pattern_choice = _PATTERN_INDEX[pattern_name]
-    locale = fdp.PickValueInList(list(TEST_LOCALES))
+    if any(c.isdigit() and not c.isascii() for c in formatted):
+        return None
+    try:
+        from babel.numbers import get_decimal_symbol, get_group_symbol  # noqa: PLC0415
+        babel_locale = locale.replace("-", "_")
+        decimal_sym = get_decimal_symbol(babel_locale)
+        group_sym = get_group_symbol(babel_locale)
+    except ValueError:
+        return None
+    if decimal_sym == group_sym:
+        return None
+    normalized = formatted.replace(group_sym, "").replace(decimal_sym, ".")
+    digits = re.sub(r"[^\d.]", "", normalized)
+    return digits if digits else None
 
-    match pattern_choice:
-        case 0:  # Unambiguous Unicode symbols (fast tier)
-            symbol = fdp.PickValueInList(list(UNAMBIGUOUS_SYMBOLS))
-            amount = fdp.ConsumeFloatInRange(0.01, 999999.99)
-            input_str = (
-                f"{symbol}{amount:.2f}"
-                if fdp.ConsumeBool()
-                else f"{amount:.2f} {symbol}"
+
+def _run_oracle(
+    formatted: str,
+    value: Decimal,
+    precision: int,
+    locale: str,
+    currency: str,
+    context: str,
+) -> None:
+    """ROUND_HALF_UP oracle: formatted digits must match Decimal.quantize(ROUND_HALF_UP).
+
+    When precision is -1 (sentinel), derives the CLDR-standard decimal count via
+    babel.numbers.get_currency_precision(currency). This sentinel avoids hardcoding
+    per-currency precision (KWD=3, JPY=0, USD=2) and stays in sync with CLDR.
+
+    Raises CurrencyFuzzError if a rounding mode violation is detected.
+    Silently returns (no oracle applied) for NaN/Inf, unknown currency/locale,
+    or when digit extraction fails.
+    """
+    if value.is_nan() or value.is_infinite():
+        return
+
+    # Sentinel -1: derive CLDR precision at oracle time.
+    if precision == -1:
+        try:
+            from babel.numbers import get_currency_precision  # noqa: PLC0415
+            precision = get_currency_precision(currency)
+        except (ValueError, LookupError):
+            return  # Unknown currency -- skip oracle
+
+    try:
+        quantizer = Decimal(10) ** -precision
+        expected = abs(value).quantize(quantizer, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return  # Overflow -- skip
+
+    digits = _extract_oracle_digits(formatted, locale)
+    if digits is None:
+        return  # Non-ASCII digits or ambiguous separators
+
+    try:
+        actual = Decimal(digits)
+    except InvalidOperation:
+        return
+
+    _domain.oracle_checks += 1
+    if actual != expected:
+        _domain.oracle_violations += 1
+        _state.findings += 1
+        msg = (
+            f"ROUND_HALF_UP violation (currency={currency}, {context}): "
+            f"value={value}, precision={precision}, locale={locale} "
+            f"expected={expected}, got={actual} (raw='{formatted}')"
+        )
+        raise CurrencyFuzzError(msg)
+
+
+# --- Pattern Implementations ---
+
+
+def _pattern_currency_pattern_oracle(fdp: atheris.FuzzedDataProvider) -> None:
+    """Custom pattern= path with ROUND_HALF_UP oracle.
+
+    This is the CRITICAL coverage gap: the v0.145.0 ROUND_HALF_EVEN bug existed
+    specifically on the format_currency(pattern=...) code path. This pattern
+    provides dedicated oracle coverage for that execution path.
+
+    fuzz_locale_context case 7 tests the pattern= path but without an oracle.
+    fuzz_builtins does not test currency pattern= at all.
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_str = str(fdp.ConsumeIntInRange(0, 99999)).zfill(5)
+    value = Decimal(f"{int_part}.{frac_str}")
+    pattern, max_frac = cast(
+        tuple[str, int],
+        fdp.PickValueInList(list(_CURRENCY_PATTERNS_WITH_PREC)),
+    )
+    _domain.pattern_calls += 1
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency, pattern=pattern)
+    if not isinstance(result, FluentNumber):
+        msg = f"currency_format(pattern=) returned {type(result).__name__}"
+        raise CurrencyFuzzError(msg)
+    _run_oracle(result.formatted, value, max_frac, locale, currency, f"pattern='{pattern}'")
+
+
+def _pattern_currency_boundary_values(fdp: atheris.FuzzedDataProvider) -> None:
+    """Rounding boundary values per currency-specific precision.
+
+    Tests x.y5 values at the midpoint for each currency decimal count (0, 2, 3).
+    Selects a currency matching the boundary precision to ensure the oracle
+    fires on the correct side of the rounding threshold.
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    precision, val_str = cast(
+        tuple[int, str],
+        fdp.PickValueInList(list(_BOUNDARY_VALUES_BY_PREC)),
+    )
+    match precision:
+        case 0:
+            currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
+        case 3:
+            currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_3_DECIMAL)))
+        case _:  # 2
+            currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
+
+    value = Decimal(val_str)
+    _domain.boundary_hits += 1
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency)
+    if not isinstance(result, FluentNumber):
+        msg = f"currency_format(boundary) returned {type(result).__name__}"
+        raise CurrencyFuzzError(msg)
+    # Use CLDR-derived precision (sentinel -1) to stay in sync with CLDR data.
+    _run_oracle(
+        result.formatted, value, -1, locale, currency, f"boundary(prec={precision})"
+    )
+
+
+def _pattern_currency_3decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
+    """BHD/KWD/OMR: 3-decimal ROUND_HALF_UP oracle.
+
+    3-decimal currencies have a rounding boundary at x.xxx5 that differs from
+    the 2-decimal case. The oracle verifies ROUND_HALF_UP at precision=3 across
+    all ASCII-digit locales.
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_3_DECIMAL)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_str = str(fdp.ConsumeIntInRange(0, 9999)).zfill(4)
+    value = Decimal(f"{int_part}.{frac_str}")
+    _domain.three_decimal_tests += 1
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency)
+    if not isinstance(result, FluentNumber):
+        msg = f"currency_format(3-decimal) returned {type(result).__name__}"
+        raise CurrencyFuzzError(msg)
+    _run_oracle(result.formatted, value, -1, locale, currency, "3decimal")
+
+
+def _pattern_currency_0decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
+    """JPY/KRW: 0-decimal ROUND_HALF_UP oracle.
+
+    0-decimal currencies round at x.5 boundaries. ROUND_HALF_EVEN would round
+    2.5 -> 2 (banker's rounding); ROUND_HALF_UP always rounds x.5 up.
+    The oracle verifies the latter for all x.5 inputs.
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
+    int_part = fdp.ConsumeIntInRange(0, 99999)
+    frac_part = fdp.ConsumeIntInRange(0, 99)
+    value = Decimal(f"{int_part}.{frac_part:02d}")
+    _domain.zero_decimal_tests += 1
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency)
+    if not isinstance(result, FluentNumber):
+        msg = f"currency_format(0-decimal) returned {type(result).__name__}"
+        raise CurrencyFuzzError(msg)
+    _run_oracle(result.formatted, value, -1, locale, currency, "0decimal")
+
+
+def _pattern_currency_display_preservation(fdp: atheris.FuzzedDataProvider) -> None:
+    """Display mode precision consistency: symbol/code/name must yield same precision.
+
+    The display mode only affects the formatted string representation (e.g.
+    '$' vs 'USD' vs 'US dollar'). The underlying numeric precision must be
+    preserved identically across all display modes for the same currency.
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast(str, fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_part = fdp.ConsumeIntInRange(0, 99)
+    value = Decimal(f"{int_part}.{frac_part:02d}")
+    _domain.display_preservation_checks += 1
+
+    results: dict[str, FluentNumber] = {}
+    for _display in _DISPLAY_MODES:
+        display = cast(Literal["symbol", "code", "name"], _display)
+        _domain.currency_calls += 1
+        r = currency_format(value, locale, currency=currency, currency_display=display)
+        if isinstance(r, FluentNumber):
+            results[display] = r
+
+    if len(results) >= 2:
+        precisions = {name: r.precision for name, r in results.items()}
+        unique_prec = set(precisions.values())
+        if len(unique_prec) > 1:
+            _state.findings += 1
+            msg = (
+                f"Display mode precision divergence for {currency}, {locale}: "
+                f"{precisions}"
             )
-            return (input_str, locale)
+            raise CurrencyFuzzError(msg)
 
-        case 1:  # Ambiguous dollar sign (requires locale)
-            amount = fdp.ConsumeFloatInRange(0.01, 999999.99)
-            input_str = f"${amount:.2f}" if fdp.ConsumeBool() else f"{amount:.2f}$"
-            return (input_str, locale)
 
-        case 2:  # Ambiguous pound sign (GBP, EGP, GIP)
-            amount = fdp.ConsumeFloatInRange(0.01, 999999.99)
-            input_str = f"\u00a3{amount:.2f}"
-            return (input_str, locale)
+def _pattern_currency_negative_oracle(fdp: atheris.FuzzedDataProvider) -> None:
+    """Negative amounts with ROUND_HALF_UP oracle.
 
-        case 3:  # Ambiguous yen/yuan sign (JPY, CNY)
-            amount = fdp.ConsumeFloatInRange(0.01, 999999.99)
-            input_str = f"\u00a5{amount:.2f}"
-            return (input_str, locale)
+    Verifies that negative currency amounts are handled correctly (oracle uses
+    abs() before quantize, matching the formatting behavior).
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast(str, fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_str = str(fdp.ConsumeIntInRange(0, 9999)).zfill(4)
+    value = Decimal(f"-{int_part}.{frac_str}")
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency)
+    if not isinstance(result, FluentNumber):
+        msg = f"currency_format(negative) returned {type(result).__name__}"
+        raise CurrencyFuzzError(msg)
+    _run_oracle(result.formatted, value, -1, locale, currency, "negative")
 
-        case 4:  # Ambiguous "kr" (SEK, NOK, DKK, ISK)
-            amount = fdp.ConsumeFloatInRange(0.01, 999999.99)
-            input_str = (
-                f"{amount:.2f} kr" if fdp.ConsumeBool() else f"kr {amount:.2f}"
-            )
-            return (input_str, locale)
 
-        case 5:  # Comma as decimal separator (European format)
-            symbol = fdp.PickValueInList(["\u20ac", "$", "\u00a3"])
-            amount_int = fdp.ConsumeIntInRange(1, 999999)
-            amount_frac = fdp.ConsumeIntInRange(0, 99)
-            input_str = f"{symbol}{amount_int},{amount_frac:02d}"
-            return (input_str, locale)
+def _pattern_currency_large_oracle(fdp: atheris.FuzzedDataProvider) -> None:
+    """Large amounts (> 1e6) with ROUND_HALF_UP oracle.
 
-        case 6:  # Period as grouping separator (European format) - varied amounts
-            symbol = fdp.PickValueInList(["\u20ac", "$"])
-            # Generate varied amounts instead of fixed string
-            thousands = fdp.ConsumeIntInRange(1, 999)
-            hundreds = fdp.ConsumeIntInRange(0, 999)
-            ones = fdp.ConsumeIntInRange(0, 999)
-            cents = fdp.ConsumeIntInRange(0, 99)
-            input_str = f"{symbol}{thousands}.{hundreds:03d}.{ones:03d},{cents:02d}"
-            return (input_str, locale)
+    Large amounts stress group-separator handling in _extract_oracle_digits.
+    In de-DE, the group separator is '.' which conflicts with the decimal '.';
+    removing group separators before replacing decimal is critical.
+    """
+    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
+    val_str = cast(str, fdp.PickValueInList(list(_LARGE_AMOUNTS)))
+    value = Decimal(val_str)
+    _domain.large_value_tests += 1
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency)
+    if not isinstance(result, FluentNumber):
+        msg = f"currency_format(large) returned {type(result).__name__}"
+        raise CurrencyFuzzError(msg)
+    if not result.formatted:
+        msg = f"currency_format({value}, {currency}, {locale}) returned empty formatted"
+        raise CurrencyFuzzError(msg)
+    _run_oracle(result.formatted, value, -1, locale, currency, "large")
 
-        case 7:  # Negative formats (4 common patterns)
-            symbol = "$"
-            amount = fdp.ConsumeFloatInRange(0.01, 9999.99)
-            neg_choice = fdp.ConsumeIntInRange(0, 3)
-            match neg_choice:
-                case 0:
-                    input_str = f"-{symbol}{amount:.2f}"  # -$100.00
-                case 1:
-                    input_str = f"({symbol}{amount:.2f})"  # ($100.00)
-                case 2:
-                    input_str = f"{symbol}-{amount:.2f}"  # $-100.00
-                case _:
-                    input_str = f"{symbol}{amount:.2f}-"  # $100.00-
-            return (input_str, locale)
 
-        case 8:  # Explicit ISO code (bypass symbol resolution)
-            code = fdp.PickValueInList(list(ISO_CODES))
-            amount = fdp.ConsumeFloatInRange(0.01, 999999.99)
-            input_str = f"{amount:.2f} {code}"
-            return (input_str, locale)
+def _pattern_currency_locale_matrix(fdp: atheris.FuzzedDataProvider) -> None:
+    """Same value/currency formatted across multiple locales.
 
-        case 9:  # Invalid ISO codes (error testing)
-            invalid_code = fdp.PickValueInList(list(INVALID_ISO_CODES))
-            amount = fdp.ConsumeFloatInRange(0.01, 9999.99)
-            input_str = f"{amount:.2f} {invalid_code}"
-            return (input_str, locale)
+    Verifies that FluentNumber.precision is consistent across all locales for
+    a given currency (CLDR precision is per-currency, not per-territory, so
+    all locales must produce the same decimal count for the same currency).
+    """
+    currency = cast(str, fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_part = fdp.ConsumeIntInRange(0, 99)
+    value = Decimal(f"{int_part}.{frac_part:02d}")
+    num_locales = fdp.ConsumeIntInRange(3, min(6, len(_VALID_LOCALES)))
 
-        case 10:  # Whitespace variations (including Unicode spaces)
-            symbol = fdp.PickValueInList(["\u20ac", "$", "\u00a3"])
-            amount = fdp.ConsumeFloatInRange(0.01, 9999.99)
-            # Include various Unicode whitespace characters
-            space_chars = [" ", "\u00a0", "\u2009", "\u202f", "  ", ""]  # NBSP, thin, narrow
-            spaces = fdp.PickValueInList(space_chars)
-            if fdp.ConsumeBool():
-                input_str = f"{symbol}{spaces}{amount:.2f}"
-            else:
-                input_str = f"{amount:.2f}{spaces}{symbol}"
-            return (input_str, locale)
+    precisions: list[int] = []
+    for locale in list(_VALID_LOCALES)[:num_locales]:
+        _domain.currency_calls += 1
+        r = currency_format(value, locale, currency=currency)
+        if isinstance(r, FluentNumber) and r.precision is not None:
+            precisions.append(r.precision)
 
-        case 11:  # Edge cases (expanded)
-            edge_choice = fdp.ConsumeIntInRange(0, 15)
-            match edge_choice:
-                case 0:
-                    input_str = ""  # Empty
-                case 1:
-                    input_str = "   "  # Whitespace only
-                case 2:
-                    input_str = "$"  # Symbol only
-                case 3:
-                    input_str = "123.45"  # Number only (no symbol)
-                case 4:
-                    input_str = "abc def"  # Invalid text
-                case 5:
-                    input_str = "\x00$100"  # Null byte
-                case 6:
-                    input_str = "\ufeff$100.00"  # BOM prefix
-                case 7:
-                    input_str = "$\u200b100.00"  # Zero-width space
-                case 8:
-                    input_str = "\u0661\u0662\u0663.\u0664\u0665 $"  # Arabic-Indic
-                case 9:
-                    input_str = "$" + "9" * 100 + ".99"  # Very large
-                case 10:
-                    input_str = "R$100.00"  # R$ (BRL) ambiguous
-                case 11:
-                    input_str = "R100.00"  # R (ZAR) ambiguous
-                case 12:
-                    input_str = "$$$100.00"  # Multiple symbols
-                case 13:
-                    input_str = "\u200e$\u200e100.00"  # LTR marks
-                case 14:
-                    input_str = "  $  100  .  00  "  # Spaces everywhere
-                case _:
-                    input_str = "\u00a3" + "0" * 300 + ".01"  # Very long
-            return (input_str, locale)
+    if len(precisions) >= 2 and len(set(precisions)) > 1:
+        _state.findings += 1
+        msg = (
+            f"Locale matrix precision inconsistency for {currency}: "
+            f"precisions={precisions} across {num_locales} locales"
+        )
+        raise CurrencyFuzzError(msg)
 
-        case 12:  # Raw bytes pass-through (let libFuzzer mutations drive)
-            raw = fdp.ConsumeUnicode(fdp.ConsumeIntInRange(0, 200))
-            return (raw, locale)
 
-        case 13:  # Fullwidth digits and mixed scripts
-            fw_choice = fdp.ConsumeIntInRange(0, 5)
-            match fw_choice:
-                case 0:
-                    # Fullwidth digits: U+FF10-U+FF19
-                    input_str = "$\uff11\uff12\uff13.\uff14\uff15"
-                case 1:
-                    # Devanagari digits: U+0966-U+096F
-                    input_str = "\u20b9\u0967\u0968\u0969.\u0966\u0966"
-                case 2:
-                    # Thai digits: U+0E50-U+0E59
-                    input_str = "$\u0e51\u0e52\u0e53.\u0e54\u0e55"
-                case 3:
-                    # Mixed: ASCII + fullwidth
-                    input_str = "\u20ac1\uff12\uff13.45"
-                case 4:
-                    # RTL marks around currency
-                    input_str = "\u200f$\u200f100.00"
-                case _:
-                    # Superscript/subscript digits
-                    input_str = "$\u00b9\u00b2\u00b3.00"
-            return (input_str, locale)
+# --- Pattern Dispatch ---
 
-        case 14:  # ISO code + symbol combo (both present)
-            code = fdp.PickValueInList(list(ISO_CODES))
-            symbol = fdp.PickValueInList(["$", "\u20ac", "\u00a3", "\u00a5"])
-            amount = fdp.ConsumeFloatInRange(0.01, 9999.99)
-            combo_choice = fdp.ConsumeIntInRange(0, 3)
-            match combo_choice:
-                case 0:
-                    input_str = f"{code} {symbol}{amount:.2f}"
-                case 1:
-                    input_str = f"{symbol}{amount:.2f} {code}"
-                case 2:
-                    input_str = f"{code}{amount:.2f}"  # Code without space
-                case _:
-                    input_str = f"{symbol}{symbol}{amount:.2f}"  # Double symbol
-            return (input_str, locale)
-
-        case 15:  # Exponent notation and special number forms
-            exp_choice = fdp.ConsumeIntInRange(0, 5)
-            match exp_choice:
-                case 0:
-                    input_str = "$1.23e5"  # Scientific notation
-                case 1:
-                    input_str = "\u20ac-0.00"  # Negative zero
-                case 2:
-                    input_str = "$0.001"  # Sub-cent
-                case 3:
-                    input_str = "\u20acINF"  # Infinity
-                case 4:
-                    input_str = "$NaN"  # NaN
-                case _:
-                    input_str = "\u00a3" + "0" * 300 + ".01"  # Very long number
-            return (input_str, locale)
-
-        case _:
-            # Unreachable fallback
-            return ("$100.00", "en-US")
+_PATTERN_DISPATCH = {
+    "currency_pattern_oracle": _pattern_currency_pattern_oracle,
+    "currency_boundary_values": _pattern_currency_boundary_values,
+    "currency_3decimal_oracle": _pattern_currency_3decimal_oracle,
+    "currency_0decimal_oracle": _pattern_currency_0decimal_oracle,
+    "currency_display_preservation": _pattern_currency_display_preservation,
+    "currency_negative_oracle": _pattern_currency_negative_oracle,
+    "currency_large_oracle": _pattern_currency_large_oracle,
+    "currency_locale_matrix": _pattern_currency_locale_matrix,
+}
 
 
 # --- Main Entry Point ---
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
-    """Atheris entry point: Test currency parsing boundary conditions."""
-    # Initialize memory baseline on first iteration
+def test_one_input(data: bytes) -> None:
+    """Atheris entry point: Test CURRENCY function ROUND_HALF_UP formatting invariants."""
     if _state.iterations == 0:
         _state.initial_memory_mb = (
             get_process().memory_info().rss / (1024 * 1024)
@@ -452,117 +589,40 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
     _state.iterations += 1
     _state.status = "running"
 
-    # Periodic checkpoint
     if _state.iterations % _state.checkpoint_interval == 0:
         _emit_checkpoint()
 
     start_time = time.perf_counter()
     fdp = atheris.FuzzedDataProvider(data)
 
-    # Round-robin pattern selection (immune to coverage-guided bias)
     pattern_name = select_pattern_round_robin(_state, _PATTERN_SCHEDULE)
     _state.pattern_coverage[pattern_name] = (
         _state.pattern_coverage.get(pattern_name, 0) + 1
     )
 
-    # Generate currency input for selected pattern
-    input_str, locale = _generate_currency_input(fdp, pattern_name)
-
-    # Optional: override with default_currency and infer_from_locale
-    # Generate valid 3-letter uppercase codes or None
-    default_curr: str | None = None
-    if fdp.ConsumeBool():
-        raw_curr = fdp.ConsumeBytes(3).decode("ascii", errors="ignore").upper()
-        if len(raw_curr) == 3 and raw_curr.isalpha():
-            default_curr = raw_curr
-
-    infer = fdp.ConsumeBool()
-    if infer:
-        _domain.locale_inferences += 1
-
     try:
-        res, errors = parse_currency(
-            input_str,
-            locale,
-            default_currency=default_curr,
-            infer_from_locale=infer,
-        )
-
-        # Track tier usage (heuristic: fast tier for unambiguous, full tier for ambiguous)
-        if "unambiguous" in pattern_name:
-            _domain.fast_tier_hits += 1
-        elif "ambiguous" in pattern_name:
-            _domain.full_tier_hits += 1
-            _domain.ambiguous_resolutions += 1
-
-        # Track API contract violations (instead of asserting/crashing)
-        if res:
-            amount, code = res
-
-            # Validate return types (runtime contract validation)
-            if not isinstance(amount, Decimal):
-                _state.error_counts["contract_invalid_amount_type"] = (
-                    _state.error_counts.get("contract_invalid_amount_type", 0) + 1
-                )
-                _state.findings += 1
-
-            if not isinstance(code, str):
-                _state.error_counts["contract_invalid_code_type"] = (
-                    _state.error_counts.get("contract_invalid_code_type", 0) + 1
-                )
-                _state.findings += 1
-            elif len(code) != 3:
-                # ISO 4217 validation: codes MUST be exactly 3 uppercase ASCII letters
-                error_key = f"contract_iso4217_length_{len(code)}"
-                _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
-                _state.findings += 1
-            elif not code.isupper():
-                _state.error_counts["contract_iso4217_not_uppercase"] = (
-                    _state.error_counts.get("contract_iso4217_not_uppercase", 0) + 1
-                )
-                _state.findings += 1
-            elif not code.isalpha():
-                _state.error_counts["contract_iso4217_not_alpha"] = (
-                    _state.error_counts.get("contract_iso4217_not_alpha", 0) + 1
-                )
-                _state.findings += 1
-
-        # Track parse errors (expected errors from invalid input)
-        if errors:
-            for error in errors:
-                # Extract clean error key from FrozenFluentError
-                try:
-                    if hasattr(error.category, "name"):
-                        category_name = error.category.name
-                    else:
-                        category_name = str(error.category)
-                    if hasattr(error, "code") and hasattr(error.code, "name"):
-                        code_info = error.code.name
-                    else:
-                        code_info = ""
-                    error_key = f"{category_name}_{code_info}"[:50]
-                except (AttributeError, TypeError):
-                    error_key = "parse_error_unknown"
-                _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
-
-    except (ValueError, TypeError, UnicodeEncodeError, FrozenFluentError) as e:
-        # Expected: invalid locale, invalid input format, surrogates, depth/safety guards
+        handler = _PATTERN_DISPATCH[pattern_name]
+        handler(fdp)
+    except (*_ALLOWED_EXCEPTIONS, FrozenFluentError) as e:
         error_type = f"{type(e).__name__}_{str(e)[:30]}"
-        _state.error_counts[error_type] = _state.error_counts.get(error_type, 0) + 1
+        _state.error_counts[error_type] = (
+            _state.error_counts.get(error_type, 0) + 1
+        )
+    except CurrencyFuzzError:
+        _state.findings += 1
+        raise
     except Exception:
-        # Unexpected exceptions are findings - re-raise for Atheris to capture
         _state.findings += 1
         raise
     finally:
-        # Semantic interestingness: ambiguous patterns, edge cases, error paths,
-        # or wall-time > 1ms indicating unusual code path
         is_interesting = (
-            "ambiguous" in pattern_name
-            or pattern_name in ("edge_case", "raw_bytes", "special_number")
+            "oracle" in pattern_name
+            or pattern_name in ("currency_boundary_values", "currency_locale_matrix")
             or (time.perf_counter() - start_time) * 1000 > 1.0
         )
         record_iteration_metrics(
-            _state, pattern_name, start_time, data, is_interesting=is_interesting,
+            _state, pattern_name, start_time, data,
+            is_interesting=is_interesting,
         )
 
         if _state.iterations % GC_INTERVAL == 0:
@@ -573,9 +633,9 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
 
 
 def main() -> None:
-    """Run the currency fuzzer with CLI support."""
+    """Run the currency_format oracle fuzzer with CLI support."""
     parser = argparse.ArgumentParser(
-        description="Currency parsing fuzzer using Atheris/libFuzzer",
+        description="CURRENCY function runtime formatting oracle fuzzer (Atheris)",
         epilog="All unrecognized arguments are passed to libFuzzer.",
     )
     parser.add_argument(
@@ -588,25 +648,28 @@ def main() -> None:
         "--seed-corpus-size",
         type=int,
         default=500,
-        help="Maximum size of in-memory seed corpus (default: 500)",
+        help="Maximum in-memory seed corpus size (default: 500)",
     )
 
-    # Parse known args, pass rest to Atheris/libFuzzer
     args, remaining = parser.parse_known_args()
     _state.checkpoint_interval = args.checkpoint_interval
     _state.seed_corpus_max_size = args.seed_corpus_size
-
-    # Reconstruct sys.argv for Atheris
     sys.argv = [sys.argv[0], *remaining]
 
     print_fuzzer_banner(
-        title="Currency Parsing Fuzzer (Atheris)",
-        target="ftllexengine.parsing.currency.parse_currency",
+        title="CURRENCY Function Runtime Formatting Oracle Fuzzer (Atheris)",
+        target="ftllexengine.runtime.functions.currency_format",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
         extra_lines=[
             f"Patterns:   {len(_PATTERN_WEIGHTS)}"
             f" ({sum(w for _, w in _PATTERN_WEIGHTS)} weighted slots)",
+            f"Locales:    {len(_VALID_LOCALES)} validated (ASCII-digit only)",
+            f"Currencies: {len(_ALL_CURRENCIES)}"
+            f" ({len(_CURRENCIES_0_DECIMAL)} zero-dec,"
+            f" {len(_CURRENCIES_2_DECIMAL)} two-dec,"
+            f" {len(_CURRENCIES_3_DECIMAL)} three-dec)",
+            "Oracle:     ROUND_HALF_UP via Decimal.quantize + CLDR precision",
         ],
     )
 

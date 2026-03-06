@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.145.0"
+version: "0.146.0"
 domain: fuzzing
-updated: "2026-03-04"
+updated: "2026-03-05"
 route:
   keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus, workers, metrics]
   questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?", "how do atheris workers work?", "why are metrics wrong with multiple workers?"]
@@ -412,18 +412,36 @@ because the parent process needs it to propagate shutdown to children.
 
 ```
 fuzz_atheris/
-├── seeds/               # Seed corpus (git tracked)
-│   ├── *.ftl           # FTL text seeds
-│   └── *.bin           # Binary seeds
-├── fuzz_native.py      # Stability fuzzer
-├── fuzz_runtime.py     # Runtime fuzzer
-├── fuzz_structured.py  # Grammar-aware fuzzer
-├── fuzz_serializer.py  # AST-construction serializer fuzzer
-├── fuzz_perf.py        # Performance fuzzer
-├── fuzz_iso.py         # ISO introspection fuzzer
-├── fuzz_fiscal.py      # Fiscal calendar fuzzer
-├── fuzz_atheris_replay_finding.py   # Finding replay utility
-└── mypy.ini            # Type checking config
+├── seeds/                        # Seed corpus (git tracked)
+│   ├── bridge/, builtins/, cache/, ...   # Per-target seed dirs
+│   ├── *.ftl                     # FTL text seeds (top-level legacy)
+│   └── *.bin                     # Binary seeds (top-level legacy)
+├── fuzz_native.py                # Stability fuzzer
+├── fuzz_runtime.py               # Runtime fuzzer
+├── fuzz_structured.py            # Grammar-aware fuzzer
+├── fuzz_serializer.py            # AST-construction serializer fuzzer
+├── fuzz_scope.py                 # Variable scoping / expansion budget
+├── fuzz_bridge.py                # Function bridge machinery
+├── fuzz_builtins.py              # NUMBER/DATETIME/CURRENCY builtins
+├── fuzz_cache.py                 # Cache concurrency and integrity
+├── fuzz_currency.py              # Currency symbol extraction
+├── fuzz_dates.py                 # Date/datetime locale-aware parsing
+├── fuzz_diagnostics_formatter.py # DiagnosticFormatter output/escaping
+├── fuzz_fiscal.py                # Fiscal calendar fuzzer
+├── fuzz_graph.py                 # Dependency graph
+├── fuzz_integrity.py             # Semantic validation + strict mode
+├── fuzz_introspection.py         # IntrospectionVisitor + ReferenceExtractor
+├── fuzz_iso.py                   # ISO 3166/4217 introspection
+├── fuzz_locale_context.py        # LocaleContext direct formatting API
+├── fuzz_localization.py          # FluentLocalization multi-locale orchestration
+├── fuzz_lock.py                  # RWLock concurrency primitives
+├── fuzz_numbers.py               # Locale-aware numeric parsing
+├── fuzz_oom.py                   # Parser object explosion (DoS)
+├── fuzz_perf.py                  # Performance fuzzer
+├── fuzz_plural.py                # CLDR plural category selection
+├── fuzz_roundtrip.py             # Parser-serializer convergence
+├── fuzz_atheris_replay_finding.py  # Finding replay utility
+└── mypy.ini                      # Type checking config
 
 .fuzz_atheris_corpus/            # Working corpus (gitignored)
 ├── crash_*             # Crash artifacts

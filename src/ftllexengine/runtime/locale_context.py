@@ -793,7 +793,16 @@ class LocaleContext:
                         Decimal(10) ** -prec, rounding=ROUND_HALF_UP
                     )
 
-            # Use custom pattern if provided (overrides currency_display)
+            # Use custom pattern if provided (overrides currency_display).
+            # currency_digits=False: the caller has explicitly specified the format
+            # string; the pattern's decimal specification must be respected rather
+            # than overridden by CLDR currency precision (currency_digits=True default).
+            # Pre-quantization above already applied ROUND_HALF_UP at the pattern's
+            # declared precision, so the pre-quantization and formatting precisions
+            # are aligned. With currency_digits=True, Babel would override the
+            # pattern's decimal count with the CLDR value (e.g., AUD=2 overrides
+            # pattern "¤#,##0.000"=3), misaligning the two precisions and making
+            # ROUND_HALF_UP ineffective for values at the boundary.
             if pattern is not None:
                 return str(
                     babel_numbers.format_currency(
@@ -801,7 +810,7 @@ class LocaleContext:
                         currency,
                         format=pattern,
                         locale=self.babel_locale,
-                        currency_digits=True,
+                        currency_digits=False,
                     )
                 )
 

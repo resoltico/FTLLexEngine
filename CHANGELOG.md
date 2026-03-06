@@ -2,7 +2,7 @@
 afad: "3.3"
 version: "0.145.0"
 domain: CHANGELOG
-updated: "2026-03-01"
+updated: "2026-03-05"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -13,7 +13,28 @@ route:
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.146.0] - 2026-03-06
+
+### Fixed
+
+- **`runtime/locale_context.py` `format_currency`: custom `pattern=` path uses wrong decimal precision when CLDR currency precision differs from declared pattern precision**
+  (FIX-CURRENCY-PATTERN-PREC-001):
+  - When `format_currency` is called with a custom `pattern=` argument (e.g., `¤#,##0.000`)
+    and a currency whose CLDR-mandated precision differs from the pattern's declared decimal count
+    (e.g., AUD with CLDR precision 2), the pre-quantization step correctly targeted the pattern's
+    declared precision (3), but Babel's `format_currency` was called with `currency_digits=True`
+    (Babel's default), which silently overrides the pattern's decimal specification with the CLDR
+    value (2); a midpoint value such as `2.9250` was pre-quantized to `2.925` (3 places), then
+    Babel applied `ROUND_HALF_EVEN` at 2 places, producing `2.92` instead of the correct `2.93`
+  - Root cause: the pre-quantization in `FIX-ROUNDING-001` (v0.145.0) aligned the rounding mode
+    but not the effective formatting precision; `currency_digits=True` decoupled the two steps
+    by allowing Babel to silently reduce the decimal count after pre-quantization had already run
+  - Fix: pass `currency_digits=False` in the custom pattern path of `LocaleContext.format_currency`;
+    the custom pattern argument is the caller's explicit specification — its decimal count must
+    be honored by both the pre-quantization step and the Babel formatting call; the standard
+    path (no `pattern=` argument) is unaffected and continues to use `currency_digits=True`
+    so that CLDR precision is authoritative when the caller has not specified an override
+  - Location: `runtime/locale_context.py` `LocaleContext.format_currency` custom pattern branch
 
 ## [0.145.0] - 2026-03-05
 
@@ -5589,6 +5610,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.146.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.146.0
 [0.145.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.145.0
 [0.144.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.144.0
 [0.143.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.143.0

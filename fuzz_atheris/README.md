@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.145.0"
+version: "0.146.0"
 domain: fuzzing
-updated: "2026-03-02"
+updated: "2026-03-05"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -20,19 +20,24 @@ route:
 | `fuzz_graph.py` | `analysis.graph` | 12 | 12 (.bin) | Dependency graph cycle detection, canonicalization |
 | `fuzz_builtins.py` | `runtime.functions` | 13 | 20 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
-| `fuzz_currency.py` | `parsing.currency` | 16 | 65 (.txt) | Currency symbol extraction |
+| `fuzz_currency.py` | `runtime.functions` | 8 | 0 | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 18 (.bin) | Fiscal calendar arithmetic, contracts |
 | `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 19 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
 | `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
 | `fuzz_lock.py` | `runtime.rwlock` | 15 | 32 (.bin) | RWLock concurrency primitives |
-| `fuzz_numbers.py` | `parsing.numbers` | 19 | 70 (.txt) | Locale-aware numeric parsing |
+| `fuzz_numbers.py` | `runtime.functions` | 8 | 0 | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) + 4 (.ftl) | Parser-serializer convergence |
 | `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 73 (.bin) | Full runtime stack, strict mode |
 | `fuzz_serializer.py` | `syntax.serializer`, `syntax.parser` | 10 | 12 (.bin) | AST-construction serializer roundtrip |
-| `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 12 | 12 (.bin) | Variable scoping, term isolation, depth guards |
+| `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 13 | 12 (.bin) | Variable scoping, term isolation, depth guards, expansion budget |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) | Grammar-aware AST construction |
+| `fuzz_localization.py` | `localization.orchestrator` | 12 | 5 (.bin) | FluentLocalization multi-locale orchestration, fallback chains |
+| `fuzz_dates.py` | `parsing.dates` | 13 | 6 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing |
+| `fuzz_locale_context.py` | `runtime.locale_context` | 14 | 5 (.bin) | LocaleContext direct formatting, ROUND_HALF_UP oracle, cross-locale determinism |
+| `fuzz_introspection.py` | `introspection.message` | 12 | 5 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction |
+| `fuzz_diagnostics_formatter.py` | `diagnostics.formatter`, `diagnostics.validation` | 12 | 8 (.bin) | Control-char escaping, RUST/SIMPLE/JSON output, sanitize/redact modes |
 
 ## Module Coverage Matrix
 
@@ -40,14 +45,20 @@ route:
 |:--------------|:--------------------|
 | `analysis.graph` | graph |
 | `diagnostics.errors` | runtime, oom, numbers, currency, cache, integrity, builtins |
+| `diagnostics.formatter` | diagnostics_formatter |
+| `diagnostics.validation` | diagnostics_formatter, integrity |
 | `integrity` | runtime, cache, integrity |
 | `introspection.iso` | iso |
-| `parsing.currency` | currency |
+| `introspection.message` | introspection |
+| `localization.orchestrator` | localization |
+| `parsing.currency` | — (not fuzzed at runtime layer; parse layer coverage removed in v0.146.0) |
+| `parsing.dates` | dates |
 | `parsing.fiscal` | fiscal |
-| `parsing.numbers` | numbers |
+| `parsing.numbers` | — (not fuzzed at runtime layer; parse layer coverage removed in v0.146.0) |
 | `runtime.function_bridge` | bridge |
-| `runtime.functions` | builtins, runtime |
-| `runtime.bundle` | runtime, cache, integrity, scope |
+| `runtime.functions` | builtins, runtime, currency, numbers |
+| `runtime.bundle` | runtime, cache, integrity, scope, localization |
+| `runtime.locale_context` | locale_context, builtins |
 | `runtime.resolver` | scope |
 | `runtime.cache` | runtime, cache |
 | `runtime.plural_rules` | plural |
@@ -248,32 +259,47 @@ Target: `analysis.graph` -- `_canonicalize_cycle`, `make_cycle_key`, `detect_cyc
 
 ## `fuzz_currency`
 
-Target: `parsing.currency.parse_currency` -- longest-match-first symbol detection, ambiguous symbol resolution, numeric extraction across locales.
+Target: `runtime.functions.currency_format` -- ROUND_HALF_UP oracle testing, custom `pattern=` precision alignment, locale matrix, display mode preservation, and `FluentNumber` wrapper contracts.
+
+Concern boundary: This fuzzer stress-tests the runtime CURRENCY function formatting path. Distinct from `fuzz_builtins` (which covers NUMBER/DATETIME/CURRENCY via the FTL `FluentBundle` evaluation pipeline); this fuzzer calls `currency_format` directly to probe oracle correctness, custom pattern precision alignment, and boundary-value rounding at precision 0, 2, and 3. Found production bug FIX-CURRENCY-PATTERN-PREC-001 on its first run (~1009 iterations): `format_currency` with a custom pattern and a currency whose CLDR precision differs from the pattern's declared decimal count produced incorrect rounding because `currency_digits=True` caused Babel to override the pattern's decimal count after pre-quantization.
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `CurrencyMetrics` dataclass. Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
+8 patterns across 4 categories:
+
+**PRECISION (3)** - Per-currency decimal precision and custom pattern precision:
+
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `unambiguous_unicode` | 8 | Unique symbols resolve unambiguously |
-| `ambiguous_dollar` | 8 | Locale disambiguates `$` |
-| `ambiguous_pound` | 7 | Locale disambiguates `£` |
-| `ambiguous_yen_yuan` | 7 | Locale disambiguates `¥` |
-| `ambiguous_kr` | 7 | Locale disambiguates `kr` |
-| `comma_decimal` | 7 | European decimal parsing |
-| `period_grouping` | 7 | European grouping parsing |
-| `negative_format` | 8 | Prefix/suffix/paren negatives |
-| `explicit_iso_code` | 7 | ISO code bypass symbol lookup |
-| `invalid_iso_code` | 7 | Error on invalid codes |
-| `whitespace_variation` | 7 | Unicode whitespace handling |
-| `edge_case` | 5 | Empty, BOM, zero-width, Arabic-Indic |
-| `raw_bytes` | 10 | Malformed input stability |
-| `fullwidth_digits` | 5 | Fullwidth numeral handling |
-| `code_symbol_combo` | 5 | ISO code + symbol mixed input |
-| `special_number` | 5 | Differential: FTL vs Python builtins |
+| `0decimal_oracle` | 12 | JPY, KRW (0 decimals): ROUND_HALF_UP at integer boundary |
+| `3decimal_oracle` | 13 | BHD, KWD, OMR (3 decimals): x.0005 midpoints |
+| `pattern_oracle` | 16 | Custom `pattern=` with CLDR-differing currency: precision must match pattern, not CLDR |
+
+**ORACLE (3)** - ROUND_HALF_UP correctness across value ranges:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `boundary_values` | 15 | 2-decimal currencies (USD, EUR, GBP, AUD, CAD, CHF): x.005 midpoints |
+| `large_oracle` | 11 | Large positive amounts (>1e6): non-empty, ROUND_HALF_UP preserved |
+| `negative_oracle` | 11 | Negative amounts: ROUND_HALF_UP preserved; abs() applied before oracle comparison |
+
+**LOCALE (1)** - Cross-locale consistency:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `locale_matrix` | 11 | Same value across 10 locales: all non-empty, no exception |
+
+**DISPLAY (1)** - Currency display mode contracts:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `display_preservation` | 11 | symbol/code/name: result contains currency identifier; not empty |
 
 ### Allowed Exceptions
 
-`FrozenFluentError` -- depth guard safety mechanism.
+`ValueError`, `TypeError` -- invalid currency codes and type validation.
 
 ---
 
@@ -457,35 +483,42 @@ Ordered cheapest-first. Pattern selection uses deterministic round-robin through
 
 ## `fuzz_numbers`
 
-Target: `parsing.numbers.parse_number`, `parse_decimal` -- locale-aware numeric parsing with CLDR separators.
+Target: `runtime.functions.number_format` -- ROUND_HALF_UP oracle testing, custom `pattern=` path, grouping separator correctness, boundary values, min>max clamping, and `FluentNumber` wrapper contracts.
+
+Concern boundary: This fuzzer stress-tests the runtime NUMBER function formatting path. Distinct from `fuzz_builtins` (which covers NUMBER/DATETIME via the FTL `FluentBundle` evaluation pipeline with structural invariants); this fuzzer calls `number_format` directly to probe oracle correctness and covers the custom `pattern=` fast-path that `fuzz_builtins` does not reach. Key gap: `fuzz_builtins` verifies non-empty output and ROUND_HALF_UP at specific boundary values; this fuzzer covers ROUND_HALF_UP across 35 boundary pairs at precisions 0-3, grouping separator interaction with rounding, and the `minimumFractionDigits > maximumFractionDigits` clamping path.
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `NumbersMetrics` dataclass. Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
+8 patterns across 3 categories:
+
+**ORACLE (4)** - ROUND_HALF_UP correctness at precision boundaries:
+
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `basic_integer` | 8 | Parse succeeds for plain integers |
-| `decimal_period` | 8 | Period decimal parsing |
-| `us_thousands` | 7 | Comma grouping (en-US) |
-| `space_thousands` | 7 | Space grouping (fr-FR, lv-LV) |
-| `de_format` | 7 | German format (period group, comma decimal) |
-| `ch_format` | 7 | Swiss format (apostrophe group) |
-| `scientific` | 7 | Scientific notation |
-| `signed_number` | 7 | Explicit sign prefix |
-| `small_decimal` | 7 | Sub-unit decimals (0.000123) |
-| `large_integer` | 7 | Large integers |
-| `zero_variant` | 6 | Zero representations (0, -0, +0) |
-| `special_float` | 6 | NaN, Infinity, -Infinity |
-| `extreme_large` | 6 | Extreme magnitude (1e308) |
-| `unicode_digits` | 6 | Arabic-Indic, Thai, Khmer digits |
-| `malformed` | 6 | Malformed number strings |
-| `null_bytes` | 5 | Null byte tolerance |
-| `very_long` | 5 | Very long input strings |
-| `invalid_string` | 5 | Non-numeric strings |
-| `raw_bytes` | 10 | Malformed input stability |
+| `boundary_values` | 15 | 35 `(precision, x.y5)` midpoints: all must round away from zero |
+| `grouping_oracle` | 16 | ROUND_HALF_UP with `use_grouping=True` across en-US/de-DE/fr-FR (gap in builtins) |
+| `negative_oracle` | 12 | ROUND_HALF_UP preserved for negative values: abs() applied before oracle comparison |
+| `pattern_oracle` | 13 | Custom `pattern=` path: `parse_pattern(p).frac_prec[1]` precision, ROUND_HALF_UP oracle |
+
+**BOUNDARY (2)** - Edge-case value handling:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `large_integers` | 11 | Values >1e9: non-empty, grouping separators present for en-US |
+| `min_gt_max` | 11 | `minimumFractionDigits > maximumFractionDigits`: result non-empty, no exception |
+
+**CONTRACTS (2)** - Determinism and value preservation:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `determinism` | 11 | Same `(value, locale, kwargs)` always produces identical output |
+| `value_preservation` | 11 | Formatted numeric content matches `Decimal` input through grouping/sign stripping |
 
 ### Allowed Exceptions
 
-`FrozenFluentError` -- depth guard safety mechanism.
+`ValueError`, `TypeError` -- invalid parameters and type validation.
 
 ---
 
@@ -685,6 +718,7 @@ Target: `runtime.resolver` (via `FluentBundle`) -- variable scoping, term argume
 | `cross_message_isolation` | 6 | Independent messages don't pollute each other |
 | `depth_guard_boundary` | 5 | Self-ref, mutual recursion, deep chains hit limits |
 | `adversarial_scope` | 5 | Scope leaks, missing vars, empty values, fuzzed IDs |
+| `expansion_size_limit` | 5 | `_total_chars` budget fires, EXPANSION_BUDGET_EXCEEDED returned |
 
 ### Allowed Exceptions
 
@@ -721,12 +755,170 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 
 ---
 
+## `fuzz_localization`
+
+Target: `localization.orchestrator.FluentLocalization` -- multi-locale orchestration layer: fallback chains, RWLock-protected `add_resource()`, lazy bundle creation, `on_fallback` callback, `has_message()`, `get_message_ids()`, `validate_resource()`, custom function registration, introspection delegation.
+
+Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). Covers multi-locale fallback chain traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, custom function registration and invocation, `on_fallback` callback delivery, and introspection delegation. Key invariant: `has_message()` must be True after `add_resource()` for valid FTL; `get_message_ids()` must return a set with no duplicates.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `single_locale_add_resource` | 14 | add_resource accepts valid FTL; has_message returns True |
+| `multi_locale_fallback` | 12 | Primary miss triggers fallback; on_fallback fires |
+| `chain_of_3_fallback` | 10 | 3-locale chain exhausts to final fallback |
+| `format_value_missing` | 10 | Missing message → fallback string, not crash |
+| `format_with_variables` | 12 | Variables forwarded through fallback chain |
+| `add_resource_mutation` | 10 | add_resource between format calls doesn't corrupt state |
+| `has_message_api` | 10 | has_message/has_attribute contract |
+| `get_message_ids_api` | 8 | get_message_ids returns no duplicates |
+| `validate_resource_api` | 8 | validate_resource delegates correctly |
+| `add_function_custom` | 8 | Custom UPPER function registered and invoked |
+| `introspect_api` | 6 | get_message_variables delegates to introspection |
+| `on_fallback_callback` | 5 | on_fallback receives resolved_locale == fallback locale |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `UnicodeEncodeError`, `FrozenFluentError`, `DataIntegrityError`, `FormattingIntegrityError`, `SyntaxIntegrityError` -- invalid locale, strict mode enforcement, and resolution errors.
+
+---
+
+## `fuzz_dates`
+
+Target: `parsing.dates.parse_date`, `parsing.dates.parse_datetime` -- CLDR→strptime token mapping, locale-aware date/datetime parsing across 24 test locales (Latin-DMY, Latin-MDY, Latin-YMD, CJK, RTL).
+
+Concern boundary: This fuzzer stress-tests the bidirectional date parsing pipeline. Covers the 1004-line `_babel_to_strptime` token mapping, all 13 pattern variants (short/medium/long/full), adversarial inputs (null bytes, ANSI escapes, surrogates, 10000-char strings, invalid month/day values), and cross-locale format string generation. Key invariants: if result is None, errors must be non-empty; if result is not None, it must be a `date`/`datetime` instance; `parse_datetime` result must be instance of `datetime` (not bare `date`).
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `DatesMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `parse_date_generated` | 14 | Generated date strings parse successfully per locale |
+| `parse_datetime_generated` | 12 | Generated datetime strings parse per locale |
+| `locale_variation` | 12 | Same date parsed in multiple locales |
+| `style_variation` | 12 | short/medium/long/full styles all produce parseable strings |
+| `cross_locale_agreement` | 10 | Parsing is consistent across 3 random locales |
+| `adversarial_input` | 10 | Null bytes, surrogates, ANSI escapes handled without crash |
+| `format_then_parse` | 12 | format → parse roundtrip (DATETIME output is parseable) |
+| `invalid_date_values` | 10 | month=13, day=99 produce errors, not silent wrong dates |
+| `empty_string` | 8 | Empty string → errors, not crash |
+| `whitespace_input` | 8 | Whitespace-only → errors, not crash |
+| `partial_date_strings` | 6 | Partial (year-only, month-only) inputs handled |
+| `unicode_month_names` | 8 | Non-ASCII month names in CJK/RTL locales |
+| `leap_year_boundary` | 8 | Feb 29 on leap/non-leap years |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `UnicodeDecodeError`, `UnicodeEncodeError`, `FrozenFluentError` -- invalid locale, encoding edge cases, and bidirectional parse errors.
+
+---
+
+## `fuzz_locale_context`
+
+Target: `runtime.locale_context.LocaleContext` -- direct formatting API: `format_number()`, `format_currency()`, `format_datetime()`, ROUND_HALF_UP rounding oracle, cross-locale determinism.
+
+Concern boundary: This fuzzer stress-tests the LocaleContext formatting layer, distinct from fuzz_builtins (which goes through FluentBundle/FTL) and fuzz_runtime (full runtime stack). Directly exercises the locale-aware formatting primitives that caused the v0.145.0 ROUND_HALF_UP regression. Key invariant (oracle-based): `format_number(val, max_frac=N)` must round half-up (not half-even), verified by `Decimal.quantize(10^-N, ROUND_HALF_UP)`. Control chars stripped from currency symbols prevent log injection through formatted output.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocaleContextMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=2048` default (no Babel concurrency needed).
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `format_number_basic` | 14 | format_number returns non-empty string, no crash |
+| `format_number_precision` | 12 | ROUND_HALF_UP oracle at boundary values |
+| `format_currency_standard` | 12 | format_currency returns string with currency code |
+| `format_currency_rounding` | 12 | ROUND_HALF_UP oracle for currency precision |
+| `format_datetime_date` | 10 | format_datetime(date) returns non-empty string |
+| `format_datetime_datetime` | 10 | format_datetime(datetime) returns non-empty string |
+| `invalid_locale_handling` | 10 | Invalid locale codes handled without unhandled exception |
+| `zero_decimal_currencies` | 8 | JPY/KRW: integer formatting, no decimal separator |
+| `cross_locale_determinism` | 8 | Same value+locale → identical output on repeated calls |
+| `min_max_frac_clamp` | 8 | min_frac > max_frac clamped (bumps max), no assertion error |
+| `custom_pattern_number` | 6 | Custom number pattern applied correctly |
+| `custom_pattern_currency` | 5 | Custom currency pattern applied correctly |
+| `adversarial_value` | 5 | NaN, Inf, extremely large values handled |
+| `locale_pool_coverage` | 5 | 24 locales exercised without locale-specific crash |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OverflowError`, `UnicodeEncodeError`, `FrozenFluentError` -- invalid locale, Babel formatting errors, and out-of-range values.
+
+---
+
+## `fuzz_introspection`
+
+Target: `introspection.message.IntrospectionVisitor`, `introspection.message.ReferenceExtractor`, `introspection.message.MessageIntrospection` -- `extract_variables()`, `extract_references()`, `extract_references_by_attribute()`, `introspect_message()`, `clear_introspection_cache()`, `FluentBundle` introspection facade.
+
+Concern boundary: This fuzzer uses programmatic AST construction (bypasses the FTL parser) to reach introspection code paths that parser-generated ASTs would never produce. Tests the `MAX_DEPTH` guard via `SelectExpression` chain at depths ± `MAX_DEPTH`, frozenset deduplication (same variable referenced N times → 1 entry), `requires_variable(x)` ↔ `get_variable_names()` consistency, cache correctness under repeated calls, and weakref/lock safety under the `threading.Lock`-protected result cache.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `IntrospectionMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=2048` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `extract_variables_simple` | 14 | Variables returned as frozenset; deduplication correct |
+| `extract_references_simple` | 12 | Message/term refs returned correctly |
+| `attribute_variables` | 10 | Attribute-level variables extracted |
+| `deduplication_invariant` | 12 | N references to same var → 1 frozenset entry |
+| `requires_variable_consistency` | 10 | requires_variable ↔ get_variable_names match |
+| `deep_nesting_guard` | 10 | MAX_DEPTH chain triggers guard, no unhandled crash |
+| `select_expression_vars` | 8 | Variables in select variants extracted |
+| `term_reference_vars` | 8 | Term args as variable references |
+| `cache_correctness` | 10 | Repeated calls return identical frozensets |
+| `clear_cache` | 8 | clear_introspection_cache() resets state correctly |
+| `bundle_facade` | 8 | FluentBundle.introspect_message() delegation |
+| `adversarial_ast` | 5 | Programmatic AST edge cases (empty pattern, no elements) |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `RecursionError`, `FrozenFluentError` -- invalid AST nodes, depth guard enforcement, and resolution errors.
+
+---
+
+## `fuzz_diagnostics_formatter`
+
+Target: `diagnostics.formatter.DiagnosticFormatter`, `diagnostics.validation.ValidationError`, `diagnostics.validation.ValidationWarning`, `diagnostics.validation.ValidationResult` -- RUST/SIMPLE/JSON output formats, control-character escaping (log injection prevention), sanitize/redact modes, `format_validation_result()`, `format_error()`, `format_warning()`, `format_all()`.
+
+Concern boundary: This fuzzer stress-tests the diagnostic formatting pipeline as a security boundary. The primary invariant is that no raw ASCII control character (0x00-0x1F, 0x7F) survives into RUST or SIMPLE formatted output when injected into any diagnostic field (message, hint, function_name, argument_name, expected_type, received_type, ftl_location, resolution_path). Secondary invariants: JSON output always parses as valid JSON; sanitize mode bounds output length; redact mode replaces content with `[content redacted]` sentinel; `format_all()` contains each individual formatted diagnostic; `color=True` produces ANSI escape sequences.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `FormatterMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=2048` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `control_char_escaping` | 14 | No raw C0/DEL in RUST/SIMPLE output after injection |
+| `format_rust_all_fields` | 12 | RUST non-empty; span line present; resolution_path separator |
+| `format_json_valid` | 12 | JSON parseable; mandatory keys present; code matches |
+| `format_simple` | 10 | Single-line for clean messages; code name in output |
+| `sanitize_truncation` | 10 | Sanitize mode truncates; ellipsis marker present |
+| `sanitize_redact` | 8 | Redact mode hides content; sentinel present |
+| `format_error_location` | 10 | line/column present when set; absent when not set |
+| `format_warning_context` | 8 | Context present in output; redact removes it |
+| `format_validation_result_mixed` | 8 | passed/failed summary; include_warnings respected |
+| `format_all_multiple` | 8 | Each individual diagnostic present in combined output |
+| `color_ansi_mode` | 5 | color=True longer than color=False; ESC byte present |
+| `adversarial_fields` | 5 | Control chars in rich fields all escaped |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError` -- invalid input types to format_error/format_warning.
+
+---
+
 ## Observability Standard
 
 All fuzzers import shared infrastructure from `fuzz_common.py` (`BaseFuzzerState`, metrics, reporting) and compose domain-specific metrics via separate dataclasses:
 
 - `BaseFuzzerState` dataclass with bounded deques (shared via `fuzz_common`)
-- Domain metrics: `RoundtripMetrics`, `SerializerMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics`, `IntegrityMetrics`, `CacheMetrics`, `BuiltinsMetrics`, `BridgeMetrics`, `FiscalMetrics`, `ISOMetrics`, `CurrencyMetrics`, `NumbersMetrics`, `OOMMetrics`, `PluralMetrics`, `ScopeMetrics` (per-fuzzer)
+- Domain metrics: `RoundtripMetrics`, `SerializerMetrics`, `StructuredMetrics`, `RuntimeMetrics`, `LockMetrics`, `IntegrityMetrics`, `CacheMetrics`, `BuiltinsMetrics`, `BridgeMetrics`, `FiscalMetrics`, `ISOMetrics`, `CurrencyMetrics`, `NumbersMetrics`, `OOMMetrics`, `PluralMetrics`, `ScopeMetrics`, `LocalizationMetrics`, `DatesMetrics`, `LocaleContextMetrics`, `IntrospectionMetrics`, `FormatterMetrics` (per-fuzzer)
 - psutil RSS memory tracking with leak detection (quartile comparison)
 - Performance percentiles: min/mean/median/p95/p99/max
 - Per-pattern wall-time accumulation

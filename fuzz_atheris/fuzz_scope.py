@@ -41,7 +41,7 @@ import pathlib
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -60,6 +60,7 @@ except ImportError:
 from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
     GC_INTERVAL,
     BaseFuzzerState,
+    FuzzStats,
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
@@ -89,6 +90,7 @@ class ScopeMetrics:
     depth_guard_tests: int = 0
     adversarial_tests: int = 0
     bidi_isolation_tests: int = 0
+    expansion_limit_tests: int = 0
 
 
 # --- Global State ---
@@ -105,6 +107,7 @@ _domain = ScopeMetrics()
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine.diagnostics.codes import DiagnosticCode
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.runtime.bundle import FluentBundle
 
@@ -132,9 +135,10 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("nested_term_scope", 8),
     ("scope_chain", 8),
     ("cross_message_isolation", 6),
-    # Expensive: depth guards, error paths
+    # Expensive: depth guards, error paths, expansion budget
     ("depth_guard_boundary", 5),
     ("adversarial_scope", 5),
+    ("expansion_size_limit", 5),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -171,19 +175,19 @@ _LOCALES: tuple[str, ...] = (
 
 def _pick_id(fdp: atheris.FuzzedDataProvider) -> str:
     """Pick a message/term identifier from pool."""
-    return fdp.PickValueInList(list(_NODE_IDS))
+    return cast(str, fdp.PickValueInList(list(_NODE_IDS)))
 
 
 def _pick_var(fdp: atheris.FuzzedDataProvider) -> str:
     """Pick a variable name from pool."""
-    return fdp.PickValueInList(list(_VAR_NAMES))
+    return cast(str, fdp.PickValueInList(list(_VAR_NAMES)))
 
 
 def _pick_locale(fdp: atheris.FuzzedDataProvider) -> str:
     """Pick a locale: 90% valid, 10% fuzzed."""
     if fdp.ConsumeIntInRange(0, 9) < 9:
-        return fdp.PickValueInList(list(_LOCALES))
-    return fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 10))
+        return cast(str, fdp.PickValueInList(list(_LOCALES)))
+    return cast(str, fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 10)))
 
 
 def _gen_value(fdp: atheris.FuzzedDataProvider) -> str:
@@ -640,6 +644,84 @@ def _pattern_adversarial_scope(fdp: atheris.FuzzedDataProvider) -> None:
                 bundle.format_pattern("msg", {raw: "test"})
 
 
+def _pattern_expansion_size_limit(fdp: atheris.FuzzedDataProvider) -> None:
+    """ResolutionContext._total_chars budget guard fires before depth limit.
+
+    The expansion budget (DEFAULT_MAX_EXPANSION_SIZE = 1_000_000) is a
+    character-count ceiling orthogonal to the nesting depth guard. It catches
+    flat messages that expand to enormous output: a single message referencing
+    one variable N times can produce N * len(value) characters without ever
+    exceeding depth 1.
+
+    This pattern uses a lowered max_expansion_size to force the budget to
+    trigger quickly and verify:
+    - The resolver returns the fallback string rather than crashing.
+    - The errors list contains EXPANSION_BUDGET_EXCEEDED.
+    - Reducing the budget never allows output LONGER than the limit.
+
+    The budget is applied per format_pattern call; it does not accumulate
+    across calls. A fresh call with the same bundle resets _total_chars.
+    """
+    _domain.expansion_limit_tests += 1
+
+    # Use a deliberately small expansion budget so we can trigger it quickly
+    # without generating megabytes of variable content.
+    budget = fdp.ConsumeIntInRange(10, 500)
+    repeat_count = fdp.ConsumeIntInRange(2, 30)
+    var_value_len = fdp.ConsumeIntInRange(1, 50)
+
+    # Build a message that concatenates $val N times: { $val }{ $val }...
+    # Total expansion = repeat_count * (var_value_len + isolating overhead)
+    references = " ".join("{ $val }" for _ in range(repeat_count))
+    ftl = f"msg = {references}\n"
+
+    var_value = "x" * var_value_len
+
+    bundle = FluentBundle(  # soft-error API
+        "en-US",
+        use_isolating=False,
+        strict=False,
+        max_expansion_size=budget,
+    )
+    bundle.add_resource(ftl)
+
+    result, errors = bundle.format_pattern("msg", {"val": var_value})
+
+    # Exact expansion size: repeat_count placeables produce var_value_len chars each,
+    # joined by (repeat_count - 1) single-space TextElements from the FTL pattern.
+    # " ".join(["{ $val }"] * N) → N placeables + N-1 spaces, not N spaces.
+    expected_full_size = repeat_count * var_value_len + (repeat_count - 1)
+    budget_exceeded = expected_full_size > budget
+
+    if budget_exceeded:
+        # Must have EXPANSION_BUDGET_EXCEEDED in errors
+        if not errors:
+            msg = (
+                f"expansion limit: expected budget to fire "
+                f"(budget={budget}, expected_size~={expected_full_size}) but no errors"
+            )
+            raise ScopeFuzzError(msg)
+
+        # FrozenFluentError has no direct .code; code is at .diagnostic.code
+        def _error_code(e: object) -> object:
+            diag = getattr(e, "diagnostic", None)
+            return getattr(diag, "code", None)
+
+        error_codes = {_error_code(e) for e in errors}
+        if DiagnosticCode.EXPANSION_BUDGET_EXCEEDED not in error_codes:
+            msg = (
+                f"expansion limit: errors present but EXPANSION_BUDGET_EXCEEDED missing: "
+                f"{errors}"
+            )
+            raise ScopeFuzzError(msg)
+
+    # Regardless of budget, result must be a string (fallback, not crash)
+    # Empty result is acceptable only when errors are present
+    if not result and not errors:
+        msg = "expansion limit: empty result with no errors"
+        raise ScopeFuzzError(msg)
+
+
 # --- Pattern Dispatch ---
 _PATTERN_DISPATCH: dict[str, Any] = {
     "term_arg_isolation": _pattern_term_arg_isolation,
@@ -654,6 +736,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "cross_message_isolation": _pattern_cross_message_isolation,
     "depth_guard_boundary": _pattern_depth_guard_boundary,
     "adversarial_scope": _pattern_adversarial_scope,
+    "expansion_size_limit": _pattern_expansion_size_limit,
 }
 
 
@@ -663,7 +746,7 @@ _REPORT_DIR = pathlib.Path(".fuzz_atheris_corpus") / "scope"
 _REPORT_FILENAME = "fuzz_scope_report.json"
 
 
-def _build_stats_dict() -> dict[str, Any]:
+def _build_stats_dict() -> FuzzStats:
     """Build complete stats dictionary including domain metrics."""
     stats = build_base_stats_dict(_state)
 
@@ -674,6 +757,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["depth_guard_tests"] = _domain.depth_guard_tests
     stats["adversarial_tests"] = _domain.adversarial_tests
     stats["bidi_isolation_tests"] = _domain.bidi_isolation_tests
+    stats["expansion_limit_tests"] = _domain.expansion_limit_tests
 
     return stats
 
