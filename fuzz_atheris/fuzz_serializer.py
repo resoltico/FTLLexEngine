@@ -7,7 +7,8 @@
 """AST-Construction Serializer Fuzzer (Atheris).
 
 Targets: ftllexengine.syntax.serializer.serialize,
-         ftllexengine.syntax.parser.FluentParserV1
+         ftllexengine.syntax.parser.FluentParserV1,
+         ftllexengine.syntax.visitor.ASTVisitor / ASTTransformer
 
 Concern boundary: This fuzzer programmatically constructs AST nodes
 (bypassing the parser) and feeds them to the serializer. This is the
@@ -19,6 +20,10 @@ semantically unusual combinations.
 This directly addresses the blind spot where text-based fuzzers
 (fuzz_roundtrip, fuzz_structured) start from the parser, which normalizes
 inputs before the serializer ever sees them.
+
+The same AST-construction model is also ideal for visitor/transformer
+coverage because it can construct trees and transformation results that
+ordinary parser-driven fuzzers do not reach.
 
 Invariant:
 - serialize(ast) must produce valid FTL (no Junk on reparse)
@@ -53,7 +58,7 @@ import sys
 import time
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     pass
@@ -105,6 +110,8 @@ class SerializerMetrics:
     convergence_failures: int = 0
     junk_on_reparse: int = 0
     validation_errors: int = 0
+    visitor_runs: int = 0
+    transformer_runs: int = 0
 
 
 # --- Global State ---
@@ -129,6 +136,9 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("select_expression", 8),
     ("mixed_elements", 8),
     ("multiline_value", 5),
+    ("visitor_dispatch", 8),
+    ("transformer_roundtrip", 8),
+    ("transformer_validation", 6),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -170,6 +180,8 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["convergence_failures"] = _domain.convergence_failures
     stats["junk_on_reparse"] = _domain.junk_on_reparse
     stats["validation_errors"] = _domain.validation_errors
+    stats["visitor_runs"] = _domain.visitor_runs
+    stats["transformer_runs"] = _domain.transformer_runs
 
     return stats
 
@@ -219,6 +231,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     )
     from ftllexengine.syntax.parser import FluentParserV1
     from ftllexengine.syntax.serializer import serialize
+    from ftllexengine.syntax.visitor import ASTTransformer, ASTVisitor
 
 _parser = FluentParserV1()
 
@@ -265,6 +278,61 @@ def _mk_term(
 ) -> Term:
     """Construct a Term AST node."""
     return Term(id=_mk_id(fdp), value=value, attributes=attributes)
+
+
+def _mk_nonempty_value(
+    fdp: atheris.FuzzedDataProvider,
+    *,
+    max_length: int = 24,
+) -> str:
+    """Generate a non-empty FTL-safe text fragment."""
+    value = gen_ftl_value(fdp, max_length=max_length)
+    return value or "value"
+
+
+def _build_visitor_resource(fdp: atheris.FuzzedDataProvider) -> Resource:
+    """Construct a small but structurally rich AST for visitor coverage."""
+    selector = VariableReference(id=Identifier(name="count"))
+    variants = (
+        Variant(
+            key=Identifier(name="one"),
+            value=_mk_pattern(_mk_nonempty_value(fdp)),
+        ),
+        Variant(
+            key=Identifier(name="other"),
+            value=_mk_pattern(_mk_nonempty_value(fdp)),
+            default=True,
+        ),
+    )
+    select = SelectExpression(selector=selector, variants=variants)
+    message = Message(
+        id=Identifier(name=f"msg-{gen_ftl_identifier(fdp)}"),
+        value=Pattern(
+            elements=(
+                TextElement(value=_mk_nonempty_value(fdp)),
+                Placeable(expression=select),
+            ),
+        ),
+        attributes=(
+            Attribute(
+                id=Identifier(name="label"),
+                value=_mk_pattern(_mk_nonempty_value(fdp)),
+            ),
+        ),
+    )
+    term = Term(
+        id=Identifier(name=f"term-{gen_ftl_identifier(fdp)}"),
+        value=Pattern(
+            elements=(
+                TextElement(value=_mk_nonempty_value(fdp)),
+                Placeable(
+                    expression=StringLiteral(value=_mk_nonempty_value(fdp)),
+                ),
+            ),
+        ),
+        attributes=(),
+    )
+    return Resource(entries=(message, term))
 
 
 # --- Roundtrip Verification ---
@@ -581,6 +649,177 @@ def _pattern_multiline_value(
     _verify_serializer_roundtrip(Resource(entries=(msg,)), pattern)
 
 
+def _pattern_visitor_dispatch(
+    fdp: atheris.FuzzedDataProvider,
+    pattern: str,
+) -> None:
+    """ASTVisitor dispatch reaches custom handlers and generic traversal."""
+    del pattern  # pattern name unused beyond dispatch routing
+    _domain.visitor_runs += 1
+    resource = _build_visitor_resource(fdp)
+
+    class CountingVisitor(ASTVisitor):
+        """Count dispatch hits across a deliberately mixed AST."""
+
+        def __init__(self) -> None:
+            """Initialize node visit counters."""
+            super().__init__()
+            self.messages = 0
+            self.terms = 0
+            self.text_elements = 0
+            self.variables = 0
+            self.select_expressions = 0
+
+        def visit_Message(self, node: Message) -> Message:  # noqa: N802
+            """Count message visits and continue traversal."""
+            self.messages += 1
+            return cast(Message, self.generic_visit(node))
+
+        def visit_Term(self, node: Term) -> Term:  # noqa: N802
+            """Count term visits and continue traversal."""
+            self.terms += 1
+            return cast(Term, self.generic_visit(node))
+
+        def visit_TextElement(self, node: TextElement) -> TextElement:  # noqa: N802
+            """Count text-element visits and continue traversal."""
+            self.text_elements += 1
+            return cast(TextElement, self.generic_visit(node))
+
+        def visit_VariableReference(  # noqa: N802
+            self, node: VariableReference
+        ) -> VariableReference:
+            """Count variable-reference visits and continue traversal."""
+            self.variables += 1
+            return cast(VariableReference, self.generic_visit(node))
+
+        def visit_SelectExpression(  # noqa: N802
+            self, node: SelectExpression
+        ) -> SelectExpression:
+            """Count select-expression visits and continue traversal."""
+            self.select_expressions += 1
+            return cast(SelectExpression, self.generic_visit(node))
+
+    visitor = CountingVisitor()
+    result = visitor.visit(resource)
+
+    if result is not resource:
+        msg = "ASTVisitor.visit(Resource) did not return the visited node"
+        raise SerializerFuzzError(msg)
+    if visitor.messages < 1 or visitor.terms < 1:
+        msg = "ASTVisitor failed to dispatch to Message/Term handlers"
+        raise SerializerFuzzError(msg)
+    if visitor.text_elements < 4:
+        msg = f"Expected multiple TextElement visits, got {visitor.text_elements}"
+        raise SerializerFuzzError(
+            msg,
+        )
+    if visitor.variables < 1 or visitor.select_expressions < 1:
+        msg = (
+            "ASTVisitor failed to traverse nested "
+            "VariableReference/SelectExpression nodes"
+        )
+        raise SerializerFuzzError(
+            msg,
+        )
+
+
+def _pattern_transformer_roundtrip(
+    fdp: atheris.FuzzedDataProvider,
+    pattern: str,
+) -> None:
+    """ASTTransformer list expansion preserves serializer roundtrip invariants."""
+    _domain.transformer_runs += 1
+    resource = _build_visitor_resource(fdp)
+    duplicate_suffix = f"-copy-{fdp.ConsumeIntInRange(0, 99)}"
+
+    class ExpandingTransformer(ASTTransformer):
+        """Expand a single message into two messages via list return."""
+
+        def __init__(self, suffix: str) -> None:
+            """Store suffix used for the duplicated message ID."""
+            super().__init__()
+            self._suffix = suffix
+            self.expansions = 0
+
+        def visit_Message(self, node: Message) -> list[Message]:  # noqa: N802
+            """Duplicate visited messages after transforming their children."""
+            transformed = self.generic_visit(node)
+            if not isinstance(transformed, Message):
+                msg = (
+                    "ASTTransformer.generic_visit(Message) returned "
+                    f"{type(transformed).__name__}"
+                )
+                raise SerializerFuzzError(msg)
+
+            self.expansions += 1
+            duplicate = dc_replace(
+                transformed,
+                id=Identifier(name=f"{transformed.id.name}{self._suffix}"),
+            )
+            return [transformed, duplicate]
+
+    transformer = ExpandingTransformer(duplicate_suffix)
+    transformed = transformer.transform(resource)
+
+    if not isinstance(transformed, Resource):
+        msg = f"transform(Resource) returned {type(transformed).__name__}"
+        raise SerializerFuzzError(msg)
+
+    message_count = sum(
+        1 for entry in transformed.entries if isinstance(entry, Message)
+    )
+    if transformer.expansions < 1 or message_count < 2:
+        msg = "ASTTransformer list expansion did not duplicate message entries"
+        raise SerializerFuzzError(
+            msg,
+        )
+
+    _verify_serializer_roundtrip(transformed, pattern)
+
+
+def _pattern_transformer_validation(
+    fdp: atheris.FuzzedDataProvider,
+    pattern: str,
+) -> None:
+    """ASTTransformer rejects invalid scalar replacements for required fields."""
+    del pattern  # validation path does not serialize on success
+    resource = _build_visitor_resource(fdp)
+    invalid_mode = fdp.ConsumeIntInRange(0, 1)
+
+    class InvalidScalarTransformer(ASTTransformer):
+        """Return invalid scalar replacements to verify runtime validation."""
+
+        def __init__(self, mode: int) -> None:
+            """Select whether to return None or a list for Identifier fields."""
+            super().__init__()
+            self._mode = mode
+
+        def visit_Identifier(  # noqa: N802
+            self, node: Identifier
+        ) -> None | list[Identifier]:
+            """Break required scalar field contracts for Identifier nodes."""
+            if self._mode == 0:
+                return None
+            return [node, dc_replace(node, name=f"{node.name}-dup")]
+
+    transformer = InvalidScalarTransformer(invalid_mode)
+
+    try:
+        transformer.transform(resource)
+    except TypeError as exc:
+        if "Message.id" not in str(exc):
+            msg = (
+                "ASTTransformer raised unexpected TypeError during scalar "
+                f"validation: {exc}"
+            )
+            raise SerializerFuzzError(msg) from exc
+        _domain.validation_errors += 1
+        return
+
+    msg = "ASTTransformer accepted invalid scalar replacement for Message.id"
+    raise SerializerFuzzError(msg)
+
+
 # --- Pattern Dispatch ---
 
 _PATTERN_DISPATCH: dict[str, Any] = {
@@ -594,6 +833,9 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "select_expression": _pattern_select_expression,
     "mixed_elements": _pattern_mixed_elements,
     "multiline_value": _pattern_multiline_value,
+    "visitor_dispatch": _pattern_visitor_dispatch,
+    "transformer_roundtrip": _pattern_transformer_roundtrip,
+    "transformer_validation": _pattern_transformer_validation,
 }
 
 
@@ -802,7 +1044,8 @@ def test_one_input(data: bytes) -> None:
     finally:
         is_interesting = pattern in (
             "leading_whitespace", "syntax_chars_value",
-            "attribute_edge_cases",
+            "attribute_edge_cases", "visitor_dispatch",
+            "transformer_roundtrip", "transformer_validation",
         ) or ((time.perf_counter() - start_time) * 1000 > 10.0)
         record_iteration_metrics(
             _state, pattern, start_time, data,

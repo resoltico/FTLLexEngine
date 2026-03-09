@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.145.0"
+version: "0.146.0"
 domain: CHANGELOG
-updated: "2026-03-05"
+updated: "2026-03-07"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -12,6 +12,72 @@ route:
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.147.0] - 2026-03-09
+
+### Fixed
+
+- **`__init__.pyi`: fiscal calendar exports and `ParseTypeLiteral` absent from type stub**
+  (FIX-STUB-FISCAL-001):
+  - `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod`, `MonthEndPolicy`, `fiscal_quarter`,
+    `fiscal_year`, `fiscal_month`, `fiscal_year_start`, `fiscal_year_end`, and `ParseTypeLiteral`
+    were exported at runtime via `__all__` in `__init__.py` but were entirely absent from
+    `__init__.pyi`; because `py.typed` is present, mypy uses the stub as the authoritative type
+    source and suppresses inference from the implementation — all ten symbols were invisible to
+    mypy, causing `Module has no attribute` errors for any caller importing them from the package
+    root
+  - Fix: added all ten missing declarations to `__init__.pyi` with explicit `as Name` re-export
+    form required for mypy to recognise them as public re-exports; updated `__all__` in the stub
+    to match `__init__.py`
+  - Location: `src/ftllexengine/__init__.pyi`
+
+- **`parsing/numbers.py` `parse_decimal` and `parsing/currency.py` `parse_currency`: locale codes containing non-BCP-47 characters silently parse valid-looking values instead of returning a locale error**
+  (FIX-PARSE-LOCALE-CHARS-001):
+  - Babel's `Locale.parse()` silently accepts locale codes that contain characters outside the
+    BCP-47 alphabet (e.g., `/`, `\x00`, or arbitrary Unicode) without raising `UnknownLocaleError`
+    or `ValueError`; instead it creates a `Locale` object using default number-format settings;
+    a subsequent `babel.numbers.parse_decimal("123.45", locale=locale_obj)` call succeeds because
+    the default locale uses ASCII `.` as the decimal separator, returning `Decimal("123.45")`
+    as if the parse had succeeded — no error is reported, and the caller receives a plausible
+    result for a structurally invalid locale code
+  - Root cause: the `except (UnknownLocaleError, ValueError)` guard in both functions assumes
+    Babel raises one of those two exceptions for all invalid locale codes; Babel's lenient
+    acceptance of non-BCP-47 characters in locale identifiers is a Babel implementation detail
+    that our validation boundary does not account for
+  - Fix: added `is_structurally_valid_locale_code()` in `core/locale_utils.py`; the function
+    checks that the locale code matches `^[a-zA-Z0-9][a-zA-Z0-9_\-]*$` (alphanumerics, hyphens,
+    and underscores only) before the code reaches `Locale.parse()`; codes that fail this check
+    return `(None, (error,))` immediately, never entering Babel; all standard BCP-47 and POSIX
+    locale codes (`en_US`, `zh-Hans-CN`, `hi_IN`, etc.) pass the check; the function is
+    exported from `core/locale_utils` for use by both parsing functions
+  - Location: `core/locale_utils.py` `is_structurally_valid_locale_code`; `parsing/numbers.py`
+    `parse_decimal`; `parsing/currency.py` `parse_currency`
+
+### Changed
+
+- **`parsing/numbers.py` `parse_decimal`: misplaced group separators silently produce a result instead of returning a parse error**
+  (FIX-PARSE-DECIMAL-GROUPING-001):
+  - Babel's `parse_decimal` strips group separators without validating their positions; inputs
+    such as `"1,2,3"` for `en_US` (where `,` is the thousands separator) had all commas stripped
+    to produce `Decimal("123")` — a result with no diagnostic — despite the grouping being
+    structurally invalid (each group has 1 digit instead of the required 3)
+  - The same silent pass-through occurred for any locale where the group separator appears in
+    positions that violate the locale's grouping rules: e.g., `"1.2.3"` for `de_DE` (`.` is the
+    group separator) was returned as `Decimal("123")` rather than an error
+  - Root cause: Babel's `parse_decimal` is intentionally lenient — it treats the group separator
+    as a character to strip rather than a structural constraint to validate; there is no
+    strict-mode or position-check option exposed in the public API
+  - Fix: added `_validate_group_positions()` pre-validation in `parse_decimal`; the function
+    reads the locale's default numbering system from `locale.default_numbering_system` (e.g.,
+    `"latn"`), then retrieves group and decimal symbols from
+    `locale.number_symbols[numbering_system]`; the expected group sizes are read from
+    `locale.decimal_formats[None].grouping` (e.g., `(3, 3)` for `en_US`, `(3, 2)` for `hi_IN`);
+    any non-leftmost group with an incorrect digit count causes immediate rejection before Babel
+    is called; groups containing non-digit characters are passed through to Babel (which will
+    reject them via `NumberFormatError`)
+  - Location: `parsing/numbers.py` `parse_decimal`, `_validate_group_positions`
 
 ## [0.146.0] - 2026-03-06
 
@@ -5610,6 +5676,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.147.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.147.0
 [0.146.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.146.0
 [0.145.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.145.0
 [0.144.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.144.0

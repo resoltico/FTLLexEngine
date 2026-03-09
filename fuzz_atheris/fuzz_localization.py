@@ -27,8 +27,11 @@ Unique coverage (not covered by other fuzzers):
 - validate_resource() via localization facade
 - add_function() custom function registration and application to late bundles
 - Strict/non-strict mode propagation to each per-locale bundle
+- resource_loader + PathResourceLoader eager initialization path
+- LoadSummary aggregation (success, not_found, error, junk)
+- loader-backed source_path and path-validation error plumbing
 
-Patterns (12):
+Patterns (16):
 - single_locale_add_resource: 1 locale, add_resource, format
 - multi_locale_fallback: 2 locales, message only in fallback locale
 - chain_of_3_fallback: 3-locale chain, message in various positions
@@ -41,6 +44,10 @@ Patterns (12):
 - add_function_custom: add_function + FTL that calls custom function
 - introspect_api: introspect_message/get_message_variables contracts
 - on_fallback_callback: on_fallback callback fires on locale miss
+- loader_init_success: eager load via PathResourceLoader succeeds for all locales
+- loader_not_found_fallback: loader summary tracks primary miss + fallback success
+- loader_junk_summary: eager load records Junk entries in LoadSummary
+- loader_path_error: invalid resource_id is captured as loader error in summary
 
 Metrics:
 - Pattern coverage with weighted round-robin schedule
@@ -62,6 +69,7 @@ import pathlib
 import sys
 import time
 from dataclasses import dataclass
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -118,6 +126,9 @@ class LocalizationMetrics:
     has_message_checks: int = 0
     introspect_calls: int = 0
     validate_calls: int = 0
+    loader_init_checks: int = 0
+    loader_junk_checks: int = 0
+    loader_error_checks: int = 0
 
 
 class LocalizationFuzzError(Exception):
@@ -146,6 +157,10 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("add_function_custom", 6),
     ("introspect_api", 7),
     ("on_fallback_callback", 6),
+    ("loader_init_success", 5),
+    ("loader_not_found_fallback", 5),
+    ("loader_junk_summary", 4),
+    ("loader_path_error", 4),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -212,6 +227,9 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["has_message_checks"] = _domain.has_message_checks
     stats["introspect_calls"] = _domain.introspect_calls
     stats["validate_calls"] = _domain.validate_calls
+    stats["loader_init_checks"] = _domain.loader_init_checks
+    stats["loader_junk_checks"] = _domain.loader_junk_checks
+    stats["loader_error_checks"] = _domain.loader_error_checks
     total = _domain.messages_found + _domain.messages_missing
     if total > 0:
         stats["fallback_hit_ratio"] = round(
@@ -245,10 +263,24 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         SyntaxIntegrityError,
     )
     from ftllexengine.localization import FluentLocalization
-    from ftllexengine.localization.loading import FallbackInfo
+    from ftllexengine.localization.loading import FallbackInfo, PathResourceLoader
 
 
 # --- Pattern implementations ---
+
+
+def _write_loader_resource(
+    root: pathlib.Path,
+    locale: str,
+    resource_id: str,
+    ftl_source: str,
+) -> pathlib.Path:
+    """Write an FTL file for PathResourceLoader-backed tests."""
+    locale_dir = root / locale
+    locale_dir.mkdir(parents=True, exist_ok=True)
+    resource_path = locale_dir / resource_id
+    resource_path.write_text(ftl_source, encoding="utf-8")
+    return resource_path
 
 
 def _pattern_single_locale_add_resource(
@@ -408,7 +440,7 @@ def _pattern_format_with_variables(
     primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
     msg_id = gen_ftl_identifier(fdp)
     var_a = gen_ftl_identifier(fdp)
-    var_b = f"b-{gen_ftl_identifier(fdp)}"  # prefix guarantees var_b != var_a
+    var_b = f"B-{gen_ftl_identifier(fdp)}"  # B: gen_ftl_identifier always starts with a-z
     val_a = gen_ftl_value(fdp, max_length=20)
     val_b = gen_ftl_value(fdp, max_length=20)
     ftl = f"{msg_id} = {{ ${var_a} }} {{ ${var_b} }}\n"
@@ -440,7 +472,7 @@ def _pattern_add_resource_mutation(
     _domain.add_resource_mutations += 1
     locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
     msg_id_a = gen_ftl_identifier(fdp)
-    msg_id_b = f"b-{gen_ftl_identifier(fdp)}"
+    msg_id_b = f"B-{gen_ftl_identifier(fdp)}"  # B: gen_ftl_identifier always starts with a-z
     val_a = gen_ftl_value(fdp)
     val_b = gen_ftl_value(fdp)
 
@@ -462,12 +494,9 @@ def _pattern_add_resource_mutation(
     # Re-format after mutation
     result_b2, errors_b2 = l10n.format_pattern(msg_id_b)
 
-    # FTL's blank_inline rule ("+" greedy) strips ALL leading whitespace from
-    # inline message values; compare against lstrip() to match actual stored value.
-    val_b_effective = val_b.lstrip()
-    if not errors_b2 and val_b_effective and val_b_effective not in result_b2:
+    if not errors_b2 and val_b not in result_b2:
         msg = (
-            f"After mutation: expected '{val_b_effective}' in result, "
+            f"After mutation: expected '{val_b}' in result, "
             f"got '{result_b2}'"
         )
         raise LocalizationFuzzError(msg)
@@ -648,7 +677,7 @@ def _pattern_introspect_api(
     primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
     msg_id = gen_ftl_identifier(fdp)
     var_a = gen_ftl_identifier(fdp)
-    var_b = f"b-{gen_ftl_identifier(fdp)}"  # prefix guarantees var_b != var_a
+    var_b = f"B-{gen_ftl_identifier(fdp)}"  # B: gen_ftl_identifier always starts with a-z
     ftl = f"{msg_id} = {{ ${var_a} }} {{ ${var_b} }}\n"
 
     l10n = FluentLocalization([primary, fallback], strict=False)
@@ -712,6 +741,165 @@ def _pattern_on_fallback_callback(
         _domain.messages_missing += 1
 
 
+def _pattern_loader_init_success(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """PathResourceLoader eager-init path records all-success summary data."""
+    _domain.loader_init_checks += 1
+    locale_a, locale_b = fdp.PickValueInList(list(_LOCALE_PAIRS))
+    resource_id = "main.ftl"
+    msg_id = gen_ftl_identifier(fdp)
+    primary_val = gen_ftl_value(fdp)
+    fallback_val = gen_ftl_value(fdp)
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        _write_loader_resource(root, locale_a, resource_id, f"{msg_id} = {primary_val}\n")
+        _write_loader_resource(root, locale_b, resource_id, f"{msg_id} = {fallback_val}\n")
+
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization(
+            [locale_a, locale_b],
+            [resource_id],
+            loader,
+            strict=False,
+        )
+        summary = l10n.get_load_summary()
+
+        if summary.successful != 2 or not summary.all_successful:
+            msg = (
+                f"Expected two successful eager loads, got successful={summary.successful}, "
+                f"not_found={summary.not_found}, errors={summary.errors}"
+            )
+            raise LocalizationFuzzError(msg)
+        if summary.has_errors or summary.has_junk:
+            msg = (
+                f"Unexpected summary state: has_errors={summary.has_errors}, "
+                f"has_junk={summary.has_junk}"
+            )
+            raise LocalizationFuzzError(msg)
+        if any(result.source_path is None for result in summary.results):
+            msg = "Loader summary missing source_path on successful result"
+            raise LocalizationFuzzError(msg)
+
+        result, errors = l10n.format_pattern(msg_id)
+        if errors:
+            msg = f"Loader-backed localization unexpectedly returned errors: {errors!r}"
+            raise LocalizationFuzzError(msg)
+        if primary_val not in result:
+            msg = f"Primary locale value {primary_val!r} missing from result {result!r}"
+            raise LocalizationFuzzError(msg)
+
+
+def _pattern_loader_not_found_fallback(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Primary miss is tracked as not_found while fallback still resolves."""
+    _domain.loader_init_checks += 1
+    primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
+    resource_id = "main.ftl"
+    msg_id = gen_ftl_identifier(fdp)
+    val = gen_ftl_value(fdp)
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        _write_loader_resource(root, fallback, resource_id, f"{msg_id} = {val}\n")
+
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization(
+            [primary, fallback],
+            [resource_id],
+            loader,
+            strict=False,
+        )
+        summary = l10n.get_load_summary()
+
+        if summary.successful != 1 or summary.not_found != 1 or summary.errors != 0:
+            msg = (
+                f"Unexpected mixed summary: successful={summary.successful}, "
+                f"not_found={summary.not_found}, errors={summary.errors}"
+            )
+            raise LocalizationFuzzError(msg)
+
+        result, errors = l10n.format_pattern(msg_id)
+        if errors:
+            msg = f"Fallback load should resolve successfully, got errors={errors!r}"
+            raise LocalizationFuzzError(msg)
+        if val not in result:
+            msg = f"Fallback value {val!r} missing from result {result!r}"
+            raise LocalizationFuzzError(msg)
+
+
+def _pattern_loader_junk_summary(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Junk entries discovered during eager load are preserved in LoadSummary."""
+    _domain.loader_junk_checks += 1
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    resource_id = "broken.ftl"
+    junk_source = f"{gen_ftl_identifier(fdp)} = {{\n"
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        _write_loader_resource(root, locale, resource_id, junk_source)
+
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization([locale], [resource_id], loader, strict=False)
+        summary = l10n.get_load_summary()
+
+        if summary.successful != 1 or not summary.has_junk or summary.junk_count < 1:
+            msg = (
+                f"Expected junk-bearing successful load, got successful={summary.successful}, "
+                f"has_junk={summary.has_junk}, junk_count={summary.junk_count}"
+            )
+            raise LocalizationFuzzError(msg)
+        if summary.all_clean:
+            msg = "LoadSummary.all_clean unexpectedly true for junk input"
+            raise LocalizationFuzzError(msg)
+        if not summary.get_with_junk():
+            msg = "LoadSummary.get_with_junk() returned empty tuple"
+            raise LocalizationFuzzError(msg)
+
+
+def _pattern_loader_path_error(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Invalid resource IDs surface as loader errors in the eager-load summary."""
+    _domain.loader_error_checks += 1
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    invalid_resource_id = fdp.PickValueInList([
+        "../escape.ftl",
+        " main.ftl",
+        "/absolute.ftl",
+    ])
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization(
+            [locale],
+            [invalid_resource_id],
+            loader,
+            strict=False,
+        )
+        summary = l10n.get_load_summary()
+
+        if summary.errors != 1 or not summary.has_errors:
+            msg = (
+                f"Expected one loader error for invalid resource_id, got "
+                f"errors={summary.errors}, not_found={summary.not_found}"
+            )
+            raise LocalizationFuzzError(msg)
+
+        first_error = summary.get_errors()[0].error
+        if not isinstance(first_error, ValueError):
+            msg = (
+                "Expected ValueError from PathResourceLoader validation, got "
+                f"{type(first_error).__name__}"
+            )
+            raise LocalizationFuzzError(msg)
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH = {
@@ -727,6 +915,10 @@ _PATTERN_DISPATCH = {
     "add_function_custom": _pattern_add_function_custom,
     "introspect_api": _pattern_introspect_api,
     "on_fallback_callback": _pattern_on_fallback_callback,
+    "loader_init_success": _pattern_loader_init_success,
+    "loader_not_found_fallback": _pattern_loader_not_found_fallback,
+    "loader_junk_summary": _pattern_loader_junk_summary,
+    "loader_path_error": _pattern_loader_path_error,
 }
 
 
@@ -774,6 +966,7 @@ def test_one_input(data: bytes) -> None:
     finally:
         is_interesting = (
             "fallback" in pattern_name
+            or "loader" in pattern_name
             or pattern_name in ("add_resource_mutation", "introspect_api")
             or (time.perf_counter() - start_time) * 1000 > 1.0
         )

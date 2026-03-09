@@ -8,11 +8,11 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.146.0"
+version = "0.147.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Ervins Strauhmanis"},
 ]
@@ -67,11 +67,6 @@ babel = [
     "Babel>=2.18.0,<3.0.0",
 ]
 
-# Full installation with all optional dependencies
-full = [
-    "Babel>=2.18.0,<3.0.0",
-]
-
 [dependency-groups]
 dev = [
     "Babel>=2.18.0,<3.0.0",  # Required for tests (locale formatting, parsing)
@@ -105,20 +100,24 @@ Repository = "https://github.com/resoltico/ftllexengine.git"
 Issues = "https://github.com/resoltico/ftllexengine/issues"
 Changelog = "https://github.com/resoltico/ftllexengine/blob/main/CHANGELOG.md"
 
+[tool.hatch.build]
+# Explicit license file list ensures PATENTS.md is included in wheel .dist-info/
+# Hatch's default discovery matches LICEN[CS]E*, NOTICE*, COPYING*, COPYRIGHT* only;
+# PATENTS.md does not match any default pattern and would be silently omitted from wheels.
+license-files = ["LICENSE", "NOTICE", "PATENTS.md"]
+
 [tool.hatch.build.targets.sdist]
 # Source distribution includes:
 # - Full source code (/src) - runtime code
 # - Complete test suite (/tests) - for downstream packagers and verification
 # - Working examples (/examples) - educational value and learning resources
 # - User documentation (*.md) - offline reference and API docs
-# - CI workflows (/.github/workflows) - shows testing/release process for packagers
 # - License files (LICENSE, NOTICE, PATENTS.md) - legal compliance
 #
 # IMPORTANT: Hatch uses VCS (git) mode by default and respects git tracking
 # Files must be committed to git to be included in sdist
 # .gitignore is always included (cannot be excluded per Hatch behavior)
 only-include = [
-    "/.github/workflows",
     "/examples",
     "/src",
     "/tests",

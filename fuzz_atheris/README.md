@@ -2,7 +2,7 @@
 afad: "3.3"
 version: "0.146.0"
 domain: fuzzing
-updated: "2026-03-05"
+updated: "2026-03-08"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -16,45 +16,51 @@ route:
 
 | Fuzzer | Target Module(s) | Patterns | Seeds | Concern |
 |:-------|:-----------------|:---------|:------|:--------|
-| `fuzz_bridge.py` | `runtime.function_bridge` | 15 | 18 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
-| `fuzz_graph.py` | `analysis.graph` | 12 | 12 (.bin) | Dependency graph cycle detection, canonicalization |
-| `fuzz_builtins.py` | `runtime.functions` | 13 | 20 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
-| `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 43 (.ftl) + 5 (.bin) | Cache concurrency and integrity |
-| `fuzz_currency.py` | `runtime.functions` | 8 | 0 | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
-| `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 18 (.bin) | Fiscal calendar arithmetic, contracts |
-| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 19 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
-| `fuzz_iso.py` | `introspection.iso` | 9 | 17 (.bin) | ISO 3166/4217 introspection |
-| `fuzz_lock.py` | `runtime.rwlock` | 15 | 32 (.bin) | RWLock concurrency primitives |
-| `fuzz_numbers.py` | `runtime.functions` | 8 | 0 | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
-| `fuzz_plural.py` | `runtime.plural_rules` | 10 | 20 (.bin) | CLDR plural category selection |
-| `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 1 (.bin) | Parser object explosion (DoS) |
-| `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 18 (.bin) + 4 (.ftl) | Parser-serializer convergence |
-| `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 73 (.bin) | Full runtime stack, strict mode |
-| `fuzz_serializer.py` | `syntax.serializer`, `syntax.parser` | 10 | 12 (.bin) | AST-construction serializer roundtrip |
-| `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 13 | 12 (.bin) | Variable scoping, term isolation, depth guards, expansion budget |
-| `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) | Grammar-aware AST construction |
-| `fuzz_localization.py` | `localization.orchestrator` | 12 | 5 (.bin) | FluentLocalization multi-locale orchestration, fallback chains |
-| `fuzz_dates.py` | `parsing.dates` | 13 | 6 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing |
-| `fuzz_locale_context.py` | `runtime.locale_context` | 14 | 5 (.bin) | LocaleContext direct formatting, ROUND_HALF_UP oracle, cross-locale determinism |
-| `fuzz_introspection.py` | `introspection.message` | 12 | 5 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction |
-| `fuzz_diagnostics_formatter.py` | `diagnostics.formatter`, `diagnostics.validation` | 12 | 8 (.bin) | Control-char escaping, RUST/SIMPLE/JSON output, sanitize/redact modes |
+| `fuzz_bridge.py` | `runtime.function_bridge` | 15 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
+| `fuzz_graph.py` | `analysis.graph` | 12 | 24 (.bin) | Dependency graph cycle detection, canonicalization |
+| `fuzz_builtins.py` | `runtime.functions` | 13 | 24 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
+| `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency and integrity |
+| `fuzz_currency.py` | `runtime.functions` | 8 | 65 (.txt) + 23 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
+| `fuzz_parse_currency.py` | `parsing.currency`, `parsing.guards` | 9 | 5 (.txt) + 20 (.bin) | Locale-aware currency parsing, symbol disambiguation, cache stability |
+| `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 38 (.bin) | Fiscal calendar arithmetic, contracts |
+| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 35 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
+| `fuzz_iso.py` | `introspection.iso` | 9 | 36 (.bin) | ISO 3166/4217 introspection |
+| `fuzz_lock.py` | `runtime.rwlock` | 15 | 39 (.bin) | RWLock concurrency primitives |
+| `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
+| `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 7 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, locale normalization/cache behavior |
+| `fuzz_plural.py` | `runtime.plural_rules` | 10 | 37 (.bin) | CLDR plural category selection |
+| `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 8 (.bin) | Parser object explosion (DoS) |
+| `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 31 (.bin) + 4 (.ftl) | Parser-serializer convergence |
+| `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 100 (.bin) | Full runtime stack, strict mode |
+| `fuzz_serializer.py` | `syntax.serializer`, `syntax.parser`, `syntax.visitor` | 13 | 26 (.bin) | AST-construction serializer roundtrip, visitor/transformer validation |
+| `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 13 | 29 (.bin) | Variable scoping, term isolation, depth guards, expansion budget |
+| `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) + 6 (.bin) | Grammar-aware AST construction |
+| `fuzz_cursor.py` | `syntax.cursor`, `syntax.position` | 8 | 5 (.txt) + 35 (.bin) | Cursor state machine, ParseError formatting, position helper parity |
+| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 16 | 13 (.bin) | FluentLocalization orchestration, loader init, LoadSummary, fallback chains |
+| `fuzz_dates.py` | `parsing.dates` | 13 | 56 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing |
+| `fuzz_locale_context.py` | `runtime.locale_context` | 14 | 25 (.bin) | LocaleContext direct formatting, ROUND_HALF_UP oracle, cross-locale determinism |
+| `fuzz_introspection.py` | `introspection.message` | 12 | 22 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction |
+| `fuzz_diagnostics_formatter.py` | `diagnostics.formatter`, `diagnostics.validation` | 12 | 23 (.bin) | Control-char escaping, RUST/SIMPLE/JSON output, sanitize/redact modes |
 
 ## Module Coverage Matrix
 
 | Source Module | Fuzzers Covering It |
 |:--------------|:--------------------|
 | `analysis.graph` | graph |
+| `core.locale_utils` | parse_decimal |
 | `diagnostics.errors` | runtime, oom, numbers, currency, cache, integrity, builtins |
 | `diagnostics.formatter` | diagnostics_formatter |
 | `diagnostics.validation` | diagnostics_formatter, integrity |
 | `integrity` | runtime, cache, integrity |
 | `introspection.iso` | iso |
 | `introspection.message` | introspection |
+| `localization.loading` | localization |
 | `localization.orchestrator` | localization |
-| `parsing.currency` | — (not fuzzed at runtime layer; parse layer coverage removed in v0.146.0) |
+| `parsing.currency` | parse_currency |
 | `parsing.dates` | dates |
 | `parsing.fiscal` | fiscal |
-| `parsing.numbers` | — (not fuzzed at runtime layer; parse layer coverage removed in v0.146.0) |
+| `parsing.guards` | parse_currency, parse_decimal |
+| `parsing.numbers` | parse_decimal |
 | `runtime.function_bridge` | bridge |
 | `runtime.functions` | builtins, runtime, currency, numbers |
 | `runtime.bundle` | runtime, cache, integrity, scope, localization |
@@ -63,8 +69,11 @@ route:
 | `runtime.cache` | runtime, cache |
 | `runtime.plural_rules` | plural |
 | `runtime.rwlock` | lock |
+| `syntax.cursor` | cursor |
 | `syntax.parser` | oom, roundtrip, serializer, structured |
+| `syntax.position` | cursor |
 | `syntax.serializer` | roundtrip, serializer, structured |
+| `syntax.visitor` | serializer |
 | `validation` | integrity |
 
 ## `fuzz_bridge`
@@ -303,6 +312,34 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ---
 
+## `fuzz_parse_currency`
+
+Target: `parsing.currency.parse_currency`, `parsing.currency.resolve_ambiguous_symbol`, `parsing.currency._get_currency_pattern` -- locale-aware currency parsing, ambiguous symbol disambiguation, longest-match symbol regex behavior, and cache stability.
+
+Concern boundary: This fuzzer owns the text-to-`(Decimal, ISO code)` parse surface that the runtime-formatting fuzzers do not reach. It covers ISO-code parsing, symbol-only parsing, `default_currency=` and `infer_from_locale=` disambiguation, public soft-error contracts, direct ambiguous-symbol helper behavior, and cache-clearing stability. It also targets the longest-match regex path for multi-character symbols such as `R$` and `S/`, which is distinct from runtime formatting.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `ParseCurrencyMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `iso_code_values` | 14 | `USD 1,234.56`-style inputs parse to exact `(Decimal, code)` pairs |
+| `default_currency_ambiguous` | 12 | Ambiguous symbols resolve to explicit `default_currency` |
+| `infer_from_locale` | 12 | Ambiguous symbols resolve from locale inference when enabled |
+| `ambiguous_symbol_resolution` | 10 | `resolve_ambiguous_symbol()` matches locale defaults for `$`, `£`, `¥` |
+| `longest_symbol_match` | 10 | Multi-character symbols beat shorter prefixes in regex matching |
+| `invalid_currency_inputs` | 12 | Invalid codes/ambiguous inputs return soft errors, not silent success |
+| `cache_clear_cycle` | 10 | `clear_currency_caches()` does not change parse semantics |
+| `type_guard_contract` | 10 | `is_valid_currency()` accepts valid tuples and rejects malformed values |
+| `raw_unicode_stability` | 12 | Arbitrary Unicode inputs preserve the public result-or-errors contract |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OSError`, `UnicodeEncodeError`, `FrozenFluentError` -- invalid locale/input handling and soft-error plumbing.
+
+---
+
 ## `fuzz_fiscal`
 
 Target: `parsing.fiscal` -- `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod`, `MonthEndPolicy`, and 5 convenience functions (`fiscal_quarter`, `fiscal_year`, `fiscal_month`, `fiscal_year_start`, `fiscal_year_end`). Tests date arithmetic correctness, boundary conditions, month-end policy handling, algebraic properties, type validation error paths, and immutability contracts.
@@ -522,6 +559,32 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ---
 
+## `fuzz_parse_decimal`
+
+Target: `parsing.numbers.parse_decimal`, `parsing.guards.is_valid_decimal`, `core.locale_utils` helpers -- locale-aware decimal parsing, locale normalization equivalence, Babel locale cache behavior, and system locale resolution.
+
+Concern boundary: This fuzzer owns the text-to-`Decimal` parse surface that the runtime NUMBER-formatting fuzzers do not touch. It covers canonical locale-formatted inputs, locale spelling normalization (`en-US` vs `en_US` vs mixed case), public soft-error contracts, Babel locale cache reuse/clearing, and `get_system_locale()` precedence through environment variables and `locale.getlocale()`.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `ParseDecimalMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `canonical_values` | 14 | Known locale-formatted decimals parse to exact `Decimal` values |
+| `locale_variants` | 12 | Equivalent locale spellings produce identical parse results |
+| `invalid_soft_error` | 12 | Invalid decimal text returns soft errors, not silent success |
+| `type_guard_contract` | 10 | `is_valid_decimal()` accepts valid finite decimals and rejects bad values |
+| `babel_locale_cache` | 10 | Locale normalization/cache clear cycles preserve locale-object equivalence |
+| `system_locale_resolution` | 10 | `get_system_locale()` respects env/`getlocale()` precedence and fallback |
+| `raw_unicode_stability` | 12 | Arbitrary Unicode inputs preserve the public result-or-errors contract |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `OSError`, `RuntimeError`, `UnicodeEncodeError`, `FrozenFluentError` -- invalid locale/input handling and soft-error plumbing.
+
+---
+
 ## `fuzz_plural`
 
 Target: `runtime.plural_rules.select_plural_category` -- CLDR plural category selection across locales, number types, and precision-aware v-operand handling.
@@ -612,15 +675,15 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 
 ## `fuzz_serializer`
 
-Target: `syntax.serializer.serialize`, `syntax.parser.FluentParserV1` -- AST-construction serializer roundtrip idempotence via programmatically built AST nodes.
+Target: `syntax.serializer.serialize`, `syntax.parser.FluentParserV1`, `syntax.visitor.ASTVisitor`, `syntax.visitor.ASTTransformer` -- AST-construction serializer roundtrip idempotence plus visitor/transformer dispatch and validation.
 
-Concern boundary: This fuzzer programmatically constructs AST nodes (bypassing the parser) and feeds them to the serializer. This is the ONLY Atheris fuzzer that can produce AST states the parser would never emit -- e.g. TextElement values with leading whitespace, syntax characters in pattern-initial positions, or structurally valid but semantically unusual combinations. Addresses the blind spot where text-based fuzzers (fuzz_roundtrip, fuzz_structured) start from the parser, which normalizes inputs before the serializer sees them. Created in response to BUG-SERIALIZER-LEADING-WS-001.
+Concern boundary: This fuzzer programmatically constructs AST nodes (bypassing the parser) and feeds them to the serializer. This is the ONLY Atheris fuzzer that can produce AST states the parser would never emit -- e.g. TextElement values with leading whitespace, syntax characters in pattern-initial positions, or structurally valid but semantically unusual combinations. The same AST-construction model now also drives direct `ASTVisitor` and `ASTTransformer` coverage: custom dispatch methods, list-expanding transforms, and invalid scalar-field replacements that must raise `TypeError`.
 
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, `gen_ftl_identifier`, `gen_ftl_value`, `write_finding_artifact`, `print_fuzzer_banner`, metrics, reporting); domain-specific metrics tracked in `SerializerMetrics` dataclass (ast_construction_failures, convergence_failures, junk_on_reparse, validation_errors). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Custom mutator applies whitespace injection and syntax character insertion mutations before byte-level mutation. Finding artifacts written to `.fuzz_atheris_corpus/serializer/findings/`. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, `gen_ftl_identifier`, `gen_ftl_value`, `write_finding_artifact`, `print_fuzzer_banner`, metrics, reporting); domain-specific metrics tracked in `SerializerMetrics` dataclass (ast_construction_failures, convergence_failures, junk_on_reparse, validation_errors, visitor_runs, transformer_runs). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Custom mutator applies whitespace injection and syntax character insertion mutations before byte-level mutation. Finding artifacts written to `.fuzz_atheris_corpus/serializer/findings/`. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
-10 patterns across 4 categories:
+13 patterns across 5 categories:
 
 **WHITESPACE (2)** - Leading/trailing whitespace in TextElement values:
 
@@ -652,9 +715,44 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, `gen_ftl_i
 | `mixed_elements` | 8 | Interleaved TextElement/Placeable with leading spaces |
 | `multiline_value` | 5 | Multi-line values with indentation edge cases |
 
+**VISITOR (3)** - Direct `syntax.visitor` coverage:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `visitor_dispatch` | 8 | Custom `visit_*` handlers and generic traversal both execute |
+| `transformer_roundtrip` | 8 | List-expanding `ASTTransformer` output remains serializable and convergent |
+| `transformer_validation` | 6 | Invalid scalar replacements for required fields raise `TypeError` |
+
 ### Allowed Exceptions
 
-`ValueError`, `TypeError`, `RecursionError`, `MemoryError`, `UnicodeDecodeError`, `UnicodeEncodeError` -- AST construction edge cases, serializer limits, and encoding boundaries.
+`ValueError`, `TypeError`, `RecursionError`, `MemoryError`, `UnicodeDecodeError`, `UnicodeEncodeError` -- AST construction edge cases, serializer limits, visitor validation, and encoding boundaries.
+
+---
+
+## `fuzz_cursor`
+
+Target: `syntax.cursor.Cursor`, `syntax.cursor.LineOffsetCache`, `syntax.cursor.ParseError`, `syntax.cursor.ParseResult`, `syntax.position` helpers -- cursor state-machine behavior, contextual parse-error rendering, and line/column parity across normalized source.
+
+Concern boundary: Existing parser fuzzers only touch `Cursor` indirectly through parser control flow. This fuzzer hits the subsystem directly: constructor guards, `peek()`/`advance()`/`expect()` semantics, whitespace skipping, line navigation, parity between cursor-computed positions and standalone helper functions, `ParseError.format_with_context()` rendering, and `ParseResult` contract behavior on arbitrary raw and CRLF-normalized sources.
+
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `CursorMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `constructor_guards` | 12 | Negative/out-of-range positions reject; EOF cursor behavior is correct |
+| `peek_advance_expect` | 14 | `peek`, `advance`, `slice_*`, and `expect` match manual semantics |
+| `whitespace_skips` | 12 | `skip_spaces`/`skip_whitespace` agree with reference implementations |
+| `line_navigation` | 10 | Line-start/line-end helpers preserve valid cursor positions |
+| `line_col_parity` | 12 | Cursor-computed line/column matches cached position helper results |
+| `parse_error_formatting` | 10 | Context rendering stays non-empty and positionally coherent |
+| `position_helpers` | 12 | `line_offset`, `column_offset`, `get_line_content`, `format_position` stay consistent |
+| `parse_result_contract` | 8 | `ParseResult` success/error states preserve documented invariants |
+
+### Allowed Exceptions
+
+`ValueError`, `EOFError`, `UnicodeEncodeError` -- invalid positions, EOF access, and encoding edge cases.
 
 ---
 
@@ -757,32 +855,36 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 
 ## `fuzz_localization`
 
-Target: `localization.orchestrator.FluentLocalization` -- multi-locale orchestration layer: fallback chains, RWLock-protected `add_resource()`, lazy bundle creation, `on_fallback` callback, `has_message()`, `get_message_ids()`, `validate_resource()`, custom function registration, introspection delegation.
+Target: `localization.orchestrator.FluentLocalization`, `localization.loading.PathResourceLoader` -- multi-locale orchestration, eager loader-backed initialization, fallback chains, `LoadSummary`, and post-construction mutation APIs.
 
-Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). Covers multi-locale fallback chain traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, custom function registration and invocation, `on_fallback` callback delivery, and introspection delegation. Key invariant: `has_message()` must be True after `add_resource()` for valid FTL; `get_message_ids()` must return a set with no duplicates.
+Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). It covers multi-locale fallback traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, custom function registration and invocation, `on_fallback` callback delivery, introspection delegation, and now the loader-backed initialization path: eager resource loading, `PathResourceLoader` path validation, per-locale success/not-found/error accounting, junk-bearing loads, and `source_path` propagation into `LoadSummary`.
 
-Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass (including loader init/junk/error counters). Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `single_locale_add_resource` | 14 | add_resource accepts valid FTL; has_message returns True |
-| `multi_locale_fallback` | 12 | Primary miss triggers fallback; on_fallback fires |
-| `chain_of_3_fallback` | 10 | 3-locale chain exhausts to final fallback |
-| `format_value_missing` | 10 | Missing message → fallback string, not crash |
-| `format_with_variables` | 12 | Variables forwarded through fallback chain |
-| `add_resource_mutation` | 10 | add_resource between format calls doesn't corrupt state |
-| `has_message_api` | 10 | has_message/has_attribute contract |
-| `get_message_ids_api` | 8 | get_message_ids returns no duplicates |
-| `validate_resource_api` | 8 | validate_resource delegates correctly |
-| `add_function_custom` | 8 | Custom UPPER function registered and invoked |
-| `introspect_api` | 6 | get_message_variables delegates to introspection |
-| `on_fallback_callback` | 5 | on_fallback receives resolved_locale == fallback locale |
+| `single_locale_add_resource` | 10 | add_resource accepts valid FTL; format returns the stored value |
+| `multi_locale_fallback` | 10 | Primary miss triggers fallback; callback sees resolved locale |
+| `chain_of_3_fallback` | 8 | 3-locale chain traverses correctly |
+| `format_value_missing` | 7 | Missing message returns fallback text plus errors |
+| `format_with_variables` | 9 | Variables propagate through fallback chain |
+| `add_resource_mutation` | 7 | add_resource between format calls updates visible state |
+| `has_message_api` | 7 | has_message/has_attribute contracts hold across locales |
+| `get_message_ids_api` | 6 | get_message_ids returns all IDs without duplicates |
+| `validate_resource_api` | 7 | validate_resource delegates and returns structured results |
+| `add_function_custom` | 6 | Custom UPPER function registration/invocation works |
+| `introspect_api` | 7 | get_message_variables/introspect_message stay consistent |
+| `on_fallback_callback` | 6 | on_fallback receives requested/resolved locale data |
+| `loader_init_success` | 5 | Eager loader initialization records all-success summary data |
+| `loader_not_found_fallback` | 5 | Primary miss increments not_found while fallback still resolves |
+| `loader_junk_summary` | 4 | Junk-bearing resources are surfaced through LoadSummary |
+| `loader_path_error` | 4 | Invalid `resource_id` becomes a loader error, not a crash |
 
 ### Allowed Exceptions
 
-`ValueError`, `TypeError`, `UnicodeEncodeError`, `FrozenFluentError`, `DataIntegrityError`, `FormattingIntegrityError`, `SyntaxIntegrityError` -- invalid locale, strict mode enforcement, and resolution errors.
+`ValueError`, `TypeError`, `UnicodeEncodeError`, `FrozenFluentError`, `DataIntegrityError`, `FormattingIntegrityError`, `SyntaxIntegrityError` -- invalid locale/resource input, loader validation, strict mode enforcement, and resolution errors.
 
 ---
 

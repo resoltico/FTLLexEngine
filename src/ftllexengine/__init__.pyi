@@ -4,6 +4,17 @@ This stub file declares types for lazy-loaded attributes and re-exported symbols
 Mypy cannot infer types from __getattr__, so explicit declarations are required.
 """
 
+# Fiscal calendar (no Babel dependency)
+from .core.fiscal import FiscalCalendar as FiscalCalendar
+from .core.fiscal import FiscalDelta as FiscalDelta
+from .core.fiscal import FiscalPeriod as FiscalPeriod
+from .core.fiscal import MonthEndPolicy as MonthEndPolicy
+from .core.fiscal import fiscal_month as fiscal_month
+from .core.fiscal import fiscal_quarter as fiscal_quarter
+from .core.fiscal import fiscal_year as fiscal_year
+from .core.fiscal import fiscal_year_end as fiscal_year_end
+from .core.fiscal import fiscal_year_start as fiscal_year_start
+
 # Core API - Error types (immutable, sealed)
 from .diagnostics import (
     ErrorCategory as ErrorCategory,
@@ -13,6 +24,9 @@ from .diagnostics import (
 )
 from .diagnostics import (
     FrozenFluentError as FrozenFluentError,
+)
+from .diagnostics import (
+    ParseTypeLiteral as ParseTypeLiteral,
 )
 
 # Data integrity exceptions
@@ -77,6 +91,7 @@ __all__: list[str] = [
     "ErrorCategory",
     "FrozenErrorContext",
     "FrozenFluentError",
+    "ParseTypeLiteral",
     # Data integrity exceptions
     "CacheCorruptionError",
     "DataIntegrityError",
@@ -86,6 +101,16 @@ __all__: list[str] = [
     "IntegrityContext",
     "SyntaxIntegrityError",
     "WriteConflictError",
+    # Fiscal calendar (no Babel dependency)
+    "FiscalCalendar",
+    "FiscalDelta",
+    "FiscalPeriod",
+    "MonthEndPolicy",
+    "fiscal_month",
+    "fiscal_quarter",
+    "fiscal_year",
+    "fiscal_year_end",
+    "fiscal_year_start",
     # Parsing API
     "parse_ftl",
     "serialize_ftl",

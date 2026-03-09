@@ -214,7 +214,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
 
       - name: Detect package name
         id: detect
@@ -289,7 +288,7 @@ jobs:
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE}')"
+          python -c "import ${PACKAGE} as pkg; r = pkg.parse_ftl('greeting = Hello, World!'); s = pkg.serialize_ftl(r); assert 'greeting' in s; print('Smoke test passed: ${PACKAGE} v' + pkg.__version__)"
 
   publish:
     needs: build
@@ -323,7 +322,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
 
       - name: Detect package name
         id: detect
@@ -391,7 +389,7 @@ jobs:
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE}')"
+          python -c "import ${PACKAGE} as pkg; r = pkg.parse_ftl('greeting = Hello, World!'); s = pkg.serialize_ftl(r); assert 'greeting' in s; print('Smoke test passed: ${PACKAGE} v' + pkg.__version__)"
 
   verify-python-requirement:
     name: Verify Python 3.13+ Requirement

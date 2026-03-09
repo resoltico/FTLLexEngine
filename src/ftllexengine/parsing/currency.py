@@ -47,7 +47,10 @@ from ftllexengine.core.babel_compat import (
     is_babel_available,
     require_babel,
 )
-from ftllexengine.core.locale_utils import normalize_locale
+from ftllexengine.core.locale_utils import (
+    is_structurally_valid_locale_code,
+    normalize_locale,
+)
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
@@ -822,6 +825,24 @@ def parse_currency(
             locale_code,
             f"Expected string, got {type(value).__name__}",
         )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="currency",
+        )
+        return (None, (FrozenFluentError(
+            str(diagnostic),
+            ErrorCategory.PARSE,
+            diagnostic=diagnostic,
+            context=context,
+        ),))
+
+    # Guard: Babel silently accepts locale codes containing non-BCP-47 characters
+    # (e.g. '/', '\x00') instead of raising UnknownLocaleError, then uses default
+    # number format settings and may parse values unexpectedly.
+    # Reject structurally malformed codes before reaching Babel.
+    if not is_structurally_valid_locale_code(locale_code):
+        diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
             input_value=str(value),
             locale_code=locale_code,

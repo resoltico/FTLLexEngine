@@ -53,6 +53,52 @@ class TestParseDecimal:
         vat = amount * Decimal("0.21")
         assert vat == Decimal("21.105")  # Exact, no float precision loss
 
+    def test_parse_decimal_rejects_invalid_grouping(self) -> None:
+        """Misplaced group separators return error; Babel must not silently strip them.
+
+        Regression: "1,2,3" for en_US previously returned Decimal('123') because
+        Babel strips group separators without validating their positions.
+        """
+        result, errors = parse_decimal("1,2,3", "en_US")
+        assert result is None
+        assert len(errors) == 1
+
+        # Valid grouping must still succeed.
+        result, errors = parse_decimal("1,234", "en_US")
+        assert not errors
+        assert result == Decimal("1234")
+
+        result, errors = parse_decimal("1,234,567", "en_US")
+        assert not errors
+        assert result == Decimal("1234567")
+
+        # German: '.' is the group separator; "1.2.3" must also be rejected.
+        result, errors = parse_decimal("1.2.3", "de_DE")
+        assert result is None
+        assert len(errors) == 1
+
+    def test_parse_decimal_rejects_non_bcp47_locale_characters(self) -> None:
+        """Locale codes containing non-BCP-47 characters return error, never a result.
+
+        Regression: Babel silently accepts locale codes like "invalid_II/II"
+        (containing '/') without raising UnknownLocaleError, then uses default
+        number format settings, causing valid-looking values to parse successfully.
+        """
+        # '/' is not a valid BCP-47 character; must not silently parse "123.45"
+        result, errors = parse_decimal("123.45", "invalid_II/II")
+        assert result is None
+        assert len(errors) == 1
+
+        # Null bytes and other non-ASCII in locale codes must also be rejected.
+        result, errors = parse_decimal("123.45", "en\x00US")
+        assert result is None
+        assert len(errors) == 1
+
+        # Standard valid locale must still work.
+        result, errors = parse_decimal("123.45", "en_US")
+        assert result == Decimal("123.45")
+        assert not errors
+
     def test_parse_decimal_invalid_returns_error(self) -> None:
         """Invalid input returns error in tuple; function never raises."""
         result, errors = parse_decimal("invalid", "en_US")

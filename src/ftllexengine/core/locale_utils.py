@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import functools
 import os
+import re
 from typing import TYPE_CHECKING
 
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
@@ -34,8 +35,33 @@ __all__ = [
     "clear_locale_cache",
     "get_babel_locale",
     "get_system_locale",
+    "is_structurally_valid_locale_code",
     "normalize_locale",
 ]
+
+
+# BCP-47 locale codes consist of alphanumeric subtags joined by hyphens or
+# underscores. Characters outside this set (e.g. '/', '\x00', unicode)
+# are never valid and can cause Babel to silently create a Locale object
+# with default settings instead of raising UnknownLocaleError or ValueError.
+_VALID_LOCALE_CODE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$")
+
+
+def is_structurally_valid_locale_code(locale_code: str) -> bool:
+    """Return True if locale_code contains only BCP-47-valid characters.
+
+    Validates character set only; does NOT verify that the locale exists in
+    Babel's CLDR database. Use this as a fast pre-filter before calling
+    Babel's Locale.parse() to avoid silent acceptance of malformed codes.
+
+    Args:
+        locale_code: Raw locale code string to validate.
+
+    Returns:
+        True if the code contains only alphanumerics, hyphens, and underscores
+        with a letter or digit as the first character; False otherwise.
+    """
+    return bool(_VALID_LOCALE_CODE_RE.match(locale_code))
 
 
 def normalize_locale(locale_code: str) -> str:

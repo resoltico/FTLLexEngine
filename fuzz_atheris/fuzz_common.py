@@ -732,14 +732,21 @@ def gen_ftl_identifier(fdp: Any) -> str:
 def gen_ftl_value(fdp: Any, *, max_length: int = 40) -> str:
     """Generate a safe FTL value (no braces, no newlines).
 
+    Leading and trailing spaces are stripped: the FTL parser consumes all
+    spaces after '=' as blank_inline separators (per Fluent spec), so a value
+    like '  hello' written as 'msg = {val}' resolves to 'hello', not '  hello'.
+    Stripping here keeps generated values consistent with their resolved form.
+
     Uses FuzzedDataProvider to consume bytes deterministically.
     """
     chars = _FTL_SAFE_VALUE_CHARS
     n = len(chars) - 1
     length = fdp.ConsumeIntInRange(1, max_length)
-    return "".join(
+    value = "".join(
         chars[fdp.ConsumeIntInRange(0, n)] for _ in range(length)
     )
+    stripped = value.strip()
+    return stripped if stripped else "x"
 
 
 # --- Finding Artifacts ---

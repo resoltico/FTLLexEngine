@@ -57,8 +57,6 @@ Installation:
 
     # Full runtime with locale formatting (requires Babel):
     pip install ftllexengine[babel]
-    # or
-    pip install ftllexengine[full]
 """
 
 from __future__ import annotations

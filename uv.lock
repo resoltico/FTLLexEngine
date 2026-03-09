@@ -339,14 +339,11 @@ wheels = [
 
 [[package]]
 name = "ftllexengine"
-version = "0.146.0"
+version = "0.147.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
 babel = [
-    { name = "babel" },
-]
-full = [
     { name = "babel" },
 ]
 
@@ -375,11 +372,8 @@ release = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "babel", marker = "extra == 'babel'", specifier = ">=2.18.0,<3.0.0" },
-    { name = "babel", marker = "extra == 'full'", specifier = ">=2.18.0,<3.0.0" },
-]
-provides-extras = ["babel", "full"]
+requires-dist = [{ name = "babel", marker = "extra == 'babel'", specifier = ">=2.18.0,<3.0.0" }]
+provides-extras = ["babel"]
 
 [package.metadata.requires-dev]
 atheris = [{ name = "atheris", marker = "python_full_version < '3.14'", specifier = ">=3.0.0" }]
