@@ -41,7 +41,7 @@ class TestNumberFormatBoundaries:
         result = number_format(-42, "en-US")
         result_str = str(result)
         # Some locales use minus sign
-        assert "-42" in result_str or "−42" in result_str  # noqa: RUF001
+        assert "-42" in result_str or "−42" in result_str  # noqa: RUF001 - unicode char
 
     def test_number_format_very_large_number(self):
         """Kills: number size boundary mutations.
@@ -312,7 +312,7 @@ class TestDatetimeFormatStyleBoundaries:
 
         All date styles should work.
         """
-        from typing import Literal, cast  # noqa: PLC0415
+        from typing import Literal, cast  # noqa: PLC0415 - import inside function
 
         dt = datetime(2025, 10, 27, tzinfo=UTC)
 
@@ -327,7 +327,7 @@ class TestDatetimeFormatStyleBoundaries:
 
         All time styles should work.
         """
-        from typing import Literal, cast  # noqa: PLC0415
+        from typing import Literal, cast  # noqa: PLC0415 - import inside function
 
         dt = datetime(2025, 10, 27, 14, 30, 0, tzinfo=UTC)
 
@@ -371,7 +371,7 @@ class TestDatetimeFormatTimezoneBoundaries:
 
         Naive datetime should default to UTC.
         """
-        dt = datetime(2025, 10, 27, 12, 0)  # No tzinfo  # noqa: DTZ001
+        dt = datetime(2025, 10, 27, 12, 0)  # No tzinfo  # noqa: DTZ001 - naive datetime by design
         result = datetime_format(dt, "en-US", date_style="short")
         # Should not crash, handles None tzinfo by defaulting to UTC
         assert isinstance(result, str)
@@ -424,7 +424,7 @@ class TestNumberFormatParametricCombinations:
             (1, 1, 5, 1),  # Exactly 1 decimal
             (2, 2, 5, 2),  # Exactly 2 decimals
             (3, 3, 5, 3),  # Exactly 3 decimals
-            # Ranges (min < max)  # noqa: ERA001
+            # Ranges (min < max)  # noqa: ERA001 - commented-out code is inline documentation
             (0, 3, 5, 0),  # Integer, show 0 decimals
             (0, 3, Decimal("5.5"), 1),  # One decimal needed
             (0, 3, Decimal("5.12"), 2),  # Two decimals needed

@@ -179,7 +179,7 @@ class TestCacheInvalidation:
         assert stats["size"] == 1
 
         # Add custom function - cache should be cleared
-        def CUSTOM(value: str) -> str:  # noqa: N802
+        def CUSTOM(value: str) -> str:  # noqa: N802 - NodeName
             return value.upper()
 
         bundle.add_function("CUSTOM", CUSTOM)

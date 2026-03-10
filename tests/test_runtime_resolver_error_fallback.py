@@ -47,7 +47,9 @@ class TestUnknownExpressionType:
 
     def test_unknown_expression_raises_resolution_error(self) -> None:
         """Unknown expression type raises FrozenFluentError with RESOLUTION category."""
-        from ftllexengine.diagnostics import FrozenFluentError  # noqa: PLC0415
+        from ftllexengine.diagnostics import (
+            FrozenFluentError,
+        )
 
         resolver = FluentResolver(
             locale="en_US",

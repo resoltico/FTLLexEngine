@@ -1245,7 +1245,7 @@ def event_with_metrics(event_string: str) -> None:
     Args:
         event_string: The event string to record
     """
-    from hypothesis import event  # noqa: PLC0415
+    from hypothesis import event  # noqa: PLC0415 - import inside function
 
     event(event_string)
     metrics_collector.record_event(event_string)

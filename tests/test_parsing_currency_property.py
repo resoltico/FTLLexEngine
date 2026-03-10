@@ -454,7 +454,7 @@ class TestCurrencyMetamorphicProperties:
         ),
     )
     @settings(max_examples=10)
-    def test_parse_currency_zero_amount(self, amount: Decimal) -> None:  # noqa: ARG002
+    def test_parse_currency_zero_amount(self, amount: Decimal) -> None:  # noqa: ARG002 - unused
         """Zero amounts should parse correctly."""
         currency_str = "$0.00"
 

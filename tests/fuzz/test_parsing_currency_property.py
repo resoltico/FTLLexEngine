@@ -85,7 +85,9 @@ class TestParseCurrencyProperties:
         self, input_data: tuple[str, str, str]
     ) -> None:
         """Property: Unambiguous inputs return correct (result, errors) structure."""
-        from ftllexengine.parsing.currency import parse_currency  # noqa: PLC0415
+        from ftllexengine.parsing.currency import (
+            parse_currency,
+        )
         value, locale, _expected_code = input_data
         result, errors = parse_currency(value, locale)
         has_result = result is not None
@@ -103,7 +105,9 @@ class TestParseCurrencyProperties:
         self, input_data: tuple[str, str, str]
     ) -> None:
         """Property: ISO code inputs return structurally valid results."""
-        from ftllexengine.parsing.currency import parse_currency  # noqa: PLC0415
+        from ftllexengine.parsing.currency import (
+            parse_currency,
+        )
         value, locale, expected_code = input_data
         result, errors = parse_currency(value, locale)
         has_result = result is not None
@@ -120,7 +124,9 @@ class TestParseCurrencyProperties:
         self, input_data: tuple[str, str]
     ) -> None:
         """Property: Invalid currency inputs return None or errors, never crash."""
-        from ftllexengine.parsing.currency import parse_currency  # noqa: PLC0415
+        from ftllexengine.parsing.currency import (
+            parse_currency,
+        )
         value, locale = input_data
         result, errors = parse_currency(value, locale)
         has_error = len(errors) > 0
@@ -134,7 +140,9 @@ class TestParseCurrencyProperties:
         self, input_data: tuple[str, str, str, str]
     ) -> None:
         """Property: Ambiguous symbol inputs with infer_from_locale return structure."""
-        from ftllexengine.parsing.currency import parse_currency  # noqa: PLC0415
+        from ftllexengine.parsing.currency import (
+            parse_currency,
+        )
         value, locale, _default_currency, _expected_code = input_data
         result, errors = parse_currency(value, locale, infer_from_locale=True)
         has_result = result is not None

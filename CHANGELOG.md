@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.146.0"
+version: "0.148.0"
 domain: CHANGELOG
-updated: "2026-03-07"
+updated: "2026-03-10"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,76 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.148.0] - 2026-03-10
+
+### Added
+
+- **`ftllexengine`: `ParseResult[T]` exported from the top-level package**:
+  - `ParseResult[T]` (type alias `tuple[T | None, tuple[FrozenFluentError, ...]]`) was
+    accessible as `ftllexengine.parsing.ParseResult` but not as `ftllexengine.ParseResult`;
+    callers writing return-type annotations for functions that wrap `parse_date`,
+    `parse_decimal`, etc. had to import from the submodule
+  - Fix: `ParseResult` added to `ftllexengine.__all__` and `__getattr__` (Babel-independent
+    lazy load); callers can now write `from ftllexengine import ParseResult`
+
+- **`ftllexengine`: `get_cldr_version` exported from the top-level package**:
+  - Previously only accessible as `ftllexengine.introspection.get_cldr_version()`; for
+    compliance auditing the function must be callable as `ftllexengine.get_cldr_version()`
+  - Fix: `get_cldr_version` added to `ftllexengine.__all__` and `__getattr__` (Babel-required
+    lazy load with the standard missing-Babel error)
+
+- **`introspection.iso`: `get_currency_decimal_digits(code)` convenience function**:
+  - Callers validating financial amounts against ISO 4217 decimal precision (e.g., confirming
+    that a `KWD` entry uses exactly 3 decimal places) previously had to call
+    `get_currency(code).decimal_digits`, which constructs a full `CurrencyInfo` and requires a
+    locale argument; decimal precision is locale-independent, making the locale parameter
+    meaningless in this context
+  - New function: `get_currency_decimal_digits(code: str) -> int | None`; returns the ISO 4217
+    standard decimal digit count (0 for JPY, 2 for EUR/USD, 3 for KWD, 4 for CLF) or `None`
+    for unknown codes; no locale parameter; requires Babel for code validation
+  - Exported from `ftllexengine.introspection`, `ftllexengine.introspection.iso`, and the
+    top-level `ftllexengine` package
+
+- **`introspection.message`: `validate_message_variables` and `MessageVariableValidationResult`**:
+  - `extract_variables(message)` returned a raw `frozenset[str]`, requiring callers to perform
+    set arithmetic manually to detect mismatches between declared FTL variables and expected
+    call-site variable names; no structured result was available for boot-time contract
+    enforcement
+  - New frozen dataclass `MessageVariableValidationResult`: `message_id`, `is_valid`,
+    `declared_variables`, `missing_variables` (expected but not declared),
+    `extra_variables` (declared but not expected)
+  - New function `validate_message_variables(message: Message | Term, expected_variables:
+    frozenset[str] | set[str]) -> MessageVariableValidationResult`; no Babel dependency;
+    operates on the AST node directly (no re-parsing); `is_valid` is `True` only when
+    declared and expected sets match exactly
+  - Exported from `ftllexengine.introspection`, `ftllexengine.introspection.message`, and the
+    top-level `ftllexengine` package
+
+### Fixed
+
+- **`parsing/dates.py` `parse_date`/`parse_datetime`: 4-digit year inputs rejected for locales
+  with CLDR short pattern `yy`**:
+  - CLDR short date patterns for many locales specify a 2-digit year token (`yy`), mapping to
+    strptime `%y`; financial documents commonly write dates with a 4-digit year in the same
+    positional format (e.g., lv-LV CLDR short `dd.MM.yy`; document form `dd.MM.yyyy`);
+    `parse_date("15.01.2026", "lv_LV")` returned `None` with "No matching date pattern found"
+  - Root cause: `_extract_cldr_patterns` only generated the exact CLDR-specified strptime
+    pattern; no `%Y` (4-digit) variant was generated for patterns containing `%y`
+  - Fix: after generating each `%y` pattern, `_extract_cldr_patterns` also appends a `%Y`
+    variant; the `%y` (2-digit) variant is listed first so that 2-digit input is interpreted
+    via Python's standard 2000-based `%y` expansion, while 4-digit input falls through to the
+    `%Y` variant; affects all locales using `yy` in any CLDR style, not only lv-LV
+
+- **`parsing/dates.py` `_get_date_patterns`/`_get_datetime_patterns`: `AttributeError` from
+  incomplete CLDR data propagated instead of returning empty patterns**:
+  - When `locale.date_formats` or `locale.datetime_formats` raised `AttributeError` (incomplete
+    or mocked Babel CLDR data), the exception escaped the `try/except` block because only
+    `(UnknownLocaleError, ValueError, RuntimeError)` were caught; the uncaught `AttributeError`
+    propagated through `parse_date`/`parse_datetime` to the caller rather than returning the
+    expected `(None, (error,))` tuple
+  - Fix: `AttributeError` added to both exception handlers; incomplete CLDR locale data now
+    results in empty patterns (same code path as an unknown locale) and a structured parse error
 
 ## [0.147.0] - 2026-03-09
 
@@ -5676,6 +5746,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.148.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.148.0
 [0.147.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.147.0
 [0.146.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.146.0
 [0.145.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.145.0

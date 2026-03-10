@@ -635,7 +635,7 @@ class TestMemoryStability:
         This tests that bundle cleanup is complete - no dangling references
         to parsed resources, caches, or internal state.
         """
-        import gc  # noqa: PLC0415 - local import to avoid measuring import overhead
+        import gc
 
         # Warm up to avoid measuring one-time allocations
         for _ in range(10):
@@ -686,7 +686,7 @@ complex = This is { $var ->
         This tests that format_pattern() cleans up all intermediate state
         including resolution contexts, scope chains, and partial results.
         """
-        import gc  # noqa: PLC0415 - local import to avoid measuring import overhead
+        import gc
 
         bundle = FluentBundle("en-US", use_isolating=False)
         bundle.add_resource(
@@ -728,10 +728,14 @@ nested = { greeting } You have { items }.
 
         Tests that parser and serializer properly clean up after each operation.
         """
-        import gc  # noqa: PLC0415 - local import to avoid measuring import overhead
+        import gc
 
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
-        from ftllexengine.syntax.serializer import serialize  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
+        from ftllexengine.syntax.serializer import (
+            serialize,
+        )
 
         parser = FluentParserV1()
 

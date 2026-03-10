@@ -98,7 +98,7 @@ class TestDepthGuardContextManager:
         """Context manager raises FrozenFluentError when depth exceeded."""
         guard = DepthGuard(max_depth=3)
 
-        with guard, guard, guard:  # noqa: SIM117
+        with guard, guard, guard:  # noqa: SIM117 - nested with
             with pytest.raises(FrozenFluentError) as exc_info:
                 with guard:
                     pass

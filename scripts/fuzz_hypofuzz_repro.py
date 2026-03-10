@@ -367,7 +367,7 @@ def run_test(
     )
 
 
-def output_result(  # noqa: PLR0912, PLR0915
+def output_result(  # noqa: PLR0912, PLR0915 - complex dispatch or fuzz logic
     result: ReproResult,
     use_json: bool,
     show_example: bool,

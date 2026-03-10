@@ -179,7 +179,7 @@ def pytest_collection_modifyitems(
 
 def pytest_terminal_summary(
     terminalreporter: pytest.TerminalReporter,
-    exitstatus: int,  # noqa: ARG001
+    exitstatus: int,  # noqa: ARG001 - unused
     config: pytest.Config,
 ) -> None:
     """Emit structured fuzz-skip count for test runner parsing."""

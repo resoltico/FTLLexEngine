@@ -26,6 +26,7 @@ from ftllexengine.core.babel_compat import get_cldr_version
 from .message import (
     FunctionCallInfo,
     MessageIntrospection,
+    MessageVariableValidationResult,
     ReferenceInfo,
     VariableInfo,
     clear_introspection_cache,
@@ -33,6 +34,7 @@ from .message import (
     extract_references_by_attribute,
     extract_variables,
     introspect_message,
+    validate_message_variables,
 )
 
 # ISO introspection - public API (always importable; functions raise if no Babel)
@@ -44,6 +46,7 @@ from .iso import (
     TerritoryInfo,
     clear_iso_cache,
     get_currency,
+    get_currency_decimal_digits,
     get_territory,
     get_territory_currencies,
     is_valid_currency_code,
@@ -56,6 +59,7 @@ __all__ = [
     # Message introspection types
     "FunctionCallInfo",
     "MessageIntrospection",
+    "MessageVariableValidationResult",
     "ReferenceInfo",
     "VariableInfo",
     # Message introspection functions
@@ -64,6 +68,7 @@ __all__ = [
     "extract_references_by_attribute",
     "extract_variables",
     "introspect_message",
+    "validate_message_variables",
     # ISO introspection exceptions
     "BabelImportError",
     # ISO type aliases
@@ -75,6 +80,7 @@ __all__ = [
     # ISO lookup functions
     "get_territory",
     "get_currency",
+    "get_currency_decimal_digits",
     "list_territories",
     "list_currencies",
     "get_territory_currencies",

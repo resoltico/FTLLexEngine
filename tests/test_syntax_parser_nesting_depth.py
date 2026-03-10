@@ -51,7 +51,7 @@ class TestNestingDepthControl:
         # Parse with custom parser
         resource = parser.parse(f"msg = {nested}")
         # Add the parsed resource to bundle
-        from ftllexengine.syntax.ast import Message  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Message  # noqa: PLC0415 - import inside function
 
         for entry in resource.entries:
             if isinstance(entry, Message):

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.148.0"
 domain: INDEX
-updated: "2026-02-28"
+updated: "2026-03-10"
 route:
   keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, fiscal, iso, territory, currency]
   questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how to import fiscal calendar?", "how to import ISO introspection?"]
@@ -48,6 +48,14 @@ from ftllexengine import (
     fiscal_month,
     fiscal_year_start,
     fiscal_year_end,
+    # Parsing return type (no Babel required; lazy-loaded)
+    ParseResult,         # tuple[T | None, tuple[FrozenFluentError, ...]]
+    # Message introspection (no Babel required)
+    MessageVariableValidationResult,
+    validate_message_variables,
+    # ISO utilities (require Babel; lazy-loaded)
+    get_cldr_version,
+    get_currency_decimal_digits,
     # Metadata
     __version__,
     __fluent_spec_version__,
@@ -93,15 +101,18 @@ from ftllexengine.diagnostics import (
 ### Introspection (`from ftllexengine.introspection import ...`)
 ```python
 from ftllexengine.introspection import (
-    # Message introspection
+    # Message introspection (no Babel required)
     introspect_message, MessageIntrospection,
     extract_variables, extract_references, extract_references_by_attribute,
     clear_introspection_cache,
     VariableInfo, FunctionCallInfo, ReferenceInfo,
+    # Variable schema validation (no Babel required)
+    validate_message_variables, MessageVariableValidationResult,
     # ISO introspection (requires Babel)
     TerritoryCode, CurrencyCode,  # Type aliases
     TerritoryInfo, CurrencyInfo,  # Data classes
-    get_territory, get_currency, list_territories, list_currencies,
+    get_territory, get_currency, get_currency_decimal_digits,
+    list_territories, list_currencies,
     get_territory_currencies,  # Lookup functions
     is_valid_territory_code, is_valid_currency_code,  # Type guards
     clear_iso_cache,  # Cache management
@@ -284,7 +295,7 @@ ftllexengine/
 | Alias | Definition | Location |
 |:------|:-----------|:---------|
 | `FluentValue` | `str \| int \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
-| `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py |
+| `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py (also `ftllexengine`) |
 | `MessageId` | `str` | localization.py |
 | `LocaleCode` | `str` | localization.py |
 | `ResourceId` | `str` | localization.py |

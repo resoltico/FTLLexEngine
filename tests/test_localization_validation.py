@@ -61,7 +61,7 @@ def locale_codes(draw: st.DrawFn) -> str:
 @st.composite
 def message_identifiers(draw: st.DrawFn) -> str:
     """Generate valid FTL message identifiers."""
-    import string  # noqa: PLC0415
+    import string  # noqa: PLC0415 - import inside function
 
     first_char = draw(st.sampled_from(string.ascii_letters))
     rest_chars = draw(
@@ -350,7 +350,7 @@ class TestPathResourceLoaderRootDirResolution:
         (en_dir / "test.ftl").write_text("msg = test", encoding="utf-8")
 
         # Change to tmp_path and use relative path
-        import os  # noqa: PLC0415
+        import os  # noqa: PLC0415 - import inside function
 
         original_cwd = Path.cwd()
         try:

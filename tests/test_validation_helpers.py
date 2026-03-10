@@ -22,7 +22,7 @@ class TestCountDefaultVariants:
 
     def test_count_zero_when_no_default(self):
         """Constructing SelectExpression with no default raises ValueError."""
-        import pytest  # noqa: PLC0415
+        import pytest  # noqa: PLC0415 - import inside function
 
         variants = [
             Variant(key=Identifier("one"), value=Pattern(elements=()), default=False),
@@ -49,7 +49,7 @@ class TestCountDefaultVariants:
 
     def test_count_multiple_when_duplicate_defaults(self):
         """Constructing SelectExpression with multiple defaults raises ValueError."""
-        import pytest  # noqa: PLC0415
+        import pytest  # noqa: PLC0415 - import inside function
 
         variants = [
             Variant(key=Identifier("one"), value=Pattern(elements=()), default=True),
@@ -64,7 +64,7 @@ class TestCountDefaultVariants:
 
     def test_count_with_empty_variants(self):
         """Constructing SelectExpression with empty variants raises ValueError."""
-        import pytest  # noqa: PLC0415
+        import pytest  # noqa: PLC0415 - import inside function
 
         with pytest.raises(ValueError, match="at least one variant"):
             SelectExpression(

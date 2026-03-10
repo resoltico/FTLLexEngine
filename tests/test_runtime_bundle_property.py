@@ -134,7 +134,7 @@ class TestSourcePathErrorLogging:
         invalid_ftl = "@@@ invalid syntax $$$ {{{ [[["
 
         with caplog.at_level(logging.WARNING):
-            try:  # noqa: SIM105
+            try:  # noqa: SIM105 - explicit except-pass preserves state machine intent
                 bundle.add_resource(invalid_ftl, source_path="test_file.ftl")
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
@@ -155,7 +155,7 @@ class TestSourcePathErrorLogging:
         malformed_ftl = "message = \x00\x01\x02 invalid"
 
         with caplog.at_level(logging.ERROR):
-            try:  # noqa: SIM105
+            try:  # noqa: SIM105 - explicit except-pass preserves state machine intent
                 bundle.add_resource(malformed_ftl, source_path="error_file.ftl")
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
@@ -184,7 +184,7 @@ class TestSourcePathErrorLogging:
         invalid_ftl = "invalid syntax $$$"
 
         with caplog.at_level(logging.WARNING):
-            try:  # noqa: SIM105
+            try:  # noqa: SIM105 - explicit except-pass preserves state machine intent
                 bundle.add_resource(invalid_ftl, source_path=filename)
             except Exception:  # pylint: disable=broad-exception-caught
                 pass

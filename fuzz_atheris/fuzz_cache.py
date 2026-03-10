@@ -332,7 +332,7 @@ def _generate_locale(fdp: atheris.FuzzedDataProvider) -> str:
     return fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(2, 10))
 
 
-def _generate_ftl_for_pattern(  # noqa: PLR0911,PLR0912
+def _generate_ftl_for_pattern(  # noqa: PLR0911,PLR0912 - dispatch
     fdp: atheris.FuzzedDataProvider, pattern: str,
 ) -> str:
     """Generate FTL resource tailored to the pattern (dispatch function)."""
@@ -562,7 +562,7 @@ def _pattern_capacity_stress(bundle: FluentBundle) -> None:
 # --- Main Entry Point ---
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
+def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Atheris entry point: Stress-test cache under concurrent access."""
     if _state.iterations == 0:
         _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)

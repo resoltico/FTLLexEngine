@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.148.0"
 domain: PARSING
-updated: "2026-02-28"
+updated: "2026-03-10"
 route:
   keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
   questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
@@ -284,6 +284,7 @@ def parse_date(
 - Dependency: Requires Babel for CLDR data.
 - Preprocessing: Era strings stripped (English defaults + localized from Babel CLDR). Timezone pattern tokens stripped from format. Leading/trailing whitespace normalized after pattern conversion.
 - Styles: Tries "short", "medium", "long", and "full" CLDR date patterns.
+- Year variants: CLDR short patterns often specify a 2-digit year (`yy`); a 4-digit year variant is also accepted automatically. Both `"15.01.26"` and `"15.01.2026"` succeed for `lv_LV`.
 - Safety: Uses `hasattr` fallback for Babel format object attribute access.
 
 ---
@@ -315,6 +316,7 @@ def parse_datetime(
 - Dependency: Requires Babel for CLDR data.
 - Preprocessing: Era strings stripped (English defaults + localized from Babel CLDR). Timezone pattern tokens stripped from format. Leading/trailing whitespace normalized after pattern conversion.
 - Styles: Tries "short", "medium", "long", and "full" CLDR datetime patterns.
+- Year variants: 4-digit year inputs accepted for CLDR styles specifying `yy` (same as `parse_date`).
 - Safety: Uses `hasattr` fallback for Babel format object attribute access.
 
 ---

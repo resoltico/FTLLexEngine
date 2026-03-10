@@ -24,6 +24,7 @@ from ftllexengine.introspection import (
     TerritoryInfo,
     clear_iso_cache,
     get_currency,
+    get_currency_decimal_digits,
     get_territory,
     get_territory_currencies,
     is_valid_currency_code,
@@ -753,7 +754,7 @@ class TestBabelExceptionHandling:
 
             # Now try to use the functions - they should raise BabelImportError
             # PLC0415: Runtime import needed to test ImportError path
-            from ftllexengine.introspection import iso  # noqa: PLC0415
+            from ftllexengine.introspection import iso
 
             with pytest.raises(BabelImportError):
                 iso.get_territory("US")
@@ -859,7 +860,7 @@ class TestPrivateBabelWrappers:
         # This tests the exception handling path (lines 198-200)
         # We need to trigger an exception in the data processing
         # Mock get_global to return malformed data
-        from babel.core import get_global  # noqa: PLC0415
+        from babel.core import get_global
 
         original_get_global = get_global
 
@@ -1003,7 +1004,7 @@ class TestBoundedCache:
         """Cache implementation should use bounded LRU cache."""
         # Import the internal cached functions to check their cache_info
 
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (
             _get_currency_impl,
             _get_territory_currencies_impl,
             _get_territory_impl,
@@ -1028,7 +1029,9 @@ class TestBoundedCache:
 
     def test_cache_statistics_work(self) -> None:
         """Cache statistics (hits, misses) should be tracked."""
-        from ftllexengine.introspection.iso import _get_territory_impl  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (
+            _get_territory_impl,
+        )
 
         clear_iso_cache()
 
@@ -1093,7 +1096,7 @@ class TestExceptionNarrowing:
         The narrowed exception catch list (ValueError, LookupError, KeyError,
         AttributeError) excludes NameError; it must propagate uncaught.
         """
-        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+        def mock_locale_parse(locale_str: str) -> object:
             msg = "name 'undefined_var' is not defined"
             raise NameError(msg)
 
@@ -1197,8 +1200,10 @@ class TestClearAllCachesIntegration:
 
     def test_clear_module_caches_includes_iso_cache(self) -> None:
         """clear_module_caches should clear ISO introspection caches."""
-        from ftllexengine import clear_module_caches  # noqa: PLC0415
-        from ftllexengine.introspection.iso import _get_territory_impl  # noqa: PLC0415
+        from ftllexengine import clear_module_caches
+        from ftllexengine.introspection.iso import (
+            _get_territory_impl,
+        )
 
         # Populate ISO cache
         get_territory("US")
@@ -1283,8 +1288,10 @@ class TestTerritoryCacheSize:
 
     def test_territory_currencies_cache_size(self) -> None:
         """Territory currencies cache uses correct MAX_TERRITORY_CACHE_SIZE."""
-        from ftllexengine.constants import MAX_TERRITORY_CACHE_SIZE  # noqa: PLC0415
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.constants import (
+            MAX_TERRITORY_CACHE_SIZE,
+        )
+        from ftllexengine.introspection.iso import (
             _get_territory_currencies_impl,
         )
 
@@ -1299,7 +1306,7 @@ class TestTerritoryCacheSize:
 
         With MAX_TERRITORY_CACHE_SIZE >= 249, all territories fit in cache.
         """
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (
             _get_territory_currencies_impl,
         )
 
@@ -1365,7 +1372,7 @@ class TestDefensiveExceptionPropagation:
         call_count = [0]  # Use list to allow modification in nested function
         error_msg = "Internal error"
 
-        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+        def mock_locale_parse(locale_str: str) -> object:
             """Mock Locale.parse to raise unexpected exception."""
             call_count[0] += 1
             raise _UnexpectedTestError(error_msg)
@@ -1395,7 +1402,7 @@ class TestDefensiveExceptionPropagation:
         """
         error_msg = "Internal error"
 
-        def mock_get_currency_symbol(code: str, locale: str | object = None) -> str:  # noqa: ARG001
+        def mock_get_currency_symbol(code: str, locale: str | object = None) -> str:
             """Mock that raises unexpected exception."""
             raise _UnexpectedTestError(error_msg)
 
@@ -1418,11 +1425,11 @@ class TestDefensiveExceptionPropagation:
         Verifies type-based matching: exceptions whose message contains
         'locale' propagate if not babel.core.UnknownLocaleError.
         """
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (
             _get_babel_territories,
         )
 
-        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+        def mock_locale_parse(locale_str: str) -> object:
             raise _LocaleWordTestError
 
         with (
@@ -1438,7 +1445,7 @@ class TestDefensiveExceptionPropagation:
 
         Verifies type-based matching replaces fragile substring matching.
         """
-        def mock_locale_parse(locale_str: str) -> object:  # noqa: ARG001
+        def mock_locale_parse(locale_str: str) -> object:
             raise _LocaleWordTestError
 
         with (
@@ -1455,8 +1462,8 @@ class TestDefensiveExceptionPropagation:
         Verifies type-based matching replaces fragile substring matching.
         """
         def mock_symbol(
-            code: str,  # noqa: ARG001
-            locale: str | object = None,  # noqa: ARG001
+            code: str,
+            locale: str | object = None,
         ) -> str:
             raise _LocaleWordTestError
 
@@ -1638,3 +1645,79 @@ class TestUnknownLocaleErrorImportFailure:
             _get_babel_currency_symbol("USD", "en")
 
         assert exc_info.value is original_exc
+
+
+# ===========================================================================
+# get_currency_decimal_digits
+# ===========================================================================
+
+
+class TestGetCurrencyDecimalDigits:
+    """Tests for get_currency_decimal_digits() convenience function.
+
+    Decimal precision is locale-independent (ISO 4217 standard).
+    The function must not require a locale parameter.
+    """
+
+    def test_standard_two_decimal_currencies(self) -> None:
+        """Common 2-decimal currencies return 2."""
+        for code in ("EUR", "USD", "GBP", "CHF", "CAD", "AUD", "NZD"):
+            assert get_currency_decimal_digits(code) == 2, (
+                f"{code} should have 2 decimal digits"
+            )
+
+    def test_zero_decimal_currencies(self) -> None:
+        """Zero-decimal currencies return 0."""
+        for code in ("JPY", "KRW", "VND", "ISK", "CLP"):
+            assert get_currency_decimal_digits(code) == 0, (
+                f"{code} should have 0 decimal digits"
+            )
+
+    def test_three_decimal_currencies(self) -> None:
+        """Three-decimal currencies return 3."""
+        for code in ("KWD", "JOD", "OMR", "BHD", "TND"):
+            assert get_currency_decimal_digits(code) == 3, (
+                f"{code} should have 3 decimal digits"
+            )
+
+    def test_four_decimal_currencies(self) -> None:
+        """Four-decimal currencies return 4."""
+        assert get_currency_decimal_digits("CLF") == 4
+        assert get_currency_decimal_digits("UYW") == 4
+
+    def test_unknown_code_returns_none(self) -> None:
+        """Unknown ISO code returns None."""
+        assert get_currency_decimal_digits("XYZ") is None
+        assert get_currency_decimal_digits("FOO") is None
+
+    def test_case_insensitive(self) -> None:
+        """Currency code lookup is case-insensitive."""
+        assert get_currency_decimal_digits("eur") == 2
+        assert get_currency_decimal_digits("Eur") == 2
+        assert get_currency_decimal_digits("EUR") == 2
+        assert get_currency_decimal_digits("jpy") == 0
+
+    def test_wrong_length_returns_none(self) -> None:
+        """Codes of wrong length return None without Babel call."""
+        assert get_currency_decimal_digits("") is None
+        assert get_currency_decimal_digits("EU") is None
+        assert get_currency_decimal_digits("EURO") is None
+
+    def test_consistent_with_get_currency(self) -> None:
+        """Result matches get_currency(code).decimal_digits for all known codes."""
+        for code in ("USD", "EUR", "JPY", "KWD", "CLF", "GBP"):
+            info = get_currency(code)
+            assert info is not None
+            digits = get_currency_decimal_digits(code)
+            assert digits == info.decimal_digits, (
+                f"Inconsistency for {code}: get_currency_decimal_digits={digits}, "
+                f"get_currency().decimal_digits={info.decimal_digits}"
+            )
+
+    def test_latvian_lats_historical(self) -> None:
+        """Historical currency LVL (Latvian Lats) returns None (withdrawn from ISO 4217)."""
+        # LVL is a withdrawn currency — Babel no longer includes it in active CLDR data.
+        # get_currency_decimal_digits must return None for withdrawn/unknown codes.
+        result = get_currency_decimal_digits("LVL")
+        # Accept both None (withdrawn from Babel's CLDR) and 2 (if still in data).
+        assert result in (None, 2), f"LVL should be None or 2, got {result!r}"

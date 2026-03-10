@@ -69,7 +69,7 @@ class TestParserFunctionCallDepthTracking:
         # The key is that it doesn't cause RecursionError
         assert resource is not None
         # Parsing deeply nested structures should produce Junk or errors
-        from ftllexengine.syntax.ast import Junk, Message  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Junk, Message
 
         has_junk = any(isinstance(e, Junk) for e in resource.entries)
         has_message = any(isinstance(e, Message) for e in resource.entries)
@@ -155,7 +155,7 @@ class TestResolverFunctionCallDepthTracking:
 
     def test_resolver_depth_limit_prevents_dos(self) -> None:
         """Resolver should not crash on adversarially nested AST."""
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (
             CallArguments,
             FunctionReference,
             Identifier,
@@ -225,7 +225,9 @@ class TestLocaleUtilsLazyImport:
 
     def test_normalize_locale_no_babel_required(self) -> None:
         """normalize_locale() should work without Babel."""
-        from ftllexengine.core.locale_utils import normalize_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import (
+            normalize_locale,
+        )
 
         # Pure string manipulation, no Babel needed
         assert normalize_locale("en-US") == "en_us"
@@ -234,7 +236,9 @@ class TestLocaleUtilsLazyImport:
 
     def test_get_system_locale_no_babel_required(self) -> None:
         """get_system_locale() should work without Babel."""
-        from ftllexengine.core.locale_utils import get_system_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import (
+            get_system_locale,
+        )
 
         # Uses only stdlib locale module
         result = get_system_locale()
@@ -248,7 +252,9 @@ class TestLocaleUtilsLazyImport:
         Note: This test assumes Babel IS installed in dev environment.
         It verifies the function works, not that it fails without Babel.
         """
-        from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import (
+            get_babel_locale,
+        )
 
         # Should work with Babel installed
         locale = get_babel_locale("en-US")
@@ -257,7 +263,9 @@ class TestLocaleUtilsLazyImport:
 
     def test_get_babel_locale_caches_result(self) -> None:
         """get_babel_locale() should cache Locale objects."""
-        from ftllexengine.core.locale_utils import get_babel_locale  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import (
+            get_babel_locale,
+        )
 
         # Call twice with same locale
         locale1 = get_babel_locale("de-DE")
@@ -283,7 +291,7 @@ class TestDeadCodeRemoval:
         resource = parser.parse(source)
 
         # Should parse correctly
-        from ftllexengine.syntax.ast import Message  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Message
 
         assert len(resource.entries) >= 1
         # Find message
@@ -311,7 +319,7 @@ class TestDeadCodeRemoval:
         resource = parser.parse(source)
 
         # Should parse all messages
-        from ftllexengine.syntax.ast import Message  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Message
 
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) >= 1
@@ -341,7 +349,7 @@ class TestSelectorExpressionDepthGuard:
 
     def test_deeply_nested_selector_does_not_stackoverflow(self) -> None:
         """Malformed deeply-nested SelectExpression as its own selector is bounded."""
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (
             Identifier,
             Message,
             NumberLiteral,

@@ -37,7 +37,9 @@ class TestSemanticValidatorFuzz:
     @given(source=validation_resource_sources())
     def test_fuzz_validate_resource_all_scenarios(self, source: str) -> None:
         """FUZZ: Exhaustive validate_resource() testing across all source scenarios."""
-        from ftllexengine.validation import validate_resource  # noqa: PLC0415
+        from ftllexengine.validation import (
+            validate_resource,
+        )
 
         result = validate_resource(source)
         event(f"outcome_errors={len(result.errors)}")

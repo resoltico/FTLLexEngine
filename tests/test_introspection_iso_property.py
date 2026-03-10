@@ -565,7 +565,7 @@ class TestCachePollutionPrevention:
         validations (whether valid or invalid codes) don't add new lookup entries.
         """
         # Function-local import to access internal cache functions
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415 - import inside function
             _get_territory_impl,
             clear_iso_cache,
         )
@@ -603,7 +603,7 @@ class TestCachePollutionPrevention:
         validations (whether valid or invalid codes) don't add new lookup entries.
         """
         # Function-local import to access internal cache functions
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415 - import inside function
             _get_currency_impl,
             clear_iso_cache,
         )
@@ -649,7 +649,7 @@ class TestCachePollutionPrevention:
         should not add any entries or trigger any cache misses.
         """
         # Function-local import to access internal cache functions
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415 - import inside function
             _get_territory_impl,
             clear_iso_cache,
         )
@@ -691,7 +691,7 @@ class TestCachePollutionPrevention:
         should not add any entries or trigger any cache misses.
         """
         # Function-local import to access internal cache functions
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415 - import inside function
             _get_currency_impl,
             clear_iso_cache,
         )
@@ -724,7 +724,7 @@ class TestCachePollutionPrevention:
         cached code sets for constant-time lookup.
         """
         # Function-local import to access internal cache functions
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415 - import inside function
             _currency_codes_impl,
             _territory_codes_impl,
             clear_iso_cache,
@@ -746,7 +746,7 @@ class TestCachePollutionPrevention:
     def test_cache_clear_includes_code_set_caches(self) -> None:
         """clear_iso_cache() also clears the validation code set caches."""
         # Function-local import to access internal cache functions
-        from ftllexengine.introspection.iso import (  # noqa: PLC0415
+        from ftllexengine.introspection.iso import (  # noqa: PLC0415 - import inside function
             _currency_codes_impl,
             _territory_codes_impl,
             clear_iso_cache,

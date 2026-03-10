@@ -506,7 +506,7 @@ class TestStatefulErrorPaths:
 
     def test_term_attribute_not_found_direct(self) -> None:
         """Term attribute not found error (lines 182-185)."""
-        from ftllexengine.syntax import Term  # noqa: PLC0415
+        from ftllexengine.syntax import Term  # noqa: PLC0415 - import inside function
 
         term = Term(
             id=Identifier(name="brand"),

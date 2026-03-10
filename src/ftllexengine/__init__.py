@@ -25,6 +25,16 @@ Fiscal Calendar (no Babel dependency):
     fiscal_year_start - First day of a fiscal year
     fiscal_year_end - Last day of a fiscal year
 
+Parsing Return Type (no Babel dependency):
+    ParseResult[T] - Return type alias for parse_* functions:
+                     tuple[T | None, tuple[FrozenFluentError, ...]]
+
+Introspection (no Babel dependency):
+    MessageVariableValidationResult - Structured result of variable schema validation
+    validate_message_variables - Compare FTL message variables against expected schema
+    get_currency_decimal_digits - ISO 4217 decimal precision for a currency code (requires Babel)
+    get_cldr_version - Babel CLDR data version string (requires Babel)
+
 Exceptions:
     FrozenFluentError - Immutable, sealed error type
     ErrorCategory - Error classification enum (REFERENCE, RESOLUTION, CYCLIC, PARSE, FORMATTING)
@@ -97,6 +107,7 @@ from .integrity import (
     SyntaxIntegrityError,
     WriteConflictError,
 )
+from .introspection.message import MessageVariableValidationResult, validate_message_variables
 from .syntax import parse as parse_ftl
 from .syntax import serialize as serialize_ftl
 from .validation import validate_resource
@@ -112,6 +123,8 @@ if TYPE_CHECKING:
 _BABEL_REQUIRED_ATTRS = frozenset({
     "FluentBundle",
     "FluentLocalization",
+    "get_cldr_version",
+    "get_currency_decimal_digits",
 })
 
 # Lazy-loaded attributes that do NOT require Babel (pure Python utilities)
@@ -121,9 +134,10 @@ _BABEL_INDEPENDENT_ATTRS = frozenset({
     "CacheConfig",
     "FluentValue",
     "fluent_function",
+    "ParseResult",
 })
 
-def __getattr__(name: str) -> object:
+def __getattr__(name: str) -> object:  # noqa: PLR0911, PLR0912 - lazy-load dispatch over fixed symbol sets
     """Lazy import for components.
 
     Handles two categories:
@@ -149,6 +163,10 @@ def __getattr__(name: str) -> object:
                 from .runtime.function_bridge import fluent_function
                 globals()[name] = fluent_function
                 return fluent_function
+            case "ParseResult":
+                from .parsing import ParseResult
+                globals()[name] = ParseResult
+                return ParseResult
             case _:
                 msg = f"__getattr__: unhandled Babel-independent attribute {name!r}"
                 raise AssertionError(msg)
@@ -165,6 +183,14 @@ def __getattr__(name: str) -> object:
                     from .localization import FluentLocalization
                     globals()[name] = FluentLocalization
                     return FluentLocalization
+                case "get_cldr_version":
+                    from .core.babel_compat import get_cldr_version
+                    globals()[name] = get_cldr_version
+                    return get_cldr_version
+                case "get_currency_decimal_digits":
+                    from .introspection.iso import get_currency_decimal_digits
+                    globals()[name] = get_currency_decimal_digits
+                    return get_currency_decimal_digits
                 case _:
                     msg = f"__getattr__: unhandled Babel-required attribute {name!r}"
                     raise AssertionError(msg)
@@ -304,6 +330,14 @@ __all__ = [
     "fiscal_year",
     "fiscal_year_end",
     "fiscal_year_start",
+    # Parsing return type (no Babel dependency; lazy for init overhead)
+    "ParseResult",
+    # Introspection (no Babel dependency)
+    "MessageVariableValidationResult",
+    "validate_message_variables",
+    # ISO data utilities (require Babel)
+    "get_cldr_version",
+    "get_currency_decimal_digits",
     # Parsing API
     "parse_ftl",
     "serialize_ftl",

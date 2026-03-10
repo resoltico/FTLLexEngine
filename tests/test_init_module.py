@@ -208,6 +208,114 @@ class TestLazyImportFluentFunction:
         assert "fluent_function" in vars(ftllexengine)
 
 
+class TestLazyImportParseResult:
+    """ParseResult is lazily imported from parsing (Babel-independent)."""
+
+    def test_parse_result_resolves(self) -> None:
+        """ParseResult is accessible from the top-level package."""
+        import ftllexengine
+
+        parse_result_type = ftllexengine.ParseResult  # type: ignore[attr-defined]
+        assert parse_result_type is not None
+        from ftllexengine.parsing import ParseResult as Direct
+
+        assert parse_result_type is Direct
+
+    def test_parse_result_cached_on_second_access(self) -> None:
+        """ParseResult is cached after first access."""
+        import ftllexengine
+
+        ftllexengine.__dict__.pop("ParseResult", None)
+        first = ftllexengine.ParseResult  # type: ignore[attr-defined]
+        second = ftllexengine.ParseResult  # type: ignore[attr-defined]
+        assert first is second
+        assert "ParseResult" in vars(ftllexengine)
+
+    def test_parse_result_in_all(self) -> None:
+        """ParseResult is listed in ftllexengine.__all__."""
+        import ftllexengine
+
+        assert "ParseResult" in ftllexengine.__all__
+
+
+class TestLazyImportGetCldrVersion:
+    """get_cldr_version is lazily imported from core.babel_compat (requires Babel)."""
+
+    def test_get_cldr_version_resolves(self) -> None:
+        """get_cldr_version is callable from the top-level package."""
+        import ftllexengine
+
+        fn = ftllexengine.get_cldr_version  # type: ignore[attr-defined]
+        assert callable(fn)
+        version = fn()
+        assert isinstance(version, str)
+        assert len(version) > 0
+
+    def test_get_cldr_version_cached_on_second_access(self) -> None:
+        """get_cldr_version is cached after first access."""
+        import ftllexengine
+
+        ftllexengine.__dict__.pop("get_cldr_version", None)
+        first = ftllexengine.get_cldr_version  # type: ignore[attr-defined]
+        second = ftllexengine.get_cldr_version  # type: ignore[attr-defined]
+        assert first is second
+        assert "get_cldr_version" in vars(ftllexengine)
+
+    def test_get_cldr_version_in_all(self) -> None:
+        """get_cldr_version is listed in ftllexengine.__all__."""
+        import ftllexengine
+
+        assert "get_cldr_version" in ftllexengine.__all__
+
+
+class TestLazyImportGetCurrencyDecimalDigits:
+    """get_currency_decimal_digits is lazily imported from introspection.iso (requires Babel)."""
+
+    def test_get_currency_decimal_digits_resolves(self) -> None:
+        """get_currency_decimal_digits is callable from the top-level package."""
+        import ftllexengine
+
+        fn = ftllexengine.get_currency_decimal_digits  # type: ignore[attr-defined]
+        assert callable(fn)
+        assert fn("EUR") == 2
+        assert fn("JPY") == 0
+
+    def test_get_currency_decimal_digits_cached_on_second_access(self) -> None:
+        """get_currency_decimal_digits is cached after first access."""
+        import ftllexengine
+
+        ftllexengine.__dict__.pop("get_currency_decimal_digits", None)
+        first = ftllexengine.get_currency_decimal_digits  # type: ignore[attr-defined]
+        second = ftllexengine.get_currency_decimal_digits  # type: ignore[attr-defined]
+        assert first is second
+        assert "get_currency_decimal_digits" in vars(ftllexengine)
+
+    def test_get_currency_decimal_digits_in_all(self) -> None:
+        """get_currency_decimal_digits is listed in ftllexengine.__all__."""
+        import ftllexengine
+
+        assert "get_currency_decimal_digits" in ftllexengine.__all__
+
+
+class TestDirectImportIntrospectionSymbols:
+    """MessageVariableValidationResult and validate_message_variables imported directly."""
+
+    def test_message_variable_validation_result_importable(self) -> None:
+        """MessageVariableValidationResult is accessible from the top-level package."""
+        import ftllexengine
+
+        assert hasattr(ftllexengine, "MessageVariableValidationResult")
+        assert "MessageVariableValidationResult" in ftllexengine.__all__
+
+    def test_validate_message_variables_importable(self) -> None:
+        """validate_message_variables is accessible from the top-level package."""
+        import ftllexengine
+
+        assert hasattr(ftllexengine, "validate_message_variables")
+        assert callable(ftllexengine.validate_message_variables)
+        assert "validate_message_variables" in ftllexengine.__all__
+
+
 class TestUnknownAttributeError:
     """Accessing attributes not registered in any dispatch table raises AttributeError."""
 
@@ -400,7 +508,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 34
+        assert len(ftllexengine.__all__) == 39
 
     def test_lazy_exports_are_in_all(self) -> None:
         """Lazy-loaded symbols (FluentBundle, FluentLocalization, etc.) are in __all__."""

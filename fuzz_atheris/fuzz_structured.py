@@ -630,7 +630,7 @@ def _custom_mutator(data: bytes, max_size: int, seed: int) -> bytes:
 # --- Main Entry Point ---
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
+def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Atheris entry point: generate structured FTL and detect crashes."""
     # Initialize memory baseline
     if _state.iterations == 0:

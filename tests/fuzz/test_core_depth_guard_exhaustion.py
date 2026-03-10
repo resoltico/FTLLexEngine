@@ -385,7 +385,7 @@ class TestRoundtripDepthExhaustion:
             resource = parser.parse(source)
 
             # Skip if parsing produced junk
-            from ftllexengine.syntax.ast import Junk  # noqa: PLC0415
+            from ftllexengine.syntax.ast import Junk  # noqa: PLC0415 - import inside function
             if any(isinstance(e, Junk) for e in resource.entries):
                 event("outcome=junk")
                 return

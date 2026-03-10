@@ -363,7 +363,7 @@ def _check_round_half_up(
         raise LocaleContextFuzzError(msg)
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
+def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Atheris entry point: Test LocaleContext formatting invariants."""
     if _state.iterations == 0:
         _state.initial_memory_mb = (

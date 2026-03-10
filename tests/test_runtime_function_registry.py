@@ -138,7 +138,7 @@ class TestFunctionRegistryRemoval:
 
     def test_function_registry_not_in_module(self) -> None:
         """FUNCTION_REGISTRY is no longer available in functions module."""
-        from ftllexengine.runtime import functions  # noqa: PLC0415
+        from ftllexengine.runtime import functions  # noqa: PLC0415 - import inside function
 
         assert not hasattr(functions, "FUNCTION_REGISTRY")
 
@@ -146,11 +146,11 @@ class TestFunctionRegistryRemoval:
         """Importing FUNCTION_REGISTRY raises ImportError/AttributeError."""
         # Cannot use direct import as it causes lint errors
         # Use getattr() to simulate dynamic attribute access
-        import importlib  # noqa: PLC0415
+        import importlib  # noqa: PLC0415 - import inside function
 
         module = importlib.import_module("ftllexengine.runtime.functions")
         with pytest.raises(AttributeError):
-            getattr(module, "FUNCTION_REGISTRY")  # noqa: B009
+            getattr(module, "FUNCTION_REGISTRY")  # noqa: B009 - dynamic attribute access by design
 
     def test_create_default_registry_is_replacement(self) -> None:
         """create_default_registry() is the replacement for FUNCTION_REGISTRY."""
@@ -224,7 +224,7 @@ class TestCreateDefaultRegistryIntegration:
 
     def test_datetime_formatting_works(self) -> None:
         """DATETIME function works with create_default_registry()."""
-        from datetime import UTC, datetime  # noqa: PLC0415
+        from datetime import UTC, datetime  # noqa: PLC0415 - import inside function
 
         registry = create_default_registry()
         bundle = FluentBundle("en", functions=registry)

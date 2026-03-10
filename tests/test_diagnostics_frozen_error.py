@@ -401,7 +401,7 @@ class TestEquality:
     def test_error_not_equal_to_none(self, error: FrozenFluentError) -> None:
         """Property: Errors are not equal to None (tests __eq__ method)."""
         # pylint: disable=singleton-comparison
-        assert (error == None) is False  # noqa: E711
+        assert (error == None) is False  # noqa: E711 - explicit None comparison intentional
         event(f"category={error.category.name}")
 
 
@@ -615,7 +615,7 @@ class TestExceptionBehavior:
     @settings(max_examples=50)
     def test_can_be_caught_as_exception(self, error: FrozenFluentError) -> None:
         """Property: FrozenFluentError can be caught as Exception."""
-        with pytest.raises(Exception) as exc_info:  # noqa: PT011
+        with pytest.raises(Exception) as exc_info:  # noqa: PT011 - msg elsewhere
             raise error
         assert exc_info.value is error
         event(f"category={error.category.name}")
@@ -1016,7 +1016,7 @@ class TestCompleteBranchCoverage:
 
         # Python exception attributes should be settable even after freeze
         # These are set by Python's exception handling mechanism
-        import sys  # noqa: PLC0415
+        import sys  # noqa: PLC0415 - import inside function
 
         # Create a dummy traceback by raising and catching
         tb = None

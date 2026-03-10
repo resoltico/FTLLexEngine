@@ -218,7 +218,7 @@ class TestDataIntegrityError:
             raise error
         except DataIntegrityError as caught:
             # Python sets __traceback__ automatically
-            assert caught.__traceback__ is not None  # noqa: PT017
+            assert caught.__traceback__ is not None  # noqa: PT017 - attribute check
 
             # We should be able to set __context__, __cause__, __suppress_context__
             msg_context = "context"
@@ -227,9 +227,9 @@ class TestDataIntegrityError:
             caught.__cause__ = TypeError(msg_cause)
             caught.__suppress_context__ = False
 
-            assert isinstance(caught.__context__, ValueError)  # noqa: PT017
-            assert isinstance(caught.__cause__, TypeError)  # noqa: PT017
-            assert caught.__suppress_context__ is False  # noqa: PT017
+            assert isinstance(caught.__context__, ValueError)  # noqa: PT017 - attribute check
+            assert isinstance(caught.__cause__, TypeError)  # noqa: PT017 - attribute check
+            assert caught.__suppress_context__ is False  # noqa: PT017 - attribute check
 
     def test_python_exception_attributes_settable(self) -> None:
         """Python exception attributes can be set directly."""
@@ -879,8 +879,8 @@ class TestEdgeCases:
                 msg_wrapped = "wrapped"
                 raise DataIntegrityError(msg_wrapped) from e
         except DataIntegrityError as error:
-            assert error.__cause__ is cause  # noqa: PT017
-            assert isinstance(error.__cause__, ValueError)  # noqa: PT017
+            assert error.__cause__ is cause  # noqa: PT017 - attribute check
+            assert isinstance(error.__cause__, ValueError)  # noqa: PT017 - attribute check
 
     def test_exception_context_preserved(self) -> None:
         """Exception context (__context__) is preserved."""
@@ -893,7 +893,7 @@ class TestEdgeCases:
                 raise DataIntegrityError(msg_second) from None
         except DataIntegrityError as error:
             # With 'from None', __context__ is suppressed
-            assert error.__suppress_context__ is True  # noqa: PT017
+            assert error.__suppress_context__ is True  # noqa: PT017 - attribute check
 
 
 class TestDataIntegrityErrorFinalEnforcement:

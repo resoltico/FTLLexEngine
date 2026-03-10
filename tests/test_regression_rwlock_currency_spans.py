@@ -34,29 +34,39 @@ class TestCurrencyReturnsFluentNumber:
 
     def test_currency_format_returns_fluent_number(self) -> None:
         """currency_format returns FluentNumber, not str."""
-        from ftllexengine.runtime.function_bridge import FluentNumber  # noqa: PLC0415
-        from ftllexengine.runtime.functions import currency_format  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            FluentNumber,
+        )
+        from ftllexengine.runtime.functions import (
+            currency_format,
+        )
 
         result = currency_format(Decimal("123.45"), "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
 
     def test_currency_format_has_precision(self) -> None:
         """FluentNumber from CURRENCY has correct precision."""
-        from ftllexengine.runtime.functions import currency_format  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
+            currency_format,
+        )
 
         result = currency_format(Decimal("123.45"), "en-US", currency="USD")
         assert result.precision == 2
 
     def test_currency_format_jpy_zero_decimals(self) -> None:
         """JPY has zero decimal places per ISO 4217."""
-        from ftllexengine.runtime.functions import currency_format  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
+            currency_format,
+        )
 
         result = currency_format(12345, "ja-JP", currency="JPY")
         assert result.precision == 0
 
     def test_currency_format_bhd_three_decimals(self) -> None:
         """BHD has three decimal places per ISO 4217."""
-        from ftllexengine.runtime.functions import currency_format  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
+            currency_format,
+        )
 
         # Use en-US locale to avoid RTL markers in currency symbol
         # that interfere with decimal symbol detection
@@ -153,7 +163,7 @@ class TestPluralRoundingMode:
 
     def test_rounding_mode_is_explicit(self) -> None:
         """Verify quantize call uses ROUND_HALF_UP (matches formatting)."""
-        from ftllexengine.runtime import plural_rules  # noqa: PLC0415
+        from ftllexengine.runtime import plural_rules
 
         source = inspect.getsource(plural_rules.select_plural_category)
         assert "ROUND_HALF_UP" in source

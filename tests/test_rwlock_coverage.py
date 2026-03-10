@@ -94,7 +94,7 @@ class TestRWLockErrorHandling:
         lock = RWLock()
 
         # Intentionally nested to test upgrade rejection
-        with lock.read():  # noqa: SIM117
+        with lock.read():  # noqa: SIM117 - nested with
             with pytest.raises(
                 RuntimeError,
                 match="Cannot upgrade read lock to write lock",
@@ -106,7 +106,7 @@ class TestRWLockErrorHandling:
         lock = RWLock()
 
         # Intentionally nested to test upgrade rejection error message
-        with lock.read():  # noqa: SIM117
+        with lock.read():  # noqa: SIM117 - nested with
             with pytest.raises(
                 RuntimeError,
                 match="Release read lock before acquiring write lock",
@@ -117,7 +117,7 @@ class TestRWLockErrorHandling:
         """Attempting to acquire write lock while already holding it raises RuntimeError."""
         lock = RWLock()
 
-        with lock.write():  # noqa: SIM117
+        with lock.write():  # noqa: SIM117 - nested with
             with pytest.raises(
                 RuntimeError,
                 match="Cannot acquire write lock: already holding write lock",
@@ -128,7 +128,7 @@ class TestRWLockErrorHandling:
         """Write reentry error includes helpful message."""
         lock = RWLock()
 
-        with lock.write():  # noqa: SIM117
+        with lock.write():  # noqa: SIM117 - nested with
             with pytest.raises(
                 RuntimeError,
                 match="Release the write lock before acquiring it again",
@@ -139,7 +139,7 @@ class TestRWLockErrorHandling:
         """Attempting to acquire read lock while holding write lock raises RuntimeError."""
         lock = RWLock()
 
-        with lock.write():  # noqa: SIM117
+        with lock.write():  # noqa: SIM117 - nested with
             with pytest.raises(
                 RuntimeError,
                 match="Cannot acquire read lock while holding write lock",
@@ -150,7 +150,7 @@ class TestRWLockErrorHandling:
         """Write-to-read downgrade error includes helpful message."""
         lock = RWLock()
 
-        with lock.write():  # noqa: SIM117
+        with lock.write():  # noqa: SIM117 - nested with
             with pytest.raises(
                 RuntimeError,
                 match="Release the write lock before acquiring a read lock",
@@ -162,7 +162,7 @@ class TestRWLockErrorHandling:
         lock = RWLock()
 
         # Intentionally nested to test reentrant release tracking
-        with lock.read():  # noqa: SIM117
+        with lock.read():  # noqa: SIM117 - nested with
             with lock.read():
                 pass
             # Inner released
@@ -252,7 +252,7 @@ class TestRWLockBoundaryConditions:
         lock = RWLock()
 
         # Intentionally nested to test reentrant empty contexts
-        with lock.read():  # noqa: SIM117
+        with lock.read():  # noqa: SIM117 - nested with
             with lock.read():
                 with lock.read():
                     pass
@@ -328,7 +328,7 @@ class TestRWLockThreadSafetyEdgeCases:
 
         def reader() -> None:
             # Intentionally nested to test reentrant reader count
-            with lock.read():  # noqa: SIM117
+            with lock.read():  # noqa: SIM117 - nested with
                 with lock.read():
                     with lock.read():
                         # 3 levels deep, but count should be 1

@@ -247,7 +247,7 @@ _SELECTOR_KEYS: Sequence[str] = (
 )
 
 
-def _generate_pathological_ftl(  # noqa: PLR0911, PLR0912
+def _generate_pathological_ftl(  # noqa: PLR0911, PLR0912 - dispatch
     fdp: atheris.FuzzedDataProvider,
     pattern_name: str,
 ) -> str:

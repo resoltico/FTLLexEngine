@@ -380,10 +380,10 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
             # Function with many parameters (auto-mapping stress)
             def many_params(
                 value: Any, *,
-                minimum_fraction_digits: int = 0,  # noqa: ARG001
-                maximum_fraction_digits: int = 3,  # noqa: ARG001
-                use_grouping: bool = True,  # noqa: ARG001
-                currency_display: str = "symbol",  # noqa: ARG001
+                minimum_fraction_digits: int = 0,  # noqa: ARG001 - unused
+                maximum_fraction_digits: int = 3,  # noqa: ARG001 - unused
+                use_grouping: bool = True,  # noqa: ARG001 - unused
+                currency_display: str = "symbol",  # noqa: ARG001 - unused
             ) -> str:
                 return str(value)
             reg.register(many_params, ftl_name="MANY")
@@ -422,7 +422,7 @@ def _pattern_param_mapping_custom(fdp: atheris.FuzzedDataProvider) -> None:
     _domain.register_calls += 1
     reg = FunctionRegistry()
 
-    def target_fn(value: Any, *, minimum_fraction_digits: int = 0) -> str:  # noqa: ARG001
+    def target_fn(value: Any, *, minimum_fraction_digits: int = 0) -> str:  # noqa: ARG001 - unused
         return str(value)
 
     variant = fdp.ConsumeIntInRange(0, 2)
@@ -478,7 +478,7 @@ def _pattern_signature_validation(fdp: atheris.FuzzedDataProvider) -> None:
             def colliding(
                 value: Any, *,
                 _data: int = 0,
-                data: int = 0,  # noqa: ARG001
+                data: int = 0,  # noqa: ARG001 - unused
             ) -> str:
                 return str(value)
 
@@ -772,7 +772,7 @@ def _pattern_evil_objects(fdp: atheris.FuzzedDataProvider) -> None:
             class EvilStr:
                 """Object whose __str__ raises RuntimeError."""
                 def __str__(self) -> str:
-                    raise RuntimeError("evil __str__")  # noqa: EM101
+                    raise RuntimeError("evil __str__")  # noqa: EM101 - dynamic type in error message
             var: object = EvilStr()
 
         case 1:
@@ -780,7 +780,7 @@ def _pattern_evil_objects(fdp: atheris.FuzzedDataProvider) -> None:
             class EvilHash:
                 """Object whose __hash__ raises TypeError."""
                 def __hash__(self) -> int:
-                    raise TypeError("unhashable evil")  # noqa: EM101
+                    raise TypeError("unhashable evil")  # noqa: EM101 - dynamic type in error message
                 def __str__(self) -> str:
                     return "evil"
             var = EvilHash()
@@ -816,7 +816,7 @@ def _pattern_evil_objects(fdp: atheris.FuzzedDataProvider) -> None:
 # INTROSPECTION (4 patterns)
 
 
-def _pattern_dict_interface(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912
+def _pattern_dict_interface(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912 - dispatch
     """Dict-like interface: __iter__, __contains__, __len__, list_functions, __repr__."""
     reg = create_default_registry()
     variant = fdp.ConsumeIntInRange(0, 4)
@@ -995,7 +995,7 @@ def _pattern_fluent_function_decorator(fdp: atheris.FuzzedDataProvider) -> None:
                 raise BridgeFuzzError(msg)
 
 
-def _pattern_metadata_api(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912
+def _pattern_metadata_api(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912 - dispatch
     """Test get_expected_positional_args, get_builtin_metadata, has_function."""
     _domain.metadata_api_tests += 1
     reg = create_default_registry()

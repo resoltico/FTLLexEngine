@@ -700,6 +700,6 @@ class TestSelectExpressionSelectorTypes:
         placeable = assert_is_placeable(value.elements[0])
         select_expr = assert_is_select_expression(placeable.expression)
         assert isinstance(select_expr.selector, NumberLiteral)
-        from decimal import Decimal  # noqa: PLC0415
+        from decimal import Decimal  # noqa: PLC0415 - import inside function
 
         assert select_expr.selector.value == Decimal("3.14")

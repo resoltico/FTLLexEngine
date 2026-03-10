@@ -539,7 +539,7 @@ class TestFluentParserFunctionEdgeCases:
         func = elem_0.expression
         assert isinstance(func, FunctionReference)
 
-        from decimal import Decimal  # noqa: PLC0415
+        from decimal import Decimal  # noqa: PLC0415 - import inside function
 
         arg = func.arguments.positional[0]
         assert isinstance(arg, NumberLiteral)

@@ -37,7 +37,7 @@ Unique coverage (not covered by other fuzzers):
 - MAX_DEPTH guard: deep SelectExpression trees trigger depth limit
 - FluentBundle introspection facade delegation
 
-Patterns (12):
+Patterns (13):
 - extract_variables_simple: simple Message with 1-3 variables
 - extract_variables_nested: Message with select expr containing variables
 - extract_references_msg: Message referencing other messages
@@ -50,6 +50,7 @@ Patterns (12):
 - adversarial_ast: Programmatic AST with unusual combinations
 - cache_invalidation: clear_introspection_cache + re-introspect
 - bundle_introspection_facade: Introspection via FluentBundle public API
+- validate_variables_schema: validate_message_variables exact/super/subset + immutability
 
 Metrics:
 - Pattern coverage with weighted round-robin schedule
@@ -126,6 +127,7 @@ class IntrospectionMetrics:
     cache_operations: int = 0
     bundle_facade_calls: int = 0
     invariant_violations: int = 0
+    schema_validations: int = 0  # validate_message_variables calls
 
 
 class IntrospectionFuzzError(Exception):
@@ -154,6 +156,7 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("adversarial_ast", 6),
     ("cache_invalidation", 5),
     ("bundle_introspection_facade", 7),
+    ("validate_variables_schema", 8),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -198,6 +201,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["cache_operations"] = _domain.cache_operations
     stats["bundle_facade_calls"] = _domain.bundle_facade_calls
     stats["invariant_violations"] = _domain.invariant_violations
+    stats["schema_validations"] = _domain.schema_validations
     return stats
 
 
@@ -222,11 +226,13 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.constants import MAX_DEPTH
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.introspection.message import (
+        MessageVariableValidationResult,
         clear_introspection_cache,
         extract_references,
         extract_references_by_attribute,
         extract_variables,
         introspect_message,
+        validate_message_variables,
     )
     from ftllexengine.runtime.bundle import FluentBundle
     from ftllexengine.syntax.ast import (
@@ -349,7 +355,7 @@ def _make_select_placeable(
     )
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
+def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Atheris entry point: Test introspection visitor invariants."""
     if _state.iterations == 0:
         _state.initial_memory_mb = (
@@ -656,6 +662,85 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
                     if vars1 != vars2:
                         err_msg = f"Cache invalidation: {vars1} != {vars2}"
                         raise IntrospectionFuzzError(err_msg)
+
+            case 12:  # validate_variables_schema
+                _domain.schema_validations += 1
+                # Build a message with a known variable set, then validate
+                # against exact, subsets, and supersets of that set.
+                var_a = gen_ftl_identifier(fdp)
+                var_b = gen_ftl_identifier(fdp)
+                elements = [_make_var_ref(var_a), _make_var_ref(var_b)]
+                msg = _make_simple_message(msg_id, elements)
+                declared = extract_variables(msg)
+
+                # 1. Exact match: is_valid must be True
+                result_exact = validate_message_variables(msg, declared)
+                if not result_exact.is_valid:
+                    err_msg = (
+                        f"validate_message_variables: exact match should be valid "
+                        f"declared={declared} expected={declared}"
+                    )
+                    raise IntrospectionFuzzError(err_msg)
+                if result_exact.missing_variables or result_exact.extra_variables:
+                    err_msg = (
+                        f"Exact match: missing={result_exact.missing_variables} "
+                        f"extra={result_exact.extra_variables} both must be empty"
+                    )
+                    raise IntrospectionFuzzError(err_msg)
+                if result_exact.message_id != msg_id:
+                    err_msg = (
+                        f"message_id mismatch: {result_exact.message_id!r} != {msg_id!r}"
+                    )
+                    raise IntrospectionFuzzError(err_msg)
+
+                # 2. Superset: extra_var added to expected -> missing_variables contains it.
+                # Guard: FDP byte-exhaustion causes ConsumeIntInRange to return lo=0,
+                # which may collide extra_var with var_a or var_b. When extra_var ∈ declared,
+                # the set union is a no-op: declared == expected_super, so is_valid=True is
+                # the correct library response. Only assert is_valid=False when extra_var
+                # is genuinely absent from declared (i.e., the superset is a strict superset).
+                extra_var = gen_ftl_identifier(fdp)
+                if extra_var not in declared:
+                    expected_super = declared | {extra_var}
+                    result_super = validate_message_variables(msg, expected_super)
+                    if result_super.is_valid:
+                        err_msg = "Superset expected: is_valid must be False"
+                        raise IntrospectionFuzzError(err_msg)
+                    if extra_var not in result_super.missing_variables:
+                        err_msg = (
+                            f"Superset: {extra_var!r} must be in missing_variables "
+                            f"{result_super.missing_variables}"
+                        )
+                        raise IntrospectionFuzzError(err_msg)
+
+                # 3. Subset: expected is empty set -> all declared become extra
+                result_empty = validate_message_variables(msg, frozenset())
+                if result_empty.is_valid and declared:
+                    err_msg = "Empty expected with declared vars: is_valid must be False"
+                    raise IntrospectionFuzzError(err_msg)
+                if result_empty.extra_variables != declared:
+                    err_msg = (
+                        f"Empty expected: extra_variables={result_empty.extra_variables} "
+                        f"must equal declared={declared}"
+                    )
+                    raise IntrospectionFuzzError(err_msg)
+
+                # 4. Immutability: result must be frozen.
+                # Use setattr() not object.__setattr__(): the latter bypasses the
+                # class's __setattr__ and writes directly to the slot descriptor —
+                # the same mechanism frozen dataclass __init__ uses to initialize
+                # fields, so it always succeeds. setattr() resolves through
+                # type(obj).__setattr__ which IS the FrozenInstanceError-raising
+                # override added by @dataclass(frozen=True).
+                if not isinstance(result_exact, MessageVariableValidationResult):
+                    err_msg = "validate_message_variables wrong return type"
+                    raise IntrospectionFuzzError(err_msg)
+                try:
+                    result_exact.is_valid = not result_exact.is_valid  # type: ignore[misc]
+                    err_msg = "MessageVariableValidationResult must be frozen (immutable)"
+                    raise IntrospectionFuzzError(err_msg)
+                except (AttributeError, TypeError):
+                    pass  # Expected: FrozenInstanceError(AttributeError) from frozen dataclass
 
             case _:  # bundle_introspection_facade
                 _domain.bundle_facade_calls += 1

@@ -407,7 +407,7 @@ def _pattern_quarter_boundaries(fdp: atheris.FuzzedDataProvider) -> None:
         raise FiscalFuzzError(msg)
 
 
-def _pattern_calendar_identity(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912, PLR0915
+def _pattern_calendar_identity(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Test FiscalCalendar identity: hash, repr, equality, frozen, validation."""
     _domain.calendar_identity_checks += 1
 
@@ -754,7 +754,7 @@ def _pattern_delta_validation(fdp: atheris.FuzzedDataProvider) -> None:
                 raise FiscalFuzzError(msg)
 
 
-def _pattern_period_contracts(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912, PLR0915
+def _pattern_period_contracts(fdp: atheris.FuzzedDataProvider) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Test FiscalPeriod: hash, eq, ordering, frozen, repr, validation."""
     _domain.period_contract_checks += 1
 

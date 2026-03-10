@@ -282,7 +282,10 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
     if any(c.isdigit() and not c.isascii() for c in formatted):
         return None
     try:
-        from babel.numbers import get_decimal_symbol, get_group_symbol  # noqa: PLC0415
+        from babel.numbers import (
+            get_decimal_symbol,
+            get_group_symbol,
+        )
         babel_locale = locale.replace("-", "_")
         decimal_sym = get_decimal_symbol(babel_locale)
         group_sym = get_group_symbol(babel_locale)
@@ -319,7 +322,9 @@ def _run_oracle(
     # Sentinel -1: derive CLDR precision at oracle time.
     if precision == -1:
         try:
-            from babel.numbers import get_currency_precision  # noqa: PLC0415
+            from babel.numbers import (
+                get_currency_precision,
+            )
             precision = get_currency_precision(currency)
         except (ValueError, LookupError):
             return  # Unknown currency -- skip oracle

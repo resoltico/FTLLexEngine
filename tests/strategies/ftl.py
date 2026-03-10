@@ -332,7 +332,7 @@ def ftl_pathological_nesting(draw: st.DrawFn) -> str:
     - Stack overflow prevention
     - Error recovery at depth limits
     """
-    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415 - import inside function
 
     msg_id = draw(ftl_identifiers())
 
@@ -955,7 +955,7 @@ def ftl_boundary_depth_placeables(draw: st.DrawFn) -> Placeable:
     - Serializer depth guards
     - Resolver depth tracking
     """
-    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415 - import inside function
 
     # Choose boundary point
     boundary = draw(
@@ -981,7 +981,7 @@ def ftl_boundary_depth_messages(draw: st.DrawFn) -> Message:
     Creates complete Message nodes containing deeply nested structures
     at the MAX_DEPTH boundary for integration testing.
     """
-    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+    from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415 - import inside function
 
     msg_id = Identifier(name=draw(ftl_identifiers()))
 

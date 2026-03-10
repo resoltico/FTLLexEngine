@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 
-def pytest_benchmark_update_json(config, benchmarks, output_json):  # noqa: ARG001
+def pytest_benchmark_update_json(config, benchmarks, output_json):  # noqa: ARG001 - unused
     """Add FTLLexEngine metadata to benchmark results.
 
     Args:

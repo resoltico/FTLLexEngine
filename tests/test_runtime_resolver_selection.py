@@ -328,8 +328,10 @@ test = { $count ->
 
     def test_deeply_nested_select_expression_fallback(self) -> None:
         """Deeply nested SelectExpression in fallback generation doesn't overflow."""
-        from ftllexengine.runtime.functions import create_default_registry  # noqa: PLC0415
-        from ftllexengine.syntax.ast import Expression  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
+            create_default_registry,
+        )
+        from ftllexengine.syntax.ast import Expression
 
         nested_select: Expression = VariableReference(id=Identifier(name="missing"))
         for _ in range(100):
@@ -544,7 +546,7 @@ class TestNumberLiteralVariantWithNonNumericSelector:
 
     def test_number_literal_variants_with_date_selector(self) -> None:
         """SelectExpression with NumberLiteral variants but date selector falls to default."""
-        from datetime import date  # noqa: PLC0415
+        from datetime import date
 
         select_expr = SelectExpression(
             selector=VariableReference(id=Identifier("val")),
@@ -1515,7 +1517,9 @@ class TestPlaceableWithFormattingError:
 
     def test_placeable_formatting_error_with_fallback(self) -> None:
         """Placeable that raises FrozenFluentError (FORMATTING) uses fallback value."""
-        from ftllexengine.diagnostics import FrozenErrorContext  # noqa: PLC0415
+        from ftllexengine.diagnostics import (
+            FrozenErrorContext,
+        )
 
         def raise_formatting_error(_value: str) -> str:
             context = FrozenErrorContext(

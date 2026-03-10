@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.148.0"
 domain: reference
-updated: "2026-02-28"
+updated: "2026-03-10"
 route:
   keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
@@ -680,7 +680,7 @@ def create_bundle(locale: LocaleCode, ftl_source: FTLSource) -> FluentBundle:
 
 **`FluentValue`**: Type-hint for resolver arguments. Union of `str | int | Decimal | datetime | date | FluentNumber | None | Sequence[FluentValue] | Mapping[str, FluentValue]`. (`bool` is absent: it is an `int` subtype accepted by raw interpolation but rejected by numeric formatting functions; convert explicitly with `int(flag)` or `str(flag)`.)
 
-**`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FrozenFluentError, ...]]`. Import from `ftllexengine.parsing`.
+**`ParseResult[T]`**: Type-hint for parsing function returns. Alias for `tuple[T | None, tuple[FrozenFluentError, ...]]`. Import from `ftllexengine` or `ftllexengine.parsing`.
 
 ---
 

@@ -2517,7 +2517,7 @@ class TestSerializerSelectorDepthGuard:
 
     def test_valid_select_expression_serializes(self) -> None:
         """SelectExpression with variable selector serializes to valid FTL."""
-        from ftllexengine.syntax import serialize  # noqa: PLC0415
+        from ftllexengine.syntax import serialize  # noqa: PLC0415 - import inside function
 
         select = SelectExpression(
             selector=VariableReference(id=Identifier("x")),
@@ -2546,7 +2546,7 @@ class TestSerializerSelectorDepthGuard:
 
     def test_deeply_nested_selector_raises_depth_error(self) -> None:
         """Malformed deeply-nested SelectExpression selector raises SerializationDepthError."""
-        from ftllexengine.syntax import serialize  # noqa: PLC0415
+        from ftllexengine.syntax import serialize  # noqa: PLC0415 - import inside function
 
         def make_nested_select(depth: int) -> SelectExpression:
             if depth == 0:

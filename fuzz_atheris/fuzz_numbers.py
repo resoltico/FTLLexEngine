@@ -280,7 +280,10 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
     if any(c.isdigit() and not c.isascii() for c in formatted):
         return None
     try:
-        from babel.numbers import get_decimal_symbol, get_group_symbol  # noqa: PLC0415
+        from babel.numbers import (  # noqa: PLC0415 - import inside function
+            get_decimal_symbol,
+            get_group_symbol,
+        )
         babel_locale = locale.replace("-", "_")
         decimal_sym = get_decimal_symbol(babel_locale)
         group_sym = get_group_symbol(babel_locale)

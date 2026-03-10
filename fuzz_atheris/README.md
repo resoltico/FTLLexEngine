@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.146.0"
+version: "0.148.0"
 domain: fuzzing
-updated: "2026-03-08"
+updated: "2026-03-10"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -24,7 +24,7 @@ route:
 | `fuzz_parse_currency.py` | `parsing.currency`, `parsing.guards` | 9 | 5 (.txt) + 20 (.bin) | Locale-aware currency parsing, symbol disambiguation, cache stability |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 38 (.bin) | Fiscal calendar arithmetic, contracts |
 | `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 35 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
-| `fuzz_iso.py` | `introspection.iso` | 9 | 36 (.bin) | ISO 3166/4217 introspection |
+| `fuzz_iso.py` | `introspection.iso` | 10 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle |
 | `fuzz_lock.py` | `runtime.rwlock` | 15 | 39 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
 | `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 7 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, locale normalization/cache behavior |
@@ -37,9 +37,9 @@ route:
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) + 6 (.bin) | Grammar-aware AST construction |
 | `fuzz_cursor.py` | `syntax.cursor`, `syntax.position` | 8 | 5 (.txt) + 35 (.bin) | Cursor state machine, ParseError formatting, position helper parity |
 | `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 16 | 13 (.bin) | FluentLocalization orchestration, loader init, LoadSummary, fallback chains |
-| `fuzz_dates.py` | `parsing.dates` | 13 | 56 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing |
+| `fuzz_dates.py` | `parsing.dates` | 14 | 59 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing; 4-digit year oracle (lv-LV/de-DE) |
 | `fuzz_locale_context.py` | `runtime.locale_context` | 14 | 25 (.bin) | LocaleContext direct formatting, ROUND_HALF_UP oracle, cross-locale determinism |
-| `fuzz_introspection.py` | `introspection.message` | 12 | 22 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction |
+| `fuzz_introspection.py` | `introspection.message` | 13 | 25 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction; `validate_message_variables` schema oracle |
 | `fuzz_diagnostics_formatter.py` | `diagnostics.formatter`, `diagnostics.validation` | 12 | 23 (.bin) | Control-char escaping, RUST/SIMPLE/JSON output, sanitize/redact modes |
 
 ## Module Coverage Matrix
@@ -477,6 +477,7 @@ Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookup
 | `cache_clear_stress` | 8 | Post-clear value equality preserved |
 | `cross_reference` | 8 | Territory currencies resolve via get_currency |
 | `invalid_input_stress` | 7 | Empty, long, null, unicode, mixed case |
+| `decimal_digits_convenience` | 8 | `get_currency_decimal_digits` == `get_currency().decimal_digits`; valid range {0,2,3,4} |
 
 ### Allowed Exceptions
 
@@ -892,7 +893,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 
 Target: `parsing.dates.parse_date`, `parsing.dates.parse_datetime` -- CLDR→strptime token mapping, locale-aware date/datetime parsing across 24 test locales (Latin-DMY, Latin-MDY, Latin-YMD, CJK, RTL).
 
-Concern boundary: This fuzzer stress-tests the bidirectional date parsing pipeline. Covers the 1004-line `_babel_to_strptime` token mapping, all 13 pattern variants (short/medium/long/full), adversarial inputs (null bytes, ANSI escapes, surrogates, 10000-char strings, invalid month/day values), and cross-locale format string generation. Key invariants: if result is None, errors must be non-empty; if result is not None, it must be a `date`/`datetime` instance; `parse_datetime` result must be instance of `datetime` (not bare `date`).
+Concern boundary: This fuzzer stress-tests the bidirectional date parsing pipeline. Covers the `_babel_to_strptime` token mapping, all 14 pattern variants (short/medium/long/full plus 4-digit year oracle), adversarial inputs (null bytes, ANSI escapes, surrogates, 10000-char strings, invalid month/day values), and cross-locale format string generation. Key invariants: if result is None, errors must be non-empty; if result is not None, it must be a `date`/`datetime` instance; `parse_datetime` result must be instance of `datetime` (not bare `date`). The `four_digit_year_acceptance` pattern uses ISO 8601 as a ground-truth oracle: `parse_date("dd.MM.yyyy", locale)` for locales whose CLDR short pattern uses `yy` must return the same date as `parse_date("yyyy-MM-dd", locale)`.
 
 Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `DatesMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
@@ -913,6 +914,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `partial_date_strings` | 6 | Partial (year-only, month-only) inputs handled |
 | `unicode_month_names` | 8 | Non-ASCII month names in CJK/RTL locales |
 | `leap_year_boundary` | 8 | Feb 29 on leap/non-leap years |
+| `four_digit_year_acceptance` | 8 | lv-LV/de-DE/pl-PL/fi-FI/ru-RU: dd.MM.yyyy == ISO oracle; must not return None |
 
 ### Allowed Exceptions
 
@@ -977,6 +979,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `clear_cache` | 8 | clear_introspection_cache() resets state correctly |
 | `bundle_facade` | 8 | FluentBundle.introspect_message() delegation |
 | `adversarial_ast` | 5 | Programmatic AST edge cases (empty pattern, no elements) |
+| `validate_variables_schema` | 8 | exact/superset/subset invariants; frozen result; missing/extra sets correct |
 
 ### Allowed Exceptions
 

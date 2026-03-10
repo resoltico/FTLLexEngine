@@ -36,7 +36,7 @@ msg = { $count ->
 
     def test_two_variants_select(self) -> None:
         """Select expression with two variants (one, other) parses successfully."""
-        from ftllexengine.syntax.ast import Placeable  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Placeable  # noqa: PLC0415 - import inside function
 
         parser = FluentParserV1()
         resource = parser.parse("""

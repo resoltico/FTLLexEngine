@@ -155,7 +155,7 @@ class TestValidatorErrorPaths:
 
     @given(ftl_resources())
     @settings(max_examples=100)
-    def test_empty_resource_valid(self, resource):  # noqa: ARG002
+    def test_empty_resource_valid(self, resource):  # noqa: ARG002 - unused
         """BOUNDARY: Empty resources are valid."""
         empty_resource = Resource(entries=())
 
@@ -325,7 +325,9 @@ class TestValidateResourceProperties:
     @given(source=validation_resource_sources())
     def test_property_validate_resource_never_raises(self, source: str) -> None:
         """PROPERTY: validate_resource() never raises exceptions for any FTL source."""
-        from ftllexengine.validation import validate_resource  # noqa: PLC0415
+        from ftllexengine.validation import (
+            validate_resource,
+        )
 
         scenario = "unknown"
         if "circular" in source.lower() or ("c1" in source and "c2" in source):
@@ -346,7 +348,9 @@ class TestValidateResourceProperties:
     @given(source=validation_resource_sources())
     def test_property_validate_resource_result_consistency(self, source: str) -> None:
         """PROPERTY: ValidationResult.is_valid is consistent with errors and annotations."""
-        from ftllexengine.validation import validate_resource  # noqa: PLC0415
+        from ftllexengine.validation import (
+            validate_resource,
+        )
 
         result = validate_resource(source)
         has_errors = len(result.errors) > 0 or len(result.annotations) > 0
@@ -356,7 +360,9 @@ class TestValidateResourceProperties:
     @given(source=validation_resource_sources())
     def test_property_error_count_accurate(self, source: str) -> None:
         """PROPERTY: error_count == len(errors) and annotation_count == len(annotations)."""
-        from ftllexengine.validation import validate_resource  # noqa: PLC0415
+        from ftllexengine.validation import (
+            validate_resource,
+        )
 
         result = validate_resource(source)
         event(f"outcome_error_count={result.error_count}")
@@ -366,7 +372,9 @@ class TestValidateResourceProperties:
     @given(source=validation_resource_sources())
     def test_property_idempotent_validation(self, source: str) -> None:
         """PROPERTY: Validating the same source twice produces identical results."""
-        from ftllexengine.validation import validate_resource  # noqa: PLC0415
+        from ftllexengine.validation import (
+            validate_resource,
+        )
 
         result1 = validate_resource(source)
         result2 = validate_resource(source)
@@ -503,7 +511,9 @@ class TestTermPositionalArgsValidation:
 
     def test_positional_args_in_term_ref_detected(self) -> None:
         """Term reference with positional args produces VALIDATION_TERM_POSITIONAL_ARGS."""
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
 
         parser = FluentParserV1()
         resource = parser.parse("""
@@ -517,7 +527,9 @@ msg = Welcome to { -brand($x) }
 
     def test_named_args_only_in_term_ref_no_warning(self) -> None:
         """Term reference with only named args does NOT produce positional arg warning."""
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
 
         parser = FluentParserV1()
         resource = parser.parse("""
@@ -534,7 +546,9 @@ msg = Welcome to { -brand(case: "nom") }
 
     def test_term_positional_args_message_contains_term_name(self) -> None:
         """Positional args warning message names the specific term."""
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
 
         parser = FluentParserV1()
         resource = parser.parse("""
@@ -636,7 +650,7 @@ class TestExhaustivenessGuards:
 
         Covers the case _: raise TypeError(...) in _validate_inline_expression().
         """
-        from ftllexengine.syntax.ast import Placeable  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Placeable
 
         validator = SemanticValidator()
 
@@ -666,7 +680,9 @@ class TestSelectExpressionValidation:
 
     def test_valid_select_with_one_default(self) -> None:
         """Select expression with exactly one default passes semantic validation."""
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
 
         parser = FluentParserV1()
         resource = parser.parse("""
@@ -684,7 +700,7 @@ msg = { $count ->
 
         Per Decimal normalization: 1, 1.0, 1.00 are the same value.
         """
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (
             NumberLiteral,
             Placeable,
             SelectExpression,
@@ -727,7 +743,9 @@ msg = { $count ->
 
     def test_select_with_high_precision_distinct_keys(self) -> None:
         """High-precision numeric keys that differ in Decimal are NOT duplicates."""
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
 
         parser = FluentParserV1()
         resource = parser.parse("""
@@ -748,7 +766,7 @@ msg = { $x ->
         The FTL parser rejects duplicate named argument names at syntax level,
         so this test constructs the AST directly to exercise the semantic validator.
         """
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (
             CallArguments,
             FunctionReference,
             NamedArgument,
@@ -780,7 +798,9 @@ msg = { $x ->
 
     def test_function_reference_no_args_valid(self) -> None:
         """Function reference with no arguments is valid."""
-        from ftllexengine.syntax.parser import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser import (
+            FluentParserV1,
+        )
 
         parser = FluentParserV1()
         resource = parser.parse("msg = { FUNC() }")
@@ -800,7 +820,9 @@ class TestAddErrorDefaultMessage:
 
     def test_add_error_uses_default_message_when_none(self) -> None:
         """_add_error() uses _VALIDATION_MESSAGES default when message=None."""
-        from ftllexengine.syntax.validator import _VALIDATION_MESSAGES  # noqa: PLC0415
+        from ftllexengine.syntax.validator import (
+            _VALIDATION_MESSAGES,
+        )
 
         # Any code in _VALIDATION_MESSAGES
         code = next(iter(_VALIDATION_MESSAGES))
@@ -816,7 +838,9 @@ class TestAddErrorDefaultMessage:
 
     def test_add_error_uses_custom_message_when_provided(self) -> None:
         """_add_error() uses custom message instead of default."""
-        from ftllexengine.diagnostics.codes import DiagnosticCode  # noqa: PLC0415
+        from ftllexengine.diagnostics.codes import (
+            DiagnosticCode,
+        )
 
         validator = SemanticValidator()
         errors: list = []
@@ -832,7 +856,9 @@ class TestAddErrorDefaultMessage:
 
     def test_add_error_unknown_code_uses_fallback(self) -> None:
         """_add_error() falls back to 'Unknown validation error' for unmapped codes."""
-        from ftllexengine.diagnostics.codes import DiagnosticCode  # noqa: PLC0415
+        from ftllexengine.diagnostics.codes import (
+            DiagnosticCode,
+        )
 
         validator = SemanticValidator()
         errors: list = []

@@ -670,29 +670,29 @@ def _pattern_visitor_dispatch(
             self.variables = 0
             self.select_expressions = 0
 
-        def visit_Message(self, node: Message) -> Message:  # noqa: N802
+        def visit_Message(self, node: Message) -> Message:  # noqa: N802 - NodeName
             """Count message visits and continue traversal."""
             self.messages += 1
             return cast(Message, self.generic_visit(node))
 
-        def visit_Term(self, node: Term) -> Term:  # noqa: N802
+        def visit_Term(self, node: Term) -> Term:  # noqa: N802 - NodeName
             """Count term visits and continue traversal."""
             self.terms += 1
             return cast(Term, self.generic_visit(node))
 
-        def visit_TextElement(self, node: TextElement) -> TextElement:  # noqa: N802
+        def visit_TextElement(self, node: TextElement) -> TextElement:  # noqa: N802 - NodeName
             """Count text-element visits and continue traversal."""
             self.text_elements += 1
             return cast(TextElement, self.generic_visit(node))
 
-        def visit_VariableReference(  # noqa: N802
+        def visit_VariableReference(  # noqa: N802 - NodeName
             self, node: VariableReference
         ) -> VariableReference:
             """Count variable-reference visits and continue traversal."""
             self.variables += 1
             return cast(VariableReference, self.generic_visit(node))
 
-        def visit_SelectExpression(  # noqa: N802
+        def visit_SelectExpression(  # noqa: N802 - NodeName
             self, node: SelectExpression
         ) -> SelectExpression:
             """Count select-expression visits and continue traversal."""
@@ -741,7 +741,7 @@ def _pattern_transformer_roundtrip(
             self._suffix = suffix
             self.expansions = 0
 
-        def visit_Message(self, node: Message) -> list[Message]:  # noqa: N802
+        def visit_Message(self, node: Message) -> list[Message]:  # noqa: N802 - NodeName
             """Duplicate visited messages after transforming their children."""
             transformed = self.generic_visit(node)
             if not isinstance(transformed, Message):
@@ -794,7 +794,7 @@ def _pattern_transformer_validation(
             super().__init__()
             self._mode = mode
 
-        def visit_Identifier(  # noqa: N802
+        def visit_Identifier(  # noqa: N802 - NodeName
             self, node: Identifier
         ) -> None | list[Identifier]:
             """Break required scalar field contracts for Identifier nodes."""

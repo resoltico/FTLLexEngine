@@ -139,7 +139,9 @@ class TestFunctionRegistryBasic:
         parameters to receive (value, locale_code). Registration should fail-fast
         rather than allowing runtime errors.
         """
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         @fluent_function(inject_locale=True)
         def bad_func(value: int) -> str:
@@ -153,7 +155,9 @@ class TestFunctionRegistryBasic:
 
     def test_register_inject_locale_function_with_compatible_signature(self) -> None:
         """Register function with inject_locale=True and correct signature succeeds."""
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         @fluent_function(inject_locale=True)
         def good_func(value: int, locale_code: str) -> str:
@@ -648,7 +652,7 @@ class TestRealWorldUsage:
         def number_format(
             value: object,
             *,
-            minimum_fraction_digits: int = 0,  # noqa: ARG001
+            minimum_fraction_digits: int = 0,  # noqa: ARG001 - unused
             maximum_fraction_digits: int = 3,
             use_grouping: bool = False,
         ) -> str:
@@ -708,7 +712,7 @@ class TestFrozenRegistryLines160To164:
         registry.freeze()
 
         # Try to register a function on frozen registry
-        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         # Should raise TypeError with specific message
@@ -730,10 +734,10 @@ class TestParameterCollisionLines188To193:
         # Both `_value` and `value` would map to camelCase `value`
         def colliding_func(
             val: str,
-            locale_code: str,  # noqa: ARG001
+            locale_code: str,  # noqa: ARG001 - unused
             /,
             _test_param: int = 0,  # Will strip to `test_param` -> `testParam`
-            test_param: int = 0,  # Also maps to `testParam`  # noqa: ARG001
+            test_param: int = 0,  # Also maps to `testParam`  # noqa: ARG001 - unused
         ) -> str:
             return val
 
@@ -763,7 +767,7 @@ class TestFreezeMethodLine285:
         registry = FunctionRegistry()
 
         # Register a function before freezing
-        def func1(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def func1(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         registry.register(func1, ftl_name="FUNC1")
@@ -773,7 +777,7 @@ class TestFreezeMethodLine285:
         registry.freeze()
 
         # Try to register another function
-        def func2(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def func2(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         # Should fail
@@ -827,7 +831,7 @@ class TestFrozenRegistryCopyIntegration:
         registry = FunctionRegistry()
 
         # Register and freeze
-        def func1(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def func1(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         registry.register(func1, ftl_name="FUNC1")
@@ -840,7 +844,7 @@ class TestFrozenRegistryCopyIntegration:
         assert not copy.frozen
 
         # Should be able to register on copy
-        def func2(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def func2(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         copy.register(func2, ftl_name="FUNC2")
@@ -859,7 +863,9 @@ class TestFluentFunctionDecoratorWithParentheses:
 
     def test_fluent_function_decorator_with_inject_locale_true(self) -> None:
         """Test @fluent_function(inject_locale=True) decorator path (lines 134-148)."""
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         # Use decorator WITH parentheses
         @fluent_function(inject_locale=True)
@@ -876,7 +882,9 @@ class TestFluentFunctionDecoratorWithParentheses:
 
     def test_fluent_function_decorator_with_inject_locale_false(self) -> None:
         """Test @fluent_function(inject_locale=False) decorator path."""
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         # Use decorator WITH parentheses but inject_locale=False
         @fluent_function(inject_locale=False)
@@ -892,7 +900,9 @@ class TestFluentFunctionDecoratorWithParentheses:
 
     def test_fluent_function_decorator_without_parentheses(self) -> None:
         """Test @fluent_function decorator WITHOUT parentheses (line 147)."""
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         # Use decorator WITHOUT parentheses
         @fluent_function
@@ -916,11 +926,11 @@ class TestRegisterWithUninspectableCallable:
 
         # Create a mock callable that signature() cannot inspect
         class UninspectableCallable:
-            def __call__(self, *args: object, **kwargs: object) -> str:  # noqa: ARG002
+            def __call__(self, *args: object, **kwargs: object) -> str:  # noqa: ARG002 - unused
                 return "test"
 
         # Manually break signature inspection by making it raise ValueError
-        from unittest.mock import patch  # noqa: PLC0415
+        from unittest.mock import patch
 
         uninspectable = UninspectableCallable()
 
@@ -958,7 +968,7 @@ class TestShouldInjectLocaleWithMissingFunction:
         registry = FunctionRegistry()
 
         # Register a function without locale injection marker
-        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         registry.register(my_func, ftl_name="CUSTOM")
@@ -971,7 +981,9 @@ class TestShouldInjectLocaleWithMissingFunction:
 
     def test_should_inject_locale_returns_true_for_function_with_marker(self) -> None:
         """Test should_inject_locale returns True when function has marker set."""
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         registry = FunctionRegistry()
 
@@ -993,7 +1005,9 @@ class TestGetExpectedPositionalArgs:
 
     def test_get_expected_positional_args_for_builtin_function(self) -> None:
         """Test get_expected_positional_args returns count for built-in (lines 605-608)."""
-        from ftllexengine.runtime.functions import create_default_registry  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
+            create_default_registry,
+        )
 
         registry = create_default_registry()
 
@@ -1007,7 +1021,7 @@ class TestGetExpectedPositionalArgs:
         registry = FunctionRegistry()
 
         # Register a custom function
-        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         registry.register(my_func, ftl_name="CUSTOM")
@@ -1023,7 +1037,9 @@ class TestGetBuiltinMetadata:
 
     def test_get_builtin_metadata_for_builtin_function(self) -> None:
         """Test get_builtin_metadata returns metadata for built-in (lines 626-628)."""
-        from ftllexengine.runtime.functions import create_default_registry  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
+            create_default_registry,
+        )
 
         registry = create_default_registry()
 
@@ -1039,7 +1055,7 @@ class TestGetBuiltinMetadata:
         registry = FunctionRegistry()
 
         # Register a custom function
-        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001
+        def my_func(value: str, locale_code: str, /) -> str:  # noqa: ARG001 - unused
             return value
 
         registry.register(my_func, ftl_name="CUSTOM")
@@ -1121,7 +1137,7 @@ class TestFunctionBridgeLeadingUnderscore:
         """Parameter with leading underscore is kept in param_mapping."""
         registry = FunctionRegistry()
 
-        def test_func(_internal: str, public: str) -> str:  # noqa: PT019
+        def test_func(_internal: str, public: str) -> str:  # noqa: PT019 - intentional
             return f"{_internal}:{public}"
 
         registry.register(test_func, ftl_name="TEST")

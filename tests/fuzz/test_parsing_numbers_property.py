@@ -245,7 +245,7 @@ class TestParsingMetamorphicProperties:
         ),
     )
     @settings(max_examples=10)
-    def test_parse_zero_handling(self, value: Decimal) -> None:  # noqa: ARG002
+    def test_parse_zero_handling(self, value: Decimal) -> None:  # noqa: ARG002 - unused
         """Zero values parse correctly."""
         result, errors = parse_decimal("0.00", "en_US")
         assert not errors

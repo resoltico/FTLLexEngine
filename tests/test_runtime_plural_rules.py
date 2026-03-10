@@ -828,7 +828,7 @@ class TestRoundingConsistency:
         This is the core consistency property: the number displayed to the user
         and the plural category selected must agree on rounding direction.
         """
-        from decimal import ROUND_HALF_UP  # noqa: PLC0415
+        from decimal import ROUND_HALF_UP  # noqa: PLC0415 - import inside function
 
         test_cases = [
             (Decimal("0.5"), 0, Decimal("1")),
@@ -866,7 +866,7 @@ class TestRoundingConsistency:
         Property: The Decimal value used for plural selection must equal the
         value obtained by ROUND_HALF_UP quantization.
         """
-        from decimal import ROUND_HALF_UP  # noqa: PLC0415
+        from decimal import ROUND_HALF_UP  # noqa: PLC0415 - import inside function
 
         quantizer = Decimal(10) ** -precision
         expected = n.quantize(quantizer, rounding=ROUND_HALF_UP)

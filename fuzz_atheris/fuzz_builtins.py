@@ -336,7 +336,10 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
         # Deferred import: Babel is optional at ftllexengine package level.
         # At fuzzing time Babel is always present (required by the functions
         # under test), but the import is deferred to match project conventions.
-        from babel.numbers import get_decimal_symbol, get_group_symbol  # noqa: PLC0415
+        from babel.numbers import (  # noqa: PLC0415 - import inside function
+            get_decimal_symbol,
+            get_group_symbol,
+        )
         # Babel expects underscore-separated locale IDs ('en_US', 'de_DE');
         # ftllexengine uses BCP 47 hyphen-separated codes ('en-US', 'de-DE').
         babel_locale = locale.replace("-", "_")

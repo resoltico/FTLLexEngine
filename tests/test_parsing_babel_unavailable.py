@@ -76,7 +76,7 @@ class TestParseCurrencyBabelUnavailable:
     """Test parse_currency when Babel is not installed."""
 
     def test_parse_currency_raises_babel_import_error(
-        self, mock_babel_unavailable: None  # noqa: ARG002
+        self, mock_babel_unavailable: None  # noqa: ARG002 - unused
     ) -> None:
         """parse_currency raises BabelImportError when Babel is unavailable."""
         # Import here to get the module with mocked imports

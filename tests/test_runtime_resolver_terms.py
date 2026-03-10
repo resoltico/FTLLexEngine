@@ -203,7 +203,7 @@ class TestNestedPlaceableExpression:
 
     def test_programmatic_nested_placeable_with_number_literal(self) -> None:
         """_resolve_expression handles Placeable(NumberLiteral)."""
-        from decimal import Decimal  # noqa: PLC0415
+        from decimal import Decimal  # noqa: PLC0415 - import inside function
 
         resolver = FluentResolver(
             locale="en_US",

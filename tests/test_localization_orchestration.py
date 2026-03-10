@@ -673,7 +673,7 @@ class TestFormatPattern:
         self,
     ) -> None:
         """format_pattern does not invoke on_fallback for primary locale."""
-        from ftllexengine.localization import FallbackInfo  # noqa: PLC0415
+        from ftllexengine.localization import FallbackInfo  # noqa: PLC0415 - import inside function
         events: list[FallbackInfo] = []
         l10n = FluentLocalization(
             ["en", "de"], on_fallback=events.append,

@@ -133,7 +133,7 @@ class TestGetBabelLocale:
 
         # Clear caches to force re-evaluation
         _get_babel_locale_normalized.cache_clear()
-        import ftllexengine.core.babel_compat as _bc  # noqa: PLC0415
+        import ftllexengine.core.babel_compat as _bc  # noqa: PLC0415 - import inside function
 
         _bc._babel_available = None
 
@@ -191,35 +191,35 @@ class TestGetSystemLocale:
 
     def test_getlocale_c_posix_filtered(self) -> None:
         """getlocale() returning 'C' or 'POSIX' triggers fallback (lowercased)."""
-        with patch("locale.getlocale", return_value=("C", None)):  # noqa: SIM117
+        with patch("locale.getlocale", return_value=("C", None)):
             with patch.dict(os.environ, {"LANG": "fr_FR"}, clear=False):
                 result = get_system_locale()
                 assert result == "fr_fr"
 
     def test_getlocale_posix_filtered(self) -> None:
         """getlocale() returning 'POSIX' triggers env var fallback (lowercased)."""
-        with patch("locale.getlocale", return_value=("POSIX", None)):  # noqa: SIM117
+        with patch("locale.getlocale", return_value=("POSIX", None)):
             with patch.dict(os.environ, {"LANG": "it_IT"}, clear=False):
                 result = get_system_locale()
                 assert result == "it_it"
 
     def test_getlocale_none_fallback(self) -> None:
         """getlocale() returning None triggers env var fallback (lowercased)."""
-        with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
+        with patch("locale.getlocale", return_value=(None, None)):
             with patch.dict(os.environ, {"LANG": "es_ES"}, clear=False):
                 result = get_system_locale()
                 assert result == "es_es"
 
     def test_getlocale_valueerror_fallback(self) -> None:
         """getlocale() raising ValueError triggers env var fallback (lowercased)."""
-        with patch("locale.getlocale", side_effect=ValueError("mock error")):  # noqa: SIM117
+        with patch("locale.getlocale", side_effect=ValueError("mock error")):
             with patch.dict(os.environ, {"LANG": "pt_BR"}, clear=False):
                 result = get_system_locale()
                 assert result == "pt_br"
 
     def test_getlocale_attributeerror_fallback(self) -> None:
         """getlocale() raising AttributeError triggers env var fallback (lowercased)."""
-        with patch("locale.getlocale", side_effect=AttributeError("mock error")):  # noqa: SIM117
+        with patch("locale.getlocale", side_effect=AttributeError("mock error")):
             with patch.dict(os.environ, {"LANG": "ru_RU"}, clear=False):
                 result = get_system_locale()
                 assert result == "ru_ru"
@@ -290,14 +290,14 @@ class TestGetSystemLocale:
 
     def test_no_locale_default_fallback(self) -> None:
         """No locale detected returns normalized en_us fallback by default."""
-        with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
+        with patch("locale.getlocale", return_value=(None, None)):
             with patch.dict(os.environ, {}, clear=True):
                 result = get_system_locale()
                 assert result == "en_us"
 
     def test_no_locale_raise_on_failure_true(self) -> None:
         """raise_on_failure=True raises RuntimeError when no locale."""
-        with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
+        with patch("locale.getlocale", return_value=(None, None)):
             with patch.dict(os.environ, {}, clear=True):
                 with pytest.raises(RuntimeError) as exc_info:
                     get_system_locale(raise_on_failure=True)
@@ -307,7 +307,7 @@ class TestGetSystemLocale:
 
     def test_raise_on_failure_false_returns_default(self) -> None:
         """raise_on_failure=False returns normalized en_us when no locale."""
-        with patch("locale.getlocale", return_value=(None, None)):  # noqa: SIM117
+        with patch("locale.getlocale", return_value=(None, None)):
             with patch.dict(os.environ, {}, clear=True):
                 result = get_system_locale(raise_on_failure=False)
                 assert result == "en_us"

@@ -55,7 +55,10 @@ def _oracle_extract_digits(result: str, locale: str) -> str | None:
     if any(c.isdigit() and not c.isascii() for c in result):
         return None
     try:
-        from babel.numbers import get_decimal_symbol, get_group_symbol  # noqa: PLC0415
+        from babel.numbers import (  # noqa: PLC0415 - import inside function
+            get_decimal_symbol,
+            get_group_symbol,
+        )
         # Babel expects underscore-separated locale IDs ('en_US', 'de_DE');
         # ftllexengine uses BCP 47 hyphen-separated codes ('en-US', 'de-DE').
         babel_locale = locale.replace("-", "_")

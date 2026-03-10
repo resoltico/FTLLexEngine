@@ -36,7 +36,7 @@ Unique coverage (not covered by other fuzzers):
 - parse_date() soft-error return API: (date | None, errors)
 - parse_datetime() soft-error return API: (datetime | None, errors)
 
-Patterns (13):
+Patterns (14):
 - parse_date_iso: ISO 8601 date strings (YYYY-MM-DD)
 - parse_date_locale_short: locale-specific short date
 - parse_date_locale_medium: locale-specific medium date
@@ -49,6 +49,7 @@ Patterns (13):
 - parse_date_edge_cases: leap year, month boundary, year extremes
 - parse_datetime_edge_cases: midnight, DST transitions, end-of-day
 - adversarial_input: control chars, null bytes, surrogates, very long
+- four_digit_year_acceptance: 4-digit year oracle for lv-LV/de-DE/pl-PL/fi-FI/ru-RU (CLDR yy)
 - raw_unicode: pure Atheris byte mutations for pattern discovery
 
 Metrics:
@@ -125,6 +126,7 @@ class DatesMetrics:
     parse_datetime_failure: int = 0
     invariant_violations: int = 0
     adversarial_handled: int = 0
+    four_digit_year_pairs: int = 0  # 4-digit year form parsed identically to ISO reference
 
 
 class DatesFuzzError(Exception):
@@ -154,6 +156,7 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("parse_date_edge_cases", 6),
     ("parse_datetime_edge_cases", 6),
     ("adversarial_input", 7),
+    ("four_digit_year_acceptance", 8),
     ("raw_unicode", 10),
 )
 
@@ -167,8 +170,8 @@ _PATTERN_INDEX: dict[str, int] = {
 
 # Comprehensive locale set: chosen to cover diverse CLDR date patterns
 _TEST_LOCALES: Sequence[str] = (
-    # Latin DMY (Europe)
-    "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "nl-NL", "pl-PL",
+    # Latin DMY (Europe) -- lv-LV uses dd.MM.yy CLDR short (canonical 4-digit-year test case)
+    "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "nl-NL", "pl-PL", "lv-LV",
     # Latin MDY (Americas)
     "en-US", "es-MX", "pt-BR",
     # Latin YMD (ISO-adjacent)
@@ -248,6 +251,13 @@ _ADVERSARIAL_STRINGS: Sequence[str] = (
     "2024/99/99",
 )
 
+# Locales whose CLDR short date pattern uses the 2-digit year token (yy).
+# These locales use dot separators: dd.MM.yy  -> dd.MM.yyyy 4-digit variant.
+# Adding lv-LV here is the canonical regression case from issue ITEM-005.
+_YY_SHORT_LOCALES: tuple[str, ...] = (
+    "lv-LV", "de-DE", "pl-PL", "fi-FI", "ru-RU",
+)
+
 
 # --- Module State ---
 
@@ -276,6 +286,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["parse_datetime_failure"] = _domain.parse_datetime_failure
     stats["invariant_violations"] = _domain.invariant_violations
     stats["adversarial_handled"] = _domain.adversarial_handled
+    stats["four_digit_year_pairs"] = _domain.four_digit_year_pairs
 
     total_date = _domain.parse_date_success + _domain.parse_date_failure
     if total_date > 0:
@@ -364,7 +375,7 @@ def _check_parse_datetime_result(
         raise DatesFuzzError(msg)
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
+def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Atheris entry point: Test date/datetime parsing invariants."""
     if _state.iterations == 0:
         _state.initial_memory_mb = (
@@ -577,6 +588,48 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
                     _check_parse_datetime_result(
                         dt_result, dt_errors, locale, adv
                     )
+
+            case 12:  # four_digit_year_acceptance
+                # Oracle: lv-LV and similar locales with CLDR short yy pattern
+                # must accept dd.MM.yyyy (4-digit year) and return the same date
+                # as ISO 8601 (ground truth).
+                yy_locale = fdp.PickValueInList(list(_YY_SHORT_LOCALES))
+                year = fdp.ConsumeIntInRange(2000, 2068)  # %y safe range
+                month = fdp.ConsumeIntInRange(1, 12)
+                day = fdp.ConsumeIntInRange(1, 28)
+
+                # ISO 8601 reference
+                iso_str = f"{year:04d}-{month:02d}-{day:02d}"
+                ref_result, _ = parse_date(iso_str, yy_locale)
+                if ref_result is None:
+                    _domain.parse_date_failure += 1
+                else:
+                    expected = date(year, month, day)
+                    if ref_result != expected:
+                        msg = (
+                            f"ISO oracle mismatch for {yy_locale!r}: "
+                            f"{ref_result!r} != {expected!r}"
+                        )
+                        raise DatesFuzzError(msg)
+                    # 4-digit dotted form (dd.MM.yyyy)
+                    four_str = f"{day:02d}.{month:02d}.{year:04d}"
+                    four_result, four_errors = parse_date(four_str, yy_locale)
+
+                    if four_result is None:
+                        # All _YY_SHORT_LOCALES use dot separator -- must succeed
+                        msg = (
+                            f"4-digit year '{four_str}' must parse for "
+                            f"{yy_locale!r}: {four_errors}"
+                        )
+                        raise DatesFuzzError(msg)
+                    if four_result != expected:
+                        msg = (
+                            f"4-digit/ISO mismatch for {yy_locale!r}: "
+                            f"'{four_str}' -> {four_result!r} != ISO {expected!r}"
+                        )
+                        raise DatesFuzzError(msg)
+                    _domain.four_digit_year_pairs += 1
+                    _domain.parse_date_success += 1
 
             case _:  # raw_unicode
                 raw = fdp.ConsumeUnicodeNoSurrogates(

@@ -45,6 +45,7 @@ __all__ = [
     # Public API
     "FunctionCallInfo",
     "MessageIntrospection",
+    "MessageVariableValidationResult",
     "ReferenceInfo",
     "VariableInfo",
     "clear_introspection_cache",
@@ -52,6 +53,7 @@ __all__ = [
     "extract_references_by_attribute",
     "extract_variables",
     "introspect_message",
+    "validate_message_variables",
     # Internal (accessible for testing, not re-exported from package)
     "IntrospectionVisitor",
     "ReferenceExtractor",
@@ -693,3 +695,78 @@ def extract_variables(message: Message | Term) -> frozenset[str]:
         >>> assert 'name' in vars
     """
     return introspect_message(message).get_variable_names()
+
+
+@dataclass(frozen=True, slots=True)
+class MessageVariableValidationResult:
+    """Structured result of comparing declared FTL message variables against expected.
+
+    Immutable. All set fields are frozensets for safe inspection without copying.
+
+    Attributes:
+        message_id: Identifier of the validated message or term.
+        is_valid: True when declared_variables exactly matches the expected set
+            (no missing, no extra variables).
+        declared_variables: Variables found in the FTL message pattern via AST
+            analysis. Does not include $ prefix.
+        missing_variables: Variables present in expected but absent from the FTL
+            message. These will produce runtime fallback values if the message is
+            formatted with these variables.
+        extra_variables: Variables declared in the FTL message but absent from
+            expected. Callers that do not pass these variables will trigger
+            runtime fallback for those placeables.
+    """
+
+    message_id: str
+    is_valid: bool
+    declared_variables: frozenset[str]
+    missing_variables: frozenset[str]
+    extra_variables: frozenset[str]
+
+
+def validate_message_variables(
+    message: Message | Term,
+    expected_variables: frozenset[str] | set[str],
+) -> MessageVariableValidationResult:
+    """Validate that an FTL message declares exactly the expected variables.
+
+    Compares the set of variables extracted from the message AST against a
+    caller-supplied schema. Returns a structured result with the diff between
+    declared and expected, suitable for boot-time contract enforcement or CI
+    validation pipelines.
+
+    No Babel dependency. Operates entirely on the AST.
+
+    Args:
+        message: Message or Term AST node to inspect.
+        expected_variables: Set of variable names (without $ prefix) that the
+            message is expected to declare.
+
+    Returns:
+        MessageVariableValidationResult with is_valid=True when declared
+        variables exactly match expected_variables (no missing, no extra).
+
+    Example:
+        >>> from ftllexengine.syntax import parse
+        >>> resource = parse("greeting = Hello, { $name }! You have { $count } items.")
+        >>> msg = resource.body[0]
+        >>> result = validate_message_variables(msg, {"name", "count"})
+        >>> result.is_valid
+        True
+        >>> result = validate_message_variables(msg, {"name"})
+        >>> result.is_valid
+        False
+        >>> result.extra_variables
+        frozenset({'count'})
+    """
+    declared = extract_variables(message)
+    expected = frozenset(expected_variables)
+    missing = expected - declared
+    extra = declared - expected
+    return MessageVariableValidationResult(
+        message_id=message.id.name,
+        is_valid=len(missing) == 0 and len(extra) == 0,
+        declared_variables=declared,
+        missing_variables=missing,
+        extra_variables=extra,
+    )

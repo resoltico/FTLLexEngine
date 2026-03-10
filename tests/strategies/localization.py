@@ -306,7 +306,7 @@ class FailingResourceLoader:
         self._error_type = error_type
         self._message = message
 
-    def load(self, locale: str, resource_id: str) -> str:  # noqa: ARG002
+    def load(self, locale: str, resource_id: str) -> str:  # noqa: ARG002 - unused
         """Always raises the configured error type."""
         raise self._error_type(self._message)
 

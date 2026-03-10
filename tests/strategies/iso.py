@@ -274,7 +274,7 @@ def locale_formatted_numbers(
     Returns:
         Tuple of (original_value, formatted_string, locale).
     """
-    from ftllexengine.runtime.functions import (  # noqa: PLC0415
+    from ftllexengine.runtime.functions import (  # noqa: PLC0415 - import inside function
         number_format,
     )
 
@@ -308,9 +308,9 @@ def locale_formatted_decimals(
     Returns:
         Tuple of (decimal_str, formatted_string, locale).
     """
-    from decimal import Decimal  # noqa: PLC0415
+    from decimal import Decimal  # noqa: PLC0415 - import inside function
 
-    from ftllexengine.runtime.functions import (  # noqa: PLC0415
+    from ftllexengine.runtime.functions import (  # noqa: PLC0415 - import inside function
         number_format,
     )
 

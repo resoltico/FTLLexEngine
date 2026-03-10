@@ -52,7 +52,7 @@ def _check_discrepancies(
     iso_digits: Mapping[str, int],
 ) -> list[str]:
     """Compare hardcoded values against Babel precision."""
-    from babel.numbers import get_currency_precision  # noqa: PLC0415
+    from babel.numbers import get_currency_precision  # noqa: PLC0415 - import inside function
 
     result: list[str] = []
     for code, iso_val in sorted(iso_digits.items()):
@@ -78,7 +78,7 @@ def _check_coverage_gaps(
     Returns:
         Tuple of (actionable gaps, unverifiable divergences).
     """
-    from babel.numbers import get_currency_precision  # noqa: PLC0415
+    from babel.numbers import get_currency_precision  # noqa: PLC0415 - import inside function
 
     actionable: list[str] = []
     unverifiable: list[str] = []
@@ -187,12 +187,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
     try:
-        from babel.numbers import list_currencies  # noqa: PLC0415
+        from babel.numbers import list_currencies  # noqa: PLC0415 - import inside function
     except ImportError:
         print("[ERROR] Babel not installed. Install with: pip install babel")
         return 1
 
-    from ftllexengine.constants import (  # noqa: PLC0415
+    from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
         ISO_4217_DECIMAL_DIGITS,
         ISO_4217_DEFAULT_DECIMALS,
     )

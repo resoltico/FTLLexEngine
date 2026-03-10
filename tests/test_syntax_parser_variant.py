@@ -46,7 +46,7 @@ msg = { $count ->
         assert len(select.variants) == 2
 
         # Check variant keys (filter out NumberLiteral keys)
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
         assert "one" in keys
@@ -76,7 +76,7 @@ msg = { $count ->
         assert isinstance(select, SelectExpression)
 
         # Verify variant keys parsed correctly despite multiple spaces
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
         assert "one" in keys
@@ -159,7 +159,7 @@ msg = { $count ->
         select = placeable.expression
         assert isinstance(select, SelectExpression)
 
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
         assert "one" in keys
@@ -188,7 +188,7 @@ msg = { $count ->
         select = placeable.expression
         assert isinstance(select, SelectExpression)
 
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
         assert "one" in keys
@@ -279,7 +279,7 @@ msg = {{ $type ->
         assert isinstance(select, SelectExpression)
 
         # Verify long identifier variant was parsed
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
         assert long_id in keys
@@ -312,7 +312,7 @@ selector = {{ $option ->
         select = placeable.expression
         assert isinstance(select, SelectExpression)
 
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         keys = [v.key.name for v in select.variants if isinstance(v.key, Identifier)]
         assert medium_id in keys
@@ -338,7 +338,7 @@ edge = {{ $case ->
         assert len(junk_entries) == 0
         assert len(messages) == 1
 
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         msg = messages[0]
         assert msg.value is not None
@@ -370,7 +370,7 @@ combined = {{ $value ->
         assert len(junk_entries) == 0
         assert len(messages) == 1
 
-        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Identifier  # noqa: PLC0415 - import inside function
 
         msg = messages[0]
         assert msg.value is not None

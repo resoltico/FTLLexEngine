@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.148.0"
 domain: TYPES
-updated: "2026-02-28"
+updated: "2026-03-10"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
@@ -781,6 +781,60 @@ def extract_variables(message: Message | Term) -> frozenset[str]:
 
 ---
 
+## `MessageVariableValidationResult`
+
+Immutable result of comparing declared FTL message variables against an expected schema.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class MessageVariableValidationResult:
+    message_id: str
+    is_valid: bool
+    declared_variables: frozenset[str]
+    missing_variables: frozenset[str]
+    extra_variables: frozenset[str]
+```
+
+### Constraints
+- `is_valid`: `True` only when `declared_variables == expected` exactly (no missing, no extra).
+- `missing_variables`: variables present in expected but absent from the FTL message.
+- `extra_variables`: variables declared in FTL but absent from expected.
+- Immutable. Hashable.
+- Import: `from ftllexengine.introspection import MessageVariableValidationResult`
+- Also available: `from ftllexengine import MessageVariableValidationResult`
+
+---
+
+## `validate_message_variables`
+
+Function that validates an FTL message or term declares exactly the expected variables.
+
+### Signature
+```python
+def validate_message_variables(
+    message: Message | Term,
+    expected_variables: frozenset[str] | set[str],
+) -> MessageVariableValidationResult:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message` | `Message \| Term` | Y | AST node to inspect. |
+| `expected_variables` | `frozenset[str] \| set[str]` | Y | Variable names (without $ prefix) the message should declare. |
+
+### Constraints
+- Return: `MessageVariableValidationResult`; `is_valid=True` iff declared == expected.
+- Raises: Never. No Babel dependency.
+- State: Delegates to `extract_variables()` (uses introspection cache).
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import validate_message_variables`
+- Also available: `from ftllexengine import validate_message_variables`
+- Version: Added in v0.148.0.
+
+---
+
 ## `extract_references`
 
 Function that extracts message and term references from a Message or Term.
@@ -1146,6 +1200,32 @@ def get_cldr_version() -> str:
 - Thread: Safe.
 - Purpose: Debugging locale-specific formatting differences; verifying deployment environments.
 - Import: `from ftllexengine.introspection import get_cldr_version`
+- Also available: `from ftllexengine import get_cldr_version`
+
+---
+
+## `get_currency_decimal_digits`
+
+Convenience function returning the ISO 4217 standard decimal precision for a currency code without a locale parameter.
+
+### Signature
+```python
+def get_currency_decimal_digits(code: str) -> int | None:
+```
+
+### Parameters
+
+| Name | Type | Description |
+|:-----|:-----|:------------|
+| `code` | `str` | ISO 4217 currency code (e.g., `"USD"`, `"KWD"`). Case-insensitive. |
+
+### Constraints
+- Return: ISO 4217 decimal digit count (`0` for JPY, `2` for USD/EUR, `3` for KWD, `4` for CLF), or `None` for unknown codes.
+- Raises: `BabelImportError` if Babel not installed.
+- State: No mutable state; delegates to `get_currency()` (LRU-cached).
+- Thread: Safe.
+- Import: `from ftllexengine.introspection import get_currency_decimal_digits`
+- Also available: `from ftllexengine import get_currency_decimal_digits`
 
 ---
 

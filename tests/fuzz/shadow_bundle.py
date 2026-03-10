@@ -221,7 +221,7 @@ class ShadowBundle:
 
         return "".join(parts), errors
 
-    def _resolve_expression(  # noqa: PLR0911, PLR0912, PLR0915
+    def _resolve_expression(  # noqa: PLR0911, PLR0912, PLR0915 - dispatch
         self,
         expr: InlineExpression | SelectExpression,
         args: dict[str, str | int | Decimal],

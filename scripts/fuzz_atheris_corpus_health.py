@@ -194,12 +194,12 @@ class CorpusHealth:
     duplicates: list[tuple[Path, Path]] = field(default_factory=list)
 
 
-def extract_features(resource: Resource) -> set[str]:  # noqa: PLR0915
+def extract_features(resource: Resource) -> set[str]:  # noqa: PLR0915 - complex function by design
     """Extract grammar features used in a resource."""
     features: set[str] = set()
 
     # Visitor dispatch for AST node types - inherently needs many branches
-    def visit_node(node: object) -> None:  # noqa: PLR0912, PLR0915
+    def visit_node(node: object) -> None:  # noqa: PLR0912, PLR0915 - complex dispatch or fuzz logic
         match node:
             case Message():
                 features.add("message")

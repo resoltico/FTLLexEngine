@@ -8,7 +8,7 @@ package = true
 
 [project]
 name = "ftllexengine"
-version = "0.147.0"
+version = "0.148.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -295,7 +295,7 @@ ignore = [
 "tests/test_syntax_ast_tooling.py" = ["N802", "ARG002"]
 "tests/test_api_contracts.py" = ["PLC0415"]
 "tests/test_runtime_bundle.py" = ["N802", "N806"]
-"tests/test_runtime_resolver.py" = ["N802", "EM101"]
+"tests/test_runtime_resolver.py" = ["N802", "EM101", "PLC0415"]
 "tests/test_runtime_function_registry_integration.py" = ["N802"]
 "tests/test_parsing_dates.py" = ["DTZ001"]
 "tests/test_parsing_*.py" = ["PLC0415"]
@@ -313,6 +313,24 @@ ignore = [
 "tests/conftest.py" = ["PLC0415"]
 "tests/helpers/type_assertions.py" = ["PLC0415"]
 "tests/test_syntax_parser_*.py" = ["PT018"]
+# Test files using function-local imports for test isolation or import-error-path testing.
+# These are permanent architectural patterns: tests that simulate lazy-load paths, circular
+# import scenarios, or cache reset sequences require imports inside test methods.
+"tests/test_runtime_behavioral_contracts.py" = ["PLC0415"]
+"tests/test_runtime_function_bridge.py" = ["PLC0415"]
+"tests/test_runtime_function_metadata_property.py" = ["PLC0415"]
+"tests/test_runtime_resolver_core.py" = ["PLC0415"]
+"tests/test_runtime_resolver_error_fallback.py" = ["PLC0415"]
+"tests/test_runtime_resolver_selection.py" = ["PLC0415"]
+"tests/test_runtime_security_depth.py" = ["PLC0415"]
+"tests/test_syntax_validator_property.py" = ["PLC0415"]
+"tests/test_introspection_iso.py" = ["PLC0415", "ARG001"]
+"tests/test_regression_rwlock_currency_spans.py" = ["PLC0415"]
+"tests/test_runtime_locale_utils.py" = ["SIM117"]
+"tests/fuzz/test_parsing_currency_property.py" = ["PLC0415"]
+"tests/fuzz/test_runtime_bundle_concurrent.py" = ["PLC0415"]
+"tests/fuzz/test_syntax_validator_property.py" = ["PLC0415"]
+"fuzz_atheris/fuzz_currency.py" = ["PLC0415"]
 "tests/test_parsing_babel_compat.py" = ["PLC0415"]
 "tests/test_integration_coverage.py" = ["N802", "PLC0415"]
 "tests/test_syntax_validator.py" = ["PLC0415"]

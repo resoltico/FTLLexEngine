@@ -477,7 +477,9 @@ class TestResolverModuleExports:
 
     def test_fluent_value_available_from_function_bridge(self) -> None:
         """FluentValue is available from function_bridge module."""
-        from ftllexengine.runtime.function_bridge import FluentValue  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            FluentValue,
+        )
 
         assert FluentValue is not None
 
@@ -486,25 +488,31 @@ class TestResolverModuleExports:
         with pytest.raises(ImportError, match="cannot import name 'FluentValue'"):
             # pylint: disable=unused-import
             # Intentional ImportError test — FluentValue removed from resolver exports.
-            from ftllexengine.runtime.resolver import (  # noqa: PLC0415, F401
+            from ftllexengine.runtime.resolver import (  # noqa: F401 - lazy import and re-export
                 FluentValue,
             )
 
     def test_fluent_resolver_still_exported_from_resolver(self) -> None:
         """FluentResolver is exported from resolver module."""
-        from ftllexengine.runtime.resolver import FluentResolver  # noqa: PLC0415
+        from ftllexengine.runtime.resolver import (
+            FluentResolver,
+        )
 
         assert FluentResolver is not None
 
     def test_resolution_context_still_exported_from_resolver(self) -> None:
         """ResolutionContext is re-exported from resolver module."""
-        from ftllexengine.runtime.resolver import ResolutionContext  # noqa: PLC0415
+        from ftllexengine.runtime.resolver import (
+            ResolutionContext,
+        )
 
         assert ResolutionContext is not None
 
     def test_global_depth_guard_still_exported_from_resolver(self) -> None:
         """GlobalDepthGuard is re-exported from resolver module."""
-        from ftllexengine.runtime.resolver import GlobalDepthGuard  # noqa: PLC0415
+        from ftllexengine.runtime.resolver import (
+            GlobalDepthGuard,
+        )
 
         assert GlobalDepthGuard is not None
 
@@ -514,7 +522,7 @@ class TestResolutionContextModuleExports:
 
     def test_resolution_context_canonical_import(self) -> None:
         """ResolutionContext canonical location is resolution_context module."""
-        from ftllexengine.runtime.resolution_context import (  # noqa: PLC0415
+        from ftllexengine.runtime.resolution_context import (
             ResolutionContext,
         )
 
@@ -522,7 +530,7 @@ class TestResolutionContextModuleExports:
 
     def test_global_depth_guard_canonical_import(self) -> None:
         """GlobalDepthGuard canonical location is resolution_context module."""
-        from ftllexengine.runtime.resolution_context import (  # noqa: PLC0415
+        from ftllexengine.runtime.resolution_context import (
             GlobalDepthGuard,
         )
 
@@ -530,16 +538,16 @@ class TestResolutionContextModuleExports:
 
     def test_canonical_and_reexport_are_same_class(self) -> None:
         """Canonical and re-exported classes are identical objects."""
-        from ftllexengine.runtime.resolution_context import (  # noqa: PLC0415
+        from ftllexengine.runtime.resolution_context import (
             GlobalDepthGuard as CanonicalGuard,
         )
-        from ftllexengine.runtime.resolution_context import (  # noqa: PLC0415
+        from ftllexengine.runtime.resolution_context import (
             ResolutionContext as CanonicalCtx,
         )
-        from ftllexengine.runtime.resolver import (  # noqa: PLC0415
+        from ftllexengine.runtime.resolver import (
             GlobalDepthGuard as ReexportGuard,
         )
-        from ftllexengine.runtime.resolver import (  # noqa: PLC0415
+        from ftllexengine.runtime.resolver import (
             ResolutionContext as ReexportCtx,
         )
 

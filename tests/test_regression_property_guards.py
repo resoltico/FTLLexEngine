@@ -344,7 +344,7 @@ class TestVisitorDispatchCacheProperty:
         class TestVisitor(ASTVisitor):
             """Test visitor with custom visit method."""
 
-            def visit_Message(self, node: Message) -> str:  # noqa: N802
+            def visit_Message(self, node: Message) -> str:  # noqa: N802 - NodeName
                 return f"Message: {node.id.name}"
 
         # Create multiple instances
@@ -368,7 +368,7 @@ class TestVisitorDispatchCacheProperty:
             pass
 
         class ChildVisitor(ParentVisitor):
-            def visit_Pattern(self, _node: Pattern) -> str:  # noqa: N802
+            def visit_Pattern(self, _node: Pattern) -> str:  # noqa: N802 - NodeName
                 return "Pattern"
 
         # Subclasses should have their own class-level tables
@@ -389,7 +389,7 @@ class TestVisitorDispatchCacheProperty:
         """
 
         class TestVisitor(ASTVisitor):
-            def visit_Message(self, _node: Message) -> str:  # noqa: N802
+            def visit_Message(self, _node: Message) -> str:  # noqa: N802 - NodeName
                 return "visited"
 
         visitor = TestVisitor()

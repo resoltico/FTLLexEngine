@@ -83,7 +83,7 @@ def _ref_pattern_term(ref_name: str) -> Pattern:
 
 
 @st.composite
-def validation_resource_sources(draw: st.DrawFn) -> str:  # noqa: PLR0911,PLR0912,PLR0915
+def validation_resource_sources(draw: st.DrawFn) -> str:  # noqa: PLR0911,PLR0912,PLR0915 - dispatch
     """Generate FTL source strings covering all validate_resource() passes.
 
     Generates semantically diverse FTL content across six categories,
@@ -190,7 +190,7 @@ def validation_resource_sources(draw: st.DrawFn) -> str:  # noqa: PLR0911,PLR091
 
         case "deep_chain":
             event("val_entry_kind=chain")
-            from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415
+            from ftllexengine.constants import MAX_DEPTH  # noqa: PLC0415 - import inside function
 
             depth = draw(
                 st.integers(min_value=MAX_DEPTH + 1, max_value=MAX_DEPTH + 5)
@@ -225,7 +225,7 @@ def validation_resource_sources(draw: st.DrawFn) -> str:  # noqa: PLR0911,PLR091
 
 
 @st.composite
-def semantic_validation_resources(draw: st.DrawFn) -> Resource:  # noqa: PLR0911
+def semantic_validation_resources(draw: st.DrawFn) -> Resource:  # noqa: PLR0911 - multiple returns
     """Generate AST Resource instances for SemanticValidator testing.
 
     Covers all semantic check paths in SemanticValidator: term without

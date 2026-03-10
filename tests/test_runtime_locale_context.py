@@ -164,10 +164,10 @@ class TestLocaleContextCacheManagement:
 
     def test_cache_double_check_pattern(self) -> None:
         """Cache double-check pattern returns existing instance."""
-        from ftllexengine.core.locale_utils import (  # noqa: PLC0415
+        from ftllexengine.core.locale_utils import (  # noqa: PLC0415 - import inside function
             normalize_locale,
         )
-        from ftllexengine.runtime.locale_context import (  # noqa: PLC0415
+        from ftllexengine.runtime.locale_context import (  # noqa: PLC0415 - import inside function
             _FACTORY_TOKEN,
         )
 
@@ -635,7 +635,7 @@ class TestFormatNumberDigitValidation:
         self,
     ) -> None:
         """Raises ValueError when exceeding MAX_FORMAT_DIGITS."""
-        from ftllexengine.constants import (  # noqa: PLC0415
+        from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
             MAX_FORMAT_DIGITS,
         )
 
@@ -666,7 +666,7 @@ class TestFormatNumberDigitValidation:
         self,
     ) -> None:
         """Raises ValueError when exceeding MAX_FORMAT_DIGITS."""
-        from ftllexengine.constants import (  # noqa: PLC0415
+        from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
             MAX_FORMAT_DIGITS,
         )
 
@@ -1137,7 +1137,7 @@ class TestLongLocaleCodeCoverage:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Long valid locale code triggers warning."""
-        from ftllexengine.constants import (  # noqa: PLC0415
+        from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
             MAX_LOCALE_CODE_LENGTH,
         )
 
@@ -1159,7 +1159,7 @@ class TestLongLocaleCodeCoverage:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Long unknown locale code triggers specific warning."""
-        from ftllexengine.constants import (  # noqa: PLC0415
+        from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
             MAX_LOCALE_CODE_LENGTH,
         )
 
@@ -1185,7 +1185,7 @@ class TestLongLocaleCodeCoverage:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Long invalid format locale code triggers warning."""
-        from ftllexengine.constants import (  # noqa: PLC0415
+        from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
             MAX_LOCALE_CODE_LENGTH,
         )
 

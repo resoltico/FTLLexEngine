@@ -133,7 +133,7 @@ class TestFluentFunctionProtocol:
             """Custom formatter that implements FluentFunction protocol."""
 
             def __call__(
-                self, value: int, locale_code: str, /, **kwargs: int  # noqa: ARG002
+                self, value: int, locale_code: str, /, **kwargs: int  # noqa: ARG002 - unused
             ) -> str:
                 """Implement the FluentFunction protocol signature."""
                 precision = kwargs.get("precision", 2)
@@ -193,9 +193,9 @@ class TestFluentFunctionProtocol:
             def __call__(
                 self,
                 value: FluentValue,
-                locale_code: str,  # noqa: ARG002
+                locale_code: str,  # noqa: ARG002 - unused
                 /,
-                **kwargs: FluentValue,  # noqa: ARG002
+                **kwargs: FluentValue,  # noqa: ARG002 - unused
             ) -> str:
                 """Implementation."""
                 return str(value)

@@ -362,7 +362,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
 # --- Grammar-Aware FTL Construction ---
 
 
-def _build_expression(  # noqa: PLR0911, PLR0912
+def _build_expression(  # noqa: PLR0911, PLR0912 - dispatch
     fdp: atheris.FuzzedDataProvider,
     depth: int = 0,
 ) -> str:
@@ -472,7 +472,7 @@ def _build_select_expression(fdp: atheris.FuzzedDataProvider) -> str:
     return f"{{ {selector} ->\n{body}\n}}"
 
 
-def _build_message(fdp: atheris.FuzzedDataProvider, msg_id: str) -> str:  # noqa: PLR0912
+def _build_message(fdp: atheris.FuzzedDataProvider, msg_id: str) -> str:  # noqa: PLR0912 - dispatch
     """Build a complete FTL message entry."""
     if fdp.remaining_bytes() < 2:
         return f"{msg_id} = fallback\n"
@@ -647,7 +647,7 @@ def _add_random_resources(fdp: atheris.FuzzedDataProvider, bundle: FluentBundle)
             bundle.add_resource(ftl2)
 
 
-def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915
+def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915 - dispatch
     fdp: atheris.FuzzedDataProvider,
     bundle: FluentBundle,
     args: ComplexArgs,
@@ -1050,7 +1050,7 @@ def _run_concurrent_test(
             raise RuntimeIntegrityError(msg)
 
 
-def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915
+def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     """Atheris entry point: Test runtime invariants and contracts."""
     # Initialize memory baseline
     if _state.iterations == 0:

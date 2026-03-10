@@ -288,7 +288,7 @@ class TestValidateResource:
 
     def test_validate_comments_and_junk_skip(self) -> None:
         """Comments are skipped during resource validation (no expressions to validate)."""
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415 - import inside function
             CommentType,
         )
 

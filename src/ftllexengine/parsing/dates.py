@@ -319,6 +319,16 @@ def _extract_cldr_patterns(
             )
             strptime_pattern, has_era = _babel_to_strptime(babel_pattern)
             patterns.append((strptime_pattern, has_era))
+            # CLDR short patterns often use 2-digit years (yy -> %y). Real-world
+            # documents frequently write the year in 4-digit form even when the
+            # CLDR short style specifies 2 digits (e.g. lv-LV "dd.MM.yy" vs the
+            # common handwritten form "dd.MM.yyyy"). Generate a 4-digit variant so
+            # both "15.01.26" (%y) and "15.01.2026" (%Y) are accepted. The 2-digit
+            # variant is listed first so that an unambiguous 2-digit input matches
+            # its canonical CLDR interpretation (2000-based expansion via %y) rather
+            # than being mis-parsed as the year 0026 AD via %Y.
+            if "%y" in strptime_pattern:
+                patterns.append((strptime_pattern.replace("%y", "%Y"), has_era))
         except (AttributeError, KeyError):
             pass
     return patterns
@@ -353,7 +363,8 @@ def _get_date_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
         return tuple(
             _extract_cldr_patterns(locale.date_formats, _DATE_PARSE_STYLES),
         )
-    except (unknown_locale_error_class, ValueError, RuntimeError):
+    except (unknown_locale_error_class, ValueError, RuntimeError, AttributeError):
+        # AttributeError: locale.date_formats may raise if CLDR data is unavailable
         return ()
 
 
@@ -472,7 +483,8 @@ def _get_datetime_patterns(locale_code: str) -> tuple[tuple[str, bool], ...]:
 
         return tuple(patterns)
 
-    except (unknown_locale_error_class, ValueError, RuntimeError):
+    except (unknown_locale_error_class, ValueError, RuntimeError, AttributeError):
+        # AttributeError: locale.datetime_formats may raise if CLDR data is unavailable
         return ()
 
 

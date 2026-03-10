@@ -37,8 +37,10 @@ class TestTypedErrorReturn:
 
     def test_failure_returns_parse_error(self) -> None:
         """Failed parse returns ParseError, not None."""
-        from ftllexengine.syntax.cursor import Cursor  # noqa: PLC0415
-        from ftllexengine.syntax.parser.primitives import parse_identifier  # noqa: PLC0415
+        from ftllexengine.syntax.cursor import Cursor
+        from ftllexengine.syntax.parser.primitives import (
+            parse_identifier,
+        )
 
         cursor = Cursor("123invalid", 0)
         result = parse_identifier(cursor)
@@ -47,8 +49,10 @@ class TestTypedErrorReturn:
 
     def test_success_is_not_parse_error(self) -> None:
         """Successful parse does not return ParseError."""
-        from ftllexengine.syntax.cursor import Cursor  # noqa: PLC0415
-        from ftllexengine.syntax.parser.primitives import parse_identifier  # noqa: PLC0415
+        from ftllexengine.syntax.cursor import Cursor
+        from ftllexengine.syntax.parser.primitives import (
+            parse_identifier,
+        )
 
         cursor = Cursor("validId", 0)
         result = parse_identifier(cursor)
@@ -57,8 +61,10 @@ class TestTypedErrorReturn:
 
     def test_async_calls_are_independent(self) -> None:
         """Concurrent async parse calls return independent values."""
-        from ftllexengine.syntax.cursor import Cursor  # noqa: PLC0415
-        from ftllexengine.syntax.parser.primitives import parse_identifier  # noqa: PLC0415
+        from ftllexengine.syntax.cursor import Cursor
+        from ftllexengine.syntax.parser.primitives import (
+            parse_identifier,
+        )
 
         results: dict[str, object] = {}
 
@@ -84,7 +90,9 @@ class TestTermArgumentDepthGuard:
 
     def test_term_with_arguments_resolves(self) -> None:
         """Term arguments are resolved under depth tracking."""
-        from ftllexengine.runtime.bundle import FluentBundle  # noqa: PLC0415
+        from ftllexengine.runtime.bundle import (
+            FluentBundle,
+        )
 
         bundle = FluentBundle("en_US")
         bundle.add_resource(
@@ -101,7 +109,9 @@ class TestTermArgumentDepthGuard:
 
     def test_term_arguments_respect_nesting_limit(self) -> None:
         """Term argument evaluation is bounded by the nesting depth limit."""
-        from ftllexengine.runtime.bundle import FluentBundle  # noqa: PLC0415
+        from ftllexengine.runtime.bundle import (
+            FluentBundle,
+        )
 
         bundle = FluentBundle("en_US", max_nesting_depth=5)
         bundle.add_resource(
@@ -118,8 +128,8 @@ class TestSerializerArgumentDepthGuard:
 
     def test_function_call_with_arguments_serializes(self) -> None:
         """Function call arguments serialize correctly under depth tracking."""
-        from ftllexengine.syntax import serialize  # noqa: PLC0415
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax import serialize
+        from ftllexengine.syntax.ast import (
             CallArguments,
             FunctionReference,
             Identifier,
@@ -226,7 +236,9 @@ class TestCallArgumentsBlankHandling:
 
     def test_multiline_function_arguments(self) -> None:
         """Function arguments on separate lines parse as a single valid call."""
-        from ftllexengine.syntax.parser.core import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser.core import (
+            FluentParserV1,
+        )
 
         ftl = (
             "msg = { NUMBER(\n"
@@ -237,7 +249,7 @@ class TestCallArgumentsBlankHandling:
         parser = FluentParserV1()
         resource = parser.parse(ftl)
 
-        from ftllexengine.syntax.ast import Junk, Message  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Junk, Message
 
         messages = [e for e in resource.entries if isinstance(e, Message)]
         junk = [e for e in resource.entries if isinstance(e, Junk)]
@@ -247,13 +259,15 @@ class TestCallArgumentsBlankHandling:
 
     def test_single_line_function_arguments_still_work(self) -> None:
         """Single-line arguments continue to work as expected."""
-        from ftllexengine.syntax.parser.core import FluentParserV1  # noqa: PLC0415
+        from ftllexengine.syntax.parser.core import (
+            FluentParserV1,
+        )
 
         ftl = "msg = { NUMBER($count, minimumFractionDigits: 2) }\n"
         parser = FluentParserV1()
         resource = parser.parse(ftl)
 
-        from ftllexengine.syntax.ast import Junk, Message  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Junk, Message
 
         messages = [e for e in resource.entries if isinstance(e, Message)]
         assert len(messages) == 1
@@ -266,7 +280,7 @@ class TestVarPositionalInjectLocale:
 
     def test_var_positional_function_accepted(self) -> None:
         """Function with *args and inject_locale=True registers without error."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
             fluent_function,
         )
@@ -280,13 +294,13 @@ class TestVarPositionalInjectLocale:
 
     def test_var_positional_with_one_named_param_accepted(self) -> None:
         """Function with one named param plus *args and inject_locale=True is accepted."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
             fluent_function,
         )
 
         @fluent_function(inject_locale=True)
-        def format_val(value: object, *args: object) -> str:  # noqa: ARG001
+        def format_val(value: object, *args: object) -> str:  # noqa: ARG001 - unused
             return str(value)
 
         registry = FunctionRegistry()
@@ -294,7 +308,7 @@ class TestVarPositionalInjectLocale:
 
     def test_no_var_positional_insufficient_params_rejected(self) -> None:
         """Function without *args and only 1 positional param is rejected with inject_locale."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
             fluent_function,
         )
@@ -309,13 +323,13 @@ class TestVarPositionalInjectLocale:
 
     def test_two_positional_params_accepted(self) -> None:
         """Function with 2 positional params and inject_locale=True is accepted."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
             fluent_function,
         )
 
         @fluent_function(inject_locale=True)
-        def good_func(value: object, locale_code: str) -> str:  # noqa: ARG001
+        def good_func(value: object, locale_code: str) -> str:  # noqa: ARG001 - unused
             return str(value)
 
         registry = FunctionRegistry()
@@ -327,21 +341,27 @@ class TestMaxCurrencyCacheSize:
 
     def test_constant_exists_and_is_positive(self) -> None:
         """MAX_CURRENCY_CACHE_SIZE is a positive integer."""
-        from ftllexengine.constants import MAX_CURRENCY_CACHE_SIZE  # noqa: PLC0415
+        from ftllexengine.constants import (
+            MAX_CURRENCY_CACHE_SIZE,
+        )
 
         assert isinstance(MAX_CURRENCY_CACHE_SIZE, int)
         assert MAX_CURRENCY_CACHE_SIZE > 0
 
     def test_currency_cache_uses_correct_constant(self) -> None:
         """_get_currency_impl lru_cache maxsize matches MAX_CURRENCY_CACHE_SIZE."""
-        from ftllexengine.constants import MAX_CURRENCY_CACHE_SIZE  # noqa: PLC0415
-        from ftllexengine.introspection.iso import _get_currency_impl  # noqa: PLC0415
+        from ftllexengine.constants import (
+            MAX_CURRENCY_CACHE_SIZE,
+        )
+        from ftllexengine.introspection.iso import (
+            _get_currency_impl,
+        )
 
         cache_info = _get_currency_impl.cache_info()  # pylint: disable=no-value-for-parameter
         assert cache_info.maxsize == MAX_CURRENCY_CACHE_SIZE
 
     def test_constant_in_all(self) -> None:
         """MAX_CURRENCY_CACHE_SIZE is exported in constants.__all__."""
-        from ftllexengine import constants  # noqa: PLC0415
+        from ftllexengine import constants
 
         assert "MAX_CURRENCY_CACHE_SIZE" in constants.__all__

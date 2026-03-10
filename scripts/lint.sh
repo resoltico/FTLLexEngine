@@ -19,16 +19,25 @@
 #   - MyPy   : Detects $dir/mypy.ini or $dir/.mypy.ini; falls back to root pyproject.toml.
 # ==============================================================================
 
+# Guarantee POSIX system binaries (/usr/bin, /bin) survive exec pivots (uv run, sudo, etc.).
+# This must be the first statement — before any external command is invoked.
+export PATH="/usr/bin:/bin:${PATH:-}"
+
+# Bash 5.0+ is a hard requirement: associative arrays, inherit_errexit, EPOCHREALTIME.
+if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
+    echo "Error: Bash 5.0+ required (current: ${BASH_VERSION})." >&2
+    echo "       Install via Homebrew: brew install bash" >&2
+    exit 1
+fi
+
 # Bash Settings
 set -o errexit
 set -o nounset
 set -o pipefail
-if [[ "${BASH_VERSINFO[0]}" -ge 5 ]]; then
-    shopt -s inherit_errexit 2>/dev/null || true
-fi
+shopt -s inherit_errexit
 
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.13}"
+PY_VERSION="${PY_VERSION:-3.14}"
 TARGET_VENV=".venv-${PY_VERSION}"
 
 # Universal Pivot: Works with uv, or standard venvs
@@ -43,7 +52,7 @@ if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
         export UV_PROJECT_ENVIRONMENT="$TARGET_VENV"
         export LINT_ALREADY_PIVOTED=1
         unset VIRTUAL_ENV
-        exec uv run --python "$PY_VERSION" bash "$0" "$@"
+        exec uv run --python "$PY_VERSION" "${BASH:-bash}" "$0" "$@"
     fi
 else
     unset LINT_ALREADY_PIVOTED
@@ -57,7 +66,10 @@ declare -A TIMING
 declare -A METRICS
 FAILED=false
 IS_GHA="${GITHUB_ACTIONS:-false}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve script directory using Bash built-ins only — no dependency on /usr/bin/dirname.
+_script_src="${BASH_SOURCE[0]}"; [[ "$_script_src" != */* ]] && _script_src="./$_script_src"
+SCRIPT_DIR="$(cd -- "${_script_src%/*}" && pwd)"
+unset _script_src
 PY_VERSION_NODOT="${PY_VERSION//./}"
 FAILED_ITEMS_FILE=$(mktemp)
 
@@ -348,8 +360,11 @@ run_noqa_audit() {
     local output_file
     output_file=$(mktemp)
 
+    # Search all detected source targets (same set as ruff/mypy/pylint).
     set +e
-    grep -rEn --include="*.py" "$bare_pattern" src/ > "$output_file" 2>/dev/null
+    if [[ ${#TARGETS[@]} -gt 0 ]]; then
+        grep -rEn --include="*.py" "$bare_pattern" "${TARGETS[@]}" > "$output_file" 2>/dev/null
+    fi
     found=$(wc -l < "$output_file" | tr -d '[:space:]')
     set -e
 

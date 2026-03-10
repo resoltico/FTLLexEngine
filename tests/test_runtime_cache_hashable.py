@@ -112,7 +112,7 @@ class TestMakeHashableTypes:
         compare equal but format differently. Including tz_key prevents collision.
         Naive datetime gets '__naive__' sentinel as tz_key.
         """
-        dt = datetime(2024, 1, 1, 12, 0, 0)  # noqa: DTZ001
+        dt = datetime(2024, 1, 1, 12, 0, 0)  # noqa: DTZ001 - naive datetime by design
         result = IntegrityCache._make_hashable(dt)
         assert result == ("__datetime__", "2024-01-01T12:00:00", "__naive__")
         assert isinstance(result, tuple)

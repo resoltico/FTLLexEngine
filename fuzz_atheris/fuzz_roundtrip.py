@@ -329,7 +329,7 @@ def _elements_equal(e1: Any, e2: Any) -> bool:
             return False
 
 
-def _expressions_equal(e1: Any, e2: Any) -> bool:  # noqa: PLR0911
+def _expressions_equal(e1: Any, e2: Any) -> bool:  # noqa: PLR0911 - multiple returns
     """Compare two expressions structurally."""
     if type(e1) is not type(e2):
         return False

@@ -566,7 +566,7 @@ class TestFluentFunctionProtocol:
     def test_protocol_signature_introspection(self) -> None:
         """Verify FluentFunction Protocol signature via introspection."""
         # Get the __call__ method from the Protocol for signature introspection
-        call_method = getattr(FluentFunction, "__call__", None)  # noqa: B004
+        call_method = getattr(FluentFunction, "__call__", None)  # noqa: B004 - protocol check
         assert call_method is not None
 
         # Introspect the signature
@@ -721,7 +721,7 @@ class TestFluentNumberRepr:
 
     def test_fluent_number_repr_integer(self) -> None:
         """FluentNumber.__repr__ for integers."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415 - import inside function
             FluentNumber,
         )
 
@@ -730,7 +730,7 @@ class TestFluentNumberRepr:
 
     def test_fluent_number_repr_decimal(self) -> None:
         """FluentNumber.__repr__ for Decimal values."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415 - import inside function
             FluentNumber,
         )
 
@@ -740,7 +740,7 @@ class TestFluentNumberRepr:
 
     def test_fluent_number_str_vs_repr(self) -> None:
         """__str__ returns formatted, __repr__ returns debug info."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415 - import inside function
             FluentNumber,
         )
 

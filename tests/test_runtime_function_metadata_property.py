@@ -286,7 +286,9 @@ class TestShouldInjectLocale:
         Implementation uses attribute-based detection.
         Functions marked with _ftl_requires_locale = True get locale injection.
         """
-        from ftllexengine.runtime.function_bridge import fluent_function  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
+            fluent_function,
+        )
 
         bundle = FluentBundle("en", use_isolating=False)
 
@@ -409,7 +411,7 @@ class TestFunctionMetadataReturnTypes:
         self, func_name: str
     ) -> None:
         """should_inject_locale never raises exception."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
         )
 
@@ -429,7 +431,7 @@ class TestShouldInjectLocaleEdgeCases:
 
     def test_function_not_in_registry(self) -> None:
         """should_inject_locale returns False if not registered."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
         )
 
@@ -438,7 +440,7 @@ class TestShouldInjectLocaleEdgeCases:
 
     def test_custom_function_same_name_as_builtin(self) -> None:
         """Custom function with built-in name does not inject."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             FunctionRegistry,
         )
 
@@ -452,7 +454,7 @@ class TestShouldInjectLocaleEdgeCases:
 
     def test_explicitly_false_marker(self) -> None:
         """Explicit _ftl_requires_locale=False does not inject."""
-        from ftllexengine.runtime.function_bridge import (  # noqa: PLC0415
+        from ftllexengine.runtime.function_bridge import (
             _FTL_REQUIRES_LOCALE_ATTR,
             FunctionRegistry,
         )
@@ -468,7 +470,7 @@ class TestShouldInjectLocaleEdgeCases:
 
     def test_with_built_in_registry(self) -> None:
         """should_inject_locale with create_default_registry."""
-        from ftllexengine.runtime.functions import (  # noqa: PLC0415
+        from ftllexengine.runtime.functions import (
             create_default_registry,
         )
 

@@ -1212,7 +1212,7 @@ class TestASTTransformerValidation:
 
     def test_optional_scalar_field_accepts_none_when_original_is_none(self) -> None:
         """Optional scalar fields (e.g., Message.value) accept None when original has attributes."""
-        from ftllexengine.syntax.ast import Attribute  # noqa: PLC0415
+        from ftllexengine.syntax.ast import Attribute  # noqa: PLC0415 - import inside function
 
         # Message without value but with attribute (valid per spec)
         message = Message(
@@ -1238,8 +1238,8 @@ class TestASTTransformerValidation:
 
     def test_optional_scalar_field_accepts_none_when_transformer_removes(self) -> None:
         """Optional scalar fields accept None return value to remove existing value."""
-        from ftllexengine.enums import CommentType  # noqa: PLC0415
-        from ftllexengine.syntax.ast import Comment  # noqa: PLC0415
+        from ftllexengine.enums import CommentType  # noqa: PLC0415 - import inside function
+        from ftllexengine.syntax.ast import Comment  # noqa: PLC0415 - import inside function
 
         # Message with comment (optional field)
         message = Message(
@@ -1339,7 +1339,7 @@ class TestASTTransformerValidation:
                 return None
 
         # Use a complex node to test generic_visit path
-        from ftllexengine.syntax.ast import (  # noqa: PLC0415
+        from ftllexengine.syntax.ast import (  # noqa: PLC0415 - import inside function
             NumberLiteral,
             SelectExpression,
             Variant,

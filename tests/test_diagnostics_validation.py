@@ -58,7 +58,7 @@ class TestValidationErrorProperties:
         # Attempt to modify should raise FrozenInstanceError
         try:
             error.code = "modified"  # type: ignore[misc,assignment]
-            assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
+            assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015 - assert helper
         except AttributeError:
             pass  # Expected
 
@@ -133,7 +133,7 @@ class TestValidationWarningProperties:
         """PROPERTY: ValidationWarning instances are immutable (frozen dataclass)."""
         try:
             warning.code = "modified"  # type: ignore[misc,assignment]
-            assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
+            assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015 - assert helper
         except AttributeError:
             pass  # Expected
         event(f"severity={warning.severity.value}")
@@ -201,7 +201,7 @@ class TestValidationResultProperties:
         """PROPERTY: ValidationResult instances are immutable (frozen dataclass)."""
         try:
             result.errors = ()  # type: ignore[misc]
-            assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015
+            assert False, "Expected FrozenInstanceError"  # noqa: B011, PT015 - assert helper
         except AttributeError:
             pass  # Expected
         valid = result.is_valid

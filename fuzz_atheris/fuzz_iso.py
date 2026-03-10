@@ -78,6 +78,7 @@ class ISOMetrics:
     cache_clear_cycles: int = 0
     cross_reference_checks: int = 0
     type_guard_checks: int = 0
+    decimal_digits_checks: int = 0  # get_currency_decimal_digits oracle validations
 
 
 # --- Global State ---
@@ -111,6 +112,7 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("cache_clear_stress", 8),
     ("cross_reference", 8),
     ("invalid_input_stress", 7),
+    ("decimal_digits_convenience", 8),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -142,6 +144,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["cache_clear_cycles"] = _domain.cache_clear_cycles
     stats["cross_reference_checks"] = _domain.cross_reference_checks
     stats["type_guard_checks"] = _domain.type_guard_checks
+    stats["decimal_digits_checks"] = _domain.decimal_digits_checks
     return stats
 
 
@@ -169,6 +172,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         TerritoryInfo,
         clear_iso_cache,
         get_currency,
+        get_currency_decimal_digits,
         get_territory,
         get_territory_currencies,
         is_valid_currency_code,
@@ -503,6 +507,54 @@ def _pattern_invalid_input_stress(fdp: atheris.FuzzedDataProvider) -> None:
         pass
 
 
+def _pattern_decimal_digits_convenience(fdp: atheris.FuzzedDataProvider) -> None:
+    """Fuzz get_currency_decimal_digits with cross-consistency oracle.
+
+    Invariant: get_currency_decimal_digits(code) must agree with
+    get_currency(code).decimal_digits on every code where both return a value.
+    """
+    code = _gen_currency_code(fdp)
+    _domain.decimal_digits_checks += 1
+
+    try:
+        digits = get_currency_decimal_digits(code)
+
+        if digits is not None:
+            # Cross-consistency: must agree with get_currency().decimal_digits
+            full_info = get_currency(code)
+            if full_info is None:
+                msg = (
+                    f"get_currency_decimal_digits({code!r}) = {digits} "
+                    f"but get_currency returned None"
+                )
+                raise ISOFuzzError(msg)
+            if full_info.decimal_digits != digits:
+                msg = (
+                    f"Inconsistency for {code!r}: "
+                    f"get_currency_decimal_digits={digits}, "
+                    f"get_currency().decimal_digits={full_info.decimal_digits}"
+                )
+                raise ISOFuzzError(msg)
+            # Valid ISO 4217 range (0, 2, 3, or 4 decimal places)
+            if digits not in (0, 2, 3, 4):
+                msg = (
+                    f"get_currency_decimal_digits({code!r}) = {digits} "
+                    f"outside valid ISO 4217 range (0, 2, 3, 4)"
+                )
+                raise ISOFuzzError(msg)
+        else:
+            # None means unknown currency: get_currency must also return None
+            full_info = get_currency(code)
+            if full_info is not None:
+                msg = (
+                    f"get_currency_decimal_digits({code!r}) = None "
+                    f"but get_currency returned {full_info!r}"
+                )
+                raise ISOFuzzError(msg)
+    except _ALLOWED:
+        pass
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH: dict[str, Any] = {
@@ -515,6 +567,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "cache_clear_stress": _pattern_cache_clear_stress,
     "cross_reference": _pattern_cross_reference,
     "invalid_input_stress": _pattern_invalid_input_stress,
+    "decimal_digits_convenience": _pattern_decimal_digits_convenience,
 }
 
 

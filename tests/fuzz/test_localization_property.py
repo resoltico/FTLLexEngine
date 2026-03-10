@@ -929,7 +929,7 @@ class TestFallbackCallback:
     ) -> None:
         """on_fallback invoked when message resolved from non-primary."""
         event(f"locale_count={len(locales)}")
-        from ftllexengine.localization import FallbackInfo  # noqa: PLC0415
+        from ftllexengine.localization import FallbackInfo  # noqa: PLC0415 - import inside function
         events: list[FallbackInfo] = []
         l10n = FluentLocalization(
             locales, on_fallback=events.append,
@@ -952,7 +952,7 @@ class TestFallbackCallback:
     ) -> None:
         """on_fallback not invoked when primary locale has message."""
         event("outcome=no_fallback")
-        from ftllexengine.localization import FallbackInfo  # noqa: PLC0415
+        from ftllexengine.localization import FallbackInfo  # noqa: PLC0415 - import inside function
         events: list[FallbackInfo] = []
         l10n = FluentLocalization(
             locales, on_fallback=events.append,

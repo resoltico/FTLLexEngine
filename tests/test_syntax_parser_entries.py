@@ -331,8 +331,8 @@ class TestParseTerm:
         source = "-term = "
 
         def mock_parse_pattern(
-            cursor, context=None, *,  # noqa: ARG001
-            initial_common_indent=None,  # noqa: ARG001
+            cursor, context=None, *,  # noqa: ARG001 - unused
+            initial_common_indent=None,  # noqa: ARG001 - unused
         ):
             return ParseResult(empty_pattern, cursor)
 
@@ -347,8 +347,8 @@ class TestParseTerm:
         source = "-term = Value  msg"
 
         def mock_parse_pattern(
-            cursor_arg, context=None, *,  # noqa: ARG001
-            initial_common_indent=None,  # noqa: ARG001
+            cursor_arg, context=None, *,  # noqa: ARG001 - unused
+            initial_common_indent=None,  # noqa: ARG001 - unused
         ):
             pattern = Pattern(elements=(TextElement("Value"),))
             return ParseResult(pattern, Cursor(source, 14))
@@ -422,8 +422,8 @@ class TestTermCRLFHandling:
         source = "-term = \nmsg = Other"
 
         def mock_parse_pattern(
-            cursor, context=None, *,  # noqa: ARG001
-            initial_common_indent=None,  # noqa: ARG001
+            cursor, context=None, *,  # noqa: ARG001 - unused
+            initial_common_indent=None,  # noqa: ARG001 - unused
         ):
             return ParseResult(Pattern(elements=()), cursor)
 

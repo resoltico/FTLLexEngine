@@ -45,6 +45,7 @@ __all__ = [
     # Lookup functions
     "get_territory",
     "get_currency",
+    "get_currency_decimal_digits",
     "list_territories",
     "list_currencies",
     "get_territory_currencies",
@@ -352,6 +353,42 @@ def get_currency(
     if len(code) != 3:
         return None
     return _get_currency_impl(code.upper(), normalize_locale(locale))
+
+
+def get_currency_decimal_digits(code: str) -> int | None:
+    """Return ISO 4217 standard decimal precision for a currency code.
+
+    Convenience function for callers that only need the number of decimal places
+    and do not need the full CurrencyInfo (name, symbol). Equivalent to
+    ``get_currency(code).decimal_digits`` but without a locale parameter.
+
+    Decimal precision is locale-independent: KWD always has 3 decimal places,
+    JPY always has 0, USD/EUR always have 2, regardless of display locale.
+
+    Args:
+        code: ISO 4217 currency code (e.g., 'USD', 'EUR'). Case-insensitive.
+
+    Returns:
+        Number of decimal digits (0 for JPY, 2 for USD/EUR, 3 for KWD), or
+        None if the code is not a known ISO 4217 currency code.
+
+    Raises:
+        BabelImportError: If Babel not installed.
+
+    Thread-safe. Results are derived from the cached get_currency() result.
+
+    Examples:
+        >>> get_currency_decimal_digits("KWD")
+        3
+        >>> get_currency_decimal_digits("JPY")
+        0
+        >>> get_currency_decimal_digits("EUR")
+        2
+        >>> get_currency_decimal_digits("XYZ") is None
+        True
+    """
+    info = get_currency(code)
+    return info.decimal_digits if info is not None else None
 
 
 @lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)

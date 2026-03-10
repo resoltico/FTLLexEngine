@@ -15,16 +15,25 @@
 #   - No ANSI/Progress noise: Forced monochrome and no-progress bars
 # ==============================================================================
 
+# Guarantee POSIX system binaries (/usr/bin, /bin) survive exec pivots (uv run, sudo, etc.).
+# This must be the first statement — before any external command is invoked.
+export PATH="/usr/bin:/bin:${PATH:-}"
+
+# Bash 5.0+ is a hard requirement: associative arrays, inherit_errexit, EPOCHREALTIME.
+if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
+    echo "Error: Bash 5.0+ required (current: ${BASH_VERSION})." >&2
+    echo "       Install via Homebrew: brew install bash" >&2
+    exit 1
+fi
+
 # Bash Settings
 set -o errexit
 set -o nounset
 set -o pipefail
-if [[ "${BASH_VERSINFO[0]}" -ge 5 ]]; then
-    shopt -s inherit_errexit 2>/dev/null || true
-fi
+shopt -s inherit_errexit
 
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.13}"
+PY_VERSION="${PY_VERSION:-3.14}"
 TARGET_VENV=".venv-${PY_VERSION}"
 
 if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
@@ -36,7 +45,7 @@ if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
     export UV_PROJECT_ENVIRONMENT="$TARGET_VENV"
     export TEST_ALREADY_PIVOTED=1
     unset VIRTUAL_ENV
-    exec uv run --python "$PY_VERSION" bash "$0" "$@"
+    exec uv run --python "$PY_VERSION" "${BASH:-bash}" "$0" "$@"
 else
     unset TEST_ALREADY_PIVOTED
 fi

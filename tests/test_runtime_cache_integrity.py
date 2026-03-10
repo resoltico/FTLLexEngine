@@ -1036,7 +1036,7 @@ class TestDatetimeTimezoneCollisionPrevention:
 
     def test_same_utc_instant_different_timezone_distinct_keys(self) -> None:
         """Datetimes with same UTC instant but different tzinfo produce distinct keys."""
-        from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+        from datetime import datetime, timedelta, timezone  # noqa: PLC0415 - import inside function
 
         # 12:00 UTC
         dt_utc = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -1053,9 +1053,9 @@ class TestDatetimeTimezoneCollisionPrevention:
 
     def test_naive_datetime_distinguished_from_aware(self) -> None:
         """Naive datetime is distinguished from aware datetime."""
-        from datetime import datetime  # noqa: PLC0415
+        from datetime import datetime  # noqa: PLC0415 - import inside function
 
-        dt_naive = datetime(2024, 1, 1, 12, 0, 0)  # noqa: DTZ001
+        dt_naive = datetime(2024, 1, 1, 12, 0, 0)  # noqa: DTZ001 - naive datetime by design
         dt_aware = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
 
         key_naive = IntegrityCache._make_hashable(dt_naive)
@@ -1095,7 +1095,7 @@ class TestSequenceMappingABCSupport:
 
     def test_userlist_accepted(self) -> None:
         """UserList (Sequence ABC) is accepted and type-tagged."""
-        from collections import UserList  # noqa: PLC0415
+        from collections import UserList  # noqa: PLC0415 - import inside function
 
         values = UserList([1, 2, 3])
         result = IntegrityCache._make_hashable(values)
@@ -1108,7 +1108,7 @@ class TestSequenceMappingABCSupport:
 
     def test_chainmap_accepted(self) -> None:
         """ChainMap (Mapping ABC) is accepted with __mapping__ tag."""
-        from collections import ChainMap  # noqa: PLC0415
+        from collections import ChainMap  # noqa: PLC0415 - import inside function
 
         values: ChainMap[str, int] = ChainMap({"a": 1}, {"b": 2})
         result = IntegrityCache._make_hashable(values)

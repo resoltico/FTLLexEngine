@@ -143,7 +143,7 @@ class TestLineEndingsInStringLiterals:
 
     def test_newline_rejected(self) -> None:
         """Literal newline character inside a string literal terminates the string."""
-        from ftllexengine.syntax.cursor import ParseError  # noqa: PLC0415
+        from ftllexengine.syntax.cursor import ParseError  # noqa: PLC0415 - import inside function
         cursor = Cursor(source='"line1\nline2"', pos=0)
         result = parse_string_literal(cursor)
         assert isinstance(result, ParseError)
@@ -172,7 +172,7 @@ class TestLineEndingsInStringLiterals:
 
     def test_normal_string_works(self) -> None:
         """Normal strings without line endings are parsed correctly."""
-        from ftllexengine.syntax.cursor import ParseError  # noqa: PLC0415
+        from ftllexengine.syntax.cursor import ParseError  # noqa: PLC0415 - import inside function
         cursor = Cursor(source='"hello world"', pos=0)
         result = parse_string_literal(cursor)
         assert not isinstance(result, ParseError)

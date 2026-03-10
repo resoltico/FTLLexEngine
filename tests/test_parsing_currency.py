@@ -817,7 +817,7 @@ class TestBuildCurrencyMapsExceptions:
 
         def mock_symbol(
             currency_code: str,
-            locale: object = None,  # noqa: ARG001
+            locale: object = None,  # noqa: ARG001 - unused
         ) -> str:
             if currency_code == "FAIL":
                 msg = "Mock symbol failure"
@@ -848,8 +848,8 @@ class TestBuildCurrencyMapsExceptions:
         """AttributeError in get_currency_symbol is caught."""
 
         def mock_raises(
-            currency_code: str,  # noqa: ARG001
-            locale: object = None,  # noqa: ARG001
+            currency_code: str,  # noqa: ARG001 - unused
+            locale: object = None,  # noqa: ARG001 - unused
         ) -> str:
             msg = "Mock attribute error"
             raise AttributeError(msg)
@@ -922,7 +922,7 @@ class TestBuildCurrencyMapsExceptions:
         """UnknownLocaleError in get_territory_currencies is caught."""
 
         def mock_raises(
-            territory: str,  # noqa: ARG001
+            territory: str,  # noqa: ARG001 - unused
         ) -> list[str]:
             msg = "Mock unknown locale"
             raise UnknownLocaleError(msg)
