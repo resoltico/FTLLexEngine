@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TypeIs
+from typing import TYPE_CHECKING
 
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
@@ -33,6 +33,13 @@ from ftllexengine.core.babel_compat import (
     get_unknown_locale_error_class,
 )
 from ftllexengine.core.locale_utils import normalize_locale
+
+# TypeIs was added in Python 3.13 (PEP 742). With `from __future__ import annotations`
+# the return-type annotations on is_valid_* functions are lazy strings — TypeIs is
+# never evaluated at runtime. Guard under TYPE_CHECKING so Python 3.12 can import
+# this module without ImportError.
+if TYPE_CHECKING:
+    from typing import TypeIs
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [

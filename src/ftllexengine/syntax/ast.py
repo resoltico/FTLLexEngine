@@ -20,9 +20,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import TypeIs
+from typing import TYPE_CHECKING
 
 from ftllexengine.enums import CommentType
+
+# TypeIs was added in Python 3.13 (PEP 742). With `from __future__ import annotations`
+# guard annotations are lazy strings — TypeIs is never evaluated at runtime.
+if TYPE_CHECKING:
+    from typing import TypeIs
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [

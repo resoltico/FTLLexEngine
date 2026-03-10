@@ -24,9 +24,16 @@ Example:
     ...     amount = result.quantize(Decimal("0.01"))
 """
 
+from __future__ import annotations
+
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TypeIs
+from typing import TYPE_CHECKING
+
+# TypeIs was added in Python 3.13 (PEP 742). `from __future__ import annotations`
+# makes return-type annotations lazy strings — TypeIs is never evaluated at runtime.
+if TYPE_CHECKING:
+    from typing import TypeIs
 
 __all__ = [
     "is_valid_currency",
