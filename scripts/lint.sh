@@ -324,7 +324,11 @@ run_plugins() {
         if [[ -z "$name" || "$name" == "<Name>" ]]; then continue; fi
         
         local cmd=()
-        if [[ "$file" == *.py ]]; then cmd=("python" "$file")
+        # Use the venv Python explicitly so plugins always run with the correct Python
+        # version. Bare `python` resolves to the system Python on GitHub Actions Ubuntu
+        # runners (3.12.x), not the venv Python (3.13.x), causing ImportError on any
+        # module that uses Python 3.13+ features (e.g. TypeIs from PEP 742).
+        if [[ "$file" == *.py ]]; then cmd=("${TARGET_VENV}/bin/python" "$file")
         elif [[ "$file" == *.sh ]]; then cmd=("bash" "$file")
         elif [[ -x "$file" ]]; then cmd=("$file")
         else cmd=("bash" "$file"); fi
