@@ -85,6 +85,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fix: `AttributeError` added to both exception handlers; incomplete CLDR locale data now
     results in empty patterns (same code path as an unknown locale) and a structured parse error
 
+- **`__init__.pyi` type stub: 5 new symbols missing from stub caused CI import failures**:
+  - `ParseResult`, `MessageVariableValidationResult`, `validate_message_variables`,
+    `get_cldr_version`, and `get_currency_decimal_digits` were added to `__init__.py`
+    and `__init__.__all__` in v0.148.0 but were absent from `__init__.pyi`; with `py.typed`
+    present mypy uses the stub as the authoritative type source for external callers, so
+    any caller importing these symbols via `from ftllexengine import ...` received mypy errors;
+    more critically, the CI lint plugins (`validate_version.py`, `validate_docs.py`) run
+    `import ftllexengine` in a subprocess where the stub/metadata state diverges from the
+    pre-built local venv, causing "Package not installed or import failed" in VersionSync
+    and "ftllexengine modules not available" in FTLexdocs
+  - Root cause: no enforcement mechanism existed to detect stub drift; updating `__init__.py`
+    with new exports does not automatically prompt a stub update, and neither the test suite
+    nor the lint pipeline had a check that would fail on stub/implementation divergence
+  - Fix: `__init__.pyi` updated with explicit `as Name` re-exports for all 5 symbols;
+    `__all__` in the stub updated to match `__init__.py`'s `__all__` exactly
+  - Prevention: `scripts/validate_pyi_sync.py` (`# @lint-plugin: PISync`) added as a
+    permanent lint gate; the plugin parses `__init__.py`'s `__all__` and `__init__.pyi`'s
+    declared public symbols and fails if they diverge; CI will now catch any future stub
+    drift at the lint stage before it reaches the import-test stage
+
 ## [0.147.0] - 2026-03-09
 
 ### Fixed

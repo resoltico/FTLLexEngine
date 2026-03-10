@@ -4,6 +4,10 @@ This stub file declares types for lazy-loaded attributes and re-exported symbols
 Mypy cannot infer types from __getattr__, so explicit declarations are required.
 """
 
+# Parsing return type (no Babel dependency)
+# ISO data utilities (require Babel)
+from .core.babel_compat import get_cldr_version as get_cldr_version
+
 # Fiscal calendar (no Babel dependency)
 from .core.fiscal import FiscalCalendar as FiscalCalendar
 from .core.fiscal import FiscalDelta as FiscalDelta
@@ -54,9 +58,17 @@ from .integrity import (
 from .integrity import (
     WriteConflictError as WriteConflictError,
 )
+from .introspection.iso import get_currency_decimal_digits as get_currency_decimal_digits
+
+# Message introspection (no Babel dependency)
+from .introspection.message import (
+    MessageVariableValidationResult as MessageVariableValidationResult,
+)
+from .introspection.message import validate_message_variables as validate_message_variables
 
 # Localization and runtime (requires Babel)
 from .localization import FluentLocalization as FluentLocalization
+from .parsing import ParseResult as ParseResult
 from .runtime import FluentBundle as FluentBundle
 from .runtime.cache_config import CacheConfig as CacheConfig
 from .runtime.function_bridge import fluent_function as fluent_function
@@ -111,6 +123,14 @@ __all__: list[str] = [
     "fiscal_year",
     "fiscal_year_end",
     "fiscal_year_start",
+    # Parsing return type (no Babel dependency)
+    "ParseResult",
+    # Message introspection (no Babel dependency)
+    "MessageVariableValidationResult",
+    "validate_message_variables",
+    # ISO data utilities (require Babel)
+    "get_cldr_version",
+    "get_currency_decimal_digits",
     # Parsing API
     "parse_ftl",
     "serialize_ftl",

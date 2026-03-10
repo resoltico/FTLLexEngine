@@ -215,7 +215,7 @@ class TestLazyImportParseResult:
         """ParseResult is accessible from the top-level package."""
         import ftllexengine
 
-        parse_result_type = ftllexengine.ParseResult  # type: ignore[attr-defined]
+        parse_result_type = ftllexengine.ParseResult
         assert parse_result_type is not None
         from ftllexengine.parsing import ParseResult as Direct
 
@@ -226,8 +226,8 @@ class TestLazyImportParseResult:
         import ftllexengine
 
         ftllexengine.__dict__.pop("ParseResult", None)
-        first = ftllexengine.ParseResult  # type: ignore[attr-defined]
-        second = ftllexengine.ParseResult  # type: ignore[attr-defined]
+        first = ftllexengine.ParseResult
+        second = ftllexengine.ParseResult
         assert first is second
         assert "ParseResult" in vars(ftllexengine)
 
@@ -245,7 +245,7 @@ class TestLazyImportGetCldrVersion:
         """get_cldr_version is callable from the top-level package."""
         import ftllexengine
 
-        fn = ftllexengine.get_cldr_version  # type: ignore[attr-defined]
+        fn = ftllexengine.get_cldr_version
         assert callable(fn)
         version = fn()
         assert isinstance(version, str)
@@ -256,8 +256,8 @@ class TestLazyImportGetCldrVersion:
         import ftllexengine
 
         ftllexengine.__dict__.pop("get_cldr_version", None)
-        first = ftllexengine.get_cldr_version  # type: ignore[attr-defined]
-        second = ftllexengine.get_cldr_version  # type: ignore[attr-defined]
+        first = ftllexengine.get_cldr_version
+        second = ftllexengine.get_cldr_version
         assert first is second
         assert "get_cldr_version" in vars(ftllexengine)
 
@@ -275,7 +275,7 @@ class TestLazyImportGetCurrencyDecimalDigits:
         """get_currency_decimal_digits is callable from the top-level package."""
         import ftllexengine
 
-        fn = ftllexengine.get_currency_decimal_digits  # type: ignore[attr-defined]
+        fn = ftllexengine.get_currency_decimal_digits
         assert callable(fn)
         assert fn("EUR") == 2
         assert fn("JPY") == 0
@@ -285,8 +285,8 @@ class TestLazyImportGetCurrencyDecimalDigits:
         import ftllexengine
 
         ftllexengine.__dict__.pop("get_currency_decimal_digits", None)
-        first = ftllexengine.get_currency_decimal_digits  # type: ignore[attr-defined]
-        second = ftllexengine.get_currency_decimal_digits  # type: ignore[attr-defined]
+        first = ftllexengine.get_currency_decimal_digits
+        second = ftllexengine.get_currency_decimal_digits
         assert first is second
         assert "get_currency_decimal_digits" in vars(ftllexengine)
 
