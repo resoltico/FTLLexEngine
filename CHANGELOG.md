@@ -85,20 +85,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fix: `AttributeError` added to both exception handlers; incomplete CLDR locale data now
     results in empty patterns (same code path as an unknown locale) and a structured parse error
 
-- **`introspection/iso.py`, `syntax/ast.py`, `parsing/guards.py`: `TypeIs` (Python 3.13+) imported unconditionally at module level**:
-  - All three modules had `from typing import TypeIs` as a top-level import; `TypeIs` was
-    added in Python 3.13 (PEP 742) and does not exist in Python 3.12; when the lint.sh
-    plugin runner resolves bare `python` to the GitHub Actions runner's system Python
-    (3.12.x) rather than the venv Python (3.13.x), importing `ftllexengine` would fail
-    with `ImportError: cannot import name 'TypeIs' from 'typing'`, causing VersionSync
-    and FTLexdocs plugins to report "Package not installed or import failed"
-  - Root cause: `TypeIs` is a type-annotation-only feature — it is never evaluated at
-    runtime; all three files have `from __future__ import annotations` (or it was added
-    for `guards.py`), making annotations lazy strings; the module-level import was
-    unnecessary and incompatible with Python 3.12
-  - Fix: moved `from typing import TypeIs` under `if TYPE_CHECKING:` in all three
-    modules; `from __future__ import annotations` added to `parsing/guards.py` (was
-    missing); no runtime behaviour change — `TypeIs` is used only in type annotations
+- **`introspection/iso.py`, `syntax/ast.py`, `parsing/guards.py`: `TypeIs` guard broken by `TYPE_CHECKING`-only import**:
+  - Initial fix moved `from typing import TypeIs` under `if TYPE_CHECKING:` to prevent
+    `ImportError` on Python 3.12 (the CI system Python used by lint plugins); however,
+    `typing.get_type_hints()` evaluates annotation strings in the module's runtime
+    `globals()`, and with `TypeIs` absent from the runtime namespace the test
+    `TestTypeGuardNoneAcceptanceContract::test_type_guard_signatures_include_none`
+    raised `NameError: name 'TypeIs' is not defined` on Python 3.13 (the venv Python)
+  - Revised fix: replaced the `TYPE_CHECKING`-only guard with a version guard:
+    `if sys.version_info >= (3, 13) or TYPE_CHECKING:` — on Python 3.13+ the import
+    runs at module load time (TypeIs in `globals()`, `get_type_hints()` succeeds);
+    on Python 3.12 at runtime the condition is False (ImportError avoided); on Python 3.12
+    under mypy `TYPE_CHECKING` is True (type checking still works); `from __future__
+    import annotations` added to `parsing/guards.py` which lacked it
 
 - **`__init__.pyi` type stub: 5 new symbols missing from stub caused CI import failures**:
   - `ParseResult`, `MessageVariableValidationResult`, `validate_message_variables`,

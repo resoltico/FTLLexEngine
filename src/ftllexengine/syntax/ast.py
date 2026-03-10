@@ -18,15 +18,17 @@ Type Alias Hierarchy:
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from ftllexengine.enums import CommentType
 
-# TypeIs was added in Python 3.13 (PEP 742). With `from __future__ import annotations`
-# guard annotations are lazy strings — TypeIs is never evaluated at runtime.
-if TYPE_CHECKING:
+# TypeIs was added in Python 3.13 (PEP 742). Use a version guard so:
+# - Python 3.13+: TypeIs is in the module namespace at runtime; get_type_hints() works.
+# - Python 3.12: avoids ImportError; defer to TYPE_CHECKING for mypy only.
+if sys.version_info >= (3, 13) or TYPE_CHECKING:
     from typing import TypeIs
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
