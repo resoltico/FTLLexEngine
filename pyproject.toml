@@ -6,6 +6,13 @@ build-backend = "hatchling.build"
 managed = true
 package = true
 
+[tool.validate-version]
+# Check for `project_version: X.Y.Z` in the YAML frontmatter of these files
+frontmatter_globs = ["docs/DOC_*.md", "DOC_*.md"]
+frontmatter_key = "project_version"
+# Check for `**FTLLexEngine Version**: X.Y.Z` footer in these specific files
+footer_files = ["docs/QUICK_REFERENCE.md", "docs/TERMINOLOGY.md"]
+
 [project]
 name = "ftllexengine"
 version = "0.148.0"

@@ -33,13 +33,51 @@ from __future__ import annotations
 
 import ast
 import sys
+import tomllib
 from pathlib import Path
 
 # Plugin targets the package root regardless of where lint.sh runs from.
 _SCRIPT_DIR = Path(__file__).parent
 ROOT = _SCRIPT_DIR.parent
-PY_INIT = ROOT / "src" / "ftllexengine" / "__init__.py"
-PYI_INIT = ROOT / "src" / "ftllexengine" / "__init__.pyi"
+
+
+def _find_package_dir(root: Path) -> Path:
+    """Dynamically discover the primary package directory under src/."""
+    src_dir = root / "src"
+    if not src_dir.exists():
+        print("[ERROR] PISync: src/ directory not found.")
+        sys.exit(3)
+
+    # 1. Try to read from pyproject.toml
+    pyproject = root / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            with pyproject.open("rb") as f:
+                data: dict[str, dict[str, str]] = tomllib.load(f)
+            pkg_name = data.get("project", {}).get("name")
+            if pkg_name and isinstance(pkg_name, str):
+                # E.g., ftllexengine -> src/ftllexengine
+                target = src_dir / pkg_name.replace("-", "_")
+                if target.exists() and target.is_dir():
+                    return target
+        except tomllib.TOMLDecodeError:
+            pass
+
+    # 2. Fallback: just find the single directory under src/
+    subdirs = [
+        d for d in src_dir.iterdir()
+        if d.is_dir() and d.name != "__pycache__" and not d.name.endswith(".egg-info")
+    ]
+    if len(subdirs) == 1:
+        return subdirs[0]
+
+    print("[ERROR] PISync: Could not unambiguously determine package directory in src/.")
+    sys.exit(3)
+
+
+PKG_DIR = _find_package_dir(ROOT)
+PY_INIT = PKG_DIR / "__init__.py"
+PYI_INIT = PKG_DIR / "__init__.pyi"
 
 
 def extract_all_list(path: Path) -> list[str] | None:

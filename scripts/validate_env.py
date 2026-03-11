@@ -2,55 +2,78 @@
 # @lint-plugin: PyEnv
 """Diagnostic plugin: validate the Python environment used by lint plugins.
 
-Reports the Python version, PYTHONPATH, installed package version, and
-whether `ftllexengine` can be imported cleanly. Fails if the Python running
-this plugin is older than the project minimum (3.13) OR if the package
-cannot be imported.
+Philosophy:
+    Environment bleed (the system Python slipping into isolated CI runners) is
+    the #1 cause of flaky linting and tests. This plugin is a universal,
+    project-agnostic "dead-man's switch" that guarantees the environment
+    executing it matches the strict requirements of the project.
 
-This plugin is a dead-man's switch for the "Python 3.12 system python runs
-plugins" class of CI failure: the plugin runner in lint.sh uses bare `python`,
-which may resolve to the system Python rather than the venv Python. When the
-system Python is older than the required minimum, importing ftllexengine may
-fail because the package uses Python 3.13+ features (e.g. TypeIs from PEP 742).
+Architecture & 10/10 Specs:
+    This script relies on `pyproject.toml` as the single source of truth for
+    project metadata. It strictly requires:
+    1. `[project].name`: Used to dynamically resolve the package for the
+       import test (verifying C-extensions, dependencies, and syntax).
+    2. `[project].requires-python`: Used to dynamically set the floor version
+       for `sys.version_info` (e.g., `>=3.13`).
+
+    If the environment falls below this floor, or if the package cannot imported,
+    the plugin deliberately catches the failure and emits a high-signal
+    diagnostic message explaining *exactly* how to fix the CI runner.
 
 Exit Codes:
-    0: Environment is correct (Python >= 3.13, package importable)
-    1: Python version too old or package not importable
+    0: Environment is correct (Python >= required, package importable)
+    1: Environment bleed detected (version too old or package not importable)
 """
 
 from __future__ import annotations
 
+import importlib
 import os
 import sys
 import tomllib
 from pathlib import Path
 
-_MIN_PYTHON = (3, 13)
+_FALLBACK_MIN_PYTHON = (3, 8)
 _SCRIPT_DIR = Path(__file__).parent
 ROOT = _SCRIPT_DIR.parent
 PYPROJECT = ROOT / "pyproject.toml"
 
 
-def _get_required_python() -> tuple[int, int]:
-    """Read requires-python from pyproject.toml."""
+def _read_project_metadata() -> tuple[tuple[int, int], str]:
+    """Read minimum python version and package name from pyproject.toml."""
     try:
         with PYPROJECT.open("rb") as f:
             data = tomllib.load(f)
-        req = data.get("project", {}).get("requires-python", ">=3.13")
+        project = data.get("project", {})
+
         # Parse ">= 3.13" or ">=3.13" → (3, 13)
-        req = req.strip().lstrip(">= ")
+        req = project.get("requires-python", ">=3.8").strip().lstrip(">= ")
         parts = req.split(".")
-        return int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+        min_py = (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+
+        # Parse package name, falling back to guessing from src/ if missing
+        pkg_name = project.get("name", "")
+        if not pkg_name:
+            src_dir = ROOT / "src"
+            subdirs = [
+                d.name for d in src_dir.iterdir()
+                if d.is_dir() and d.name != "__pycache__" and not d.name.endswith(".egg-info")
+            ]
+            pkg_name = subdirs[0] if len(subdirs) == 1 else "unknown_package"
+
+        return min_py, pkg_name.replace("-", "_")
     except Exception:  # pylint: disable=broad-exception-caught
-        # Fallback: if pyproject.toml is unreadable or malformed, use hardcoded minimum.
-        return _MIN_PYTHON
+        return _FALLBACK_MIN_PYTHON, "unknown_package"
 
 
-def _try_import() -> tuple[bool, str]:
-    """Attempt to import ftllexengine and return (success, detail)."""
+def _try_import(pkg_name: str) -> tuple[bool, str]:
+    """Attempt to import the project package and return (success, detail)."""
+    if pkg_name == "unknown_package":
+        return False, "Could not determine package name from pyproject.toml or src/ directory"
+
     try:
-        import ftllexengine  # noqa: PLC0415  # pylint: disable=C0415
-        version = getattr(ftllexengine, "__version__", "<no __version__>")
+        module = importlib.import_module(pkg_name)
+        version = getattr(module, "__version__", "<no __version__>")
         return True, f"version={version}"
     except Exception as exc:  # pylint: disable=broad-exception-caught
         # Diagnostic tool: intentionally catches all import failures to report them.
@@ -62,9 +85,8 @@ def main() -> int:
     failures: list[str] = []
     warnings: list[str] = []
 
-    # 1. Python version check
+    required, pkg_name = _read_project_metadata()
     current = sys.version_info[:2]
-    required = _get_required_python()
 
     print(f"  Python binary  : {sys.executable}")
     print(f"  Python version : {sys.version}")
@@ -85,12 +107,12 @@ def main() -> int:
         print(f"  [PASS] Python {current[0]}.{current[1]} >= {required[0]}.{required[1]}")
 
     # 2. Package import check
-    importable, detail = _try_import()
+    importable, detail = _try_import(pkg_name)
     if importable:
-        print(f"  [PASS] import ftllexengine succeeded ({detail})")
+        print(f"  [PASS] import {pkg_name} succeeded ({detail})")
     else:
         failures.append(
-            f"import ftllexengine failed: {detail}\n"
+            f"import {pkg_name} failed: {detail}\n"
             f"  Likely cause: Python version incompatibility or PYTHONPATH misconfiguration."
         )
 

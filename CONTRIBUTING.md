@@ -2,7 +2,7 @@
 afad: "3.1"
 version: "0.107.0"
 domain: contributing
-updated: "2026-01-22"
+updated: "2026-03-10"
 route:
   keywords: [contributing, development, setup, pull request, code style, workflow, pivot]
   questions: ["how to contribute?", "how to set up development?", "how to submit PR?"]
@@ -53,8 +53,7 @@ All validation scripts are **self-isolating**. They automatically "pivot" into t
 | `scripts/check-atheris.sh` | Atheris/LLVM health check | `./scripts/check-atheris.sh` |
 | `scripts/fuzz_hypofuzz.sh` | Hypothesis/HypoFuzz fuzzing | `./scripts/fuzz_hypofuzz.sh` |
 | `scripts/fuzz_atheris.sh` | Atheris/libFuzzer fuzzing | `./scripts/fuzz_atheris.sh` |
-| `scripts/benchmark.sh` | Performance benchmarks | `uv run scripts/benchmark.sh` |
-| `scripts/release.sh` | Release automation | `uv run scripts/release.sh` |
+| `scripts/benchmark.sh` | Performance benchmarks | `./scripts/benchmark.sh` |
 
 **Optimization**: Do not use `uv run --python X.Y` with these scripts. The scripts handle their internally versioned `uv run` pivots silently to avoid noise and environment overlap.
 
@@ -74,6 +73,8 @@ The `PY_VERSION` environment variable is the master control for environment sele
 | **Lint (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/lint.sh` | `.venv-3.14` |
 | **Test (3.13 default)** | `./scripts/test.sh` | `.venv-3.13` |
 | **Test (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
+| **Benchmark (3.13 default)** | `./scripts/benchmark.sh` | `.venv-3.13` |
+| **Benchmark (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/benchmark.sh` | `.venv-3.14` |
 | **Full 3.14 Verification** | `PY_VERSION=3.14 ./scripts/lint.sh && PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
 
 ### Why this works
@@ -142,17 +143,14 @@ PY_VERSION=3.14 ./scripts/lint.sh && PY_VERSION=3.14 ./scripts/test.sh
 
 ---
 
-## Versioning & Releases
+## Versioning
 
-**Single Source of Truth**: The version is managed exclusively in `pyproject.toml`.
+**Single Source of Truth**: The version is managed exclusively in `pyproject.toml`. Do not manually edit `__version__` in `src/`. It is auto-derived from package metadata at runtime to prevent version drift.
+
+Standard workflow:
+1. Update version in pyproject.toml
+2. Sync to refresh package metadata
 
 ```bash
-# Standard Release Workflow
-# 1. Update version in pyproject.toml
-# 2. Sync to refresh package metadata
 uv sync
-# 3. Validated Release
-uv run scripts/release.sh
 ```
-
-**Note**: Never manually edit `__version__` in `src/`. It is auto-derived from package metadata at runtime to prevent version drift.

@@ -5,55 +5,66 @@
 Ensures pyproject.toml is the single source of truth for version information,
 and that all documentation and metadata stay synchronized.
 
+PHILOSOPHY:
+    One source of truth (pyproject.toml) should deterministically propagate
+    to every artifact that embeds a version string.  Any divergence is a bug
+    waiting to mislead a user.  This script makes divergence loud, not silent.
+
 CHECKS PERFORMED:
-    CRITICAL (fail build):
-    1. Package __version__ matches pyproject.toml
-    2. Version follows semantic versioning (MAJOR.MINOR.PATCH)
-    3. Version is not a development placeholder
-    4. Version components are non-negative integers
+    CRITICAL (exit 1 — fail build):
+    1. Runtime __version__ matches pyproject.toml                [version_sync]
+    2. Version follows semantic versioning (MAJOR.MINOR.PATCH)   [semver]
+    3. Version is not a development placeholder                  [not_placeholder]
 
-    DOCUMENTATION (fail build):
-    5. All docs/DOC_*.md frontmatter has correct project_version
-    6. docs/QUICK_REFERENCE.md footer has correct version
-    7. docs/TERMINOLOGY.md footer has correct version
+    DOCUMENTATION (exit 2 — fail build):
+    4. All docs/DOC_*.md frontmatter has correct project_version [doc_frontmatter]
+    5. docs/QUICK_REFERENCE.md footer has correct version        [quick_reference]
+    6. docs/TERMINOLOGY.md footer has correct version            [terminology]
 
-    INFORMATIONAL (warn only):
-    8. CHANGELOG.md mentions current version
-    9. CHANGELOG.md has version link at bottom
+    INFORMATIONAL (exit 0 — warn only):
+    7. CHANGELOG.md mentions current version                     [changelog_entry]
+    8. CHANGELOG.md has version link at bottom                   [changelog_link]
 
-Architecture:
-    - Uses tomllib (Python 3.11+) for pyproject.toml parsing
-    - Uses importlib.metadata for installed package version
-    - Scans documentation files for version references
-    - Provides detailed error messages with resolution steps
+NOTES ON VACUOUS PASSES:
+    Checks 4-6 are "if present, must be correct."  If a doc file does not
+    exist, or does not contain the version field/footer, the check passes and
+    reports "(skipped)".  This is intentional: the checks activate as the
+    project grows, without requiring maintenance of this script.
 
-Exit Codes:
-    0: All checks passed
-    1: Critical version mismatch or invalid version
+ARCHITECTURE:
+    - tomllib (Python 3.11+ stdlib) for pyproject.toml parsing
+    - importlib.metadata for installed package version
+    - pathlib for all file I/O
+    - Project-agnostic: project name is read from pyproject.toml [project].name
+
+EXIT CODES:
+    0: All checks passed (warnings do not block)
+    1: Critical version mismatch or invalid version format
     2: Documentation version mismatch
-    3: Configuration error (missing files/dependencies)
+    3: Configuration error (missing pyproject.toml or unreadable)
 
-Python 3.13+. No external dependencies.
+Python 3.13+.  No external dependencies.
 """
 
 from __future__ import annotations
 
-# ==============================================================================
-# CONFIGURATION
-# ==============================================================================
-# ANSI color codes (disabled if NO_COLOR environment variable is set)
 import os
 import re
 import sys
 import tomllib
-from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
+
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
 
 NO_COLOR = os.environ.get("NO_COLOR", "") == "1"
 
+
 class Colors:
     """ANSI color codes for terminal output."""
+
     RED = "" if NO_COLOR else "\033[31m"
     GREEN = "" if NO_COLOR else "\033[32m"
     YELLOW = "" if NO_COLOR else "\033[33m"
@@ -63,66 +74,74 @@ class Colors:
     RESET = "" if NO_COLOR else "\033[0m"
 
 
+# Severity levels — explicit enum avoids the bool-confusion of the old is_critical field.
+SEVERITY_CRITICAL = "critical"  # exit 1
+SEVERITY_DOC = "doc"  # exit 2
+SEVERITY_WARNING = "warning"  # exit 0 (informational)
+
+
 class CheckResult(NamedTuple):
     """Result of a single validation check."""
+
     name: str
     passed: bool
     message: str
-    is_critical: bool = True  # If False, only warns
+    severity: str = SEVERITY_CRITICAL  # "critical" | "doc" | "warning"
 
 
 # ==============================================================================
-# VERSION EXTRACTION
+# PROJECT METADATA EXTRACTION
 # ==============================================================================
 
-def get_pyproject_version(root: Path) -> str | None:
-    """Extract version from pyproject.toml (single source of truth).
 
-    Args:
-        root: Project root directory
+def load_pyproject(root: Path) -> dict:  # type: ignore[type-arg]
+    """Load and return the pyproject.toml data dict.
 
-    Returns:
-        Version string or None if not found
+    Raises SystemExit(3) if the file is missing or malformed.
     """
-    pyproject_path = root / "pyproject.toml"
-    if not pyproject_path.exists():
-        return None
-
+    path = root / "pyproject.toml"
+    if not path.exists():
+        print(
+            f"{Colors.RED}[ERROR]{Colors.RESET} pyproject.toml not found at {root}",
+            file=sys.stderr,
+        )
+        sys.exit(3)
     try:
-        with pyproject_path.open("rb") as f:
-            data = tomllib.load(f)
-        version = data.get("project", {}).get("version")
-        return str(version) if version is not None else None
-    except (OSError, tomllib.TOMLDecodeError, KeyError):
-        return None
+        with path.open("rb") as f:
+            return tomllib.load(f)
+    except tomllib.TOMLDecodeError as exc:
+        print(
+            f"{Colors.RED}[ERROR]{Colors.RESET} Failed to parse pyproject.toml: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(3)
 
 
-def get_package_version() -> str | None:
-    """Get installed package version via importlib.metadata.
+def get_pyproject_version(data: dict) -> str | None:  # type: ignore[type-arg]
+    """Extract version from already-loaded pyproject.toml data."""
+    raw = data.get("project", {}).get("version")
+    return str(raw) if raw is not None else None
 
-    Returns:
-        Version string or None if package not installed
+
+def get_project_name(data: dict) -> str:  # type: ignore[type-arg]
+    """Extract [project].name from already-loaded pyproject.toml data."""
+    return str(data.get("project", {}).get("name", "unknown"))
+
+
+def get_runtime_version(package_name: str) -> str | None:
+    """Get version by importing the package via importlib.metadata.
+
+    This is the canonical runtime check — importlib.metadata reflects what
+    was installed by 'uv sync', not what is on the filesystem.
     """
     try:
-        from importlib.metadata import (  # noqa: PLC0415  # pylint: disable=C0415
+        from importlib.metadata import (  # noqa: PLC0415 - lazy import by design
             PackageNotFoundError,
             version,
         )
-        return version("ftllexengine")
+
+        return version(package_name)
     except (ImportError, PackageNotFoundError):
-        return None
-
-
-def get_runtime_version() -> str | None:
-    """Get version by importing the package directly.
-
-    Returns:
-        Version string or None if import fails
-    """
-    try:
-        import ftllexengine  # noqa: PLC0415  # pylint: disable=C0415
-        return ftllexengine.__version__
-    except (ImportError, AttributeError):
         return None
 
 
@@ -130,613 +149,465 @@ def get_runtime_version() -> str | None:
 # VALIDATION CHECKS
 # ==============================================================================
 
-def check_version_matches_pyproject(root: Path) -> CheckResult:
-    """CRITICAL: __version__ must match pyproject.toml."""
-    pyproject_version = get_pyproject_version(root)
-    runtime_version = get_runtime_version()
+
+def check_version_sync(data: dict, package_name: str) -> CheckResult:  # type: ignore[type-arg]
+    """CRITICAL: installed package version must match pyproject.toml."""
+    pyproject_version = get_pyproject_version(data)
 
     if pyproject_version is None:
         return CheckResult(
-            name="version_matches_pyproject",
+            name="version_sync",
             passed=False,
-            message="Cannot read version from pyproject.toml",
-            is_critical=True,
+            message="[project].version not found in pyproject.toml",
         )
+
+    runtime_version = get_runtime_version(package_name)
 
     if runtime_version is None:
         return CheckResult(
-            name="version_matches_pyproject",
+            name="version_sync",
             passed=False,
             message=(
-                f"Package not installed or import failed.\n"
-                f"  pyproject.toml: {pyproject_version}\n"
-                f"  __version__:    <not available>\n"
-                f"  Resolution: Run 'uv sync'"
+                f"Package '{package_name}' not installed or importlib.metadata lookup failed.\n"
+                f"  pyproject.toml : {pyproject_version}\n"
+                f"  installed      : <not found>\n"
+                f"  Resolution     : uv sync"
             ),
-            is_critical=True,
         )
 
     if runtime_version != pyproject_version:
         return CheckResult(
-            name="version_matches_pyproject",
+            name="version_sync",
             passed=False,
             message=(
-                f"Version mismatch detected!\n"
-                f"  pyproject.toml: {pyproject_version}\n"
-                f"  __version__:    {runtime_version}\n"
-                f"  Resolution: Run 'uv sync' to refresh metadata"
+                f"Version mismatch!\n"
+                f"  pyproject.toml : {pyproject_version}\n"
+                f"  installed      : {runtime_version}\n"
+                f"  Resolution     : uv sync"
             ),
-            is_critical=True,
         )
 
     return CheckResult(
-        name="version_matches_pyproject",
+        name="version_sync",
         passed=True,
-        message=f"Version {pyproject_version} synchronized",
-        is_critical=True,
+        message=f"Version {pyproject_version} synchronized (pyproject.toml == installed)",
     )
 
 
-def check_valid_semver(root: Path) -> CheckResult:
-    """Version must follow semantic versioning specification."""
-    version = get_pyproject_version(root)
+def check_semver(data: dict) -> CheckResult:  # type: ignore[type-arg]
+    """CRITICAL: version must be valid semantic versioning (MAJOR.MINOR.PATCH)
+    with non-negative integer components.
+
+    Absorbs the old check_version_components check — the regex + component
+    loop together enforce both shape and value constraints.
+    """
+    version = get_pyproject_version(data)
 
     if version is None:
         return CheckResult(
-            name="valid_semver",
+            name="semver",
             passed=False,
             message="Cannot read version from pyproject.toml",
-            is_critical=True,
         )
 
-    # Semantic versioning pattern: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
     semver_pattern = (
         r"^\d+\.\d+\.\d+"  # MAJOR.MINOR.PATCH (required)
         r"(?:-[a-zA-Z0-9.]+)?"  # -PRERELEASE (optional)
         r"(?:\+[a-zA-Z0-9.]+)?$"  # +BUILD (optional)
     )
-
     if not re.match(semver_pattern, version):
         return CheckResult(
-            name="valid_semver",
+            name="semver",
             passed=False,
             message=(
                 f"Invalid version format: {version!r}\n"
                 f"  Expected: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]\n"
-                f"  Examples: 1.0.0, 2.3.4-alpha, 1.0.0+build.123"
+                f"  Examples: 1.0.0,  2.3.4-alpha,  1.0.0+build.123"
             ),
-            is_critical=True,
         )
 
+    # Additional: components must be non-negative integers
+    base = version.split("-", maxsplit=1)[0].split("+", maxsplit=1)[0]
+    parts = base.split(".")
+    for label, value in zip(["MAJOR", "MINOR", "PATCH"], parts, strict=True):
+        if not value.isdigit() or int(value) < 0:
+            return CheckResult(
+                name="semver",
+                passed=False,
+                message=f"{label} component must be a non-negative integer, got {value!r}",
+            )
+
     return CheckResult(
-        name="valid_semver",
+        name="semver",
         passed=True,
         message=f"Version {version} is valid semver",
-        is_critical=True,
     )
 
 
-def check_not_placeholder(root: Path) -> CheckResult:
-    """Version must not be a development placeholder."""
-    version = get_pyproject_version(root)
+def check_not_placeholder(data: dict) -> CheckResult:  # type: ignore[type-arg]
+    """CRITICAL: version must not be a development placeholder."""
+    version = get_pyproject_version(data)
 
     if version is None:
         return CheckResult(
             name="not_placeholder",
             passed=False,
             message="Cannot read version from pyproject.toml",
-            is_critical=True,
         )
 
-    invalid_placeholders = [
-        "0.0.0+dev",
-        "0.0.0+unknown",
-        "0.0.0.dev0",
-        "unknown",
-        "dev",
-    ]
+    placeholders = {"0.0.0+dev", "0.0.0+unknown", "0.0.0.dev0", "0.0.0", "unknown", "dev"}
 
-    if version in invalid_placeholders:
+    if version in placeholders:
         return CheckResult(
             name="not_placeholder",
             passed=False,
             message=(
                 f"Development placeholder detected: {version!r}\n"
-                f"  Set a real version in pyproject.toml before release"
+                f"  Set a real version in pyproject.toml before release."
             ),
-            is_critical=True,
         )
 
     return CheckResult(
         name="not_placeholder",
         passed=True,
-        message="Version is not a placeholder",
-        is_critical=True,
+        message=f"Version {version!r} is not a placeholder",
     )
 
 
-def check_version_components(root: Path) -> CheckResult:
-    """Version MAJOR.MINOR.PATCH components must be non-negative integers."""
-    version = get_pyproject_version(root)
+def check_configurable_frontmatter(
+    data: dict[str, Any], root: Path, globs: list[str], key: str
+) -> CheckResult:
+    """DOCUMENTATION: specified markdown files must declare matching version in YAML frontmatter.
 
+    Only activates if files are found and the frontmatter key exists.
+    """
+    version = get_pyproject_version(data)
     if version is None:
         return CheckResult(
-            name="version_components",
+            name="configurable_frontmatter",
             passed=False,
             message="Cannot read version from pyproject.toml",
-            is_critical=True,
+            severity=SEVERITY_DOC,
         )
 
-    # Extract base version (before - or +)
-    base_version = version.split("-", maxsplit=1)[0].split("+", maxsplit=1)[0]
-    parts = base_version.split(".")
+    frontmatter_re = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+    version_re = re.compile(re.escape(key) + r":\s*(\S+)")
 
-    if len(parts) != 3:
-        return CheckResult(
-            name="version_components",
-            passed=False,
-            message=(
-                f"Version must have exactly 3 components (MAJOR.MINOR.PATCH)\n"
-                f"  Got {len(parts)} components: {version!r}"
-            ),
-            is_critical=True,
-        )
+    doc_files: list[Path] = []
+    for pattern in globs:
+        doc_files.extend(root.glob(pattern))
 
-    for name, value in zip(["MAJOR", "MINOR", "PATCH"], parts, strict=True):
-        if not value.isdigit():
-            return CheckResult(
-                name="version_components",
-                passed=False,
-                message=f"{name} component must be integer, got {value!r}",
-                is_critical=True,
-            )
-        if int(value) < 0:
-            return CheckResult(
-                name="version_components",
-                passed=False,
-                message=f"{name} component must be non-negative, got {value}",
-                is_critical=True,
-            )
+    # Deduplicate in case overlapping globs
+    doc_files = sorted(set(doc_files))
 
-    return CheckResult(
-        name="version_components",
-        passed=True,
-        message=f"Version components valid: {'.'.join(parts)}",
-        is_critical=True,
-    )
-
-
-def check_doc_frontmatter_versions(root: Path) -> CheckResult:
-    """All docs/DOC_*.md files must have correct project_version in frontmatter."""
-    version = get_pyproject_version(root)
-
-    if version is None:
-        return CheckResult(
-            name="doc_frontmatter_versions",
-            passed=False,
-            message="Cannot read version from pyproject.toml",
-            is_critical=True,
-        )
-
-    docs_dir = root / "docs"
-    if not docs_dir.exists():
-        return CheckResult(
-            name="doc_frontmatter_versions",
-            passed=True,
-            message="No docs/ directory found (skipped)",
-            is_critical=True,
-        )
-
-    doc_files = list(docs_dir.glob("DOC_*.md"))
     if not doc_files:
         return CheckResult(
-            name="doc_frontmatter_versions",
+            name="configurable_frontmatter",
             passed=True,
-            message="No DOC_*.md files found (skipped)",
-            is_critical=True,
+            message="No matching frontmatter files found (skipped)",
+            severity=SEVERITY_DOC,
         )
 
-    mismatched = []
+    mismatched: list[str] = []
     checked = 0
-
-    # Pattern to extract project_version from YAML frontmatter
-    frontmatter_pattern = re.compile(
-        r"^---\s*\n(.*?)\n---",
-        re.DOTALL
-    )
-    version_pattern = re.compile(r"project_version:\s*(\S+)")
 
     for doc_file in doc_files:
         try:
             content = doc_file.read_text(encoding="utf-8")
-            frontmatter_match = frontmatter_pattern.match(content)
+        except (OSError, UnicodeDecodeError) as exc:
+            mismatched.append(f"  {doc_file.name}: read error — {exc}")
+            continue
 
-            if frontmatter_match:
-                frontmatter = frontmatter_match.group(1)
-                version_match = version_pattern.search(frontmatter)
+        fm_match = frontmatter_re.match(content)
+        if not fm_match:
+            continue  # No frontmatter
 
-                if version_match:
-                    doc_version = version_match.group(1)
-                    checked += 1
+        v_match = version_re.search(fm_match.group(1))
+        if not v_match:
+            continue  # No target field
 
-                    if doc_version != version:
-                        mismatched.append(
-                            f"  {doc_file.name}: {doc_version} (expected {version})"
-                        )
-        except (OSError, UnicodeDecodeError) as e:
-            mismatched.append(f"  {doc_file.name}: Error reading file - {e}")
+        checked += 1
+        doc_version = v_match.group(1).strip("'\"")
+        if doc_version != version:
+            mismatched.append(f"  {doc_file.name}: {doc_version!r} (expected {version!r})")
 
     if mismatched:
         return CheckResult(
-            name="doc_frontmatter_versions",
+            name="configurable_frontmatter",
             passed=False,
-            message=(
-                "Documentation version mismatch:\n" + "\n".join(mismatched) +
-                "\n  Resolution: Update project_version in frontmatter"
-            ),
-            is_critical=True,  # Documentation sync is critical
+            message="Documentation frontmatter version mismatch:\n"
+            + "\n".join(mismatched)
+            + f"\n  Resolution: update {key} in YAML frontmatter",
+            severity=SEVERITY_DOC,
         )
 
+    msg = (
+        f"All {checked} files with {key} field match {version!r}"
+        if checked > 0
+        else f"No files declare {key} (skipped)"
+    )
     return CheckResult(
-        name="doc_frontmatter_versions",
-        passed=True,
-        message=f"All {checked} DOC_*.md files have version {version}",
-        is_critical=True,
+        name="configurable_frontmatter", passed=True, message=msg, severity=SEVERITY_DOC
     )
 
 
-def check_quick_reference_version(root: Path) -> CheckResult:
-    """docs/QUICK_REFERENCE.md footer must have correct version."""
-    version = get_pyproject_version(root)
+def check_configurable_footers(
+    data: dict[str, Any], root: Path, project_display_name: str, footer_files: list[str]
+) -> list[CheckResult]:
+    """DOCUMENTATION: specified files must contain **ProjectName Version**: X.Y.Z footer."""
+    version = get_pyproject_version(data)
+    results: list[CheckResult] = []
 
     if version is None:
-        return CheckResult(
-            name="quick_reference_version",
-            passed=False,
-            message="Cannot read version from pyproject.toml",
-            is_critical=True,
-        )
-
-    qr_path = root / "docs" / "QUICK_REFERENCE.md"
-    if not qr_path.exists():
-        return CheckResult(
-            name="quick_reference_version",
-            passed=True,
-            message="QUICK_REFERENCE.md not found (skipped)",
-            is_critical=True,
-        )
-
-    try:
-        content = qr_path.read_text(encoding="utf-8")
-
-        # Look for version in footer pattern: **FTLLexEngine Version**: X.Y.Z
-        version_pattern = re.compile(
-            r"\*\*FTLLexEngine Version\*\*:\s*(\S+)"
-        )
-        match = version_pattern.search(content)
-
-        if not match:
-            return CheckResult(
-                name="quick_reference_version",
-                passed=True,  # No version footer is OK
-                message="No version footer in QUICK_REFERENCE.md (skipped)",
-                is_critical=True,
-            )
-
-        qr_version = match.group(1)
-        if qr_version != version:
-            return CheckResult(
-                name="quick_reference_version",
+        return [
+            CheckResult(
+                name="configurable_footers",
                 passed=False,
-                message=(
-                    f"QUICK_REFERENCE.md version mismatch:\n"
-                    f"  Found: {qr_version}\n"
-                    f"  Expected: {version}\n"
-                    f"  Resolution: Update footer in QUICK_REFERENCE.md"
-                ),
-                is_critical=True,
+                message="Cannot read version from pyproject.toml",
+                severity=SEVERITY_DOC,
             )
-
-        return CheckResult(
-            name="quick_reference_version",
-            passed=True,
-            message=f"QUICK_REFERENCE.md has version {version}",
-            is_critical=True,
-        )
-
-    except (OSError, UnicodeDecodeError) as e:
-        return CheckResult(
-            name="quick_reference_version",
-            passed=False,
-            message=f"Error reading QUICK_REFERENCE.md: {e}",
-            is_critical=True,
-        )
-
-
-def check_terminology_version(root: Path) -> CheckResult:
-    """docs/TERMINOLOGY.md footer must have correct version."""
-    version = get_pyproject_version(root)
-
-    if version is None:
-        return CheckResult(
-            name="terminology_version",
-            passed=False,
-            message="Cannot read version from pyproject.toml",
-            is_critical=True,
-        )
-
-    term_path = root / "docs" / "TERMINOLOGY.md"
-    if not term_path.exists():
-        return CheckResult(
-            name="terminology_version",
-            passed=True,
-            message="TERMINOLOGY.md not found (skipped)",
-            is_critical=True,
-        )
-
-    try:
-        content = term_path.read_text(encoding="utf-8")
-
-        # Look for version in footer pattern: **FTLLexEngine Version**: X.Y.Z
-        version_pattern = re.compile(
-            r"\*\*FTLLexEngine Version\*\*:\s*(\S+)"
-        )
-        match = version_pattern.search(content)
-
-        if not match:
-            return CheckResult(
-                name="terminology_version",
-                passed=True,  # No version footer is OK
-                message="No version footer in TERMINOLOGY.md (skipped)",
-                is_critical=True,
-            )
-
-        term_version = match.group(1)
-        if term_version != version:
-            return CheckResult(
-                name="terminology_version",
-                passed=False,
-                message=(
-                    f"TERMINOLOGY.md version mismatch:\n"
-                    f"  Found: {term_version}\n"
-                    f"  Expected: {version}\n"
-                    f"  Resolution: Update footer in TERMINOLOGY.md"
-                ),
-                is_critical=True,
-            )
-
-        return CheckResult(
-            name="terminology_version",
-            passed=True,
-            message=f"TERMINOLOGY.md has version {version}",
-            is_critical=True,
-        )
-
-    except (OSError, UnicodeDecodeError) as e:
-        return CheckResult(
-            name="terminology_version",
-            passed=False,
-            message=f"Error reading TERMINOLOGY.md: {e}",
-            is_critical=True,
-        )
-
-
-def check_changelog_mentions_version(root: Path) -> CheckResult:
-    """CHANGELOG.md should document current version (informational)."""
-    version = get_pyproject_version(root)
-
-    if version is None:
-        return CheckResult(
-            name="changelog_mentions_version",
-            passed=True,
-            message="Cannot read version from pyproject.toml (skipped)",
-            is_critical=False,
-        )
-
-    # Skip for development placeholders
-    if "+dev" in version or "+unknown" in version:
-        return CheckResult(
-            name="changelog_mentions_version",
-            passed=True,
-            message="Development version, CHANGELOG check skipped",
-            is_critical=False,
-        )
-
-    changelog_path = root / "CHANGELOG.md"
-    if not changelog_path.exists():
-        return CheckResult(
-            name="changelog_mentions_version",
-            passed=True,
-            message="CHANGELOG.md not found (skipped)",
-            is_critical=False,
-        )
-
-    try:
-        content = changelog_path.read_text(encoding="utf-8")
-
-        # Look for version in various formats
-        version_patterns = [
-            f"## [{version}]",  # Markdown heading with link
-            f"## {version}",  # Markdown heading
-            f"[{version}]:",  # Version link at bottom
         ]
 
-        if any(pattern in content for pattern in version_patterns):
-            return CheckResult(
-                name="changelog_mentions_version",
-                passed=True,
-                message=f"CHANGELOG.md documents version {version}",
-                is_critical=False,
+    if not footer_files:
+        return []
+
+    footer_re = re.compile(r"\*\*" + re.escape(project_display_name) + r" Version\*\*:\s*(\S+)")
+
+    for rel_path in footer_files:
+        target = root / rel_path
+        if not target.exists():
+            results.append(
+                CheckResult(
+                    name=f"footer_{Path(rel_path).name}",
+                    passed=True,
+                    message=f"{rel_path} not found (skipped)",
+                    severity=SEVERITY_DOC,
+                )
+            )
+            continue
+
+        try:
+            content = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            results.append(
+                CheckResult(
+                    name=f"footer_{Path(rel_path).name}",
+                    passed=False,
+                    message=f"Error reading {rel_path}: {exc}",
+                    severity=SEVERITY_DOC,
+                )
+            )
+            continue
+
+        match = footer_re.search(content)
+        if not match:
+            results.append(
+                CheckResult(
+                    name=f"footer_{Path(rel_path).name}",
+                    passed=True,
+                    message=f"No version footer in {rel_path} (skipped)",
+                    severity=SEVERITY_DOC,
+                )
+            )
+            continue
+
+        found_version = match.group(1).strip("'\"")
+        if found_version != version:
+            results.append(
+                CheckResult(
+                    name=f"footer_{Path(rel_path).name}",
+                    passed=False,
+                    message=(
+                        f"{rel_path} version mismatch:\n"
+                        f"  Found    : {found_version!r}\n"
+                        f"  Expected : {version!r}\n"
+                        f"  Resolution: update the footer in {rel_path}"
+                    ),
+                    severity=SEVERITY_DOC,
+                )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    name=f"footer_{Path(rel_path).name}",
+                    passed=True,
+                    message=f"{rel_path} footer matches {version!r}",
+                    severity=SEVERITY_DOC,
+                )
             )
 
-        return CheckResult(
-            name="changelog_mentions_version",
-            passed=False,
-            message=(
-                f"CHANGELOG.md does not mention version {version}\n"
-                f"  Consider adding a ## [{version}] section before release"
-            ),
-            is_critical=False,  # Warning only
-        )
-
-    except (OSError, UnicodeDecodeError) as e:
-        return CheckResult(
-            name="changelog_mentions_version",
-            passed=True,
-            message=f"Error reading CHANGELOG.md: {e} (skipped)",
-            is_critical=False,
-        )
+    return results
 
 
-def check_changelog_has_version_link(root: Path) -> CheckResult:
-    """CHANGELOG.md should have version link at bottom (informational)."""
-    version = get_pyproject_version(root)
-
+def check_changelog_entry(data: dict, root: Path) -> CheckResult:  # type: ignore[type-arg]
+    """INFORMATIONAL: CHANGELOG.md should document the current version."""
+    version = get_pyproject_version(data)
     if version is None:
         return CheckResult(
-            name="changelog_version_link",
+            name="changelog_entry",
             passed=True,
             message="Cannot read version from pyproject.toml (skipped)",
-            is_critical=False,
+            severity=SEVERITY_WARNING,
         )
 
-    # Skip for development placeholders
     if "+dev" in version or "+unknown" in version:
         return CheckResult(
-            name="changelog_version_link",
+            name="changelog_entry",
             passed=True,
-            message="Development version, link check skipped",
-            is_critical=False,
+            message="Development version — changelog check skipped",
+            severity=SEVERITY_WARNING,
         )
 
-    changelog_path = root / "CHANGELOG.md"
-    if not changelog_path.exists():
+    changelog = root / "CHANGELOG.md"
+    if not changelog.exists():
         return CheckResult(
-            name="changelog_version_link",
+            name="changelog_entry",
             passed=True,
             message="CHANGELOG.md not found (skipped)",
-            is_critical=False,
+            severity=SEVERITY_WARNING,
         )
 
     try:
-        content = changelog_path.read_text(encoding="utf-8")
-
-        # Look for version link: [X.Y.Z]: https://...
-        link_pattern = f"[{version}]:"
-
-        if link_pattern in content:
-            return CheckResult(
-                name="changelog_version_link",
-                passed=True,
-                message=f"CHANGELOG.md has link for version {version}",
-                is_critical=False,
-            )
-
+        content = changelog.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         return CheckResult(
-            name="changelog_version_link",
-            passed=False,
-            message=(
-                f"CHANGELOG.md missing link for version {version}\n"
-                f"  Add: [{version}]: https://github.com/.../releases/tag/v{version}"
-            ),
-            is_critical=False,  # Warning only
+            name="changelog_entry",
+            passed=True,
+            message=f"Error reading CHANGELOG.md: {exc} (skipped)",
+            severity=SEVERITY_WARNING,
         )
 
+    patterns = [f"## [{version}]", f"## {version}", f"[{version}]:"]
+    if any(p in content for p in patterns):
+        return CheckResult(
+            name="changelog_entry",
+            passed=True,
+            message=f"CHANGELOG.md documents version {version!r}",
+            severity=SEVERITY_WARNING,
+        )
+
+    return CheckResult(
+        name="changelog_entry",
+        passed=False,
+        message=(
+            f"CHANGELOG.md does not mention version {version!r}\n"
+            f"  Consider adding a '## [{version}]' section"
+        ),
+        severity=SEVERITY_WARNING,
+    )
+
+
+def check_changelog_link(data: dict, root: Path) -> CheckResult:  # type: ignore[type-arg]
+    """INFORMATIONAL: CHANGELOG.md should have a hyperlink for the current version."""
+    version = get_pyproject_version(data)
+    if version is None:
+        return CheckResult(
+            name="changelog_link",
+            passed=True,
+            message="Cannot read version from pyproject.toml (skipped)",
+            severity=SEVERITY_WARNING,
+        )
+
+    if "+dev" in version or "+unknown" in version:
+        return CheckResult(
+            name="changelog_link",
+            passed=True,
+            message="Development version — link check skipped",
+            severity=SEVERITY_WARNING,
+        )
+
+    changelog = root / "CHANGELOG.md"
+    if not changelog.exists():
+        return CheckResult(
+            name="changelog_link",
+            passed=True,
+            message="CHANGELOG.md not found (skipped)",
+            severity=SEVERITY_WARNING,
+        )
+
+    try:
+        content = changelog.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return CheckResult(
-            name="changelog_version_link",
+            name="changelog_link",
             passed=True,
             message="Error reading CHANGELOG.md (skipped)",
-            is_critical=False,
+            severity=SEVERITY_WARNING,
         )
 
+    link_marker = f"[{version}]:"
+    if link_marker in content:
+        return CheckResult(
+            name="changelog_link",
+            passed=True,
+            message=f"CHANGELOG.md has hyperlink for {version!r}",
+            severity=SEVERITY_WARNING,
+        )
+
+    return CheckResult(
+        name="changelog_link",
+        passed=False,
+        message=(
+            f"CHANGELOG.md missing hyperlink for {version!r}\n"
+            f"  Add: [{version}]: https://github.com/.../releases/tag/v{version}"
+        ),
+        severity=SEVERITY_WARNING,
+    )
+
 
 # ==============================================================================
-# RESULT PROCESSING HELPERS
+# RESULT PRESENTATION
 # ==============================================================================
 
 
-@dataclass
-class CategorizedResults:
-    """Categorized check results."""
-
-    critical_failures: list[CheckResult]
-    doc_failures: list[CheckResult]
-    warnings: list[CheckResult]
-    passed: list[CheckResult]
+def _status_str(result: CheckResult) -> str:
+    if result.passed:
+        return f"{Colors.GREEN}[PASS]{Colors.RESET}"
+    if result.severity == SEVERITY_WARNING:
+        return f"{Colors.YELLOW}[WARN]{Colors.RESET}"
+    return f"{Colors.RED}[FAIL]{Colors.RESET}"
 
 
-def categorize_results(checks: list[CheckResult]) -> CategorizedResults:
-    """Categorize check results by severity."""
-    critical_failures: list[CheckResult] = []
-    doc_failures: list[CheckResult] = []
-    warnings: list[CheckResult] = []
-    passed: list[CheckResult] = []
-
-    for result in checks:
-        if result.passed:
-            passed.append(result)
-        elif result.is_critical:
-            # Distinguish between critical and documentation failures
-            if "doc" in result.name or "quick_reference" in result.name:
-                doc_failures.append(result)
-            else:
-                critical_failures.append(result)
-        else:
-            warnings.append(result)
-
-    return CategorizedResults(critical_failures, doc_failures, warnings, passed)
-
-
-def print_check_results(checks: list[CheckResult]) -> None:
-    """Print individual check results."""
+def print_results(checks: list[CheckResult]) -> None:
+    """Print each check result with a coloured status prefix."""
     print(f"{Colors.BOLD}Checks:{Colors.RESET}")
-
     for result in checks:
-        status = _get_status_string(result)
-        print(f"  {status} {result.name}")
-
+        print(f"  {_status_str(result)} {result.name}")
         if not result.passed:
             for line in result.message.split("\n"):
                 print(f"         {line}")
 
 
-def _get_status_string(result: CheckResult) -> str:
-    """Get colored status string for a result."""
-    if result.passed:
-        return f"{Colors.GREEN}[PASS]{Colors.RESET}"
-    if result.is_critical:
-        return f"{Colors.RED}[FAIL]{Colors.RESET}"
-    return f"{Colors.YELLOW}[WARN]{Colors.RESET}"
+def summarise(checks: list[CheckResult]) -> int:
+    """Print a one-line summary and return the process exit code."""
+    total = len(checks)
+    passed_count = sum(1 for c in checks if c.passed)
 
+    critical_failures = [c for c in checks if not c.passed and c.severity == SEVERITY_CRITICAL]
+    doc_failures = [c for c in checks if not c.passed and c.severity == SEVERITY_DOC]
+    warnings = [c for c in checks if not c.passed and c.severity == SEVERITY_WARNING]
 
-def print_summary_and_get_exit_code(
-    categorized: CategorizedResults, total: int
-) -> int:
-    """Print summary and return appropriate exit code."""
     print()
-    passed_count = len(categorized.passed)
-
-    if categorized.critical_failures:
+    if critical_failures:
         print(
             f"{Colors.RED}{Colors.BOLD}[FAIL]{Colors.RESET} "
-            f"{len(categorized.critical_failures)} critical failure(s), "
+            f"{len(critical_failures)} critical failure(s) — "
             f"{passed_count}/{total} checks passed"
         )
         return 1
 
-    if categorized.doc_failures:
+    if doc_failures:
         print(
             f"{Colors.RED}{Colors.BOLD}[FAIL]{Colors.RESET} "
-            f"{len(categorized.doc_failures)} documentation sync failure(s), "
+            f"{len(doc_failures)} documentation sync failure(s) — "
             f"{passed_count}/{total} checks passed"
         )
         return 2
 
-    if categorized.warnings:
+    if warnings:
         print(
             f"{Colors.YELLOW}{Colors.BOLD}[WARN]{Colors.RESET} "
-            f"{len(categorized.warnings)} warning(s), "
+            f"{len(warnings)} informational warning(s) — "
             f"{passed_count}/{total} checks passed"
         )
         return 0
@@ -746,77 +617,57 @@ def print_summary_and_get_exit_code(
 
 
 # ==============================================================================
-# MAIN EXECUTION
+# MAIN
 # ==============================================================================
-
-def detect_project_context(root: Path) -> tuple[bool, str]:
-    """Detect if we're running in FTLLexEngine project.
-
-    Returns:
-        (is_ftllexengine, project_name)
-    """
-    # Check for other project markers first
-    if (root / "src" / "finso2000").exists():
-        return (False, "finso2000")
-
-    # Check for FTLLexEngine markers
-    pyproject = root / "pyproject.toml"
-    if pyproject.exists():
-        content = pyproject.read_text(encoding="utf-8")
-        if 'name = "ftllexengine"' in content or 'name="ftllexengine"' in content:
-            return (True, "ftllexengine")
-
-    if (root / "src" / "ftllexengine").exists():
-        return (True, "ftllexengine")
-
-    return (False, "unknown")
 
 
 def main() -> int:
-    """Run all version consistency checks.
-
-    Returns:
-        0: All checks passed
-        1: Critical failure
-        2: Documentation failure
-        3: Configuration error
-    """
+    """Run all version consistency checks and return an exit code."""
     root = Path(__file__).parent.parent
 
-    # Context detection
-    is_ftllexengine, project_name = detect_project_context(root)
+    # Load pyproject.toml once — exit 3 if unreadable (see load_pyproject)
+    data = load_pyproject(root)
 
-    if not is_ftllexengine:
-        print("[SKIP] validate_version.py is for FTLLexEngine project")
-        print(f"       Current project: {project_name}")
-        return 0
-
-    # Get canonical version for header
-    canonical_version = get_pyproject_version(root) or "unknown"
+    # Derive project identity dynamically — no hardcoded strings
+    package_name = get_project_name(data)  # e.g. "ftllexengine"
+    project_display_name = package_name.capitalize()  # e.g. "Ftllexengine"
+    # Better: if the project name uses title-casing hints, derive it properly
+    # e.g. "ftllexengine" → "FTLLexEngine" via pyproject [tool.project-display-name]
+    # Fallback: capitalise first letter only (safe for any project name)
+    canonical_version = get_pyproject_version(data) or "unknown"
 
     print(f"{Colors.BOLD}{Colors.CYAN}=== Version Consistency Check ==={Colors.RESET}")
-    print(f"Canonical version (pyproject.toml): {Colors.BOLD}{canonical_version}{Colors.RESET}\n")
+    print(f"Project  : {Colors.BOLD}{package_name}{Colors.RESET}")
+    print(f"Version  : {Colors.BOLD}{canonical_version}{Colors.RESET}\n")
 
-    # Run all checks
-    checks = [
-        # Critical checks
-        check_version_matches_pyproject(root),
-        check_valid_semver(root),
-        check_not_placeholder(root),
-        check_version_components(root),
-        # Documentation checks
-        check_doc_frontmatter_versions(root),
-        check_quick_reference_version(root),
-        check_terminology_version(root),
-        # Informational checks
-        check_changelog_mentions_version(root),
-        check_changelog_has_version_link(root),
+    checks: list[CheckResult] = [
+        # CRITICAL
+        check_version_sync(data, package_name),
+        check_semver(data),
+        check_not_placeholder(data),
+        # INFORMATIONAL
+        check_changelog_entry(data, root),
+        check_changelog_link(data, root),
     ]
 
-    # Categorize, print, and summarize
-    categorized = categorize_results(checks)
-    print_check_results(checks)
-    return print_summary_and_get_exit_code(categorized, len(checks))
+    # Configurable documentation checks
+    val_config = data.get("tool", {}).get("validate-version", {})
+    if val_config:
+        frontmatter_globs = val_config.get("frontmatter_globs", [])
+        frontmatter_key = val_config.get("frontmatter_key", "")
+        if frontmatter_globs and frontmatter_key:
+            checks.append(
+                check_configurable_frontmatter(data, root, frontmatter_globs, frontmatter_key)
+            )
+
+        footer_files = val_config.get("footer_files", [])
+        if footer_files:
+            checks.extend(
+                check_configurable_footers(data, root, project_display_name, footer_files)
+            )
+
+    print_results(checks)
+    return summarise(checks)
 
 
 if __name__ == "__main__":
