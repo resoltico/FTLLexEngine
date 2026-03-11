@@ -404,7 +404,6 @@ fi
 # rm -f "$FAILED_ITEMS_FILE" (Deferred deletion)
 
 echo "[SUMMARY-JSON-BEGIN]"
-echo "[SUMMARY-JSON-BEGIN]"
 # Use Python for reliable JSON generation (handles escaping, utf-8, etc.)
 PYTHON_JSON_SCRIPT="
 import json, sys, os

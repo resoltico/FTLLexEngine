@@ -1,283 +1,272 @@
 #!/usr/bin/env python3
-# @lint-plugin: FTLexdocs
-"""Validate all FTL examples in documentation files.
+# @lint-plugin: DocValidator
+"""Validate code examples in documentation files against project parsers.
 
-Extracts code blocks marked as ```ftl and attempts to parse them.
-Fails CI if any example contains invalid FTL syntax.
+Ensures that documentation never "lies" by verifying that every code block
+marked with a specific language (e.g., ```ftl) is syntactically valid according
+to the actual project parser.
 
-This script is designed for the FTLLexEngine project. When run in
-other projects, it auto-detects the context and exits gracefully.
+PHILOSOPHY:
+    Documentation is the interface of your code. If the examples in your
+    README.md are syntactically invalid, the documentation is broken.
+    This script treats documentation as testable code, enforcing
+    correctness at build time.
 
 SYSTEMS-OVER-GOALS:
-    - Auto-detect project context (FTLLexEngine vs other projects)
-    - Graceful degradation when imports unavailable
-    - Bounded file scanning (prevent infinite loops)
-    - Early exit with clear messaging
+    - Zero-Configuration Discovery: Reads [tool.validate-docs] from pyproject.toml.
+    - Intentionality: Support "Skip Markers" for documenting known errors.
+    - CI Optimized: Emits JSON and concise terminal feedback.
+    - Universal: Works for any project with a python-accessible parser.
 
-Architecture:
-    - Extract FTL code blocks from markdown files
-    - Parse each example with FluentParserV1
-    - Check for Junk entries (parse errors)
-    - Report all errors with file:line references
+ARCHITECTURE:
+    - tomllib (Python 3.11+ stdlib) for configuration.
+    - importlib for dynamic parser instantiation.
+    - pathlib for robust file I/O.
 
-Usage:
-    python scripts/validate_docs.py
-
-Exit Codes:
-    0: All FTL examples valid (or script skipped due to context)
-    1: One or more invalid FTL examples found
-    2: Configuration error (missing dependencies)
-
-Python 3.13+. Depends on: ftllexengine (internal modules).
+EXIT CODES:
+    0: All examples valid (or skipped).
+    1: One or more invalid examples found.
+    2: Configuration or import error.
 """
 
 from __future__ import annotations
 
+import importlib
+import json
 import re
 import sys
+import tomllib
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
-
-# ==============================================================================
-# CONTEXT DETECTION - Graceful degradation for non-FTLLexEngine projects
-# ==============================================================================
+from typing import Any, Self
 
 try:
     from ftllexengine.syntax.ast import Junk
-    from ftllexengine.syntax.parser import FluentParserV1
-    FTLLEXENGINE_AVAILABLE = True
 except ImportError:
-    FTLLEXENGINE_AVAILABLE = False
-    # Stub classes for type checking when running in other projects
     Junk = None  # type: ignore[assignment,misc]
-    FluentParserV1 = None  # type: ignore[assignment,misc]
 
 
-def detect_project_context() -> tuple[bool, str]:
-    """Detect if we're running in FTLLexEngine project.
+@dataclass(frozen=True)
+class CheckConfig:
+    """Configuration for documentation validation."""
 
-    Returns:
-        (is_ftllexengine, project_name)
-    """
-    root = Path(__file__).parent.parent
+    project_name: str
+    scan_globs: list[str]
+    skip_markers: list[str]
+    parser_path: str
+    language: str = "ftl"
 
-    # Check for Finso2000 markers FIRST (priority check)
-    if (root / "src" / "finso2000").exists():
-        return (False, "finso2000")
-
-    # Check for FTLLexEngine markers (must be the actual ftllexengine project)
-    pyproject = root / "pyproject.toml"
-    if pyproject.exists():
-        content = pyproject.read_text(encoding="utf-8")
-        # Look for package name declaration (not just dependency reference)
-        if 'name = "ftllexengine"' in content or 'name="ftllexengine"' in content:
-            return (True, "ftllexengine")
-
-    # Check for ftllexengine source directory
-    if (root / "src" / "ftllexengine").exists():
-        return (True, "ftllexengine")
-
-    # Unknown project
-    return (False, "unknown")
-
-
-def extract_ftl_examples(markdown_path: Path) -> list[tuple[int, str]]:
-    """Extract FTL code blocks from markdown file.
-
-    Args:
-        markdown_path: Path to markdown file
-
-    Returns:
-        List of (line_number, ftl_code) tuples
-
-    Example:
-        >>> examples = extract_ftl_examples(Path("README.md"))
-        >>> for line_num, code in examples:
-        ...     print(f"Line {line_num}: {code[:50]}...")
-    """
-    content = markdown_path.read_text(encoding="utf-8")
-    examples = []
-
-    # Find ```ftl code blocks (case-insensitive)
-    pattern = r"```ftl\n(.*?)\n```"
-    for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
-        ftl_code = match.group(1)
-        # Calculate line number where code block starts
-        line_num = content[: match.start()].count("\n") + 2  # +2 for ```ftl line
-        examples.append((line_num, ftl_code))
-
-    return examples
-
-
-def validate_file(markdown_path: Path, parser: FluentParserV1) -> list[str]:
-    """Validate all FTL examples in a markdown file.
-
-    Args:
-        markdown_path: Path to markdown file
-        parser: FluentParserV1 instance
-
-    Returns:
-        List of error messages (empty if all valid)
-
-    Example:
-        >>> parser = FluentParserV1()
-        >>> errors = validate_file(Path("README.md"), parser)
-        >>> if errors:
-        ...     for error in errors:
-        ...         print(error)
-    """
-    errors: list[str] = []
-    examples = extract_ftl_examples(markdown_path)
-
-    if not examples:
-        # No FTL examples in this file (not an error)
-        return errors
-
-    for line_num, ftl_code in examples:
-        # Skip examples that are clearly not pure FTL (mixed markdown/documentation)
-        # These indicate malformed markdown, not invalid FTL
-        if any(marker in ftl_code for marker in ["```", "|---|", "**", "##", "$name: string"]):
-            continue
-
-        # Skip intentionally invalid examples (documentation showing errors)
-        skip_markers = [
-            "# ←",  # Arrow pointing to error
-            "# INVALID",  # Marked as invalid
-            "WRONG",  # Marked as wrong
-            "FAILS",  # Marked as failing
-            "doesn't work",  # Known not to work
-            "# Currently fails",  # Known failure
-            "syntax error",  # Example demonstrating syntax error
-            "Parser error",  # Example showing parser error
-            "invalid-message",  # Example showing invalid message
-            "parser bug",  # Known parser bug
-            "useBidiMarks",  # Boolean parameter not supported (known limitation)
-            "# Dynamic currency!",  # TODO showing desired behavior
-        ]
-        if any(marker in ftl_code for marker in skip_markers):
-            continue
-
-        # Skip examples showing future/desired behavior (in TODO files)
-        if "TODO" in str(markdown_path) and ("Once Fixed" in ftl_code or "Would Work" in ftl_code):
-            continue
-
-        try:
-            resource = parser.parse(ftl_code)
-
-            # Check for Junk entries (parse errors)
-            junk_entries = [e for e in resource.entries if isinstance(e, Junk)]
-
-            if junk_entries:
-                # Show first junk entry content (truncated)
-                junk_content = junk_entries[0].content
-                preview = junk_content[:100] + ("..." if len(junk_content) > 100 else "")
-
-                errors.append(
-                    f"{markdown_path}:{line_num}: FTL syntax error\n"
-                    f"  Invalid FTL: {preview}\n"
-                    f"  {len(junk_entries)} parse error(s) in example"
-                )
-
-        except (ValueError, TypeError, AttributeError) as e:
-            errors.append(
-                f"{markdown_path}:{line_num}: Parse exception: {e.__class__.__name__}: {e}"
+    @classmethod
+    def from_pyproject(cls, root: Path) -> Self:
+        """Load configuration from pyproject.toml."""
+        toml_path = root / "pyproject.toml"
+        if not toml_path.exists():
+            return cls(
+                project_name="Unknown",
+                scan_globs=["README.md", "CHANGELOG.md", "docs/**/*.md"],
+                skip_markers=[],
+                parser_path="",
             )
 
-    return errors
+        with toml_path.open("rb") as f:
+            data = tomllib.load(f)
+
+        project_name = data.get("project", {}).get("name", "Unknown").capitalize()
+        config = data.get("tool", {}).get("validate-docs", {})
+
+        return cls(
+            project_name=project_name,
+            scan_globs=config.get("scan_globs", ["README.md", "CHANGELOG.md", "docs/**/*.md"]),
+            skip_markers=config.get("skip_markers", []),
+            parser_path=config.get("parser_path", ""),
+            language=config.get("language", "ftl"),
+        )
+
+
+@dataclass
+class ExampleFailure:
+    """Details of a failed documentation example validation."""
+
+    file: str
+    line: int
+    content: str
+    error: str
+    error_type: str = "SyntaxError"
+
+
+@dataclass
+class ValidationReport:
+    """Summary of the validation run."""
+
+    status: str
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    files_checked: int = 0
+    examples_validated: int = 0
+    failures: list[ExampleFailure] = field(default_factory=list)
+
+    def to_json(self) -> str:
+        """Return JSON representation of the report."""
+        return json.dumps(
+            {
+                "status": self.status,
+                "timestamp": self.timestamp,
+                "metrics": {
+                    "files_checked": self.files_checked,
+                    "examples_validated": self.examples_validated,
+                    "failure_count": len(self.failures),
+                },
+                "failures": [
+                    {
+                        "file": f.file,
+                        "line": f.line,
+                        "error_type": f.error_type,
+                        "message": f.error,
+                        "snippet": f.content[:100] + "...",
+                    }
+                    for f in self.failures
+                ],
+            },
+            indent=2,
+        )
+
+
+def get_parser(path: str) -> Any:
+    """Instantiate a parser from a string path (module.submodule:ClassName)."""
+    if not path or ":" not in path:
+        return None
+
+    try:
+        module_path, class_name = path.split(":", 1)
+        module = importlib.import_module(module_path)
+        parser_cls = getattr(module, class_name)
+        return parser_cls()
+    except (ImportError, AttributeError) as e:
+        print(f"[ERROR] Could not load parser {path!r}: {e!s}", file=sys.stderr)
+        return None
+
+
+def validate_code(code: str, parser: Any) -> str | None:
+    """Validate a code block using the provided parser.
+
+    Returns an error message if invalid, else None.
+    Handles 'ftllexengine' AST 'Junk' objects specifically.
+    """
+    try:
+        # Standard Fluent parser interface: .parse(text) returns a Resource
+        resource = parser.parse(code)
+
+        # Performance: Search for Junk entries if it's an ftllexengine/fluent resource
+        if Junk is not None and hasattr(resource, "entries"):
+            junk = [e for e in resource.entries if isinstance(e, Junk)]
+            if junk:
+                return f"FTL Parsing failed: {junk[0].content[:100]}"
+    except (ValueError, TypeError, AttributeError, ImportError) as e:
+        return f"{e.__class__.__name__}: {e!s}"
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # Architecture: We catch Exception here because validate_docs is a universal
+        # runner that interacts with arbitrary third-party parsers. A crash in a
+        # parser must not crash the entire validation suite; instead, we report
+        # it as a failed example to keep the feedback loop intact for the agent.
+        return f"UnexpectedError: {e!s}"
+
+    return None
+
+
+def discover_files(root: Path, globs: list[str]) -> list[Path]:
+    """Find all markdown files matching the provides globs."""
+    markdown_files: list[Path] = []
+    for pattern in globs:
+        markdown_files.extend(root.glob(pattern))
+    return sorted(set(markdown_files))
+
+
+def process_file(
+    md_file: Path,
+    root: Path,
+    config: CheckConfig,
+    parser: Any,
+    report: ValidationReport,
+    pattern: re.Pattern[str],
+) -> None:
+    """Extract and validate all examples within a single markdown file."""
+    try:
+        content = md_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return
+
+    report.files_checked += 1
+    rel_path = str(md_file.relative_to(root))
+
+    for match in pattern.finditer(content):
+        indent = match.group(1)
+        language = match.group(2).lower()
+        code_block = match.group(3)
+
+        if language != config.language:
+            continue
+
+        report.examples_validated += 1
+
+        # Dedent the code block if the fence was indented
+        if indent:
+            lines = code_block.split("\n")
+            dedented = [line[len(indent) :] if line.startswith(indent) else line for line in lines]
+            code_block = "\n".join(dedented)
+
+        # Skip intentional errors
+        if any(m in code_block for m in config.skip_markers):
+            continue
+
+        error = validate_code(code_block, parser)
+        if error:
+            line_num = content[: match.start()].count("\n") + 2
+            report.failures.append(
+                ExampleFailure(file=rel_path, line=line_num, content=code_block, error=error)
+            )
 
 
 def main() -> int:
-    """Validate all markdown files with FTL examples.
+    """Main entry point."""
+    root = Path(__file__).parent.parent
+    config = CheckConfig.from_pyproject(root)
 
-    Returns:
-        0 if all valid (or skipped due to context), 1 if errors found
-    """
-    # CONTEXT DETECTION: Exit gracefully if not in FTLLexEngine project
-    is_ftllexengine, project_name = detect_project_context()
+    print(f"=== {config.project_name} Documentation Validation ===")
 
-    if not is_ftllexengine:
-        print("[SKIP] validate_docs.py is for FTLLexEngine project")
-        print(f"       Current project: {project_name}")
-        print("       Skipping FTL documentation validation")
+    if not config.parser_path:
+        print("[SKIP] No parser_path defined in pyproject.toml [tool.validate-docs]")
         return 0
 
-    # DEPENDENCY CHECK: Ensure ftllexengine modules available
-    if not FTLLEXENGINE_AVAILABLE:
-        print("[ERROR] ftllexengine modules not available")
-        print("        This script requires ftllexengine.syntax.* imports")
+    parser = get_parser(config.parser_path)
+    if not parser:
         return 2
 
-    parser = FluentParserV1()
-    all_errors = []
-    files_checked = 0
-    examples_found = 0
+    report = ValidationReport(status="pass")
+    markdown_files = discover_files(root, config.scan_globs)
 
-    # BOUNDED FILE SCANNING: Prevent infinite loops
-    root = Path(__file__).parent.parent
-    markdown_files = []
-
-    # Only scan specific locations (not entire project tree)
-    scan_locations = [
-        root / "README.md",
-        root / "CHANGELOG.md",
-        root / "docs",
-    ]
-
-    # SAFEGUARD: Explicitly exclude scripts directory to prevent issues when run as plugin
-    scripts_dir = root / "scripts"
-
-    for location in scan_locations:
-        if location.is_file():
-            markdown_files.append(location)
-        elif location.is_dir():
-            # Ensure we never scan the scripts directory
-            if location == scripts_dir or scripts_dir in location.parents:
-                continue
-            # Limit depth to prevent runaway scanning
-            markdown_files.extend(location.glob("*.md"))
-            markdown_files.extend(location.glob("*/*.md"))  # Max 1 level deep
-
-    # Remove duplicates and sort
-    markdown_files = sorted(set(markdown_files))
-
-    # SAFEGUARD: Limit total files processed (safety cap)
-    max_files = 1000
-    if len(markdown_files) > max_files:
-        print(f"[WARN] Found {len(markdown_files)} markdown files, limiting to {max_files}")
-        markdown_files = markdown_files[:max_files]
+    block_pattern = re.compile(
+        r"^([ \t]*)```(\S+)\n(.*?)\n\1```", re.DOTALL | re.MULTILINE | re.IGNORECASE
+    )
 
     for md_file in markdown_files:
-        try:
-            # Count examples before validation
-            examples_in_file = len(extract_ftl_examples(md_file))
-            if examples_in_file > 0:
-                files_checked += 1
-                examples_found += examples_in_file
+        process_file(md_file, root, config, parser, report, block_pattern)
 
-            errors = validate_file(md_file, parser)
-            all_errors.extend(errors)
-        except (OSError, UnicodeDecodeError, ValueError) as e:
-            # SAFEGUARD: Catch file/encoding/parse errors to prevent hangs
-            print(f"[WARN] Error processing {md_file}: {e}")
-            # Continue processing other files
-            continue
+    if report.failures:
+        report.status = "fail"
+        print("\n[FAIL] Found validation errors in documentation:")
+        for f in report.failures:
+            print(f"  {f.file}:{f.line}: {f.error}")
 
-    # Report results
-    if all_errors:
-        print("[FAIL] Invalid FTL examples in documentation:\n")
-        for error in all_errors:
-            print(f"  {error}\n")
-        print(
-            f"Summary: {len(all_errors)} error(s) in {files_checked} file(s) "
-            f"with FTL examples"
-        )
+        print("\n[SUMMARY-JSON-BEGIN]")
+        print(report.to_json())
+        print("[SUMMARY-JSON-END]")
         return 1
 
-    print(
-        f"[OK] All FTL examples valid\n"
-        f"  Files checked: {len(markdown_files)}\n"
-        f"  Files with FTL: {files_checked}\n"
-        f"  Examples validated: {examples_found}"
+    msg = (
+        f"[PASS] {report.examples_validated} examples validated "
+        f"across {report.files_checked} files."
     )
+    print(msg)
     return 0
 
 

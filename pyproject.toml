@@ -13,6 +13,27 @@ frontmatter_key = "project_version"
 # Check for `**FTLLexEngine Version**: X.Y.Z` footer in these specific files
 footer_files = ["docs/QUICK_REFERENCE.md", "docs/TERMINOLOGY.md"]
 
+[tool.validate-docs]
+# Glob patterns for markdown files to scan
+scan_globs = ["README.md", "CHANGELOG.md", "docs/**/*.md"]
+# Substrings that trigger skipping a specific FTL code block
+skip_markers = [
+    "# ←",
+    "# INVALID",
+    "WRONG",
+    "FAILS",
+    "doesn't work",
+    "# Currently fails",
+    "syntax error",
+    "Parser error",
+    "invalid-message",
+    "parser bug",
+    "useBidiMarks",
+    "# Dynamic currency!",
+]
+# Path to the parser class used for validation
+parser_path = "ftllexengine.syntax.parser:FluentParserV1"
+
 [project]
 name = "ftllexengine"
 version = "0.148.0"

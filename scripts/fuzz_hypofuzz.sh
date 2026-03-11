@@ -78,8 +78,13 @@ log_fail() { echo -e "${RED}[FAIL]${RESET} $1"; }
 log_err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
 
 show_help() {
-    cat << 'HELPEOF'
-HypoFuzz & Property Testing Interface for FTLLexEngine
+    local project_name="Project"
+    if [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
+        project_name=$(python3 -c 'import sys; sys.path.append(sys.argv[1]); import tomllib; print(tomllib.load(open(sys.argv[2], "rb")).get("project", {}).get("name", "Project").capitalize())' "$PROJECT_ROOT" "$PROJECT_ROOT/pyproject.toml" 2>/dev/null || echo "Project")
+    fi
+
+    cat << HELPEOF
+HypoFuzz & Property Testing Interface for $project_name
 
 USAGE:
     ./scripts/fuzz_hypofuzz.sh [MODE] [OPTIONS]
@@ -99,6 +104,8 @@ OPTIONS:
     --workers N     Number of parallel workers (default: 4)
     --time N        Time limit in seconds (for --deep)
     --target FILE   Specific test file to run (check mode only)
+
+    --force         Bypass confirmation prompts (e.g., for --clean)
 
 HYPOTHESIS PROFILES:
     Each mode uses a different Hypothesis profile controlling iteration
@@ -136,6 +143,9 @@ EXAMPLES:
     # Reproduce all tests in a module
     ./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py
 
+    # Clean database without prompting
+    ./scripts/fuzz_hypofuzz.sh --clean --force
+
 NOTE:
     Hypothesis automatically stores and replays failing examples from
     .hypothesis/examples/. Simply re-running pytest will reproduce failures.
@@ -144,6 +154,9 @@ NOTE:
     For Atheris native fuzzing, use ./scripts/fuzz_atheris.sh instead.
 HELPEOF
 }
+
+# Global state modifications
+FORCE=false
 
 # Strict Argument Parser
 while [[ $# -gt 0 ]]; do
@@ -170,6 +183,7 @@ while [[ $# -gt 0 ]]; do
         --workers) WORKERS="$2"; shift 2 ;;
         --time) TIME_LIMIT="$2"; shift 2 ;;
         --target) TARGET="$2"; shift 2 ;;
+        --force|-f) FORCE=true; shift ;;
         --help|-h) show_help; exit 0 ;;
         *)
             echo "Unknown option: $1"
@@ -321,7 +335,14 @@ for py_file in tests_dir.rglob("*.py"):
 _STRATEGY_REEXPORT_FILES = {"__init__.py"}
 strategy_coverage = {}
 strategy_gaps = []
-if strategies_dir.exists():
+# ---- Pass 4: Strategy analysis ----
+# __init__.py is a pure re-export aggregator; event() calls belong in domain modules.
+_STRATEGY_REEXPORT_FILES = {"__init__.py"}
+strategy_coverage = {}
+strategy_gaps = []
+has_strategies_dir = strategies_dir.exists()
+
+if has_strategies_dir:
     for strat_file in strategies_dir.glob("*.py"):
         try:
             if strat_file.name in _STRATEGY_REEXPORT_FILES:
@@ -341,17 +362,21 @@ print(f"event() Calls:       {event_count}")
 print(f"Fuzz Modules:        {len(fuzz_modules)}")
 print()
 
-if strategy_coverage:
-    print("Strategy Coverage:")
-    for name, count in sorted(strategy_coverage.items()):
-        status = "[  OK  ]" if count > 0 else "[ FAIL ]"
-        print(f"  {status} {name:<20} {count} events")
-    print()
+if has_strategies_dir:
+    if strategy_coverage:
+        print("Strategy Coverage:")
+        for name, count in sorted(strategy_coverage.items()):
+            status = "[  OK  ]" if count > 0 else "[ FAIL ]"
+            print(f"  {status} {name:<20} {count} events")
+        print()
 
-if strategy_gaps:
-    print("[FAIL] Strategy files without event() calls (HypoFuzz guidance gap):")
-    for name in sorted(strategy_gaps):
-        print(f"  [ FAIL ] {name}")
+    if strategy_gaps:
+        print("[FAIL] Strategy files without event() calls (HypoFuzz guidance gap):")
+        for name in sorted(strategy_gaps):
+            print(f"  [ FAIL ] {name}")
+        print()
+else:
+    print("[ INFO ] No tests/strategies directory found (skipped strategy audit)")
     print()
 
 if fuzz_modules_without_events:
@@ -455,15 +480,20 @@ try:
 except Exception:
     log_content = ""
 
-# Parse metrics
-passed_match = re.search(r'(\d+) passed', log_content)
-failed_match = re.search(r'(\d+) failed', log_content)
-skipped_match = re.search(r'(\d+) skipped', log_content)
-hypo_count = log_content.count('Falsifying example')
+# Parse metrics from the definitive summary line
+# Example: "=== 1 failed, 123 passed, 2 skipped in 1.12s ==="
+summary_match = re.search(r'=+ (.*?) =+', log_content)
+summary_text = summary_match.group(1) if summary_match else ""
+
+passed_match = re.search(r'(\d+) passed', summary_text)
+failed_match = re.search(r'(\d+) failed', summary_text)
+skipped_match = re.search(r'(\d+) skipped', summary_text)
 
 tests_passed = int(passed_match.group(1)) if passed_match else 0
 tests_failed = int(failed_match.group(1)) if failed_match else 0
 tests_skipped = int(skipped_match.group(1)) if skipped_match else 0
+
+hypo_count = log_content.count('Falsifying example')
 
 # Extract individual test failures
 failures = []
@@ -809,22 +839,32 @@ run_clean() {
         echo "Log:       $(wc -l < "$fuzz_log" | tr -d ' ') lines"
     fi
     echo ""
-    log_warn "Removing .hypothesis/ will:"
-    echo "  - Delete all cached examples (regression database)"
-    echo "  - Delete any shrunk failure examples"
-    echo "  - Require tests to rediscover edge cases"
-    echo ""
+    if [[ "$FORCE" == "true" ]]; then
+        rm -rf "$hypothesis_dir"
+        log_pass "Removed .hypothesis/ directory (forced)."
+    else
+        # Prevent hanging in non-interactive CI environments
+        if [[ ! -t 0 ]]; then
+            log_err "Non-interactive environment detected. You must use --force to clean the database."
+            exit 1
+        fi
 
-    read -r -p "Remove .hypothesis/ directory? (y/N): " response
-    case "$response" in
-        [yY][eE][sS]|[yY])
-            rm -rf "$hypothesis_dir"
-            log_pass "Removed .hypothesis/ directory."
-            ;;
-        *)
-            log_info "Cancelled."
-            ;;
-    esac
+        log_warn "Removing .hypothesis/ will:"
+        echo "  - Delete all cached examples (regression database)"
+        echo "  - Delete any shrunk failure examples"
+        echo "  - Require tests to rediscover edge cases"
+        echo ""
+        read -r -p "Remove .hypothesis/ directory? (y/N): " response
+        case "$response" in
+            [yY][eE][sS]|[yY])
+                rm -rf "$hypothesis_dir"
+                log_pass "Removed .hypothesis/ directory."
+                ;;
+            *)
+                log_info "Cancelled."
+                ;;
+        esac
+    fi
     log_group_end
 }
 
