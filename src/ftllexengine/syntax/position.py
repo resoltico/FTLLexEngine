@@ -100,7 +100,7 @@ def column_offset(source: str, pos: int) -> int:
     return pos - line_start - 1
 
 
-def format_position(source: str, pos: int, zero_based: bool = True) -> str:
+def format_position(source: str, pos: int, *, zero_based: bool = True) -> str:
     """Format position as human-readable line:column string.
 
     Args:
@@ -128,7 +128,7 @@ def format_position(source: str, pos: int, zero_based: bool = True) -> str:
     return f"{line}:{col}"
 
 
-def get_line_content(source: str, line_number: int, zero_based: bool = True) -> str:
+def get_line_content(source: str, line_number: int, *, zero_based: bool = True) -> str:
     """Extract the content of a specific line.
 
     Useful for showing context around errors.

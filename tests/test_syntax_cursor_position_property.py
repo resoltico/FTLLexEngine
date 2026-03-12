@@ -269,7 +269,7 @@ class TestFormatPositionProperties:
     ) -> None:
         """ROBUSTNESS: Never crashes on any valid input."""
         source, pos = data
-        result = format_position(source, pos, zero_based)
+        result = format_position(source, pos, zero_based=zero_based)
         assert isinstance(result, str)
         assert ":" in result
         event(f"zero_based={zero_based}")

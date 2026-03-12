@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import sys
 from dataclasses import dataclass, field
+from typing import Self
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
@@ -63,7 +64,7 @@ class DepthGuard:
         """Clamp max_depth against Python recursion limit."""
         self.max_depth = depth_clamp(self.max_depth)
 
-    def __enter__(self) -> DepthGuard:
+    def __enter__(self) -> Self:
         """Enter guarded section, increment depth.
 
         Validates depth limit BEFORE incrementing to prevent state corruption

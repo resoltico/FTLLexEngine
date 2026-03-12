@@ -214,7 +214,7 @@ def parse_variable_reference(cursor: Cursor) -> ParseResult[VariableReference] |
     return ParseResult(var_ref, parse_result.cursor)
 
 
-def _is_valid_variant_key_char(ch: str, is_first: bool) -> bool:
+def _is_valid_variant_key_char(ch: str, *, is_first: bool) -> bool:
     """Check if character is valid in a variant key (identifier or number).
 
     Variant keys are either identifiers or number literals:
@@ -341,7 +341,7 @@ def _is_variant_marker(cursor: Cursor) -> bool:
             if c in ("\n", "{", "}", " ", "\t", ",", ":", ";", "=", "+", "*", "/"):
                 # Invalid char for variant key - this is literal text
                 return False
-            if not _is_valid_variant_key_char(c, is_first):
+            if not _is_valid_variant_key_char(c, is_first=is_first):
                 # Character not valid for identifier/number
                 return False
             has_content = True
@@ -766,7 +766,7 @@ def parse_pattern(
     """
     elements: list[TextElement | Placeable] = []
     # Track common indentation (set on first continuation line, or from initial_common_indent)
-    common_indent: int | None = initial_common_indent if initial_common_indent else None
+    common_indent: int | None = initial_common_indent or None
     # Accumulate text fragments to avoid O(N^2) string concatenation
     text_acc = _TextAccumulator()
 
@@ -1726,7 +1726,7 @@ def parse_placeable(
 
             select_result = parse_select_expression(
                 cursor,
-                cast(SelectorExpression, expression),  # Narrowed: is_valid_selector verified above
+                cast("SelectorExpression", expression),  # Narrowed: is_valid_selector passed above
                 expr_start_pos,
                 nested_context,
             )

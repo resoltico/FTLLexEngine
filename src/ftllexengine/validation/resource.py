@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Mapping
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
 from ftllexengine.constants import MAX_DEPTH
@@ -684,9 +686,11 @@ def _compute_longest_paths(
                 in_stack.add(node)
                 stack.append((node, 1, children))
 
-                for child in children:
-                    if child not in longest_path and child not in in_stack:
-                        stack.append((child, 0, list(graph.get(child, set()))))
+                stack.extend(
+                    (child, 0, list(graph.get(child, set())))
+                    for child in children
+                    if child not in longest_path and child not in in_stack
+                )
             else:
                 in_stack.discard(node)
                 best_depth, best_path = 0, []

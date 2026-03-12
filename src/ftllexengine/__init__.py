@@ -73,7 +73,6 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _get_version
-from typing import TYPE_CHECKING
 
 # Fiscal calendar - no Babel dependency; imported after diagnostics to avoid circular import
 from .core.fiscal import (
@@ -95,6 +94,7 @@ from .diagnostics import (
     ErrorCategory,
     FrozenErrorContext,
     FrozenFluentError,
+    ParseResult,
     ParseTypeLiteral,
 )
 from .integrity import (
@@ -112,100 +112,63 @@ from .syntax import parse as parse_ftl
 from .syntax import serialize as serialize_ftl
 from .validation import validate_resource
 
-if TYPE_CHECKING:
-    # Type hints only - not imported at runtime to avoid Babel dependency
-    from .localization import FluentLocalization as FluentLocalizationType
-    from .runtime import FluentBundle as FluentBundleType
-    from .runtime.cache_config import CacheConfig as CacheConfigType
-    from .runtime.value_types import FluentValue as FluentValueType
+# Babel-optional components: imported eagerly so all static analysis tools (mypy, IDEs,
+# ruff) resolve the names from the import statement rather than from __getattr__ dispatch.
+# On parser-only installations (no Babel) the ImportError is caught silently; __getattr__
+# then provides a clear installation hint when the caller actually accesses the name.
+try:
+    from .core.babel_compat import (
+        get_cldr_version as get_cldr_version,
+    )
+    from .introspection.iso import (
+        get_currency_decimal_digits as get_currency_decimal_digits,
+    )
+    from .localization import (
+        FluentLocalization as FluentLocalization,
+    )
+    from .runtime import (
+        FluentBundle as FluentBundle,
+    )
+    from .runtime.cache_config import (
+        CacheConfig as CacheConfig,
+    )
+    from .runtime.function_bridge import (
+        fluent_function as fluent_function,
+    )
+    from .runtime.value_types import (
+        FluentValue as FluentValue,
+    )
+except ImportError:
+    pass  # Parser-only install; __getattr__ provides the installation hint on access
 
-# Lazy-loaded attributes that require Babel for CLDR locale data
-_BABEL_REQUIRED_ATTRS = frozenset({
+
+_BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
+    "CacheConfig",
     "FluentBundle",
     "FluentLocalization",
+    "FluentValue",
+    "fluent_function",
     "get_cldr_version",
     "get_currency_decimal_digits",
 })
 
-# Lazy-loaded attributes that do NOT require Babel (pure Python utilities)
-# These are lazy-loaded to avoid runtime package initialization overhead,
-# not because of Babel dependency.
-_BABEL_INDEPENDENT_ATTRS = frozenset({
-    "CacheConfig",
-    "FluentValue",
-    "fluent_function",
-    "ParseResult",
-})
 
-def __getattr__(name: str) -> object:  # noqa: PLR0911, PLR0912 - lazy-load dispatch over fixed symbol sets
-    """Lazy import for components.
+def __getattr__(name: str) -> object:
+    """Provide a helpful ImportError for Babel-optional symbols when Babel is absent.
 
-    Handles two categories:
-    - Babel-dependent (FluentBundle, FluentLocalization): Clear error if Babel missing
-    - Babel-independent (CacheConfig, FluentValue, fluent_function): No Babel required
-
-    Uses the standard ``globals()[name] = obj`` caching pattern so the attribute is
-    stored in the module dict after the first access. Subsequent lookups hit
-    ``module.__dict__`` directly without going through ``__getattr__`` again.
+    Only called when Babel is NOT installed: the try/except block above did not bind
+    these names into the module dict. When Babel IS installed, the names are already
+    in globals() and Python resolves them without invoking this function.
     """
-    # Babel-independent utilities (no Babel dependency, lazy for package init overhead)
-    if name in _BABEL_INDEPENDENT_ATTRS:
-        match name:
-            case "CacheConfig":
-                from .runtime.cache_config import CacheConfig
-                globals()[name] = CacheConfig
-                return CacheConfig
-            case "FluentValue":
-                from .runtime.value_types import FluentValue
-                globals()[name] = FluentValue
-                return FluentValue
-            case "fluent_function":
-                from .runtime.function_bridge import fluent_function
-                globals()[name] = fluent_function
-                return fluent_function
-            case "ParseResult":
-                from .parsing import ParseResult
-                globals()[name] = ParseResult
-                return ParseResult
-            case _:
-                msg = f"__getattr__: unhandled Babel-independent attribute {name!r}"
-                raise AssertionError(msg)
-
-    # Babel-dependent components
-    if name in _BABEL_REQUIRED_ATTRS:
-        try:
-            match name:
-                case "FluentBundle":
-                    from .runtime import FluentBundle
-                    globals()[name] = FluentBundle
-                    return FluentBundle
-                case "FluentLocalization":
-                    from .localization import FluentLocalization
-                    globals()[name] = FluentLocalization
-                    return FluentLocalization
-                case "get_cldr_version":
-                    from .core.babel_compat import get_cldr_version
-                    globals()[name] = get_cldr_version
-                    return get_cldr_version
-                case "get_currency_decimal_digits":
-                    from .introspection.iso import get_currency_decimal_digits
-                    globals()[name] = get_currency_decimal_digits
-                    return get_currency_decimal_digits
-                case _:
-                    msg = f"__getattr__: unhandled Babel-required attribute {name!r}"
-                    raise AssertionError(msg)
-        except ImportError as e:
-            if "babel" in str(e).lower() or "No module named 'babel'" in str(e):
-                msg = (
-                    f"{name} requires Babel for CLDR locale data. "
-                    "Install with: pip install ftllexengine[babel]\n\n"
-                    "For parser-only usage (no Babel required), use:\n"
-                    "  from ftllexengine.syntax import parse, serialize\n"
-                    "  from ftllexengine.syntax.ast import Message, Term, Pattern, ..."
-                )
-                raise ImportError(msg) from e
-            raise
-
+    if name in _BABEL_OPTIONAL_ATTRS:
+        msg = (
+            f"{name} requires Babel for CLDR locale data. "
+            "Install with: pip install ftllexengine[babel]\n\n"
+            "For parser-only usage (no Babel required), use:\n"
+            "  from ftllexengine.syntax import parse, serialize\n"
+            "  from ftllexengine.syntax.ast import Message, Term, Pattern, ..."
+        )
+        raise ImportError(msg)
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
@@ -295,12 +258,9 @@ __spec_url__ = "https://github.com/projectfluent/fluent/blob/master/spec/fluent.
 # Encoding requirements per Fluent spec recommendations.md
 __recommended_encoding__ = "UTF-8"  # Per spec: "The recommended encoding for Fluent files is UTF-8"
 
-# pylint: disable=undefined-all-variable
-# Reason: FluentBundle, FluentLocalization, FluentValue, fluent_function are lazy-loaded
-# via __getattr__ to defer Babel dependency. Pylint cannot see these at static analysis time.
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
-    # Bundle and Localization (lazy-loaded, require Babel)
+    # Bundle and Localization (Babel-optional; absent in parser-only installs)
     "CacheConfig",
     "FluentBundle",
     "FluentLocalization",

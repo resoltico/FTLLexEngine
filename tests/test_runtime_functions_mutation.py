@@ -30,7 +30,7 @@ class TestNumberFormatBoundaries:
 
         Zero Decimal should format as zero.
         """
-        result = number_format(Decimal("0"), "en-US")
+        result = number_format(Decimal(0), "en-US")
         assert "0" in str(result)
 
     def test_number_format_negative_number(self):
@@ -225,7 +225,7 @@ class TestNumberFormatPrecisionCombinations:
         Zeros beyond minimum should be stripped.
         """
         result = number_format(
-            Decimal("5"), "en-US", minimum_fraction_digits=0,
+            Decimal(5), "en-US", minimum_fraction_digits=0,
             maximum_fraction_digits=3,
         )
         # Should be "5" not "5.000"
@@ -317,7 +317,7 @@ class TestDatetimeFormatStyleBoundaries:
         dt = datetime(2025, 10, 27, tzinfo=UTC)
 
         for style_str in ["short", "medium", "long", "full"]:
-            style = cast(Literal["short", "medium", "long", "full"], style_str)
+            style = cast("Literal['short', 'medium', 'long', 'full']", style_str)
             result = datetime_format(dt, "en-US", date_style=style)
             assert isinstance(result, str)
             assert len(result) > 0
@@ -332,7 +332,7 @@ class TestDatetimeFormatStyleBoundaries:
         dt = datetime(2025, 10, 27, 14, 30, 0, tzinfo=UTC)
 
         for style_str in ["short", "medium", "long", "full"]:
-            style = cast(Literal["short", "medium", "long", "full"], style_str)
+            style = cast("Literal['short', 'medium', 'long', 'full']", style_str)
             result = datetime_format(dt, "en-US", date_style="short", time_style=style)
             assert isinstance(result, str)
             assert len(result) > 0

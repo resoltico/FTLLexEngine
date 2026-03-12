@@ -14,7 +14,6 @@
 #   - [EXIT-CODE] N
 #
 # CONFIGURATION OVERRIDES (Local-First Priority):
-#   - Pylint : Detects $dir/.pylintrc or $dir/pylintrc; falls back to root pyproject.toml.
 #   - Ruff   : Context-aware; uses native discovery (allows nested ruff.toml/pyproject.toml).
 #   - MyPy   : Detects $dir/mypy.ini or $dir/.mypy.ini; falls back to root pyproject.toml.
 # ==============================================================================
@@ -118,7 +117,7 @@ pre_flight_diagnostics() {
     
     # Tool Availability Check
     local tool_status=0
-    for tool in ruff mypy pylint; do
+    for tool in ruff mypy; do
         if ! command -v "$tool" >/dev/null 2>&1; then
              # Warn but don't fail immediately, maybe project doesn't use all tools
              echo "[ WARN ] Tool Missing         : $tool"
@@ -128,9 +127,8 @@ pre_flight_diagnostics() {
     done
     
     echo -e "\n[ INFO ] Config Discovery Protocol:"
-    echo "         - Pylint: .pylintrc > pylintrc > root pyproject.toml"
-    echo "         - MyPy  : mypy.ini > .mypy.ini > root pyproject.toml"
-    echo "         - Ruff  : Hierarchical (native ruff.toml discovery)"
+    echo "         - Ruff : Hierarchical (native ruff.toml/pyproject.toml discovery)"
+    echo "         - MyPy : mypy.ini > .mypy.ini > root pyproject.toml"
     log_group_end
 }
 pre_flight_diagnostics
@@ -273,30 +271,6 @@ run_mypy() {
     log_group_end
 }
 
-run_pylint() {
-    log_group_start "Lint: Pylint"
-    
-    # Iterate targets individually
-    for target in "${TARGETS[@]}"; do
-        log_info "Analyzing $target..."
-        
-        # Configuration resolution: local .pylintrc or pylintrc has priority over root pyproject.toml
-        local config="$PYPROJECT_CONFIG"
-        local config_source="root"
-        if [[ -f "$target/.pylintrc" ]]; then
-            config="$target/.pylintrc"
-            config_source="local (.pylintrc)"
-        elif [[ -f "$target/pylintrc" ]]; then
-            config="$target/pylintrc"
-            config_source="local (pylintrc)"
-        fi
-        log_info "  + Using ${config_source}: ${config}"
-
-        local cmd=(pylint --rcfile "$config" --py-version "$PY_VERSION" --output-format=text --msg-template='{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}')
-        execute_tool "pylint" "$target" "${cmd[@]}" "$target"
-    done
-    log_group_end
-}
 
 # [SECTION: PLUGINS]
 run_plugins() {
@@ -390,7 +364,6 @@ run_noqa_audit() {
 # Execution
 run_ruff || true
 run_mypy || true
-run_pylint || true
 run_noqa_audit || true
 run_plugins || true
 

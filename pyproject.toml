@@ -36,7 +36,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.148.0"
+version = "0.149.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -102,7 +102,6 @@ dev = [
     "pytest-cov>=7.0.0",
     "hypothesis>=6.151.9",
     "mypy>=1.19.1",
-    "pylint>=4.0.5",
     "ruff>=0.15.5",
     "pytest-benchmark>=5.2.3",
     "pytest-xdist>=3.8.0",
@@ -249,36 +248,48 @@ line-length = 100
 target-version = "py313"  # Match minimum requires-python version
 
 [tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "N",   # pep8-naming
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "DTZ", # flake8-datetimez
-    "T10", # flake8-debugger
-    "EM",  # flake8-errmsg
-    "ISC", # flake8-implicit-str-concat
-    "ICN", # flake8-import-conventions
-    "PIE", # flake8-pie
-    "PT",  # flake8-pytest-style
-    "Q",   # flake8-quotes
-    "RSE", # flake8-raise
-    "RET", # flake8-return
-    "SIM", # flake8-simplify
-    "TID", # flake8-tidy-imports
-    "ARG", # flake8-unused-arguments
-    "PTH", # flake8-use-pathlib
-    "ERA", # eradicate
-    "PL",  # pylint
-    "RUF", # Ruff-specific rules
-]
+# select = ["ALL"] is the strictest posture: new Ruff rules automatically apply.
+# Explicit ignore list below covers rules that are genuinely inapplicable to this project.
+select = ["ALL"]
 ignore = [
-    "PLR0913",  # Too many arguments - acceptable for configuration objects
-    "PLR2004",  # Magic values - acceptable for protocol constants
+    # --- Docstring style (D / pydocstyle) ---
+    # Project uses Google-style docstrings. pydocstyle enforces numpy/sphinx
+    # conventions that conflict; the entire D family is a false-positive
+    # category for this codebase.
+    "D",
+
+    # --- Formatter territory ---
+    # Trailing commas (COM812) and single-line string concatenation (ISC001) are
+    # formatter decisions. Not running ruff format; conflicting with manual style.
+    "COM812",
+    "ISC001",
+
+    # --- Annotation style (entire ANN family) ---
+    # All argument and return annotations are enforced by mypy strict — redundant in Ruff.
+    # ANN401 (Any type) is legitimate in babel_compat.py where Babel's API is untyped.
+    # Ignoring the prefix ignores all ANN rules regardless of Ruff version.
+    "ANN",
+
+    # --- Exception style (conflicts with existing waivers) ---
+    # TRY003: Long exception messages. Conflicts with EM102 (already enabled).
+    # TRY300: Return in try block; project uses early-return pattern intentionally.
+    "TRY003",
+    "TRY300",
+
+    # --- Unused / inapplicable rule families ---
+    "CPY",   # copyright notices — not applicable
+    "INT",   # gettext i18n — not applicable
+    "PD",    # pandas — not applicable
+    "NPY",   # numpy — not applicable
+    "DJ",    # django — not applicable
+    "AIR",   # apache airflow — not applicable
+    "ASYNC", # trio/anyio async — not applicable (previously "TRIO", remapped to ASYNC1xx)
+    "TD",    # TODO comments — tracked in GitHub issues, not inline
+    "FIX",   # FIXME/TODO/HACK markers — same as TD
+
+    # --- Already explicitly handled ---
+    "PLR0913",  # Too many arguments — acceptable for configuration objects
+    "PLR2004",  # Magic values — acceptable for Fluent/FTL protocol constants
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -289,17 +300,37 @@ ignore = [
 
 # Visitor pattern: N802 (visit_NodeName methods follow stdlib ast.NodeVisitor convention)
 # RUF022: __all__ organized by category (public/internal) for clarity
-"src/ftllexengine/introspection/message.py" = ["N802", "RUF022"]
+# C901: _visit_expression dispatches over closed Expression union (one branch per AST variant)
+"src/ftllexengine/introspection/message.py" = ["N802", "RUF022", "C901"]
+
+# Analysis: C901 for detect_cycles — iterative DFS with phase-tracking; algorithmic, not accidental
+"src/ftllexengine/analysis/graph.py" = ["C901"]
 
 # Parser: Inherent complexity from EBNF grammar
-"src/ftllexengine/syntax/parser/core.py" = ["PLR0912"]
-"src/ftllexengine/syntax/parser/rules.py" = ["PLR0911", "PLR0912", "PLR0915"]
+# C901: Each function implements one EBNF grammar rule; branching is structural, not accidental
+"src/ftllexengine/syntax/parser/core.py" = ["PLR0912", "C901"]
+"src/ftllexengine/syntax/parser/rules.py" = ["PLR0911", "PLR0912", "PLR0915", "C901"]
+"src/ftllexengine/syntax/parser/primitives.py" = ["C901"]
 
 # Visitor: Commented example code + inherent complexity from AST node dispatch
-"src/ftllexengine/syntax/visitor.py" = ["ERA001", "PLR0911", "PLR0912"]
+# C901: generic_visit dispatches over all ASTNode types; branching from closed node set
+"src/ftllexengine/syntax/visitor.py" = ["ERA001", "PLR0911", "PLR0912", "C901"]
+
+# Serializer: Classification-dispatch model over closed grammar types
+# C901: _validate_expression, _serialize_pattern, _serialize_expression — exhaustive over closed unions
+"src/ftllexengine/syntax/serializer.py" = ["C901"]
 
 # Bundle: Inherent complexity in resource validation
-"src/ftllexengine/runtime/bundle.py" = ["PLR0912", "E501"]
+# C901: _format_pattern_impl coordinates multi-phase resolution with error handling
+"src/ftllexengine/runtime/bundle.py" = ["PLR0912", "E501", "C901"]
+
+# Cache: Type dispatch over heterogeneous FluentValue union (_make_hashable, _go)
+# C901: Each branch handles a distinct Python type; closed dispatch is structural, not accidental
+"src/ftllexengine/runtime/cache.py" = ["PLR0911", "PLR0912", "C901"]
+
+# Resolver: Closed Expression union dispatch; one return path per variant
+# C901: _resolve_pattern, _get_fallback_for_placeable — grammar dispatch
+"src/ftllexengine/runtime/resolver.py" = ["PLR0911", "C901"]
 
 # Function metadata: Lazy import for performance
 "src/ftllexengine/runtime/function_metadata.py" = ["PLC0415"]
@@ -311,12 +342,61 @@ ignore = [
 "src/ftllexengine/parsing/currency.py" = ["PLR0911", "PLR0912"]
 
 # Validation: Inherent complexity in cross-type cycle detection algorithm
-"src/ftllexengine/validation/resource.py" = ["PLR0912"]
+# C901: _check_undefined_references and _compute_longest_paths — graph algorithms; structural complexity
+"src/ftllexengine/validation/resource.py" = ["PLR0912", "C901"]
 
-# EXAMPLES - Educational code, not production quality
-"examples/**/*.py" = ["N802", "E501", "ERA001", "PLC0415"]
+# EXAMPLES - Educational/demonstrative code; intentional patterns documented below
+# T201: print() is the output mechanism for all examples (they are scripts, not libraries)
+# S101: assert used for inline validation in demo scripts, not production guards
+# INP001: examples/ is not a package; standalone scripts need no __init__.py
+# FBT001/FBT002/FBT003: example helpers may use simple bool flags for demo clarity
+# PYI034/PYI021/PYI048: example stub files use docstrings for educational context
+# TC001/TC003: examples do not need TYPE_CHECKING import optimization
+# BLE001/C901: example custom-function demos legitimately catch broad exceptions
+"examples/**/*.py" = ["N802", "E501", "ERA001", "PLC0415", "T201", "S101", "INP001", "FBT001", "FBT002", "FBT003", "PYI034", "TC001", "TC003", "BLE001", "C901"]
+"examples/**/*.pyi" = ["PYI021", "PYI048", "PYI034"]
 
-# TESTS - Minimal architectural pattern suppressions
+# FUZZ ATHERIS - Fuzzer harnesses and replay scripts; tool code, not library code
+# T201/S101: fuzzers print findings and assert invariants
+# EXE001: shebang present; file executability managed by git, not ruff
+# FBT001/FBT002: harness functions use bool flags for control flow
+# BLE001: fuzz replay scripts catch all exceptions to report crashes
+# INP001: fuzz_atheris/ is not a package
+# SLF001: fuzzers access private members for invariant checking (white-box fuzzing)
+# TRY301: raise-in-try pattern used extensively in invariant guards; abstracting to helpers adds no value
+# TC001/TC003: fuzz harnesses do not need TYPE_CHECKING optimization
+# S110: try-except-pass is used intentionally to skip non-fatal errors in crash-tolerant fuzzers
+# S311: random used for test data generation, not cryptography
+# PERF401: fuzzer loops are not performance-critical relative to the fuzzing overhead
+"fuzz_atheris/**/*.py" = ["ERA001", "T201", "S101", "S110", "S311", "EXE001", "FBT001", "FBT002", "FBT003", "BLE001", "INP001", "C901", "PLC0415", "SLF001", "TRY301", "TC001", "TC003", "PERF401"]
+
+# SCRIPTS - Developer tooling; same rationale as fuzz_atheris
+# T201: scripts output to terminal by design
+# EXE001: shebang files; executability managed externally
+# FBT001/FBT002: script helpers use bool flags
+# S603: subprocess calls in repro/replay scripts are developer-controlled (not user input)
+# TC003: scripts do not need TYPE_CHECKING optimization
+# INP001: scripts/ is not a package
+"scripts/**/*.py" = ["T201", "EXE001", "FBT001", "FBT002", "FBT003", "INP001", "C901", "BLE001", "S101", "S603", "TC001", "TC003", "PERF401"]
+
+# TESTS - Blanket waivers for all test files
+# S101: assert is the standard pytest assertion mechanism; bandit S101 targets production code
+# S108: /tmp paths in tests are intentional for temp fixture directories (not production)
+# S110: try-except-pass in tests catches expected failure paths without logging
+# S310/S311/S603: security rules targeting production code; not applicable in controlled tests
+# BLE001: broad-except used intentionally to test error isolation and exception handling
+# TRY301: raise-in-try is a natural pattern for test invariant guards
+# FBT001/FBT002/FBT003: test helpers and Hypothesis strategies may use bool flags
+# SLF001: integration and white-box tests verify internal state via private members
+# TC001/TC002/TC003: tests do not need TYPE_CHECKING import optimization
+# PGH003: bare type: ignore in tests where specific codes vary across Python/mypy versions
+# T201: conftest.py and some test helpers print to stdout for diagnostics
+# C901: shadow_bundle.py mirrors production dispatch; structural complexity
+# E501: test docstrings, FTL strings, and assertion messages may exceed 100 chars for clarity
+# PERF401/PERF402: test loops are not performance-critical paths
+"tests/**/*.py" = ["S101", "S108", "S110", "S310", "S311", "S603", "BLE001", "TRY301", "FBT001", "FBT002", "FBT003", "SLF001", "TC001", "TC002", "TC003", "PGH003", "T201", "C901", "E501", "PERF401", "PERF402"]
+
+# Per-file waivers for specific test architectural patterns
 "tests/test_syntax_visitor.py" = ["N802"]
 "tests/test_syntax_visitor_transformer.py" = ["N802", "ARG002"]
 "tests/test_syntax_visitor_property.py" = ["N802", "ARG002"]
@@ -358,7 +438,6 @@ ignore = [
 "tests/fuzz/test_parsing_currency_property.py" = ["PLC0415"]
 "tests/fuzz/test_runtime_bundle_concurrent.py" = ["PLC0415"]
 "tests/fuzz/test_syntax_validator_property.py" = ["PLC0415"]
-"fuzz_atheris/fuzz_currency.py" = ["PLC0415"]
 "tests/test_parsing_babel_compat.py" = ["PLC0415"]
 "tests/test_integration_coverage.py" = ["N802", "PLC0415"]
 "tests/test_syntax_validator.py" = ["PLC0415"]
@@ -368,47 +447,3 @@ ignore = [
 "tests/fuzz/test_syntax_parser_whitespace.py" = ["E402"]
 "tests/fuzz/test_parsing_numbers_property.py" = ["PLC0415"]
 
-# FUZZING - Atheris fuzzers with invariant comments that look like code
-"fuzz_atheris/**/*.py" = ["ERA001"]
-
-# Pylint configuration
-[tool.pylint.main]
-py-version = "3.13"
-ignore-paths = ["^tests/.*$"]
-extension-pkg-allow-list = ["babel"]
-
-[tool.pylint.messages_control]
-disable = [
-    "too-few-public-methods",     # Data classes are intentionally minimal
-    "too-many-arguments",         # Configuration objects need many parameters
-    "too-many-instance-attributes",  # AST nodes have many attributes
-    "too-many-locals",            # Parser/resolver methods need many local variables
-    "too-many-branches",          # Parser/resolver complexity inherent to EBNF grammar
-    "too-many-statements",        # Parser methods implement complex state machines
-    "too-many-lines",             # Parser is monolithic by design (single-module EBNF implementation)
-    "too-many-positional-arguments",  # Cache keys need many position-only args
-    "protected-access",           # Test utilities and internal helpers need protected access
-    "fixme",                      # TODOs are tracked separately
-    "too-many-public-methods",    # Visitor pattern needs one method per node type
-    "duplicate-code",             # Similar __all__ lists across modules is intentional
-    "too-many-return-statements", # Parser/resolver patterns need multiple returns
-    "import-outside-toplevel",    # Runtime imports avoid circular dependencies
-    "cyclic-import",              # Parser modules are mutually recursive by design (grammar)
-    "unreachable",                # Pylint doesn't recognize Never return type from Result monad
-    "assignment-from-no-return",  # Pylint doesn't recognize Never return type from Result monad
-    "invalid-name",               # Visitor pattern visit_NodeName methods
-    "unused-variable",            # start_pos variables from parser span tracking
-    "unused-argument",            # start_pos parameters from parser span tracking
-    "line-too-long",              # Delegated to ruff (ruff E501)
-    "import-error",               # Extension packages (Babel) handled via extension-pkg-allow-list
-]
-
-[tool.pylint.format]
-max-line-length = 100
-
-[tool.pylint.design]
-max-args = 7
-max-attributes = 10
-max-locals = 20
-max-branches = 20
-max-nested-blocks = 6

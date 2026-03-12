@@ -72,7 +72,7 @@ from ftllexengine.core.fiscal import (
     fiscal_year_end,
     fiscal_year_start,
 )
-from ftllexengine.diagnostics import FrozenFluentError
+from ftllexengine.diagnostics import ParseResult
 
 from .currency import clear_currency_caches, parse_currency
 from .dates import clear_date_caches, parse_date, parse_datetime
@@ -83,20 +83,6 @@ from .guards import (
     is_valid_decimal,
 )
 from .numbers import parse_decimal
-
-# Type alias for parsing function return values (defined after imports to satisfy linting)
-type ParseResult[T] = tuple[T | None, tuple[FrozenFluentError, ...]]
-"""Generic type alias for parsing function return values.
-
-All parse_* functions return this pattern:
-- First element: Parsed value (None on failure)
-- Second element: Tuple of errors (empty on success)
-
-Example:
-    >>> result, errors = parse_decimal("1,234.56", "en_US")
-    >>> if not errors:
-    ...     print(f"Parsed: {result}")
-"""
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [

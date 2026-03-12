@@ -154,7 +154,7 @@ def parse_date(
     for pattern, has_era in patterns:
         try:
             # Preprocess for era tokens before strptime (with localized era names)
-            parse_value = _preprocess_datetime_input(value, has_era, locale_code)
+            parse_value = _preprocess_datetime_input(value, locale_code, has_era=has_era)
             return (datetime.strptime(parse_value, pattern).date(), tuple(errors))
         except ValueError:
             continue
@@ -270,7 +270,7 @@ def parse_datetime(
     for pattern, has_era in patterns:
         try:
             # Preprocess for era tokens before strptime (with localized era names)
-            parse_value = _preprocess_datetime_input(value, has_era, locale_code)
+            parse_value = _preprocess_datetime_input(value, locale_code, has_era=has_era)
             parsed = datetime.strptime(parse_value, pattern)
             if tzinfo is not None and parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=tzinfo)
@@ -681,7 +681,7 @@ _ERA_STRINGS: tuple[str, ...] = (
 # - Localized GMT format: ZZZZ (produces "GMT-08:00" which strptime cannot parse)
 
 
-def _is_word_boundary(text: str, idx: int, is_start: bool) -> bool:
+def _is_word_boundary(text: str, idx: int, *, is_start: bool) -> bool:
     """Check if position is at a word boundary.
 
     A word boundary occurs when the adjacent character is non-alphanumeric
@@ -801,7 +801,7 @@ def _strip_era(value: str, locale_code: str | None = None) -> str:
 
 
 def _preprocess_datetime_input(
-    value: str, has_era: bool, locale_code: str | None = None
+    value: str, locale_code: str | None = None, *, has_era: bool
 ) -> str:
     """Preprocess datetime input by stripping unsupported tokens.
 

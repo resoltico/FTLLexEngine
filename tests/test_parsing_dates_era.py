@@ -11,7 +11,6 @@ Python 3.13+.
 from __future__ import annotations
 
 import builtins
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from hypothesis import event, given, settings
@@ -26,10 +25,6 @@ from ftllexengine.parsing.dates import (
     parse_date,
     parse_datetime,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ============================================================================
 # _strip_era: Word-Boundary Logic

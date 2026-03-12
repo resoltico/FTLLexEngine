@@ -308,7 +308,7 @@ class TestFastTierCurrencyPattern:
         assert result is not None
         amount, code = result
         assert code == "USD"
-        assert amount == Decimal("100")
+        assert amount == Decimal(100)
 
     def test_eur_parses(self) -> None:
         """EUR amount with ISO code parses correctly."""

@@ -7,14 +7,14 @@ Python 3.13+. Zero external dependencies.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, assert_never
 
-from .codes import Diagnostic
-
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from .codes import Diagnostic
     from .validation import ValidationResult
 
 __all__ = [

@@ -149,7 +149,7 @@ def extract_pyi_declared(path: Path) -> set[str]:
                 for alias in aliases:
                     # `from X import Y as Y` → the asname is the public name;
                     # `from X import Y` without as → name is the public name.
-                    name = alias.asname if alias.asname else alias.name
+                    name = alias.asname or alias.name
                     declared.add(name)
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
                 declared.add(name)

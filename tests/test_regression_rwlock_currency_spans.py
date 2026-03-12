@@ -172,13 +172,13 @@ class TestPluralRoundingMode:
         """ROUND_HALF_UP: 0.5 always rounds away from zero."""
         # 2.5 rounds to 3 (half-up)
         d = Decimal("2.5")
-        result = d.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        assert result == Decimal("3")
+        result = d.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        assert result == Decimal(3)
 
         # 3.5 rounds to 4 (half-up)
         d = Decimal("3.5")
-        result = d.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        assert result == Decimal("4")
+        result = d.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        assert result == Decimal(4)
 
 
 # ---------------------------------------------------------------------------

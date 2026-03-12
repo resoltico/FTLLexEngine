@@ -128,7 +128,7 @@ class TestCorruptionDetectionStrictMode:
     def test_strict_mode_raises_on_corruption(self) -> None:
         """strict=True raises CacheCorruptionError on checksum mismatch."""
         cache = IntegrityCache(strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Simulate corruption by directly modifying internal state
         key = next(iter(cache._cache.keys()))
@@ -146,7 +146,7 @@ class TestCorruptionDetectionStrictMode:
         cache._cache[key] = corrupted
 
         with pytest.raises(CacheCorruptionError) as exc_info:
-            cache.get("msg", None, None, "en", True)
+            cache.get("msg", None, None, "en", use_isolating=True)
 
         assert "corruption detected" in str(exc_info.value).lower()
         assert exc_info.value.context is not None
@@ -155,7 +155,7 @@ class TestCorruptionDetectionStrictMode:
     def test_strict_mode_corruption_counter_incremented(self) -> None:
         """Corruption detection increments corruption_detected counter."""
         cache = IntegrityCache(strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Corrupt entry
         key = next(iter(cache._cache.keys()))
@@ -171,7 +171,7 @@ class TestCorruptionDetectionStrictMode:
         cache._cache[key] = corrupted
 
         with contextlib.suppress(CacheCorruptionError):
-            cache.get("msg", None, None, "en", True)
+            cache.get("msg", None, None, "en", use_isolating=True)
 
         stats = cache.get_stats()
         assert stats["corruption_detected"] == 1
@@ -183,10 +183,10 @@ class TestCorruptionDetectionNonStrictMode:
     def test_non_strict_evicts_corrupted_entry(self) -> None:
         """strict=False silently evicts corrupted entry."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Verify entry exists
-        assert cache.get("msg", None, None, "en", True) is not None
+        assert cache.get("msg", None, None, "en", use_isolating=True) is not None
 
         # Corrupt entry
         key = next(iter(cache._cache.keys()))
@@ -202,7 +202,7 @@ class TestCorruptionDetectionNonStrictMode:
         cache._cache[key] = corrupted
 
         # Get returns None (not an exception)
-        result = cache.get("msg", None, None, "en", True)
+        result = cache.get("msg", None, None, "en", use_isolating=True)
         assert result is None
 
         # Entry was evicted
@@ -213,10 +213,10 @@ class TestCorruptionDetectionNonStrictMode:
     def test_non_strict_records_miss_on_corruption(self) -> None:
         """Corrupted entry results in cache miss."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # First get is a hit
-        cache.get("msg", None, None, "en", True)
+        cache.get("msg", None, None, "en", use_isolating=True)
         stats = cache.get_stats()
         assert stats["hits"] == 1
         assert stats["misses"] == 0
@@ -235,7 +235,7 @@ class TestCorruptionDetectionNonStrictMode:
         cache._cache[key] = corrupted
 
         # Second get is a miss (corruption detected, entry evicted)
-        cache.get("msg", None, None, "en", True)
+        cache.get("msg", None, None, "en", use_isolating=True)
         stats = cache.get_stats()
         assert stats["misses"] == 1  # Corruption triggers miss
 
@@ -261,7 +261,7 @@ class TestKeyBindingConfusion:
     @staticmethod
     def _inject_key_confused_entry(cache: IntegrityCache) -> None:
         """Put msg-b, then move its entry into the msg-a slot."""
-        cache.put("msg-b", None, None, "en", True, "Hello B", ())
+        cache.put("msg-b", None, None, "en", use_isolating=True, formatted="Hello B", errors=())
         key_b: tuple = ("msg-b", (), None, "en", True)
         key_a: tuple = ("msg-a", (), None, "en", True)
         # Inject entry_b under key_a — checksum is valid but key_hash is wrong
@@ -273,7 +273,7 @@ class TestKeyBindingConfusion:
         self._inject_key_confused_entry(cache)
 
         with pytest.raises(CacheCorruptionError) as exc_info:
-            cache.get("msg-a", None, None, "en", True)
+            cache.get("msg-a", None, None, "en", use_isolating=True)
 
         assert "key confusion" in str(exc_info.value).lower()
         assert exc_info.value.context is not None
@@ -286,7 +286,7 @@ class TestKeyBindingConfusion:
         self._inject_key_confused_entry(cache)
 
         with contextlib.suppress(CacheCorruptionError):
-            cache.get("msg-a", None, None, "en", True)
+            cache.get("msg-a", None, None, "en", use_isolating=True)
 
         assert cache.get_stats()["corruption_detected"] == 1
 
@@ -295,7 +295,7 @@ class TestKeyBindingConfusion:
         cache = IntegrityCache(strict=False)
         self._inject_key_confused_entry(cache)
 
-        result = cache.get("msg-a", None, None, "en", True)
+        result = cache.get("msg-a", None, None, "en", use_isolating=True)
 
         assert result is None
         stats = cache.get_stats()
@@ -310,7 +310,7 @@ class TestKeyBindingConfusion:
         key_a: tuple = ("msg-a", (), None, "en", True)
         assert key_a in cache._cache  # Injected entry is present
 
-        cache.get("msg-a", None, None, "en", True)
+        cache.get("msg-a", None, None, "en", use_isolating=True)
 
         assert key_a not in cache._cache
 
@@ -326,19 +326,19 @@ class TestWriteOnceStrictMode:
     def test_write_once_allows_first_write(self) -> None:
         """First write to a key succeeds."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
-        entry = cache.get("msg", None, None, "en", True)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Hello"
 
     def test_write_once_strict_raises_on_second_write(self) -> None:
         """Second write to same key raises WriteConflictError in strict mode."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         with pytest.raises(WriteConflictError) as exc_info:
-            cache.put("msg", None, None, "en", True, "World", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
         assert "write-once violation" in str(exc_info.value).lower()
         assert exc_info.value.existing_seq == 1
@@ -347,22 +347,22 @@ class TestWriteOnceStrictMode:
     def test_write_once_preserves_original_value(self) -> None:
         """Write-once rejection preserves original cached value."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Original", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Original", errors=())
 
         with contextlib.suppress(WriteConflictError):
-            cache.put("msg", None, None, "en", True, "Updated", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted="Updated", errors=())
 
-        entry = cache.get("msg", None, None, "en", True)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Original"
 
     def test_write_once_conflict_counter_incremented_before_raise(self) -> None:
         """write_once_conflicts is incremented before WriteConflictError is raised."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         with contextlib.suppress(WriteConflictError):
-            cache.put("msg", None, None, "en", True, "World", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
         # Counter must be observable even after an exception was raised
         assert cache.write_once_conflicts == 1
@@ -374,24 +374,24 @@ class TestWriteOnceNonStrictMode:
     def test_write_once_non_strict_silently_skips(self) -> None:
         """Second write silently skipped in non-strict mode."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # No exception raised
-        cache.put("msg", None, None, "en", True, "World", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
         # Original value preserved
-        entry = cache.get("msg", None, None, "en", True)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Hello"
 
     def test_write_once_allows_different_keys(self) -> None:
         """Write-once allows writes to different keys."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg1", None, None, "en", True, "First", ())
-        cache.put("msg2", None, None, "en", True, "Second", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="First", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="Second", errors=())
 
-        entry1 = cache.get("msg1", None, None, "en", True)
-        entry2 = cache.get("msg2", None, None, "en", True)
+        entry1 = cache.get("msg1", None, None, "en", use_isolating=True)
+        entry2 = cache.get("msg2", None, None, "en", use_isolating=True)
         assert entry1 is not None
         assert entry1.formatted == "First"
         assert entry2 is not None
@@ -400,10 +400,10 @@ class TestWriteOnceNonStrictMode:
     def test_write_once_conflict_counter_incremented(self) -> None:
         """True write-once conflicts increment write_once_conflicts counter."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Different content for same key = true conflict
-        cache.put("msg", None, None, "en", True, "World", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
         stats = cache.get_stats()
         assert stats["write_once_conflicts"] == 1
@@ -411,18 +411,18 @@ class TestWriteOnceNonStrictMode:
     def test_write_once_conflict_counter_multiple(self) -> None:
         """write_once_conflicts accumulates across repeated true conflicts."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         for i in range(5):
-            cache.put("msg", None, None, "en", True, f"World-{i}", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted=f"World-{i}", errors=())
 
         assert cache.write_once_conflicts == 5
 
     def test_write_once_conflict_not_incremented_for_idempotent(self) -> None:
         """Idempotent writes do NOT increment write_once_conflicts."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.put("msg", None, None, "en", True, "Hello", ())  # Idempotent
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())  # Idempotent
 
         assert cache.write_once_conflicts == 0
         assert cache.idempotent_writes == 1
@@ -430,8 +430,8 @@ class TestWriteOnceNonStrictMode:
     def test_write_once_conflict_counter_preserved_on_clear(self) -> None:
         """clear() preserves cumulative write_once_conflicts counter."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.put("msg", None, None, "en", True, "World", ())  # Conflict
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())  # Conflict
 
         assert cache.write_once_conflicts == 1
         cache.clear()
@@ -444,10 +444,10 @@ class TestWriteOnceDisabled:
     def test_default_allows_overwrites(self) -> None:
         """Default cache allows overwriting entries."""
         cache = IntegrityCache(write_once=False, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.put("msg", None, None, "en", True, "World", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
-        entry = cache.get("msg", None, None, "en", True)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "World"
 
@@ -463,8 +463,8 @@ class TestAuditLogging:
     def test_audit_disabled_by_default(self) -> None:
         """Audit logging is disabled by default."""
         cache = IntegrityCache()
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.get("msg", None, None, "en", True)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.get("msg", None, None, "en", use_isolating=True)
 
         stats = cache.get_stats()
         assert stats["audit_enabled"] is False
@@ -473,9 +473,9 @@ class TestAuditLogging:
     def test_audit_enabled_records_operations(self) -> None:
         """Audit logging records operations when enabled."""
         cache = IntegrityCache(enable_audit=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.get("msg", None, None, "en", True)
-        cache.get("msg2", None, None, "en", True)  # Miss
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.get("msg", None, None, "en", use_isolating=True)
+        cache.get("msg2", None, None, "en", use_isolating=True)  # Miss
 
         stats = cache.get_stats()
         assert stats["audit_enabled"] is True
@@ -484,7 +484,7 @@ class TestAuditLogging:
     def test_audit_log_entry_structure(self) -> None:
         """Audit log entries have correct structure."""
         cache = IntegrityCache(enable_audit=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Access internal audit log for verification
         audit_log = cache._audit_log
@@ -504,15 +504,15 @@ class TestAuditLogging:
         cache = IntegrityCache(maxsize=2, enable_audit=True, strict=False)
 
         # PUT 3 entries to trigger eviction
-        cache.put("msg1", None, None, "en", True, "One", ())
-        cache.put("msg2", None, None, "en", True, "Two", ())
-        cache.put("msg3", None, None, "en", True, "Three", ())  # Evicts msg1
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="One", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="Two", errors=())
+        cache.put("msg3", None, None, "en", use_isolating=True, formatted="Three", errors=())  # Evicts msg1
 
         # HIT
-        cache.get("msg2", None, None, "en", True)
+        cache.get("msg2", None, None, "en", use_isolating=True)
 
         # MISS
-        cache.get("nonexistent", None, None, "en", True)
+        cache.get("nonexistent", None, None, "en", use_isolating=True)
 
         audit_log = cache._audit_log
         assert audit_log is not None
@@ -530,7 +530,7 @@ class TestAuditLogging:
 
         # Generate more operations than max_audit_entries
         for i in range(10):
-            cache.put(f"msg{i}", None, None, "en", True, f"Value {i}", ())
+            cache.put(f"msg{i}", None, None, "en", use_isolating=True, formatted=f"Value {i}", errors=())
 
         audit_log = cache._audit_log
         assert audit_log is not None
@@ -539,7 +539,7 @@ class TestAuditLogging:
     def test_audit_log_not_cleared_on_cache_clear(self) -> None:
         """Audit log preserved when cache is cleared (historical record)."""
         cache = IntegrityCache(enable_audit=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         audit_log_before = len(cache._audit_log or [])
         cache.clear()
@@ -550,8 +550,8 @@ class TestAuditLogging:
     def test_audit_records_write_once_rejection(self) -> None:
         """Audit log records WRITE_ONCE_CONFLICT for different content writes."""
         cache = IntegrityCache(write_once=True, enable_audit=True, strict=False)
-        cache.put("msg", None, None, "en", True, "First", ())
-        cache.put("msg", None, None, "en", True, "Second", ())  # Conflict (different content)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="First", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Second", errors=())  # Conflict (different content)
 
         audit_log = cache._audit_log
         assert audit_log is not None
@@ -567,7 +567,7 @@ class TestAuditLoggingCorruption:
     def test_audit_records_corruption(self) -> None:
         """Audit log records CORRUPTION operations."""
         cache = IntegrityCache(enable_audit=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Corrupt entry
         key = next(iter(cache._cache.keys()))
@@ -583,7 +583,7 @@ class TestAuditLoggingCorruption:
         cache._cache[key] = corrupted
 
         # Trigger corruption detection
-        cache.get("msg", None, None, "en", True)
+        cache.get("msg", None, None, "en", use_isolating=True)
 
         audit_log = cache._audit_log
         assert audit_log is not None
@@ -604,13 +604,13 @@ class TestSequenceNumbers:
     def test_sequence_increments_on_put(self) -> None:
         """Sequence number increments with each put."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg1", None, None, "en", True, "One", ())
-        cache.put("msg2", None, None, "en", True, "Two", ())
-        cache.put("msg3", None, None, "en", True, "Three", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="One", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="Two", errors=())
+        cache.put("msg3", None, None, "en", use_isolating=True, formatted="Three", errors=())
 
-        entry1 = cache.get("msg1", None, None, "en", True)
-        entry2 = cache.get("msg2", None, None, "en", True)
-        entry3 = cache.get("msg3", None, None, "en", True)
+        entry1 = cache.get("msg1", None, None, "en", use_isolating=True)
+        entry2 = cache.get("msg2", None, None, "en", use_isolating=True)
+        entry3 = cache.get("msg3", None, None, "en", use_isolating=True)
 
         assert entry1 is not None
         assert entry1.sequence == 1
@@ -622,17 +622,17 @@ class TestSequenceNumbers:
     def test_sequence_not_reset_on_clear(self) -> None:
         """Sequence number continues after cache clear (audit trail integrity)."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg1", None, None, "en", True, "One", ())
-        cache.put("msg2", None, None, "en", True, "Two", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="One", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="Two", errors=())
 
         stats_before = cache.get_stats()
         assert stats_before["sequence"] == 2
 
         cache.clear()
 
-        cache.put("msg3", None, None, "en", True, "Three", ())
+        cache.put("msg3", None, None, "en", use_isolating=True, formatted="Three", errors=())
 
-        entry = cache.get("msg3", None, None, "en", True)
+        entry = cache.get("msg3", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.sequence == 3
 
@@ -650,7 +650,7 @@ class TestConcurrentIntegrity:
         cache = IntegrityCache(maxsize=100, strict=False)
 
         def put_entry(i: int) -> None:
-            cache.put(f"msg{i}", None, None, "en", True, f"Value {i}", ())
+            cache.put(f"msg{i}", None, None, "en", use_isolating=True, formatted=f"Value {i}", errors=())
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(put_entry, i) for i in range(100)]
@@ -659,7 +659,7 @@ class TestConcurrentIntegrity:
 
         # All entries should have valid checksums
         for i in range(100):
-            entry = cache.get(f"msg{i}", None, None, "en", True)
+            entry = cache.get(f"msg{i}", None, None, "en", use_isolating=True)
             if entry is not None:
                 assert entry.verify(), f"Entry msg{i} failed checksum verification"
 
@@ -672,7 +672,7 @@ class TestConcurrentIntegrity:
         def try_put() -> None:
             nonlocal success_count
             try:
-                cache.put("msg", None, None, "en", True, "Value", ())
+                cache.put("msg", None, None, "en", use_isolating=True, formatted="Value", errors=())
                 with lock:
                     success_count += 1
             except WriteConflictError:
@@ -739,7 +739,7 @@ class TestIntegrityStats:
         cache = IntegrityCache(strict=False)
 
         for i in range(3):
-            cache.put(f"msg{i}", None, None, "en", True, f"Value {i}", ())
+            cache.put(f"msg{i}", None, None, "en", use_isolating=True, formatted=f"Value {i}", errors=())
 
         # Corrupt all entries
         for key in list(cache._cache.keys()):
@@ -756,7 +756,7 @@ class TestIntegrityStats:
 
         # Trigger corruption detection for each
         for i in range(3):
-            cache.get(f"msg{i}", None, None, "en", True)
+            cache.get(f"msg{i}", None, None, "en", use_isolating=True)
 
         stats = cache.get_stats()
         assert stats["corruption_detected"] == 3
@@ -841,13 +841,13 @@ class TestIdempotentWrites:
         all compute identical results. Second thread should succeed silently.
         """
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Second put with IDENTICAL content should succeed (idempotent)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Verify entry unchanged
-        entry = cache.get("msg", None, None, "en", True)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Hello"
         assert entry.sequence == 1  # Original sequence preserved
@@ -855,19 +855,19 @@ class TestIdempotentWrites:
     def test_different_content_raises_conflict(self) -> None:
         """Different content raises WriteConflictError in strict mode."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         with pytest.raises(WriteConflictError):
-            cache.put("msg", None, None, "en", True, "World", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
     def test_idempotent_write_counter_incremented(self) -> None:
         """Idempotent writes increment the idempotent_writes counter."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Perform idempotent writes
         for _ in range(5):
-            cache.put("msg", None, None, "en", True, "Hello", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         stats = cache.get_stats()
         assert stats["idempotent_writes"] == 5
@@ -875,11 +875,11 @@ class TestIdempotentWrites:
     def test_idempotent_writes_property(self) -> None:
         """idempotent_writes property returns correct count."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         assert cache.idempotent_writes == 0
 
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
         assert cache.idempotent_writes == 1
 
     def test_idempotent_with_errors(self) -> None:
@@ -887,40 +887,40 @@ class TestIdempotentWrites:
         error = FrozenFluentError("Test error", ErrorCategory.REFERENCE)
         cache = IntegrityCache(write_once=True, strict=True)
 
-        cache.put("msg", None, None, "en", True, "Hello", (error,))
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=(error,))
 
         # Same content WITH same error = idempotent
-        cache.put("msg", None, None, "en", True, "Hello", (error,))
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=(error,))
         assert cache.idempotent_writes == 1
 
         # Same text but WITHOUT error = conflict
         with pytest.raises(WriteConflictError):
-            cache.put("msg", None, None, "en", True, "Hello", ())
+            cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
     def test_idempotent_non_strict_mode(self) -> None:
         """Idempotent writes also work in non-strict mode."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Idempotent write
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
 
         # Different content silently ignored (non-strict)
-        cache.put("msg", None, None, "en", True, "World", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
 
         stats = cache.get_stats()
         assert stats["idempotent_writes"] == 1  # Only one idempotent
 
         # Original value preserved
-        entry = cache.get("msg", None, None, "en", True)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Hello"
 
     def test_idempotent_counter_preserved_on_clear(self) -> None:
         """Idempotent counter is cumulative across clear() calls."""
         cache = IntegrityCache(write_once=True, strict=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.put("msg", None, None, "en", True, "Hello", ())  # Idempotent
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())  # Idempotent
 
         assert cache.idempotent_writes == 1
 
@@ -932,8 +932,8 @@ class TestIdempotentWrites:
     def test_audit_records_idempotent_writes(self) -> None:
         """Audit log records WRITE_ONCE_IDEMPOTENT operations."""
         cache = IntegrityCache(write_once=True, strict=True, enable_audit=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.put("msg", None, None, "en", True, "Hello", ())  # Idempotent
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())  # Idempotent
 
         audit_log = cache._audit_log
         assert audit_log is not None
@@ -945,8 +945,8 @@ class TestIdempotentWrites:
     def test_audit_records_conflict(self) -> None:
         """Audit log records WRITE_ONCE_CONFLICT for different content."""
         cache = IntegrityCache(write_once=True, strict=False, enable_audit=True)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.put("msg", None, None, "en", True, "World", ())  # Conflict (non-strict)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())  # Conflict (non-strict)
 
         audit_log = cache._audit_log
         assert audit_log is not None
@@ -971,7 +971,7 @@ class TestIdempotentWritesConcurrency:
 
         def put_identical() -> None:
             try:
-                cache.put("msg", None, None, "en", True, "Hello", ())
+                cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
             except Exception as e:  # pylint: disable=broad-exception-caught
                 errors.append(e)
 
@@ -1001,7 +1001,7 @@ class TestIdempotentWritesConcurrency:
         def put_different(i: int) -> None:
             nonlocal conflict_count
             try:
-                cache.put("msg", None, None, "en", True, f"Value {i}", ())
+                cache.put("msg", None, None, "en", use_isolating=True, formatted=f"Value {i}", errors=())
             except WriteConflictError:
                 with lock:
                     conflict_count += 1
@@ -1078,11 +1078,11 @@ class TestDecimalNegativeZeroCollisionPrevention:
 
     def test_zero_and_negative_zero_distinct_keys(self) -> None:
         """Decimal("0") and Decimal("-0") produce distinct cache keys."""
-        key_pos = IntegrityCache._make_hashable(Decimal("0"))
+        key_pos = IntegrityCache._make_hashable(Decimal(0))
         key_neg = IntegrityCache._make_hashable(Decimal("-0"))
 
         # They're equal in Python
-        assert Decimal("0") == Decimal("-0")
+        assert Decimal(0) == Decimal("-0")
 
         # But distinct in cache keys (via str representation)
         assert key_pos != key_neg
@@ -1192,8 +1192,8 @@ class TestIntegrityCacheEntryContentHash:
             FrozenFluentError("Reference error", ErrorCategory.REFERENCE),
             FrozenFluentError("Resolution error", ErrorCategory.RESOLUTION),
         )
-        cache.put("msg", None, None, "en", True, "formatted text", errors)
-        entry = cache.get("msg", None, None, "en", True)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="formatted text", errors=errors)
+        entry = cache.get("msg", None, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "formatted text"
         assert entry.errors == errors
@@ -1211,9 +1211,9 @@ class TestIntegrityCacheAuditLogDisabled:
     def test_get_audit_log_returns_empty_when_disabled_by_default(self) -> None:
         """get_audit_log() returns empty tuple when audit disabled (default)."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg1", None, None, "en", True, "result1", ())
-        cache.get("msg1", None, None, "en", True)
-        cache.put("msg2", None, None, "en", True, "result2", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="result1", errors=())
+        cache.get("msg1", None, None, "en", use_isolating=True)
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="result2", errors=())
         audit_log = cache.get_audit_log()
         assert audit_log == ()
         assert isinstance(audit_log, tuple)
@@ -1221,8 +1221,8 @@ class TestIntegrityCacheAuditLogDisabled:
     def test_get_audit_log_returns_empty_when_disabled_explicit(self) -> None:
         """get_audit_log() returns empty tuple when enable_audit=False explicitly."""
         cache = IntegrityCache(enable_audit=False, strict=False)
-        cache.put("msg", None, None, "en", True, "result", ())
-        cache.get("msg", None, None, "en", True)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="result", errors=())
+        cache.get("msg", None, None, "en", use_isolating=True)
         assert cache.get_audit_log() == ()
 
     @given(
@@ -1236,9 +1236,9 @@ class TestIntegrityCacheAuditLogDisabled:
         """PROPERTY: get_audit_log() always returns empty tuple when disabled."""
         cache = IntegrityCache(enable_audit=False, strict=False)
         for i in range(put_count):
-            cache.put(f"msg{i}", None, None, "en", True, f"result{i}", ())
+            cache.put(f"msg{i}", None, None, "en", use_isolating=True, formatted=f"result{i}", errors=())
         for i in range(get_count):
-            cache.get(f"msg{i % put_count}", None, None, "en", True)
+            cache.get(f"msg{i % put_count}", None, None, "en", use_isolating=True)
         audit_log = cache.get_audit_log()
         assert audit_log == ()
         assert len(audit_log) == 0
@@ -1251,9 +1251,9 @@ class TestIntegrityCacheAuditLogEnabled:
     def test_get_audit_log_returns_tuple_when_enabled(self) -> None:
         """get_audit_log() returns tuple with entries when enable_audit=True."""
         cache = IntegrityCache(enable_audit=True, strict=False)
-        cache.put("msg1", None, None, "en", True, "result1", ())
-        cache.get("msg1", None, None, "en", True)
-        cache.get("msg2", None, None, "en", True)  # Miss
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="result1", errors=())
+        cache.get("msg1", None, None, "en", use_isolating=True)
+        cache.get("msg2", None, None, "en", use_isolating=True)  # Miss
         audit_log = cache.get_audit_log()
         assert isinstance(audit_log, tuple)
         assert len(audit_log) >= 3  # PUT + HIT + MISS
@@ -1264,7 +1264,7 @@ class TestIntegrityCacheAuditLogEnabled:
         """PROPERTY: get_audit_log() returns tuple of at least op_count entries."""
         cache = IntegrityCache(enable_audit=True, strict=False)
         for i in range(op_count):
-            cache.put(f"msg{i}", None, None, "en", True, f"result{i}", ())
+            cache.put(f"msg{i}", None, None, "en", use_isolating=True, formatted=f"result{i}", errors=())
         audit_log = cache.get_audit_log()
         assert isinstance(audit_log, tuple)
         assert len(audit_log) >= op_count
@@ -1284,7 +1284,7 @@ class TestIntegrityCachePropertyGetters:
         cache = IntegrityCache(strict=False)
         assert cache.corruption_detected == 0
 
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
         key = next(iter(cache._cache.keys()))
         original_entry = cache._cache[key]
         corrupted = IntegrityCacheEntry(
@@ -1296,7 +1296,7 @@ class TestIntegrityCachePropertyGetters:
             key_hash=original_entry.key_hash,
         )
         cache._cache[key] = corrupted
-        cache.get("msg", None, None, "en", True)
+        cache.get("msg", None, None, "en", use_isolating=True)
         assert cache.corruption_detected == 1
 
     def test_write_once_property(self) -> None:
@@ -1324,9 +1324,9 @@ class TestIntegrityCachePropertyGetters:
     def test_corruption_detected_accumulates_across_multiple(self) -> None:
         """corruption_detected accumulates across multiple corruption events."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg1", None, None, "en", True, "One", ())
-        cache.put("msg2", None, None, "en", True, "Two", ())
-        cache.put("msg3", None, None, "en", True, "Three", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="One", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="Two", errors=())
+        cache.put("msg3", None, None, "en", use_isolating=True, formatted="Three", errors=())
         for key in list(cache._cache.keys()):
             entry = cache._cache[key]
             cache._cache[key] = IntegrityCacheEntry(
@@ -1337,11 +1337,11 @@ class TestIntegrityCachePropertyGetters:
                 sequence=entry.sequence,
                 key_hash=entry.key_hash,
             )
-        cache.get("msg1", None, None, "en", True)
+        cache.get("msg1", None, None, "en", use_isolating=True)
         assert cache.corruption_detected == 1
-        cache.get("msg2", None, None, "en", True)
+        cache.get("msg2", None, None, "en", use_isolating=True)
         assert cache.corruption_detected == 2
-        cache.get("msg3", None, None, "en", True)
+        cache.get("msg3", None, None, "en", use_isolating=True)
         assert cache.corruption_detected == 3
 
     def test_error_bloat_skips_property(self) -> None:
@@ -1352,7 +1352,7 @@ class TestIntegrityCachePropertyGetters:
         )
         assert cache.error_bloat_skips == 0
 
-        cache.put("msg", None, None, "en", True, "Hello", errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=errors)
         assert cache.error_bloat_skips == 1
 
     def test_combined_weight_skips_property_initial_zero(self) -> None:
@@ -1368,7 +1368,7 @@ class TestIntegrityCachePropertyGetters:
         error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
         assert cache.combined_weight_skips == 0
 
-        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=(error,))
         assert cache.combined_weight_skips == 1
 
     def test_write_once_conflicts_property_initial_zero(self) -> None:
@@ -1379,10 +1379,10 @@ class TestIntegrityCachePropertyGetters:
     def test_write_once_conflicts_property_incremented(self) -> None:
         """write_once_conflicts property reflects true conflict count."""
         cache = IntegrityCache(write_once=True, strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
         assert cache.write_once_conflicts == 0
 
-        cache.put("msg", None, None, "en", True, "World", ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="World", errors=())
         assert cache.write_once_conflicts == 1
 
 
@@ -1415,7 +1415,7 @@ class TestIntegrityCacheEdgeCases:
             maxsize=10, write_once=False, strict=False, enable_audit=False
         )
         for i in range(5):
-            cache.put(f"msg{i}", None, None, "en", True, f"result{i}", ())
+            cache.put(f"msg{i}", None, None, "en", use_isolating=True, formatted=f"result{i}", errors=())
         assert cache.size == 5
         assert cache.maxsize == 10
         assert cache.hits == 0
@@ -1424,7 +1424,7 @@ class TestIntegrityCacheEdgeCases:
         assert cache.write_once is False
         assert cache.strict is False
         for i in range(5):
-            entry = cache.get(f"msg{i}", None, None, "en", True)
+            entry = cache.get(f"msg{i}", None, None, "en", use_isolating=True)
             assert entry is not None
         assert cache.hits == 5
         assert cache.get_audit_log() == ()
@@ -1728,12 +1728,12 @@ class TestCacheEntrySizeLimit:
         """Entries below max_entry_weight are stored and retrievable."""
         cache = IntegrityCache(strict=False, max_entry_weight=1000)
 
-        cache.put("msg", None, None, "en", True, "x" * 100, ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=())
 
         assert cache.size == 1
         assert cache.oversize_skips == 0
 
-        cached = cache.get("msg", None, None, "en", True)
+        cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("x" * 100, ())
 
@@ -1741,19 +1741,19 @@ class TestCacheEntrySizeLimit:
         """Entries exceeding max_entry_weight are skipped and counted."""
         cache = IntegrityCache(strict=False, max_entry_weight=100)
 
-        cache.put("msg", None, None, "en", True, "x" * 200, ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 200, errors=())
 
         assert cache.size == 0
         assert cache.oversize_skips == 1
 
-        cached = cache.get("msg", None, None, "en", True)
+        cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is None
 
     def test_boundary_entry_size(self) -> None:
         """Entry exactly at max_entry_weight is cached (inclusive boundary)."""
         cache = IntegrityCache(strict=False, max_entry_weight=100)
 
-        cache.put("msg", None, None, "en", True, "x" * 100, ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=())
 
         assert cache.size == 1
         assert cache.oversize_skips == 0
@@ -1763,7 +1763,7 @@ class TestCacheEntrySizeLimit:
         cache = IntegrityCache(strict=False, max_entry_weight=50)
 
         for i in range(5):
-            cache.put(f"msg-{i}", None, None, "en", True, "x" * 100, ())
+            cache.put(f"msg-{i}", None, None, "en", use_isolating=True, formatted="x" * 100, errors=())
 
         stats = cache.get_stats()
         assert stats["oversize_skips"] == 5
@@ -1774,7 +1774,7 @@ class TestCacheEntrySizeLimit:
         """clear() removes entries but preserves cumulative oversize_skips counter."""
         cache = IntegrityCache(strict=False, max_entry_weight=50)
 
-        cache.put("msg", None, None, "en", True, "x" * 100, ())
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=())
         assert cache.oversize_skips == 1
 
         cache.clear()
@@ -1808,7 +1808,7 @@ class TestCacheEntrySizeLimit:
         cache = IntegrityCache(strict=False, max_entry_weight=200)
         error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
 
-        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=(error,))
 
         stats = cache.get_stats()
         assert stats["combined_weight_skips"] == 1
@@ -1822,10 +1822,10 @@ class TestCacheEntrySizeLimit:
         heavy_error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
 
         # Check 1 (oversize): formatted string alone exceeds max_entry_weight
-        cache.put("over-msg", None, None, "en", True, "x" * 201, ())
+        cache.put("over-msg", None, None, "en", use_isolating=True, formatted="x" * 201, errors=())
 
         # Check 3 (combined_weight): formatted OK, but combined total exceeds limit
-        cache.put("combined-msg", None, None, "en", True, "x" * 100, (heavy_error,))
+        cache.put("combined-msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=(heavy_error,))
 
         stats = cache.get_stats()
         assert stats["oversize_skips"] == 1
@@ -1840,10 +1840,10 @@ class TestCacheEntrySizeLimit:
         many_errors = tuple(
             FrozenFluentError(f"e-{i}", ErrorCategory.REFERENCE) for i in range(3)
         )
-        cache.put("bloat-msg", None, None, "en", True, "Hello", many_errors)
+        cache.put("bloat-msg", None, None, "en", use_isolating=True, formatted="Hello", errors=many_errors)
 
         # Check 3 (combined_weight): error count OK (1 <= 2), combined weight fails
-        cache.put("combined-msg", None, None, "en", True, "x" * 100, (heavy_error,))
+        cache.put("combined-msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=(heavy_error,))
 
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 1
@@ -1854,7 +1854,7 @@ class TestCacheEntrySizeLimit:
         cache = IntegrityCache(strict=False, max_entry_weight=200)
         error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
 
-        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=(error,))
         assert cache.combined_weight_skips == 1
 
         cache.clear()
@@ -1865,7 +1865,7 @@ class TestCacheEntrySizeLimit:
         cache = IntegrityCache(strict=False, max_entry_weight=200)
         error = FrozenFluentError("x" * 150, ErrorCategory.REFERENCE)
 
-        cache.put("msg", None, None, "en", True, "x" * 100, (error,))
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=(error,))
 
         stats = cache.get_stats()
         assert "combined_weight_skips" in stats

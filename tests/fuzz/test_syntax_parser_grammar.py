@@ -51,8 +51,8 @@ def ftl_number_literal() -> st.SearchStrategy[str]:
     return st.one_of(
         st.integers(min_value=-2_000_000_000, max_value=2_000_000_000).map(str),
         st.decimals(
-            min_value=Decimal("-2000000000"),
-            max_value=Decimal("2000000000"),
+            min_value=Decimal(-2000000000),
+            max_value=Decimal(2000000000),
             allow_nan=False,
             allow_infinity=False,
         ).map(lambda d: format(d, "f")),

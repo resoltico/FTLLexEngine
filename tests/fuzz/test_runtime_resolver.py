@@ -109,7 +109,7 @@ def format_arguments(draw: st.DrawFn) -> dict[str, str | int | Decimal]:
                 st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=1, max_size=20),
                 st.integers(min_value=-1000, max_value=1000),
                 st.decimals(
-                    min_value=Decimal("-1000"), max_value=Decimal("1000"),
+                    min_value=Decimal(-1000), max_value=Decimal(1000),
                     allow_nan=False, allow_infinity=False,
                 ),
             )

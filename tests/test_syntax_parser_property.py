@@ -1047,9 +1047,9 @@ class TestNumberLiteralParsing:
         assert resource is not None
 
         # Emit events for HypoFuzz guidance
-        if decimal < Decimal("0"):
+        if decimal < Decimal(0):
             event("decimal_sign=negative")
-        elif decimal == Decimal("0"):
+        elif decimal == Decimal(0):
             event("decimal_sign=zero")
         else:
             event("decimal_sign=positive")

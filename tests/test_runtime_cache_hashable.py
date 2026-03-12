@@ -328,7 +328,7 @@ class TestMakeKey:
 
     def test_make_key_with_none_args(self) -> None:
         """_make_key with None args returns key with empty tuple for args component."""
-        key = IntegrityCache._make_key("msg-id", None, None, "en-US", True)
+        key = IntegrityCache._make_key("msg-id", None, None, "en-US", use_isolating=True)
         assert key is not None
         assert key == ("msg-id", (), None, "en-US", True)
 
@@ -408,7 +408,7 @@ class TestMakeKey:
         circular_list.append(circular_list)
         args: dict[str, object] = {"data": circular_list}
         result = IntegrityCache._make_key(
-            "msg", args, None, "en", True  # type: ignore[arg-type]
+            "msg", args, None, "en", use_isolating=True  # type: ignore[arg-type]
         )
         assert result is None
 
@@ -424,7 +424,7 @@ class TestMakeKey:
 
         args: dict[str, object] = {"data": UnhashableAfterConversion()}
         result = IntegrityCache._make_key(
-            "msg", args, None, "en", True  # type: ignore[arg-type]
+            "msg", args, None, "en", use_isolating=True  # type: ignore[arg-type]
         )
         assert result is None
 
@@ -440,8 +440,8 @@ class TestNaNDecimalNormalization:
     def test_decimal_nan_cache_key_consistency(self) -> None:
         """Decimal NaN produces consistent cache key across independent instances."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", {"val": Decimal("NaN")}, None, "en", True, "Decimal Result", ())
-        entry = cache.get("msg", {"val": Decimal("NaN")}, None, "en", True)
+        cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted="Decimal Result", errors=())
+        entry = cache.get("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Decimal Result"
 
@@ -449,7 +449,7 @@ class TestNaNDecimalNormalization:
         """Multiple puts with Decimal NaN update the same entry."""
         cache = IntegrityCache(strict=False, maxsize=100)
         for i in range(10):
-            cache.put("msg", {"val": Decimal("NaN")}, None, "en", True, f"Value {i}", ())
+            cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted=f"Value {i}", errors=())
         stats = cache.get_stats()
         assert stats["size"] == 1, (
             f"Expected 1 entry but got {stats['size']}. "
@@ -459,19 +459,19 @@ class TestNaNDecimalNormalization:
     def test_decimal_snan_normalized_same_as_qnan(self) -> None:
         """Signaling NaN and quiet NaN both normalize to the same canonical key."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", {"val": Decimal("NaN")}, None, "en", True, "QNaN", ())
+        cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted="QNaN", errors=())
         # sNaN should resolve to same cache key as qNaN
-        entry = cache.get("msg", {"val": Decimal("sNaN")}, None, "en", True)
+        entry = cache.get("msg", {"val": Decimal("sNaN")}, None, "en", use_isolating=True)
         assert entry is not None
 
     def test_decimal_nan_different_from_regular_decimal(self) -> None:
         """Decimal NaN has different cache key from regular Decimal values."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", {"val": Decimal("NaN")}, None, "en", True, "NaN Result", ())
-        cache.put("msg", {"val": Decimal("1.0")}, None, "en", True, "Regular Result", ())
+        cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted="NaN Result", errors=())
+        cache.put("msg", {"val": Decimal("1.0")}, None, "en", use_isolating=True, formatted="Regular Result", errors=())
 
-        nan_entry = cache.get("msg", {"val": Decimal("NaN")}, None, "en", True)
-        regular_entry = cache.get("msg", {"val": Decimal("1.0")}, None, "en", True)
+        nan_entry = cache.get("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True)
+        regular_entry = cache.get("msg", {"val": Decimal("1.0")}, None, "en", use_isolating=True)
 
         assert nan_entry is not None
         assert nan_entry.formatted == "NaN Result"
@@ -486,19 +486,19 @@ class TestNaNInNestedStructures:
     def test_nan_in_list_normalized(self) -> None:
         """NaN values within lists are normalized for cache key consistency."""
         cache = IntegrityCache(strict=False)
-        items = [Decimal("1"), Decimal("NaN"), Decimal("3")]
-        cache.put("msg", {"items": items}, None, "en", True, "List Result", ())
-        entry = cache.get("msg", {"items": items}, None, "en", True)
+        items = [Decimal(1), Decimal("NaN"), Decimal(3)]
+        cache.put("msg", {"items": items}, None, "en", use_isolating=True, formatted="List Result", errors=())
+        entry = cache.get("msg", {"items": items}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "List Result"
 
     def test_nan_in_dict_normalized(self) -> None:
         """NaN values within dicts are normalized for cache key consistency."""
         cache = IntegrityCache(strict=False)
-        args: dict[str, FluentValue] = {"data": {"a": Decimal("1"), "b": Decimal("NaN")}}
-        cache.put("msg", args, None, "en", True, "Dict Result", ())
-        data = {"a": Decimal("1"), "b": Decimal("NaN")}
-        entry = cache.get("msg", {"data": data}, None, "en", True)
+        args: dict[str, FluentValue] = {"data": {"a": Decimal(1), "b": Decimal("NaN")}}
+        cache.put("msg", args, None, "en", use_isolating=True, formatted="Dict Result", errors=())
+        data = {"a": Decimal(1), "b": Decimal("NaN")}
+        entry = cache.get("msg", {"data": data}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Dict Result"
 
@@ -513,7 +513,7 @@ class TestNaNInNestedStructures:
                 ]
             }
         }
-        cache.put("msg", deep_args, None, "en", True, "Deep Result", ())
+        cache.put("msg", deep_args, None, "en", use_isolating=True, formatted="Deep Result", errors=())
         fresh_args: dict[str, FluentValue] = {
             "outer": {
                 "inner": [
@@ -522,7 +522,7 @@ class TestNaNInNestedStructures:
                 ]
             }
         }
-        entry = cache.get("msg", fresh_args, None, "en", True)
+        entry = cache.get("msg", fresh_args, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Deep Result"
 
@@ -539,14 +539,14 @@ class TestNaNSecurityProperties:
         """
         cache = IntegrityCache(strict=False, maxsize=10)
         for i in range(5):
-            cache.put(f"legit{i}", None, None, "en", True, f"Legit {i}", ())
+            cache.put(f"legit{i}", None, None, "en", use_isolating=True, formatted=f"Legit {i}", errors=())
         for i in range(100):
-            cache.put("attack", {"val": Decimal("NaN")}, None, "en", True, f"Attack {i}", ())
+            cache.put("attack", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted=f"Attack {i}", errors=())
 
         # 5 legit + 1 attack = 6 entries (attack collapses to 1 due to normalization)
         assert cache.get_stats()["size"] == 6
         for i in range(5):
-            entry = cache.get(f"legit{i}", None, None, "en", True)
+            entry = cache.get(f"legit{i}", None, None, "en", use_isolating=True)
             assert entry is not None, f"Legitimate entry legit{i} was evicted!"
 
     @given(st.decimals(allow_nan=True))
@@ -561,8 +561,8 @@ class TestNaNSecurityProperties:
         """PROPERTY: For any Decimal value, put followed by get returns the entry."""
         cache = IntegrityCache(strict=False)
         args = {"val": value}
-        cache.put("msg", args, None, "en", True, f"Value: {value}", ())
-        entry = cache.get("msg", args, None, "en", True)
+        cache.put("msg", args, None, "en", use_isolating=True, formatted=f"Value: {value}", errors=())
+        entry = cache.get("msg", args, None, "en", use_isolating=True)
         assert entry is not None, f"Entry for value {value!r} was not retrievable"
         is_nan = value.is_nan() or value.is_snan()
         event(f"is_nan={is_nan}")
@@ -619,8 +619,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """get() with list args succeeds: lists are converted to type-tagged tuples."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"key": [1, 2, 3]}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
-        cached = cache.get("msg-id", args, None, "en-US", True)
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -630,8 +630,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """get() with nested dict args succeeds: dicts are converted to sorted tuples."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"key": {"nested": "value"}}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
-        cached = cache.get("msg-id", args, None, "en-US", True)
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -641,8 +641,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """get() with set args succeeds: sets are converted to type-tagged frozensets."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args: dict[str, object] = {"key": {1, 2, 3}}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -651,14 +651,14 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     def test_put_with_list_value_now_caches(self) -> None:
         """put() with list args stores entry: lists are converted at key build time."""
         cache = IntegrityCache(strict=False, maxsize=100)
-        cache.put("msg-id", {"items": [1, 2, 3]}, None, "en-US", True, "formatted", ())
+        cache.put("msg-id", {"items": [1, 2, 3]}, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_put_with_dict_value_now_caches(self) -> None:
         """put() with nested dict args stores entry: dicts are converted at key build."""
         cache = IntegrityCache(strict=False, maxsize=100)
-        cache.put("msg-id", {"config": {"option": "value"}}, None, "en-US", True, "fmt", ())
+        cache.put("msg-id", {"config": {"option": "value"}}, None, "en-US", use_isolating=True, formatted="fmt", errors=())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
@@ -666,7 +666,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """_make_key returns a non-None key when args contain lists."""
         args: dict[str, object] = {"list_value": [1, 2, 3]}
         key = IntegrityCache._make_key(
-            "msg-id", args, None, "en-US", True  # type: ignore[arg-type]
+            "msg-id", args, None, "en-US", use_isolating=True  # type: ignore[arg-type]
         )
         assert key is not None
 
@@ -674,7 +674,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """_make_key returns a non-None key when args contain nested structures."""
         args: dict[str, object] = {"list": [1, 2], "dict": {"nested": "value"}}
         key = IntegrityCache._make_key(
-            "msg-id", args, None, "en-US", True  # type: ignore[arg-type]
+            "msg-id", args, None, "en-US", use_isolating=True  # type: ignore[arg-type]
         )
         assert key is not None
 
@@ -682,8 +682,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """get() caches tuple-valued args correctly via type-tagged conversion."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"coords": (10, 20, 30)}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
-        cached = cache.get("msg-id", args, None, "en-US", True)
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -693,8 +693,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """get() caches tuple-with-nested-list args: nested list is converted."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args: dict[str, object] = {"data": (1, [2, 3], 4)}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -707,8 +707,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """PROPERTY: Tuple-valued args cache and retrieve correctly."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"tuple_arg": tuple_value}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
-        cached = cache.get("msg-id", args, None, "en-US", True)
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert cache.unhashable_skips == 0
@@ -719,8 +719,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """PROPERTY: List-valued args cache and retrieve correctly."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"list_arg": list_value}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
-        cached = cache.get("msg-id", args, None, "en-US", True)
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert cache.unhashable_skips == 0
@@ -735,7 +735,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """PROPERTY: Dict-valued args cache correctly."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args = {"dict_arg": dict_value}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
         event(f"dict_len={len(dict_value)}")
@@ -748,8 +748,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
             "int_arg": 42,
             "list_arg": [1, 2, 3],
         }
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert cache.unhashable_skips == 0
@@ -758,8 +758,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """Empty lists are converted and cached correctly."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args: dict[str, list[object]] = {"empty_list": []}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -768,8 +768,8 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         """Empty dicts are converted and cached correctly."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args: dict[str, dict[object, object]] = {"empty_dict": {}}
-        cache.put("msg-id", args, None, "en-US", True, "formatted", ())  # type: ignore[arg-type]
-        cached = cache.get("msg-id", args, None, "en-US", True)  # type: ignore[arg-type]
+        cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
+        cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
         assert cached is not None
         assert cached.as_result() == ("formatted", ())
         assert len(cache) == 1
@@ -804,7 +804,7 @@ class TestUnhashableHandling:
             pass
 
         args: dict[str, object] = {"data": UnknownType()}
-        result = cache.get("msg", args, None, "en", True)  # type: ignore[arg-type]
+        result = cache.get("msg", args, None, "en", use_isolating=True)  # type: ignore[arg-type]
         assert result is None
         assert cache.unhashable_skips == 1
         assert cache.misses == 0
@@ -820,7 +820,7 @@ class TestUnhashableHandling:
                 raise TypeError(msg)
 
         args: dict[str, object] = {"obj": CustomObject()}
-        cache.put("msg", args, None, "en", True, "result", ())  # type: ignore[arg-type]
+        cache.put("msg", args, None, "en", use_isolating=True, formatted="result", errors=())  # type: ignore[arg-type]
         assert cache.size == 0
         assert cache.unhashable_skips == 1
 
@@ -837,7 +837,7 @@ class TestUnhashableHandling:
                 raise TypeError(msg)
 
         custom_args: dict[str, object] = {"custom": UnhashableClass()}
-        result = cache.get("msg-id", custom_args, None, "en-US", True)  # type: ignore[arg-type]
+        result = cache.get("msg-id", custom_args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
         assert result is None
         assert cache.unhashable_skips == 1
 
@@ -846,10 +846,10 @@ class TestUnhashableHandling:
         cache = IntegrityCache(strict=False, maxsize=100)
         assert cache.unhashable_skips == 0
 
-        cache.get("msg1", {"list": [1]}, None, "en-US", True)
+        cache.get("msg1", {"list": [1]}, None, "en-US", use_isolating=True)
         assert cache.unhashable_skips == 0  # Lists are convertible, not skipped
 
-        cache.put("msg2", {"dict": {}}, None, "en-US", True, "result", ())
+        cache.put("msg2", {"dict": {}}, None, "en-US", use_isolating=True, formatted="result", errors=())
         assert cache.unhashable_skips == 0  # Dicts are convertible, not skipped
 
     def test_unhashable_skips_preserved_on_clear(self) -> None:
@@ -861,7 +861,7 @@ class TestUnhashableHandling:
                 msg = "unhashable type"
                 raise TypeError(msg)
 
-        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", True)  # type: ignore[dict-item]
+        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", use_isolating=True)  # type: ignore[dict-item]
         assert cache.unhashable_skips == 1
         # clear() removes entries but preserves cumulative observability metrics.
         cache.clear()
@@ -880,7 +880,7 @@ class TestUnhashableHandling:
                 msg = "unhashable type"
                 raise TypeError(msg)
 
-        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", True)  # type: ignore[dict-item]
+        cache.get("msg", {"obj": UnhashableClass()}, None, "en-US", use_isolating=True)  # type: ignore[dict-item]
         stats = cache.get_stats()
         assert "unhashable_skips" in stats
         assert stats["unhashable_skips"] == 1
@@ -890,8 +890,8 @@ class TestUnhashableHandling:
         """Fully hashable primitive args never increment unhashable_skips."""
         cache = IntegrityCache(strict=False, maxsize=100)
         args: dict[str, FluentValue] = {"str": "value", "int": 42, "decimal": Decimal("3.14")}
-        cache.get("msg1", args, None, "en-US", True)
-        cache.put("msg2", args, None, "en-US", True, "result", ())
+        cache.get("msg1", args, None, "en-US", use_isolating=True)
+        cache.put("msg2", args, None, "en-US", use_isolating=True, formatted="result", errors=())
         assert cache.unhashable_skips == 0
 
     def test_put_with_circular_reference_increments_skip_counter(self) -> None:
@@ -970,10 +970,10 @@ class TestIntegrityCacheErrorBloatProtection:
         errors = tuple(
             FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE) for i in range(15)
         )
-        cache.put("msg", None, None, "en", True, "formatted text", errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="formatted text", errors=errors)
         assert cache.size == 0
         assert cache.get_stats()["error_bloat_skips"] == 1
-        assert cache.get("msg", None, None, "en", True) is None
+        assert cache.get("msg", None, None, "en", use_isolating=True) is None
 
     def test_put_rejects_excessive_error_weight(self) -> None:
         """put() skips caching when total weight exceeds max_entry_weight.
@@ -985,7 +985,7 @@ class TestIntegrityCacheErrorBloatProtection:
         errors = tuple(
             FrozenFluentError("E" * 100, ErrorCategory.REFERENCE) for _ in range(10)
         )
-        cache.put("msg", None, None, "en", True, "x" * 100, errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=errors)
         assert cache.size == 0
         # 10 errors pass the count check (10 <= 50), but combined weight
         # (100 formatted + 10 * 200 per error = 2100) exceeds max_entry_weight=2000.
@@ -998,10 +998,10 @@ class TestIntegrityCacheErrorBloatProtection:
         errors = tuple(
             FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE) for i in range(10)
         )
-        cache.put("msg", None, None, "en", True, "formatted text", errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="formatted text", errors=errors)
         assert cache.size == 1
         assert cache.get_stats()["error_bloat_skips"] == 0
-        cached = cache.get("msg", None, None, "en", True)
+        cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted text", errors)
 
@@ -1017,37 +1017,37 @@ class TestIntegrityCacheLRUBehavior:
     def test_put_moves_existing_key_to_end_of_lru(self) -> None:
         """put() on existing key marks it as recently used (moves to LRU tail)."""
         cache = IntegrityCache(strict=False, maxsize=3)
-        cache.put("msg1", None, None, "en", True, "result1", ())
-        cache.put("msg2", None, None, "en", True, "result2", ())
-        cache.put("msg3", None, None, "en", True, "result3", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="result1", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="result2", errors=())
+        cache.put("msg3", None, None, "en", use_isolating=True, formatted="result3", errors=())
         assert cache.size == 3
 
         # Updating msg1 moves it to the LRU tail (recently used)
-        cache.put("msg1", None, None, "en", True, "updated1", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="updated1", errors=())
 
         # Adding msg4 should evict msg2 (now the oldest)
-        cache.put("msg4", None, None, "en", True, "result4", ())
+        cache.put("msg4", None, None, "en", use_isolating=True, formatted="result4", errors=())
         assert cache.size == 3
 
-        assert cache.get("msg2", None, None, "en", True) is None
-        entry1 = cache.get("msg1", None, None, "en", True)
+        assert cache.get("msg2", None, None, "en", use_isolating=True) is None
+        entry1 = cache.get("msg1", None, None, "en", use_isolating=True)
         assert entry1 is not None
         assert entry1.as_result() == ("updated1", ())
-        assert cache.get("msg3", None, None, "en", True) is not None
-        assert cache.get("msg4", None, None, "en", True) is not None
+        assert cache.get("msg3", None, None, "en", use_isolating=True) is not None
+        assert cache.get("msg4", None, None, "en", use_isolating=True) is not None
 
     def test_put_evicts_lru_entry_when_cache_full(self) -> None:
         """put() evicts the least recently used entry when capacity is reached."""
         cache = IntegrityCache(strict=False, maxsize=2)
-        cache.put("msg1", None, None, "en", True, "result1", ())
-        cache.put("msg2", None, None, "en", True, "result2", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="result1", errors=())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="result2", errors=())
         assert cache.size == 2
 
-        cache.put("msg3", None, None, "en", True, "result3", ())
+        cache.put("msg3", None, None, "en", use_isolating=True, formatted="result3", errors=())
         assert cache.size == 2
-        assert cache.get("msg1", None, None, "en", True) is None
-        assert cache.get("msg2", None, None, "en", True) is not None
-        assert cache.get("msg3", None, None, "en", True) is not None
+        assert cache.get("msg1", None, None, "en", use_isolating=True) is None
+        assert cache.get("msg2", None, None, "en", use_isolating=True) is not None
+        assert cache.get("msg3", None, None, "en", use_isolating=True) is not None
 
 
 # ============================================================================
@@ -1062,10 +1062,10 @@ class TestIntegrityCacheProperties:
         """len(cache) and cache.size return the same current entry count."""
         cache = IntegrityCache(strict=False)
         assert len(cache) == 0
-        cache.put("msg1", None, None, "en", True, "result1", ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="result1", errors=())
         assert len(cache) == 1
         assert cache.size == 1
-        cache.put("msg2", None, None, "en", True, "result2", ())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="result2", errors=())
         assert len(cache) == 2
         assert cache.size == 2
 
@@ -1082,18 +1082,18 @@ class TestIntegrityCacheProperties:
     def test_hits_increments_on_cache_hit(self) -> None:
         """hits property increments each time get() finds an entry."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", None, None, "en", True, "result", ())
-        cache.get("msg", None, None, "en", True)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="result", errors=())
+        cache.get("msg", None, None, "en", use_isolating=True)
         assert cache.hits == 1
-        cache.get("msg", None, None, "en", True)
+        cache.get("msg", None, None, "en", use_isolating=True)
         assert cache.hits == 2
 
     def test_misses_increments_on_cache_miss(self) -> None:
         """misses increments only for true cache misses, not unhashable bypasses."""
         cache = IntegrityCache(strict=False)
-        cache.get("msg1", None, None, "en", True)
+        cache.get("msg1", None, None, "en", use_isolating=True)
         assert cache.misses == 1
-        cache.get("msg2", None, None, "en", True)
+        cache.get("msg2", None, None, "en", use_isolating=True)
         assert cache.misses == 2
 
     def test_misses_not_incremented_for_unhashable_bypass(self) -> None:
@@ -1108,7 +1108,7 @@ class TestIntegrityCacheProperties:
         class UnknownType:
             pass
 
-        cache.get("msg", {"x": UnknownType()}, None, "en", True)  # type: ignore[dict-item]
+        cache.get("msg", {"x": UnknownType()}, None, "en", use_isolating=True)  # type: ignore[dict-item]
         assert cache.unhashable_skips == 1
         assert cache.misses == 0
 
@@ -1120,13 +1120,13 @@ class TestIntegrityCacheProperties:
         hit_rate=100.0, not 50.0.
         """
         cache = IntegrityCache(strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.get("msg", None, None, "en", True)  # hit
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.get("msg", None, None, "en", use_isolating=True)  # hit
 
         class UnknownType:
             pass
 
-        cache.get("msg", {"x": UnknownType()}, None, "en", True)  # type: ignore[dict-item]
+        cache.get("msg", {"x": UnknownType()}, None, "en", use_isolating=True)  # type: ignore[dict-item]
 
         stats = cache.get_stats()
         assert stats["hits"] == 1
@@ -1137,7 +1137,7 @@ class TestIntegrityCacheProperties:
     def test_hit_rate_zero_on_all_true_misses(self) -> None:
         """hit_rate is 0.0 when all interactions are true misses (no unhashable)."""
         cache = IntegrityCache(strict=False)
-        cache.get("absent", None, None, "en", True)
+        cache.get("absent", None, None, "en", use_isolating=True)
         stats = cache.get_stats()
         assert stats["hits"] == 0
         assert stats["misses"] == 1
@@ -1146,15 +1146,15 @@ class TestIntegrityCacheProperties:
     def test_hit_rate_correct_mixed_hits_and_misses(self) -> None:
         """hit_rate is accurate across a mix of hits, misses, and unhashable bypasses."""
         cache = IntegrityCache(strict=False)
-        cache.put("msg", None, None, "en", True, "Hello", ())
-        cache.get("msg", None, None, "en", True)   # hit
-        cache.get("msg", None, None, "en", True)   # hit
-        cache.get("absent", None, None, "en", True)  # miss
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="Hello", errors=())
+        cache.get("msg", None, None, "en", use_isolating=True)   # hit
+        cache.get("msg", None, None, "en", use_isolating=True)   # hit
+        cache.get("absent", None, None, "en", use_isolating=True)  # miss
 
         class UnknownType:
             pass
 
-        cache.get("msg", {"x": UnknownType()}, None, "en", True)  # type: ignore[dict-item]
+        cache.get("msg", {"x": UnknownType()}, None, "en", use_isolating=True)  # type: ignore[dict-item]
 
         stats = cache.get_stats()
         assert stats["hits"] == 2
@@ -1171,18 +1171,18 @@ class TestIntegrityCacheProperties:
             pass
 
         get_args: dict[str, object] = {"data": UnknownType()}
-        cache.get("msg", get_args, None, "en", True)  # type: ignore[arg-type]
+        cache.get("msg", get_args, None, "en", use_isolating=True)  # type: ignore[arg-type]
         assert cache.unhashable_skips == 1
         put_args: dict[str, object] = {"data": UnknownType()}
-        cache.put("msg", put_args, None, "en", True, "result", ())  # type: ignore[arg-type]
+        cache.put("msg", put_args, None, "en", use_isolating=True, formatted="result", errors=())  # type: ignore[arg-type]
         assert cache.unhashable_skips == 2
 
     def test_oversize_skips_increments_on_oversize_entry(self) -> None:
         """oversize_skips increments when formatted string exceeds max_entry_weight."""
         cache = IntegrityCache(strict=False, max_entry_weight=10)
-        cache.put("msg1", None, None, "en", True, "x" * 100, ())
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="x" * 100, errors=())
         assert cache.oversize_skips == 1
-        cache.put("msg2", None, None, "en", True, "y" * 50, ())
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="y" * 50, errors=())
         assert cache.oversize_skips == 2
 
     @given(
@@ -1225,8 +1225,8 @@ class TestIntegrityCacheProperties:
             {"val": None},
         ]
         for args in args_list:
-            cache.put("msg", args, None, "en", True, "result", ())
-            entry = cache.get("msg", args, None, "en", True)
+            cache.put("msg", args, None, "en", use_isolating=True, formatted="result", errors=())
+            entry = cache.get("msg", args, None, "en", use_isolating=True)
             assert entry is not None
             assert entry.as_result() == ("result", ())
 

@@ -305,8 +305,8 @@ def _check_round_half_up(
     "6.69100" instead of "6691.00". Babel's number_symbols provide the correct
     locale-specific separators.
     """
-    import re  # noqa: PLC0415, I001 - local imports; re first (stdlib before third-party)
-    import babel.numbers as _bbl  # noqa: PLC0415 - local import; Babel optional dep
+    import re  # noqa: I001 - local imports; re first (stdlib before third-party)
+    import babel.numbers as _bbl
 
     # Derive CLDR-standard decimal count when not explicitly provided.
     # This handles KWD=3, BHD=3, JPY=0, KRW=0, USD/EUR/GBP=2 correctly without

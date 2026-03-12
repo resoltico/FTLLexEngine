@@ -850,8 +850,8 @@ class TestFunctionCalls:
         msg_id=ftl_identifiers,
         var_name=ftl_identifiers,
         number=st.decimals(
-            min_value=Decimal("-1000"),
-            max_value=Decimal("1000"),
+            min_value=Decimal(-1000),
+            max_value=Decimal(1000),
             allow_nan=False,
             allow_infinity=False,
         ),
@@ -877,7 +877,7 @@ class TestFunctionCalls:
         currency=st.sampled_from(["USD", "EUR", "GBP", "JPY"]),
         amount=st.decimals(
             min_value=Decimal("0.01"),
-            max_value=Decimal("10000"),
+            max_value=Decimal(10000),
             allow_nan=False,
             allow_infinity=False,
         ),
@@ -1177,7 +1177,7 @@ class TestNumberFormattingVariations:
         msg_id=ftl_identifiers,
         number=st.decimals(
             min_value=Decimal("0.01"),
-            max_value=Decimal("1000"),
+            max_value=Decimal(1000),
             allow_nan=False,
             allow_infinity=False,
         ),
@@ -2329,8 +2329,8 @@ class TestFunctionArgumentEdgeCases:
     @given(
         msg_id=ftl_identifiers,
         number=st.decimals(
-            min_value=Decimal("1000000"),
-            max_value=Decimal("1000000000"),
+            min_value=Decimal(1000000),
+            max_value=Decimal(1000000000),
             allow_nan=False,
             allow_infinity=False,
         ),

@@ -66,11 +66,11 @@ class TestParseDecimal:
         # Valid grouping must still succeed.
         result, errors = parse_decimal("1,234", "en_US")
         assert not errors
-        assert result == Decimal("1234")
+        assert result == Decimal(1234)
 
         result, errors = parse_decimal("1,234,567", "en_US")
         assert not errors
-        assert result == Decimal("1234567")
+        assert result == Decimal(1234567)
 
         # German: '.' is the group separator; "1.2.3" must also be rejected.
         result, errors = parse_decimal("1.2.3", "de_DE")

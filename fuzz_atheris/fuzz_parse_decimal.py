@@ -34,11 +34,8 @@ import sys
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import patch
-
-if TYPE_CHECKING:
-    pass
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -120,7 +117,7 @@ _CANONICAL_CASES: tuple[tuple[str, str, Decimal], ...] = (
     ("-123.45", "en_US", Decimal("-123.45")),
     ("1.234,56", "de_DE", Decimal("1234.56")),
     ("1 234,56", "lv_LV", Decimal("1234.56")),
-    ("42", "en_US", Decimal("42")),
+    ("42", "en_US", Decimal(42)),
     ("0,01", "de_DE", Decimal("0.01")),
 )
 
@@ -295,7 +292,7 @@ def _pattern_type_guard_contract(fdp: atheris.FuzzedDataProvider) -> None:
     """is_valid_decimal accepts finite Decimal only."""
     _domain.type_guard_checks += 1
     valid_values: tuple[Decimal | None, ...] = (
-        Decimal("0"),
+        Decimal(0),
         Decimal("1.23"),
         Decimal("-42.5"),
         Decimal("NaN"),

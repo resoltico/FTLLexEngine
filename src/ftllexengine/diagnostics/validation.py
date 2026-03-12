@@ -19,10 +19,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.syntax.ast import Annotation
-
 if TYPE_CHECKING:
+    from ftllexengine.diagnostics.codes import DiagnosticCode
+    from ftllexengine.syntax.ast import Annotation
+
     from .formatter import DiagnosticFormatter
 
 __all__ = [

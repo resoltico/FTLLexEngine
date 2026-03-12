@@ -79,7 +79,7 @@ class TestNumberCustomPatterns:
     @given(
         value=st.decimals(
             min_value=Decimal("0.01"),
-            max_value=Decimal("1000000000000"),
+            max_value=Decimal(1000000000000),
             allow_nan=False,
             allow_infinity=False,
         )
@@ -100,7 +100,7 @@ class TestNumberCustomPatterns:
 
     @given(
         value=st.decimals(
-            min_value=Decimal("-1000000000000"),
+            min_value=Decimal(-1000000000000),
             max_value=Decimal("-0.01"),
             allow_nan=False,
             allow_infinity=False,

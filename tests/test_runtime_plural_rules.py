@@ -59,7 +59,7 @@ LOCALE_CODES = st.sampled_from([
 NUMBERS = st.one_of(
     st.integers(min_value=0, max_value=1000000),
     st.decimals(
-        min_value=Decimal("0"), max_value=Decimal("1000000"),
+        min_value=Decimal(0), max_value=Decimal(1000000),
         allow_nan=False, allow_infinity=False,
     ),
 )
@@ -226,7 +226,7 @@ class TestEnglishPluralRules:
         assert select_plural_category(0, "en") == "other"
 
     @given(n=st.decimals(
-        min_value=Decimal("0.1"), max_value=Decimal("1000"),
+        min_value=Decimal("0.1"), max_value=Decimal(1000),
         allow_nan=False, allow_infinity=False,
     ))
     @example(n=Decimal("0.5"))
@@ -236,7 +236,7 @@ class TestEnglishPluralRules:
 
         Property: For all n in Q where n != 1, category = "other"
         """
-        assume(n != Decimal("1"))
+        assume(n != Decimal(1))
 
         result = select_plural_category(n, "en")
 
@@ -417,11 +417,11 @@ class TestPluralRuleEdgeCases:
         assert isinstance(result, str)
 
     @given(n=st.decimals(
-        min_value=Decimal("-1000"), max_value=Decimal("0"),
+        min_value=Decimal(-1000), max_value=Decimal(0),
         allow_nan=False, allow_infinity=False,
     ))
-    @example(n=Decimal("-1"))
-    @example(n=Decimal("-100"))
+    @example(n=Decimal(-1))
+    @example(n=Decimal(-100))
     def test_negative_numbers_return_valid_category(self, n: Decimal) -> None:
         """Negative numbers return valid category.
 
@@ -512,12 +512,12 @@ class TestDecimalSupport:
 
     def test_decimal_one_is_one(self) -> None:
         """Decimal(1) matches 'one' category in English."""
-        result = select_plural_category(Decimal("1"), "en_US")
+        result = select_plural_category(Decimal(1), "en_US")
         assert result == "one"
 
     def test_decimal_zero_is_other(self) -> None:
         """Decimal(0) matches 'other' category in English."""
-        result = select_plural_category(Decimal("0"), "en_US")
+        result = select_plural_category(Decimal(0), "en_US")
         assert result == "other"
 
     def test_decimal_fractional_is_other(self) -> None:
@@ -641,7 +641,7 @@ class TestPrecisionParameter:
 
     @given(
         n=st.decimals(
-            min_value=Decimal("0"), max_value=Decimal("100"), allow_nan=False, allow_infinity=False
+            min_value=Decimal(0), max_value=Decimal(100), allow_nan=False, allow_infinity=False
         ),
         precision=st.integers(min_value=1, max_value=6),
     )
@@ -831,10 +831,10 @@ class TestRoundingConsistency:
         from decimal import ROUND_HALF_UP  # noqa: PLC0415 - import inside function
 
         test_cases = [
-            (Decimal("0.5"), 0, Decimal("1")),
-            (Decimal("1.5"), 0, Decimal("2")),
-            (Decimal("2.5"), 0, Decimal("3")),
-            (Decimal("3.5"), 0, Decimal("4")),
+            (Decimal("0.5"), 0, Decimal(1)),
+            (Decimal("1.5"), 0, Decimal(2)),
+            (Decimal("2.5"), 0, Decimal(3)),
+            (Decimal("3.5"), 0, Decimal(4)),
             (Decimal("1.005"), 2, Decimal("1.01")),
             (Decimal("1.015"), 2, Decimal("1.02")),
             (Decimal("2.445"), 2, Decimal("2.45")),
@@ -850,7 +850,7 @@ class TestRoundingConsistency:
 
     @given(
         n=st.decimals(
-            min_value=Decimal("0"), max_value=Decimal("100"), allow_nan=False, allow_infinity=False
+            min_value=Decimal(0), max_value=Decimal(100), allow_nan=False, allow_infinity=False
         ),
         precision=st.integers(min_value=0, max_value=4),
     )

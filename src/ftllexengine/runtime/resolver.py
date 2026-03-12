@@ -36,7 +36,6 @@ from ftllexengine.diagnostics import (
     ErrorTemplate,
     FrozenFluentError,
 )
-from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.plural_rules import select_plural_category
 from ftllexengine.runtime.resolution_context import (
     GlobalDepthGuard,
@@ -62,6 +61,7 @@ from ftllexengine.syntax import (
 )
 
 if TYPE_CHECKING:
+    from ftllexengine.runtime.function_bridge import FunctionRegistry
     from ftllexengine.runtime.value_types import FluentValue
 
 __all__ = ["FluentResolver", "GlobalDepthGuard", "ResolutionContext"]
@@ -339,7 +339,7 @@ class FluentResolver:
 
         return "".join(parts)
 
-    def _resolve_expression(  # noqa: PLR0911  # Complex dispatch logic expected
+    def _resolve_expression(
         self,
         expr: Expression,
         args: Mapping[str, FluentValue],
@@ -390,7 +390,7 @@ class FluentResolver:
             # Include resolution path for debugging nested references.
             # resolution_path is an immutable snapshot of the current stack.
             path = context.resolution_path
-            resolution_path = path if path else None
+            resolution_path = path or None
             diag = ErrorTemplate.variable_not_provided(
                 var_name, resolution_path=resolution_path
             )
@@ -847,7 +847,7 @@ class FluentResolver:
             # Already structured error from registry (TypeError/ValueError),
             # let it propagate to pattern-level handler
             raise
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:  # noqa: BLE001 - spec requires graceful degradation for custom functions
             # Intentionally broad: Fluent spec requires graceful degradation
             # for ANY exception from custom functions.
             logger.warning(
@@ -934,7 +934,7 @@ class FluentResolver:
             case _:
                 return str(value)
 
-    def _get_fallback_for_placeable(  # noqa: PLR0911 - fallback dispatch
+    def _get_fallback_for_placeable(
         self, expr: Expression, depth: int = _FALLBACK_MAX_DEPTH
     ) -> str:
         """Get readable fallback for failed placeable per Fluent spec.

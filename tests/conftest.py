@@ -364,7 +364,7 @@ def _install_event_hook() -> None:
 
     _original_event = hypothesis.event
 
-    def _wrapped_event(value: str, payload: str | int | float = "") -> None:
+    def _wrapped_event(value: str, payload: str | float = "") -> None:
         """Wrapper that calls both original event and metrics collector."""
         assert _original_event is not None  # For type narrowing
         _original_event(value, payload)

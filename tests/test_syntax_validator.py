@@ -918,7 +918,7 @@ class TestVariantKeyNormalization:
         construction time.
         """
         with pytest.raises(ValueError, match="not a valid number literal"):
-            NumberLiteral(value=Decimal("0"), raw="not-a-number")
+            NumberLiteral(value=Decimal(0), raw="not-a-number")
 
     def test_number_literal_rejects_non_finite_decimal(self) -> None:
         """NumberLiteral.__post_init__ rejects non-finite Decimal values.

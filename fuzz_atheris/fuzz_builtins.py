@@ -262,7 +262,7 @@ _DATE_STYLES: Sequence[str] = ("short", "medium", "long", "full")
 
 # Numbers that exercise precision boundary conditions
 _PRECISION_NUMBERS: Sequence[Decimal] = (
-    Decimal("0"), Decimal("1"), Decimal("1.0"), Decimal("1.00"),
+    Decimal(0), Decimal(1), Decimal("1.0"), Decimal("1.00"),
     Decimal("1.5"), Decimal("1.50"), Decimal("0.001"),
     Decimal("1234567.89"), Decimal("-1.5"), Decimal("0.10"),
     Decimal("999999999.999"),
@@ -336,7 +336,7 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
         # Deferred import: Babel is optional at ftllexengine package level.
         # At fuzzing time Babel is always present (required by the functions
         # under test), but the import is deferred to match project conventions.
-        from babel.numbers import (  # noqa: PLC0415 - import inside function
+        from babel.numbers import (
             get_decimal_symbol,
             get_group_symbol,
         )
@@ -358,7 +358,7 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
     # Step 2: strip all remaining non-digit, non-dot characters (currency codes,
     # whitespace, signs). Handles whitespace-variant group seps (lv-LV, fr-FR).
     digits = re.sub(r"[^\d.]", "", normalized)
-    return digits if digits else None
+    return digits or None
 
 
 # =============================================================================
@@ -509,7 +509,7 @@ def _pattern_number_type_variety(fdp: atheris.FuzzedDataProvider) -> None:
                 minimum_fraction_digits=2,
             )
             # Format the FluentNumber again (nested call)
-            val = Decimal(str(inner.value)) if isinstance(inner, FluentNumber) else Decimal("0")
+            val = Decimal(str(inner.value)) if isinstance(inner, FluentNumber) else Decimal(0)
 
     result = number_format(
         val, locale,
@@ -877,7 +877,7 @@ def _pattern_error_paths(fdp: atheris.FuzzedDataProvider) -> None:
             # Empty currency code
             _domain.currency_calls += 1
             currency_format(
-                Decimal("100"), locale,
+                Decimal(100), locale,
                 currency="",
             )
         case 3:
@@ -885,7 +885,7 @@ def _pattern_error_paths(fdp: atheris.FuzzedDataProvider) -> None:
             bad_code = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 50))
             _domain.currency_calls += 1
             currency_format(
-                Decimal("100"), locale,
+                Decimal(100), locale,
                 currency=bad_code,
             )
         case _:

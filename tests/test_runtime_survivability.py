@@ -204,8 +204,8 @@ def test_extreme_memory_pressure(maxsize, max_entry_weight, entry_count):
             for _ in range(min(10, max_entry_weight // 1000)):
                 errors.append(FrozenFluentError("x" * 1000, ErrorCategory.RESOLUTION))
         try:
-            cache.put(msg_id, None, None, "en", False, formatted, tuple(errors))
-            entry = cache.get(msg_id, None, None, "en", False)
+            cache.put(msg_id, None, None, "en", use_isolating=False, formatted=formatted, errors=tuple(errors))
+            entry = cache.get(msg_id, None, None, "en", use_isolating=False)
             if entry:
                 entry.verify()
         except Exception:
@@ -246,13 +246,13 @@ def test_deep_nesting_survival(test_depth):
     cache = IntegrityCache(maxsize=100, strict=False)
     safe_depth = min(test_depth - 10, MAX_DEPTH - 5)
     safe_args = create_deep_structure(safe_depth)
-    cache.put("safe_msg", {"arg": safe_args}, None, "en", False, "safe", ())
-    safe_res = cache.get("safe_msg", {"arg": safe_args}, None, "en", False) is not None
+    cache.put("safe_msg", {"arg": safe_args}, None, "en", use_isolating=False, formatted="safe", errors=())
+    safe_res = cache.get("safe_msg", {"arg": safe_args}, None, "en", use_isolating=False) is not None
 
     deep_args = create_deep_structure(test_depth)
     try:
-        cache.put("deep_msg", {"arg": deep_args}, None, "en", False, "deep", ())
-        deep_success = cache.get("deep_msg", {"arg": deep_args}, None, "en", False) is not None
+        cache.put("deep_msg", {"arg": deep_args}, None, "en", use_isolating=False, formatted="deep", errors=())
+        deep_success = cache.get("deep_msg", {"arg": deep_args}, None, "en", use_isolating=False) is not None
     except (TypeError, RecursionError):
         deep_success = False
 
@@ -283,9 +283,9 @@ def worker(cache, tid, ops):
     for i in range(ops):
         mid = f"m_{tid}_{i}"
         try:
-            if i % 2: cache.put(mid, None, None, "en", False, f"r_{i}", ())
+            if i % 2: cache.put(mid, None, None, "en", use_isolating=False, formatted=f"r_{i}", errors=())
             else:
-                e = cache.get(mid, None, None, "en", False)
+                e = cache.get(mid, None, None, "en", use_isolating=False)
                 if e: e.verify()
         except Exception: pass
 
@@ -370,7 +370,7 @@ from ftllexengine.integrity import CacheCorruptionError
 
 def test_corruption(strict):
     cache = IntegrityCache(maxsize=10, strict=strict)
-    cache.put("k", None, None, "en", False, "valid", ())
+    cache.put("k", None, None, "en", use_isolating=False, formatted="valid", errors=())
     entry = cache._cache[next(iter(cache._cache))]
 
     # Bypass frozen slots using the base object's descriptor mechanism
@@ -378,7 +378,7 @@ def test_corruption(strict):
     object.__setattr__(entry, "formatted", "CORRUPTED")
 
     try:
-        val = cache.get("k", None, None, "en", False)
+        val = cache.get("k", None, None, "en", use_isolating=False)
         return {"result": "val" if val else "evicted"}
     except CacheCorruptionError:
         return {"result": "fail_fast"}
@@ -417,9 +417,9 @@ def test_ops(cfg, ops):
     cache = IntegrityCache(**cfg)
     for op, p in ops:
         try:
-            if op == 'put': cache.put(f"m_{p}", None, None, "en", False, f"r_{p}", ())
+            if op == 'put': cache.put(f"m_{p}", None, None, "en", use_isolating=False, formatted=f"r_{p}", errors=())
             else:
-                e = cache.get(f"m_{p}", None, None, "en", False)
+                e = cache.get(f"m_{p}", None, None, "en", use_isolating=False)
                 if e: e.verify()
         except (WriteConflictError, CacheCorruptionError): pass
     return "ok"

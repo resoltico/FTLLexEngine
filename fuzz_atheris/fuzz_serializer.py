@@ -58,10 +58,7 @@ import sys
 import time
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, cast
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -673,31 +670,31 @@ def _pattern_visitor_dispatch(
         def visit_Message(self, node: Message) -> Message:  # noqa: N802 - NodeName
             """Count message visits and continue traversal."""
             self.messages += 1
-            return cast(Message, self.generic_visit(node))
+            return cast("Message", self.generic_visit(node))
 
         def visit_Term(self, node: Term) -> Term:  # noqa: N802 - NodeName
             """Count term visits and continue traversal."""
             self.terms += 1
-            return cast(Term, self.generic_visit(node))
+            return cast("Term", self.generic_visit(node))
 
         def visit_TextElement(self, node: TextElement) -> TextElement:  # noqa: N802 - NodeName
             """Count text-element visits and continue traversal."""
             self.text_elements += 1
-            return cast(TextElement, self.generic_visit(node))
+            return cast("TextElement", self.generic_visit(node))
 
         def visit_VariableReference(  # noqa: N802 - NodeName
             self, node: VariableReference
         ) -> VariableReference:
             """Count variable-reference visits and continue traversal."""
             self.variables += 1
-            return cast(VariableReference, self.generic_visit(node))
+            return cast("VariableReference", self.generic_visit(node))
 
         def visit_SelectExpression(  # noqa: N802 - NodeName
             self, node: SelectExpression
         ) -> SelectExpression:
             """Count select-expression visits and continue traversal."""
             self.select_expressions += 1
-            return cast(SelectExpression, self.generic_visit(node))
+            return cast("SelectExpression", self.generic_visit(node))
 
     visitor = CountingVisitor()
     result = visitor.visit(resource)

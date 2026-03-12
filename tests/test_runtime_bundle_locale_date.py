@@ -253,7 +253,7 @@ class TestCurrencyDecimalsPropertyBased:
     """Property-based tests for currency decimals."""
 
     @given(st.decimals(
-        min_value=Decimal("0.001"), max_value=Decimal("1000000"),
+        min_value=Decimal("0.001"), max_value=Decimal(1000000),
         allow_nan=False, allow_infinity=False,
     ))
     @settings(max_examples=50)
@@ -276,7 +276,7 @@ class TestCurrencyDecimalsPropertyBased:
                 assert parts[1] == "" or not parts[1].isdigit()
 
     @given(st.decimals(
-        min_value=Decimal("0.001"), max_value=Decimal("1000000"),
+        min_value=Decimal("0.001"), max_value=Decimal(1000000),
         allow_nan=False, allow_infinity=False,
     ))
     @settings(max_examples=50)

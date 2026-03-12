@@ -203,10 +203,10 @@ class TestSecCacheErrorBloat001:
         )
 
         # Put should skip due to error count
-        cache.put("msg", None, None, "en", True, "formatted text", many_errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="formatted text", errors=many_errors)
 
         # Verify it wasn't cached
-        cached = cache.get("msg", None, None, "en", True)
+        cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is None
 
         # Verify skip was counted
@@ -237,10 +237,10 @@ class TestSecCacheErrorBloat001:
         )
 
         # Put should skip due to total weight
-        cache.put("msg", None, None, "en", True, "x" * 100, errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="x" * 100, errors=errors)
 
         # Verify it wasn't cached
-        cached = cache.get("msg", None, None, "en", True)
+        cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is None
 
         # Verify skip was counted under combined_weight_skips:
@@ -261,10 +261,10 @@ class TestSecCacheErrorBloat001:
         )
 
         # Put should succeed
-        cache.put("msg", None, None, "en", True, "formatted text", few_errors)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="formatted text", errors=few_errors)
 
         # Verify it was cached
-        cached = cache.get("msg", None, None, "en", True)
+        cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is not None
         assert cached.as_result() == ("formatted text", few_errors)
 
@@ -289,8 +289,8 @@ class TestSecCacheErrorBloat001:
             FrozenFluentError(f"Error {i}", ErrorCategory.REFERENCE)
             for i in range(10)
         )
-        cache.put("msg1", None, None, "en", True, "text", many_errors)
-        cache.put("msg2", None, None, "en", True, "text", many_errors)
+        cache.put("msg1", None, None, "en", use_isolating=True, formatted="text", errors=many_errors)
+        cache.put("msg2", None, None, "en", use_isolating=True, formatted="text", errors=many_errors)
 
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 2

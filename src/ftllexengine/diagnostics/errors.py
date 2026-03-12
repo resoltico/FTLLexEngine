@@ -25,10 +25,30 @@ from .codes import Diagnostic, ErrorCategory, FrozenErrorContext
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
     "FrozenFluentError",
+    "ParseResult",
     # Re-export for convenience
     "ErrorCategory",
     "FrozenErrorContext",
 ]
+
+
+# Generic return type for all parse_* functions.
+# Defined here (not in ftllexengine.parsing) so it is importable without Babel:
+# parsing/__init__.py imports Babel-dependent modules at load time; this type alias
+# depends only on FrozenFluentError, which has no external dependencies.
+type ParseResult[T] = tuple[T | None, tuple[FrozenFluentError, ...]]
+"""Return type for parse_* functions (parse_decimal, parse_date, parse_currency, etc.).
+
+The first element is the parsed value (None on failure).
+The second element is a tuple of errors (empty on success).
+
+Example:
+    >>> from ftllexengine import ParseResult
+    >>> result: ParseResult[Decimal]
+    >>> value, errors = result
+    >>> if not errors and value is not None:
+    ...     total = value.quantize(Decimal("0.01"))
+"""
 
 
 @final

@@ -219,7 +219,7 @@ class TestNumberFormatPatternExceptionHandling:
     @given(
         st.decimals(
             allow_nan=False, allow_infinity=False,
-            min_value=Decimal("-1000000"), max_value=Decimal("1000000"),
+            min_value=Decimal(-1000000), max_value=Decimal(1000000),
         ),
     )
     def test_number_format_pattern_exception_property(self, value: Decimal) -> None:
@@ -346,7 +346,7 @@ class TestCurrencyFormatPatternExceptionHandling:
     @given(
         st.decimals(
             allow_nan=False, allow_infinity=False,
-            min_value=Decimal("0"), max_value=Decimal("1000000"),
+            min_value=Decimal(0), max_value=Decimal(1000000),
         ),
         st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF", "BHD"]),
     )
@@ -554,7 +554,7 @@ class TestComprehensiveEdgeCases:
 
     @given(
         st.decimals(
-            min_value=Decimal("0"),
+            min_value=Decimal(0),
             max_value=Decimal("1e10"),
             allow_nan=False,
             allow_infinity=False,
@@ -583,7 +583,7 @@ class TestComprehensiveEdgeCases:
     @given(
         st.decimals(
             allow_nan=False, allow_infinity=False,
-            min_value=Decimal("-100000000"), max_value=Decimal("100000000"),
+            min_value=Decimal(-100000000), max_value=Decimal(100000000),
         ),
         st.integers(min_value=0, max_value=6),
         st.integers(min_value=0, max_value=6),
@@ -632,7 +632,7 @@ class TestComprehensiveEdgeCases:
         st.sampled_from(["symbol", "code", "name"]),
         st.decimals(
             allow_nan=False, allow_infinity=False,
-            min_value=Decimal("0"), max_value=Decimal("1000000"),
+            min_value=Decimal(0), max_value=Decimal(1000000),
         ),
     )
     def test_currency_format_display_style_consistency(
@@ -642,7 +642,7 @@ class TestComprehensiveEdgeCases:
         event(f"currency={currency}")
         event(f"display={display}")
         # Cast display to correct type for type checker
-        display_style = cast(Literal["symbol", "code", "name"], display)
+        display_style = cast("Literal['symbol', 'code', 'name']", display)
 
         result1 = currency_format(
             value, "en-US", currency=currency, currency_display=display_style

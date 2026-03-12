@@ -187,7 +187,7 @@ class TestPluralRuleDecimalBoundaries:
 
     def test_plural_rule_with_decimal_one(self) -> None:
         """English: Decimal("1") (no visible fraction) is treated as 'one'."""
-        assert select_plural_category(Decimal("1"), "en") == "one"
+        assert select_plural_category(Decimal(1), "en") == "one"
 
     def test_plural_rule_with_decimal_other(self) -> None:
         """English: 1.5 is 'other' (fractional part makes it non-integer)."""

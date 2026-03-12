@@ -42,7 +42,7 @@ items = { $count ->
    *[other] { $count } items
 }
 """)
-        result, errors = bundle.format_pattern("items", {"count": Decimal("1")})
+        result, errors = bundle.format_pattern("items", {"count": Decimal(1)})
         assert result == "exactly one"
         assert not errors
 
@@ -124,7 +124,7 @@ items = { $count ->
    *[other] { $count } items
 }
 """)
-        result, errors = bundle.format_pattern("items", {"count": Decimal("1")})
+        result, errors = bundle.format_pattern("items", {"count": Decimal(1)})
         # Should match [one] via plural category
         assert result == "one item"
         assert not errors

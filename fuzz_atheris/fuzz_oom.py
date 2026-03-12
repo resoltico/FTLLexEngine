@@ -164,7 +164,7 @@ def _build_stats_dict() -> dict[str, Any]:
 
     # Domain-specific: density distribution
     if _domain.density_history:
-        import statistics  # noqa: PLC0415 - only needed for reporting
+        import statistics
 
         density_data = list(_domain.density_history)
         stats["density_mean"] = round(statistics.mean(density_data), 1)

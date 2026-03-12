@@ -86,9 +86,9 @@ class TestCacheInvariants:
                 None,
                 None,
                 "en_US",
-                True,
-                f"result_{i}",
-                (),
+                use_isolating=True,
+                formatted=f"result_{i}",
+                errors=(),
             )
 
         # Cache should not exceed maxsize
@@ -115,8 +115,8 @@ class TestCacheInvariants:
         cache = IntegrityCache(maxsize=100, strict=False)
 
         formatted, errors = value
-        cache.put(msg_id, args, attr, locale, True, formatted, errors)
-        entry = cache.get(msg_id, args, attr, locale, True)
+        cache.put(msg_id, args, attr, locale, use_isolating=True, formatted=formatted, errors=errors)
+        entry = cache.get(msg_id, args, attr, locale, use_isolating=True)
 
         assert entry is not None
         assert entry.as_result() == value
@@ -136,7 +136,7 @@ class TestCacheInvariants:
         """PROPERTY: get(k) without put(k) returns None."""
         cache = IntegrityCache(maxsize=100, strict=False)
 
-        result = cache.get(msg_id, None, None, locale, True)
+        result = cache.get(msg_id, None, None, locale, use_isolating=True)
 
         assert result is None
         event(f"locale={locale}")
@@ -149,7 +149,7 @@ class TestCacheInvariants:
 
         # Add some entries
         for i in range(min(10, maxsize)):
-            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
+            cache.put(f"msg_{i}", None, None, "en_US", use_isolating=True, formatted=f"result_{i}", errors=())
 
         # Clear
         cache.clear()
@@ -177,11 +177,11 @@ class TestCacheInvariants:
         cache = IntegrityCache(maxsize=100, strict=False)
 
         formatted, errors = value
-        cache.put(msg_id, None, None, locale, True, formatted, errors)
+        cache.put(msg_id, None, None, locale, use_isolating=True, formatted=formatted, errors=errors)
 
         # First get - cache hit
         initial_stats = cache.get_stats()
-        cache.get(msg_id, None, None, locale, True)
+        cache.get(msg_id, None, None, locale, use_isolating=True)
 
         stats_after_hit = cache.get_stats()
         assert stats_after_hit["hits"] == initial_stats["hits"] + 1
@@ -201,7 +201,7 @@ class TestCacheInvariants:
         cache = IntegrityCache(maxsize=100, strict=False)
 
         initial_stats = cache.get_stats()
-        cache.get(msg_id, None, None, locale, True)  # Cache miss
+        cache.get(msg_id, None, None, locale, use_isolating=True)  # Cache miss
 
         stats_after_miss = cache.get_stats()
         assert stats_after_miss["misses"] == initial_stats["misses"] + 1
@@ -225,19 +225,19 @@ class TestLRUEviction:
 
         # Fill cache to capacity
         for i in range(maxsize):
-            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
+            cache.put(f"msg_{i}", None, None, "en_US", use_isolating=True, formatted=f"result_{i}", errors=())
 
         # Access first entry to make it recently used
-        cache.get("msg_0", None, None, "en_US", True)
+        cache.get("msg_0", None, None, "en_US", use_isolating=True)
 
         # Add one more entry (should evict msg_1, not msg_0)
-        cache.put("msg_new", None, None, "en_US", True, "result_new", ())
+        cache.put("msg_new", None, None, "en_US", use_isolating=True, formatted="result_new", errors=())
 
         # msg_0 should still be in cache (recently accessed)
-        assert cache.get("msg_0", None, None, "en_US", True) is not None
+        assert cache.get("msg_0", None, None, "en_US", use_isolating=True) is not None
 
         # msg_1 should be evicted (oldest unreferenced)
-        assert cache.get("msg_1", None, None, "en_US", True) is None
+        assert cache.get("msg_1", None, None, "en_US", use_isolating=True) is None
         event(f"maxsize={maxsize}")
 
     @given(
@@ -259,16 +259,16 @@ class TestLRUEviction:
 
         # Fill cache
         for i in range(maxsize):
-            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
+            cache.put(f"msg_{i}", None, None, "en_US", use_isolating=True, formatted=f"result_{i}", errors=())
 
         # Access entries according to pattern
         for idx in access_pattern:
             if idx < maxsize:
-                cache.get(f"msg_{idx}", None, None, "en_US", True)
+                cache.get(f"msg_{idx}", None, None, "en_US", use_isolating=True)
 
         # Add new entries (will trigger evictions)
         for i in range(maxsize, maxsize + 3):
-            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
+            cache.put(f"msg_{i}", None, None, "en_US", use_isolating=True, formatted=f"result_{i}", errors=())
 
         # Recently accessed entries should still be in cache
         assert cache.get_stats()["size"] <= maxsize
@@ -301,10 +301,10 @@ class TestCacheKeyHandling:
 
         formatted, errors = value
         # Put with specific key
-        cache.put(msg_id, None, None, locale, True, formatted, errors)
+        cache.put(msg_id, None, None, locale, use_isolating=True, formatted=formatted, errors=errors)
 
         # Get with same key components
-        entry = cache.get(msg_id, None, None, locale, True)
+        entry = cache.get(msg_id, None, None, locale, use_isolating=True)
 
         assert entry is not None
         assert entry.as_result() == value
@@ -331,10 +331,10 @@ class TestCacheKeyHandling:
 
         formatted, errors = value
         # Put with locale1
-        cache.put(msg_id, None, None, locale1, True, formatted, errors)
+        cache.put(msg_id, None, None, locale1, use_isolating=True, formatted=formatted, errors=errors)
 
         # Get with locale2 should miss
-        result = cache.get(msg_id, None, None, locale2, True)
+        result = cache.get(msg_id, None, None, locale2, use_isolating=True)
 
         assert result is None
         event(f"locale_pair={locale1}_{locale2}")
@@ -362,10 +362,10 @@ class TestCacheKeyHandling:
 
         formatted, errors = value
         # Put with attr1
-        cache.put(msg_id, None, attr1, locale, True, formatted, errors)
+        cache.put(msg_id, None, attr1, locale, use_isolating=True, formatted=formatted, errors=errors)
 
         # Get with attr2 should miss
-        result = cache.get(msg_id, None, attr2, locale, True)
+        result = cache.get(msg_id, None, attr2, locale, use_isolating=True)
 
         assert result is None
         has_attr1 = attr1 is not None
@@ -389,11 +389,11 @@ class TestCacheKeyHandling:
         formatted, errors = value
         # Put with args dict
         args = {"x": 1, "y": 2}
-        cache.put(msg_id, args, None, locale, True, formatted, errors)
+        cache.put(msg_id, args, None, locale, use_isolating=True, formatted=formatted, errors=errors)
 
         # Get with equivalent dict (different order)
         args_reordered = {"y": 2, "x": 1}
-        entry = cache.get(msg_id, args_reordered, None, locale, True)
+        entry = cache.get(msg_id, args_reordered, None, locale, use_isolating=True)
 
         # Should hit cache (dict key normalized)
         assert entry is not None
@@ -432,8 +432,8 @@ class TestCacheRobustness:
 
         # Should not crash with various arg types
         try:
-            cache.put("msg", args, None, "en_US", True, "result", ())
-            entry = cache.get("msg", args, None, "en_US", True)
+            cache.put("msg", args, None, "en_US", use_isolating=True, formatted="result", errors=())
+            entry = cache.get("msg", args, None, "en_US", use_isolating=True)
             # If put succeeded, get should return the value
             if entry is not None:
                 assert entry.as_result() == ("result", ())
@@ -457,7 +457,7 @@ class TestCacheRobustness:
 
         # Put same message multiple times
         for msg_id in msg_ids:
-            cache.put(msg_id, None, None, "en_US", True, f"result_{msg_id}", ())
+            cache.put(msg_id, None, None, "en_US", use_isolating=True, formatted=f"result_{msg_id}", errors=())
 
         # Cache should still respect maxsize
         assert cache.get_stats()["size"] <= maxsize
@@ -470,9 +470,9 @@ class TestCacheRobustness:
         cache = IntegrityCache(maxsize=maxsize, strict=False)
 
         # Perform various operations
-        cache.put("msg", None, None, "en_US", True, "result", ())
-        cache.get("msg", None, None, "en_US", True)
-        cache.get("missing", None, None, "en_US", True)
+        cache.put("msg", None, None, "en_US", use_isolating=True, formatted="result", errors=())
+        cache.get("msg", None, None, "en_US", use_isolating=True)
+        cache.get("missing", None, None, "en_US", use_isolating=True)
         cache.clear()
 
         stats = cache.get_stats()
@@ -512,9 +512,9 @@ class TestCacheStatistics:
 
         for op, msg_id in operations:
             if op == "put":
-                cache.put(msg_id, None, None, "en_US", True, f"result_{msg_id}", ())
+                cache.put(msg_id, None, None, "en_US", use_isolating=True, formatted=f"result_{msg_id}", errors=())
             elif op == "get":
-                cache.get(msg_id, None, None, "en_US", True)
+                cache.get(msg_id, None, None, "en_US", use_isolating=True)
 
         stats = cache.get_stats()
         total = stats["hits"] + stats["misses"]
@@ -543,7 +543,7 @@ class TestCacheStatistics:
 
         # Add entries
         for i in range(num_entries):
-            cache.put(f"msg_{i}", None, None, "en_US", True, f"result_{i}", ())
+            cache.put(f"msg_{i}", None, None, "en_US", use_isolating=True, formatted=f"result_{i}", errors=())
 
         stats = cache.get_stats()
         expected_size = min(num_entries, maxsize)
@@ -595,32 +595,32 @@ class TestIntegrityCacheHypothesisProperties:
         cache = IntegrityCache(strict=False)
 
         # String
-        cache.put("msg", {"text": text}, None, "en", True, "result", ())
-        entry = cache.get("msg", {"text": text}, None, "en", True)
+        cache.put("msg", {"text": text}, None, "en", use_isolating=True, formatted="result", errors=())
+        entry = cache.get("msg", {"text": text}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.as_result() == ("result", ())
 
         # Integer
-        cache.put("msg", {"num": 42}, None, "en", True, "result", ())
-        entry = cache.get("msg", {"num": 42}, None, "en", True)
+        cache.put("msg", {"num": 42}, None, "en", use_isolating=True, formatted="result", errors=())
+        entry = cache.get("msg", {"num": 42}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.as_result() == ("result", ())
 
         # Decimal
-        cache.put("msg", {"decimal": Decimal("3.14")}, None, "en", True, "result", ())
-        entry = cache.get("msg", {"decimal": Decimal("3.14")}, None, "en", True)
+        cache.put("msg", {"decimal": Decimal("3.14")}, None, "en", use_isolating=True, formatted="result", errors=())
+        entry = cache.get("msg", {"decimal": Decimal("3.14")}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.as_result() == ("result", ())
 
         # Bool
-        cache.put("msg", {"bool": True}, None, "en", True, "result", ())
-        entry = cache.get("msg", {"bool": True}, None, "en", True)
+        cache.put("msg", {"bool": True}, None, "en", use_isolating=True, formatted="result", errors=())
+        entry = cache.get("msg", {"bool": True}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.as_result() == ("result", ())
 
         # None
-        cache.put("msg", {"val": None}, None, "en", True, "result", ())
-        entry = cache.get("msg", {"val": None}, None, "en", True)
+        cache.put("msg", {"val": None}, None, "en", use_isolating=True, formatted="result", errors=())
+        entry = cache.get("msg", {"val": None}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.as_result() == ("result", ())
         event(f"text_len={len(text)}")
@@ -1088,7 +1088,7 @@ class TestCacheTypeCollisionPrevention:
         # Format with int first
         _result_int, _ = bundle.format_pattern("msg", {"v": 1})
         # Format with Decimal (would collide without type tagging)
-        _result_decimal, _ = bundle.format_pattern("msg", {"v": Decimal("1")})
+        _result_decimal, _ = bundle.format_pattern("msg", {"v": Decimal(1)})
 
         # Cache should have 2 entries
         stats = bundle.get_cache_stats()

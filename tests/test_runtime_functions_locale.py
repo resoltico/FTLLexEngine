@@ -116,7 +116,7 @@ class TestCurrencyLocaleContract:
     @pytest.mark.parametrize("locale", ["en-US", "de-DE", "lv-LV"])
     def test_currency_display_modes_contract(self, locale: str) -> None:
         """CURRENCY() currencyDisplay parameter respects locale."""
-        amount = Decimal("100")
+        amount = Decimal(100)
 
         for display_mode in ["symbol", "code", "name"]:
             # Ground truth (str() for comparison with bundle output)
@@ -124,7 +124,7 @@ class TestCurrencyLocaleContract:
                 amount,
                 locale,
                 currency="EUR",
-                currency_display=cast(Literal["symbol", "code", "name"], display_mode),
+                currency_display=cast("Literal['symbol', 'code', 'name']", display_mode),
             ))
 
             # System under test (disable BIDI for fair comparison)
@@ -157,7 +157,7 @@ class TestDateTimeLocaleContract:
 
         # Ground truth
         expected = datetime_format(
-            dt, locale, date_style=cast(Literal["short", "medium", "long", "full"], date_style)
+            dt, locale, date_style=cast("Literal['short', 'medium', 'long', 'full']", date_style)
         )
 
         # System under test (disable BIDI for fair comparison)

@@ -156,9 +156,9 @@ def FILESIZE(bytes_count: int | Decimal, *, precision: int = 2) -> str:  # pylin
     units = ["B", "KB", "MB", "GB", "TB", "PB"]
 
     for unit in units:
-        if size < Decimal("1024"):
+        if size < Decimal(1024):
             return f"{size:.{precision}f} {unit}"
-        size /= Decimal("1024")
+        size /= Decimal(1024)
 
     return f"{size:.{precision}f} EB"
 

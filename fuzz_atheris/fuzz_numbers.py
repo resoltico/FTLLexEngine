@@ -57,10 +57,7 @@ import sys
 import time
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, cast
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -280,7 +277,7 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
     if any(c.isdigit() and not c.isascii() for c in formatted):
         return None
     try:
-        from babel.numbers import (  # noqa: PLC0415 - import inside function
+        from babel.numbers import (
             get_decimal_symbol,
             get_group_symbol,
         )
@@ -293,7 +290,7 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
         return None
     normalized = formatted.replace(group_sym, "").replace(decimal_sym, ".")
     digits = re.sub(r"[^\d.]", "", normalized)
-    return digits if digits else None
+    return digits or None
 
 
 def _run_oracle(
@@ -349,7 +346,7 @@ def _pattern_number_grouping_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     separators interact with oracle digit extraction (_extract_oracle_digits
     must strip them before identifying the decimal point).
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     int_part = fdp.ConsumeIntInRange(-9999, 9999)
     frac_str = str(fdp.ConsumeIntInRange(0, 9999)).zfill(4)
     value = Decimal(f"{int_part}.{frac_str}")
@@ -378,9 +375,9 @@ def _pattern_number_boundary_values(fdp: atheris.FuzzedDataProvider) -> None:
     HALF_UP). Using a targeted corpus avoids depending on coverage-guided
     discovery to find these rare values.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     precision, val_str = cast(
-        tuple[int, str],
+        "tuple[int, str]",
         fdp.PickValueInList(list(_BOUNDARY_VALUES)),
     )
     value = Decimal(val_str)
@@ -408,12 +405,12 @@ def _pattern_number_pattern_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     (the v0.145.0 fix). This pattern provides dedicated oracle coverage for
     that specific execution path, which was uncovered in fuzz_builtins.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     int_part = fdp.ConsumeIntInRange(-999, 999)
     frac_str = str(fdp.ConsumeIntInRange(0, 99999)).zfill(5)
     value = Decimal(f"{int_part}.{frac_str}")
     pattern, max_frac = cast(
-        tuple[str, int],
+        "tuple[str, int]",
         fdp.PickValueInList(list(_NUMBER_PATTERNS_WITH_PREC)),
     )
     _domain.number_calls += 1
@@ -430,7 +427,7 @@ def _pattern_number_negative_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     Verifies that negative values are handled correctly by the oracle
     (oracle uses abs() before quantize, matching the formatting behavior).
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     int_part = fdp.ConsumeIntInRange(0, 9999)
     frac_str = str(fdp.ConsumeIntInRange(0, 9999)).zfill(4)
     value = Decimal(f"-{int_part}.{frac_str}")
@@ -457,8 +454,8 @@ def _pattern_number_large_integers(fdp: atheris.FuzzedDataProvider) -> None:
     In de-DE, the group separator is '.' which conflicts with the decimal '.';
     correct extraction requires removing group separators before replacing decimal.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    val_str = cast(str, fdp.PickValueInList(list(_LARGE_VALUES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    val_str = cast("str", fdp.PickValueInList(list(_LARGE_VALUES)))
     value = Decimal(val_str)
     _domain.large_value_tests += 1
     _domain.number_calls += 1
@@ -483,7 +480,7 @@ def _pattern_number_determinism(fdp: atheris.FuzzedDataProvider) -> None:
     Tests that number_format is a pure function with no hidden mutable state
     that could produce different results on successive calls with equal inputs.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     int_part = fdp.ConsumeIntInRange(-999, 999)
     frac_part = fdp.ConsumeIntInRange(0, 99)
     value = Decimal(f"{int_part}.{frac_part:02d}")
@@ -531,7 +528,7 @@ def _pattern_number_value_preservation(fdp: atheris.FuzzedDataProvider) -> None:
     Verifies the basic FluentNumber contract: formatted must be a non-empty
     string for any finite numeric input, and precision must be >= 0 when set.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     int_part = fdp.ConsumeIntInRange(-9999, 9999)
     frac_str = str(fdp.ConsumeIntInRange(0, 9999999)).zfill(7)
     value = Decimal(f"{int_part}.{frac_str}")
@@ -562,7 +559,7 @@ def _pattern_number_min_gt_max(fdp: atheris.FuzzedDataProvider) -> None:
     matching JS Intl.NumberFormat behavior. Verifies no crash and non-empty
     output across all locale/value combinations.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     int_part = fdp.ConsumeIntInRange(-999, 999)
     frac_part = fdp.ConsumeIntInRange(0, 99)
     value = Decimal(f"{int_part}.{frac_part:02d}")

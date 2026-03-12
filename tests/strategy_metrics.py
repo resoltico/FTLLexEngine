@@ -799,7 +799,7 @@ class StrategyMetrics:
     _instance: StrategyMetrics | None = None
     _init_lock = threading.Lock()
 
-    def __new__(cls) -> StrategyMetrics:
+    def __new__(cls) -> StrategyMetrics:  # noqa: PYI034 - singleton pattern; __new__ always returns the same StrategyMetrics instance
         """Singleton pattern for global metrics collection."""
         if cls._instance is None:
             with cls._init_lock:

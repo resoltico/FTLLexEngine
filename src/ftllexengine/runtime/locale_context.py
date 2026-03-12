@@ -480,7 +480,7 @@ class LocaleContext:
             # This ensures consistent rounding across all precision levels
             if maximum_fraction_digits == 0:
                 # No decimals - round to integer
-                quantizer = Decimal("1")
+                quantizer = Decimal(1)
                 format_pattern = integer_part
             elif minimum_fraction_digits == maximum_fraction_digits:
                 # Fixed decimals (e.g., '0.00' for exactly 2)

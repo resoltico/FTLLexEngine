@@ -37,19 +37,19 @@ from ftllexengine.integrity import (
 )
 from ftllexengine.introspection import extract_variables, introspect_message
 from ftllexengine.runtime.cache import CacheStats, IntegrityCache
-from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.runtime.rwlock import RWLock
-from ftllexengine.runtime.value_types import FluentValue
 from ftllexengine.syntax import Comment, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
 if TYPE_CHECKING:
     from ftllexengine.introspection import MessageIntrospection
+    from ftllexengine.runtime.cache_config import CacheConfig
+    from ftllexengine.runtime.value_types import FluentValue
 
 __all__ = ["FluentBundle"]
 
@@ -65,6 +65,43 @@ _LOG_TRUNCATE_WARNING: int = 100
 # accented e). Uses \Z instead of $ to match only at end-of-string, not before trailing
 # newline.
 _LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z][a-zA-Z0-9]*([_-][a-zA-Z0-9]+)*\Z")
+
+
+def _validate_locale_format(locale: str) -> None:
+    """Validate locale code format (module-level for cross-module access).
+
+    Checks that locale is non-empty and contains only ASCII alphanumeric
+    characters with optional underscore or hyphen separators. Enforces
+    BCP 47 compliance by rejecting non-ASCII characters.
+
+    Rejects obviously malicious inputs (>1000 characters) to prevent DoS.
+
+    Args:
+        locale: Locale code to validate
+
+    Raises:
+        ValueError: If locale code is empty, excessively long (>1000),
+            contains non-ASCII characters, or has invalid format
+    """
+    if not locale:
+        msg = "Locale code cannot be empty"
+        raise ValueError(msg)
+
+    if len(locale) > MAX_LOCALE_LENGTH_HARD_LIMIT:
+        msg = (
+            f"Locale code exceeds maximum length of {MAX_LOCALE_LENGTH_HARD_LIMIT} characters: "
+            f"'{locale[:50]}...' ({len(locale)} characters)"
+        )
+        raise ValueError(msg)
+
+    if not _LOCALE_PATTERN.match(locale):
+        msg = (
+            f"Invalid locale code format: '{locale}'. "
+            f"Locale must be ASCII alphanumeric with optional underscore or hyphen separators. "
+            f"Use BCP 47 format (e.g., 'en-US', 'de-DE', 'zh-Hans-CN'). "
+            f"Strip charset suffixes such as '.UTF-8' from POSIX locale strings."
+        )
+        raise ValueError(msg)
 
 
 @dataclass(slots=True)
@@ -176,26 +213,7 @@ class FluentBundle:
             ValueError: If locale code is empty, excessively long (>1000),
                 contains non-ASCII characters, or has invalid format
         """
-        if not locale:
-            msg = "Locale code cannot be empty"
-            raise ValueError(msg)
-
-        # Reject obviously malicious inputs (DoS prevention)
-        if len(locale) > MAX_LOCALE_LENGTH_HARD_LIMIT:
-            msg = (
-                f"Locale code exceeds maximum length of {MAX_LOCALE_LENGTH_HARD_LIMIT} characters: "
-                f"'{locale[:50]}...' ({len(locale)} characters)"
-            )
-            raise ValueError(msg)
-
-        if not _LOCALE_PATTERN.match(locale):
-            msg = (
-                f"Invalid locale code format: '{locale}'. "
-                f"Locale must be ASCII alphanumeric with optional underscore or hyphen separators. "
-                f"Use BCP 47 format (e.g., 'en-US', 'de-DE', 'zh-Hans-CN'). "
-                f"Strip charset suffixes such as '.UTF-8' from POSIX locale strings."
-            )
-            raise ValueError(msg)
+        _validate_locale_format(locale)
 
     def __init__(
         self,
@@ -1065,7 +1083,8 @@ class FluentBundle:
         # on inputs that would be rejected anyway.
         if self._cache is not None:
             cached_entry = self._cache.get(
-                message_id, args, attribute, self._locale, self._use_isolating
+                message_id, args, attribute, self._locale,
+                use_isolating=self._use_isolating,
             )
             if cached_entry is not None:
                 result, errors_tuple = cached_entry.as_result()
@@ -1115,7 +1134,8 @@ class FluentBundle:
         # hit the cache instead of triggering expensive re-resolution each time.
         if self._cache is not None:
             self._cache.put(
-                message_id, args, attribute, self._locale, self._use_isolating, result, errors_tuple
+                message_id, args, attribute, self._locale,
+                use_isolating=self._use_isolating, formatted=result, errors=errors_tuple,
             )
 
         # Strict mode: raise after caching so subsequent calls can use cached result
@@ -1300,6 +1320,50 @@ class FluentBundle:
                 raise KeyError(msg)
 
             return introspect_message(self._terms[term_id])
+
+    def get_message(self, message_id: str) -> Message | None:
+        """Return the parsed AST node for a message, or None if not found.
+
+        Provides direct access to the Message AST node, enabling callers to use
+        structured introspection APIs such as validate_message_variables() without
+        re-parsing the FTL source.
+
+        Args:
+            message_id: Message identifier
+
+        Returns:
+            Message AST node, or None if the message does not exist
+
+        Example:
+            >>> bundle.add_resource("greeting = Hello, { $name }!")
+            >>> msg = bundle.get_message("greeting")
+            >>> if msg is not None:
+            ...     from ftllexengine import validate_message_variables
+            ...     result = validate_message_variables(msg, frozenset({"name"}))
+            ...     assert result.is_valid
+        """
+        with self._rwlock.read():
+            return self._messages.get(message_id)
+
+    def get_term(self, term_id: str) -> Term | None:
+        """Return the parsed AST node for a term, or None if not found.
+
+        Provides direct access to the Term AST node. The term_id should be
+        supplied without the leading dash (e.g., ``"brand"`` for ``-brand``).
+
+        Args:
+            term_id: Term identifier without leading dash
+
+        Returns:
+            Term AST node, or None if the term does not exist
+
+        Example:
+            >>> bundle.add_resource("-brand = Firefox")
+            >>> term = bundle.get_term("brand")
+            >>> assert term is not None
+        """
+        with self._rwlock.read():
+            return self._terms.get(term_id)
 
     def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
         """Add custom function to bundle.

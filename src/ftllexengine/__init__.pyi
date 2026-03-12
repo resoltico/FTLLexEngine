@@ -1,10 +1,3 @@
-"""Type stubs for ftllexengine package.
-
-This stub file declares types for lazy-loaded attributes and re-exported symbols.
-Mypy cannot infer types from __getattr__, so explicit declarations are required.
-"""
-
-# Parsing return type (no Babel dependency)
 # ISO data utilities (require Babel)
 from .core.babel_compat import get_cldr_version as get_cldr_version
 
@@ -28,6 +21,9 @@ from .diagnostics import (
 )
 from .diagnostics import (
     FrozenFluentError as FrozenFluentError,
+)
+from .diagnostics import (
+    ParseResult as ParseResult,
 )
 from .diagnostics import (
     ParseTypeLiteral as ParseTypeLiteral,
@@ -68,7 +64,6 @@ from .introspection.message import validate_message_variables as validate_messag
 
 # Localization and runtime (requires Babel)
 from .localization import FluentLocalization as FluentLocalization
-from .parsing import ParseResult as ParseResult
 from .runtime import FluentBundle as FluentBundle
 from .runtime.cache_config import CacheConfig as CacheConfig
 from .runtime.function_bridge import fluent_function as fluent_function
@@ -93,7 +88,7 @@ __recommended_encoding__: str
 # Explicit __all__ for mypy to recognize re-exports
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__: list[str] = [
-    # Bundle and Localization (lazy-loaded, require Babel)
+    # Bundle and Localization (Babel-optional; absent in parser-only installs)
     "CacheConfig",
     "FluentBundle",
     "FluentLocalization",

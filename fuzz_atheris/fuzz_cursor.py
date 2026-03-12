@@ -34,10 +34,7 @@ import pathlib
 import sys
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None

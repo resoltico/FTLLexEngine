@@ -88,7 +88,7 @@ def check_dependencies(dep_names: Sequence[str], dep_modules: Sequence[Any]) -> 
         print("ERROR: Missing required dependencies for fuzzing:", file=sys.stderr)
         for dep in missing:
             print(f"  - {dep}", file=sys.stderr)
-        print("", file=sys.stderr)
+        print(file=sys.stderr)
         print("Install with: uv sync --group atheris", file=sys.stderr)
         print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
         print("-" * 80, file=sys.stderr)
@@ -746,7 +746,7 @@ def gen_ftl_value(fdp: Any, *, max_length: int = 40) -> str:
         chars[fdp.ConsumeIntInRange(0, n)] for _ in range(length)
     )
     stripped = value.strip()
-    return stripped if stripped else "x"
+    return stripped or "x"
 
 
 # --- Finding Artifacts ---
@@ -906,7 +906,7 @@ def run_fuzzer(
         test_one_input: Atheris test callback
         custom_mutator: Optional custom mutator function
     """
-    import atheris  # noqa: PLC0415 - fuzz_common importable without atheris
+    import atheris
 
     setup_kwargs: dict[str, Any] = {}
     if custom_mutator is not None:

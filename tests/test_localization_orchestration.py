@@ -5,6 +5,8 @@ Covers FluentLocalization methods not exercised by the main integration tests:
 - get_message_ids: union of IDs across all locales
 - get_message_variables: variable extraction with fallback
 - get_all_message_variables: merged variable map
+- get_message: AST node access with fallback chain
+- get_term: AST node access with fallback chain
 - introspect_term: term introspection with fallback
 - __enter__/__exit__: context manager protocol
 - get_load_summary: resource load tracking
@@ -24,6 +26,7 @@ import pytest
 from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine import validate_message_variables
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.localization import (
     FluentLocalization,
@@ -34,6 +37,7 @@ from ftllexengine.localization import (
 )
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.cache_config import CacheConfig
+from ftllexengine.syntax import Message, Term
 from ftllexengine.syntax.ast import Junk, Span
 from tests.strategies.localization import locale_chains, message_ids
 
@@ -933,3 +937,128 @@ class TestFormattingIntegrityErrorReraise:
         assert exc.context.component == "localization"
         assert len(exc.fluent_errors) > 0
         assert exc.message_id == "test-msg"
+
+
+class TestGetMessageAST:
+    """FluentLocalization.get_message() returns the parsed Message AST from the fallback chain."""
+
+    def test_existing_message_primary_locale(self) -> None:
+        """get_message returns the Message from the primary locale."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "greeting = Hello, { $name }!")
+
+        msg = l10n.get_message("greeting")
+
+        assert msg is not None
+        assert isinstance(msg, Message)
+        assert msg.id.name == "greeting"
+
+    def test_missing_message_returns_none(self) -> None:
+        """get_message returns None when no locale contains the message."""
+        l10n = FluentLocalization(["en", "lv"])
+        l10n.add_resource("en", "hello = Hello!")
+
+        assert l10n.get_message("nonexistent") is None
+
+    def test_fallback_chain_used_when_primary_missing(self) -> None:
+        """get_message falls back to secondary locale when primary lacks the message."""
+        l10n = FluentLocalization(["lv", "en"])
+        l10n.add_resource("en", "greeting = Hello!")
+        # lv has no "greeting" resource
+
+        msg = l10n.get_message("greeting")
+
+        assert msg is not None
+        assert isinstance(msg, Message)
+        assert msg.id.name == "greeting"
+
+    def test_primary_locale_wins_when_both_have_message(self) -> None:
+        """Primary locale's Message is returned when multiple locales have the message."""
+        l10n = FluentLocalization(["lv", "en"])
+        l10n.add_resource("lv", "greeting = Sveiki!")
+        l10n.add_resource("en", "greeting = Hello!")
+
+        msg = l10n.get_message("greeting")
+
+        assert msg is not None
+        assert msg.id.name == "greeting"
+        # Verify it's the primary locale's message by checking a separate bundle
+        lv_bundle = FluentBundle("lv", use_isolating=False)
+        lv_bundle.add_resource("greeting = Sveiki!")
+        lv_msg = lv_bundle.get_message("greeting")
+        assert lv_msg is not None
+        assert msg is not lv_msg  # Different bundle instances, same message id
+
+    def test_empty_localization_returns_none(self) -> None:
+        """get_message returns None when no resources have been added."""
+        l10n = FluentLocalization(["en"])
+
+        assert l10n.get_message("anything") is None
+
+    def test_get_message_result_usable_with_validate_message_variables(self) -> None:
+        """get_message result can be passed to validate_message_variables()."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "greeting = Hello, { $name }!")
+
+        msg = l10n.get_message("greeting")
+        assert msg is not None
+
+        result = validate_message_variables(msg, frozenset({"name"}))
+        assert result.is_valid
+        assert result.declared_variables == frozenset({"name"})
+
+
+class TestGetTermAST:
+    """FluentLocalization.get_term() returns the parsed Term AST from the fallback chain."""
+
+    def test_existing_term_primary_locale(self) -> None:
+        """get_term returns the Term from the primary locale."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "-brand = Firefox")
+
+        term = l10n.get_term("brand")
+
+        assert term is not None
+        assert isinstance(term, Term)
+        assert term.id.name == "brand"
+
+    def test_missing_term_returns_none(self) -> None:
+        """get_term returns None when no locale contains the term."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "hello = Hello!")
+
+        assert l10n.get_term("nonexistent") is None
+
+    def test_fallback_chain_used_for_term(self) -> None:
+        """get_term falls back to secondary locale when primary lacks the term."""
+        l10n = FluentLocalization(["lv", "en"])
+        l10n.add_resource("en", "-brand = Firefox")
+        # lv has no "-brand" resource
+
+        term = l10n.get_term("brand")
+
+        assert term is not None
+        assert isinstance(term, Term)
+        assert term.id.name == "brand"
+
+    def test_term_id_without_leading_dash(self) -> None:
+        """-brand is accessed as get_term('brand'), not get_term('-brand')."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "-brand = Firefox")
+
+        assert l10n.get_term("brand") is not None
+        assert l10n.get_term("-brand") is None
+
+    def test_get_message_does_not_return_terms(self) -> None:
+        """get_message does not return terms (separate namespaces)."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "-brand = Firefox")
+
+        assert l10n.get_message("brand") is None
+
+    def test_get_term_does_not_return_messages(self) -> None:
+        """get_term does not return messages (separate namespaces)."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "brand = Firefox")
+
+        assert l10n.get_term("brand") is None

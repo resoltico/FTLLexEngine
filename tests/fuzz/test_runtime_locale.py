@@ -99,7 +99,7 @@ class TestPluralRuleProperties:
     @given(
         st.sampled_from(COMMON_LOCALES),
         st.decimals(
-            min_value=Decimal("0"), max_value=Decimal("1000"),
+            min_value=Decimal(0), max_value=Decimal(1000),
             allow_nan=False, allow_infinity=False,
         ),
     )
@@ -213,8 +213,8 @@ class TestNumberFormattingProperties:
     @given(
         st.sampled_from(COMMON_LOCALES),
         st.decimals(
-            min_value=Decimal("-1000000"),
-            max_value=Decimal("1000000"),
+            min_value=Decimal(-1000000),
+            max_value=Decimal(1000000),
             allow_nan=False,
             allow_infinity=False,
         ),
@@ -238,10 +238,10 @@ class TestNumberFormattingProperties:
         bundle.add_resource("num = { NUMBER($n) }")
 
         large_numbers: list[int | Decimal] = [
-            Decimal("10000000000"),
-            Decimal("1000000000000000"),
-            Decimal("100000000000000000000"),
-            Decimal("-10000000000"),
+            Decimal(10000000000),
+            Decimal(1000000000000000),
+            Decimal(100000000000000000000),
+            Decimal(-10000000000),
             Decimal("0.000001"),
             Decimal("0.0000001"),
         ]

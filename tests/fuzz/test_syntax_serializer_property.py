@@ -350,7 +350,7 @@ class TestValidationProperties:
                 named=(
                     NamedArgument(
                         name=Identifier(name="style"),
-                        value=cast(FTLLiteral, VariableReference(id=Identifier(name="var"))),
+                        value=cast("FTLLiteral", VariableReference(id=Identifier(name="var"))),
                     ),
                 ),
             ),
@@ -408,7 +408,7 @@ class TestDepthProperties:
             current = Placeable(expression=current)
 
         # After loop, current is guaranteed to be Placeable
-        outermost_placeable = typing.cast(Placeable, current)
+        outermost_placeable = typing.cast("Placeable", current)
 
         message = Message(
             id=Identifier(name="test"),
@@ -430,7 +430,7 @@ class TestDepthProperties:
             current = Placeable(expression=current)
 
         # After loop, current is guaranteed to be Placeable
-        outermost_placeable = typing.cast(Placeable, current)
+        outermost_placeable = typing.cast("Placeable", current)
 
         message = Message(
             id=Identifier(name="test"),

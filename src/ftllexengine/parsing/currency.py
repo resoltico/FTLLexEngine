@@ -30,12 +30,15 @@ Architecture:
 
 Python 3.13+.
 """
-# ruff: noqa: ERA001 - Section comments in data structures are documentation, not dead code
+from __future__ import annotations
 
+# ruff: noqa: ERA001 - Section comments in data structures are documentation, not dead code
 import functools
 import re
-from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from decimal import Decimal
 
 from ftllexengine.core.babel_compat import (
     get_babel_numbers,

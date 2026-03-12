@@ -365,7 +365,7 @@ def _pattern_extreme_inputs(fdp: atheris.FuzzedDataProvider) -> None:
         10**18,
         -(10**18),
         Decimal("0.0000000000000001"),
-        Decimal("999999999999999999"),
+        Decimal(999999999999999999),
         Decimal("Infinity"),
         Decimal("-Infinity"),
         Decimal("NaN"),

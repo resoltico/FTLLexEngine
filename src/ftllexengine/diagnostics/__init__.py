@@ -14,7 +14,7 @@ from .codes import (
     ParseTypeLiteral,
     SourceSpan,
 )
-from .errors import FrozenFluentError
+from .errors import FrozenFluentError, ParseResult
 from .formatter import DiagnosticFormatter, OutputFormat
 from .templates import ErrorTemplate
 from .validation import (
@@ -37,6 +37,7 @@ __all__ = [
     "ErrorCategory",
     "FrozenErrorContext",
     "FrozenFluentError",
+    "ParseResult",
     "ParseTypeLiteral",
     # Validation
     "ValidationError",

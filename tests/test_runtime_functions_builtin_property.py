@@ -48,7 +48,7 @@ class TestNumberFormatBehavior:
     def test_number_format_invalid_locale_with_pattern(self) -> None:
         """Verify invalid locale with pattern still formats successfully."""
         result = number_format(
-            Decimal("42"),
+            Decimal(42),
             "xx-INVALID",
             pattern="#,##0.00",
             minimum_fraction_digits=2,
@@ -136,7 +136,7 @@ class TestCurrencyFormatBehavior:
         st.decimals(
             allow_nan=False,
             allow_infinity=False,
-            min_value=Decimal("0"),
+            min_value=Decimal(0),
             max_value=Decimal("1e10"),
         ),
         st.sampled_from(["USD", "EUR", "GBP", "JPY", "CHF"]),
@@ -152,7 +152,7 @@ class TestCurrencyFormatBehavior:
     def test_currency_format_invalid_locale_with_display_style(self) -> None:
         """Verify invalid locale with display style still formats successfully."""
         result = currency_format(
-            Decimal("100"),
+            Decimal(100),
             "xx-INVALID",
             currency="EUR",
             currency_display="name",
@@ -343,7 +343,7 @@ class TestNumberFormatPrecisionCalculation:
         # Input: 100 with min=0, max=3
         # Formatted: "100" (no trailing zeros)
         result = number_format(
-            Decimal("100"), "en-US", minimum_fraction_digits=0, maximum_fraction_digits=3
+            Decimal(100), "en-US", minimum_fraction_digits=0, maximum_fraction_digits=3
         )
         assert result.precision == 0
         assert str(result) == "100"

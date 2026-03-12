@@ -355,7 +355,7 @@ class TestParseCurrencySpecificationExamples:
         result, errors = parse_currency("CHF 100", "de_CH")
         assert not errors
         assert result is not None
-        assert result == (Decimal("100"), "CHF")
+        assert result == (Decimal(100), "CHF")
 
     def test_cny_chinese_locale(self) -> None:
         """Yen symbol resolves to CNY in Chinese locales."""
@@ -568,7 +568,7 @@ class TestLocaleToCurrencyFallback:
         )
         assert errors == ()
         assert result is not None
-        assert result == (Decimal("500"), "INR")
+        assert result == (Decimal(500), "INR")
 
     def test_cldr_only_ambiguous_kr_dot_locale_fallback(self) -> None:
         """kr. (Nordic krona with period) resolves via locale-to-currency map.
@@ -581,7 +581,7 @@ class TestLocaleToCurrencyFallback:
         )
         assert errors == ()
         assert result is not None
-        assert result == (Decimal("500"), "DKK")
+        assert result == (Decimal(500), "DKK")
 
     def test_no_resolution_available(self) -> None:
         """Empty currency maps cause resolution failure."""

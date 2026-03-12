@@ -176,8 +176,8 @@ class TestFunctionInvocationProperties:
 
     @given(
         st.decimals(
-            min_value=Decimal("-1000"),
-            max_value=Decimal("1000"),
+            min_value=Decimal(-1000),
+            max_value=Decimal(1000),
             allow_nan=False,
             allow_infinity=False,
         )
@@ -289,8 +289,8 @@ class TestBuiltinFunctionProperties:
 
     @given(
         st.decimals(
-            min_value=Decimal("-1000000"),
-            max_value=Decimal("1000000"),
+            min_value=Decimal(-1000000),
+            max_value=Decimal(1000000),
             allow_nan=False,
             allow_infinity=False,
         )

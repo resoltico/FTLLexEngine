@@ -574,7 +574,7 @@ class TestCallArgumentsValidation:
                 named=(
                     NamedArgument(
                         name=Identifier(name="style"),
-                        value=cast(FTLLiteral, VariableReference(id=Identifier(name="styleVar"))),
+                        value=cast("FTLLiteral", VariableReference(id=Identifier(name="styleVar"))),
                     ),
                 ),
             ),
@@ -612,7 +612,7 @@ class TestCallArgumentsValidation:
                 named=(
                     NamedArgument(
                         name=Identifier(name="value"),
-                        value=cast(FTLLiteral, inner_func),
+                        value=cast("FTLLiteral", inner_func),
                     ),
                 ),
             ),

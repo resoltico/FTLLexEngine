@@ -78,8 +78,8 @@ class TestParameterEffectProperty:
 
     @given(
         value=st.decimals(
-            min_value=Decimal("-1000000"),
-            max_value=Decimal("1000000"),
+            min_value=Decimal(-1000000),
+            max_value=Decimal(1000000),
             allow_nan=False,
             allow_infinity=False,
         )

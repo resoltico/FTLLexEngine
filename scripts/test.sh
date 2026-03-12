@@ -267,9 +267,17 @@ else
 fi
 
 # [SECTION: REPORT]
-# JSON Summary
-# JSON Summary
 log_group_start "Final Report"
+
+# Emit human-readable failed test list BEFORE the JSON block so agents
+# and humans can read failure names without parsing JSON.
+if [[ $EXIT_CODE -ne 0 && ${#FAILED_TEST_LIST[@]} -gt 0 ]]; then
+    echo -e "\n${RED}[FAILED TESTS] ${#FAILED_TEST_LIST[@]} test(s) failed:${RESET}"
+    for t in "${FAILED_TEST_LIST[@]}"; do
+        echo "  $t"
+    done
+fi
+
 echo "[SUMMARY-JSON-BEGIN]"
 PYTHON_JSON_SCRIPT="
 import json, sys, os

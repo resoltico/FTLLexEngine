@@ -76,7 +76,7 @@ class Lock:
     def __enter__(self) -> bool:
         """Enter context manager."""
         ...
-    def __exit__(self, *args: Any) -> None:  # pylint: disable=unused-argument
+    def __exit__(self, *args: object) -> None:  # pylint: disable=unused-argument
         """Exit context manager."""
         ...
 

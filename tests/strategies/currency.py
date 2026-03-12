@@ -18,14 +18,10 @@ Python 3.13+.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING
 
 from hypothesis import event
 from hypothesis import strategies as st
 from hypothesis.strategies import composite
-
-if TYPE_CHECKING:
-    pass
 
 # Unambiguous symbols that always resolve to one currency
 _UNAMBIGUOUS_SYMBOLS: dict[str, str] = {

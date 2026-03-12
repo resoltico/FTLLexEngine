@@ -1,6 +1,6 @@
-"""Tests for FluentBundle.get_all_message_variables().
+"""Tests for FluentBundle introspection API: get_message, get_term, get_all_message_variables.
 
-Tests the batch introspection API for CI/CD validation use cases.
+Covers the AST-access and batch-introspection APIs for CI/CD validation use cases.
 Includes unit tests, integration tests, edge cases, and property-based tests.
 
 Python 3.13+.
@@ -11,7 +11,142 @@ from __future__ import annotations
 from hypothesis import event, given
 from hypothesis import strategies as st
 
-from ftllexengine import FluentBundle
+from ftllexengine import FluentBundle, validate_message_variables
+from ftllexengine.syntax import Message, Term
+
+
+class TestGetMessageAST:
+    """FluentBundle.get_message() returns the parsed Message AST node or None."""
+
+    def test_existing_message_returns_message_node(self) -> None:
+        """Existing message returns a Message AST node."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("greeting = Hello, { $name }!")
+
+        msg = bundle.get_message("greeting")
+
+        assert msg is not None
+        assert isinstance(msg, Message)
+        assert msg.id.name == "greeting"
+
+    def test_missing_message_returns_none(self) -> None:
+        """Missing message returns None (not KeyError)."""
+        bundle = FluentBundle("en", use_isolating=False)
+
+        assert bundle.get_message("nonexistent") is None
+
+    def test_empty_bundle_returns_none(self) -> None:
+        """Empty bundle returns None for any message_id."""
+        bundle = FluentBundle("en", use_isolating=False)
+
+        assert bundle.get_message("anything") is None
+
+    def test_message_node_suitable_for_validate_message_variables(self) -> None:
+        """get_message() result can be passed directly to validate_message_variables()."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("greeting = Hello, { $name }!")
+
+        msg = bundle.get_message("greeting")
+        assert msg is not None
+
+        result = validate_message_variables(msg, frozenset({"name"}))
+        assert result.is_valid
+        assert result.message_id == "greeting"
+        assert result.declared_variables == frozenset({"name"})
+        assert result.missing_variables == frozenset()
+        assert result.extra_variables == frozenset()
+
+    def test_message_node_detects_schema_mismatch(self) -> None:
+        """validate_message_variables() via get_message() detects missing variables."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("greeting = Hello, { $name } ({ $title })!")
+
+        msg = bundle.get_message("greeting")
+        assert msg is not None
+
+        # Expected: only "name"; declared: "name" and "title" -> extra = {"title"}
+        result = validate_message_variables(msg, frozenset({"name"}))
+        assert not result.is_valid
+        assert result.extra_variables == frozenset({"title"})
+        assert result.missing_variables == frozenset()
+
+    def test_message_with_attributes_is_returned(self) -> None:
+        """Messages with attributes are returned as Message nodes."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource(
+            "button = Click\n"
+            "    .tooltip = Click to save\n"
+        )
+
+        msg = bundle.get_message("button")
+        assert msg is not None
+        assert isinstance(msg, Message)
+        assert len(msg.attributes) == 1
+
+    def test_message_node_not_same_object_as_dict_copy(self) -> None:
+        """Returned Message node is the live object in the bundle (not a copy)."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("msg = Hello!")
+
+        first = bundle.get_message("msg")
+        second = bundle.get_message("msg")
+
+        assert first is second  # Same object from _messages dict
+
+
+class TestGetTermAST:
+    """FluentBundle.get_term() returns the parsed Term AST node or None."""
+
+    def test_existing_term_returns_term_node(self) -> None:
+        """Existing term returns a Term AST node."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("-brand = Firefox")
+
+        term = bundle.get_term("brand")
+
+        assert term is not None
+        assert isinstance(term, Term)
+        assert term.id.name == "brand"
+
+    def test_missing_term_returns_none(self) -> None:
+        """Missing term returns None (not KeyError)."""
+        bundle = FluentBundle("en", use_isolating=False)
+
+        assert bundle.get_term("nonexistent") is None
+
+    def test_term_id_without_leading_dash(self) -> None:
+        """-brand is accessed as get_term('brand'), not get_term('-brand')."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("-brand = Firefox")
+
+        assert bundle.get_term("brand") is not None
+        # Leading dash would NOT match (terms stored without dash in key)
+        assert bundle.get_term("-brand") is None
+
+    def test_term_node_suitable_for_validate_message_variables(self) -> None:
+        """get_term() result can be passed to validate_message_variables()."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("-greeting = Hello, { $name }!")
+
+        term = bundle.get_term("greeting")
+        assert term is not None
+
+        result = validate_message_variables(term, frozenset({"name"}))
+        assert result.is_valid
+
+    def test_get_message_does_not_return_terms(self) -> None:
+        """get_message() does not return terms (separate namespaces)."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("-brand = Firefox")
+
+        assert bundle.get_message("brand") is None
+
+    def test_get_term_does_not_return_messages(self) -> None:
+        """get_term() does not return messages (separate namespaces)."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("brand = Firefox")
+
+        assert bundle.get_term("brand") is None
 
 
 class TestGetAllMessageVariablesBasic:

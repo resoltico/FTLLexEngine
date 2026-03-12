@@ -435,7 +435,7 @@ def _run_threaded_cache_stress(
             msg_idx = fdp.ConsumeIntInRange(0, 19)
             ops.append({
                 "msg_id": f"msg{msg_idx}",
-                "args": deep_args if deep_args else {
+                "args": deep_args or {
                     "var0": fdp.ConsumeUnicodeNoSurrogates(3),
                     "v": fdp.ConsumeInt(2),
                     "count": fdp.ConsumeIntInRange(0, 10),
@@ -453,7 +453,7 @@ def _run_threaded_cache_stress(
                 _domain.cache_operations += 1
                 bundle.format_pattern(
                     op["msg_id"],
-                    cast(dict[str, Any], op["args"]),
+                    cast("dict[str, Any]", op["args"]),
                     attribute=op.get("attr"),
                 )
             except CacheCorruptionError:

@@ -294,8 +294,8 @@ class TestNumberRounding:
         """Rounding uses Decimal.quantize with ROUND_HALF_UP."""
         # This test verifies the implementation detail
         value = Decimal("2.5")
-        rounded = value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        assert rounded == Decimal("3")
+        rounded = value.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        assert rounded == Decimal(3)
 
 
 class TestDependencyGraphOptimization:

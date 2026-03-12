@@ -52,10 +52,7 @@ import sys
 import time
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any, Literal, cast
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, Literal, cast
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -295,7 +292,7 @@ def _extract_oracle_digits(formatted: str, locale: str) -> str | None:
         return None
     normalized = formatted.replace(group_sym, "").replace(decimal_sym, ".")
     digits = re.sub(r"[^\d.]", "", normalized)
-    return digits if digits else None
+    return digits or None
 
 
 def _run_oracle(
@@ -369,13 +366,13 @@ def _pattern_currency_pattern_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     fuzz_locale_context case 7 tests the pattern= path but without an oracle.
     fuzz_builtins does not test currency pattern= at all.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
     int_part = fdp.ConsumeIntInRange(0, 9999)
     frac_str = str(fdp.ConsumeIntInRange(0, 99999)).zfill(5)
     value = Decimal(f"{int_part}.{frac_str}")
     pattern, max_frac = cast(
-        tuple[str, int],
+        "tuple[str, int]",
         fdp.PickValueInList(list(_CURRENCY_PATTERNS_WITH_PREC)),
     )
     _domain.pattern_calls += 1
@@ -394,18 +391,18 @@ def _pattern_currency_boundary_values(fdp: atheris.FuzzedDataProvider) -> None:
     Selects a currency matching the boundary precision to ensure the oracle
     fires on the correct side of the rounding threshold.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     precision, val_str = cast(
-        tuple[int, str],
+        "tuple[int, str]",
         fdp.PickValueInList(list(_BOUNDARY_VALUES_BY_PREC)),
     )
     match precision:
         case 0:
-            currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
+            currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
         case 3:
-            currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_3_DECIMAL)))
+            currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_3_DECIMAL)))
         case _:  # 2
-            currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
+            currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
 
     value = Decimal(val_str)
     _domain.boundary_hits += 1
@@ -427,8 +424,8 @@ def _pattern_currency_3decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     the 2-decimal case. The oracle verifies ROUND_HALF_UP at precision=3 across
     all ASCII-digit locales.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_3_DECIMAL)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_3_DECIMAL)))
     int_part = fdp.ConsumeIntInRange(0, 9999)
     frac_str = str(fdp.ConsumeIntInRange(0, 9999)).zfill(4)
     value = Decimal(f"{int_part}.{frac_str}")
@@ -448,8 +445,8 @@ def _pattern_currency_0decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     2.5 -> 2 (banker's rounding); ROUND_HALF_UP always rounds x.5 up.
     The oracle verifies the latter for all x.5 inputs.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
     int_part = fdp.ConsumeIntInRange(0, 99999)
     frac_part = fdp.ConsumeIntInRange(0, 99)
     value = Decimal(f"{int_part}.{frac_part:02d}")
@@ -469,8 +466,8 @@ def _pattern_currency_display_preservation(fdp: atheris.FuzzedDataProvider) -> N
     '$' vs 'USD' vs 'US dollar'). The underlying numeric precision must be
     preserved identically across all display modes for the same currency.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    currency = cast(str, fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_ALL_CURRENCIES)))
     int_part = fdp.ConsumeIntInRange(0, 9999)
     frac_part = fdp.ConsumeIntInRange(0, 99)
     value = Decimal(f"{int_part}.{frac_part:02d}")
@@ -478,7 +475,7 @@ def _pattern_currency_display_preservation(fdp: atheris.FuzzedDataProvider) -> N
 
     results: dict[str, FluentNumber] = {}
     for _display in _DISPLAY_MODES:
-        display = cast(Literal["symbol", "code", "name"], _display)
+        display = cast("Literal['symbol', 'code', 'name']", _display)
         _domain.currency_calls += 1
         r = currency_format(value, locale, currency=currency, currency_display=display)
         if isinstance(r, FluentNumber):
@@ -502,8 +499,8 @@ def _pattern_currency_negative_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     Verifies that negative currency amounts are handled correctly (oracle uses
     abs() before quantize, matching the formatting behavior).
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    currency = cast(str, fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_ALL_CURRENCIES)))
     int_part = fdp.ConsumeIntInRange(0, 9999)
     frac_str = str(fdp.ConsumeIntInRange(0, 9999)).zfill(4)
     value = Decimal(f"-{int_part}.{frac_str}")
@@ -522,9 +519,9 @@ def _pattern_currency_large_oracle(fdp: atheris.FuzzedDataProvider) -> None:
     In de-DE, the group separator is '.' which conflicts with the decimal '.';
     removing group separators before replacing decimal is critical.
     """
-    locale = cast(str, fdp.PickValueInList(list(_VALID_LOCALES)))
-    currency = cast(str, fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
-    val_str = cast(str, fdp.PickValueInList(list(_LARGE_AMOUNTS)))
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_2_DECIMAL)))
+    val_str = cast("str", fdp.PickValueInList(list(_LARGE_AMOUNTS)))
     value = Decimal(val_str)
     _domain.large_value_tests += 1
     _domain.currency_calls += 1
@@ -545,7 +542,7 @@ def _pattern_currency_locale_matrix(fdp: atheris.FuzzedDataProvider) -> None:
     a given currency (CLDR precision is per-currency, not per-territory, so
     all locales must produce the same decimal count for the same currency).
     """
-    currency = cast(str, fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    currency = cast("str", fdp.PickValueInList(list(_ALL_CURRENCIES)))
     int_part = fdp.ConsumeIntInRange(0, 9999)
     frac_part = fdp.ConsumeIntInRange(0, 99)
     value = Decimal(f"{int_part}.{frac_part:02d}")

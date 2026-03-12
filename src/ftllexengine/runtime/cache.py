@@ -483,8 +483,8 @@ class IntegrityCache:
 
     Example:
         >>> cache = IntegrityCache(maxsize=1000, strict=True)
-        >>> cache.put("msg", None, None, "en_US", False, "Hello", ())
-        >>> entry = cache.get("msg", None, None, "en_US", False)
+        >>> cache.put("msg", None, None, "en_US", use_isolating=False, formatted="Hello", errors=())
+        >>> entry = cache.get("msg", None, None, "en_US", use_isolating=False)
         >>> assert entry is not None
         >>> assert entry.verify()  # Integrity check
         >>> result, errors = entry.as_result()
@@ -583,6 +583,7 @@ class IntegrityCache:
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
+        *,
         use_isolating: bool,
     ) -> IntegrityCacheEntry | None:
         """Get cached entry with integrity verification.
@@ -602,7 +603,7 @@ class IntegrityCache:
         Raises:
             CacheCorruptionError: If strict=True and checksum mismatch detected
         """
-        key = self._make_key(message_id, args, attribute, locale_code, use_isolating)
+        key = self._make_key(message_id, args, attribute, locale_code, use_isolating=use_isolating)
 
         if key is None:
             with self._lock:
@@ -681,6 +682,7 @@ class IntegrityCache:
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
+        *,
         use_isolating: bool,
         formatted: str,
         errors: tuple[FrozenFluentError, ...],
@@ -723,7 +725,7 @@ class IntegrityCache:
                 self._combined_weight_skips += 1
             return
 
-        key = self._make_key(message_id, args, attribute, locale_code, use_isolating)
+        key = self._make_key(message_id, args, attribute, locale_code, use_isolating=use_isolating)
 
         if key is None:
             with self._lock:
@@ -739,8 +741,13 @@ class IntegrityCache:
                 # Thundering herd scenario: Multiple threads resolve same message
                 # simultaneously, all compute identical results. First thread wins,
                 # subsequent threads should succeed silently (idempotent write).
-                new_content_hash = IntegrityCacheEntry._compute_content_hash(
-                    formatted, errors
+                # Cross-class call within the same module: IntegrityCacheEntry._compute_content_hash
+                # is a static pure function needed here to compare hashes without a full entry.
+                # Both classes are permanently co-located in cache.py.
+                new_content_hash = (
+                    IntegrityCacheEntry._compute_content_hash(  # noqa: SLF001 - co-module
+                        formatted, errors
+                    )
                 )
                 if hmac.compare_digest(existing.content_hash, new_content_hash):
                     # Benign race: identical content already cached
@@ -954,7 +961,7 @@ class IntegrityCache:
         # nonlocal allows _go to mutate _node_count in the enclosing _make_hashable scope.
         _node_count: int = 0
 
-        def _go(v: object, d: int) -> HashableValue:  # noqa: PLR0911, PLR0912 - type dispatch over closed FluentValue union
+        def _go(v: object, d: int) -> HashableValue:
             nonlocal _node_count
             _node_count += 1
             if _node_count > IntegrityCache._MAX_HASHABLE_NODES:
@@ -1100,6 +1107,7 @@ class IntegrityCache:
         args: Mapping[str, FluentValue] | None,
         attribute: str | None,
         locale_code: str,
+        *,
         use_isolating: bool,
     ) -> _CacheKey | None:
         """Create immutable cache key from arguments.

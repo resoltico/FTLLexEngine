@@ -252,7 +252,7 @@ class TestParseNumber:
 
     @given(
         n=st.decimals(
-            min_value=Decimal("0"), max_value=Decimal("10000000000"), allow_nan=False,
+            min_value=Decimal(0), max_value=Decimal(10000000000), allow_nan=False,
             allow_infinity=False,
         )
     )

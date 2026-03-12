@@ -175,19 +175,19 @@ _LOCALES: tuple[str, ...] = (
 
 def _pick_id(fdp: atheris.FuzzedDataProvider) -> str:
     """Pick a message/term identifier from pool."""
-    return cast(str, fdp.PickValueInList(list(_NODE_IDS)))
+    return cast("str", fdp.PickValueInList(list(_NODE_IDS)))
 
 
 def _pick_var(fdp: atheris.FuzzedDataProvider) -> str:
     """Pick a variable name from pool."""
-    return cast(str, fdp.PickValueInList(list(_VAR_NAMES)))
+    return cast("str", fdp.PickValueInList(list(_VAR_NAMES)))
 
 
 def _pick_locale(fdp: atheris.FuzzedDataProvider) -> str:
     """Pick a locale: 90% valid, 10% fuzzed."""
     if fdp.ConsumeIntInRange(0, 9) < 9:
-        return cast(str, fdp.PickValueInList(list(_LOCALES)))
-    return cast(str, fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 10)))
+        return cast("str", fdp.PickValueInList(list(_LOCALES)))
+    return cast("str", fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 10)))
 
 
 def _gen_value(fdp: atheris.FuzzedDataProvider) -> str:

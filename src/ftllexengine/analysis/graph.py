@@ -9,8 +9,10 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 from ftllexengine.constants import MAX_DETECTED_CYCLES, MAX_GRAPH_DFS_STACK
 

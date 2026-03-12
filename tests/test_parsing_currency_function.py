@@ -449,7 +449,7 @@ class TestCurrencyHypothesis:
     @given(
         locale=st.sampled_from(sorted(TEST_LOCALES)),
         amount=st.decimals(
-            min_value=Decimal("0"),
+            min_value=Decimal(0),
             max_value=Decimal("1e6"),
             allow_nan=False,
             allow_infinity=False,
@@ -544,12 +544,12 @@ class TestCurrencyEdgeCases:
 
     def test_currency_exact_zero(self) -> None:
         """Exactly zero."""
-        result = currency_format(Decimal("0"), "en-US", currency="EUR")
+        result = currency_format(Decimal(0), "en-US", currency="EUR")
         assert isinstance(result, FluentNumber)
         assert "0" in str(result)
 
     def test_currency_negative_zero(self) -> None:
         """Negative zero represented as Decimal zero."""
-        result = currency_format(Decimal("0"), "en-US", currency="USD")
+        result = currency_format(Decimal(0), "en-US", currency="USD")
         assert isinstance(result, FluentNumber)
         assert "0" in str(result)

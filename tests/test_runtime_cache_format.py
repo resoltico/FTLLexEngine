@@ -457,15 +457,15 @@ class TestCacheIntrospection:
         cache = IntegrityCache(strict=False, maxsize=2)
 
         # Put initial value
-        cache.put("msg1", {"name": "Alice"}, None, "en", True, "Hello Alice", ())
+        cache.put("msg1", {"name": "Alice"}, None, "en", use_isolating=True, formatted="Hello Alice", errors=())
         assert len(cache) == 1
 
         # Put same key again (should call move_to_end)
-        cache.put("msg1", {"name": "Alice"}, None, "en", True, "Hello Alice!", ())
+        cache.put("msg1", {"name": "Alice"}, None, "en", use_isolating=True, formatted="Hello Alice!", errors=())
         assert len(cache) == 1  # Size unchanged
 
         # Verify value was updated
-        entry = cache.get("msg1", {"name": "Alice"}, None, "en", True)
+        entry = cache.get("msg1", {"name": "Alice"}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Hello Alice!"  # Updated value
 

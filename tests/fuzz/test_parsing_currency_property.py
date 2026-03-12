@@ -47,7 +47,7 @@ class TestCurrencyAmountStrategy:
         """Property: currency_amounts() generates positive amounts."""
         event(f"outcome=magnitude_positive={amount > 0}")
         assert isinstance(amount, Decimal)
-        assert amount > Decimal("0")
+        assert amount > Decimal(0)
 
     @given(amount=currency_amounts())
     @settings(max_examples=200, deadline=None)

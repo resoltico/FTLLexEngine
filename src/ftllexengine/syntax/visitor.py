@@ -406,7 +406,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     entries=cast(
-                        tuple[Entry, ...],
+                        "tuple[Entry, ...]",
                         self._transform_list(
                             entries, "Resource.entries", (Message, Term, Comment, Junk)
                         ),
@@ -416,7 +416,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(self.visit(id_node), "Message.id"),
                     ),
                     value=cast(
@@ -448,11 +448,11 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(self.visit(id_node), "Term.id"),
                     ),
                     value=cast(
-                        Pattern,
+                        "Pattern",
                         self._validate_scalar_result(self.visit(value), "Term.value"),
                     ),
                     attributes=cast(
@@ -474,7 +474,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     elements=cast(
-                        tuple[PatternElement, ...],
+                        "tuple[PatternElement, ...]",
                         self._transform_list(
                             elements, "Pattern.elements", (TextElement, Placeable)
                         ),
@@ -484,7 +484,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     expression=cast(
-                        Expression,
+                        "Expression",
                         self._validate_scalar_result(self.visit(expr), "Placeable.expression"),
                     ),
                 )
@@ -492,7 +492,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     selector=cast(
-                        SelectorExpression,
+                        "SelectorExpression",
                         self._validate_scalar_result(
                             self.visit(selector), "SelectExpression.selector"
                         ),
@@ -508,11 +508,11 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     key=cast(
-                        VariantKey,
+                        "VariantKey",
                         self._validate_scalar_result(self.visit(key), "Variant.key"),
                     ),
                     value=cast(
-                        Pattern,
+                        "Pattern",
                         self._validate_scalar_result(self.visit(value), "Variant.value"),
                     ),
                 )
@@ -520,13 +520,13 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(
                             self.visit(id_node), "FunctionReference.id"
                         ),
                     ),
                     arguments=cast(
-                        CallArguments,
+                        "CallArguments",
                         self._validate_scalar_result(
                             self.visit(args), "FunctionReference.arguments"
                         ),
@@ -536,7 +536,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(
                             self.visit(id_node), "MessageReference.id"
                         ),
@@ -556,7 +556,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(
                             self.visit(id_node), "TermReference.id"
                         ),
@@ -586,7 +586,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(
                             self.visit(id_node), "VariableReference.id"
                         ),
@@ -596,7 +596,7 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     positional=cast(
-                        tuple[InlineExpression, ...],
+                        "tuple[InlineExpression, ...]",
                         self._transform_list(
                             pos,
                             "CallArguments.positional",
@@ -618,11 +618,11 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     name=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(self.visit(name), "NamedArgument.name"),
                     ),
                     value=cast(
-                        FTLLiteral,
+                        "FTLLiteral",
                         self._validate_scalar_result(self.visit(value), "NamedArgument.value"),
                     ),
                 )
@@ -630,11 +630,11 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
                 return replace(
                     node,
                     id=cast(
-                        Identifier,
+                        "Identifier",
                         self._validate_scalar_result(self.visit(id_node), "Attribute.id"),
                     ),
                     value=cast(
-                        Pattern,
+                        "Pattern",
                         self._validate_scalar_result(self.visit(value), "Attribute.value"),
                     ),
                 )

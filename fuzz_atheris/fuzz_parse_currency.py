@@ -33,10 +33,7 @@ import sys
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -118,21 +115,21 @@ _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
 _ISO_CASES: tuple[tuple[str, str, Decimal, str], ...] = (
     ("USD 1,234.56", "en_US", Decimal("1234.56"), "USD"),
     ("EUR100.50", "en_US", Decimal("100.50"), "EUR"),
-    ("JPY 1000", "en_US", Decimal("1000"), "JPY"),
+    ("JPY 1000", "en_US", Decimal(1000), "JPY"),
     ("BHD 1.005", "en_US", Decimal("1.005"), "BHD"),
 )
 
 _DEFAULT_CASES: tuple[tuple[str, str, str, Decimal], ...] = (
-    ("$100", "en_US", "USD", Decimal("100")),
-    ("$100", "en_CA", "CAD", Decimal("100")),
-    ("£100", "en_GB", "GBP", Decimal("100")),
+    ("$100", "en_US", "USD", Decimal(100)),
+    ("$100", "en_CA", "CAD", Decimal(100)),
+    ("£100", "en_GB", "GBP", Decimal(100)),
 )
 
 _INFER_CASES: tuple[tuple[str, str, Decimal, str], ...] = (
-    ("$100", "en_CA", Decimal("100"), "CAD"),
-    ("$100", "en_US", Decimal("100"), "USD"),
-    ("¥100", "zh_CN", Decimal("100"), "CNY"),
-    ("¥100", "ja_JP", Decimal("100"), "JPY"),
+    ("$100", "en_CA", Decimal(100), "CAD"),
+    ("$100", "en_US", Decimal(100), "USD"),
+    ("¥100", "zh_CN", Decimal(100), "CNY"),
+    ("¥100", "ja_JP", Decimal(100), "JPY"),
 )
 
 _REPORT_DIR = pathlib.Path(".fuzz_atheris_corpus") / "parse_currency"
@@ -363,7 +360,7 @@ def _pattern_type_guard_contract(fdp: atheris.FuzzedDataProvider) -> None:
     _domain.guard_checks += 1
     values: tuple[tuple[Decimal, str] | None, ...] = (
         (Decimal("1.23"), "USD"),
-        (Decimal("0"), "EUR"),
+        (Decimal(0), "EUR"),
         (Decimal("NaN"), "USD"),
         (Decimal("Infinity"), "USD"),
         None,

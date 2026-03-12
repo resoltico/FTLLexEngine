@@ -27,11 +27,15 @@ Example:
 Python 3.13+. Uses Babel for i18n.
 """
 
+from __future__ import annotations
+
 import functools
 import logging
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+    from decimal import Decimal
 
 from ftllexengine.core.babel_compat import get_babel_numbers
 

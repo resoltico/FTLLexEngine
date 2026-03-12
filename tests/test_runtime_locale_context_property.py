@@ -70,7 +70,7 @@ def _oracle_extract_digits(result: str, locale: str) -> str | None:
         return None
     normalized = result.replace(group_sym, "").replace(decimal_sym, ".")
     digits = re.sub(r"[^\d.]", "", normalized)
-    return digits if digits else None
+    return digits or None
 
 
 class TestLocaleContextCreateProperties:
@@ -196,8 +196,8 @@ class TestFormatNumberProperties:
                 max_value=1_000_000_000,
             ),
             st.decimals(
-                min_value=Decimal("-1000000000"),
-                max_value=Decimal("1000000000"),
+                min_value=Decimal(-1000000000),
+                max_value=Decimal(1000000000),
                 allow_nan=False,
                 allow_infinity=False,
             ),
@@ -425,7 +425,7 @@ class TestFormatNumberProperties:
             ValueError, match=r"minimum_fraction_digits"
         ):
             ctx.format_number(
-                Decimal("42"), minimum_fraction_digits=value
+                Decimal(42), minimum_fraction_digits=value
             )
 
     @given(
@@ -464,7 +464,7 @@ class TestFormatNumberProperties:
             ValueError, match=r"maximum_fraction_digits"
         ):
             ctx.format_number(
-                Decimal("42"), maximum_fraction_digits=value
+                Decimal(42), maximum_fraction_digits=value
             )
 
 
@@ -908,8 +908,8 @@ class TestFormatCurrencyProperties:
         value=st.one_of(
             st.integers(min_value=0, max_value=1_000_000),
             st.decimals(
-                min_value=Decimal("0"),
-                max_value=Decimal("1000000"),
+                min_value=Decimal(0),
+                max_value=Decimal(1000000),
                 allow_nan=False,
                 allow_infinity=False,
             ),

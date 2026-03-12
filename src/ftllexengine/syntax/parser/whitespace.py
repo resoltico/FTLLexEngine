@@ -4,7 +4,12 @@ This module provides whitespace skipping and continuation detection
 per the Fluent specification.
 """
 
-from ftllexengine.syntax.cursor import Cursor
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ftllexengine.syntax.cursor import Cursor
 
 
 def skip_blank_inline(cursor: Cursor) -> Cursor:

@@ -1221,12 +1221,12 @@ class TestCurrencyBoundaryValues:
     """Regression tests for currency formatting boundaries."""
 
     @pytest.mark.parametrize("value", [
-        Decimal("999"),
+        Decimal(999),
         Decimal("999.99"),
-        Decimal("1000"),
+        Decimal(1000),
         Decimal("1000.00"),
         Decimal("1000.01"),
-        Decimal("1001"),
+        Decimal(1001),
     ])
     def test_currency_around_1000_boundary(
         self, value: Decimal
@@ -1249,14 +1249,14 @@ class TestCurrencyBoundaryValues:
         """Currency formatting for 1000 across locales."""
         ctx = LocaleContext.create(locale)
         result = ctx.format_currency(
-            Decimal("1000"), currency="USD"
+            Decimal(1000), currency="USD"
         )
         assert isinstance(result, str)
         assert result
         assert any(c.isdigit() for c in result)
 
     @pytest.mark.parametrize("value", [
-        Decimal("-1000"),
+        Decimal(-1000),
         Decimal("-1000.00"),
     ])
     def test_negative_1000_currency(
@@ -1279,7 +1279,7 @@ class TestCurrencyBoundaryValues:
         """Currency formatting for 1000 with currencies."""
         ctx = LocaleContext.create("en_US")
         result = ctx.format_currency(
-            Decimal("1000"), currency=currency
+            Decimal(1000), currency=currency
         )
         assert isinstance(result, str)
         assert result
@@ -1288,7 +1288,7 @@ class TestCurrencyBoundaryValues:
     def test_currency_1000_all_display_modes(self) -> None:
         """Currency formatting 1000 with all display modes."""
         ctx = LocaleContext.create("en_US")
-        value = Decimal("1000")
+        value = Decimal(1000)
 
         result_symbol = ctx.format_currency(
             value, currency="USD", currency_display="symbol"
@@ -1315,7 +1315,7 @@ class TestCurrencyBoundaryValues:
     def test_currency_decimal_1000(self) -> None:
         """Currency formatting handles Decimal 1000."""
         ctx = LocaleContext.create("en_US")
-        result = ctx.format_currency(Decimal("1000"), currency="USD")
+        result = ctx.format_currency(Decimal(1000), currency="USD")
         assert isinstance(result, str)
         assert "$" in result or "USD" in result
 
@@ -1496,7 +1496,7 @@ class TestLocaleContextUnexpectedErrorPropagation:
         monkeypatch.setattr(babel_numbers, "format_currency", mock_format_currency)
 
         with pytest.raises(RuntimeError, match="Mocked RuntimeError"):
-            ctx.format_currency(Decimal("100"), currency="USD")
+            ctx.format_currency(Decimal(100), currency="USD")
 
 
 class TestLocaleContextCustomPatternCoverage:
@@ -1534,7 +1534,7 @@ class TestLocaleContextCustomPatternCoverage:
         try:
             with caplog.at_level(logging.DEBUG):
                 result = ctx.format_currency(
-                    Decimal("100"), currency="USD", currency_display="code"
+                    Decimal(100), currency="USD", currency_display="code"
                 )
 
             assert isinstance(result, str)
@@ -1569,7 +1569,7 @@ class TestLocaleContextCurrencyCodeFallback:
         )
 
         try:
-            result = ctx.format_currency(Decimal("100"), currency="USD", currency_display="code")
+            result = ctx.format_currency(Decimal(100), currency="USD", currency_display="code")
             assert isinstance(result, str)
         finally:
             object.__setattr__(ctx, "_babel_locale", original_babel_locale)
@@ -1594,7 +1594,7 @@ class TestLocaleContextCurrencyCodeFallback:
         )
 
         try:
-            result = ctx.format_currency(Decimal("100"), currency="USD", currency_display="code")
+            result = ctx.format_currency(Decimal(100), currency="USD", currency_display="code")
             assert isinstance(result, str)
         finally:
             object.__setattr__(ctx, "_babel_locale", original_babel_locale)

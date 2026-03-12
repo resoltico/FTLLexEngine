@@ -192,12 +192,12 @@ _CONTROL_CHARS: tuple[str, ...] = (
 
 def _pick_code(fdp: atheris.FuzzedDataProvider) -> DiagnosticCode:
     """Pick a random DiagnosticCode."""
-    return cast(DiagnosticCode, fdp.PickValueInList(list(_ALL_CODES)))
+    return cast("DiagnosticCode", fdp.PickValueInList(list(_ALL_CODES)))
 
 
 def _pick_format(fdp: atheris.FuzzedDataProvider) -> OutputFormat:
     """Pick a random output format."""
-    return cast(OutputFormat, fdp.PickValueInList(list(OutputFormat)))
+    return cast("OutputFormat", fdp.PickValueInList(list(OutputFormat)))
 
 
 def _gen_message(fdp: atheris.FuzzedDataProvider) -> str:

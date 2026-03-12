@@ -20,6 +20,7 @@ from __future__ import annotations
 import time
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
+from typing import Self
 
 from ftllexengine.constants import DEFAULT_MAX_EXPANSION_SIZE, MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard, depth_clamp
@@ -87,7 +88,7 @@ class GlobalDepthGuard:
         self._max_depth = depth_clamp(max_depth)
         self._token: Token[int] | None = None
 
-    def __enter__(self) -> GlobalDepthGuard:
+    def __enter__(self) -> Self:
         """Enter guarded section, increment global depth."""
         current = _global_resolution_depth.get()
         if current >= self._max_depth:

@@ -142,7 +142,7 @@ class TestNumberLiteralInvariantPreventsInvalidConstruction:
     def test_unparseable_raw_brackets_rejected(self) -> None:
         """NumberLiteral rejects raw strings containing bracket syntax."""
         with pytest.raises(ValueError, match="not a valid number literal"):
-            NumberLiteral(value=Decimal("0"), raw="[1,2,3]")
+            NumberLiteral(value=Decimal(0), raw="[1,2,3]")
 
     def test_empty_raw_string_rejected(self) -> None:
         """NumberLiteral rejects empty raw strings."""

@@ -48,17 +48,17 @@ from ftllexengine.localization.loading import (
     ResourceLoader,
     ResourceLoadResult,
 )
-from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
-from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.bundle import FluentBundle, _validate_locale_format
 from ftllexengine.runtime.cache import CacheStats
-from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.runtime.rwlock import RWLock
-from ftllexengine.runtime.value_types import FluentValue
-from ftllexengine.syntax import Junk
 
 if TYPE_CHECKING:
     from ftllexengine.diagnostics import ValidationResult
     from ftllexengine.introspection import MessageIntrospection
+    from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
+    from ftllexengine.runtime.cache_config import CacheConfig
+    from ftllexengine.runtime.value_types import FluentValue
+    from ftllexengine.syntax import Junk, Message, Term
 
 __all__ = ["FluentLocalization", "LocalizationCacheStats"]
 
@@ -174,7 +174,7 @@ class FluentLocalization:
         # Validate all locales eagerly (fail-fast pattern)
         # Prevents ValueError from leaking out of format_value during lazy bundle creation
         for locale in self._locales:
-            FluentBundle._validate_locale_format(locale)
+            _validate_locale_format(locale)
 
         # Precompute primary locale once: _locales is guaranteed non-empty (checked above)
         # and is immutable (tuple), so this value never changes after construction.
@@ -896,6 +896,67 @@ class FluentLocalization:
                 return bundle.introspect_term(term_id)
             except KeyError:
                 continue
+        return None
+
+    def get_message(self, message_id: MessageId) -> Message | None:
+        """Return the parsed AST node for a message using the fallback chain.
+
+        Searches bundles in locale priority order and returns the Message from
+        the first locale that contains it. Returns None if no locale has the
+        message.
+
+        This enables callers to use validate_message_variables() directly with
+        the structured MessageVariableValidationResult return type, rather than
+        performing variable set arithmetic via get_message_variables().
+
+        Args:
+            message_id: Message identifier
+
+        Returns:
+            Message AST node from the highest-priority locale that has it,
+            or None if not found in any locale
+
+        Example:
+            >>> l10n = FluentLocalization(['lv', 'en'])
+            >>> l10n.add_resource('lv', 'greeting = Sveiki, { $name }!')
+            >>> msg = l10n.get_message('greeting')
+            >>> if msg is not None:
+            ...     from ftllexengine import validate_message_variables
+            ...     result = validate_message_variables(msg, frozenset({'name'}))
+            ...     assert result.is_valid
+        """
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            msg = bundle.get_message(message_id)
+            if msg is not None:
+                return msg
+        return None
+
+    def get_term(self, term_id: str) -> Term | None:
+        """Return the parsed AST node for a term using the fallback chain.
+
+        Searches bundles in locale priority order and returns the Term from
+        the first locale that contains it. The term_id should be supplied
+        without the leading dash (e.g., ``"brand"`` for ``-brand``).
+
+        Args:
+            term_id: Term identifier without leading dash
+
+        Returns:
+            Term AST node from the highest-priority locale that has it,
+            or None if not found in any locale
+
+        Example:
+            >>> l10n = FluentLocalization(['lv', 'en'])
+            >>> l10n.add_resource('lv', '-brand = Firefox')
+            >>> term = l10n.get_term('brand')
+            >>> assert term is not None
+        """
+        for locale in self._locales:
+            bundle = self._get_or_create_bundle(locale)
+            term = bundle.get_term(term_id)
+            if term is not None:
+                return term
         return None
 
     def get_babel_locale(self) -> str:

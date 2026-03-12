@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from ftllexengine.enums import LoadStatus
-from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
 
 if TYPE_CHECKING:
+    from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
     from ftllexengine.syntax.ast import Junk
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability

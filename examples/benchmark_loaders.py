@@ -43,7 +43,7 @@ class BenchmarkTimer:
         self.start_time = time.perf_counter()
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         self.end_time = time.perf_counter()
 
     @property

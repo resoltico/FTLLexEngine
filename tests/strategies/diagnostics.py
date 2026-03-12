@@ -145,7 +145,7 @@ def frozen_error_contexts(draw: st.DrawFn) -> FrozenErrorContext:
         input_value=input_value,
         locale_code=locale_code,
         parse_type=cast(
-            Literal["", "currency", "date", "datetime", "decimal", "number"],
+            "Literal['', 'currency', 'date', 'datetime', 'decimal', 'number']",
             parse_type,
         ),
         fallback_value=fallback_value,

@@ -29,8 +29,6 @@ Linting Notes:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, rule
@@ -45,10 +43,6 @@ from ftllexengine import (
 # Parser uses Junk nodes for syntax errors (robustness principle)
 # and never raises exceptions.
 
-if TYPE_CHECKING:
-    # Type hints for mypy - RuleBasedStateMachine state
-    # These are set by @initialize() decorator, not __init__
-    pass
 
 
 # ==============================================================================

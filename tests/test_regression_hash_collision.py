@@ -62,10 +62,10 @@ class TestDictChainMapCollisionPrevention:
         data: dict[str, Any] = {"x": 1}
 
         # Put with dict args
-        cache.put("msg", {"arg": dict(data)}, None, "en", True, "dict result", ())
+        cache.put("msg", {"arg": dict(data)}, None, "en", use_isolating=True, formatted="dict result", errors=())
 
         # Get with ChainMap args should miss (different cache key)
-        result = cache.get("msg", {"arg": ChainMap(data)}, None, "en", True)
+        result = cache.get("msg", {"arg": ChainMap(data)}, None, "en", use_isolating=True)
         assert result is None, "ChainMap should not hit dict cache entry"
 
     @given(st.dictionaries(st.text(min_size=1, max_size=10), st.integers()))
@@ -334,7 +334,7 @@ class TestComprehensiveTypeTagging:
         keys = {
             "bool_true": IntegrityCache._make_hashable(True),
             "int_1": IntegrityCache._make_hashable(1),
-            "decimal_1": IntegrityCache._make_hashable(Decimal("1")),
+            "decimal_1": IntegrityCache._make_hashable(Decimal(1)),
         }
 
         # All must be different

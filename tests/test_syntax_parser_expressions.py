@@ -283,7 +283,7 @@ class TestTrimPatternBlankLines:
     def test_text_with_content_after_newline_preserved(self) -> None:
         """Content after last newline is preserved."""
         elements = cast(
-            list[TextElement | Placeable],
+            "list[TextElement | Placeable]",
             [TextElement(value="Hello\nWorld")],
         )
         result = _trim_pattern_blank_lines(elements)
@@ -294,7 +294,7 @@ class TestTrimPatternBlankLines:
     def test_trailing_blank_line_removed(self) -> None:
         """Trailing blank line is removed."""
         elements = cast(
-            list[TextElement | Placeable],
+            "list[TextElement | Placeable]",
             [TextElement(value="Content\n   \n")],
         )
         result = _trim_pattern_blank_lines(elements)
@@ -305,7 +305,7 @@ class TestTrimPatternBlankLines:
     def test_leading_all_whitespace_removed(self) -> None:
         """First element all whitespace is removed."""
         elements = cast(
-            list[TextElement | Placeable],
+            "list[TextElement | Placeable]",
             [TextElement(value="   "), TextElement(value="content")],
         )
         result = _trim_pattern_blank_lines(elements)
@@ -316,7 +316,7 @@ class TestTrimPatternBlankLines:
     def test_trailing_all_whitespace_removed(self) -> None:
         """Last element all whitespace after trimming is removed."""
         elements = cast(
-            list[TextElement | Placeable],
+            "list[TextElement | Placeable]",
             [TextElement(value="content"), TextElement(value="\n   ")],
         )
         result = _trim_pattern_blank_lines(elements)

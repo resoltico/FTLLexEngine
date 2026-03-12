@@ -1183,7 +1183,7 @@ rating = { $stars ->
 """
         )
 
-        result, _ = bundle.format_pattern("rating", {"stars": Decimal("5")})
+        result, _ = bundle.format_pattern("rating", {"stars": Decimal(5)})
         assert "Excellent" in result
 
         result, _ = bundle.format_pattern("rating", {"stars": Decimal("3.5")})
@@ -1454,7 +1454,7 @@ class TestFormatValueComprehensive:
         """Verify _format_value handles Decimal values."""
         resolver = self._make_resolver()
         assert resolver._format_value(Decimal("3.14")) == "3.14"
-        assert resolver._format_value(Decimal("0")) == "0"
+        assert resolver._format_value(Decimal(0)) == "0"
         assert resolver._format_value(Decimal("123.45")) == "123.45"
 
     def test_format_value_with_none(self) -> None:

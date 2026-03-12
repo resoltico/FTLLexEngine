@@ -472,8 +472,8 @@ def ftl_numbers(draw: st.DrawFn) -> int | Decimal:
         st.one_of(
             st.integers(min_value=-1000000, max_value=1000000),
             st.decimals(
-                min_value=Decimal("-1000000"),
-                max_value=Decimal("1000000"),
+                min_value=Decimal(-1000000),
+                max_value=Decimal(1000000),
                 allow_nan=False,
                 allow_infinity=False,
             ),
@@ -1666,8 +1666,8 @@ def resolver_mixed_args(draw: st.DrawFn) -> dict[str, str | int | Decimal]:
                 ftl_simple_text(),
                 st.integers(min_value=-1000000, max_value=1000000),
                 st.decimals(
-                    min_value=Decimal("-1000000"),
-                    max_value=Decimal("1000000"),
+                    min_value=Decimal(-1000000),
+                    max_value=Decimal(1000000),
                     allow_nan=False,
                     allow_infinity=False,
                 ),
@@ -1687,10 +1687,10 @@ def resolver_edge_case_args(draw: st.DrawFn) -> dict[str, str | int | Decimal]:
         "0",  # Zero as string
         0,  # Zero
         -1,  # Negative
-        Decimal("0"),  # Decimal zero
+        Decimal(0),  # Decimal zero
         Decimal("0.1"),  # Small decimal
-        Decimal("10000000000"),  # Large number
-        Decimal("-10000000000"),  # Large negative
+        Decimal(10000000000),  # Large number
+        Decimal(-10000000000),  # Large negative
     ]
 
     keys = draw(st.lists(ftl_identifiers(), min_size=1, max_size=3, unique=True))

@@ -121,7 +121,7 @@ def example_form_validation() -> None:
             print("  Error: Amount must be positive")
             continue
 
-        if amount is not None and amount > Decimal("1000000"):
+        if amount is not None and amount > Decimal(1000000):
             print("  Error: Amount exceeds maximum")
             continue
 

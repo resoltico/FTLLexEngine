@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.148.0"
+version: "0.149.0"
 domain: CHANGELOG
-updated: "2026-03-10"
+updated: "2026-03-11"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,116 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.149.0] - 2026-03-12
+
+### Breaking Changes
+
+- **Pylint removed from quality gate**: `pylint` is no longer a dev dependency or part of
+  the lint pipeline. Ruff already implements every pylint rule this codebase used (via the
+  `PL*` rule family), and Mypy strict provides superior type-inference-level checking.
+  Removing pylint eliminates: `.pylintrc` configuration files, `# pylint: disable=` inline
+  comments, and the `[tool.pylint.*]` configuration in `pyproject.toml`. Users of this
+  package who run pylint against their own code will see `E0611` (`no-name-in-module`)
+  false positives disappear with this release because the `__getattr__` lazy-dispatch
+  mechanism has been replaced by explicit module-level imports (see below).
+
+- **`IntegrityCache.get()` and `IntegrityCache.put()`: `use_isolating` is now keyword-only**
+  (`from ftllexengine.runtime.cache import IntegrityCache`):
+  - `use_isolating` was the fifth positional parameter in both methods; Ruff FBT001/FBT002
+    flagged positional boolean arguments as a boolean-trap anti-pattern (callers writing
+    `cache.get(..., True)` are ambiguous without reading the signature)
+  - Migration: any call site passing `use_isolating` positionally must add the keyword:
+    `cache.get(msg, args, attr, locale, True)` → `cache.get(msg, args, attr, locale, use_isolating=True)`
+  - `IntegrityCache._make_key()` is similarly updated (private; call sites in `runtime/cache.py` only)
+
+- **`syntax.position.format_position()` and `get_line_content()`: `zero_based` is now keyword-only**
+  (`from ftllexengine.syntax.position import format_position, get_line_content`):
+  - `zero_based` was a positional parameter with a default; same FBT boolean-trap rationale
+  - Migration: `format_position(src, pos, True)` → `format_position(src, pos, zero_based=True)`
+
+- **`ftllexengine.ParseResult` moved from `ftllexengine.parsing` to `ftllexengine.diagnostics`**:
+  `ParseResult[T]` (`type alias tuple[T | None, tuple[FrozenFluentError, ...]]`) is now
+  defined in `ftllexengine.diagnostics.errors` and re-exported by `ftllexengine.parsing`
+  for backward compatibility. The canonical import is now `from ftllexengine import ParseResult`
+  or `from ftllexengine.diagnostics import ParseResult`. Callers who previously imported from
+  `ftllexengine.parsing` directly continue to work; the alias is the same object.
+  This change makes `ParseResult` importable in parser-only installations (no Babel), since
+  it no longer requires importing Babel-dependent modules to access the type alias.
+
+### Added
+
+- **`ftllexengine.FiscalDelta` and `ftllexengine.MonthEndPolicy` at top-level package**
+  (resolution of FIX-FISCAL-TOPLEVEL-001):
+  - Both symbols were accessible via `ftllexengine.core.fiscal` and `ftllexengine.parsing`
+    but were inadvertently absent from the runtime `__init__.py` top-level namespace in
+    releases prior to v0.148.0; the `.pyi` stub was updated in v0.147.0 but the runtime
+    import was omitted from the v0.148.0 changelog despite having been added to the source;
+    this entry confirms and formally documents the resolution: `FiscalDelta` and `MonthEndPolicy`
+    are now directly importable as `from ftllexengine import FiscalDelta, MonthEndPolicy`
+
+- **`FluentBundle.get_message(message_id: str) -> Message | None`**:
+  - Returns the parsed `Message` AST node for a given message ID, or `None` if the message
+    does not exist; enables callers to pass the node directly to `validate_message_variables()`
+    and receive the structured `MessageVariableValidationResult` return type; previously
+    callers had to use `get_message_variables()` which returned a raw `frozenset[str]` and
+    required manual set arithmetic to detect schema mismatches
+
+- **`FluentBundle.get_term(term_id: str) -> Term | None`**:
+  - Returns the parsed `Term` AST node for a given term ID (supplied without the leading dash),
+    or `None` if the term does not exist; mirrors `get_message()` for API symmetry and enables
+    `validate_message_variables()` to be used directly with term nodes
+
+- **`FluentLocalization.get_message(message_id: str) -> Message | None`**:
+  - Searches the locale fallback chain in priority order and returns the `Message` AST node
+    from the first locale that contains it, or `None` if no locale has the message;
+    eliminates the need for callers to traverse `get_message_ids()` and bundle internals
+    to obtain the AST node for schema validation
+
+- **`FluentLocalization.get_term(term_id: str) -> Term | None`**:
+  - Searches the locale fallback chain for a term AST node; mirrors `get_message()` for
+    API symmetry; term_id is supplied without the leading dash
+
+### Fixed
+
+- **`ftllexengine.__init__`: `__getattr__`-based lazy exports replaced by explicit module-level
+  imports** (resolution of ITEM 002, FIX-PYLINT-GETATTR-001):
+  - Static analysis tools (pylint, PyCharm, and IDE plugins) cannot resolve symbols exported
+    via `module.__getattr__` even when a `.pyi` stub declares them, because they prioritise
+    their own AST analysis of the `.py` source; with `__getattr__` dispatch, `from ftllexengine
+    import ParseResult` produced `E0611 no-name-in-module` in any pylint-enabled consumer
+  - Fix: all Babel-optional symbols (`CacheConfig`, `FluentValue`, `fluent_function`,
+    `FluentBundle`, `FluentLocalization`, `get_cldr_version`, `get_currency_decimal_digits`)
+    are now imported at module level inside a `try/except ImportError: pass` block; on
+    full-runtime installations the names are bound at import time (static analysis resolves
+    them from the import statement); on parser-only installations the block fails silently
+    and `__getattr__` provides the helpful "requires Babel" `ImportError` on first access;
+    `ParseResult` is now a direct import from `ftllexengine.diagnostics` (Babel-independent)
+  - `__getattr__` is retained solely to provide the installation-hint `ImportError` when
+    Babel-optional symbols are accessed in a parser-only environment; it no longer performs
+    any caching or dispatch
+
+### Changed
+
+- **`core/depth_guard.py` `DepthGuard.__enter__` and `runtime/resolution_context.py`
+  `GlobalDepthGuard.__enter__`: return type corrected to `Self`**:
+  - Previously annotated as the concrete class name; `Self` is the correct return type for
+    context managers that always return `self`; no behavioral change, type annotation only
+
+- **TYPE_CHECKING import optimization across 12 production modules**:
+  - Imports used solely in type annotations moved under `if TYPE_CHECKING:` blocks in:
+    `analysis/graph.py`, `diagnostics/formatter.py`, `diagnostics/validation.py`,
+    `localization/loading.py`, `localization/orchestrator.py`, `runtime/bundle.py`,
+    `runtime/resolver.py`, `syntax/validation_helpers.py`, `validation/resource.py`,
+    `parsing/currency.py`, `runtime/functions.py`, `syntax/parser/whitespace.py`
+  - Deferred imports reduce module load time for processes that import only a subset of the
+    library (e.g., parser-only paths); no behavioral change for callers
+  - Exceptions kept as runtime imports with documented rationale: `date`/`datetime`/`Decimal`
+    in `parsing/guards.py` (required by `get_type_hints()` on TypeIs annotations) and
+    `CommentType` in `syntax/ast.py` (public re-exported symbol)
+
+- **`validation/resource.py` `_compute_longest_paths`: loop replaced with `list.extend`**
+  (PERF401): no behavioral change; minor allocation reduction in cycle-length computation
 
 ## [0.148.0] - 2026-03-10
 
@@ -118,6 +228,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     permanent lint gate; the plugin parses `__init__.py`'s `__all__` and `__init__.pyi`'s
     declared public symbols and fails if they diverge; CI will now catch any future stub
     drift at the lint stage before it reaches the import-test stage
+
+### Infrastructure
+
+- **Ruff lint configuration upgraded to `select = ["ALL"]`**:
+  - The previous curated `select` list required manual updates when Ruff ships new rules;
+    new rules were silently unenforced between updates; `select = ["ALL"]` ensures every new
+    Ruff rule automatically applies to the codebase with explicit decisions required to ignore it
+  - Focused `ignore` list covers genuinely inapplicable rule families: `D` (pydocstyle;
+    project uses Google-style), `ANN` (annotation checks; redundant with Mypy strict),
+    `COM812`/`ISC001` (formatter territory), and 10 framework-specific families
+    (`CPY`, `INT`, `PD`, `NPY`, `DJ`, `AIR`, `ASYNC`, `TD`, `FIX`, `PLR0913`/`PLR2004`)
+  - Source code improvements made visible by the new rules: TYPE_CHECKING import
+    optimization across 12 modules (`analysis/graph.py`, `diagnostics/formatter.py`,
+    `diagnostics/validation.py`, `localization/loading.py`, `localization/orchestrator.py`,
+    `runtime/bundle.py`, `runtime/resolver.py`, `syntax/ast.py`, `syntax/validation_helpers.py`,
+    `validation/resource.py`, `parsing/currency.py`, `runtime/functions.py`,
+    `syntax/parser/whitespace.py`); `Self` return type for `__enter__` in `core/depth_guard.py`
+    and `runtime/resolution_context.py`; PERF401 list comprehension in `validation/resource.py`
+  - Keyword-only boolean arguments (`*` separator) enforced by FBT1/FBT2 in 5 modules:
+    `parsing/dates.py`, `runtime/cache.py`, `syntax/parser/rules.py`, `syntax/position.py`
+  - Per-directory waiver groups added for `examples/`, `fuzz_atheris/`, `scripts/`, and
+    `tests/` with documented rationale for each suppressed rule (T201, S101, BLE001, etc.)
+  - Key exceptions kept as direct runtime imports (not TYPE_CHECKING): `date`/`datetime`/`Decimal`
+    in `parsing/guards.py` (required by `get_type_hints()` on TypeIs annotations at runtime)
+    and `CommentType` in `syntax/ast.py` (public re-exported symbol that callers import)
+
+- **`scripts/test.sh`: failed test names now emitted before JSON summary**:
+  - When tests fail, the final report now lists all failed test node IDs in human-readable
+    form immediately before the `[SUMMARY-JSON-BEGIN]` block, eliminating the need to grep
+    the hypothesis statistics output or parse the JSON blob to find which tests failed
 
 ## [0.147.0] - 2026-03-09
 
@@ -5780,6 +5920,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.149.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.149.0
 [0.148.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.148.0
 [0.147.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.147.0
 [0.146.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.146.0

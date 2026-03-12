@@ -118,7 +118,7 @@ def dependency_graphs(  # noqa: PLR0912 - topology dispatch + cycle injection
                     )
                     graph[nodes[src_idx]].add(nodes[dst_idx])
 
-    if force_cycle and n >= 2 and topology not in ("ring",):
+    if force_cycle and n >= 2 and topology != "ring":
         i = draw(st.integers(min_value=0, max_value=n - 2))
         j = draw(st.integers(min_value=i + 1, max_value=n - 1))
         graph[nodes[j]].add(nodes[i])

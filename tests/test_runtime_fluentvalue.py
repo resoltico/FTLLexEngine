@@ -154,9 +154,9 @@ class TestFluentValueCollectionsCache:
         cache = IntegrityCache(strict=False)
 
         args = {"items": [1, 2, 3]}
-        cache.put("msg", args, None, "en", True, "List Result", ())
+        cache.put("msg", args, None, "en", use_isolating=True, formatted="List Result", errors=())
 
-        entry = cache.get("msg", args, None, "en", True)
+        entry = cache.get("msg", args, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "List Result"
 
@@ -165,9 +165,9 @@ class TestFluentValueCollectionsCache:
         cache = IntegrityCache(strict=False)
 
         args = {"data": {"key": "value"}}
-        cache.put("msg", args, None, "en", True, "Dict Result", ())
+        cache.put("msg", args, None, "en", use_isolating=True, formatted="Dict Result", errors=())
 
-        entry = cache.get("msg", args, None, "en", True)
+        entry = cache.get("msg", args, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Dict Result"
 
@@ -182,9 +182,9 @@ class TestFluentValueCollectionsCache:
                 "nested": {"a": "b"},
             }
         }
-        cache.put("msg", args, None, "en", True, "Nested Result", ())
+        cache.put("msg", args, None, "en", use_isolating=True, formatted="Nested Result", errors=())
 
-        entry = cache.get("msg", args, None, "en", True)
+        entry = cache.get("msg", args, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Nested Result"
 
@@ -195,11 +195,11 @@ class TestFluentValueCollectionsCache:
         """
         cache = IntegrityCache(strict=False)
 
-        cache.put("msg", {"items": [1, 2, 3]}, None, "en", True, "List", ())
-        cache.put("msg", {"items": (1, 2, 3)}, None, "en", True, "Tuple", ())
+        cache.put("msg", {"items": [1, 2, 3]}, None, "en", use_isolating=True, formatted="List", errors=())
+        cache.put("msg", {"items": (1, 2, 3)}, None, "en", use_isolating=True, formatted="Tuple", errors=())
 
-        list_entry = cache.get("msg", {"items": [1, 2, 3]}, None, "en", True)
-        tuple_entry = cache.get("msg", {"items": (1, 2, 3)}, None, "en", True)
+        list_entry = cache.get("msg", {"items": [1, 2, 3]}, None, "en", use_isolating=True)
+        tuple_entry = cache.get("msg", {"items": (1, 2, 3)}, None, "en", use_isolating=True)
 
         assert list_entry is not None
         assert list_entry.formatted == "List"
@@ -210,9 +210,9 @@ class TestFluentValueCollectionsCache:
         """IntegrityCache handles empty collections correctly."""
         cache = IntegrityCache(strict=False)
 
-        cache.put("msg", {"list": [], "dict": {}}, None, "en", True, "Empty", ())
+        cache.put("msg", {"list": [], "dict": {}}, None, "en", use_isolating=True, formatted="Empty", errors=())
 
-        entry = cache.get("msg", {"list": [], "dict": {}}, None, "en", True)
+        entry = cache.get("msg", {"list": [], "dict": {}}, None, "en", use_isolating=True)
         assert entry is not None
         assert entry.formatted == "Empty"
 
@@ -290,8 +290,8 @@ class TestFluentValueCollectionsHypothesis:
         cache = IntegrityCache(strict=False)
         args = {"items": items}
 
-        cache.put("msg", args, None, "en", True, f"List: {items}", ())
-        entry = cache.get("msg", args, None, "en", True)
+        cache.put("msg", args, None, "en", use_isolating=True, formatted=f"List: {items}", errors=())
+        entry = cache.get("msg", args, None, "en", use_isolating=True)
 
         assert entry is not None
 
@@ -303,8 +303,8 @@ class TestFluentValueCollectionsHypothesis:
         cache = IntegrityCache(strict=False)
         args = {"data": data}
 
-        cache.put("msg", args, None, "en", True, f"Dict: {data}", ())
-        entry = cache.get("msg", args, None, "en", True)
+        cache.put("msg", args, None, "en", use_isolating=True, formatted=f"Dict: {data}", errors=())
+        entry = cache.get("msg", args, None, "en", use_isolating=True)
 
         assert entry is not None
 
@@ -328,8 +328,8 @@ class TestFluentValueCollectionsHypothesis:
         args: dict[str, FluentValue] = {"nested": structure}  # type: ignore[dict-item]
 
         try:
-            cache.put("msg", args, None, "en", True, "Nested", ())
-            entry = cache.get("msg", args, None, "en", True)
+            cache.put("msg", args, None, "en", use_isolating=True, formatted="Nested", errors=())
+            entry = cache.get("msg", args, None, "en", use_isolating=True)
             # If put succeeded, get should succeed
             assert entry is not None
         except TypeError:

@@ -27,8 +27,13 @@ Example:
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import (  # noqa: TC003 - TypeIs return annotations require these at runtime for get_type_hints() resolution; moving under TYPE_CHECKING causes NameError in callers
+    date,
+    datetime,
+)
+from decimal import (
+    Decimal,  # noqa: TC003 - TypeIs return annotation requires Decimal at runtime for get_type_hints() resolution
+)
 from typing import TYPE_CHECKING
 
 # TypeIs was added in Python 3.13 (PEP 742). Use a version guard so:

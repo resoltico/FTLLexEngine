@@ -211,7 +211,7 @@ def process_file(
         # Dedent the code block if the fence was indented
         if indent:
             lines = code_block.split("\n")
-            dedented = [line[len(indent) :] if line.startswith(indent) else line for line in lines]
+            dedented = [line.removeprefix(indent) for line in lines]
             code_block = "\n".join(dedented)
 
         # Skip intentional errors

@@ -64,10 +64,10 @@ _babel_available: bool | None = None
 
 def _check_babel_available() -> bool:
     """Check if Babel is installed (computed once, cached via sentinel)."""
-    global _babel_available  # noqa: PLW0603  # pylint: disable=global-statement
+    global _babel_available  # noqa: PLW0603 - module-level sentinel, single write per process
     if _babel_available is None:
         try:
-            import babel  # noqa: F401, PLC0415  # pylint: disable=unused-import
+            import babel  # noqa: F401, PLC0415 - sentinel check; import is the check itself
 
             _babel_available = True
         except ImportError:

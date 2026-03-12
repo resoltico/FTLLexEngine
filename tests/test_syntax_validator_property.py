@@ -711,7 +711,7 @@ msg = { $count ->
         selector = VariableReference(id=Identifier("n"))
         variants = (
             Variant(
-                key=NumberLiteral(value=Decimal("1"), raw="1"),
+                key=NumberLiteral(value=Decimal(1), raw="1"),
                 value=Pattern(elements=(TextElement("first"),)),
                 default=False,
             ),

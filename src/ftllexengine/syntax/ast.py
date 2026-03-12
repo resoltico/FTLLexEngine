@@ -23,7 +23,9 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
-from ftllexengine.enums import CommentType
+from ftllexengine.enums import (
+    CommentType,  # noqa: TC001 - CommentType is re-exported as a public runtime symbol; callers do `from ftllexengine.syntax.ast import CommentType`
+)
 
 # TypeIs was added in Python 3.13 (PEP 742). Use a version guard so:
 # - Python 3.13+: TypeIs is in the module namespace at runtime; get_type_hints() works.

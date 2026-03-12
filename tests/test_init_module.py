@@ -1,11 +1,11 @@
 """Tests for the ftllexengine package __init__.py module.
 
 Covers the full lifecycle of the package entry point:
-- Lazy attribute loading (Babel-independent and Babel-required)
-- Module-level cache behavior (hit/miss/population)
-- Exhaustiveness guards for unregistered attribute names
+- Direct attribute access (Babel-optional via try/except imports)
+- Symbol identity: top-level names alias the same objects as submodule imports
+- Babel-optional ImportError with actionable diagnostic message (parser-only install)
 - AttributeError for genuinely unknown attributes
-- Babel ImportError with actionable diagnostic message
+- ParseResult is Babel-independent (importable without Babel via diagnostics)
 - Fallback version when package metadata is unavailable
 - __all__ integrity: every exported name is accessible
 """
@@ -14,235 +14,61 @@ from __future__ import annotations
 
 import sys
 from importlib.metadata import PackageNotFoundError
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-if TYPE_CHECKING:
-    pass
 
+class TestBabelOptionalSymbolAccess:
+    """Babel-optional symbols (CacheConfig, FluentBundle, etc.) are accessible when installed."""
 
-class TestLazyImportCacheConfig:
-    """CacheConfig is lazily imported from runtime.cache_config."""
-
-    def test_cache_config_lazy_import(self) -> None:
+    def test_cache_config_is_accessible(self) -> None:
         """CacheConfig resolves to the class in runtime.cache_config."""
         import ftllexengine
 
-        # Remove from module dict to force fresh lazy load via __getattr__
-        ftllexengine.__dict__.pop("CacheConfig", None)
-
-        cache_config_cls = ftllexengine.CacheConfig
-
-        assert cache_config_cls is not None
+        assert hasattr(ftllexengine, "CacheConfig")
         from ftllexengine.runtime.cache_config import CacheConfig as Direct
 
-        assert cache_config_cls is Direct
+        assert ftllexengine.CacheConfig is Direct
 
-    def test_cache_config_cached_on_second_access(self) -> None:
-        """CacheConfig is cached after first access; subsequent accesses return the same object."""
-        import ftllexengine
-
-        # Remove from module dict to force fresh lazy load via __getattr__
-        ftllexengine.__dict__.pop("CacheConfig", None)
-
-        first = ftllexengine.CacheConfig
-        second = ftllexengine.CacheConfig
-        assert first is second
-        # __getattr__ stores the result in globals() (module dict) on first access
-        assert "CacheConfig" in vars(ftllexengine)
-
-
-class TestLoadBabelIndependentAssertionError:
-    """__getattr__ raises AssertionError for names in _BABEL_INDEPENDENT_ATTRS with no case arm."""
-
-    def test_unknown_babel_independent_name_raises_assertion_error(self) -> None:
-        """__getattr__ raises AssertionError for names registered but without a case arm.
-
-        The exhaustiveness guard in the match/case dispatch distinguishes
-        an internal invariant violation (frozenset and case arms out of sync)
-        from a legitimate caller attribute error.
-        """
-        import ftllexengine
-
-        original_attrs = ftllexengine._BABEL_INDEPENDENT_ATTRS  # type: ignore[attr-defined]
-        ftllexengine._BABEL_INDEPENDENT_ATTRS = frozenset(  # type: ignore[attr-defined]
-            {*original_attrs, "UnknownBabelIndependentName"}
-        )
-        try:
-            with pytest.raises(AssertionError, match="unhandled Babel-independent attribute"):
-                _ = ftllexengine.UnknownBabelIndependentName  # type: ignore[attr-defined]
-        finally:
-            ftllexengine._BABEL_INDEPENDENT_ATTRS = original_attrs  # type: ignore[attr-defined]
-
-
-class TestLazyImportFluentLocalization:
-    """FluentLocalization is lazily imported from the localization package."""
-
-    def test_fluent_localization_lazy_import(self) -> None:
-        """FluentLocalization resolves to the class in the localization package."""
-        import ftllexengine
-
-        # Remove from module dict to force fresh lazy load via __getattr__
-        ftllexengine.__dict__.pop("FluentLocalization", None)
-
-        localization_cls = ftllexengine.FluentLocalization
-
-        assert localization_cls is not None
-        from ftllexengine.localization import FluentLocalization as Direct
-
-        assert localization_cls is Direct
-
-    def test_fluent_localization_cached_on_second_access(self) -> None:
-        """FluentLocalization is cached after first access."""
-        import ftllexengine
-
-        # Remove from module dict to force fresh lazy load via __getattr__
-        ftllexengine.__dict__.pop("FluentLocalization", None)
-
-        first = ftllexengine.FluentLocalization
-        second = ftllexengine.FluentLocalization
-        assert first is second
-        # __getattr__ stores the result in globals() (module dict) on first access
-        assert "FluentLocalization" in vars(ftllexengine)
-
-
-class TestBabelRequiredCacheHit:
-    """Cache hit path for Babel-required attributes returns the cached object."""
-
-    def test_fluent_bundle_cache_hit_returns_same_object(self) -> None:
-        """Second access to FluentBundle returns the cached class object."""
-        import ftllexengine
-
-        first = ftllexengine.FluentBundle
-        second = ftllexengine.FluentBundle
-        assert first is second
-
-    def test_fluent_localization_cache_hit_returns_same_object(self) -> None:
-        """Second access to FluentLocalization returns the cached class object."""
-        import ftllexengine
-
-        first = ftllexengine.FluentLocalization
-        second = ftllexengine.FluentLocalization
-        assert first is second
-
-    def test_babel_required_unhandled_attr_raises_assertion_error(self) -> None:
-        """Attr in _BABEL_REQUIRED_ATTRS with no match/case arm raises AssertionError.
-
-        A name registered in _BABEL_REQUIRED_ATTRS without a corresponding case arm
-        is an internal invariant violation. AssertionError distinguishes this from
-        AttributeError at the API boundary and makes frozenset/case-arm drift
-        immediately visible during development.
-        """
-        import ftllexengine
-
-        original_attrs = ftllexengine._BABEL_REQUIRED_ATTRS  # type: ignore[attr-defined]
-        ftllexengine._BABEL_REQUIRED_ATTRS = frozenset(  # type: ignore[attr-defined]
-            {"FluentBundle", "FluentLocalization", "_FakeBabelRequiredAttr"}
-        )
-        try:
-            with pytest.raises(AssertionError, match="unhandled Babel-required attribute"):
-                _ = ftllexengine._FakeBabelRequiredAttr  # type: ignore[attr-defined]
-        finally:
-            ftllexengine._BABEL_REQUIRED_ATTRS = original_attrs  # type: ignore[attr-defined]
-
-
-class TestLazyImportFluentValue:
-    """FluentValue is lazily imported from runtime.value_types."""
-
-    def test_fluent_value_lazy_import(self) -> None:
+    def test_fluent_value_is_accessible(self) -> None:
         """FluentValue resolves to the type alias in runtime.value_types."""
         import ftllexengine
 
-        fluent_value_type = ftllexengine.FluentValue
-
-        assert fluent_value_type is not None
+        assert hasattr(ftllexengine, "FluentValue")
         from ftllexengine.runtime.function_bridge import FluentValue as Direct
 
-        assert fluent_value_type is Direct
+        assert ftllexengine.FluentValue is Direct
 
-    def test_fluent_value_cached_on_second_access(self) -> None:
-        """FluentValue is cached after first access."""
-        import ftllexengine
-
-        # Remove from module dict to force fresh lazy load via __getattr__
-        ftllexengine.__dict__.pop("FluentValue", None)
-
-        first = ftllexengine.FluentValue
-        second = ftllexengine.FluentValue
-
-        assert first is second
-        # __getattr__ stores the result in globals() (module dict) on first access
-        assert "FluentValue" in vars(ftllexengine)
-
-
-class TestLazyImportFluentFunction:
-    """fluent_function is lazily imported from runtime.function_bridge."""
-
-    def test_fluent_function_lazy_import(self) -> None:
+    def test_fluent_function_is_accessible(self) -> None:
         """fluent_function resolves to the decorator in runtime.function_bridge."""
         import ftllexengine
 
-        decorator = ftllexengine.fluent_function
+        assert callable(ftllexengine.fluent_function)
+        from ftllexengine.runtime.function_bridge import fluent_function as direct_ref
 
-        assert callable(decorator)
-        from ftllexengine.runtime.function_bridge import (
-            fluent_function as fluent_func_ref,
-        )
+        assert ftllexengine.fluent_function is direct_ref
 
-        assert decorator is fluent_func_ref
-
-    def test_fluent_function_cached_on_second_access(self) -> None:
-        """fluent_function is cached after first access."""
+    def test_fluent_bundle_is_accessible(self) -> None:
+        """FluentBundle resolves to the class in the runtime package."""
         import ftllexengine
 
-        # Remove from module dict to force fresh lazy load via __getattr__
-        ftllexengine.__dict__.pop("fluent_function", None)
+        assert hasattr(ftllexengine, "FluentBundle")
+        from ftllexengine.runtime import FluentBundle as Direct
 
-        first = ftllexengine.fluent_function
-        second = ftllexengine.fluent_function
+        assert ftllexengine.FluentBundle is Direct
 
-        assert first is second
-        # __getattr__ stores the result in globals() (module dict) on first access
-        assert "fluent_function" in vars(ftllexengine)
-
-
-class TestLazyImportParseResult:
-    """ParseResult is lazily imported from parsing (Babel-independent)."""
-
-    def test_parse_result_resolves(self) -> None:
-        """ParseResult is accessible from the top-level package."""
+    def test_fluent_localization_is_accessible(self) -> None:
+        """FluentLocalization resolves to the class in the localization package."""
         import ftllexengine
 
-        parse_result_type = ftllexengine.ParseResult
-        assert parse_result_type is not None
-        from ftllexengine.parsing import ParseResult as Direct
+        assert hasattr(ftllexengine, "FluentLocalization")
+        from ftllexengine.localization import FluentLocalization as Direct
 
-        assert parse_result_type is Direct
+        assert ftllexengine.FluentLocalization is Direct
 
-    def test_parse_result_cached_on_second_access(self) -> None:
-        """ParseResult is cached after first access."""
-        import ftllexengine
-
-        ftllexengine.__dict__.pop("ParseResult", None)
-        first = ftllexengine.ParseResult
-        second = ftllexengine.ParseResult
-        assert first is second
-        assert "ParseResult" in vars(ftllexengine)
-
-    def test_parse_result_in_all(self) -> None:
-        """ParseResult is listed in ftllexengine.__all__."""
-        import ftllexengine
-
-        assert "ParseResult" in ftllexengine.__all__
-
-
-class TestLazyImportGetCldrVersion:
-    """get_cldr_version is lazily imported from core.babel_compat (requires Babel)."""
-
-    def test_get_cldr_version_resolves(self) -> None:
-        """get_cldr_version is callable from the top-level package."""
+    def test_get_cldr_version_is_callable(self) -> None:
+        """get_cldr_version is callable and returns a non-empty string."""
         import ftllexengine
 
         fn = ftllexengine.get_cldr_version
@@ -250,26 +76,6 @@ class TestLazyImportGetCldrVersion:
         version = fn()
         assert isinstance(version, str)
         assert len(version) > 0
-
-    def test_get_cldr_version_cached_on_second_access(self) -> None:
-        """get_cldr_version is cached after first access."""
-        import ftllexengine
-
-        ftllexengine.__dict__.pop("get_cldr_version", None)
-        first = ftllexengine.get_cldr_version
-        second = ftllexengine.get_cldr_version
-        assert first is second
-        assert "get_cldr_version" in vars(ftllexengine)
-
-    def test_get_cldr_version_in_all(self) -> None:
-        """get_cldr_version is listed in ftllexengine.__all__."""
-        import ftllexengine
-
-        assert "get_cldr_version" in ftllexengine.__all__
-
-
-class TestLazyImportGetCurrencyDecimalDigits:
-    """get_currency_decimal_digits is lazily imported from introspection.iso (requires Babel)."""
 
     def test_get_currency_decimal_digits_resolves(self) -> None:
         """get_currency_decimal_digits is callable from the top-level package."""
@@ -280,75 +86,68 @@ class TestLazyImportGetCurrencyDecimalDigits:
         assert fn("EUR") == 2
         assert fn("JPY") == 0
 
-    def test_get_currency_decimal_digits_cached_on_second_access(self) -> None:
-        """get_currency_decimal_digits is cached after first access."""
+
+class TestParseResultBabelIndependent:
+    """ParseResult is defined in diagnostics and importable without Babel."""
+
+    def test_parse_result_accessible_from_top_level(self) -> None:
+        """ParseResult is accessible from the top-level package."""
         import ftllexengine
 
-        ftllexengine.__dict__.pop("get_currency_decimal_digits", None)
-        first = ftllexengine.get_currency_decimal_digits
-        second = ftllexengine.get_currency_decimal_digits
-        assert first is second
-        assert "get_currency_decimal_digits" in vars(ftllexengine)
+        assert hasattr(ftllexengine, "ParseResult")
 
-    def test_get_currency_decimal_digits_in_all(self) -> None:
-        """get_currency_decimal_digits is listed in ftllexengine.__all__."""
+    def test_parse_result_identity_with_diagnostics(self) -> None:
+        """ftllexengine.ParseResult is the same object as diagnostics.ParseResult."""
+        import ftllexengine
+        from ftllexengine.diagnostics import ParseResult as DiagnosticsParseResult
+
+        assert ftllexengine.ParseResult is DiagnosticsParseResult
+
+    def test_parse_result_identity_with_parsing(self) -> None:
+        """ftllexengine.ParseResult is the same object as parsing.ParseResult."""
+        import ftllexengine
+        from ftllexengine.parsing import ParseResult as ParsingParseResult
+
+        assert ftllexengine.ParseResult is ParsingParseResult
+
+    def test_parse_result_in_all(self) -> None:
+        """ParseResult is listed in ftllexengine.__all__."""
         import ftllexengine
 
-        assert "get_currency_decimal_digits" in ftllexengine.__all__
+        assert "ParseResult" in ftllexengine.__all__
 
-
-class TestDirectImportIntrospectionSymbols:
-    """MessageVariableValidationResult and validate_message_variables imported directly."""
-
-    def test_message_variable_validation_result_importable(self) -> None:
-        """MessageVariableValidationResult is accessible from the top-level package."""
+    def test_parse_result_in_module_dict_immediately(self) -> None:
+        """ParseResult is in module dict at import time (not lazy-loaded)."""
         import ftllexengine
 
-        assert hasattr(ftllexengine, "MessageVariableValidationResult")
-        assert "MessageVariableValidationResult" in ftllexengine.__all__
+        assert "ParseResult" in vars(ftllexengine)
 
-    def test_validate_message_variables_importable(self) -> None:
-        """validate_message_variables is accessible from the top-level package."""
+
+class TestBabelOptionalAttrsSet:
+    """_BABEL_OPTIONAL_ATTRS contains exactly the Babel-dependent symbol names."""
+
+    def test_babel_optional_attrs_contains_expected_names(self) -> None:
+        """_BABEL_OPTIONAL_ATTRS lists the Babel-dependent symbols."""
         import ftllexengine
 
-        assert hasattr(ftllexengine, "validate_message_variables")
-        assert callable(ftllexengine.validate_message_variables)
-        assert "validate_message_variables" in ftllexengine.__all__
-
-
-class TestUnknownAttributeError:
-    """Accessing attributes not registered in any dispatch table raises AttributeError."""
-
-    def test_unknown_attribute_raises_attribute_error(self) -> None:
-        """Accessing an unknown attribute raises AttributeError with a clear message."""
-        import ftllexengine
-
-        with pytest.raises(
-            AttributeError,
-            match=r"module 'ftllexengine' has no attribute 'NonExistentAttribute'",
-        ):
-            _ = ftllexengine.NonExistentAttribute  # type: ignore[attr-defined]
-
-    def test_unknown_attribute_not_in_babel_required(self) -> None:
-        """Attributes outside all dispatch sets raise AttributeError directly."""
-        import ftllexengine
-
-        with pytest.raises(AttributeError):
-            _ = ftllexengine.some_random_name  # type: ignore[attr-defined]
-
-        with pytest.raises(AttributeError):
-            _ = ftllexengine._private_attr  # type: ignore[attr-defined]
-
-        with pytest.raises(AttributeError):
-            _ = ftllexengine.UNKNOWN_CONSTANT  # type: ignore[attr-defined]
+        expected = {
+            "CacheConfig",
+            "FluentBundle",
+            "FluentLocalization",
+            "FluentValue",
+            "fluent_function",
+            "get_cldr_version",
+            "get_currency_decimal_digits",
+        }
+        assert expected == ftllexengine._BABEL_OPTIONAL_ATTRS  # type: ignore[attr-defined]
 
 
 class TestBabelImportErrorPath:
     """Babel import failures produce an actionable error message.
 
-    Simulates Babel unavailability by mocking builtins.__import__ to raise
-    ImportError for runtime imports. In a real parser-only installation the
-    same code path is triggered when Babel is not installed.
+    Simulates Babel unavailability by re-importing ftllexengine in an environment
+    where runtime imports fail. In a real parser-only installation the same code
+    path is triggered when Babel is not installed.
     """
 
     def test_babel_import_error_message_for_fluent_bundle(self) -> None:
@@ -374,16 +173,17 @@ class TestBabelImportErrorPath:
                     name == "ftllexengine.runtime"
                     or (name.startswith("ftllexengine") and "runtime" in name)
                     or (level > 0 and "runtime" in name)
+                    or (name.startswith("ftllexengine") and "localization" in name)
+                    or (level > 0 and "localization" in name)
                 )
                 if is_runtime_import:
                     raise ImportError("No module named 'babel'")
                 return original_import(name, globs, locs, fromlist, level)
 
-            ftllexengine = importlib.import_module("ftllexengine")
-            # Fresh module import - lazy attrs are not yet populated in module dict
-
             builtins.__import__ = mock_import
             try:
+                ftllexengine = importlib.import_module("ftllexengine")
+
                 with pytest.raises(
                     ImportError,
                     match=r"FluentBundle requires Babel.*pip install ftllexengine\[babel\]",
@@ -400,8 +200,8 @@ class TestBabelImportErrorPath:
                 del sys.modules[m]
             sys.modules.update(saved_modules)
 
-    def test_non_babel_import_error_is_reraised(self) -> None:
-        """Non-Babel ImportErrors are re-raised unchanged (not wrapped)."""
+    def test_babel_import_error_message_for_cache_config(self) -> None:
+        """ImportError for CacheConfig provides an install-command hint."""
         saved_modules = {
             name: module
             for name, module in sys.modules.items()
@@ -423,18 +223,22 @@ class TestBabelImportErrorPath:
                     name == "ftllexengine.runtime"
                     or (name.startswith("ftllexengine") and "runtime" in name)
                     or (level > 0 and "runtime" in name)
+                    or (name.startswith("ftllexengine") and "localization" in name)
+                    or (level > 0 and "localization" in name)
                 )
                 if is_runtime_import:
-                    raise ImportError("Circular import detected in some_other_module")
+                    raise ImportError("No module named 'babel'")
                 return original_import(name, globs, locs, fromlist, level)
-
-            ftllexengine = importlib.import_module("ftllexengine")
-            # Fresh module import - lazy attrs are not yet populated in module dict
 
             builtins.__import__ = mock_import
             try:
-                with pytest.raises(ImportError, match=r"Circular import"):
-                    _ = ftllexengine.FluentBundle
+                ftllexengine = importlib.import_module("ftllexengine")
+
+                with pytest.raises(
+                    ImportError,
+                    match=r"CacheConfig requires Babel.*pip install ftllexengine\[babel\]",
+                ):
+                    _ = ftllexengine.CacheConfig
             finally:
                 builtins.__import__ = original_import
 
@@ -445,6 +249,52 @@ class TestBabelImportErrorPath:
             for m in all_ftl_modules:
                 del sys.modules[m]
             sys.modules.update(saved_modules)
+
+
+class TestUnknownAttributeError:
+    """Accessing attributes not in _BABEL_OPTIONAL_ATTRS raises AttributeError."""
+
+    def test_unknown_attribute_raises_attribute_error(self) -> None:
+        """Accessing an unknown attribute raises AttributeError with a clear message."""
+        import ftllexengine
+
+        with pytest.raises(
+            AttributeError,
+            match=r"module 'ftllexengine' has no attribute 'NonExistentAttribute'",
+        ):
+            _ = ftllexengine.NonExistentAttribute  # type: ignore[attr-defined]
+
+    def test_unknown_attribute_not_in_optional_attrs(self) -> None:
+        """Attributes outside _BABEL_OPTIONAL_ATTRS raise AttributeError directly."""
+        import ftllexengine
+
+        with pytest.raises(AttributeError):
+            _ = ftllexengine.some_random_name  # type: ignore[attr-defined]
+
+        with pytest.raises(AttributeError):
+            _ = ftllexengine._private_attr  # type: ignore[attr-defined]
+
+        with pytest.raises(AttributeError):
+            _ = ftllexengine.UNKNOWN_CONSTANT  # type: ignore[attr-defined]
+
+
+class TestDirectImportIntrospectionSymbols:
+    """MessageVariableValidationResult and validate_message_variables imported directly."""
+
+    def test_message_variable_validation_result_importable(self) -> None:
+        """MessageVariableValidationResult is accessible from the top-level package."""
+        import ftllexengine
+
+        assert hasattr(ftllexengine, "MessageVariableValidationResult")
+        assert "MessageVariableValidationResult" in ftllexengine.__all__
+
+    def test_validate_message_variables_importable(self) -> None:
+        """validate_message_variables is accessible from the top-level package."""
+        import ftllexengine
+
+        assert hasattr(ftllexengine, "validate_message_variables")
+        assert callable(ftllexengine.validate_message_variables)
+        assert "validate_message_variables" in ftllexengine.__all__
 
 
 def test_package_not_found_error() -> None:
@@ -510,8 +360,8 @@ class TestInitModuleExports:
 
         assert len(ftllexengine.__all__) == 39
 
-    def test_lazy_exports_are_in_all(self) -> None:
-        """Lazy-loaded symbols (FluentBundle, FluentLocalization, etc.) are in __all__."""
+    def test_babel_optional_exports_are_in_all(self) -> None:
+        """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
         import ftllexengine
 
         for name in ("FluentBundle", "FluentLocalization", "CacheConfig", "FluentValue",

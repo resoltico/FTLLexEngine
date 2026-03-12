@@ -190,10 +190,10 @@ class TestSpecConformanceCoreFeatures:
         # Verify structural equivalence
         assert (
             our_counts["Message"] == ref_counts["Message"]
-        ), f"Message count mismatch for {fixture_name}: expected {ref_counts['Message']}, got {our_counts['Message']}"  # noqa: E501 pylint: disable=line-too-long
+        ), f"Message count mismatch for {fixture_name}: expected {ref_counts['Message']}, got {our_counts['Message']}"
         assert (
             our_counts["Term"] == ref_counts["Term"]
-        ), f"Term count mismatch for {fixture_name}: expected {ref_counts['Term']}, got {our_counts['Term']}"  # noqa: E501 pylint: disable=line-too-long
+        ), f"Term count mismatch for {fixture_name}: expected {ref_counts['Term']}, got {our_counts['Term']}"
 
     @pytest.mark.parametrize(
         ("fixture_name", "description"),

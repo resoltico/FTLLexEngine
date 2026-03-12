@@ -34,7 +34,6 @@ from enum import StrEnum
 from typing import Final, Self
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
-# pylint: disable=redefined-outer-name
 # FiscalCalendar methods use parameter names (fiscal_year, fiscal_month) that shadow
 # module-level convenience functions. This is intentional - method parameters are used
 # within the method scope, and the module-level functions wrap these methods.

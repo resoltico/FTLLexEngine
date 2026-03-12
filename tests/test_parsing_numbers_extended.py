@@ -54,7 +54,7 @@ class TestParseDecimalProperties:
     def test_parse_decimal_valid_en_us_integer(self) -> None:
         """Verify parse_decimal handles simple US integer."""
         result, errors = parse_decimal("42", "en_US")
-        assert result == Decimal("42")
+        assert result == Decimal(42)
         assert errors == ()
 
     def test_parse_decimal_valid_en_us_decimal(self) -> None:
@@ -111,8 +111,8 @@ class TestParseDecimalProperties:
         st.decimals(
             allow_nan=False,
             allow_infinity=False,
-            min_value=Decimal("-1000000"),
-            max_value=Decimal("1000000"),
+            min_value=Decimal(-1000000),
+            max_value=Decimal(1000000),
             places=2,
         )
     )
@@ -135,7 +135,7 @@ class TestParseDecimalProperties:
     def test_parse_decimal_zero(self) -> None:
         """Verify parse_decimal handles zero."""
         result, errors = parse_decimal("0", "en_US")
-        assert result == Decimal("0")
+        assert result == Decimal(0)
         assert errors == ()
 
 

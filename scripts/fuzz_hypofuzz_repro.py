@@ -107,8 +107,7 @@ def build_pytest_path(module: str, function: str | None) -> str:
         Pytest path like "tests/fuzz/test_syntax_parser_property.py::test_roundtrip"
     """
     # Strip .py if present
-    if module.endswith(".py"):
-        module = module[:-3]
+    module = module.removesuffix(".py")
 
     # If already a rooted path (starts with tests/), use as-is; otherwise
     # assume a bare module name and prepend the tests/ root.
@@ -158,8 +157,7 @@ def extract_falsifying_example(output: str) -> str | None:
         stripped = raw_line.strip()
         if stripped and not stripped.startswith("#"):
             # Remove trailing comma
-            if stripped.endswith(","):
-                stripped = stripped[:-1]
+            stripped = stripped.removesuffix(",")
             args.append(stripped)
 
     if not args:
@@ -274,11 +272,10 @@ def extract_falsifying_example_dict(output: str) -> dict[str, str] | None:
         for raw_line in args_block.strip().split("\n"):
             stripped = raw_line.strip()
             if stripped and "=" in stripped:
-                if stripped.endswith(","):
-                    stripped = stripped[:-1]
+                stripped = stripped.removesuffix(",")
                 key, value = stripped.split("=", 1)
                 result[key.strip()] = value.strip()
-        return result if result else None
+        return result or None
 
     # Try simpler single-line format
     pattern_simple = r"Falsifying example: \w+\((.+)\)"
@@ -291,7 +288,7 @@ def extract_falsifying_example_dict(output: str) -> dict[str, str] | None:
             if "=" in pair:
                 key, value = pair.split("=", 1)
                 result[key.strip()] = value.strip()
-        return result if result else None
+        return result or None
 
     return None
 
