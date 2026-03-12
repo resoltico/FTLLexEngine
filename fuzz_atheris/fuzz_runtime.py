@@ -101,6 +101,7 @@ class RuntimeMetrics:
     frozen_error_verifications: int = 0
     cache_stability_checks: int = 0
     corruption_simulations: int = 0
+    ast_lookup_checks: int = 0
 
 
 # --- Global State ---
@@ -182,6 +183,9 @@ _TERM_IDENTIFIERS: Sequence[str] = (
     "-os",
     "-platform",
     "-greeting",
+)
+_TERM_QUERY_IDS: Sequence[str] = tuple(
+    term.removeprefix("-") for term in _TERM_IDENTIFIERS
 )
 
 _VAR_NAMES: Sequence[str] = (
@@ -316,6 +320,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["frozen_error_verifications"] = _domain.frozen_error_verifications
     stats["cache_stability_checks"] = _domain.cache_stability_checks
     stats["corruption_simulations"] = _domain.corruption_simulations
+    stats["ast_lookup_checks"] = _domain.ast_lookup_checks
 
     return stats
 
@@ -348,6 +353,7 @@ atheris.enabled_hooks.add("str")
 atheris.enabled_hooks.add("RegEx")
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine import validate_message_variables
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.integrity import (
         CacheCorruptionError,
@@ -357,6 +363,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.runtime.bundle import FluentBundle
     from ftllexengine.runtime.cache import IntegrityCacheEntry
     from ftllexengine.runtime.cache_config import CacheConfig
+    from ftllexengine.syntax import Message, Term
 
 
 # --- Grammar-Aware FTL Construction ---
@@ -645,6 +652,92 @@ def _add_random_resources(fdp: atheris.FuzzedDataProvider, bundle: FluentBundle)
         ftl2 = _build_ftl_resource(fdp)
         with contextlib.suppress(Exception):
             bundle.add_resource(ftl2)
+
+
+def _validate_bundle_message_lookup(
+    bundle: FluentBundle,
+    message_id: str,
+) -> None:
+    """Validate FluentBundle.get_message() for one message identifier."""
+    message = bundle.get_message(message_id)
+    if message is None:
+        return
+
+    if not isinstance(message, Message):
+        msg = f"get_message({message_id!r}) returned {type(message).__name__}"
+        raise RuntimeIntegrityError(msg)
+    if message.id.name != message_id:
+        msg = f"get_message({message_id!r}) returned node named {message.id.name!r}"
+        raise RuntimeIntegrityError(msg)
+    if bundle.get_term(message_id) is not None:
+        msg = f"get_term({message_id!r}) crossed the message/term namespace boundary"
+        raise RuntimeIntegrityError(msg)
+
+    declared_variables = bundle.get_message_variables(message_id)
+    validation = validate_message_variables(message, declared_variables)
+    if not validation.is_valid:
+        msg = f"validate_message_variables() rejected bundle message {message_id!r}"
+        raise RuntimeIntegrityError(msg)
+    if validation.declared_variables != declared_variables:
+        msg = (
+            "validate_message_variables() changed declared variables for "
+            f"{message_id!r}: {validation.declared_variables!r} vs {declared_variables!r}"
+        )
+        raise RuntimeIntegrityError(msg)
+
+
+def _validate_bundle_term_lookup(
+    bundle: FluentBundle,
+    term_id: str,
+) -> None:
+    """Validate FluentBundle.get_term() for one term identifier."""
+    term = bundle.get_term(term_id)
+    if term is None:
+        return
+
+    if not isinstance(term, Term):
+        msg = f"get_term({term_id!r}) returned {type(term).__name__}"
+        raise RuntimeIntegrityError(msg)
+    if term.id.name != term_id:
+        msg = f"get_term({term_id!r}) returned node named {term.id.name!r}"
+        raise RuntimeIntegrityError(msg)
+    if bundle.get_term(f"-{term_id}") is not None:
+        msg = f"get_term('-{term_id}') bypassed the no-leading-dash contract"
+        raise RuntimeIntegrityError(msg)
+    if bundle.get_message(term_id) is not None:
+        msg = f"get_message({term_id!r}) crossed the term/message namespace boundary"
+        raise RuntimeIntegrityError(msg)
+
+    declared_variables = bundle.introspect_term(term_id).get_variable_names()
+    validation = validate_message_variables(term, declared_variables)
+    if not validation.is_valid:
+        msg = f"validate_message_variables() rejected bundle term {term_id!r}"
+        raise RuntimeIntegrityError(msg)
+    if validation.declared_variables != declared_variables:
+        msg = (
+            "validate_message_variables() changed declared term variables for "
+            f"{term_id!r}: {validation.declared_variables!r} vs {declared_variables!r}"
+        )
+        raise RuntimeIntegrityError(msg)
+
+
+def _verify_ast_lookup_accessors(bundle: FluentBundle) -> None:
+    """Validate FluentBundle AST lookup accessors on the public facade."""
+    _domain.ast_lookup_checks += 1
+
+    missing_id = "__missing_bundle_lookup__"
+    if bundle.get_message(missing_id) is not None:
+        msg = f"get_message({missing_id!r}) returned a node for a missing message"
+        raise RuntimeIntegrityError(msg)
+    if bundle.get_term(missing_id) is not None:
+        msg = f"get_term({missing_id!r}) returned a node for a missing term"
+        raise RuntimeIntegrityError(msg)
+
+    for message_id in _IDENTIFIERS:
+        _validate_bundle_message_lookup(bundle, message_id)
+
+    for term_id in _TERM_QUERY_IDS:
+        _validate_bundle_term_lookup(bundle, term_id)
 
 
 def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915 - dispatch
@@ -1106,6 +1199,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
 
         # Add resources
         _add_random_resources(fdp, bundle)
+        _verify_ast_lookup_accessors(bundle)
 
         # Generate args
         args = _generate_complex_args(fdp)

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.149.0"
+version: "0.150.0"
 domain: CHANGELOG
-updated: "2026-03-11"
+updated: "2026-03-12"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,33 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.150.0] - 2026-03-12
+
+### Added
+
+- **`FluentBundle.get_cache_audit_log()` and `FluentLocalization.get_cache_audit_log()`** (resolution of ITEM 001):
+  - `IntegrityCache` already exposed immutable `WriteLogEntry` audit records, but callers using
+    only the `FluentBundle` and `FluentLocalization` facades could inspect counters via
+    `get_cache_stats()` and had no public way to retrieve the underlying audit trail for
+    incident export, persistence, or post-mortem analysis
+  - `FluentBundle.get_cache_audit_log()` now returns `tuple[WriteLogEntry, ...] | None`:
+    `None` when caching is disabled, otherwise an immutable snapshot of the cache audit log;
+    audit-disabled caches return `()`
+  - `FluentLocalization.get_cache_audit_log()` now returns
+    `dict[LocaleCode, tuple[WriteLogEntry, ...]] | None`, keyed by initialized locale without
+    forcing lazy bundle creation; this preserves locale context for audited multi-locale
+    deployments while still keeping the raw cache object private
+
+### Fixed
+
+- **`get_system_locale()` now ignores encoded `C`/`POSIX` pseudo-locales during fallback**:
+  - environments that expose `LC_ALL=C.UTF-8` (or similar encoded pseudo-locales) previously
+    normalized that value to `"c"` and returned it as though it were a real locale, preventing
+    `LANG` or `LC_MESSAGES` from being consulted
+  - pseudo-locales are now filtered after stripping encoding suffixes from both
+    `locale.getlocale()` results and environment variables, so locale fallback proceeds to the
+    first real locale value instead of returning `"c"`
 
 ## [0.149.0] - 2026-03-12
 
@@ -5920,6 +5947,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.150.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.150.0
 [0.149.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.149.0
 [0.148.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.148.0
 [0.147.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.147.0

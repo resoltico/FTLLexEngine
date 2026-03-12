@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.150.0"
 domain: RUNTIME
-updated: "2026-02-28"
+updated: "2026-03-12"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, audit, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
+  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
 ---
 
 # Runtime Reference
@@ -1574,6 +1574,7 @@ class WriteLogEntry:
 ### Constraints
 - Immutable: Frozen dataclass with slots.
 - Purpose: Post-mortem analysis and debugging when audit logging enabled.
+- Facade: Returned by `FluentBundle.get_cache_audit_log()` and `FluentLocalization.get_cache_audit_log()`.
 - Import: `from ftllexengine.runtime.cache import WriteLogEntry`
 
 ---
@@ -1589,6 +1590,7 @@ def get_audit_log(self) -> tuple[WriteLogEntry, ...]:
 
 ### Constraints
 - Return: Tuple of WriteLogEntry instances (empty if audit disabled).
+- Prefer: Use bundle/localization facade accessors unless managing `IntegrityCache` directly.
 - State: Read-only.
 - Thread: Safe.
 

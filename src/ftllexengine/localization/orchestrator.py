@@ -49,7 +49,7 @@ from ftllexengine.localization.loading import (
     ResourceLoadResult,
 )
 from ftllexengine.runtime.bundle import FluentBundle, _validate_locale_format
-from ftllexengine.runtime.cache import CacheStats
+from ftllexengine.runtime.cache import CacheStats, WriteLogEntry
 from ftllexengine.runtime.rwlock import RWLock
 
 if TYPE_CHECKING:
@@ -1115,6 +1115,31 @@ class FluentLocalization:
                 "audit_entries": total_audit_entries,
                 "bundle_count": len(self._bundles),
             }
+
+    def get_cache_audit_log(self) -> dict[LocaleCode, tuple[WriteLogEntry, ...]] | None:
+        """Get per-locale cache audit logs for initialized bundles.
+
+        Returns:
+            Mapping of initialized locale codes to immutable WriteLogEntry
+            tuples, or None if caching is disabled. Bundles with audit logging
+            disabled return empty tuples. Uninitialized bundles are omitted and
+            this method does not create them.
+        """
+        if self._cache_config is None:
+            return None
+
+        with self._lock.read():
+            audit_logs: dict[LocaleCode, tuple[WriteLogEntry, ...]] = {}
+            for locale in self._locales:
+                bundle = self._bundles.get(locale)
+                if bundle is None:
+                    continue
+
+                audit_log = bundle.get_cache_audit_log()
+                if audit_log is not None:
+                    audit_logs[locale] = audit_log
+
+            return audit_logs
 
     def get_bundles(self) -> Generator[FluentBundle]:
         """Lazy generator yielding bundles in fallback order.

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.148.0"
-domain: fuzzing
-updated: "2026-03-10"
+version: "0.150.0"
+domain: FUZZING
+updated: "2026-03-12"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -19,7 +19,7 @@ route:
 | `fuzz_bridge.py` | `runtime.function_bridge` | 15 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
 | `fuzz_graph.py` | `analysis.graph` | 12 | 24 (.bin) | Dependency graph cycle detection, canonicalization |
 | `fuzz_builtins.py` | `runtime.functions` | 13 | 24 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
-| `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency and integrity |
+| `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency, integrity, and public audit-trail access |
 | `fuzz_currency.py` | `runtime.functions` | 8 | 65 (.txt) + 23 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
 | `fuzz_parse_currency.py` | `parsing.currency`, `parsing.guards` | 9 | 5 (.txt) + 20 (.bin) | Locale-aware currency parsing, symbol disambiguation, cache stability |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 38 (.bin) | Fiscal calendar arithmetic, contracts |
@@ -27,16 +27,16 @@ route:
 | `fuzz_iso.py` | `introspection.iso` | 10 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle |
 | `fuzz_lock.py` | `runtime.rwlock` | 15 | 39 (.bin) | RWLock concurrency primitives |
 | `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
-| `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 7 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, locale normalization/cache behavior |
+| `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 7 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, locale normalization/cache behavior, pseudo-locale fallback |
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 37 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 8 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 31 (.bin) + 4 (.ftl) | Parser-serializer convergence |
-| `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 100 (.bin) | Full runtime stack, strict mode |
+| `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 100 (.bin) | Full runtime stack, strict mode, FluentBundle AST lookup facade |
 | `fuzz_serializer.py` | `syntax.serializer`, `syntax.parser`, `syntax.visitor` | 13 | 26 (.bin) | AST-construction serializer roundtrip, visitor/transformer validation |
 | `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 13 | 29 (.bin) | Variable scoping, term isolation, depth guards, expansion budget |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) + 6 (.bin) | Grammar-aware AST construction |
 | `fuzz_cursor.py` | `syntax.cursor`, `syntax.position` | 8 | 5 (.txt) + 35 (.bin) | Cursor state machine, ParseError formatting, position helper parity |
-| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 16 | 13 (.bin) | FluentLocalization orchestration, loader init, LoadSummary, fallback chains |
+| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 18 | 13 (.bin) | FluentLocalization orchestration, AST lookup, cache audit trails, loader init, LoadSummary, fallback chains |
 | `fuzz_dates.py` | `parsing.dates` | 14 | 59 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing; 4-digit year oracle (lv-LV/de-DE) |
 | `fuzz_locale_context.py` | `runtime.locale_context` | 14 | 25 (.bin) | LocaleContext direct formatting, ROUND_HALF_UP oracle, cross-locale determinism |
 | `fuzz_introspection.py` | `introspection.message` | 13 | 25 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction; `validate_message_variables` schema oracle |
@@ -194,11 +194,11 @@ Run this fuzzer in isolation: `./scripts/fuzz_atheris.sh builtins` (uses `.venv-
 
 ## `fuzz_cache`
 
-Target: `runtime.cache` (via `FluentBundle` public API) -- cache parameter combinations, multi-threaded access (2-8 threads), LRU eviction stress, concurrent resource modification, write-once cache behavior, cache key complexity.
+Target: `runtime.cache` (via `FluentBundle` public API) -- cache parameter combinations, multi-threaded access (2-8 threads), LRU eviction stress, concurrent resource modification, write-once cache behavior, cache key complexity, and public audit-log visibility.
 
-Concern boundary: This fuzzer stress-tests the cache subsystem by systematically varying ALL cache constructor parameters (size, entry weight, error limits, write-once, audit mode) under concurrent multi-threaded access. This is distinct from the runtime fuzzer which tests the full resolver stack with fixed cache configs and only 2 threads. Unique coverage includes: cache parameter combinations (5 params = large state space), high thread concurrency (2-8 threads vs runtime's 2), cache eviction/LRU stress, concurrent resource modification during formatting, write-once cache behavior, and cache key complexity via `_make_hashable`.
+Concern boundary: This fuzzer stress-tests the cache subsystem by systematically varying ALL cache constructor parameters (size, entry weight, error limits, write-once, audit mode) under concurrent multi-threaded access. This is distinct from the runtime fuzzer which tests the full resolver stack with fixed cache configs and only 2 threads. Unique coverage includes: cache parameter combinations (5 params = large state space), high thread concurrency (2-8 threads vs runtime's 2), cache eviction/LRU stress, concurrent resource modification during formatting, write-once cache behavior, cache key complexity via `_make_hashable`, and `FluentBundle.get_cache_audit_log()` consistency against `get_cache_stats()`.
 
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `CacheMetrics` dataclass (cache operations, write conflicts, oversize skips, error bloat, corruption events, thread timeouts). Cache stats (hits, misses, oversize skips, error bloat, corruption) collected per-iteration via `bundle.get_cache_stats()` public API and accumulated into domain metrics. Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `CacheMetrics` dataclass (cache operations, write conflicts, oversize skips, error bloat, corruption events, audit-log checks, thread timeouts). Cache stats and audit logs are collected per-iteration via `bundle.get_cache_stats()` and `bundle.get_cache_audit_log()`, with invariant checks on tuple shape, `WriteLogEntry` typing, stats/log count agreement, non-decreasing audit timestamps, and operation-specific sequence/checksum structure. Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
@@ -564,7 +564,7 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 Target: `parsing.numbers.parse_decimal`, `parsing.guards.is_valid_decimal`, `core.locale_utils` helpers -- locale-aware decimal parsing, locale normalization equivalence, Babel locale cache behavior, and system locale resolution.
 
-Concern boundary: This fuzzer owns the text-to-`Decimal` parse surface that the runtime NUMBER-formatting fuzzers do not touch. It covers canonical locale-formatted inputs, locale spelling normalization (`en-US` vs `en_US` vs mixed case), public soft-error contracts, Babel locale cache reuse/clearing, and `get_system_locale()` precedence through environment variables and `locale.getlocale()`.
+Concern boundary: This fuzzer owns the text-to-`Decimal` parse surface that the runtime NUMBER-formatting fuzzers do not touch. It covers canonical locale-formatted inputs, locale spelling normalization (`en-US` vs `en_US` vs mixed case), public soft-error contracts, Babel locale cache reuse/clearing, and `get_system_locale()` precedence through environment variables and `locale.getlocale()`, including encoded `C.UTF-8` / `POSIX.UTF-8` pseudo-locale fallback.
 
 Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `ParseDecimalMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
@@ -577,7 +577,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `invalid_soft_error` | 12 | Invalid decimal text returns soft errors, not silent success |
 | `type_guard_contract` | 10 | `is_valid_decimal()` accepts valid finite decimals and rejects bad values |
 | `babel_locale_cache` | 10 | Locale normalization/cache clear cycles preserve locale-object equivalence |
-| `system_locale_resolution` | 10 | `get_system_locale()` respects env/`getlocale()` precedence and fallback |
+| `system_locale_resolution` | 10 | `get_system_locale()` respects precedence and skips encoded C/POSIX pseudo-locales |
 | `raw_unicode_stability` | 12 | Arbitrary Unicode inputs preserve the public result-or-errors contract |
 
 ### Allowed Exceptions
@@ -759,9 +759,9 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 
 ## `fuzz_runtime`
 
-Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, caching, concurrency, security.
+Target: `runtime.bundle.FluentBundle` -- full resolver stack, strict mode, caching, concurrency, security, and AST lookup facade contracts.
 
-Scenario selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Security sub-pattern selection within `_perform_security_fuzzing` remains FDP-based (second-level, already guaranteed execution). FDP bytes are used exclusively for scenario parameters, not scenario selection. String and RegEx instrumentation hooks enabled for deeper coverage of message ID lookups, selector matching, and pattern-based parsing. Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `RuntimeMetrics` dataclass. Weight skew detection compares actual vs intended scenario distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Scenario selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Security sub-pattern selection within `_perform_security_fuzzing` remains FDP-based (second-level, already guaranteed execution). FDP bytes are used exclusively for scenario parameters, not scenario selection. String and RegEx instrumentation hooks enabled for deeper coverage of message ID lookups, selector matching, and pattern-based parsing. Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `RuntimeMetrics` dataclass, including `FluentBundle.get_message()` / `get_term()` AST lookup checks and direct `validate_message_variables()` compatibility. Weight skew detection compares actual vs intended scenario distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
@@ -858,9 +858,9 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 
 Target: `localization.orchestrator.FluentLocalization`, `localization.loading.PathResourceLoader` -- multi-locale orchestration, eager loader-backed initialization, fallback chains, `LoadSummary`, and post-construction mutation APIs.
 
-Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). It covers multi-locale fallback traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, custom function registration and invocation, `on_fallback` callback delivery, introspection delegation, and now the loader-backed initialization path: eager resource loading, `PathResourceLoader` path validation, per-locale success/not-found/error accounting, junk-bearing loads, and `source_path` propagation into `LoadSummary`.
+Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). It covers multi-locale fallback traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, `get_message()`/`get_term()` AST lookup precedence, per-locale `get_cache_audit_log()` access, custom function registration and invocation, `on_fallback` callback delivery, introspection delegation, and the loader-backed initialization path: eager resource loading, `PathResourceLoader` path validation, per-locale success/not-found/error accounting, junk-bearing loads, and `source_path` propagation into `LoadSummary`.
 
-Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass (including loader init/junk/error counters). Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass (including AST lookup, cache-audit, and loader init/junk/error counters). Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
@@ -873,10 +873,12 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `format_with_variables` | 9 | Variables propagate through fallback chain |
 | `add_resource_mutation` | 7 | add_resource between format calls updates visible state |
 | `has_message_api` | 7 | has_message/has_attribute contracts hold across locales |
+| `ast_lookup_api` | 7 | get_message/get_term honor fallback precedence and namespace boundaries |
 | `get_message_ids_api` | 6 | get_message_ids returns all IDs without duplicates |
 | `validate_resource_api` | 7 | validate_resource delegates and returns structured results |
 | `add_function_custom` | 6 | Custom UPPER function registration/invocation works |
 | `introspect_api` | 7 | get_message_variables/introspect_message stay consistent |
+| `cache_audit_api` | 6 | get_cache_audit_log matches initialized locales and stats |
 | `on_fallback_callback` | 6 | on_fallback receives requested/resolved locale data |
 | `loader_init_success` | 5 | Eager loader initialization records all-success summary data |
 | `loader_not_found_fallback` | 5 | Primary miss increments not_found while fallback still resolves |

@@ -8,6 +8,7 @@ Tests for:
 """
 
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 
@@ -125,7 +126,8 @@ class TestFluentBundleFunctionsParameter:
 
         registry.register(custom_curr, ftl_name="CURRENCY")
 
-        bundle = FluentBundle.for_system_locale(functions=registry)
+        with patch("ftllexengine.runtime.bundle.get_system_locale", return_value="en_US"):
+            bundle = FluentBundle.for_system_locale(functions=registry)
         bundle.add_resource('test = { CURRENCY(100, currency: "EUR") }')
         result, errors = bundle.format_pattern("test")
 

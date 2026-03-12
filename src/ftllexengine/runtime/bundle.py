@@ -36,7 +36,7 @@ from ftllexengine.integrity import (
     SyntaxIntegrityError,
 )
 from ftllexengine.introspection import extract_variables, introspect_message
-from ftllexengine.runtime.cache import CacheStats, IntegrityCache
+from ftllexengine.runtime.cache import CacheStats, IntegrityCache, WriteLogEntry
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -1435,4 +1435,16 @@ class FluentBundle:
         """
         if self._cache is not None:
             return self._cache.get_stats()
+        return None
+
+    def get_cache_audit_log(self) -> tuple[WriteLogEntry, ...] | None:
+        """Get immutable cache audit log entries.
+
+        Returns:
+            Tuple of WriteLogEntry snapshots, or None if caching is disabled.
+            Returns an empty tuple when caching is enabled but audit logging is
+            disabled or no cache operations have been recorded.
+        """
+        if self._cache is not None:
+            return self._cache.get_audit_log()
         return None

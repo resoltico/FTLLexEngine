@@ -203,6 +203,13 @@ class TestGetSystemLocale:
                 result = get_system_locale()
                 assert result == "it_it"
 
+    def test_getlocale_c_utf8_filtered(self) -> None:
+        """getlocale() returning 'C.UTF-8' triggers env var fallback."""
+        with patch("locale.getlocale", return_value=("C.UTF-8", "UTF-8")):
+            with patch.dict(os.environ, {"LANG": "nl_NL"}, clear=False):
+                result = get_system_locale()
+                assert result == "nl_nl"
+
     def test_getlocale_none_fallback(self) -> None:
         """getlocale() returning None triggers env var fallback (lowercased)."""
         with patch("locale.getlocale", return_value=(None, None)):
@@ -271,6 +278,14 @@ class TestGetSystemLocale:
             with patch.dict(os.environ, env, clear=True):
                 result = get_system_locale()
                 assert result == "ar_sa"
+
+    def test_env_var_c_utf8_filtered(self) -> None:
+        """Environment variable 'C.UTF-8' filtered out (lowercased fallback)."""
+        with patch("locale.getlocale", return_value=(None, None)):
+            env = {"LC_ALL": "C.UTF-8", "LANG": "nl_NL"}
+            with patch.dict(os.environ, env, clear=True):
+                result = get_system_locale()
+                assert result == "nl_nl"
 
     def test_env_var_empty_filtered(self) -> None:
         """Empty environment variable filtered out (lowercased fallback)."""

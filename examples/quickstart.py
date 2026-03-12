@@ -358,12 +358,20 @@ if cfg is not None:
     print(f"  max_entry_weight: {cfg.max_entry_weight}")
     print(f"  max_errors_per_entry: {cfg.max_errors_per_entry}")
 
-# Get cache stats including audit entries
+# Get cache stats and audit trail
 stats = financial_bundle.get_cache_stats()
 if stats:
     print(f"  audit_entries: {stats.get('audit_entries', 0)}")
     print(f"  cache_hits: {stats.get('hits', 0)}")
     print(f"  cache_misses: {stats.get('misses', 0)}")
+
+audit_log = financial_bundle.get_cache_audit_log()
+if audit_log is not None:
+    print(f"  audit_log_entries: {len(audit_log)}")
+    if audit_log:
+        latest_entry = audit_log[-1]
+        print(f"  latest_audit_operation: {latest_entry.operation}")
+        print(f"  latest_audit_sequence: {latest_entry.sequence}")
 
 print("\n" + "=" * 50)
 print("[SUCCESS] All examples completed successfully!")

@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.148.0"
+version: "0.150.0"
 domain: reference
-updated: "2026-03-10"
+updated: "2026-03-12"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig]
-  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how to enable cache audit?"]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log]
+  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how do I get the cache audit log?"]
 ---
 
 # FTLLexEngine Quick Reference
@@ -337,6 +337,7 @@ bundle.introspect_term(term_id: str) -> MessageIntrospection
 bundle.add_function(name: str, func: Callable) -> None
 bundle.clear_cache() -> None
 bundle.get_cache_stats() -> CacheStats | None
+bundle.get_cache_audit_log() -> tuple[WriteLogEntry, ...] | None
 bundle.get_babel_locale() -> str
 ```
 
@@ -388,6 +389,7 @@ l10n.introspect_term(term_id: str) -> MessageIntrospection | None
 l10n.add_function(name: str, func: Callable) -> None
 l10n.clear_cache() -> None
 l10n.get_cache_stats() -> LocalizationCacheStats | None
+l10n.get_cache_audit_log() -> dict[str, tuple[WriteLogEntry, ...]] | None
 l10n.get_load_summary() -> LoadSummary
 l10n.get_bundles() -> Generator[FluentBundle]
 l10n.get_babel_locale() -> str

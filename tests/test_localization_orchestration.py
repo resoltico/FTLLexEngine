@@ -11,6 +11,7 @@ Covers FluentLocalization methods not exercised by the main integration tests:
 - __enter__/__exit__: context manager protocol
 - get_load_summary: resource load tracking
 - get_cache_stats: aggregate cache metrics branch
+- get_cache_audit_log: per-locale cache audit access
 
 Also covers data type invariants for ResourceLoadResult, LoadSummary,
 and PathResourceLoader initialization edge cases.
@@ -36,6 +37,7 @@ from ftllexengine.localization import (
     ResourceLoadResult,
 )
 from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache import WriteLogEntry
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax import Message, Term
 from ftllexengine.syntax.ast import Junk, Span
@@ -661,6 +663,64 @@ class TestCacheStatsBranch:
         assert stats["bundle_count"] == 2
         assert stats["maxsize"] == 100  # Only en's maxsize
 
+
+class TestCacheAuditLogBranch:
+    """Tests for get_cache_audit_log per-locale audit access."""
+
+    def test_returns_none_when_caching_disabled(self) -> None:
+        """get_cache_audit_log() returns None when localization caching is disabled."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "msg = Hello\n")
+
+        assert l10n.get_cache_audit_log() is None
+
+    def test_returns_empty_mapping_when_no_bundles_initialized(self) -> None:
+        """get_cache_audit_log() does not create bundles during inspection."""
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_audit=True))
+
+        audit_logs = l10n.get_cache_audit_log()
+        assert audit_logs == {}
+
+    def test_returns_per_locale_write_log_entries(self) -> None:
+        """get_cache_audit_log() returns immutable WriteLogEntry tuples per locale."""
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_audit=True))
+        l10n.add_resource("en", "msg = Hello\n")
+        l10n.add_resource("de", "msg = Hallo\n")
+
+        l10n.format_value("msg")
+        l10n.format_value("msg")
+
+        audit_logs = l10n.get_cache_audit_log()
+        assert audit_logs is not None
+        assert list(audit_logs) == ["en", "de"]
+        assert [entry.operation for entry in audit_logs["en"]] == ["MISS", "PUT", "HIT"]
+        assert audit_logs["de"] == ()
+        assert all(isinstance(entry, WriteLogEntry) for entry in audit_logs["en"])
+
+    @given(enable_audit=st.booleans(), locales=locale_chains(min_size=1, max_size=3))
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    def test_property_audit_log_tracks_initialized_locales(
+        self, enable_audit: bool, locales: list[str]
+    ) -> None:
+        """PROPERTY: get_cache_audit_log() preserves initialized locale keys."""
+        l10n = FluentLocalization(locales, cache=CacheConfig(enable_audit=enable_audit))
+        for locale in locales:
+            l10n.add_resource(locale, "msg = Hello\n")
+
+        l10n.format_value("msg")
+
+        audit_logs = l10n.get_cache_audit_log()
+        assert audit_logs is not None
+        assert list(audit_logs) == locales
+
+        event(f"audit={'enabled' if enable_audit else 'disabled'}")
+        event(f"locale_count={len(locales)}")
+
+        if enable_audit:
+            assert len(audit_logs[locales[0]]) >= 2
+            assert all(isinstance(entry, WriteLogEntry) for entry in audit_logs[locales[0]])
+        else:
+            assert all(log == () for log in audit_logs.values())
 
 
 class TestFormatPattern:

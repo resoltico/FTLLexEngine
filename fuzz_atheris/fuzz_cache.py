@@ -110,6 +110,7 @@ class CacheMetrics:
     concurrent_modify_tests: int = 0
     frozen_cache_tests: int = 0
     eviction_stress_tests: int = 0
+    audit_log_checks: int = 0
 
     # Hit rate tracking (rolling)
     cache_hits: int = 0
@@ -188,6 +189,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["concurrent_modify_tests"] = _domain.concurrent_modify_tests
     stats["frozen_cache_tests"] = _domain.frozen_cache_tests
     stats["eviction_stress_tests"] = _domain.eviction_stress_tests
+    stats["audit_log_checks"] = _domain.audit_log_checks
     stats["thread_timeouts"] = _domain.thread_timeouts
     stats["max_threads_used"] = _domain.max_threads_used
 
@@ -232,6 +234,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         WriteConflictError,
     )
     from ftllexengine.runtime.bundle import FluentBundle
+    from ftllexengine.runtime.cache import WriteLogEntry
     from ftllexengine.runtime.cache_config import CacheConfig
 
 
@@ -243,23 +246,111 @@ TEST_LOCALES: Sequence[str] = (
 
 _MSG_IDS: Sequence[str] = tuple(f"msg{i}" for i in range(20))
 _ATTR_NAMES: Sequence[str] = ("tooltip", "aria-label", "placeholder", "title")
+_VALID_AUDIT_OPERATIONS: frozenset[str] = frozenset({
+    "MISS",
+    "PUT",
+    "HIT",
+    "EVICT",
+    "CORRUPTION",
+    "WRITE_ONCE_IDEMPOTENT",
+    "WRITE_ONCE_CONFLICT",
+})
 
 
-def _collect_cache_stats(bundle: FluentBundle) -> None:
-    """Accumulate cache stats from bundle into domain metrics.
+def _validate_cache_audit_entry(
+    entry: WriteLogEntry,
+    *,
+    last_timestamp: float,
+) -> float:
+    """Validate one audit-log entry and return its timestamp."""
+    if entry.operation not in _VALID_AUDIT_OPERATIONS:
+        msg = f"Unexpected audit operation {entry.operation!r}"
+        raise CacheFuzzError(msg)
+    if not entry.key_hash:
+        msg = "Audit log entry contained an empty key hash"
+        raise CacheFuzzError(msg)
+    if entry.timestamp < last_timestamp:
+        msg = (
+            "Audit log timestamps must be non-decreasing: "
+            f"{last_timestamp} -> {entry.timestamp}"
+        )
+        raise CacheFuzzError(msg)
+
+    if entry.operation == "MISS":
+        if entry.sequence != 0 or entry.checksum_hex != "":
+            msg = "MISS audit entries must have sequence=0 and empty checksum"
+            raise CacheFuzzError(msg)
+        return entry.timestamp
+
+    if entry.sequence <= 0 or entry.checksum_hex == "":
+        msg = (
+            f"{entry.operation} audit entries must carry a positive sequence "
+            "and non-empty checksum"
+        )
+        raise CacheFuzzError(msg)
+    return entry.timestamp
+
+
+def _collect_cache_observability(
+    bundle: FluentBundle,
+    *,
+    enable_audit: bool,
+) -> None:
+    """Accumulate cache stats and validate public audit-log accessors.
 
     Each iteration creates a new FluentBundle/cache, so stats are
     per-iteration deltas that get accumulated into _domain totals.
     """
     stats = bundle.get_cache_stats()
     if stats is None:
-        return
+        msg = "Cache-enabled bundle returned None from get_cache_stats()"
+        raise CacheFuzzError(msg)
 
     _domain.cache_hits += int(stats.get("hits", 0))
     _domain.cache_misses += int(stats.get("misses", 0))
     _domain.oversize_skip_counts += int(stats.get("oversize_skips", 0))
     _domain.error_bloat_counts += int(stats.get("error_bloat_skips", 0))
     _domain.corruption_events += int(stats.get("corruption_detected", 0))
+    _domain.audit_log_checks += 1
+
+    audit_log = bundle.get_cache_audit_log()
+    if audit_log is None:
+        msg = "Cache-enabled bundle returned None from get_cache_audit_log()"
+        raise CacheFuzzError(msg)
+
+    if not isinstance(audit_log, tuple):
+        msg = f"get_cache_audit_log() returned {type(audit_log).__name__}, expected tuple"
+        raise CacheFuzzError(msg)
+
+    if bool(stats.get("audit_enabled", False)) != enable_audit:
+        msg = (
+            "get_cache_stats()['audit_enabled'] disagrees with CacheConfig: "
+            f"{stats.get('audit_enabled')} vs {enable_audit}"
+        )
+        raise CacheFuzzError(msg)
+
+    if len(audit_log) != int(stats.get("audit_entries", 0)):
+        msg = (
+            "get_cache_audit_log() length disagrees with cache stats: "
+            f"{len(audit_log)} vs {stats.get('audit_entries')}"
+        )
+        raise CacheFuzzError(msg)
+
+    if not enable_audit:
+        if audit_log != ():
+            msg = "Audit-disabled cache returned non-empty audit log"
+            raise CacheFuzzError(msg)
+        return
+
+    last_timestamp = float("-inf")
+    for entry in audit_log:
+        if not isinstance(entry, WriteLogEntry):
+            msg = "get_cache_audit_log() returned non-WriteLogEntry entries"
+            raise CacheFuzzError(msg)
+        last_timestamp = _validate_cache_audit_entry(
+            entry,
+            last_timestamp=last_timestamp,
+        )
 
 
 # --- FTL Generators ---
@@ -641,7 +732,11 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
         _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
 
     finally:
-        _collect_cache_stats(bundle)
+        try:
+            _collect_cache_observability(bundle, enable_audit=enable_audit)
+        except CacheFuzzError:
+            _state.findings += 1
+            raise
 
         is_interesting = pattern in ("concurrent_modify", "frozen_cache", "capacity_stress") or (
             (time.perf_counter() - start_time) * 1000 > 20.0

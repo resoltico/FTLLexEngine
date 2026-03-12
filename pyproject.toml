@@ -36,7 +36,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.149.0"
+version = "0.150.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -446,4 +446,3 @@ ignore = [
 "tests/fuzz/test_syntax_parser_grammar.py" = ["E402"]
 "tests/fuzz/test_syntax_parser_whitespace.py" = ["E402"]
 "tests/fuzz/test_parsing_numbers_property.py" = ["PLC0415"]
-

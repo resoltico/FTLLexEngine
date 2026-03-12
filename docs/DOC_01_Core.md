@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.150.0"
 domain: CORE
-updated: "2026-02-28"
+updated: "2026-03-12"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how to use write-once cache?"]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, WriteLogEntry]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
 ---
 
 # Core API Reference
@@ -401,6 +401,26 @@ def get_cache_stats(self) -> CacheStats | None:
 ### Constraints
 - Return: `CacheStats` TypedDict snapshot, or `None` if caching disabled. See `CacheStats` for all 19 fields with precise per-field types.
 - Import: `from ftllexengine.runtime.cache import CacheStats`
+- Raises: Never.
+- State: Read-only.
+- Thread: Safe.
+
+---
+
+## `FluentBundle.get_cache_audit_log`
+
+### Signature
+```python
+def get_cache_audit_log(self) -> tuple[WriteLogEntry, ...] | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Tuple of immutable `WriteLogEntry` snapshots, or `None` if caching disabled. Audit-disabled caches return `()`.
+- Import: `from ftllexengine.runtime.cache import WriteLogEntry`
 - Raises: Never.
 - State: Read-only.
 - Thread: Safe.
@@ -1177,6 +1197,28 @@ def get_cache_stats(self) -> LocalizationCacheStats | None:
 - Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
 - Raises: None.
 - State: Reads cache statistics from all initialized bundles.
+- Thread: Safe.
+
+---
+
+## `FluentLocalization.get_cache_audit_log`
+
+### Signature
+```python
+def get_cache_audit_log(self) -> dict[LocaleCode, tuple[WriteLogEntry, ...]] | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Per-locale mapping of immutable `WriteLogEntry` tuples, or `None` if caching disabled.
+- Note: Only initialized bundles are included; this method does not create lazy bundles.
+- Note: Audit-disabled bundles return `()`.
+- Import: `from ftllexengine.runtime.cache import WriteLogEntry`
+- Raises: Never.
+- State: Reads audit logs from initialized bundles.
 - Thread: Safe.
 
 ---

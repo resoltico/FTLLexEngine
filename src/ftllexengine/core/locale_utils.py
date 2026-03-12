@@ -97,6 +97,12 @@ def normalize_locale(locale_code: str) -> str:
     return locale_code.replace("-", "_").lower()
 
 
+def _is_pseudo_locale(locale_code: str) -> bool:
+    """Return True for C/POSIX pseudo-locales, including encoded variants."""
+    base = locale_code.split(".", 1)[0].split("@", 1)[0]
+    return base.upper() in {"C", "POSIX"}
+
+
 @functools.lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)
 def _get_babel_locale_normalized(normalized_code: str) -> Locale:
     """Get a Babel Locale object from a pre-normalized locale code with caching.
@@ -198,20 +204,20 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
     # Try OS-level locale detection first
     try:
         system_locale, _ = locale_module.getlocale()
-        if system_locale and system_locale not in ("C", "POSIX"):
-            # Strip encoding suffix if present
-            if "." in system_locale:
-                system_locale = system_locale.split(".")[0]
-            return normalize_locale(system_locale)
+        if system_locale:
+            locale_code = system_locale.split(".", 1)[0]
+            if not _is_pseudo_locale(locale_code):
+                return normalize_locale(locale_code)
     except (ValueError, AttributeError):
         pass
 
     # Fall back to environment variables in order of precedence
     for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         value = os.environ.get(var)
-        if value and value not in ("C", "POSIX", ""):
-            # Strip encoding suffix (e.g., ".UTF-8")
-            locale_code = value.split(".")[0]
+        if value and value != "":
+            locale_code = value.split(".", 1)[0]
+            if _is_pseudo_locale(locale_code):
+                continue
             # Normalize to ensure consistent format
             return normalize_locale(locale_code)
 

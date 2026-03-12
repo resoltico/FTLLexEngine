@@ -350,34 +350,35 @@ def _pattern_babel_locale_cache(fdp: atheris.FuzzedDataProvider) -> None:
 def _pattern_system_locale_resolution(fdp: atheris.FuzzedDataProvider) -> None:
     """get_system_locale obeys precedence and fallback contracts."""
     _domain.system_locale_checks += 1
-    scenario = fdp.ConsumeIntInRange(0, 4)
+    scenario = fdp.ConsumeIntInRange(0, 8)
 
+    cases: tuple[
+        tuple[tuple[str | None, str | None], dict[str, str], str, bool],
+        ...,
+    ] = (
+        (("de_DE", "UTF-8"), {}, "de_de", False),
+        ((None, None), {"LC_ALL": "fr_FR.UTF-8"}, "fr_fr", False),
+        ((None, None), {"LC_MESSAGES": "lv_LV.UTF-8"}, "lv_lv", False),
+        (("C", "UTF-8"), {"LANG": "en_GB.UTF-8"}, "en_gb", False),
+        (
+            (None, None),
+            {"LC_ALL": "C.UTF-8", "LC_MESSAGES": "de_DE.UTF-8"},
+            "de_de",
+            False,
+        ),
+        (
+            (None, None),
+            {"LC_ALL": "POSIX.UTF-8", "LANG": "fr_FR.UTF-8"},
+            "fr_fr",
+            False,
+        ),
+        (("POSIX", "UTF-8"), {"LANG": "ja_JP.UTF-8"}, "ja_jp", False),
+        ((None, None), {}, "en_us", False),
+        ((None, None), {}, "", True),
+    )
+    mock_locale, env_updates, expected, raise_on_failure = cases[scenario]
     env: dict[str, str] = {"LC_ALL": "", "LC_MESSAGES": "", "LANG": ""}
-    mock_locale: tuple[str | None, str | None]
-
-    match scenario:
-        case 0:
-            mock_locale = ("de_DE", "UTF-8")
-            expected = "de_de"
-            raise_on_failure = False
-        case 1:
-            mock_locale = (None, None)
-            env["LC_ALL"] = "fr_FR.UTF-8"
-            expected = "fr_fr"
-            raise_on_failure = False
-        case 2:
-            mock_locale = (None, None)
-            env["LC_MESSAGES"] = "lv_LV.UTF-8"
-            expected = "lv_lv"
-            raise_on_failure = False
-        case 3:
-            mock_locale = (None, None)
-            expected = "en_us"
-            raise_on_failure = False
-        case _:
-            mock_locale = (None, None)
-            expected = ""
-            raise_on_failure = True
+    env.update(env_updates)
 
     with (
         patch("locale.getlocale", return_value=mock_locale),

@@ -12,6 +12,7 @@ integrity verification, audit trails, and memory bounds.
 """
 
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from hypothesis import event, given, settings
@@ -19,6 +20,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
 from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache import WriteLogEntry
 from ftllexengine.runtime.cache_config import CacheConfig
 
 
@@ -165,6 +167,35 @@ class TestCacheWriteOnceBehavior:
 class TestCacheAuditLogging:
     """Test cache audit logging functionality."""
 
+    def test_get_cache_audit_log_returns_none_when_caching_disabled(self) -> None:
+        """get_cache_audit_log() returns None when bundle caching is disabled."""
+        bundle = FluentBundle("en")
+        assert bundle.get_cache_audit_log() is None
+
+    def test_get_cache_audit_log_returns_empty_tuple_when_audit_disabled(self) -> None:
+        """get_cache_audit_log() returns empty tuple when audit logging is disabled."""
+        bundle = FluentBundle("en", cache=CacheConfig())
+        bundle.add_resource("msg = Hello")
+
+        bundle.format_pattern("msg")
+
+        audit_log = bundle.get_cache_audit_log()
+        assert audit_log == ()
+
+    def test_get_cache_audit_log_returns_write_log_entries_when_enabled(self) -> None:
+        """get_cache_audit_log() returns immutable WriteLogEntry data."""
+        bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
+        bundle.add_resource("msg = Hello")
+
+        bundle.format_pattern("msg")
+        bundle.format_pattern("msg")
+
+        audit_log = bundle.get_cache_audit_log()
+        assert audit_log is not None
+        assert isinstance(audit_log, tuple)
+        assert [entry.operation for entry in audit_log] == ["MISS", "PUT", "HIT"]
+        assert all(isinstance(entry, WriteLogEntry) for entry in audit_log)
+
     def test_audit_logging_records_operations(self) -> None:
         """Audit logging records cache operations when enabled."""
         bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
@@ -188,6 +219,30 @@ class TestCacheAuditLogging:
         assert stats is not None
         assert stats["audit_enabled"] is False
         assert stats["audit_entries"] == 0
+
+    @given(enable_audit=st.booleans(), repetitions=st.integers(min_value=1, max_value=5))
+    @settings(max_examples=20)
+    def test_property_get_cache_audit_log_matches_audit_configuration(
+        self, enable_audit: bool, repetitions: int
+    ) -> None:
+        """PROPERTY: get_cache_audit_log() follows the bundle audit configuration."""
+        bundle = FluentBundle("en", cache=CacheConfig(enable_audit=enable_audit))
+        bundle.add_resource("msg = Hello")
+
+        for _ in range(repetitions):
+            bundle.format_pattern("msg")
+
+        audit_log = bundle.get_cache_audit_log()
+        assert audit_log is not None
+
+        event(f"audit={'enabled' if enable_audit else 'disabled'}")
+        event(f"repetitions={repetitions}")
+
+        if enable_audit:
+            assert len(audit_log) >= 2
+            assert all(isinstance(entry, WriteLogEntry) for entry in audit_log)
+        else:
+            assert audit_log == ()
 
 
 class TestCacheMaxEntryWeight:
@@ -242,7 +297,8 @@ class TestForSystemLocaleWithCacheParameters:
             max_entry_weight=8000,
             max_errors_per_entry=30,
         )
-        bundle = FluentBundle.for_system_locale(cache=cfg, strict=True)
+        with patch("ftllexengine.runtime.bundle.get_system_locale", return_value="en_US"):
+            bundle = FluentBundle.for_system_locale(cache=cfg, strict=True)
 
         assert bundle.cache_enabled is True
         assert bundle.cache_config is not None
@@ -256,7 +312,8 @@ class TestForSystemLocaleWithCacheParameters:
 
     def test_for_system_locale_cache_parameters_default(self) -> None:
         """for_system_locale uses default CacheConfig values."""
-        bundle = FluentBundle.for_system_locale(cache=CacheConfig())
+        with patch("ftllexengine.runtime.bundle.get_system_locale", return_value="en_US"):
+            bundle = FluentBundle.for_system_locale(cache=CacheConfig())
 
         assert bundle.cache_enabled is True
         assert bundle.cache_config is not None

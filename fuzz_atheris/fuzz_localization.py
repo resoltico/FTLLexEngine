@@ -21,8 +21,10 @@ Unique coverage (not covered by other fuzzers):
 - add_resource() with RWLock write acquisition after initial construction
 - Lazy bundle creation for fallback locales (_get_or_create_bundle)
 - has_message()/has_attribute() cross-locale scan
+- get_message()/get_term() AST lookup across fallback locales
 - get_message_ids() aggregation across all locale bundles
 - get_message_variables() / introspect_message() localization facade
+- get_cache_audit_log() per-locale audit visibility without raw cache access
 - on_fallback callback invocation and FallbackInfo contract
 - validate_resource() via localization facade
 - add_function() custom function registration and application to late bundles
@@ -31,7 +33,7 @@ Unique coverage (not covered by other fuzzers):
 - LoadSummary aggregation (success, not_found, error, junk)
 - loader-backed source_path and path-validation error plumbing
 
-Patterns (16):
+Patterns (18):
 - single_locale_add_resource: 1 locale, add_resource, format
 - multi_locale_fallback: 2 locales, message only in fallback locale
 - chain_of_3_fallback: 3-locale chain, message in various positions
@@ -39,10 +41,12 @@ Patterns (16):
 - format_with_variables: format message with variable args
 - add_resource_mutation: add_resource after initial creation, re-format
 - has_message_api: has_message/has_attribute contract verification
+- ast_lookup_api: get_message/get_term precedence and namespace separation
 - get_message_ids_api: get_message_ids deduplication and coverage
 - validate_resource_api: validate_resource via localization facade
 - add_function_custom: add_function + FTL that calls custom function
 - introspect_api: introspect_message/get_message_variables contracts
+- cache_audit_api: per-locale cache audit accessor and aggregation
 - on_fallback_callback: on_fallback callback fires on locale miss
 - loader_init_success: eager load via PathResourceLoader succeeds for all locales
 - loader_not_found_fallback: loader summary tracks primary miss + fallback success
@@ -74,6 +78,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from ftllexengine.localization.orchestrator import LocalizationCacheStats
 
 # --- Dependency Checks ---
 _psutil_mod: Any = None
@@ -125,7 +131,9 @@ class LocalizationMetrics:
     add_resource_mutations: int = 0
     has_message_checks: int = 0
     introspect_calls: int = 0
+    ast_lookup_checks: int = 0
     validate_calls: int = 0
+    cache_audit_checks: int = 0
     loader_init_checks: int = 0
     loader_junk_checks: int = 0
     loader_error_checks: int = 0
@@ -152,10 +160,12 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("format_with_variables", 9),
     ("add_resource_mutation", 7),
     ("has_message_api", 7),
+    ("ast_lookup_api", 7),
     ("get_message_ids_api", 6),
     ("validate_resource_api", 7),
     ("add_function_custom", 6),
     ("introspect_api", 7),
+    ("cache_audit_api", 6),
     ("on_fallback_callback", 6),
     ("loader_init_success", 5),
     ("loader_not_found_fallback", 5),
@@ -197,6 +207,15 @@ _SINGLE_LOCALES: Sequence[str] = (
     "en-US", "de-DE", "fr-FR", "ja-JP", "ko-KR",
     "ar-SA", "zh-CN", "pt-BR", "es-ES", "sv-SE",
 )
+_VALID_AUDIT_OPERATIONS: frozenset[str] = frozenset({
+    "MISS",
+    "PUT",
+    "HIT",
+    "EVICT",
+    "CORRUPTION",
+    "WRITE_ONCE_IDEMPOTENT",
+    "WRITE_ONCE_CONFLICT",
+})
 
 # --- Module State ---
 
@@ -226,7 +245,9 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["add_resource_mutations"] = _domain.add_resource_mutations
     stats["has_message_checks"] = _domain.has_message_checks
     stats["introspect_calls"] = _domain.introspect_calls
+    stats["ast_lookup_checks"] = _domain.ast_lookup_checks
     stats["validate_calls"] = _domain.validate_calls
+    stats["cache_audit_checks"] = _domain.cache_audit_checks
     stats["loader_init_checks"] = _domain.loader_init_checks
     stats["loader_junk_checks"] = _domain.loader_junk_checks
     stats["loader_error_checks"] = _domain.loader_error_checks
@@ -256,6 +277,7 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine import CacheConfig, validate_message_variables
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.integrity import (
         DataIntegrityError,
@@ -264,6 +286,8 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     )
     from ftllexengine.localization import FluentLocalization
     from ftllexengine.localization.loading import FallbackInfo, PathResourceLoader
+    from ftllexengine.runtime.cache import WriteLogEntry
+    from ftllexengine.syntax import Message, Term
 
 
 # --- Pattern implementations ---
@@ -546,6 +570,119 @@ def _pattern_has_message_api(
         raise LocalizationFuzzError(msg)
 
 
+def _validate_localization_message_lookup(
+    l10n: FluentLocalization,
+    message_id: str,
+    expected_variables: frozenset[str],
+) -> None:
+    """Validate FluentLocalization.get_message() for one identifier."""
+    message = l10n.get_message(message_id)
+    if message is None:
+        msg = f"get_message('{message_id}') returned None for an existing message"
+        raise LocalizationFuzzError(msg)
+    if not isinstance(message, Message):
+        msg = f"get_message('{message_id}') returned {type(message).__name__}"
+        raise LocalizationFuzzError(msg)
+    if message.id.name != message_id:
+        msg = f"get_message('{message_id}') returned node named '{message.id.name}'"
+        raise LocalizationFuzzError(msg)
+
+    message_validation = validate_message_variables(message, expected_variables)
+    if not message_validation.is_valid:
+        msg = f"validate_message_variables() rejected localization message '{message_id}'"
+        raise LocalizationFuzzError(msg)
+    if message_validation.declared_variables != expected_variables:
+        msg = (
+            f"get_message('{message_id}') resolved wrong locale variables: "
+            f"{message_validation.declared_variables!r} vs {expected_variables!r}"
+        )
+        raise LocalizationFuzzError(msg)
+
+
+def _validate_localization_term_lookup(
+    l10n: FluentLocalization,
+    term_id: str,
+    expected_variables: frozenset[str],
+) -> None:
+    """Validate FluentLocalization.get_term() for one identifier."""
+    term = l10n.get_term(term_id)
+    if term is None:
+        msg = f"get_term('{term_id}') returned None for an existing term"
+        raise LocalizationFuzzError(msg)
+    if not isinstance(term, Term):
+        msg = f"get_term('{term_id}') returned {type(term).__name__}"
+        raise LocalizationFuzzError(msg)
+    if term.id.name != term_id:
+        msg = f"get_term('{term_id}') returned node named '{term.id.name}'"
+        raise LocalizationFuzzError(msg)
+
+    term_validation = validate_message_variables(term, expected_variables)
+    if not term_validation.is_valid:
+        msg = f"validate_message_variables() rejected localization term '{term_id}'"
+        raise LocalizationFuzzError(msg)
+    if term_validation.declared_variables != expected_variables:
+        msg = (
+            f"get_term('{term_id}') resolved wrong locale variables: "
+            f"{term_validation.declared_variables!r} vs {expected_variables!r}"
+        )
+        raise LocalizationFuzzError(msg)
+
+
+def _pattern_ast_lookup_api(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """get_message/get_term honor fallback precedence and namespace boundaries."""
+    _domain.ast_lookup_checks += 1
+    primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
+    msg_id = f"msg-{gen_ftl_identifier(fdp)}"
+    term_id = f"term-{gen_ftl_identifier(fdp)}"
+    primary_has_message = fdp.ConsumeBool()
+    primary_has_term = fdp.ConsumeBool()
+
+    l10n = FluentLocalization([primary, fallback], strict=False)
+    l10n.add_resource(
+        fallback,
+        (
+            f"{msg_id} = {{ $fallbackvar }}\n"
+            f"-{term_id} = {{ $fallbackterm }}\n"
+        ),
+    )
+
+    primary_parts: list[str] = []
+    if primary_has_message:
+        primary_parts.append(f"{msg_id} = {{ $primaryvar }}\n")
+    if primary_has_term:
+        primary_parts.append(f"-{term_id} = {{ $primaryterm }}\n")
+    if primary_parts:
+        l10n.add_resource(primary, "".join(primary_parts))
+
+    expected_message_vars = frozenset({
+        "primaryvar" if primary_has_message else "fallbackvar"
+    })
+    _validate_localization_message_lookup(l10n, msg_id, expected_message_vars)
+
+    expected_term_vars = frozenset({
+        "primaryterm" if primary_has_term else "fallbackterm"
+    })
+    _validate_localization_term_lookup(l10n, term_id, expected_term_vars)
+
+    if l10n.get_term(f"-{term_id}") is not None:
+        msg = f"get_term('-{term_id}') bypassed the no-leading-dash contract"
+        raise LocalizationFuzzError(msg)
+    if l10n.get_message(term_id) is not None:
+        msg = f"get_message('{term_id}') crossed the term/message namespace boundary"
+        raise LocalizationFuzzError(msg)
+    if l10n.get_term(msg_id) is not None:
+        msg = f"get_term('{msg_id}') crossed the message/term namespace boundary"
+        raise LocalizationFuzzError(msg)
+    if l10n.get_message("__missing_localization_lookup__") is not None:
+        msg = "get_message() returned a node for a missing localization message"
+        raise LocalizationFuzzError(msg)
+    if l10n.get_term("__missing_localization_lookup__") is not None:
+        msg = "get_term() returned a node for a missing localization term"
+        raise LocalizationFuzzError(msg)
+
+
 def _pattern_get_message_ids_api(
     fdp: atheris.FuzzedDataProvider,
 ) -> None:
@@ -697,6 +834,160 @@ def _pattern_introspect_api(
                     f"introspect result: {introspect_vars}"
                 )
                 raise LocalizationFuzzError(msg)
+
+
+def _validate_localization_audit_log(
+    locale: str,
+    audit_log: tuple[WriteLogEntry, ...],
+    *,
+    enable_audit: bool,
+) -> int:
+    """Validate one locale's audit log and return its entry count."""
+    if not enable_audit and audit_log != ():
+        msg = f"Audit-disabled localization returned non-empty log for '{locale}'"
+        raise LocalizationFuzzError(msg)
+
+    last_timestamp = float("-inf")
+    for entry in audit_log:
+        if entry.operation not in _VALID_AUDIT_OPERATIONS:
+            msg = f"Unexpected audit operation {entry.operation!r} for locale '{locale}'"
+            raise LocalizationFuzzError(msg)
+        if not entry.key_hash:
+            msg = f"Empty audit key hash for locale '{locale}'"
+            raise LocalizationFuzzError(msg)
+        if entry.timestamp < last_timestamp:
+            msg = (
+                f"Audit timestamps regressed for locale '{locale}': "
+                f"{last_timestamp} -> {entry.timestamp}"
+            )
+            raise LocalizationFuzzError(msg)
+        if entry.operation == "MISS":
+            if entry.sequence != 0 or entry.checksum_hex != "":
+                msg = (
+                    f"MISS audit entry for locale '{locale}' must have "
+                    "sequence=0 and empty checksum"
+                )
+                raise LocalizationFuzzError(msg)
+        elif entry.sequence <= 0 or entry.checksum_hex == "":
+            msg = (
+                f"{entry.operation} audit entry for locale '{locale}' must carry "
+                "a positive sequence and non-empty checksum"
+            )
+            raise LocalizationFuzzError(msg)
+        last_timestamp = entry.timestamp
+
+    return len(audit_log)
+
+
+def _validate_localization_cache_stats(
+    stats: LocalizationCacheStats,
+    *,
+    enable_audit: bool,
+    expected_locales: list[str],
+) -> None:
+    """Validate aggregate localization cache stats against configuration."""
+    if stats["audit_enabled"] != enable_audit:
+        msg = (
+            "get_cache_stats()['audit_enabled'] disagrees with CacheConfig: "
+            f"{stats['audit_enabled']} vs {enable_audit}"
+        )
+        raise LocalizationFuzzError(msg)
+    if stats["bundle_count"] != len(expected_locales):
+        msg = (
+            "get_cache_stats()['bundle_count'] disagrees with initialized locales: "
+            f"{stats['bundle_count']} vs {len(expected_locales)}"
+        )
+        raise LocalizationFuzzError(msg)
+
+
+def _collect_localization_audit_entries(
+    audit_logs: dict[str, tuple[WriteLogEntry, ...]],
+    *,
+    enable_audit: bool,
+) -> int:
+    """Validate all per-locale audit logs and return their combined length."""
+    total_audit_entries = 0
+    for locale, audit_log in audit_logs.items():
+        if not isinstance(audit_log, tuple):
+            msg = f"get_cache_audit_log()['{locale}'] returned {type(audit_log).__name__}"
+            raise LocalizationFuzzError(msg)
+        if any(not isinstance(entry, WriteLogEntry) for entry in audit_log):
+            msg = f"get_cache_audit_log()['{locale}'] returned non-WriteLogEntry data"
+            raise LocalizationFuzzError(msg)
+        total_audit_entries += _validate_localization_audit_log(
+            locale,
+            audit_log,
+            enable_audit=enable_audit,
+        )
+    return total_audit_entries
+
+
+def _pattern_cache_audit_api(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """get_cache_audit_log exposes per-locale immutable audit trails."""
+    _domain.cache_audit_checks += 1
+    primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
+    enable_audit = fdp.ConsumeBool()
+    initialize_fallback = fdp.ConsumeBool()
+    primary_msg_id = f"audit-{gen_ftl_identifier(fdp)}"
+    fallback_msg_id = f"fallback-{gen_ftl_identifier(fdp)}"
+
+    l10n = FluentLocalization(
+        [primary, fallback],
+        cache=CacheConfig(enable_audit=enable_audit),
+        strict=False,
+    )
+    l10n.add_resource(primary, f"{primary_msg_id} = primary\n")
+
+    expected_locales = [primary]
+    if initialize_fallback:
+        l10n.add_resource(fallback, f"{fallback_msg_id} = fallback\n")
+        expected_locales.append(fallback)
+
+    l10n.format_value(primary_msg_id)
+    l10n.format_value(primary_msg_id)
+    if initialize_fallback:
+        l10n.format_value(fallback_msg_id)
+
+    audit_logs = l10n.get_cache_audit_log()
+    if audit_logs is None:
+        msg = "Cached FluentLocalization returned None from get_cache_audit_log()"
+        raise LocalizationFuzzError(msg)
+    if list(audit_logs) != expected_locales:
+        msg = (
+            "get_cache_audit_log() returned wrong locale keys: "
+            f"{list(audit_logs)!r} vs {expected_locales!r}"
+        )
+        raise LocalizationFuzzError(msg)
+
+    stats = l10n.get_cache_stats()
+    if stats is None:
+        msg = "Cached FluentLocalization returned None from get_cache_stats()"
+        raise LocalizationFuzzError(msg)
+    _validate_localization_cache_stats(
+        stats,
+        enable_audit=enable_audit,
+        expected_locales=expected_locales,
+    )
+    total_audit_entries = _collect_localization_audit_entries(
+        audit_logs,
+        enable_audit=enable_audit,
+    )
+
+    if total_audit_entries != int(stats.get("audit_entries", 0)):
+        msg = (
+            "Localization audit log length disagrees with cache stats: "
+            f"{total_audit_entries} vs {stats.get('audit_entries')}"
+        )
+        raise LocalizationFuzzError(msg)
+
+    if enable_audit and len(audit_logs[primary]) < 2:
+        msg = f"Primary locale '{primary}' did not record expected audit entries"
+        raise LocalizationFuzzError(msg)
+    if initialize_fallback and enable_audit and len(audit_logs[fallback]) < 2:
+        msg = f"Fallback locale '{fallback}' did not record expected audit entries"
+        raise LocalizationFuzzError(msg)
 
 
 def _pattern_on_fallback_callback(
@@ -910,10 +1201,12 @@ _PATTERN_DISPATCH = {
     "format_with_variables": _pattern_format_with_variables,
     "add_resource_mutation": _pattern_add_resource_mutation,
     "has_message_api": _pattern_has_message_api,
+    "ast_lookup_api": _pattern_ast_lookup_api,
     "get_message_ids_api": _pattern_get_message_ids_api,
     "validate_resource_api": _pattern_validate_resource_api,
     "add_function_custom": _pattern_add_function_custom,
     "introspect_api": _pattern_introspect_api,
+    "cache_audit_api": _pattern_cache_audit_api,
     "on_fallback_callback": _pattern_on_fallback_callback,
     "loader_init_success": _pattern_loader_init_success,
     "loader_not_found_fallback": _pattern_loader_not_found_fallback,
@@ -967,7 +1260,12 @@ def test_one_input(data: bytes) -> None:
         is_interesting = (
             "fallback" in pattern_name
             or "loader" in pattern_name
-            or pattern_name in ("add_resource_mutation", "introspect_api")
+            or pattern_name in (
+                "add_resource_mutation",
+                "introspect_api",
+                "ast_lookup_api",
+                "cache_audit_api",
+            )
             or (time.perf_counter() - start_time) * 1000 > 1.0
         )
         record_iteration_metrics(
