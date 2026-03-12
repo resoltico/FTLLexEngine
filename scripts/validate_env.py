@@ -8,7 +8,7 @@ Philosophy:
     project-agnostic "dead-man's switch" that guarantees the environment
     executing it matches the strict requirements of the project.
 
-Architecture & 10/10 Specs:
+Architecture & Specs:
     This script relies on `pyproject.toml` as the single source of truth for
     project metadata. It strictly requires:
     1. `[project].name`: Used to dynamically resolve the package for the
@@ -46,9 +46,11 @@ def _read_project_metadata() -> tuple[tuple[int, int], str]:
             data = tomllib.load(f)
         project = data.get("project", {})
 
-        # Parse ">= 3.13" or ">=3.13" → (3, 13)
-        req = project.get("requires-python", ">=3.8").strip().lstrip(">= ")
-        parts = req.split(".")
+        # Parse ">=3.14,<3.15" or ">=3.13" → (3, 14).
+        # Split on comma first to isolate the lower-bound specifier before stripping operators.
+        raw = project.get("requires-python", ">=3.8")
+        lower = raw.split(",")[0].strip().lstrip(">= ")
+        parts = lower.split(".")
         min_py = (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
 
         # Parse package name, falling back to guessing from src/ if missing
