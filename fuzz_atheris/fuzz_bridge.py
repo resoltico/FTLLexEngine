@@ -6,8 +6,9 @@
 # FUZZ_PLUGIN_HEADER_END
 """FunctionRegistry Bridge Machinery Fuzzer (Atheris).
 
-Targets: ftllexengine.runtime.function_bridge (FunctionRegistry, FunctionSignature,
-FluentNumber, fluent_function decorator, parameter mapping, locale injection)
+Targets: ftllexengine.runtime.function_bridge, ftllexengine.runtime.value_types
+(FunctionRegistry, FunctionSignature, FluentNumber, make_fluent_number,
+fluent_function decorator, parameter mapping, locale injection)
 
 Concern boundary: This fuzzer stress-tests the bridge machinery that connects
 FTL function calls to Python implementations. Distinct from fuzz_builtins which
@@ -19,6 +20,7 @@ fuzzer tests the bridge itself:
 - Locale injection protocol (fluent_function decorator)
 - FunctionSignature construction and immutability
 - FluentNumber object contracts (str, hash, contains, len, repr)
+- make_fluent_number() visible-precision inference and typed construction
 - Dict-like registry interface (__iter__, __contains__, __len__, has_function)
 - Freeze/copy lifecycle and isolation
 - Metadata API (get_expected_positional_args, get_builtin_metadata)
@@ -104,6 +106,7 @@ class BridgeMetrics:
 
     # FluentNumber contract checks
     fluent_number_checks: int = 0
+    make_fluent_number_checks: int = 0
 
     # Camel case conversions
     camel_case_tests: int = 0
@@ -128,15 +131,16 @@ class BridgeMetrics:
 
 _state = BaseFuzzerState(
     fuzzer_name="bridge",
-    fuzzer_target="FunctionRegistry, FunctionSignature, fluent_function",
+    fuzzer_target="FunctionRegistry, FunctionSignature, FluentNumber, make_fluent_number",
 )
 _domain = BridgeMetrics()
 
 # Pattern weights: (name, weight)
-# 15 patterns across 4 categories:
+# 16 patterns across 4 categories:
 # REGISTRATION (4): register_basic, register_signatures, param_mapping_custom,
 #                    signature_validation
-# CONTRACTS (3): fluent_number_contracts, signature_immutability, camel_case_conversion
+# CONTRACTS (4): fluent_number_contracts, make_fluent_number_api,
+#                signature_immutability, camel_case_conversion
 # DISPATCH (4): call_dispatch, locale_injection, error_wrapping, evil_objects
 # INTROSPECTION (4): dict_interface, freeze_copy_lifecycle, fluent_function_decorator,
 #                     metadata_api
@@ -148,6 +152,7 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("signature_validation", 6),
     # CONTRACTS
     ("fluent_number_contracts", 12),
+    ("make_fluent_number_api", 10),
     ("signature_immutability", 5),
     ("camel_case_conversion", 10),
     # DISPATCH
@@ -177,8 +182,12 @@ class BridgeFuzzError(Exception):
 
 # Allowed exceptions from bridge operations
 _ALLOWED_EXCEPTIONS = (
-    ValueError, TypeError, OverflowError, ArithmeticError,
-    RecursionError, RuntimeError,
+    ValueError,
+    TypeError,
+    OverflowError,
+    ArithmeticError,
+    RecursionError,
+    RuntimeError,
 )
 
 
@@ -201,6 +210,7 @@ def _build_stats_dict() -> dict[str, Any]:
 
     # FluentNumber
     stats["fluent_number_checks"] = _domain.fluent_number_checks
+    stats["make_fluent_number_checks"] = _domain.make_fluent_number_checks
 
     # Camel case
     stats["camel_case_tests"] = _domain.camel_case_tests
@@ -230,7 +240,10 @@ def _emit_checkpoint() -> None:
     """Emit periodic checkpoint (uses checkpoint markers)."""
     stats = _build_stats_dict()
     emit_checkpoint_report(
-        _state, stats, _REPORT_DIR, _REPORT_FILENAME,
+        _state,
+        stats,
+        _REPORT_DIR,
+        _REPORT_FILENAME,
     )
 
 
@@ -259,13 +272,23 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         create_default_registry,
         get_shared_registry,
     )
+    from ftllexengine.runtime.value_types import make_fluent_number
 
 
 # --- Constants ---
 
 _LOCALES: Sequence[str] = (
-    "en", "en_US", "de", "de_DE", "ar", "ar_SA", "ja", "ja_JP",
-    "fr", "fr_FR", "ru",
+    "en",
+    "en_US",
+    "de",
+    "de_DE",
+    "ar",
+    "ar_SA",
+    "ja",
+    "ja_JP",
+    "fr",
+    "fr_FR",
+    "ru",
 )
 
 # Snake_case names for _to_camel_case testing
@@ -309,6 +332,33 @@ def _pick_locale(fdp: atheris.FuzzedDataProvider) -> str:
     return fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 20))
 
 
+def _group_ascii_thousands(value: int) -> str:
+    """Render an integer with ASCII comma grouping."""
+    digits = str(abs(value))
+    groups: list[str] = []
+    while digits:
+        groups.append(digits[-3:])
+        digits = digits[:-3]
+    grouped = ",".join(reversed(groups))
+    return f"-{grouped}" if value < 0 else grouped
+
+
+def _call_make_fluent_number(
+    value: int | Decimal,
+    *,
+    formatted: str | None = None,
+) -> FluentNumber:
+    """Call make_fluent_number and fail hard on unexpected valid-input errors."""
+    try:
+        return make_fluent_number(value, formatted=formatted)
+    except (TypeError, ValueError) as err:
+        msg = (
+            "make_fluent_number unexpectedly rejected a valid contract input: "
+            f"value={value!r}, formatted={formatted!r}, error={err}"
+        )
+        raise BridgeFuzzError(msg) from err
+
+
 # --- Pattern Implementations ---
 # REGISTRATION (4 patterns)
 
@@ -320,9 +370,11 @@ def _pattern_register_basic(fdp: atheris.FuzzedDataProvider) -> None:
     num_funcs = fdp.ConsumeIntInRange(1, 5)
 
     for i in range(num_funcs):
+
         def make_fn(idx: int) -> Any:
             def fn(_value: Any) -> str:
                 return f"result_{idx}"
+
             fn.__name__ = f"test_func_{idx}"
             return fn
 
@@ -347,12 +399,14 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
             # Positional-only params
             def pos_only(value: Any, /) -> str:
                 return str(value)
+
             reg.register(pos_only, ftl_name="POS_ONLY")
 
         case 1:
             # Keyword-only params
             def kw_only(value: Any, *, style: str = "default") -> str:
                 return f"{value}_{style}"
+
             reg.register(kw_only, ftl_name="KW_ONLY")
             result = reg.call("KW_ONLY", [42], {"style": "custom"})
             if "42" not in str(result):
@@ -363,6 +417,7 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
             # *args function
             def varargs(*args: Any) -> str:
                 return "_".join(str(a) for a in args)
+
             reg.register(varargs, ftl_name="VARARGS")
             n = fdp.ConsumeIntInRange(0, 5)
             positional = [fdp.ConsumeIntInRange(0, 100) for _ in range(n)]
@@ -372,6 +427,7 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
             # **kwargs function
             def kwargs_fn(value: Any, **kwargs: Any) -> str:
                 return f"{value}_{len(kwargs)}"
+
             reg.register(kwargs_fn, ftl_name="KWARGS_FN")
             named = {f"key{i}": i for i in range(fdp.ConsumeIntInRange(0, 5))}
             reg.call("KWARGS_FN", ["hello"], named)
@@ -379,13 +435,15 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
         case 4:
             # Function with many parameters (auto-mapping stress)
             def many_params(
-                value: Any, *,
+                value: Any,
+                *,
                 minimum_fraction_digits: int = 0,  # noqa: ARG001 - unused
                 maximum_fraction_digits: int = 3,  # noqa: ARG001 - unused
                 use_grouping: bool = True,  # noqa: ARG001 - unused
                 currency_display: str = "symbol",  # noqa: ARG001 - unused
             ) -> str:
                 return str(value)
+
             reg.register(many_params, ftl_name="MANY")
             info = reg.get_function_info("MANY")
             if info is None:
@@ -401,8 +459,10 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
             # Duplicate registration (should overwrite)
             def fn_v1(_value: Any) -> str:
                 return "v1"
+
             def fn_v2(_value: Any) -> str:
                 return "v2"
+
             fn_v2.__name__ = "fn_v1"
             reg.register(fn_v1, ftl_name="DUP")
             reg.register(fn_v2, ftl_name="DUP")
@@ -476,7 +536,8 @@ def _pattern_signature_validation(fdp: atheris.FuzzedDataProvider) -> None:
         case 1:
             # Underscore collision detection -> ValueError
             def colliding(
-                value: Any, *,
+                value: Any,
+                *,
                 _data: int = 0,
                 data: int = 0,  # noqa: ARG001 - unused
             ) -> str:
@@ -511,7 +572,7 @@ def _pattern_signature_validation(fdp: atheris.FuzzedDataProvider) -> None:
                 raise BridgeFuzzError(msg)
 
 
-# CONTRACTS (3 patterns)
+# CONTRACTS (4 patterns)
 
 
 def _pattern_fluent_number_contracts(fdp: atheris.FuzzedDataProvider) -> None:
@@ -554,6 +615,135 @@ def _pattern_fluent_number_contracts(fdp: atheris.FuzzedDataProvider) -> None:
                 raise BridgeFuzzError(msg)
             except AttributeError:
                 pass  # Expected: frozen dataclass
+
+
+def _check_make_fluent_number_default_decimal(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Default Decimal formatting preserves trailing-zero precision."""
+    int_part = fdp.ConsumeIntInRange(-9999, 9999)
+    frac_core = str(fdp.ConsumeIntInRange(1, 999)).zfill(3)
+    trailing_zeros = "0" * fdp.ConsumeIntInRange(1, 4)
+    value = Decimal(f"{int_part}.{frac_core}{trailing_zeros}")
+    fn = _call_make_fluent_number(value)
+    expected_precision = len(frac_core) + len(trailing_zeros)
+    if fn.formatted != str(value) or fn.precision != expected_precision:
+        msg = (
+            "make_fluent_number(default Decimal) did not preserve "
+            f"string/precision: {fn!r} vs value={value!r}, "
+            f"expected_precision={expected_precision}"
+        )
+        raise BridgeFuzzError(msg)
+
+
+def _check_make_fluent_number_default_int(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Default integer formatting exposes zero visible decimals."""
+    value = fdp.ConsumeIntInRange(-1_000_000, 1_000_000)
+    fn = _call_make_fluent_number(value)
+    if fn.formatted != str(value) or fn.precision != 0:
+        msg = (
+            "make_fluent_number(int) did not preserve zero visible precision: "
+            f"{fn!r} for value={value}"
+        )
+        raise BridgeFuzzError(msg)
+
+
+def _check_make_fluent_number_fractional_int(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Explicit fractional formatting controls visible precision for ints."""
+    value = fdp.ConsumeIntInRange(-999, 999)
+    frac_digits = "0" * fdp.ConsumeIntInRange(1, 4)
+    formatted = f"{value}.{frac_digits}"
+    fn = _call_make_fluent_number(value, formatted=formatted)
+    if fn.formatted != formatted or fn.precision != len(frac_digits):
+        msg = (
+            "make_fluent_number(explicit fractional int) miscomputed precision: "
+            f"{fn!r} for formatted={formatted!r}"
+        )
+        raise BridgeFuzzError(msg)
+
+
+def _check_make_fluent_number_grouped_int(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Grouping separators do not create decimal precision."""
+    value = fdp.ConsumeIntInRange(1_000, 999_999)
+    formatted = _group_ascii_thousands(value)
+    fn = _call_make_fluent_number(value, formatted=formatted)
+    if fn.formatted != formatted or fn.precision != 0:
+        msg = (
+            "make_fluent_number(grouped int) treated grouping as decimals: "
+            f"{fn!r} for formatted={formatted!r}"
+        )
+        raise BridgeFuzzError(msg)
+
+
+def _check_make_fluent_number_localized_decimal(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Localized formatted strings drive visible precision inference."""
+    whole = fdp.ConsumeIntInRange(1, 9999)
+    precision = fdp.ConsumeIntInRange(1, 4)
+    fraction = str(fdp.ConsumeIntInRange(0, (10**precision) - 1)).zfill(precision)
+    value = Decimal(f"{whole}.{fraction}")
+    grouped = _group_ascii_thousands(whole).replace(",", " ")
+    formatted = f"{grouped},{fraction} EUR"
+    fn = _call_make_fluent_number(value, formatted=formatted)
+    if fn.formatted != formatted or fn.precision != precision:
+        msg = (
+            "make_fluent_number(localized decimal) miscomputed visible precision: "
+            f"{fn!r} for formatted={formatted!r}"
+        )
+        raise BridgeFuzzError(msg)
+
+
+def _check_make_fluent_number_disambiguation(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Formatted decimals for integer values are not mistaken for grouping."""
+    precision = fdp.ConsumeIntInRange(1, 4)
+    separator = fdp.PickValueInList([",", "."])
+    zeros = "0" * precision
+    value = fdp.PickValueInList([1, -1])
+    formatted = f"{value}{separator}{zeros}"
+    fn = _call_make_fluent_number(value, formatted=formatted)
+    if fn.formatted != formatted or fn.precision != precision:
+        msg = (
+            "make_fluent_number(disambiguation) lost decimal precision: "
+            f"{fn!r} for formatted={formatted!r}"
+        )
+        raise BridgeFuzzError(msg)
+
+
+def _check_make_fluent_number_bool_rejection(
+    _fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Bool inputs are rejected like direct FluentNumber construction."""
+    try:
+        make_fluent_number(True)
+    except TypeError:
+        return
+    msg = "make_fluent_number(bool) should raise TypeError"
+    raise BridgeFuzzError(msg)
+
+
+def _pattern_make_fluent_number_api(fdp: atheris.FuzzedDataProvider) -> None:
+    """make_fluent_number derives visible precision from domain values."""
+    _domain.make_fluent_number_checks += 1
+    handlers = (
+        _check_make_fluent_number_default_decimal,
+        _check_make_fluent_number_default_int,
+        _check_make_fluent_number_fractional_int,
+        _check_make_fluent_number_grouped_int,
+        _check_make_fluent_number_localized_decimal,
+        _check_make_fluent_number_disambiguation,
+        _check_make_fluent_number_bool_rejection,
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    handler(fdp)
 
 
 def _pattern_signature_immutability(fdp: atheris.FuzzedDataProvider) -> None:
@@ -613,10 +803,7 @@ def _pattern_camel_case_conversion(fdp: atheris.FuzzedDataProvider) -> None:
         for snake, expected_camel in _CAMEL_EXPECTED.items():
             result = FunctionRegistry._to_camel_case(snake)
             if result != expected_camel:
-                msg = (
-                    f"_to_camel_case('{snake}') = '{result}', "
-                    f"expected '{expected_camel}'"
-                )
+                msg = f"_to_camel_case('{snake}') = '{result}', expected '{expected_camel}'"
                 raise BridgeFuzzError(msg)
 
     elif variant == 1:
@@ -771,18 +958,23 @@ def _pattern_evil_objects(fdp: atheris.FuzzedDataProvider) -> None:
             # Evil __str__ raises RuntimeError
             class EvilStr:
                 """Object whose __str__ raises RuntimeError."""
+
                 def __str__(self) -> str:
                     raise RuntimeError("evil __str__")  # noqa: EM101 - dynamic type in error message
+
             var: object = EvilStr()
 
         case 1:
             # Evil __hash__ raises TypeError
             class EvilHash:
                 """Object whose __hash__ raises TypeError."""
+
                 def __hash__(self) -> int:
                     raise TypeError("unhashable evil")  # noqa: EM101 - dynamic type in error message
+
                 def __str__(self) -> str:
                     return "evil"
+
             var = EvilHash()
 
         case 2:
@@ -913,6 +1105,7 @@ def _pattern_freeze_copy_lifecycle(fdp: atheris.FuzzedDataProvider) -> None:
 
             def custom(_value: Any) -> str:
                 return "custom"
+
             copy.register(custom, ftl_name="COPY_ONLY")
             if "COPY_ONLY" in shared:
                 msg = "Copy polluted original registry"
@@ -1064,6 +1257,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "param_mapping_custom": _pattern_param_mapping_custom,
     "signature_validation": _pattern_signature_validation,
     "fluent_number_contracts": _pattern_fluent_number_contracts,
+    "make_fluent_number_api": _pattern_make_fluent_number_api,
     "signature_immutability": _pattern_signature_immutability,
     "camel_case_conversion": _pattern_camel_case_conversion,
     "call_dispatch": _pattern_call_dispatch,
@@ -1119,13 +1313,27 @@ def test_one_input(data: bytes) -> None:
     finally:
         # Semantic interestingness: patterns exercising complex paths,
         # error paths, or wall-time > 1ms indicating unusual code path
-        is_interesting = pattern in (
-            "evil_objects", "signature_validation", "locale_injection",
-            "metadata_api", "error_wrapping",
-            "dict_interface", "signature_immutability", "register_signatures",
-        ) or (time.perf_counter() - start_time) * 1000 > 1.0
+        is_interesting = (
+            pattern
+            in (
+                "evil_objects",
+                "signature_validation",
+                "locale_injection",
+                "metadata_api",
+                "error_wrapping",
+                "make_fluent_number_api",
+                "dict_interface",
+                "signature_immutability",
+                "register_signatures",
+            )
+            or (time.perf_counter() - start_time) * 1000 > 1.0
+        )
         record_iteration_metrics(
-            _state, pattern, start_time, data, is_interesting=is_interesting,
+            _state,
+            pattern,
+            start_time,
+            data,
+            is_interesting=is_interesting,
         )
 
         if _state.iterations % GC_INTERVAL == 0:
@@ -1142,11 +1350,15 @@ def main() -> None:
         epilog="All unrecognized arguments are passed to libFuzzer.",
     )
     parser.add_argument(
-        "--checkpoint-interval", type=int, default=500,
+        "--checkpoint-interval",
+        type=int,
+        default=500,
         help="Emit report every N iterations (default: 500)",
     )
     parser.add_argument(
-        "--seed-corpus-size", type=int, default=500,
+        "--seed-corpus-size",
+        type=int,
+        default=500,
         help="Maximum size of in-memory seed corpus (default: 500)",
     )
 
@@ -1162,7 +1374,7 @@ def main() -> None:
 
     print_fuzzer_banner(
         title="FunctionRegistry Bridge Machinery Fuzzer (Atheris)",
-        target="FunctionRegistry, FunctionSignature, fluent_function",
+        target="FunctionRegistry, FunctionSignature, FluentNumber, make_fluent_number",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
     )

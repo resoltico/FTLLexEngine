@@ -2,6 +2,7 @@
 
 Defines the fundamental types used throughout the resolution system:
     - FluentNumber: Formatted number preserving numeric identity
+    - make_fluent_number: Public helper for manual FluentNumber construction
     - FluentValue: Union of all Fluent-compatible value types
     - FluentFunction: Protocol for Fluent-callable functions
     - FunctionSignature: Immutable function metadata with calling conventions
@@ -15,10 +16,11 @@ Python 3.13+. Zero external dependencies.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import Protocol
 
@@ -33,11 +35,38 @@ __all__ = [
     "FluentNumber",
     "FluentValue",
     "FunctionSignature",
+    "make_fluent_number",
 ]
 
 # Attribute name for marking functions that require locale injection.
 # Used by FunctionRegistry.should_inject_locale() and @fluent_function decorator.
 _FTL_REQUIRES_LOCALE_ATTR: str = "_ftl_requires_locale"
+_DECIMAL_SEPARATORS: tuple[str, ...] = (".", ",", "\u066b")
+_GROUPING_SEPARATORS: frozenset[str] = frozenset({
+    " ",
+    "'",
+    ",",
+    ".",
+    "_",
+    "\u00a0",
+    "\u066c",
+    "\u202f",
+})
+_NUMERIC_SEGMENT_CHARS: frozenset[str] = frozenset({
+    " ",
+    "'",
+    "(",
+    ")",
+    "+",
+    ",",
+    "-",
+    ".",
+    "_",
+    "\u00a0",
+    "\u066b",
+    "\u066c",
+    "\u202f",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +161,197 @@ class FluentNumber:
             f"formatted={self.formatted!r}, "
             f"precision={self.precision!r})"
         )
+
+
+def _compute_visible_precision(
+    formatted: str,
+    decimal_symbol: str,
+    *,
+    max_fraction_digits: int | None = None,
+) -> int:
+    """Count visible fraction digits in a formatted number string."""
+    if decimal_symbol not in formatted:
+        return 0
+
+    _, fraction_part = formatted.rsplit(decimal_symbol, 1)
+
+    count = 0
+    for char in fraction_part:
+        if char.isdigit():
+            count += 1
+        else:
+            break
+
+    if max_fraction_digits is not None and count > max_fraction_digits:
+        count = max_fraction_digits
+
+    return count
+
+
+def _visible_precision_from_value(value: int | Decimal) -> int:
+    """Derive visible precision from the numeric value itself."""
+    if isinstance(value, int):
+        return 0
+
+    exponent = value.as_tuple().exponent
+    if isinstance(exponent, int) and exponent < 0:
+        return -exponent
+    return 0
+
+
+def _iter_numeric_segments(formatted: str) -> tuple[str, ...]:
+    """Extract digit-containing numeric segments from a formatted string."""
+    segments: list[str] = []
+    current: list[str] = []
+    saw_digit = False
+
+    for char in formatted:
+        if char.isdigit() or char in _NUMERIC_SEGMENT_CHARS:
+            current.append(char)
+            saw_digit = saw_digit or char.isdigit()
+            continue
+
+        if saw_digit:
+            segments.append("".join(current).strip())
+        current = []
+        saw_digit = False
+
+    if saw_digit:
+        segments.append("".join(current).strip())
+
+    return tuple(segment for segment in segments if any(char.isdigit() for char in segment))
+
+
+def _normalize_digit(char: str) -> str:
+    """Convert a Unicode digit to its ASCII decimal representation."""
+    return str(unicodedata.decimal(char))
+
+
+def _unwrap_parenthesized_negative(segment: str) -> tuple[str, bool]:
+    """Strip balanced wrapping parentheses used for negative values."""
+    stripped = segment.strip()
+    negative = stripped.startswith("(") and stripped.endswith(")")
+    if negative:
+        return (stripped[1:-1].strip(), True)
+    return (stripped, False)
+
+
+def _normalize_numeric_text(
+    segment: str,
+    *,
+    decimal_symbol: str | None,
+) -> str | None:
+    """Normalize a numeric segment to Decimal-compatible ASCII text."""
+    normalized: list[str] = []
+    saw_sign = False
+
+    for char in segment:
+        if char.isdigit():
+            normalized.append(_normalize_digit(char))
+            continue
+
+        if char in "+-":
+            if normalized or saw_sign:
+                continue
+            normalized.append(char)
+            saw_sign = True
+            continue
+
+        if decimal_symbol is not None and char == decimal_symbol:
+            normalized.append(".")
+            continue
+
+        if char in _GROUPING_SEPARATORS or char in _DECIMAL_SEPARATORS:
+            continue
+
+        if char in {"(", ")"}:
+            continue
+
+        return None
+
+    return "".join(normalized)
+
+
+def _parse_numeric_segment(
+    segment: str,
+    *,
+    decimal_symbol: str | None,
+) -> Decimal | None:
+    """Parse a numeric segment using the provided decimal separator."""
+    stripped, negative = _unwrap_parenthesized_negative(segment)
+    number_text = _normalize_numeric_text(stripped, decimal_symbol=decimal_symbol)
+    if number_text is None:
+        return None
+
+    if number_text in {"", "+", "-", ".", "+.", "-."}:
+        return None
+
+    try:
+        parsed = Decimal(number_text)
+    except InvalidOperation:
+        return None
+
+    if negative and not number_text.startswith("-"):
+        parsed = -parsed
+    return parsed
+
+
+def _infer_visible_precision(value: int | Decimal, formatted: str) -> int:
+    """Infer visible precision by reconciling a formatted string with its value."""
+    target = Decimal(value)
+
+    for segment in _iter_numeric_segments(formatted):
+        separators: list[str] = []
+        for char in segment:
+            if char in _DECIMAL_SEPARATORS and char not in separators:
+                separators.append(char)
+
+        for decimal_symbol in separators:
+            parsed = _parse_numeric_segment(segment, decimal_symbol=decimal_symbol)
+            if parsed == target:
+                return _compute_visible_precision(segment, decimal_symbol)
+
+        parsed_without_decimal = _parse_numeric_segment(segment, decimal_symbol=None)
+        if parsed_without_decimal == target:
+            return 0
+
+    return _visible_precision_from_value(value)
+
+
+def _make_fluent_number(
+    value: int | Decimal,
+    *,
+    formatted: str,
+    decimal_symbol: str | None = None,
+    max_fraction_digits: int | None = None,
+) -> FluentNumber:
+    """Construct a FluentNumber using shared visible-precision rules."""
+    precision = (
+        _compute_visible_precision(
+            formatted,
+            decimal_symbol,
+            max_fraction_digits=max_fraction_digits,
+        )
+        if decimal_symbol is not None
+        else _infer_visible_precision(value, formatted)
+    )
+    return FluentNumber(value=value, formatted=formatted, precision=precision)
+
+
+def make_fluent_number(
+    value: int | Decimal,
+    *,
+    formatted: str | None = None,
+) -> FluentNumber:
+    """Construct a FluentNumber from a domain numeric value.
+
+    Uses the provided formatted string when present, inferring the visible
+    precision that Fluent plural rules need for selector matching. When no
+    formatted string is supplied, the helper preserves the numeric string form
+    of the source value and derives precision from that representation.
+    """
+    rendered = str(value) if formatted is None else formatted
+    return _make_fluent_number(value, formatted=rendered)
 
 
 # Type alias for Fluent-compatible function values.

@@ -1,6 +1,7 @@
 """Fluent runtime package.
 
-Provides message resolution, built-in functions, and the FluentBundle API.
+Provides message resolution, built-in functions, manual FluentNumber helpers,
+and the FluentBundle API.
 Depends on syntax package for parsing.
 
 Python 3.13+.
@@ -21,6 +22,7 @@ from .functions import (
 from .plural_rules import select_plural_category
 from .resolution_context import ResolutionContext
 from .resolver import FluentResolver
+from .value_types import make_fluent_number
 
 __all__ = [
     "CacheConfig",
@@ -33,6 +35,7 @@ __all__ = [
     "currency_format",
     "datetime_format",
     "get_shared_registry",
+    "make_fluent_number",
     "number_format",
     "select_plural_category",
 ]

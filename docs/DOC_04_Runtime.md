@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: RUNTIME
 updated: "2026-03-12"
 route:
-  keywords: [number_format, datetime_format, currency_format, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
+  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
 ---
 
 # Runtime Reference
@@ -37,10 +37,40 @@ class FluentNumber:
 - Raises: `TypeError` if `value` is `bool` (no numeric localization semantics). `ValueError` if `precision < 0` (CLDR v operand is always non-negative).
 - State: Immutable. Safe for caching.
 - Thread: Safe.
-- Usage: Returned by `number_format()` and `currency_format()`. Preserves numeric identity and precision metadata for select expressions.
+- Usage: Returned by `number_format()`, `currency_format()`, and `make_fluent_number()`. Preserves numeric identity and precision metadata for select expressions.
 - Str: `str(fluent_number)` returns `formatted` for display.
 - Plural: Precision affects CLDR plural category selection. For example, "1.00" with precision=2 selects "other" category (v=2), not "one" (v=0).
 - Import: `from ftllexengine.runtime.value_types import FluentNumber`
+
+---
+
+## `make_fluent_number`
+
+Helper that constructs a `FluentNumber` from a domain numeric value.
+
+### Signature
+```python
+def make_fluent_number(
+    value: int | Decimal,
+    *,
+    formatted: str | None = None,
+) -> FluentNumber:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `int \| Decimal` | Y | Canonical numeric value. |
+| `formatted` | `str \| None` | N | Display string. Defaults to `str(value)`. |
+
+### Constraints
+- Return: `FluentNumber` with inferred visible precision.
+- Raises: `TypeError` if `value` is `bool` or not `int \| Decimal`.
+- State: Pure.
+- Thread: Safe.
+- Precision: When `formatted` is provided, visible fraction digits are inferred from the rendered string when it still represents `value`; otherwise precision falls back to the value's own decimal places.
+- Usage: Use when downstream code already has an `int` or `Decimal` and needs Fluent selector semantics without calling `NUMBER()` or `CURRENCY()`.
+- Import: `from ftllexengine.runtime import make_fluent_number`
 
 ---
 

@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: CORE
 updated: "2026-03-12"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, WriteLogEntry]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, WriteLogEntry]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to validate localization at boot?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
 ---
 
 # Core API Reference
@@ -927,6 +927,55 @@ def get_load_summary(self) -> LoadSummary:
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
+
+---
+
+## `FluentLocalization.require_clean`
+
+Method that enforces a clean initialization `LoadSummary`.
+
+### Signature
+```python
+def require_clean(self) -> LoadSummary:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+
+### Constraints
+- Return: Initialization `LoadSummary` when `all_clean` is true.
+- Raises: `IntegrityCheckFailedError` when initialization had missing resources, load errors, or junk entries.
+- State: Read-only.
+- Thread: Safe.
+- Scope: Checks only loader-driven initialization results. Dynamic `add_resource()` calls are excluded, matching `get_load_summary()`.
+
+---
+
+## `FluentLocalization.validate_message_schemas`
+
+Method that enforces exact message-variable schemas across the fallback chain.
+
+### Signature
+```python
+def validate_message_schemas(
+    self,
+    expected_schemas: Mapping[MessageId, frozenset[str] | set[str]],
+) -> tuple[MessageVariableValidationResult, ...]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `expected_schemas` | `Mapping[MessageId, frozenset[str] \| set[str]]` | Y | Expected variables per message ID. |
+
+### Constraints
+- Return: Immutable tuple of `MessageVariableValidationResult` values in input mapping order when every schema matches exactly.
+- Raises: `IntegrityCheckFailedError` when a message is missing or its declared variables differ from the expected set.
+- State: Read-only.
+- Thread: Safe.
+- Exactness: Declared variables must equal the expected set; both missing and extra variables fail validation.
+- Scope: Resolves each message through the fallback chain via `get_message()`. Terms remain available through `get_term()` plus `validate_message_variables()`.
 
 ---
 

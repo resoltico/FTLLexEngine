@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: reference
 updated: "2026-03-12"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log]
-  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how to clear cache?", "how do I get the cache audit log?"]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, make_fluent_number]
+  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how do I validate localization at boot?", "how do I construct a FluentNumber manually?", "how to clear cache?", "how do I get the cache audit log?"]
 ---
 
 # FTLLexEngine Quick Reference
@@ -391,6 +391,8 @@ l10n.clear_cache() -> None
 l10n.get_cache_stats() -> LocalizationCacheStats | None
 l10n.get_cache_audit_log() -> dict[str, tuple[WriteLogEntry, ...]] | None
 l10n.get_load_summary() -> LoadSummary
+l10n.require_clean() -> LoadSummary
+l10n.validate_message_schemas(expected_schemas: Mapping[str, frozenset[str] | set[str]]) -> tuple[MessageVariableValidationResult, ...]
 l10n.get_bundles() -> Generator[FluentBundle]
 l10n.get_babel_locale() -> str
 ```
@@ -404,6 +406,14 @@ l10n.cache_enabled -> bool  # Read-only
 ```
 
 **Caching**: Pass `cache=CacheConfig()` for 50x speedup on repeated format calls.
+
+**Boot Validation**:
+```python
+l10n.require_clean()
+l10n.validate_message_schemas({
+    "invoice-total": frozenset({"amount", "customer"}),
+})
+```
 
 ---
 
@@ -535,6 +545,20 @@ price-name = { CURRENCY($amount, currency: "EUR", currencyDisplay: "name") }
 - Currency-specific decimals: JPY (0), BHD/KWD/OMR (3), most others (2)
 - Locale-specific symbol placement: en_US (before), lv_LV/de_DE (after with space)
 - Uses Babel for CLDR-compliant formatting
+
+---
+
+## Manual FluentNumber Construction
+
+```python
+from decimal import Decimal
+
+from ftllexengine.runtime import make_fluent_number
+
+raw_amount = make_fluent_number(Decimal("12.3400"))
+rendered_amount = make_fluent_number(42, formatted="42.00")
+localized_amount = make_fluent_number(Decimal("1234.50"), formatted="1 234,50 EUR")
+```
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: architecture
 updated: "2026-03-12"
 route:
@@ -79,6 +79,8 @@ except TimeoutError:
 
 **Guarantees**:
 - `format_value()`, `format_pattern()`, `has_message()`: briefly acquire read lock per bundle map lookup only; actual formatting proceeds under the per-bundle RWLock after the bundle reference is retrieved
+- `require_clean()`: reads the immutable initialization snapshot without mutating bundle state
+- `validate_message_schemas()`: reuses fallback-chain bundle lookups and message AST reads; no mutation
 - `get_cache_stats()` and `get_cache_audit_log()`: acquire read lock for the full duration to produce a consistent aggregate snapshot
 - All write operations (`add_resource()`, `add_function()`, `clear_cache()`) acquire write lock (exclusive)
 - Lazy bundle creation via `_get_or_create_bundle()` uses double-checked locking: read lock for already-initialized bundles (concurrent), write lock with double-check only when creating a new bundle; callers already holding the write lock (`add_resource`) use `_create_bundle()` directly (no lock re-acquisition)

@@ -11,6 +11,7 @@ Public API:
     serialize_ftl - Serialize AST to FTL source (no external dependencies)
     validate_resource - Validate FTL resource for semantic errors (no external dependencies)
     FluentValue - Type alias for values accepted by formatting functions
+    make_fluent_number - Construct FluentNumber from int/Decimal with inferred precision
     fluent_function - Decorator for custom functions (locale injection support)
     clear_module_caches - Clear all module-level caches (memory management)
 
@@ -129,6 +130,9 @@ try:
     from .runtime import (
         FluentBundle as FluentBundle,
     )
+    from .runtime import (
+        make_fluent_number as make_fluent_number,
+    )
     from .runtime.cache_config import (
         CacheConfig as CacheConfig,
     )
@@ -148,6 +152,7 @@ _BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
     "FluentLocalization",
     "FluentValue",
     "fluent_function",
+    "make_fluent_number",
     "get_cldr_version",
     "get_currency_decimal_digits",
 })
@@ -266,6 +271,7 @@ __all__ = [
     "FluentLocalization",
     "FluentValue",
     "fluent_function",
+    "make_fluent_number",
     # Error types (immutable, sealed)
     "ErrorCategory",
     "FrozenErrorContext",

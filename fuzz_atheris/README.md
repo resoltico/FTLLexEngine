@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: FUZZING
 updated: "2026-03-12"
 route:
@@ -16,7 +16,7 @@ route:
 
 | Fuzzer | Target Module(s) | Patterns | Seeds | Concern |
 |:-------|:-----------------|:---------|:------|:--------|
-| `fuzz_bridge.py` | `runtime.function_bridge` | 15 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts |
+| `fuzz_bridge.py` | `runtime.function_bridge`, `runtime.value_types` | 16 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts, `make_fluent_number()` |
 | `fuzz_graph.py` | `analysis.graph` | 12 | 24 (.bin) | Dependency graph cycle detection, canonicalization |
 | `fuzz_builtins.py` | `runtime.functions` | 13 | 24 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency, integrity, and public audit-trail access |
@@ -36,7 +36,7 @@ route:
 | `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 13 | 29 (.bin) | Variable scoping, term isolation, depth guards, expansion budget |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) + 6 (.bin) | Grammar-aware AST construction |
 | `fuzz_cursor.py` | `syntax.cursor`, `syntax.position` | 8 | 5 (.txt) + 35 (.bin) | Cursor state machine, ParseError formatting, position helper parity |
-| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 18 | 13 (.bin) | FluentLocalization orchestration, AST lookup, cache audit trails, loader init, LoadSummary, fallback chains |
+| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 20 | 13 (.bin) | FluentLocalization orchestration, boot validation, AST lookup, cache audit trails, loader init, LoadSummary, fallback chains |
 | `fuzz_dates.py` | `parsing.dates` | 14 | 59 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing; 4-digit year oracle (lv-LV/de-DE) |
 | `fuzz_locale_context.py` | `runtime.locale_context` | 14 | 25 (.bin) | LocaleContext direct formatting, ROUND_HALF_UP oracle, cross-locale determinism |
 | `fuzz_introspection.py` | `introspection.message` | 13 | 25 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction; `validate_message_variables` schema oracle |
@@ -69,6 +69,7 @@ route:
 | `runtime.cache` | runtime, cache |
 | `runtime.plural_rules` | plural |
 | `runtime.rwlock` | lock |
+| `runtime.value_types` | bridge |
 | `syntax.cursor` | cursor |
 | `syntax.parser` | oom, roundtrip, serializer, structured |
 | `syntax.position` | cursor |
@@ -78,15 +79,15 @@ route:
 
 ## `fuzz_bridge`
 
-Target: `runtime.function_bridge` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `fluent_function` decorator, freeze/copy isolation, dict-like interface, metadata API, signature validation error paths.
+Target: `runtime.function_bridge`, `runtime.value_types` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `make_fluent_number()`, `fluent_function` decorator, freeze/copy isolation, dict-like interface, metadata API, signature validation error paths.
 
-Concern boundary: This fuzzer stress-tests the bridge machinery that connects FTL function calls to Python implementations. Distinct from fuzz_builtins which tests built-in functions (NUMBER, DATETIME, CURRENCY) through the bridge; this fuzzer tests the bridge itself: registration, dispatch, parameter conversion, lifecycle, and introspection. Tests registration error paths (inject_locale arity validation, underscore collision detection, auto-naming), metadata API (get_expected_positional_args, get_builtin_metadata, has_function), and adversarial Python objects through FluentBundle resolution.
+Concern boundary: This fuzzer stress-tests the bridge machinery that connects FTL function calls to Python implementations. Distinct from fuzz_builtins which tests built-in functions (NUMBER, DATETIME, CURRENCY) through the bridge; this fuzzer tests the bridge itself: registration, dispatch, parameter conversion, lifecycle, direct FluentNumber construction, and introspection. Tests registration error paths (inject_locale arity validation, underscore collision detection, auto-naming), metadata API (get_expected_positional_args, get_builtin_metadata, has_function), `make_fluent_number()` visible-precision inference, and adversarial Python objects through FluentBundle resolution.
 
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `BridgeMetrics` dataclass (register calls/failures, call dispatch tests/errors, FluentNumber checks, camel case tests, freeze/copy tests, locale injection tests, signature validation tests, metadata API tests, evil object tests). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `BridgeMetrics` dataclass (register calls/failures, call dispatch tests/errors, FluentNumber checks, `make_fluent_number()` checks, camel case tests, freeze/copy tests, locale injection tests, signature validation tests, metadata API tests, evil object tests). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
-15 patterns across 4 categories:
+16 patterns across 4 categories:
 
 **REGISTRATION (4)** - Function registration and validation:
 
@@ -97,11 +98,12 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 | `param_mapping_custom` | 8 | Custom param_map overrides auto-generated mapping |
 | `signature_validation` | 6 | inject_locale arity TypeError, underscore collision ValueError, auto-naming |
 
-**CONTRACTS (3)** - Object immutability and type contracts:
+**CONTRACTS (4)** - Object immutability and type contracts:
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `fluent_number_contracts` | 12 | str, __contains__, __len__, repr, frozen, precision=None |
+| `make_fluent_number_api` | 10 | default Decimal precision, grouped/localized formatting inference, bool rejection |
 | `signature_immutability` | 5 | FunctionSignature frozen, param_mapping tuple, ftl_name, fuzzed lookup |
 | `camel_case_conversion` | 10 | Known snake->camelCase pairs, fuzzed input returns str |
 
@@ -856,11 +858,11 @@ When a convergence failure is detected, the fuzzer writes finding artifacts (sou
 
 ## `fuzz_localization`
 
-Target: `localization.orchestrator.FluentLocalization`, `localization.loading.PathResourceLoader` -- multi-locale orchestration, eager loader-backed initialization, fallback chains, `LoadSummary`, and post-construction mutation APIs.
+Target: `localization.orchestrator.FluentLocalization`, `localization.loading.PathResourceLoader` -- multi-locale orchestration, boot validation APIs, eager loader-backed initialization, fallback chains, `LoadSummary`, and post-construction mutation APIs.
 
-Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). It covers multi-locale fallback traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, `get_message()`/`get_term()` AST lookup precedence, per-locale `get_cache_audit_log()` access, custom function registration and invocation, `on_fallback` callback delivery, introspection delegation, and the loader-backed initialization path: eager resource loading, `PathResourceLoader` path validation, per-locale success/not-found/error accounting, junk-bearing loads, and `source_path` propagation into `LoadSummary`.
+Concern boundary: This fuzzer stress-tests the FluentLocalization lifecycle orthogonal to FluentBundle. Distinct from fuzz_runtime (single bundle) and fuzz_integrity (validation). It covers multi-locale fallback traversal, `add_resource()` mutation between calls, `has_message()`/`get_message_ids()` API contracts, `get_message()`/`get_term()` AST lookup precedence, `require_clean()` and `validate_message_schemas()` boot-validation APIs, per-locale `get_cache_audit_log()` access, custom function registration and invocation, `on_fallback` callback delivery, introspection delegation, and the loader-backed initialization path: eager resource loading, `PathResourceLoader` path validation, per-locale success/not-found/error accounting, junk-bearing loads, and `source_path` propagation into `LoadSummary`.
 
-Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass (including AST lookup, cache-audit, and loader init/junk/error counters). Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocalizationMetrics` dataclass (including AST lookup, schema-validation, cache-audit, and loader/boot-validation counters). Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
@@ -876,6 +878,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `ast_lookup_api` | 7 | get_message/get_term honor fallback precedence and namespace boundaries |
 | `get_message_ids_api` | 6 | get_message_ids returns all IDs without duplicates |
 | `validate_resource_api` | 7 | validate_resource delegates and returns structured results |
+| `validate_message_schemas_api` | 6 | exact schema order, fallback resolution, and missing/extra variable failures |
 | `add_function_custom` | 6 | Custom UPPER function registration/invocation works |
 | `introspect_api` | 7 | get_message_variables/introspect_message stay consistent |
 | `cache_audit_api` | 6 | get_cache_audit_log matches initialized locales and stats |
@@ -884,6 +887,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `loader_not_found_fallback` | 5 | Primary miss increments not_found while fallback still resolves |
 | `loader_junk_summary` | 4 | Junk-bearing resources are surfaced through LoadSummary |
 | `loader_path_error` | 4 | Invalid `resource_id` becomes a loader error, not a crash |
+| `require_clean_api` | 5 | clean initialization returns summary; missing/junk/error states raise integrity context |
 
 ### Allowed Exceptions
 

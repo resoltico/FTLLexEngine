@@ -136,6 +136,7 @@ class TestBabelOptionalAttrsSet:
             "FluentLocalization",
             "FluentValue",
             "fluent_function",
+            "make_fluent_number",
             "get_cldr_version",
             "get_currency_decimal_digits",
         }
@@ -358,14 +359,20 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 39
+        assert len(ftllexengine.__all__) == 40
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
         import ftllexengine
 
-        for name in ("FluentBundle", "FluentLocalization", "CacheConfig", "FluentValue",
-                     "fluent_function"):
+        for name in (
+            "FluentBundle",
+            "FluentLocalization",
+            "CacheConfig",
+            "FluentValue",
+            "fluent_function",
+            "make_fluent_number",
+        ):
             assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
 
     def test_error_types_are_in_all(self) -> None:

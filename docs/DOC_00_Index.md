@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: INDEX
 updated: "2026-03-12"
 route:
-  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, cache-audit, fiscal, iso, currency]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I get the cache audit log?", "how to import ISO introspection?"]
+  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, cache-audit, boot-validation, make_fluent_number, fiscal, iso, currency]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I construct a FluentNumber manually?", "how do I get the cache audit log?", "how to import ISO introspection?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -24,6 +24,7 @@ from ftllexengine import (
     validate_resource,  # FTL resource validation (no Babel required)
     FluentValue,       # Type alias for function argument values
     fluent_function,   # Decorator for custom functions
+    make_fluent_number,  # Construct FluentNumber from int/Decimal
     clear_module_caches,  # Clear all library caches
     # Errors
     FrozenFluentError,  # Immutable error type with ErrorCategory
@@ -161,7 +162,7 @@ from ftllexengine.core.babel_compat import (
 from ftllexengine.runtime import (
     FluentBundle, FluentResolver, FunctionRegistry, ResolutionContext,
     create_default_registry, get_shared_registry,
-    number_format, datetime_format, currency_format,
+    number_format, datetime_format, currency_format, make_fluent_number,
     select_plural_category,
 )
 ```
@@ -202,11 +203,11 @@ from ftllexengine.parsing import (
 
 | Query Pattern | Target File | Domain |
 |:--------------|:------------|:-------|
-| FluentBundle, FluentLocalization, add_resource, format_pattern, get_cache_audit_log | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
+| FluentBundle, FluentLocalization, add_resource, format_pattern, require_clean, validate_message_schemas, get_cache_audit_log | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, FTLLiteral, NamedArgument, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
-| NUMBER, DATETIME, CURRENCY, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
+| NUMBER, DATETIME, CURRENCY, make_fluent_number, add_function, FunctionRegistry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, entry_dependency_set, make_cycle_key, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_variables, extract_references, extract_references_by_attribute, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
@@ -269,7 +270,7 @@ ftllexengine/
     resolution_context.py  # GlobalDepthGuard, ResolutionContext
     resolver.py            # FluentResolver
     rwlock.py              # RWLock (readers-writer lock)
-    value_types.py         # FluentNumber, FluentValue, FluentFunction, FunctionSignature
+    value_types.py         # FluentNumber, make_fluent_number, FluentValue, FluentFunction, FunctionSignature
   parsing/
     __init__.py            # Parsing API exports (requires Babel; re-exports fiscal from core)
     numbers.py             # parse_decimal

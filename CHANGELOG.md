@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.150.0"
+version: "0.151.0"
 domain: CHANGELOG
 updated: "2026-03-12"
 route:
@@ -14,6 +14,28 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.151.0] - 2026-03-12
+
+### Added
+
+- **`FluentLocalization.require_clean()` and `FluentLocalization.validate_message_schemas()`**
+  (resolution of ITEM 001):
+  - boot-time validation no longer needs downstream wrappers to reassemble `LoadSummary.all_clean`,
+    `get_message()`, and `validate_message_variables()` into a separate policy layer
+  - `require_clean()` now returns the immutable initialization `LoadSummary` when every loader-driven
+    resource is clean and raises `IntegrityCheckFailedError` with localization-scoped context when
+    initialization had missing resources, load errors, or junk entries
+  - `validate_message_schemas()` now validates exact variable sets for fallback-resolved messages and
+    returns immutable `MessageVariableValidationResult` tuples on success; missing messages and schema
+    mismatches raise `IntegrityCheckFailedError` for fail-fast boot validation
+
+- **`make_fluent_number(value, *, formatted=None)` public helper** (resolution of ITEM 002):
+  - downstream adapters that already own `int` or `Decimal` values can now construct a
+    `FluentNumber` without re-implementing visible-precision inference
+  - the helper preserves selector semantics by deriving precision from either the supplied rendered
+    string or the canonical numeric value, making manually supplied Fluent numbers behave consistently
+    with runtime-produced `NUMBER()`/`CURRENCY()` values
 
 ## [0.150.0] - 2026-03-12
 
@@ -5947,6 +5969,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.151.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.151.0
 [0.150.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.150.0
 [0.149.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.149.0
 [0.148.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.148.0

@@ -41,7 +41,15 @@ from ftllexengine.constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
 from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode
 from ftllexengine.diagnostics.errors import ErrorCategory, FrozenFluentError
 from ftllexengine.enums import LoadStatus
-from ftllexengine.integrity import FormattingIntegrityError, IntegrityContext
+from ftllexengine.integrity import (
+    FormattingIntegrityError,
+    IntegrityCheckFailedError,
+    IntegrityContext,
+)
+from ftllexengine.introspection import (
+    MessageVariableValidationResult,
+    validate_message_variables,
+)
 from ftllexengine.localization.loading import (
     FallbackInfo,
     LoadSummary,
@@ -396,6 +404,151 @@ class FluentLocalization:
             ...     print(f"Missing: {result.locale}/{result.resource_id}")
         """
         return LoadSummary(results=tuple(self._load_results))
+
+    @staticmethod
+    def _describe_unclean_load_result(
+        result: ResourceLoadResult,
+    ) -> tuple[str, str]:
+        """Describe the first non-clean initialization result."""
+        key = result.source_path or f"{result.locale}/{result.resource_id}"
+        if result.is_error:
+            error_name = type(result.error).__name__ if result.error is not None else "UnknownError"
+            return (key, f"load error ({error_name})")
+        if result.is_not_found:
+            return (key, "resource not found")
+
+        junk_count = len(result.junk_entries)
+        noun = "entry" if junk_count == 1 else "entries"
+        return (key, f"{junk_count} junk {noun}")
+
+    def _raise_integrity_check_failed(
+        self,
+        operation: str,
+        message: str,
+        *,
+        key: str | None = None,
+        expected: str | None = None,
+        actual: str | None = None,
+    ) -> NoReturn:
+        """Raise IntegrityCheckFailedError with localization context."""
+        context = IntegrityContext(
+            component="localization",
+            operation=operation,
+            key=key,
+            expected=expected,
+            actual=actual,
+            timestamp=time.monotonic(),
+        )
+        raise IntegrityCheckFailedError(message, context=context)
+
+    def require_clean(self) -> LoadSummary:
+        """Require a clean initialization load summary.
+
+        Returns the immutable initialization LoadSummary when every resource
+        loaded successfully and produced no junk. Raises IntegrityCheckFailedError
+        when initialization had missing resources, load errors, or junk entries.
+        """
+        summary = self.get_load_summary()
+        if summary.all_clean:
+            return summary
+
+        issue_key: str | None = None
+        issue_detail: str | None = None
+        for result in summary.results:
+            if result.is_error or result.is_not_found or result.has_junk:
+                issue_key, issue_detail = self._describe_unclean_load_result(result)
+                break
+
+        actual = repr(summary)
+        detail = (
+            f" First issue: {issue_detail} at {issue_key}."
+            if issue_key and issue_detail
+            else ""
+        )
+        msg = f"Localization initialization is not clean: {actual}.{detail}"
+        self._raise_integrity_check_failed(
+            "require_clean",
+            msg,
+            key=issue_key,
+            expected="LoadSummary(all_clean=True)",
+            actual=actual,
+        )
+        raise AssertionError
+
+    @staticmethod
+    def _format_schema_difference(
+        validation: MessageVariableValidationResult,
+    ) -> str:
+        """Render a concise schema mismatch description."""
+        parts: list[str] = []
+        if validation.missing_variables:
+            missing = ", ".join(sorted(validation.missing_variables))
+            parts.append(f"missing {{{missing}}}")
+        if validation.extra_variables:
+            extra = ", ".join(sorted(validation.extra_variables))
+            parts.append(f"extra {{{extra}}}")
+        return "; ".join(parts)
+
+    def validate_message_schemas(
+        self,
+        expected_schemas: Mapping[MessageId, frozenset[str] | set[str]],
+    ) -> tuple[MessageVariableValidationResult, ...]:
+        """Require exact variable-schema matches for specific messages.
+
+        Validates messages using the existing fallback chain and returns one
+        MessageVariableValidationResult per requested message when every schema
+        matches exactly. Raises IntegrityCheckFailedError if any message is
+        missing or if any declared variable set differs from the expected set.
+        """
+        results: list[MessageVariableValidationResult] = []
+        mismatches: list[str] = []
+        first_failure: str | None = None
+        missing_messages = 0
+        schema_mismatches = 0
+
+        for message_id, expected_variables in expected_schemas.items():
+            message = self.get_message(message_id)
+            if message is None:
+                first_failure = first_failure or str(message_id)
+                missing_messages += 1
+                mismatches.append(f"{message_id}: not found")
+                continue
+
+            validation = validate_message_variables(message, frozenset(expected_variables))
+            results.append(validation)
+            if validation.is_valid:
+                continue
+
+            first_failure = first_failure or message_id
+            schema_mismatches += 1
+            difference = self._format_schema_difference(validation)
+            mismatches.append(f"{message_id}: {difference}")
+
+        if missing_messages > 0 or schema_mismatches > 0:
+            fragments = mismatches[:3]
+            remaining = len(mismatches) - len(fragments)
+            if remaining > 0:
+                noun = "issue" if remaining == 1 else "issues"
+                fragments.append(f"... {remaining} more {noun}")
+
+            actual_parts: list[str] = []
+            if missing_messages > 0:
+                actual_parts.append(f"missing_messages={missing_messages}")
+            if schema_mismatches > 0:
+                actual_parts.append(f"schema_mismatches={schema_mismatches}")
+
+            actual = ", ".join(actual_parts)
+            summary = "; ".join(fragments)
+            msg = f"Localization message schema validation failed: {summary}"
+            self._raise_integrity_check_failed(
+                "validate_message_schemas",
+                msg,
+                key=first_failure,
+                expected=f"{len(expected_schemas)} exact schema match(es)",
+                actual=actual,
+            )
+
+        return tuple(results)
 
     @property
     def cache_enabled(self) -> bool:

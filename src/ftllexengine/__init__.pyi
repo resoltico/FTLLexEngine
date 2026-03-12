@@ -65,6 +65,7 @@ from .introspection.message import validate_message_variables as validate_messag
 # Localization and runtime (requires Babel)
 from .localization import FluentLocalization as FluentLocalization
 from .runtime import FluentBundle as FluentBundle
+from .runtime import make_fluent_number as make_fluent_number
 from .runtime.cache_config import CacheConfig as CacheConfig
 from .runtime.function_bridge import fluent_function as fluent_function
 from .runtime.value_types import FluentValue as FluentValue
@@ -94,6 +95,7 @@ __all__: list[str] = [
     "FluentLocalization",
     "FluentValue",
     "fluent_function",
+    "make_fluent_number",
     # Error types (immutable, sealed)
     "ErrorCategory",
     "FrozenErrorContext",

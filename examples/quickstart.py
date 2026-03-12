@@ -14,7 +14,13 @@ import tempfile
 from decimal import Decimal
 from pathlib import Path
 
-from ftllexengine import CacheConfig, FluentBundle, validate_resource
+from ftllexengine import (
+    CacheConfig,
+    FluentBundle,
+    FluentLocalization,
+    make_fluent_number,
+    validate_resource,
+)
 from ftllexengine.integrity import FormattingIntegrityError
 
 # Example 1: Simple message
@@ -308,9 +314,43 @@ print(f"Invalid FTL: {invalid_result.is_valid}, errors: {len(invalid_result.erro
 
 print("[OK] Resource introspection APIs working")
 
-# Example 12: Cache Security Parameters (Financial-Grade)
+# Example 12: Boot Validation and Manual FluentNumber
 print("\n" + "=" * 50)
-print("Example 12: Cache Security Parameters")
+print("Example 12: Boot Validation and Manual FluentNumber")
+print("=" * 50)
+
+
+class InlineLoader:
+    """Minimal loader used for boot-validation examples."""
+
+    def load(self, _locale: str, _resource_id: str) -> str:
+        return "invoice = Total { $amount } for { $customer }\n"
+
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        return f"{locale}/{resource_id}"
+
+
+boot_l10n = FluentLocalization(
+    ["en"], ["main.ftl"], InlineLoader(), use_isolating=False,
+)
+boot_summary = boot_l10n.require_clean()
+print(f"Boot load clean: {boot_summary.all_clean}")
+
+schema_results = boot_l10n.validate_message_schemas({
+    "invoice": frozenset({"amount", "customer"}),
+})
+print(f"Schema valid: {schema_results[0].is_valid}")
+
+manual_amount = make_fluent_number(Decimal("500.00"), formatted="500,00")
+result, _ = boot_l10n.format_pattern("invoice", {
+    "amount": manual_amount,
+    "customer": "Alice",
+})
+print(result)
+
+# Example 13: Cache Security Parameters (Financial-Grade)
+print("\n" + "=" * 50)
+print("Example 13: Cache Security Parameters")
 print("=" * 50)
 
 # Financial applications can use cache security features:

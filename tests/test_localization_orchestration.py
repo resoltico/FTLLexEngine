@@ -28,7 +28,10 @@ from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import validate_message_variables
-from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.integrity import (
+    FormattingIntegrityError,
+    IntegrityCheckFailedError,
+)
 from ftllexengine.localization import (
     FluentLocalization,
     LoadStatus,
@@ -604,6 +607,107 @@ class TestResourceLoadingErrors:
         assert isinstance(summary, LoadSummary)
         assert summary.total_attempted == 0  # No resource_ids provided
 
+
+class TestBootValidation:
+    """Tests for FluentLocalization boot-time validation helpers."""
+
+    def test_require_clean_returns_summary_when_all_resources_are_clean(self) -> None:
+        """require_clean returns the immutable load summary on success."""
+        l10n = FluentLocalization(["en"])
+
+        summary = l10n.require_clean()
+
+        assert isinstance(summary, LoadSummary)
+        assert summary.all_clean is True
+        assert summary.total_attempted == 0
+
+    def test_require_clean_raises_integrity_error_for_unclean_summary(self) -> None:
+        """require_clean raises IntegrityCheckFailedError with structured context."""
+
+        class MissingLoader:
+            def load(self, _locale: str, _resource_id: str) -> str:
+                msg = "missing"
+                raise FileNotFoundError(msg)
+
+            def describe_path(self, locale: str, resource_id: str) -> str:
+                return f"{locale}/{resource_id}"
+
+        l10n = FluentLocalization(["en"], ["main.ftl"], MissingLoader())
+
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            l10n.require_clean()
+
+        err = exc_info.value
+        assert "not clean" in str(err)
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.component == "localization"
+        assert ctx.operation == "require_clean"
+        assert ctx.key == "en/main.ftl"
+        assert ctx.expected == "LoadSummary(all_clean=True)"
+
+    def test_validate_message_schemas_returns_results_in_input_order(self) -> None:
+        """validate_message_schemas returns immutable validation results on success."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource(
+            "en",
+            "first = Hello { $name }\n"
+            "second = Balance { $amount }\n",
+        )
+
+        results = l10n.validate_message_schemas({
+            "first": frozenset({"name"}),
+            "second": frozenset({"amount"}),
+        })
+
+        assert [result.message_id for result in results] == ["first", "second"]
+        assert all(result.is_valid for result in results)
+
+    def test_validate_message_schemas_uses_fallback_chain(self) -> None:
+        """Schema validation resolves messages from fallback locales."""
+        l10n = FluentLocalization(["lv", "en"])
+        l10n.add_resource("en", "welcome = Hello { $name }\n")
+
+        results = l10n.validate_message_schemas({
+            "welcome": frozenset({"name"}),
+        })
+
+        assert len(results) == 1
+        assert results[0].is_valid is True
+
+    def test_validate_message_schemas_raises_for_missing_message(self) -> None:
+        """Missing messages fail boot validation with an integrity exception."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "present = Hello\n")
+
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            l10n.validate_message_schemas({"missing": frozenset()})
+
+        err = exc_info.value
+        assert "missing: not found" in str(err)
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.operation == "validate_message_schemas"
+        assert ctx.key == "missing"
+        assert ctx.actual == "missing_messages=1"
+
+    def test_validate_message_schemas_raises_for_exact_schema_mismatch(self) -> None:
+        """Extra or missing variables fail exact boot schema validation."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "checkout = Total { $amount } for { $customer }\n")
+
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            l10n.validate_message_schemas({
+                "checkout": frozenset({"amount"}),
+            })
+
+        err = exc_info.value
+        assert "checkout: extra {customer}" in str(err)
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.operation == "validate_message_schemas"
+        assert ctx.key == "checkout"
+        assert ctx.actual == "schema_mismatches=1"
 
 
 class TestCacheStatsBranch:

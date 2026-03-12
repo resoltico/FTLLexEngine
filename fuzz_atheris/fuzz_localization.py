@@ -22,6 +22,8 @@ Unique coverage (not covered by other fuzzers):
 - Lazy bundle creation for fallback locales (_get_or_create_bundle)
 - has_message()/has_attribute() cross-locale scan
 - get_message()/get_term() AST lookup across fallback locales
+- require_clean() boot validation over loader-backed LoadSummary state
+- validate_message_schemas() exact-schema enforcement across fallback chains
 - get_message_ids() aggregation across all locale bundles
 - get_message_variables() / introspect_message() localization facade
 - get_cache_audit_log() per-locale audit visibility without raw cache access
@@ -33,7 +35,7 @@ Unique coverage (not covered by other fuzzers):
 - LoadSummary aggregation (success, not_found, error, junk)
 - loader-backed source_path and path-validation error plumbing
 
-Patterns (18):
+Patterns (20):
 - single_locale_add_resource: 1 locale, add_resource, format
 - multi_locale_fallback: 2 locales, message only in fallback locale
 - chain_of_3_fallback: 3-locale chain, message in various positions
@@ -44,6 +46,7 @@ Patterns (18):
 - ast_lookup_api: get_message/get_term precedence and namespace separation
 - get_message_ids_api: get_message_ids deduplication and coverage
 - validate_resource_api: validate_resource via localization facade
+- validate_message_schemas_api: exact schema validation success/failure paths
 - add_function_custom: add_function + FTL that calls custom function
 - introspect_api: introspect_message/get_message_variables contracts
 - cache_audit_api: per-locale cache audit accessor and aggregation
@@ -52,6 +55,7 @@ Patterns (18):
 - loader_not_found_fallback: loader summary tracks primary miss + fallback success
 - loader_junk_summary: eager load records Junk entries in LoadSummary
 - loader_path_error: invalid resource_id is captured as loader error in summary
+- require_clean_api: boot validation raises or returns based on LoadSummary cleanliness
 
 Metrics:
 - Pattern coverage with weighted round-robin schedule
@@ -133,10 +137,12 @@ class LocalizationMetrics:
     introspect_calls: int = 0
     ast_lookup_checks: int = 0
     validate_calls: int = 0
+    schema_validation_checks: int = 0
     cache_audit_checks: int = 0
     loader_init_checks: int = 0
     loader_junk_checks: int = 0
     loader_error_checks: int = 0
+    boot_validation_checks: int = 0
 
 
 class LocalizationFuzzError(Exception):
@@ -146,8 +152,8 @@ class LocalizationFuzzError(Exception):
 # --- Constants ---
 
 _ALLOWED_EXCEPTIONS = (
-    ValueError,          # empty locale list, locale not in chain, whitespace
-    TypeError,           # invalid argument types
+    ValueError,  # empty locale list, locale not in chain, whitespace
+    TypeError,  # invalid argument types
     UnicodeEncodeError,  # surrogate characters in FTL source
 )
 
@@ -163,6 +169,7 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("ast_lookup_api", 7),
     ("get_message_ids_api", 6),
     ("validate_resource_api", 7),
+    ("validate_message_schemas_api", 6),
     ("add_function_custom", 6),
     ("introspect_api", 7),
     ("cache_audit_api", 6),
@@ -171,15 +178,14 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("loader_not_found_fallback", 5),
     ("loader_junk_summary", 4),
     ("loader_path_error", 4),
+    ("require_clean_api", 5),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
     [name for name, _ in _PATTERN_WEIGHTS],
     [weight for _, weight in _PATTERN_WEIGHTS],
 )
-_PATTERN_INDEX: dict[str, int] = {
-    name: i for i, (name, _) in enumerate(_PATTERN_WEIGHTS)
-}
+_PATTERN_INDEX: dict[str, int] = {name: i for i, (name, _) in enumerate(_PATTERN_WEIGHTS)}
 
 # Test locale sets (ordered by fallback priority)
 _LOCALE_PAIRS: Sequence[tuple[str, str]] = (
@@ -204,18 +210,28 @@ _LOCALE_TRIPLES: Sequence[tuple[str, str, str]] = (
 )
 
 _SINGLE_LOCALES: Sequence[str] = (
-    "en-US", "de-DE", "fr-FR", "ja-JP", "ko-KR",
-    "ar-SA", "zh-CN", "pt-BR", "es-ES", "sv-SE",
+    "en-US",
+    "de-DE",
+    "fr-FR",
+    "ja-JP",
+    "ko-KR",
+    "ar-SA",
+    "zh-CN",
+    "pt-BR",
+    "es-ES",
+    "sv-SE",
 )
-_VALID_AUDIT_OPERATIONS: frozenset[str] = frozenset({
-    "MISS",
-    "PUT",
-    "HIT",
-    "EVICT",
-    "CORRUPTION",
-    "WRITE_ONCE_IDEMPOTENT",
-    "WRITE_ONCE_CONFLICT",
-})
+_VALID_AUDIT_OPERATIONS: frozenset[str] = frozenset(
+    {
+        "MISS",
+        "PUT",
+        "HIT",
+        "EVICT",
+        "CORRUPTION",
+        "WRITE_ONCE_IDEMPOTENT",
+        "WRITE_ONCE_CONFLICT",
+    }
+)
 
 # --- Module State ---
 
@@ -247,15 +263,15 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["introspect_calls"] = _domain.introspect_calls
     stats["ast_lookup_checks"] = _domain.ast_lookup_checks
     stats["validate_calls"] = _domain.validate_calls
+    stats["schema_validation_checks"] = _domain.schema_validation_checks
     stats["cache_audit_checks"] = _domain.cache_audit_checks
     stats["loader_init_checks"] = _domain.loader_init_checks
     stats["loader_junk_checks"] = _domain.loader_junk_checks
     stats["loader_error_checks"] = _domain.loader_error_checks
+    stats["boot_validation_checks"] = _domain.boot_validation_checks
     total = _domain.messages_found + _domain.messages_missing
     if total > 0:
-        stats["fallback_hit_ratio"] = round(
-            _domain.fallback_triggered / total, 3
-        )
+        stats["fallback_hit_ratio"] = round(_domain.fallback_triggered / total, 3)
     return stats
 
 
@@ -282,6 +298,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.integrity import (
         DataIntegrityError,
         FormattingIntegrityError,
+        IntegrityCheckFailedError,
         SyntaxIntegrityError,
     )
     from ftllexengine.localization import FluentLocalization
@@ -305,6 +322,52 @@ def _write_loader_resource(
     resource_path = locale_dir / resource_id
     resource_path.write_text(ftl_source, encoding="utf-8")
     return resource_path
+
+
+def _build_variable_message(message_id: str, variables: tuple[str, ...]) -> str:
+    """Build a simple message that references the given variable set."""
+    placeables = " ".join(f"{{ ${variable} }}" for variable in variables)
+    return f"{message_id} = {placeables or 'value'}\n"
+
+
+def _assert_integrity_failure(
+    err: IntegrityCheckFailedError,
+    *,
+    operation: str,
+    message_fragment: str | None = None,
+    key: str | None = None,
+    key_fragment: str | None = None,
+    actual_fragment: str | None = None,
+) -> None:
+    """Validate localization-scoped IntegrityCheckFailedError context."""
+    if message_fragment is not None and message_fragment not in str(err):
+        msg = f"Integrity error message missing {message_fragment!r}: {err!s}"
+        raise LocalizationFuzzError(msg)
+
+    context = err.context
+    if context is None:
+        msg = "IntegrityCheckFailedError missing context"
+        raise LocalizationFuzzError(msg)
+    if context.component != "localization":
+        msg = f"Integrity error component={context.component!r}, expected 'localization'"
+        raise LocalizationFuzzError(msg)
+    if context.operation != operation:
+        msg = f"Integrity error operation={context.operation!r}, expected {operation!r}"
+        raise LocalizationFuzzError(msg)
+    if context.expected != "LoadSummary(all_clean=True)" and operation == "require_clean":
+        msg = f"require_clean context expected field mismatch: {context.expected!r}"
+        raise LocalizationFuzzError(msg)
+    if key is not None and context.key != key:
+        msg = f"Integrity error key={context.key!r}, expected {key!r}"
+        raise LocalizationFuzzError(msg)
+    if key_fragment is not None and (context.key is None or key_fragment not in context.key):
+        msg = f"Integrity error key={context.key!r} missing fragment {key_fragment!r}"
+        raise LocalizationFuzzError(msg)
+    if actual_fragment is not None and (
+        context.actual is None or actual_fragment not in context.actual
+    ):
+        msg = f"Integrity error actual={context.actual!r} missing fragment {actual_fragment!r}"
+        raise LocalizationFuzzError(msg)
 
 
 def _pattern_single_locale_add_resource(
@@ -378,8 +441,7 @@ def _pattern_multi_locale_fallback(
             # Contract: FallbackInfo carries the correct resolved_locale
             if info.resolved_locale != fallback:
                 msg = (
-                    f"Fallback: expected resolved_locale='{fallback}', "
-                    f"got '{info.resolved_locale}'"
+                    f"Fallback: expected resolved_locale='{fallback}', got '{info.resolved_locale}'"
                 )
                 raise LocalizationFuzzError(msg)
     else:
@@ -441,10 +503,7 @@ def _pattern_format_value_missing(
 
     # Contract: missing message MUST produce errors and non-empty fallback
     if not errors:
-        msg = (
-            f"Missing message '{missing_id}' produced no errors "
-            f"(result='{result}')"
-        )
+        msg = f"Missing message '{missing_id}' produced no errors (result='{result}')"
         raise LocalizationFuzzError(msg)
     if not result:
         msg = f"Missing message '{missing_id}' produced empty result with errors"
@@ -477,10 +536,7 @@ def _pattern_format_with_variables(
     if not errors:
         _domain.messages_found += 1
         if val_a not in result or val_b not in result:
-            msg = (
-                f"Variables not found in result: "
-                f"expected '{val_a}' and '{val_b}', got '{result}'"
-            )
+            msg = f"Variables not found in result: expected '{val_a}' and '{val_b}', got '{result}'"
             raise LocalizationFuzzError(msg)
 
 
@@ -519,10 +575,7 @@ def _pattern_add_resource_mutation(
     result_b2, errors_b2 = l10n.format_pattern(msg_id_b)
 
     if not errors_b2 and val_b not in result_b2:
-        msg = (
-            f"After mutation: expected '{val_b}' in result, "
-            f"got '{result_b2}'"
-        )
+        msg = f"After mutation: expected '{val_b}' in result, got '{result_b2}'"
         raise LocalizationFuzzError(msg)
 
 
@@ -556,17 +609,12 @@ def _pattern_has_message_api(
 
     # Contract: has_attribute(existing) must be True
     if not has_attr:
-        msg = (
-            f"has_attribute('{msg_id}', '{attr_name}') returned False "
-            f"after add_resource"
-        )
+        msg = f"has_attribute('{msg_id}', '{attr_name}') returned False after add_resource"
         raise LocalizationFuzzError(msg)
 
     # Contract: has_attribute(nonexistent) must be False
     if has_missing_attr:
-        msg = (
-            f"has_attribute('{msg_id}', 'nonexistent-attr') returned True"
-        )
+        msg = f"has_attribute('{msg_id}', 'nonexistent-attr') returned True"
         raise LocalizationFuzzError(msg)
 
 
@@ -642,10 +690,7 @@ def _pattern_ast_lookup_api(
     l10n = FluentLocalization([primary, fallback], strict=False)
     l10n.add_resource(
         fallback,
-        (
-            f"{msg_id} = {{ $fallbackvar }}\n"
-            f"-{term_id} = {{ $fallbackterm }}\n"
-        ),
+        (f"{msg_id} = {{ $fallbackvar }}\n-{term_id} = {{ $fallbackterm }}\n"),
     )
 
     primary_parts: list[str] = []
@@ -656,14 +701,10 @@ def _pattern_ast_lookup_api(
     if primary_parts:
         l10n.add_resource(primary, "".join(primary_parts))
 
-    expected_message_vars = frozenset({
-        "primaryvar" if primary_has_message else "fallbackvar"
-    })
+    expected_message_vars = frozenset({"primaryvar" if primary_has_message else "fallbackvar"})
     _validate_localization_message_lookup(l10n, msg_id, expected_message_vars)
 
-    expected_term_vars = frozenset({
-        "primaryterm" if primary_has_term else "fallbackterm"
-    })
+    expected_term_vars = frozenset({"primaryterm" if primary_has_term else "fallbackterm"})
     _validate_localization_term_lookup(l10n, term_id, expected_term_vars)
 
     if l10n.get_term(f"-{term_id}") is not None:
@@ -745,9 +786,7 @@ def _pattern_validate_resource_api(
             mid = gen_ftl_identifier(fdp)
             ftl = f"{mid} = first\n{mid} = second\n"
         case _:
-            ftl = fdp.ConsumeUnicodeNoSurrogates(
-                fdp.ConsumeIntInRange(0, 200)
-            )
+            ftl = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 200))
 
     l10n = FluentLocalization([locale], strict=False)
     result = l10n.validate_resource(ftl)
@@ -761,6 +800,170 @@ def _pattern_validate_resource_api(
     if not hasattr(result, "errors") or not hasattr(result, "warnings"):
         msg = "validate_resource result missing errors/warnings"
         raise LocalizationFuzzError(msg)
+
+
+def _check_message_schema_exact_success(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Exact schemas succeed and preserve input order."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    message_count = fdp.ConsumeIntInRange(1, 3)
+    expected_schemas: dict[str, frozenset[str] | set[str]] = {}
+    resource_parts: list[str] = []
+
+    for index in range(message_count):
+        message_id = f"schema-{index}-{gen_ftl_identifier(fdp)}"
+        variable_count = fdp.ConsumeIntInRange(1, 2)
+        variables = tuple(
+            f"var{index}_{slot}_{gen_ftl_identifier(fdp)}" for slot in range(variable_count)
+        )
+        expected = frozenset(variables) if fdp.ConsumeBool() else set(variables)
+        expected_schemas[message_id] = expected
+        resource_parts.append(_build_variable_message(message_id, variables))
+
+    l10n = FluentLocalization([locale], strict=False)
+    l10n.add_resource(locale, "".join(resource_parts))
+    try:
+        results = l10n.validate_message_schemas(expected_schemas)
+    except IntegrityCheckFailedError as err:
+        msg = f"validate_message_schemas() raised on exact schemas: {err}"
+        raise LocalizationFuzzError(msg) from err
+
+    if not isinstance(results, tuple):
+        msg = f"validate_message_schemas() returned {type(results).__name__}"
+        raise LocalizationFuzzError(msg)
+    if [result.message_id for result in results] != list(expected_schemas):
+        msg = (
+            "validate_message_schemas() returned results out of input order: "
+            f"{[result.message_id for result in results]!r} vs {list(expected_schemas)!r}"
+        )
+        raise LocalizationFuzzError(msg)
+    for result in results:
+        expected_variables = frozenset(expected_schemas[result.message_id])
+        if not result.is_valid or result.declared_variables != expected_variables:
+            msg = (
+                "validate_message_schemas() returned invalid exact-match result: "
+                f"{result!r} vs {expected_variables!r}"
+            )
+            raise LocalizationFuzzError(msg)
+
+
+def _check_message_schema_fallback_success(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Fallback-resolved messages validate through the localization facade."""
+    primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
+    message_id = f"fallback-{gen_ftl_identifier(fdp)}"
+    variable = f"fallback_{gen_ftl_identifier(fdp)}"
+
+    l10n = FluentLocalization([primary, fallback], strict=False)
+    l10n.add_resource(fallback, _build_variable_message(message_id, (variable,)))
+    try:
+        results = l10n.validate_message_schemas({message_id: frozenset({variable})})
+    except IntegrityCheckFailedError as err:
+        msg = f"validate_message_schemas() rejected fallback-resolved schema: {err}"
+        raise LocalizationFuzzError(msg) from err
+
+    if len(results) != 1 or not results[0].is_valid:
+        msg = f"Fallback schema validation returned {results!r}"
+        raise LocalizationFuzzError(msg)
+
+
+def _check_message_schema_missing_message(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Missing messages fail exact schema validation."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    missing_id = f"missing-{gen_ftl_identifier(fdp)}"
+    l10n = FluentLocalization([locale], strict=False)
+    l10n.add_resource(locale, "present = value\n")
+
+    try:
+        l10n.validate_message_schemas({missing_id: frozenset()})
+    except IntegrityCheckFailedError as err:
+        _assert_integrity_failure(
+            err,
+            operation="validate_message_schemas",
+            message_fragment=f"{missing_id}: not found",
+            key=missing_id,
+            actual_fragment="missing_messages=1",
+        )
+    else:
+        msg = "validate_message_schemas() accepted a missing message"
+        raise LocalizationFuzzError(msg)
+
+
+def _check_message_schema_extra_variable(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Extra variables in the message fail exact schema validation."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    message_id = f"extra-{gen_ftl_identifier(fdp)}"
+    amount_var = f"amount_{gen_ftl_identifier(fdp)}"
+    customer_var = f"customer_{gen_ftl_identifier(fdp)}"
+
+    l10n = FluentLocalization([locale], strict=False)
+    l10n.add_resource(
+        locale,
+        _build_variable_message(message_id, (amount_var, customer_var)),
+    )
+
+    try:
+        l10n.validate_message_schemas({message_id: frozenset({amount_var})})
+    except IntegrityCheckFailedError as err:
+        _assert_integrity_failure(
+            err,
+            operation="validate_message_schemas",
+            message_fragment=f"{message_id}: extra {{{customer_var}}}",
+            key=message_id,
+            actual_fragment="schema_mismatches=1",
+        )
+    else:
+        msg = "validate_message_schemas() accepted an extra-variable mismatch"
+        raise LocalizationFuzzError(msg)
+
+
+def _check_message_schema_missing_variable(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Missing expected variables fail exact schema validation."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    message_id = f"missing-var-{gen_ftl_identifier(fdp)}"
+    amount_var = f"amount_{gen_ftl_identifier(fdp)}"
+    customer_var = f"customer_{gen_ftl_identifier(fdp)}"
+
+    l10n = FluentLocalization([locale], strict=False)
+    l10n.add_resource(locale, _build_variable_message(message_id, (amount_var,)))
+
+    try:
+        l10n.validate_message_schemas({message_id: {amount_var, customer_var}})
+    except IntegrityCheckFailedError as err:
+        _assert_integrity_failure(
+            err,
+            operation="validate_message_schemas",
+            message_fragment=f"{message_id}: missing {{{customer_var}}}",
+            key=message_id,
+            actual_fragment="schema_mismatches=1",
+        )
+    else:
+        msg = "validate_message_schemas() accepted a missing-variable mismatch"
+        raise LocalizationFuzzError(msg)
+
+
+def _pattern_validate_message_schemas_api(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """validate_message_schemas enforces exact schemas through localization."""
+    _domain.schema_validation_checks += 1
+    handlers = (
+        _check_message_schema_exact_success,
+        _check_message_schema_fallback_success,
+        _check_message_schema_missing_message,
+        _check_message_schema_extra_variable,
+        _check_message_schema_missing_variable,
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    handler(fdp)
 
 
 def _pattern_add_function_custom(
@@ -794,10 +997,7 @@ def _pattern_add_function_custom(
     if not errors:
         expected = val.upper()
         if result != expected:
-            msg = (
-                f"Custom UPPER function: expected '{expected}', "
-                f"got '{result}'"
-            )
+            msg = f"Custom UPPER function: expected '{expected}', got '{result}'"
             raise LocalizationFuzzError(msg)
 
 
@@ -1023,10 +1223,7 @@ def _pattern_on_fallback_callback(
             info = fallback_infos[0]
             # Contract: requested_locale = primary, resolved_locale = fallback
             if info.resolved_locale != fallback:
-                msg = (
-                    f"on_fallback: resolved_locale='{info.resolved_locale}' "
-                    f"expected '{fallback}'"
-                )
+                msg = f"on_fallback: resolved_locale='{info.resolved_locale}' expected '{fallback}'"
                 raise LocalizationFuzzError(msg)
     else:
         _domain.messages_missing += 1
@@ -1158,11 +1355,13 @@ def _pattern_loader_path_error(
     """Invalid resource IDs surface as loader errors in the eager-load summary."""
     _domain.loader_error_checks += 1
     locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
-    invalid_resource_id = fdp.PickValueInList([
-        "../escape.ftl",
-        " main.ftl",
-        "/absolute.ftl",
-    ])
+    invalid_resource_id = fdp.PickValueInList(
+        [
+            "../escape.ftl",
+            " main.ftl",
+            "/absolute.ftl",
+        ]
+    )
 
     with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
         root = pathlib.Path(tmp_dir)
@@ -1191,6 +1390,163 @@ def _pattern_loader_path_error(
             raise LocalizationFuzzError(msg)
 
 
+def _check_require_clean_empty_init(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Empty initialization is considered clean."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    l10n = FluentLocalization([locale], strict=False)
+    try:
+        summary = l10n.require_clean()
+    except IntegrityCheckFailedError as err:
+        msg = f"require_clean() raised on empty initialization: {err}"
+        raise LocalizationFuzzError(msg) from err
+
+    if not summary.all_clean or summary.total_attempted != 0:
+        msg = f"Empty initialization should be clean, got {summary!r}"
+        raise LocalizationFuzzError(msg)
+
+
+def _check_require_clean_loader_success(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """All-success loader summaries return from require_clean()."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    resource_id = "main.ftl"
+    message_id = f"clean-{gen_ftl_identifier(fdp)}"
+    value = gen_ftl_value(fdp)
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        _write_loader_resource(root, locale, resource_id, f"{message_id} = {value}\n")
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization([locale], [resource_id], loader, strict=False)
+        try:
+            summary = l10n.require_clean()
+        except IntegrityCheckFailedError as err:
+            msg = f"require_clean() rejected an all-success summary: {err}"
+            raise LocalizationFuzzError(msg) from err
+
+        if not summary.all_clean or summary.successful != 1 or summary.errors != 0:
+            msg = f"Clean loader initialization returned wrong summary: {summary!r}"
+            raise LocalizationFuzzError(msg)
+
+
+def _check_require_clean_missing_loader(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Missing resources fail require_clean() with integrity context."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    resource_id = "main.ftl"
+
+    class MissingLoader:
+        def load(self, _locale: str, _resource_id: str) -> str:
+            msg = "missing"
+            raise FileNotFoundError(msg)
+
+        def describe_path(self, locale: str, resource_id: str) -> str:
+            return f"{locale}/{resource_id}"
+
+    l10n = FluentLocalization([locale], [resource_id], MissingLoader(), strict=False)
+
+    try:
+        l10n.require_clean()
+    except IntegrityCheckFailedError as err:
+        _assert_integrity_failure(
+            err,
+            operation="require_clean",
+            message_fragment="not clean",
+            key=f"{locale}/{resource_id}",
+            actual_fragment="LoadSummary(",
+        )
+    else:
+        msg = "require_clean() accepted a missing-resource summary"
+        raise LocalizationFuzzError(msg)
+
+
+def _check_require_clean_junk_resource(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Junk-bearing resources fail require_clean()."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    resource_id = "broken.ftl"
+    junk_source = f"{gen_ftl_identifier(fdp)} = {{\n"
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        _write_loader_resource(root, locale, resource_id, junk_source)
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization([locale], [resource_id], loader, strict=False)
+
+        try:
+            l10n.require_clean()
+        except IntegrityCheckFailedError as err:
+            _assert_integrity_failure(
+                err,
+                operation="require_clean",
+                message_fragment="junk",
+                key_fragment=resource_id,
+                actual_fragment="LoadSummary(",
+            )
+        else:
+            msg = "require_clean() accepted a junk-bearing summary"
+            raise LocalizationFuzzError(msg)
+
+
+def _check_require_clean_loader_error(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """Loader validation errors fail require_clean()."""
+    locale = fdp.PickValueInList(list(_SINGLE_LOCALES))
+    invalid_resource_id = fdp.PickValueInList(
+        [
+            "../escape.ftl",
+            " main.ftl",
+            "/absolute.ftl",
+        ]
+    )
+
+    with TemporaryDirectory(prefix="ftllexengine-fuzz-loader-") as tmp_dir:
+        root = pathlib.Path(tmp_dir)
+        loader = PathResourceLoader(str(root / "{locale}"))
+        l10n = FluentLocalization(
+            [locale],
+            [invalid_resource_id],
+            loader,
+            strict=False,
+        )
+
+        try:
+            l10n.require_clean()
+        except IntegrityCheckFailedError as err:
+            _assert_integrity_failure(
+                err,
+                operation="require_clean",
+                message_fragment="load error",
+                key_fragment=invalid_resource_id,
+                actual_fragment="LoadSummary(",
+            )
+        else:
+            msg = "require_clean() accepted a loader error summary"
+            raise LocalizationFuzzError(msg)
+
+
+def _pattern_require_clean_api(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """require_clean returns only for clean initialization summaries."""
+    _domain.boot_validation_checks += 1
+    handlers = (
+        _check_require_clean_empty_init,
+        _check_require_clean_loader_success,
+        _check_require_clean_missing_loader,
+        _check_require_clean_junk_resource,
+        _check_require_clean_loader_error,
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    handler(fdp)
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH = {
@@ -1204,6 +1560,7 @@ _PATTERN_DISPATCH = {
     "ast_lookup_api": _pattern_ast_lookup_api,
     "get_message_ids_api": _pattern_get_message_ids_api,
     "validate_resource_api": _pattern_validate_resource_api,
+    "validate_message_schemas_api": _pattern_validate_message_schemas_api,
     "add_function_custom": _pattern_add_function_custom,
     "introspect_api": _pattern_introspect_api,
     "cache_audit_api": _pattern_cache_audit_api,
@@ -1212,6 +1569,7 @@ _PATTERN_DISPATCH = {
     "loader_not_found_fallback": _pattern_loader_not_found_fallback,
     "loader_junk_summary": _pattern_loader_junk_summary,
     "loader_path_error": _pattern_loader_path_error,
+    "require_clean_api": _pattern_require_clean_api,
 }
 
 
@@ -1221,9 +1579,7 @@ _PATTERN_DISPATCH = {
 def test_one_input(data: bytes) -> None:
     """Atheris entry point: Test FluentLocalization invariants."""
     if _state.iterations == 0:
-        _state.initial_memory_mb = (
-            get_process().memory_info().rss / (1024 * 1024)
-        )
+        _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
 
     _state.iterations += 1
     _state.status = "running"
@@ -1235,9 +1591,7 @@ def test_one_input(data: bytes) -> None:
     fdp = atheris.FuzzedDataProvider(data)
 
     pattern_name = select_pattern_round_robin(_state, _PATTERN_SCHEDULE)
-    _state.pattern_coverage[pattern_name] = (
-        _state.pattern_coverage.get(pattern_name, 0) + 1
-    )
+    _state.pattern_coverage[pattern_name] = _state.pattern_coverage.get(pattern_name, 0) + 1
 
     try:
         _PATTERN_DISPATCH[pattern_name](fdp)
@@ -1250,9 +1604,7 @@ def test_one_input(data: bytes) -> None:
         SyntaxIntegrityError,
     ) as e:
         error_type = f"{type(e).__name__}_{str(e)[:30]}"
-        _state.error_counts[error_type] = (
-            _state.error_counts.get(error_type, 0) + 1
-        )
+        _state.error_counts[error_type] = _state.error_counts.get(error_type, 0) + 1
     except Exception:
         _state.findings += 1
         raise
@@ -1260,16 +1612,22 @@ def test_one_input(data: bytes) -> None:
         is_interesting = (
             "fallback" in pattern_name
             or "loader" in pattern_name
-            or pattern_name in (
+            or pattern_name
+            in (
                 "add_resource_mutation",
                 "introspect_api",
                 "ast_lookup_api",
                 "cache_audit_api",
+                "validate_message_schemas_api",
+                "require_clean_api",
             )
             or (time.perf_counter() - start_time) * 1000 > 1.0
         )
         record_iteration_metrics(
-            _state, pattern_name, start_time, data,
+            _state,
+            pattern_name,
+            start_time,
+            data,
             is_interesting=is_interesting,
         )
 

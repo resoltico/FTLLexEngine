@@ -41,7 +41,14 @@ from ftllexengine.core.babel_compat import get_babel_numbers
 
 from .function_bridge import FunctionRegistry
 from .locale_context import LocaleContext
-from .value_types import _FTL_REQUIRES_LOCALE_ATTR, FluentNumber
+from .value_types import (
+    _FTL_REQUIRES_LOCALE_ATTR,
+    FluentNumber,
+    _make_fluent_number,
+)
+from .value_types import (
+    _compute_visible_precision as _compute_visible_precision_impl,
+)
 
 __all__ = ["create_default_registry", "get_shared_registry"]
 
@@ -54,75 +61,12 @@ def _compute_visible_precision(
     *,
     max_fraction_digits: int | None = None,
 ) -> int:
-    """Count visible fraction digits in formatted number string.
-
-    CLDR plural rules use the 'v' operand which represents the count of visible
-    fraction digits in the source number WITH trailing zeros. This function
-    extracts that count from the locale-formatted string.
-
-    Only leading consecutive digits after the decimal separator are counted.
-    This correctly handles formatted strings where non-digit characters or
-    literal text (e.g., currency names, custom pattern suffixes) follow the
-    fractional digits.
-
-    When max_fraction_digits is provided (from Babel pattern metadata), the
-    count is capped at that value. This prevents literal digit suffixes in
-    custom Babel patterns (e.g., ICU single-quote syntax ``0.0'5'``) from
-    being counted as actual fraction digits.
-
-    Args:
-        formatted: Locale-formatted number string (e.g., "1,234.56" or "1.234,56")
-        decimal_symbol: Locale-specific decimal separator (e.g., "." or ",")
-        max_fraction_digits: Upper bound from pattern metadata (keyword-only).
-            When provided, precision is capped at this value. This handles
-            patterns with literal digit suffixes (e.g., ``0.0'5'`` produces
-            "1.25" for input 1.2 but has frac_prec=(1,1), so precision=1).
-
-    Returns:
-        Number of leading consecutive digits after the decimal separator,
-        capped by max_fraction_digits if provided, or 0 if no decimal part.
-
-    Examples:
-        >>> _compute_visible_precision("1,234.56", ".")
-        2
-        >>> _compute_visible_precision("1.234,56", ",")
-        2
-        >>> _compute_visible_precision("1,234", ".")
-        0
-        >>> _compute_visible_precision("1.00", ".")
-        2
-        >>> _compute_visible_precision("100.00 Dollars 123", ".")
-        2
-        >>> _compute_visible_precision("1.25", ".", max_fraction_digits=1)
-        1
-    """
-    if decimal_symbol not in formatted:
-        return 0
-
-    # Find the last occurrence of decimal separator (handles edge cases)
-    # Split from the right to handle any prefix characters
-    _, fraction_part = formatted.rsplit(decimal_symbol, 1)
-
-    # Count leading consecutive digit characters in the fraction part.
-    # Stop at the first non-digit to exclude literal text that may contain
-    # digits (e.g., custom Babel patterns with quoted literals like
-    # "#,##0.00 'Dollars 123'" produce "100.00 Dollars 123").
-    count = 0
-    for char in fraction_part:
-        if char.isdigit():
-            count += 1
-        else:
-            break
-
-    # Cap at pattern-defined maximum fraction digits when available.
-    # Prevents literal digit suffixes (ICU single-quote syntax) from
-    # inflating the CLDR v operand. Example: pattern "0.0'5'" has
-    # frac_prec=(1,1) but produces "1.25" for 1.2 - the "5" is a
-    # literal suffix, not a fraction digit of the source number.
-    if max_fraction_digits is not None and count > max_fraction_digits:
-        count = max_fraction_digits
-
-    return count
+    """Count visible fraction digits in a formatted number string."""
+    return _compute_visible_precision_impl(
+        formatted,
+        decimal_symbol,
+        max_fraction_digits=max_fraction_digits,
+    )
 
 
 def number_format(
@@ -231,11 +175,12 @@ def number_format(
                 pattern,
             )
 
-    precision = _compute_visible_precision(
-        formatted, decimal_symbol, max_fraction_digits=max_frac
+    return _make_fluent_number(
+        value,
+        formatted=formatted,
+        decimal_symbol=decimal_symbol,
+        max_fraction_digits=max_frac,
     )
-
-    return FluentNumber(value=value, formatted=formatted, precision=precision)
 
 
 def datetime_format(
@@ -413,11 +358,12 @@ def currency_format(
                 pattern,
             )
 
-    precision = _compute_visible_precision(
-        formatted, decimal_symbol, max_fraction_digits=max_frac
+    return _make_fluent_number(
+        value,
+        formatted=formatted,
+        decimal_symbol=decimal_symbol,
+        max_fraction_digits=max_frac,
     )
-
-    return FluentNumber(value=value, formatted=formatted, precision=precision)
 
 
 # Mark built-in functions that require locale injection.
