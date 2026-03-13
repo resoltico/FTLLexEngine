@@ -1,6 +1,7 @@
 """Number parsing functions with locale awareness.
 
-- parse_decimal() returns tuple[Decimal | None, tuple[FrozenFluentError, ...]]
+- parse_decimal() returns ParseResult[Decimal]
+- parse_fluent_number() returns ParseResult[FluentNumber]
 - Parse errors returned in tuple
 - Raises BabelImportError if Babel is not installed
 
@@ -27,10 +28,16 @@ from ftllexengine.core.locale_utils import (
     is_structurally_valid_locale_code,
     normalize_locale,
 )
-from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
+from ftllexengine.diagnostics import (
+    ErrorCategory,
+    FrozenErrorContext,
+    FrozenFluentError,
+    ParseResult,
+)
 from ftllexengine.diagnostics.templates import ErrorTemplate
+from ftllexengine.runtime.value_types import FluentNumber, make_fluent_number
 
-__all__ = ["parse_decimal"]
+__all__ = ["parse_decimal", "parse_fluent_number"]
 
 
 def _validate_group_positions(
@@ -78,7 +85,7 @@ def _validate_group_positions(
 def parse_decimal(
     value: str,
     locale_code: str,
-) -> tuple[Decimal | None, tuple[FrozenFluentError, ...]]:
+) -> ParseResult[Decimal]:
     """Parse locale-aware number string to Decimal (financial precision).
 
 
@@ -219,3 +226,42 @@ def parse_decimal(
         )
         errors.append(error)
         return (None, tuple(errors))
+
+
+def parse_fluent_number(
+    value: str,
+    locale_code: str,
+) -> ParseResult[FluentNumber]:
+    """Parse locale-aware number string directly to FluentNumber.
+
+    This is the public composition of ``parse_decimal()`` and
+    ``make_fluent_number()``. It preserves the original localized display text
+    while keeping the exact numeric identity and visible-precision metadata
+    needed by Fluent select expressions.
+
+    Args:
+        value: Number string as entered or stored in localized form
+        locale_code: BCP 47 locale identifier
+
+    Returns:
+        Tuple of (result, errors):
+        - result: Parsed FluentNumber, or None if parsing failed
+        - errors: Tuple of FrozenFluentError (empty tuple on success)
+
+    Raises:
+        BabelImportError: If Babel is not installed
+
+    Examples:
+        >>> result, errors = parse_fluent_number("1 234,50", "lv_LV")
+        >>> str(result)
+        '1 234,50'
+        >>> result.value
+        Decimal('1234.50')
+        >>> result.precision
+        2
+    """
+    require_babel("parse_fluent_number")
+    parsed, errors = parse_decimal(value, locale_code)
+    if parsed is None:
+        return (None, errors)
+    return (make_fluent_number(parsed, formatted=value), errors)

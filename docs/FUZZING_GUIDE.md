@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.153.0"
 domain: fuzzing
-updated: "2026-02-28"
+updated: "2026-03-13"
 route:
   keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, metrics, workers]
   questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "which fuzzer to use?", "how do workers affect metrics?"]

@@ -207,7 +207,12 @@ Bob's colonists type orders and quantities in their local format. A German engin
 
 ```python
 from decimal import Decimal
-from ftllexengine.parsing import parse_currency, parse_decimal, parse_date
+from ftllexengine.parsing import (
+    parse_currency,
+    parse_date,
+    parse_decimal,
+    parse_fluent_number,
+)
 
 # German engineer enters a bid in EUR
 bid_result, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
@@ -222,6 +227,11 @@ if not errors:
 # Japanese technician enters a delivery date
 contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 # datetime.date(2026, 3, 15)
+
+# German engineer enters a localized amount that should go back into FTL
+display_total, errors = parse_fluent_number("12.450,00", "de_DE")
+if not errors:
+    total_for_ftl = display_total  # FluentNumber(value=Decimal('12450.00'), ...)
 ```
 
 ```mermaid

@@ -24,6 +24,7 @@ from ftllexengine import (
 )
 from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.parsing import parse_fluent_number
 
 # Example 1: Simple message
 print("=" * 50)
@@ -316,9 +317,9 @@ print(f"Invalid FTL: {invalid_result.is_valid}, errors: {len(invalid_result.erro
 
 print("[OK] Resource introspection APIs working")
 
-# Example 12: Boot Validation, Locale Boundaries, and Manual FluentNumber
+# Example 12: Boot Validation, Locale Boundaries, and FluentNumber Helpers
 print("\n" + "=" * 50)
-print("Example 12: Boot Validation, Locale Boundaries, and Manual FluentNumber")
+print("Example 12: Boot Validation, Locale Boundaries, and FluentNumber Helpers")
 print("=" * 50)
 
 
@@ -354,8 +355,19 @@ print(f"Schema valid: {schema_results[0].is_valid}")
 
 manual_amount = make_fluent_number(Decimal("500.00"), formatted="500,00")
 manual_fee = FluentNumber(value=Decimal("5.00"), formatted="5,00", precision=2)
+manual_total = make_fluent_number(
+    manual_amount.value + manual_fee.value,
+    formatted="505,00",
+)
+parsed_amount, parsed_amount_errors = parse_fluent_number("505,00", "lv_LV")
+if parsed_amount_errors:
+    msg = "parse_fluent_number example unexpectedly failed"
+    raise RuntimeError(msg)
+assert parsed_amount is not None
+print(f"Manual FluentNumber precision: {manual_total.precision}")
+print(f"Parsed FluentNumber precision: {parsed_amount.precision}")
 result, _ = boot_l10n.format_pattern("invoice", {
-    "amount": make_fluent_number(manual_amount.value + manual_fee.value, formatted="505,00"),
+    "amount": parsed_amount,
     "customer": "Alice",
 })
 print(result)

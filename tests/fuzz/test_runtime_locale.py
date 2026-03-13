@@ -18,6 +18,7 @@ import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.plural_rules import select_plural_category
 from tests.strategies import ftl_financial_numbers
@@ -263,9 +264,9 @@ class TestLocaleContextProperties:
     @given(st.sampled_from(COMMON_LOCALES))
     @settings(max_examples=50, deadline=None)
     def test_bundle_creation_all_locales(self, locale: str) -> None:
-        """Property: Bundle creation works for all common locales."""
+        """Property: Bundle creation canonicalizes all accepted locale boundaries."""
         bundle = FluentBundle(locale)
-        assert bundle._locale == locale
+        assert bundle.locale == require_locale_code(locale, "locale")
         event(f"locale={locale}")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz-_", min_size=2, max_size=10))

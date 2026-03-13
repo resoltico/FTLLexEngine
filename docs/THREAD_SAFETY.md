@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: architecture
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
   keywords: [thread safety, concurrency, async, thread-local, contextvars, race condition, WeakKeyDictionary, timeout, TimeoutError]
   questions: ["is FTLLexEngine thread-safe?", "can I use FluentBundle in async?", "what are the thread-safety guarantees?", "how to set lock timeout?"]
@@ -61,6 +61,8 @@ If you need lazy-loading patterns, load resources before formatting or use a sep
 `RWLock.read()` and `RWLock.write()` accept an optional `timeout` parameter (seconds). `None` (default) waits indefinitely. `0.0` attempts non-blocking acquisition. Positive float sets a deadline. Raises `TimeoutError` on expiry. Reentrant read acquisitions never wait, so timeout is irrelevant in that path. On write timeout, the internal `_waiting_writers` counter is correctly decremented (via `try/finally`), preventing reader starvation from abandoned writes.
 
 ```python
+from ftllexengine.runtime import RWLock
+
 lock = RWLock()
 try:
     with lock.write(timeout=5.0):

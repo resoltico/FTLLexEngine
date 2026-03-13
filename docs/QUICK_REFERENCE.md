@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: reference
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, make_fluent_number, FluentNumber]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, RWLock]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how to clear cache?", "how do I get the cache audit log?"]
 ---
 
@@ -556,12 +556,14 @@ price-name = { CURRENCY($amount, currency: "EUR", currencyDisplay: "name") }
 from decimal import Decimal
 
 from ftllexengine import FluentNumber
+from ftllexengine.parsing import parse_fluent_number
 from ftllexengine.runtime import make_fluent_number
 
 raw_amount = make_fluent_number(Decimal("12.3400"))
 rendered_amount = make_fluent_number(42, formatted="42.00")
 localized_amount = make_fluent_number(Decimal("1234.50"), formatted="1 234,50 EUR")
 manual_amount = FluentNumber(value=Decimal("5.00"), formatted="5.00", precision=2)
+parsed_amount, errors = parse_fluent_number("1 234,50", "lv_LV")
 ```
 
 ---
@@ -571,13 +573,18 @@ manual_amount = FluentNumber(value=Decimal("5.00"), formatted="5.00", precision=
 **Bi-directional localization**: Parse locale-formatted strings back to Python types.
 
 ```python
-from ftllexengine.parsing import parse_decimal, parse_date, parse_currency
+from ftllexengine.parsing import parse_decimal, parse_fluent_number, parse_date, parse_currency
 from ftllexengine.parsing import is_valid_decimal, is_valid_date, is_valid_currency
 
 # Parse numbers (guards accept None)
 result, errors = parse_decimal("1 234,56", "lv_LV")
 if is_valid_decimal(result):
     amount = result  # Decimal('1234.56')
+
+# Parse directly to FluentNumber
+result, errors = parse_fluent_number("1 234,56", "lv_LV")
+if not errors and result is not None:
+    amount_for_ftl = result  # FluentNumber(value=Decimal('1234.56'), formatted='1 234,56', precision=2)
 
 # Parse dates
 result, errors = parse_date("28.01.2025", "lv_LV")
@@ -602,6 +609,7 @@ result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
 
 **Key Functions**:
 - `parse_decimal(value, locale)` → `tuple[Decimal | None, tuple[FrozenFluentError, ...]]`
+- `parse_fluent_number(value, locale)` → `tuple[FluentNumber | None, tuple[FrozenFluentError, ...]]`
 - `parse_date(value, locale)` → `tuple[date | None, tuple[FrozenFluentError, ...]]`
 - `parse_datetime(value, locale, tzinfo=None)` → `tuple[datetime | None, tuple[FrozenFluentError, ...]]`
 - `parse_currency(value, locale)` → `tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]`

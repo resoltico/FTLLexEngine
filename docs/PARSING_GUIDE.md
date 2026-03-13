@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.153.0"
 domain: parsing
-updated: "2026-02-28"
+updated: "2026-03-13"
 route:
-  keywords: [parsing, parse_decimal, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
-  questions: ["how to parse user input?", "how to parse number?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
+  keywords: [parsing, parse_decimal, parse_fluent_number, parse_date, parse_currency, bi-directional, user input, forms, BabelImportError]
+  questions: ["how to parse user input?", "how to parse number?", "how to parse a FluentNumber?", "how to parse date?", "how to parse currency?", "what exceptions do parsing functions raise?"]
 ---
 
 # Parsing Guide - Bi-Directional Localization
@@ -46,6 +46,20 @@ if is_valid_decimal(result):
 ```
 
 **Note**: Type guards (`is_valid_decimal`, `is_valid_date`, `is_valid_currency`) accept `None` and return `False`. This simplifies the pattern from `if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
+
+### Direct FluentNumber Parsing
+
+```python
+from decimal import Decimal
+
+from ftllexengine.parsing import parse_fluent_number
+
+result, errors = parse_fluent_number("1 234,56", "lv_LV")
+if not errors and result is not None:
+    assert result.value == Decimal("1234.56")
+    assert str(result) == "1 234,56"
+    assert result.precision == 2
+```
 
 ### Bi-Directional Workflow
 
@@ -101,6 +115,28 @@ float_vat = float_amount * 0.21  # → 21.105000000000004 - precision loss!
 - Financial calculations (invoices, payments, VAT)
 - Currency amounts
 - Any calculation where precision matters
+
+### parse_fluent_number()
+
+Parse locale-formatted number string directly to `FluentNumber`.
+
+Returns `tuple[FluentNumber | None, tuple[FrozenFluentError, ...]]`.
+
+```python
+from decimal import Decimal
+
+from ftllexengine.parsing import parse_fluent_number
+
+result, errors = parse_fluent_number("100,50", "lv_LV")
+if not errors and result is not None:
+    assert result.value == Decimal("100.50")
+    assert result.precision == 2
+```
+
+**When to use**:
+- User-entered numeric text should go back into `FluentBundle` / `FluentLocalization`
+- Select expressions must preserve visible precision (`1.0` vs `1.00`)
+- You want the public one-step API instead of manual `parse_decimal()` + `make_fluent_number()` composition
 
 ### parse_date()
 

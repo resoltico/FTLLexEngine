@@ -19,7 +19,7 @@ import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.rwlock import RWLock
+from ftllexengine.runtime import RWLock
 
 
 class TestReadTimeout:

@@ -819,6 +819,7 @@ class StrategyMetrics:
         self._strategy_durations: dict[str, list[float]] = {}
         self._lock = threading.Lock()
         self._live_reporter: threading.Timer | None = None
+        self._live_reporting_active: bool = False
         self._live_interval: float = 30.0
         self._start_time: float = 0.0
         self._last_invocation_count: int = 0
@@ -862,12 +863,14 @@ class StrategyMetrics:
             self._start_time = time.time()
             self._last_invocation_count = 0
             self._show_per_strategy = show_per_strategy
+            self._live_reporting_active = True
 
         self._schedule_live_report()
 
     def stop_live_reporting(self) -> None:
         """Stop the periodic live reporter."""
         with self._lock:
+            self._live_reporting_active = False
             if self._live_reporter is not None:
                 self._live_reporter.cancel()
                 self._live_reporter = None
@@ -964,19 +967,23 @@ class StrategyMetrics:
 
     def _schedule_live_report(self) -> None:
         """Schedule the next live report."""
-        self._live_reporter = threading.Timer(
-            self._live_interval,
-            self._emit_live_report,
-        )
-        self._live_reporter.daemon = True
-        self._live_reporter.start()
+        with self._lock:
+            if not self._enabled or not self._live_reporting_active:
+                self._live_reporter = None
+                return
+            self._live_reporter = threading.Timer(
+                self._live_interval,
+                self._emit_live_report,
+            )
+            self._live_reporter.daemon = True
+            self._live_reporter.start()
 
     def _emit_live_report(self) -> None:
         """Emit a live metrics summary to console."""
-        if not self._enabled:
-            return
-
         with self._lock:
+            if not self._enabled or not self._live_reporting_active:
+                self._live_reporter = None
+                return
             total = sum(self._event_counter.values())
             elapsed = time.time() - self._start_time
             rate = total / elapsed if elapsed > 0 else 0
@@ -1007,8 +1014,14 @@ class StrategyMetrics:
 
         # Use sys.__stderr__ to bypass pytest capture (original stderr before redirection)
         # Combined with flush=True ensures live output even during long test runs
-        for line in lines:
-            print(line, file=sys.__stderr__, flush=True)
+        try:
+            for line in lines:
+                print(line, file=sys.__stderr__, flush=True)
+        except (BrokenPipeError, OSError, ValueError):
+            with self._lock:
+                self._live_reporting_active = False
+                self._live_reporter = None
+            return
 
         # Schedule next report
         self._schedule_live_report()

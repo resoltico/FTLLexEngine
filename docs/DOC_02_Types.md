@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: TYPES
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]

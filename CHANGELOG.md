@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: CHANGELOG
 updated: "2026-03-13"
 route:
@@ -14,6 +14,28 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.153.0] - 2026-03-13
+
+### Added
+
+- **`parse_fluent_number(value, locale_code)` parsing helper**:
+  - the parsing surface now exposes a direct `ParseResult[FluentNumber]` API for
+    locale-formatted numeric input that should flow back into Fluent formatting or
+    select-expression semantics without downstream composition glue
+  - `parse_fluent_number()` is the public composition of `parse_decimal()` and
+    `make_fluent_number()`, so exact numeric identity, localized display text, and
+    visible-precision inference stay aligned with the existing parser/runtime contract
+  - the helper now raises `BabelImportError` as `parse_fluent_number` itself when Babel
+    is unavailable, and the public `ftllexengine.parsing` facade now exposes matching
+    stub coverage for static type-checkers
+
+- **`ftllexengine.runtime.RWLock` stable public runtime export**:
+  - downstream runtimes no longer need deep imports from `ftllexengine.runtime.rwlock`
+    to use FTLLexEngine's readers-writer lock primitive
+  - `RWLock` is now exported from the public runtime facade and mirrored in the
+    runtime facade stubs, making the stable import path explicit for both runtime users
+    and static analysis tools
 
 ## [0.152.0] - 2026-03-13
 
@@ -45,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `FluentLocalization`, `LocaleContext`, and `PathResourceLoader` all share one explicit
     trim/blank/length/structure rejection path and one canonical locale representation
 
-- **`FluentLocalization.validate_message_variables()` first-class single-message boot validation**:
+- **`FluentLocalization.validate_message_variables()` single-message boot validation**:
   - callers that validate one required message at startup no longer need to compose
     `get_message()` fallback lookup, missing-message integrity checks, and
     `validate_message_variables()` manually
@@ -1223,9 +1245,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     explicit listing was redundant; worse, it was misleading: `FluentNumber.__post_init__`
     raises `TypeError` for `bool` values, meaning numeric functions (`NUMBER()`, `CURRENCY()`)
     reject `bool` at runtime; a user reading the type annotation could reasonably conclude that
-    `bool` was a first-class supported value type when in reality it is only accepted by raw
-    string interpolation (via the inherited `int` branch) and rejected by all formatting
-    functions
+    `bool` was a supported value type when in reality it is only accepted by raw string
+    interpolation (via the inherited `int` branch) and rejected by all formatting functions
   - Removed `bool` from the explicit union; added a block comment explaining the design intent:
     `bool` is absent because the explicit omission signals that it carries no numeric
     localization semantics; callers must convert explicitly (`str(flag)` for "True"/"False",
@@ -5973,6 +5994,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.153.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.153.0
 [0.152.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.152.0
 [0.151.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.151.0
 [0.150.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.150.0

@@ -17,7 +17,7 @@ import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.rwlock import RWLock
+from ftllexengine.runtime import RWLock
 
 
 @pytest.mark.fuzz

@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.148.0"
+version: "0.153.0"
 domain: PARSING
-updated: "2026-03-10"
+updated: "2026-03-13"
 route:
-  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
-  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
+  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
+  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how do I parse a FluentNumber?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
 ---
 
 # Parsing Reference
@@ -242,7 +242,7 @@ def enter_nesting(self) -> ParseContext:
 def parse_decimal(
     value: str,
     locale_code: str,
-) -> tuple[Decimal | None, tuple[FrozenFluentError, ...]]:
+) -> ParseResult[Decimal]:
 ```
 
 ### Parameters
@@ -257,6 +257,33 @@ def parse_decimal(
 - State: None.
 - Thread: Safe.
 - Dependency: Requires Babel for CLDR data.
+
+---
+
+## `parse_fluent_number`
+
+### Signature
+```python
+def parse_fluent_number(
+    value: str,
+    locale_code: str,
+) -> ParseResult[FluentNumber]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `str` | Y | Locale-formatted number string. |
+| `locale_code` | `str` | Y | BCP 47 locale identifier. |
+
+### Constraints
+- Return: Tuple of (`FluentNumber` or None, errors).
+- Raises: `BabelImportError` if Babel not installed.
+- State: None.
+- Thread: Safe.
+- Dependency: Requires Babel for CLDR data.
+- Precision: Preserves visible fraction digits using the original localized display string.
+- Usage: Use when parsed numeric input should flow back into Fluent formatting or select expressions without manual `parse_decimal()` + `make_fluent_number()` composition.
 
 ---
 

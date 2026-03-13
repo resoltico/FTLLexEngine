@@ -16,7 +16,10 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
-from ftllexengine.core.locale_utils import normalize_locale
+from ftllexengine.core.locale_utils import (
+    is_structurally_valid_locale_code,
+    normalize_locale,
+)
 from ftllexengine.runtime.functions import currency_format
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -41,6 +44,11 @@ class TestFluentBundleLocaleValidation:
         """Locale with special characters raises ValueError."""
         with pytest.raises(ValueError, match=r"Invalid locale: 'en@US'"):
             FluentBundle("en@US")
+
+    def test_init_with_trimmed_valid_locale_succeeds(self) -> None:
+        """Surrounding whitespace is trimmed before canonical locale validation."""
+        bundle = FluentBundle("  en-US \n")
+        assert bundle.locale == "en_us"
 
     def test_init_with_valid_underscore_locale_succeeds(self) -> None:
         """Valid locale with underscore succeeds."""
@@ -72,7 +80,7 @@ class TestFluentBundleLocaleValidation:
         assert bundle.locale == normalize_locale(locale)
 
     @given(st.text(min_size=1, max_size=10).filter(
-        lambda s: not s.replace("_", "").replace("-", "").isalnum() and s
+        lambda s: s.strip() == "" or not is_structurally_valid_locale_code(s.strip())
     ))
     @settings(max_examples=50)
     def test_invalid_locale_formats_rejected(self, locale: str) -> None:

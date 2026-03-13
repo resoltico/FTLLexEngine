@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: FUZZING
 updated: "2026-03-13"
 route:
@@ -25,9 +25,9 @@ route:
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 38 (.bin) | Fiscal calendar arithmetic, contracts |
 | `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 35 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
 | `fuzz_iso.py` | `introspection.iso` | 10 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle |
-| `fuzz_lock.py` | `runtime.rwlock` | 15 | 39 (.bin) | RWLock concurrency primitives |
+| `fuzz_lock.py` | `runtime`, `runtime.rwlock` | 16 | 39 (.bin) | RWLock concurrency primitives and public runtime export |
 | `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
-| `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 8 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, locale normalization/cache behavior, boundary locale validation, pseudo-locale fallback |
+| `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 9 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, FluentNumber parsing, locale normalization/cache behavior, boundary locale validation, pseudo-locale fallback |
 | `fuzz_plural.py` | `runtime.plural_rules` | 10 | 37 (.bin) | CLDR plural category selection |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 8 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 31 (.bin) + 4 (.ftl) | Parser-serializer convergence |
@@ -61,6 +61,7 @@ route:
 | `parsing.fiscal` | fiscal |
 | `parsing.guards` | parse_currency, parse_decimal |
 | `parsing.numbers` | parse_decimal |
+| `runtime` | lock |
 | `runtime.function_bridge` | bridge |
 | `runtime.functions` | builtins, runtime, currency, numbers |
 | `runtime.bundle` | runtime, cache, integrity, scope, localization |
@@ -489,9 +490,9 @@ Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookup
 
 ## `fuzz_lock`
 
-Target: `runtime.rwlock.RWLock` -- reader/writer exclusion, reentrant reads, write-reentry rejection, write-to-read downgrade rejection, read-to-write upgrade rejection, timeout, deadlock detection, negative timeout rejection, release-without-acquire rejection, zero-timeout non-blocking paths.
+Target: `runtime.RWLock`, `runtime.rwlock.RWLock` -- public facade export identity, reader/writer exclusion, reentrant reads, write-reentry rejection, write-to-read downgrade rejection, read-to-write upgrade rejection, timeout, deadlock detection, negative timeout rejection, release-without-acquire rejection, zero-timeout non-blocking paths.
 
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `LockMetrics` dataclass (deadlocks detected, timeouts, thread creation count, max concurrent threads). Weight skew detection compares actual vs intended pattern distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default. Corpus retention rate and eviction tracking enabled.
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `LockMetrics` dataclass (deadlocks detected, public export checks, timeouts, thread creation count, max concurrent threads). Weight skew detection compares actual vs intended pattern distribution. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default. Corpus retention rate and eviction tracking enabled.
 
 ### Patterns
 
@@ -499,6 +500,7 @@ Ordered cheapest-first. Pattern selection uses deterministic round-robin through
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
+| `public_export_surface` | 4 | `ftllexengine.runtime.RWLock` aliases direct implementation and appears in runtime `__all__` |
 | `reentrant_reads` | 5 | Same thread acquires read lock N times |
 | `write_reentry_rejection` | 4 | Write-to-write reentry raises RuntimeError |
 | `downgrade_rejection` | 4 | Write-to-read downgrade raises RuntimeError |
@@ -564,17 +566,18 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ## `fuzz_parse_decimal`
 
-Target: `parsing.numbers.parse_decimal`, `parsing.guards.is_valid_decimal`, `core.locale_utils` helpers -- locale-aware decimal parsing, locale normalization equivalence, locale boundary validation, Babel locale cache behavior, and system locale resolution.
+Target: `parsing.numbers.parse_decimal`, `parsing.numbers.parse_fluent_number`, `parsing.guards.is_valid_decimal`, `core.locale_utils` helpers -- locale-aware decimal parsing, FluentNumber parsing, locale normalization equivalence, locale boundary validation, Babel locale cache behavior, and system locale resolution.
 
-Concern boundary: This fuzzer owns the text-to-`Decimal` parse surface that the runtime NUMBER-formatting fuzzers do not touch. It covers canonical locale-formatted inputs, locale spelling normalization (`en-US` vs `en_US` vs mixed case), `require_locale_code()` trim/type/structure/canonicalization rules, public soft-error contracts, Babel locale cache reuse/clearing, and `get_system_locale()` precedence through environment variables and `locale.getlocale()`, including encoded `C.UTF-8` / `POSIX.UTF-8` pseudo-locale fallback.
+Concern boundary: This fuzzer owns the text-to-`Decimal` and text-to-`FluentNumber` parse surface that the runtime NUMBER-formatting fuzzers do not touch. It covers canonical locale-formatted inputs, the public `parse_decimal()` + `make_fluent_number()` composition contract exposed as `parse_fluent_number()`, locale spelling normalization (`en-US` vs `en_US` vs mixed case), `require_locale_code()` trim/type/structure/canonicalization rules, public soft-error contracts, Babel locale cache reuse/clearing, and `get_system_locale()` precedence through environment variables and `locale.getlocale()`, including encoded `C.UTF-8` / `POSIX.UTF-8` pseudo-locale fallback.
 
-Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `ParseDecimalMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `ParseDecimalMetrics` dataclass (`parse_calls`, `parse_successes`, `soft_errors`, `fluent_number_checks`, locale variant/boundary/cache/system checks). Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `canonical_values` | 14 | Known locale-formatted decimals parse to exact `Decimal` values |
+| `parse_fluent_number_api` | 12 | `parse_fluent_number()` matches public `parse_decimal()` + `make_fluent_number()` composition |
 | `locale_variants` | 12 | Equivalent locale spellings produce identical parse results |
 | `invalid_soft_error` | 12 | Invalid decimal text returns soft errors, not silent success |
 | `require_locale_code_api` | 10 | `require_locale_code()` trims/canonicalizes valid input and rejects blank, invalid, non-string, and overlong values |

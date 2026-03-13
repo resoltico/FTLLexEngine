@@ -15,7 +15,8 @@ import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.parsing import parse_decimal
+from ftllexengine.parsing import parse_decimal, parse_fluent_number
+from ftllexengine.runtime import make_fluent_number
 
 pytestmark = pytest.mark.fuzz
 
@@ -157,6 +158,32 @@ class TestParseDecimalHypothesis:
 
         assert not errors
         assert parsed == value
+
+    @given(
+        value=st.decimals(
+            min_value=Decimal("-999999.9999"),
+            max_value=Decimal("999999.9999"),
+            places=4,
+        ),
+        locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "lv_LV"]),
+    )
+    @settings(max_examples=150)
+    def test_parse_fluent_number_matches_public_composition(
+        self, value: Decimal, locale: str
+    ) -> None:
+        """parse_fluent_number matches parse_decimal() + make_fluent_number()."""
+        from ftllexengine.runtime.functions import number_format
+
+        formatted = number_format(value, locale, minimum_fraction_digits=4)
+        decimal_result, decimal_errors = parse_decimal(str(formatted), locale)
+        fluent_result, fluent_errors = parse_fluent_number(str(formatted), locale)
+        event(f"locale={locale}")
+        event(f"has_grouping={abs(value) >= Decimal(1000)}")
+
+        assert not decimal_errors
+        assert not fluent_errors
+        assert decimal_result is not None
+        assert fluent_result == make_fluent_number(decimal_result, formatted=str(formatted))
 
 
 class TestParsingMetamorphicProperties:

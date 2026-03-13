@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from ftllexengine.runtime.rwlock import RWLock
+from ftllexengine.runtime import RWLock
 
 
 class TestRWLockBasics:

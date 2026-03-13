@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.143.0"
+version: "0.153.0"
 domain: "architecture"
-updated: "2026-02-28"
+updated: "2026-03-13"
 route:
   keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCache, CacheCorruptionError, WriteConflictError, BLAKE2b, checksum, write-once, idempotent, RWLock, security, FormattingIntegrityError, SyntaxIntegrityError]
   questions: ["how does data integrity work?", "what is strict mode?", "how does cache checksum verification work?", "what is write-once mode?", "how to detect cache corruption?", "what is the data integrity architecture?"]

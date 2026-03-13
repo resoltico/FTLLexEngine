@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: INDEX
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
-  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, cache-audit, boot-validation, validate_message_variables, require_locale_code, make_fluent_number, FluentNumber, fiscal, iso, currency]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I get the cache audit log?", "how to import ISO introspection?"]
+  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, cache-audit, boot-validation, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, RWLock, fiscal, iso, currency]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I import RWLock?", "how do I get the cache audit log?", "how to import ISO introspection?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -162,7 +162,7 @@ from ftllexengine.core.babel_compat import (
 ```python
 from ftllexengine.runtime import (
     CacheAuditLogEntry, FluentBundle, FluentNumber, FluentResolver,
-    FunctionRegistry, ResolutionContext, WriteLogEntry, fluent_function,
+    FunctionRegistry, ResolutionContext, RWLock, WriteLogEntry, fluent_function,
     create_default_registry, get_shared_registry,
     number_format, datetime_format, currency_format, make_fluent_number,
     select_plural_category,
@@ -187,7 +187,7 @@ from ftllexengine.localization import (
 ```python
 from ftllexengine.parsing import (
     # Parse functions (require Babel)
-    parse_decimal, parse_date, parse_datetime, parse_currency,
+    parse_decimal, parse_fluent_number, parse_date, parse_datetime, parse_currency,
     # Type guards
     is_valid_decimal, is_valid_date, is_valid_datetime, is_valid_currency,
     # Type alias
@@ -208,9 +208,9 @@ from ftllexengine.parsing import (
 |:--------------|:------------|:-------|
 | FluentBundle, FluentLocalization, add_resource, format_pattern, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, get_cache_audit_log | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, FTLLiteral, NamedArgument, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
-| parse, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
+| parse, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
-| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
+| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, RWLock, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
 | FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, entry_dependency_set, make_cycle_key, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_variables, extract_references, extract_references_by_attribute, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
@@ -276,7 +276,7 @@ ftllexengine/
     value_types.py         # FluentNumber, make_fluent_number, FluentValue, FluentFunction, FunctionSignature
   parsing/
     __init__.py            # Parsing API exports (requires Babel; re-exports fiscal from core)
-    numbers.py             # parse_decimal
+    numbers.py             # parse_decimal, parse_fluent_number
     dates.py               # parse_date, parse_datetime
     currency.py            # parse_currency
     guards.py              # Type guards

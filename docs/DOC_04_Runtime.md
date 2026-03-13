@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: RUNTIME
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
   keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, fluent_function, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
@@ -37,7 +37,7 @@ class FluentNumber:
 - Raises: `TypeError` if `value` is `bool` (no numeric localization semantics). `ValueError` if `precision < 0` (CLDR v operand is always non-negative).
 - State: Immutable. Safe for caching.
 - Thread: Safe.
-- Usage: Returned by `number_format()`, `currency_format()`, and `make_fluent_number()`. Preserves numeric identity and precision metadata for select expressions.
+- Usage: Returned by `number_format()`, `currency_format()`, `parse_fluent_number()`, and `make_fluent_number()`. Preserves numeric identity and precision metadata for select expressions.
 - Str: `str(fluent_number)` returns `formatted` for display.
 - Plural: Precision affects CLDR plural category selection. For example, "1.00" with precision=2 selects "other" category (v=2), not "one" (v=0).
 - Import: `from ftllexengine.runtime import FluentNumber`
@@ -1119,8 +1119,8 @@ class RWLock:
 - Upgrade Limitation: Read-to-write lock upgrades are prohibited (raises RuntimeError).
 - Downgrade Limitation: Write-to-read lock downgrade is prohibited (raises RuntimeError).
 - Reentry Limitation: Write lock cannot be reacquired by the same thread (raises RuntimeError).
-- Usage: FluentBundle uses RWLock internally for concurrent format operations.
-- Import: `from ftllexengine.runtime.rwlock import RWLock`
+- Usage: FluentBundle and FluentLocalization use RWLock internally for concurrent read-heavy operations; downstream code can use the same public primitive.
+- Import: `from ftllexengine.runtime import RWLock`
 ---
 
 ## `RWLock.read`

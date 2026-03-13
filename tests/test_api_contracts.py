@@ -314,10 +314,12 @@ class TestApiReturnTypeConsistency:
             parse_date,
             parse_datetime,
             parse_decimal,
+            parse_fluent_number,
         )
 
         parse_funcs = [
             (parse_decimal, "invalid", "en_US"),
+            (parse_fluent_number, "invalid", "en_US"),
             (parse_currency, "invalid", "en_US"),
             (parse_date, "invalid", "en_US"),
             (parse_datetime, "invalid", "en_US"),
@@ -377,6 +379,16 @@ class TestFunctionSignatureStability:
         from ftllexengine.parsing import parse_decimal
 
         sig = inspect.signature(parse_decimal)
+        params = list(sig.parameters.keys())
+
+        assert params[0] == "value", "First param must be 'value'"
+        assert params[1] == "locale_code", "Second param must be 'locale_code'"
+
+    def test_parse_fluent_number_signature(self) -> None:
+        """CONTRACT: parse_fluent_number(value, locale_code) signature stable."""
+        from ftllexengine.parsing import parse_fluent_number
+
+        sig = inspect.signature(parse_fluent_number)
         params = list(sig.parameters.keys())
 
         assert params[0] == "value", "First param must be 'value'"

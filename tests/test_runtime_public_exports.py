@@ -8,9 +8,11 @@ from ftllexengine.localization import CacheAuditLogEntry as LocalizationCacheAud
 from ftllexengine.runtime import (
     CacheAuditLogEntry,
     FluentNumber,
+    RWLock,
     WriteLogEntry,
     fluent_function,
 )
+from ftllexengine.runtime.rwlock import RWLock as DirectRWLock
 
 
 def test_runtime_fluent_number_export_is_constructible() -> None:
@@ -35,3 +37,12 @@ def test_cache_audit_log_entry_public_alias_matches_write_log_entry() -> None:
     """Public audit-log alias resolves to the immutable runtime dataclass."""
     assert CacheAuditLogEntry is WriteLogEntry
     assert LocalizationCacheAuditLogEntry is WriteLogEntry
+
+
+def test_rwlock_export_matches_runtime_implementation() -> None:
+    """RWLock is importable from the public runtime facade."""
+    assert RWLock is DirectRWLock
+
+    lock = RWLock()
+    with lock.read():
+        assert lock.reader_count == 1

@@ -1,8 +1,8 @@
 """Fluent runtime package.
 
 Provides message resolution, built-in functions, manual FluentNumber helpers,
-custom function extension points, cache audit entry aliases, and the
-FluentBundle API.
+custom function extension points, cache audit entry aliases, the public RWLock
+concurrency primitive, and the FluentBundle API.
 Depends on syntax package for parsing.
 
 Python 3.13+.
@@ -24,6 +24,7 @@ from .functions import (
 from .plural_rules import select_plural_category
 from .resolution_context import ResolutionContext
 from .resolver import FluentResolver
+from .rwlock import RWLock
 from .value_types import make_fluent_number
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "FluentNumber",
     "FluentResolver",
     "FunctionRegistry",
+    "RWLock",
     "ResolutionContext",
     "ValidationResult",
     "WriteLogEntry",

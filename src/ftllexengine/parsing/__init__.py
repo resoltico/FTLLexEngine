@@ -19,6 +19,7 @@ Public API:
 
     Parsing Functions:
         parse_decimal - Returns ParseResult[Decimal]
+        parse_fluent_number - Returns ParseResult[FluentNumber]
         parse_date - Returns ParseResult[date]
         parse_datetime - Returns ParseResult[datetime]
         parse_currency - Returns ParseResult[tuple[Decimal, str]]
@@ -82,7 +83,7 @@ from .guards import (
     is_valid_datetime,
     is_valid_decimal,
 )
-from .numbers import parse_decimal
+from .numbers import parse_decimal, parse_fluent_number
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
@@ -101,6 +102,7 @@ __all__ = [
     "parse_date",
     "parse_datetime",
     "parse_decimal",
+    "parse_fluent_number",
     # Fiscal calendar
     "FiscalCalendar",
     "FiscalDelta",

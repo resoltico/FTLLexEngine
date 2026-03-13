@@ -9,7 +9,8 @@ Validates parse_decimal() across multiple locales and roundtrip correctness.
 
 from decimal import Decimal
 
-from ftllexengine.parsing import parse_decimal
+from ftllexengine.parsing import parse_decimal, parse_fluent_number
+from ftllexengine.runtime import make_fluent_number
 
 
 class TestParseDecimal:
@@ -111,6 +112,38 @@ class TestParseDecimal:
         result, errors = parse_decimal("", "en_US")
         assert len(errors) > 0
         assert result is None
+
+
+class TestParseFluentNumber:
+    """Test parse_fluent_number() composition and precision behavior."""
+
+    def test_parse_fluent_number_matches_public_composition(self) -> None:
+        """parse_fluent_number matches parse_decimal() + make_fluent_number()."""
+        parsed_decimal, decimal_errors = parse_decimal("1 234,5600", "lv_LV")
+        parsed_fluent, fluent_errors = parse_fluent_number("1 234,5600", "lv_LV")
+
+        assert not decimal_errors
+        assert not fluent_errors
+        assert parsed_decimal is not None
+        assert parsed_fluent == make_fluent_number(parsed_decimal, formatted="1 234,5600")
+
+    def test_parse_fluent_number_preserves_display_text_and_precision(self) -> None:
+        """parse_fluent_number preserves the localized string and visible precision."""
+        result, errors = parse_fluent_number("1,234.50", "en_US")
+
+        assert not errors
+        assert result is not None
+        assert result.value == Decimal("1234.50")
+        assert str(result) == "1,234.50"
+        assert result.precision == 2
+
+    def test_parse_fluent_number_invalid_returns_error(self) -> None:
+        """Invalid localized numbers return the same soft-error contract."""
+        result, errors = parse_fluent_number("invalid", "en_US")
+
+        assert result is None
+        assert len(errors) == 1
+        assert errors[0].parse_type == "decimal"
 
 
 class TestRoundtrip:

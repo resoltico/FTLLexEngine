@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: parse_decimal - Locale-aware decimal parsing and locale utils
+# FUZZ_PLUGIN: parse_decimal - Locale-aware decimal parsing, FluentNumber parsing, and locale utils
 # Intentional: This header is intentionally placed for dynamic plugin discovery.
 # CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
 # FUZZ_PLUGIN_HEADER_END
@@ -8,12 +8,14 @@
 
 Targets:
 - ftllexengine.parsing.numbers.parse_decimal
+- ftllexengine.parsing.numbers.parse_fluent_number
 - ftllexengine.parsing.guards.is_valid_decimal
 - ftllexengine.core.locale_utils helpers used by parse_decimal
 
 Concern boundary: this fuzzer targets the text-to-Decimal API surface rather
 than runtime formatting. It exercises:
 - parse_decimal() success and soft-error contracts
+- parse_fluent_number() composition and visible-precision contracts
 - locale normalization equivalence (BCP-47 vs POSIX vs mixed case)
 - require_locale_code() trim/type/structure/canonicalization boundary checks
 - Babel locale cache behavior and cache clearing
@@ -80,6 +82,7 @@ class ParseDecimalMetrics:
     parse_calls: int = 0
     parse_successes: int = 0
     soft_errors: int = 0
+    fluent_number_checks: int = 0
     locale_variant_checks: int = 0
     locale_boundary_checks: int = 0
     type_guard_checks: int = 0
@@ -101,6 +104,7 @@ _ALLOWED_EXCEPTIONS = (
 
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("canonical_values", 14),
+    ("parse_fluent_number_api", 12),
     ("locale_variants", 12),
     ("invalid_soft_error", 12),
     ("require_locale_code_api", 10),
@@ -147,7 +151,7 @@ _state = BaseFuzzerState(
     checkpoint_interval=500,
     seed_corpus_max_size=250,
     fuzzer_name="parse_decimal",
-    fuzzer_target="parse_decimal, is_valid_decimal, locale_utils",
+    fuzzer_target="parse_decimal, parse_fluent_number, is_valid_decimal, locale_utils",
     pattern_intended_weights={name: float(weight) for name, weight in _PATTERN_WEIGHTS},
 )
 _domain = ParseDecimalMetrics()
@@ -159,6 +163,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["parse_calls"] = _domain.parse_calls
     stats["parse_successes"] = _domain.parse_successes
     stats["soft_errors"] = _domain.soft_errors
+    stats["fluent_number_checks"] = _domain.fluent_number_checks
     stats["locale_variant_checks"] = _domain.locale_variant_checks
     stats["locale_boundary_checks"] = _domain.locale_boundary_checks
     stats["type_guard_checks"] = _domain.type_guard_checks
@@ -196,7 +201,12 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         require_locale_code,
     )
     from ftllexengine.diagnostics.errors import FrozenFluentError
-    from ftllexengine.parsing import is_valid_decimal, parse_decimal
+    from ftllexengine.parsing import (
+        is_valid_decimal,
+        parse_decimal,
+        parse_fluent_number,
+    )
+    from ftllexengine.runtime import FluentNumber, make_fluent_number
 
 
 def _assert_parse_contract(
@@ -218,6 +228,38 @@ def _assert_parse_contract(
 
     if result is None and not errors:
         msg = "parse_decimal returned neither result nor errors"
+        raise ParseDecimalFuzzError(msg)
+
+
+def _assert_fluent_parse_contract(
+    result: FluentNumber | None,
+    errors: tuple[FrozenFluentError, ...],
+) -> None:
+    """Validate parse_fluent_number's soft-result contract."""
+    if not isinstance(errors, tuple):
+        msg = (
+            "parse_fluent_number errors must be tuple[FrozenFluentError, ...], "
+            f"got {type(errors).__name__}"
+        )
+        raise ParseDecimalFuzzError(msg)
+
+    if any(not isinstance(error, FrozenFluentError) for error in errors):
+        msg = "parse_fluent_number returned non-FrozenFluentError entries"
+        raise ParseDecimalFuzzError(msg)
+
+    if result is not None and not isinstance(result, FluentNumber):
+        msg = (
+            "parse_fluent_number returned non-FluentNumber result type "
+            f"{type(result).__name__}"
+        )
+        raise ParseDecimalFuzzError(msg)
+
+    if result is not None and errors:
+        msg = f"parse_fluent_number returned both result={result!r} and errors"
+        raise ParseDecimalFuzzError(msg)
+
+    if result is None and not errors:
+        msg = "parse_fluent_number returned neither result nor errors"
         raise ParseDecimalFuzzError(msg)
 
 
@@ -272,6 +314,46 @@ def _pattern_locale_variants(fdp: atheris.FuzzedDataProvider) -> None:
         raise ParseDecimalFuzzError(msg)
 
     _domain.parse_successes += len(results)
+
+
+def _pattern_parse_fluent_number_api(fdp: atheris.FuzzedDataProvider) -> None:
+    """parse_fluent_number matches public parse_decimal + make_fluent_number composition."""
+    _domain.fluent_number_checks += 1
+    if fdp.ConsumeBool():
+        value, locale, _expected_decimal = fdp.PickValueInList(list(_CANONICAL_CASES))
+    else:
+        value = fdp.PickValueInList(list(_INVALID_INPUTS))
+        locale = "en_US"
+
+    decimal_result, decimal_errors = parse_decimal(value, locale)
+    fluent_result, fluent_errors = parse_fluent_number(value, locale)
+    _assert_parse_contract(decimal_result, decimal_errors)
+    _assert_fluent_parse_contract(fluent_result, fluent_errors)
+
+    if fluent_errors != decimal_errors:
+        msg = (
+            "parse_fluent_number error contract diverged from parse_decimal: "
+            f"{fluent_errors!r} != {decimal_errors!r}"
+        )
+        raise ParseDecimalFuzzError(msg)
+
+    if decimal_result is None:
+        if fluent_result is not None:
+            msg = "parse_fluent_number succeeded when parse_decimal failed"
+            raise ParseDecimalFuzzError(msg)
+        return
+
+    expected = make_fluent_number(decimal_result, formatted=value)
+    if fluent_result != expected:
+        msg = (
+            f"parse_fluent_number({value!r}, {locale!r}) -> {fluent_result!r}, "
+            f"expected {expected!r}"
+        )
+        raise ParseDecimalFuzzError(msg)
+
+    if fluent_result is None or str(fluent_result) != value:
+        msg = f"parse_fluent_number did not preserve display text {value!r}"
+        raise ParseDecimalFuzzError(msg)
 
 
 def _pattern_invalid_soft_error(fdp: atheris.FuzzedDataProvider) -> None:
@@ -540,6 +622,7 @@ def _pattern_raw_unicode_stability(fdp: atheris.FuzzedDataProvider) -> None:
 
 _PATTERN_DISPATCH: dict[str, Any] = {
     "canonical_values": _pattern_canonical_values,
+    "parse_fluent_number_api": _pattern_parse_fluent_number_api,
     "locale_variants": _pattern_locale_variants,
     "invalid_soft_error": _pattern_invalid_soft_error,
     "require_locale_code_api": _pattern_require_locale_code_api,
@@ -551,7 +634,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
 
 
 def test_one_input(data: bytes) -> None:
-    """Atheris entry point for parse_decimal and locale utility invariants."""
+    """Atheris entry point for parse_decimal, parse_fluent_number, and locale invariants."""
     if _state.iterations == 0:
         _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
 
@@ -602,7 +685,7 @@ def test_one_input(data: bytes) -> None:
 def main() -> None:
     """Run the parse_decimal fuzzer with CLI support."""
     parser = argparse.ArgumentParser(
-        description="Locale-aware parse_decimal and locale-utils fuzzer",
+        description="Locale-aware parse_decimal/parse_fluent_number and locale-utils fuzzer",
         epilog="All unrecognized arguments are passed to libFuzzer.",
     )
     parser.add_argument(
@@ -625,11 +708,12 @@ def main() -> None:
 
     print_fuzzer_banner(
         title="parse_decimal Fuzzer (Atheris)",
-        target="parse_decimal, is_valid_decimal, locale_utils",
+        target="parse_decimal, parse_fluent_number, is_valid_decimal, locale_utils",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
         extra_lines=(
-            "Focus:      locale-aware decimal parsing and locale normalization",
+            "Focus:      locale-aware decimal parsing, FluentNumber parsing, "
+            "and locale normalization",
         ),
     )
 

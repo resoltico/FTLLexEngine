@@ -207,6 +207,28 @@ class TestParseDecimalBabelUnavailable:
             _bc._babel_available = None
 
 
+class TestParseFluentNumberBabelUnavailable:
+    """Test parse_fluent_number when Babel is not installed."""
+
+    def test_parse_fluent_number_raises_babel_import_error(self) -> None:
+        """parse_fluent_number raises BabelImportError when Babel unavailable."""
+        from ftllexengine.parsing.numbers import parse_fluent_number
+
+        _bc._babel_available = None
+        mock_import = _make_import_blocker("babel")
+
+        try:
+            with (
+                patch.object(builtins, "__import__", side_effect=mock_import),
+                pytest.raises(BabelImportError) as exc_info,
+            ):
+                parse_fluent_number("1,234.56", "en_US")
+
+            assert "parse_fluent_number" in str(exc_info.value)
+        finally:
+            _bc._babel_available = None
+
+
 class TestResolverPluralBabelUnavailable:
     """Test FluentResolver plural matching when Babel is not installed."""
 

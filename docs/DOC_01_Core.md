@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.152.0"
+version: "0.153.0"
 domain: CORE
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]

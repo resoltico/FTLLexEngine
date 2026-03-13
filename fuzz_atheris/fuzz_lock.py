@@ -6,7 +6,9 @@
 # FUZZ_PLUGIN_HEADER_END
 """RWLock Contention Fuzzer (Atheris).
 
-Targets: ftllexengine.runtime.rwlock.RWLock
+Targets:
+- ftllexengine.runtime.RWLock
+- ftllexengine.runtime.rwlock.RWLock
 
 Concern boundary: This fuzzer stress-tests the RWLock concurrency primitive
 directly. Tests reader/writer mutual exclusion, reader concurrency, writer
@@ -17,6 +19,7 @@ rejection, zero-timeout non-blocking paths, and deadlock detection.
 Distinct from runtime/cache fuzzers which exercise locking only as a side effect.
 
 Metrics:
+- Public export checks (`ftllexengine.runtime.RWLock`)
 - Pattern coverage (reader_writer_exclusion, reentrant_reads, etc.)
 - Weight skew detection (actual vs intended distribution)
 - Performance profiling (min/mean/median/p95/p99/max)
@@ -82,6 +85,7 @@ class LockMetrics:
     """Domain-specific metrics for lock contention fuzzer."""
 
     deadlocks_detected: int = 0
+    public_export_checks: int = 0
     timeouts: int = 0
     thread_creation_count: int = 0
     max_concurrent_threads: int = 0
@@ -91,7 +95,7 @@ class LockMetrics:
 
 _state = BaseFuzzerState(
     fuzzer_name="lock",
-    fuzzer_target="RWLock concurrency",
+    fuzzer_target="RWLock public export and concurrency",
 )
 _domain = LockMetrics()
 
@@ -107,6 +111,7 @@ _THREAD_TIMEOUT = 2.0
 #
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     # Cheap: single-threaded, no thread creation, sub-0.02ms
+    ("public_export_surface", 4),
     ("reentrant_reads", 5),
     ("write_reentry_rejection", 4),
     ("downgrade_rejection", 4),
@@ -154,6 +159,7 @@ def _build_stats_dict() -> dict[str, Any]:
 
     # Lock-specific domain metrics
     stats["deadlocks_detected"] = _domain.deadlocks_detected
+    stats["public_export_checks"] = _domain.public_export_checks
     stats["timeouts"] = _domain.timeouts
     stats["thread_creation_count"] = _domain.thread_creation_count
     stats["max_concurrent_threads"] = _domain.max_concurrent_threads
@@ -188,7 +194,9 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 atheris.enabled_hooks.add("str")
 
 with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine.runtime.rwlock import RWLock
+    import ftllexengine.runtime as runtime_public
+    from ftllexengine.runtime import RWLock
+    from ftllexengine.runtime.rwlock import RWLock as DirectRWLock
 
 
 def _join_threads(threads: list[threading.Thread]) -> bool:
@@ -208,6 +216,25 @@ def _track_threads(count: int) -> None:
 
 
 # --- Pattern Implementations ---
+
+def _pattern_public_export_surface(_fdp: atheris.FuzzedDataProvider) -> None:
+    """Public runtime facade exports the canonical RWLock symbol."""
+    _domain.public_export_checks += 1
+
+    if RWLock is not DirectRWLock:
+        msg = "ftllexengine.runtime.RWLock is not the direct implementation alias"
+        raise LockFuzzError(msg)
+
+    if "RWLock" not in runtime_public.__all__:
+        msg = "RWLock missing from ftllexengine.runtime.__all__"
+        raise LockFuzzError(msg)
+
+    lock = RWLock()
+    with lock.read():
+        if lock.reader_count != 1:
+            msg = f"RWLock public export reader_count mismatch: {lock.reader_count}"
+            raise LockFuzzError(msg)
+
 
 def _pattern_reader_writer_exclusion(fdp: atheris.FuzzedDataProvider) -> None:
     """Core invariant: readers and writers are mutually exclusive."""
@@ -782,6 +809,7 @@ def _pattern_zero_timeout_nonblocking(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 _PATTERN_DISPATCH: dict[str, Any] = {
+    "public_export_surface": _pattern_public_export_surface,
     "reentrant_reads": _pattern_reentrant_reads,
     "write_reentry_rejection": _pattern_write_reentry_rejection,
     "downgrade_rejection": _pattern_downgrade_rejection,
@@ -853,7 +881,7 @@ def test_one_input(data: bytes) -> None:
 def main() -> None:
     """Run the RWLock contention fuzzer with CLI support."""
     parser = argparse.ArgumentParser(
-        description="RWLock contention fuzzer using Atheris/libFuzzer",
+        description="RWLock public-export and contention fuzzer using Atheris/libFuzzer",
         epilog="All unrecognized arguments are passed to libFuzzer.",
     )
     parser.add_argument(
@@ -881,7 +909,7 @@ def main() -> None:
 
     print_fuzzer_banner(
         title="RWLock Contention Fuzzer (Atheris)",
-        target="RWLock",
+        target="RWLock public export + concurrency",
         state=_state,
         schedule_len=len(_PATTERN_SCHEDULE),
     )
