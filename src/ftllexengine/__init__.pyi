@@ -65,9 +65,10 @@ from .introspection.message import validate_message_variables as validate_messag
 # Localization and runtime (requires Babel)
 from .localization import FluentLocalization as FluentLocalization
 from .runtime import FluentBundle as FluentBundle
+from .runtime import FluentNumber as FluentNumber
+from .runtime import fluent_function as fluent_function
 from .runtime import make_fluent_number as make_fluent_number
 from .runtime.cache_config import CacheConfig as CacheConfig
-from .runtime.function_bridge import fluent_function as fluent_function
 from .runtime.value_types import FluentValue as FluentValue
 
 # Syntax API (no Babel required)
@@ -92,6 +93,7 @@ __all__: list[str] = [
     # Bundle and Localization (Babel-optional; absent in parser-only installs)
     "CacheConfig",
     "FluentBundle",
+    "FluentNumber",
     "FluentLocalization",
     "FluentValue",
     "fluent_function",

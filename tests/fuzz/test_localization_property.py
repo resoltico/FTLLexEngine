@@ -18,6 +18,7 @@ import pytest
 from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.localization import (
     FluentLocalization,
     LoadStatus,
@@ -355,13 +356,7 @@ class TestPathResourceLoaderInvariants:
         assert loader._resolved_root == Path(root_dir).resolve()
 
     @given(
-        locale=st.text(
-            alphabet=st.characters(
-                whitelist_categories=("Ll", "Lu", "Nd"),
-                blacklist_characters="/\\.",
-            ),
-            min_size=1, max_size=10,
-        ),
+        locale=st.from_regex(r"[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)*", fullmatch=True),
     )
     def test_valid_locales_pass_validation(self, locale: str) -> None:
         """Locale codes without path separators or .. pass validation."""
@@ -377,14 +372,14 @@ class TestPathResourceLoaderInvariants:
     def test_unsafe_locales_rejected(self, locale: str) -> None:
         """Locales with path traversal or separators are rejected."""
         event("outcome=locale_rejected")
-        with pytest.raises(ValueError, match="not allowed in locale"):
+        with pytest.raises(ValueError, match=r"Invalid locale:"):
             PathResourceLoader._validate_locale(locale)
 
     @given(st.just(""))
     def test_empty_locale_rejected(self, locale: str) -> None:
         """Empty locale string is rejected."""
         event("outcome=empty_locale")
-        with pytest.raises(ValueError, match="cannot be empty"):
+        with pytest.raises(ValueError, match="locale cannot be blank"):
             PathResourceLoader._validate_locale(locale)
 
     @given(
@@ -469,7 +464,7 @@ class TestFluentLocalizationOrchestration:
         """Locale deduplication preserves first-occurrence order."""
         event(f"locale_count={len(locales)}")
         l10n = FluentLocalization(locales)
-        expected = tuple(dict.fromkeys(locales))
+        expected = tuple(dict.fromkeys(normalize_locale(locale) for locale in locales))
         assert l10n.locales == expected
 
     @given(locales=locale_chains(min_size=1, max_size=3))
@@ -939,8 +934,8 @@ class TestFallbackCallback:
         l10n.format_value(mid)
         if len(locales) > 1:
             assert len(events) == 1
-            assert events[0].requested_locale == locales[0]
-            assert events[0].resolved_locale == locales[-1]
+            assert events[0].requested_locale == normalize_locale(locales[0])
+            assert events[0].resolved_locale == normalize_locale(locales[-1])
             assert events[0].message_id == mid
 
     @given(
@@ -1022,12 +1017,13 @@ class TestValidationEdgeCases:
     def test_add_resource_whitespace_locale_rejected(
         self, locale: str, ws: str, position: str,
     ) -> None:
-        """add_resource rejects locales with leading/trailing whitespace."""
+        """add_resource trims locale boundaries and resolves them canonically."""
         event(f"position={position}")
         padded = ws + locale if position == "leading" else locale + ws
         l10n = FluentLocalization([locale])
-        with pytest.raises(ValueError, match="whitespace"):
-            l10n.add_resource(padded, "msg = test")
+        l10n.add_resource(padded, "msg = test")
+        assert l10n.has_message("msg")
+        assert l10n.locales == (normalize_locale(locale),)
 
     @given(
         locale=st.sampled_from(["en", "de"]),

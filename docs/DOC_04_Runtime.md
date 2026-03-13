@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.151.0"
+version: "0.152.0"
 domain: RUNTIME
 updated: "2026-03-12"
 route:
-  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
+  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, fluent_function, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
 ---
 
 # Runtime Reference
@@ -40,7 +40,8 @@ class FluentNumber:
 - Usage: Returned by `number_format()`, `currency_format()`, and `make_fluent_number()`. Preserves numeric identity and precision metadata for select expressions.
 - Str: `str(fluent_number)` returns `formatted` for display.
 - Plural: Precision affects CLDR plural category selection. For example, "1.00" with precision=2 selects "other" category (v=2), not "one" (v=0).
-- Import: `from ftllexengine.runtime.value_types import FluentNumber`
+- Import: `from ftllexengine.runtime import FluentNumber`
+- Also available: `from ftllexengine import FluentNumber`
 
 ---
 
@@ -101,7 +102,8 @@ def number_format(
 
 ### Constraints
 - Return: `FluentNumber` with formatted string, original numeric value, and precision metadata.
-- Raises: Never. Invalid locales fall back to en_US with a logged warning.
+- Raises: `TypeError` / `ValueError` for invalid locale boundary values.
+- Raises: Unknown but structurally valid locales fall back to en_US with a logged warning.
 - State: None.
 - Thread: Safe.
 - Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
@@ -136,7 +138,9 @@ def datetime_format(
 
 ### Constraints
 - Return: Formatted date/datetime string.
-- Raises: `FrozenFluentError` (FORMATTING) for invalid ISO 8601 strings. Invalid locales fall back to en_US.
+- Raises: `FrozenFluentError` (FORMATTING) for invalid ISO 8601 strings.
+- Raises: `TypeError` / `ValueError` for invalid locale boundary values.
+- Raises: Unknown but structurally valid locales fall back to en_US.
 - State: None.
 - Thread: Safe.
 
@@ -167,7 +171,8 @@ def currency_format(
 
 ### Constraints
 - Return: `FluentNumber` with formatted currency string and computed precision. Enables CURRENCY results as selectors in plural/select expressions.
-- Raises: Never. Invalid locales fall back to en_US with a logged warning.
+- Raises: `TypeError` / `ValueError` for invalid locale boundary values.
+- Raises: Unknown but structurally valid locales fall back to en_US with a logged warning.
 - State: None.
 - Thread: Safe.
 - Rounding: Pre-quantizes with `ROUND_HALF_UP` to exact display precision before passing to Babel. For standard format: uses `get_currency_precision(currency)` (CLDR digit count, e.g., 0 for JPY, 3 for BHD, 2 for USD). For custom `pattern`: extracts max fraction digits from the pattern via `parse_pattern`. Babel's default `ROUND_HALF_EVEN` is bypassed. Midpoint values round away from zero: `Decimal("123.445")` in USD → `"$123.45"`. Non-finite `Decimal` values bypass quantization.
@@ -513,7 +518,8 @@ def fluent_function[F: Callable[..., FluentValue]](func: None = None, *, inject_
 ### Constraints
 - Return: Decorated function with Fluent metadata attributes.
 - Thread: Safe.
-- Import: `from ftllexengine import fluent_function`
+- Import: `from ftllexengine.runtime import fluent_function`
+- Also available: `from ftllexengine import fluent_function`
 
 ---
 
@@ -584,7 +590,7 @@ def CUSTOM_FUNCTION(
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
 | First positional | `FluentValue` | Y | Primary input value. |
-| `locale_code` | `str` | Opt | Locale code (positional-only). Only present when `@fluent_function(inject_locale=True)` is applied. |
+| `locale_code` | `str` | Opt | Canonical lowercase underscore locale code (positional-only). Only present when `@fluent_function(inject_locale=True)` is applied. |
 | Keyword args | `FluentValue` | N | Named options. |
 
 ### Constraints
@@ -592,7 +598,7 @@ def CUSTOM_FUNCTION(
 - Raises: Should not raise. Return fallback on error.
 - State: Should be stateless.
 - Thread: Should be safe.
-- Locale: `locale_code` is NOT automatically injected. Use `@fluent_function(inject_locale=True)` to opt in. Without it, the function receives only the FTL positional arg and keyword args.
+- Locale: `locale_code` is NOT automatically injected. Use `@fluent_function(inject_locale=True)` to opt in. When injected, it is the bundle's canonical lowercase underscore `LocaleCode`.
 
 ---
 
@@ -1577,11 +1583,16 @@ def verify(self) -> bool:
 
 ---
 
-## `WriteLogEntry`
+## `CacheAuditLogEntry`
 
-Immutable audit log entry for cache operations.
+Public alias for the immutable audit log entry used by cache-observability APIs.
 
 ### Signature
+```python
+CacheAuditLogEntry = WriteLogEntry
+```
+
+### Underlying Dataclass
 ```python
 @dataclass(frozen=True, slots=True)
 class WriteLogEntry:
@@ -1605,7 +1616,8 @@ class WriteLogEntry:
 - Immutable: Frozen dataclass with slots.
 - Purpose: Post-mortem analysis and debugging when audit logging enabled.
 - Facade: Returned by `FluentBundle.get_cache_audit_log()` and `FluentLocalization.get_cache_audit_log()`.
-- Import: `from ftllexengine.runtime.cache import WriteLogEntry`
+- Import: `from ftllexengine.runtime import CacheAuditLogEntry`
+- Identity: `CacheAuditLogEntry is WriteLogEntry`
 
 ---
 
@@ -1619,7 +1631,7 @@ def get_audit_log(self) -> tuple[WriteLogEntry, ...]:
 ```
 
 ### Constraints
-- Return: Tuple of WriteLogEntry instances (empty if audit disabled).
+- Return: Tuple of audit-log entry instances (empty if audit disabled).
 - Prefer: Use bundle/localization facade accessors unless managing `IntegrityCache` directly.
 - State: Read-only.
 - Thread: Safe.

@@ -34,6 +34,7 @@ from babel import numbers as babel_numbers
 import ftllexengine.core.babel_compat as _bc
 from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
 from ftllexengine.core.babel_compat import BabelImportError
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -252,7 +253,7 @@ class TestLocaleContextCacheManagement:
         LocaleContext.clear_cache()
 
         ctx1 = LocaleContext.create("fr-FR")
-        assert ctx1.locale_code == "fr-FR"
+        assert ctx1.locale_code == "fr_fr"
 
         ctx2 = LocaleContext.create("fr-FR")
         assert ctx1 is ctx2
@@ -274,7 +275,7 @@ class TestLocaleContextCreate:
         """create() returns LocaleContext for valid locale."""
         ctx = LocaleContext.create("en-US")
         assert isinstance(ctx, LocaleContext)
-        assert ctx.locale_code == "en-US"
+        assert ctx.locale_code == "en_us"
 
     def test_create_unknown_locale_returns_context(self) -> None:
         """create() returns LocaleContext for unknown locale."""
@@ -282,7 +283,7 @@ class TestLocaleContextCreate:
         result = LocaleContext.create("xx-UNKNOWN")
 
         assert isinstance(result, LocaleContext)
-        assert result.locale_code == "xx-UNKNOWN"
+        assert result.locale_code == "xx_unknown"
         assert result.is_fallback is True
 
     def test_create_unknown_locale_warns(
@@ -300,22 +301,15 @@ class TestLocaleContextCreate:
             for r in caplog.records
         )
 
-    def test_create_invalid_format_warns(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """create() logs warning for invalid locale format."""
+    def test_create_invalid_format_raises(self) -> None:
+        """create() rejects structurally invalid locale boundary values."""
         LocaleContext.clear_cache()
 
-        with caplog.at_level(logging.WARNING):
+        with pytest.raises(ValueError, match=r"Invalid locale_code: '!!!INVALID@@@'"):
             LocaleContext.create("!!!INVALID@@@")
 
-        assert any(
-            "locale" in r.message.lower()
-            for r in caplog.records
-        )
-
     def test_create_unknown_locale_uses_en_us(self) -> None:
-        """create() uses en_US formatting for invalid locales."""
+        """create() uses en_US formatting for unknown locales."""
         ctx = LocaleContext.create("invalid-locale-xyz")
         locale = ctx.babel_locale
 
@@ -329,7 +323,7 @@ class TestLocaleContextCreateOrRaise:
         """create_or_raise() returns LocaleContext for valid locale."""
         ctx = LocaleContext.create_or_raise("en-US")
         assert isinstance(ctx, LocaleContext)
-        assert ctx.locale_code == "en-US"
+        assert ctx.locale_code == "en_us"
         assert ctx.is_fallback is False
 
     def test_create_or_raise_unknown_locale_raises(self) -> None:
@@ -341,9 +335,9 @@ class TestLocaleContextCreateOrRaise:
 
     def test_create_or_raise_invalid_format_raises(self) -> None:
         """create_or_raise() raises ValueError for invalid format."""
-        with pytest.raises(ValueError, match=r"locale"):
+        with pytest.raises(ValueError, match=r"Invalid locale_code: 'not a valid locale'"):
             LocaleContext.create_or_raise(
-                "not-a-valid-locale-at-all"
+                "not a valid locale"
             )
 
     def test_create_or_raise_error_contains_locale_code(
@@ -358,7 +352,7 @@ class TestLocaleContextCreateOrRaise:
             ) as exc_info:
                 LocaleContext.create_or_raise(locale_code)
 
-            assert locale_code in str(exc_info.value)
+            assert normalize_locale(locale_code) in str(exc_info.value)
 
 
 # ============================================================================
@@ -1181,10 +1175,8 @@ class TestLongLocaleCodeCoverage:
         assert any("exceeds" in msg for msg in relevant)
         assert ctx.is_fallback is True
 
-    def test_long_invalid_format_locale_code_warns(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Long invalid format locale code triggers warning."""
+    def test_long_invalid_format_locale_code_rejected(self) -> None:
+        """Long structurally invalid locale code is rejected before runtime fallback."""
         from ftllexengine.constants import (  # noqa: PLC0415 - import inside function
             MAX_LOCALE_CODE_LENGTH,
         )
@@ -1196,20 +1188,8 @@ class TestLongLocaleCodeCoverage:
         )
         assert len(long_invalid) > MAX_LOCALE_CODE_LENGTH
 
-        with caplog.at_level(logging.WARNING):
-            ctx = LocaleContext.create(long_invalid)
-
-        relevant = [
-            r.message
-            for r in caplog.records
-            if "locale" in r.message.lower()
-        ]
-        assert any(
-            "exceeds" in msg
-            and ("Invalid" in msg or "invalid" in msg)
-            for msg in relevant
-        )
-        assert ctx.is_fallback is True
+        with pytest.raises(ValueError, match=r"Invalid locale_code:"):
+            LocaleContext.create(long_invalid)
 
 
 # ============================================================================
@@ -1409,7 +1389,7 @@ class TestLocaleContextCacheRaceCondition:
         locale_code = "en_US"
         ctx = LocaleContext.create(locale_code)
 
-        cache_key = locale_code.lower().replace("-", "_")
+        cache_key = normalize_locale(locale_code)
         with LocaleContext._cache_lock:  # pylint: disable=protected-access
             LocaleContext._cache.clear()  # pylint: disable=protected-access
             LocaleContext._cache[cache_key] = ctx  # pylint: disable=protected-access

@@ -8,6 +8,7 @@ and cache error collection memory bounding.
 import pytest
 
 from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.cache import IntegrityCache
@@ -159,7 +160,7 @@ class TestSecLocaleUnbounded001:
 
         for locale in valid_locales:
             bundle = FluentBundle(locale)
-            assert bundle.locale == locale
+            assert bundle.locale == normalize_locale(locale)
 
     def test_bundle_error_message_shows_actual_length(self) -> None:
         """Error message for oversized locale shows actual length."""

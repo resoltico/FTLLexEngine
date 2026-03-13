@@ -6,7 +6,6 @@ Python 3.13+. External dependency: Babel (CLDR locale data).
 from __future__ import annotations
 
 import logging
-import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -17,11 +16,10 @@ from ftllexengine.constants import (
     FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
     MAX_DEPTH,
-    MAX_LOCALE_LENGTH_HARD_LIMIT,
     MAX_SOURCE_SIZE,
 )
 from ftllexengine.core.depth_guard import depth_clamp
-from ftllexengine.core.locale_utils import get_system_locale
+from ftllexengine.core.locale_utils import get_system_locale, require_locale_code
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -36,7 +34,7 @@ from ftllexengine.integrity import (
     SyntaxIntegrityError,
 )
 from ftllexengine.introspection import extract_variables, introspect_message
-from ftllexengine.runtime.cache import CacheStats, IntegrityCache, WriteLogEntry
+from ftllexengine.runtime.cache import CacheAuditLogEntry, CacheStats, IntegrityCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -48,6 +46,7 @@ from ftllexengine.validation import validate_resource as _validate_resource_impl
 
 if TYPE_CHECKING:
     from ftllexengine.introspection import MessageIntrospection
+    from ftllexengine.localization.types import LocaleCode
     from ftllexengine.runtime.cache_config import CacheConfig
     from ftllexengine.runtime.value_types import FluentValue
 
@@ -57,51 +56,6 @@ logger = logging.getLogger(__name__)
 
 # Logging truncation limit for warning messages (surfaced to users, more context helpful).
 _LOG_TRUNCATE_WARNING: int = 100
-
-# BCP 47 locale code pattern (ASCII-only alphanumerics with underscore/hyphen separators).
-# The first subtag MUST start with an ASCII letter per BCP 47: language subtags are
-# alpha-only (ISO 639), and numeric-only first subtags (e.g., "123_US") are not valid
-# locale codes. Rejects non-ASCII characters like accented letters (e.g., "e_FR" with
-# accented e). Uses \Z instead of $ to match only at end-of-string, not before trailing
-# newline.
-_LOCALE_PATTERN: re.Pattern[str] = re.compile(r"^[a-zA-Z][a-zA-Z0-9]*([_-][a-zA-Z0-9]+)*\Z")
-
-
-def _validate_locale_format(locale: str) -> None:
-    """Validate locale code format (module-level for cross-module access).
-
-    Checks that locale is non-empty and contains only ASCII alphanumeric
-    characters with optional underscore or hyphen separators. Enforces
-    BCP 47 compliance by rejecting non-ASCII characters.
-
-    Rejects obviously malicious inputs (>1000 characters) to prevent DoS.
-
-    Args:
-        locale: Locale code to validate
-
-    Raises:
-        ValueError: If locale code is empty, excessively long (>1000),
-            contains non-ASCII characters, or has invalid format
-    """
-    if not locale:
-        msg = "Locale code cannot be empty"
-        raise ValueError(msg)
-
-    if len(locale) > MAX_LOCALE_LENGTH_HARD_LIMIT:
-        msg = (
-            f"Locale code exceeds maximum length of {MAX_LOCALE_LENGTH_HARD_LIMIT} characters: "
-            f"'{locale[:50]}...' ({len(locale)} characters)"
-        )
-        raise ValueError(msg)
-
-    if not _LOCALE_PATTERN.match(locale):
-        msg = (
-            f"Invalid locale code format: '{locale}'. "
-            f"Locale must be ASCII alphanumeric with optional underscore or hyphen separators. "
-            f"Use BCP 47 format (e.g., 'en-US', 'de-DE', 'zh-Hans-CN'). "
-            f"Strip charset suffixes such as '.UTF-8' from POSIX locale strings."
-        )
-        raise ValueError(msg)
 
 
 @dataclass(slots=True)
@@ -194,27 +148,6 @@ class FluentBundle:
         "_use_isolating",
     )
 
-    @staticmethod
-    def _validate_locale_format(locale: str) -> None:
-        """Validate locale code format.
-
-        Checks that locale is non-empty and contains only ASCII alphanumeric
-        characters with optional underscore or hyphen separators. Enforces
-        BCP 47 compliance by rejecting non-ASCII characters.
-
-        Rejects obviously malicious inputs (>1000 characters) to prevent DoS.
-        Locale codes exceeding standard BCP 47 length (35 chars) trigger warnings
-        in LocaleContext but are accepted here.
-
-        Args:
-            locale: Locale code to validate
-
-        Raises:
-            ValueError: If locale code is empty, excessively long (>1000),
-                contains non-ASCII characters, or has invalid format
-        """
-        _validate_locale_format(locale)
-
     def __init__(
         self,
         locale: str,
@@ -284,15 +217,9 @@ class FluentBundle:
             >>> # Audit-enabled cache for compliance
             >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
         """
-        # Validate locale format on the raw input.
-        FluentBundle._validate_locale_format(locale)
-
-        # Store the original locale string for public API consistency.
-        # Callers expect bundle.locale to return what they passed in.
-        # Normalization is applied at the specific call sites that require it
-        # (e.g., LocaleContext.create) so that equivalent locale codes share
-        # cached objects even when spelled differently ("en-US" vs "en_US").
-        self._locale = locale
+        # Canonicalize at the boundary so every runtime-facing locale API uses
+        # the same LocaleCode representation.
+        self._locale: LocaleCode = require_locale_code(locale, "locale")
         self._use_isolating = use_isolating
         self._strict = strict
         self._messages: dict[str, Message] = {}
@@ -363,23 +290,23 @@ class FluentBundle:
 
         logger.info(
             "FluentBundle initialized for locale: %s (use_isolating=%s, cache=%s, strict=%s)",
-            locale,
+            self._locale,
             use_isolating,
             "enabled" if cache is not None else "disabled",
             strict,
         )
 
     @property
-    def locale(self) -> str:
-        """Get the locale code for this bundle (read-only).
+    def locale(self) -> LocaleCode:
+        """Get the canonical locale code for this bundle (read-only).
 
         Returns:
-            str: Locale code (e.g., "en_US", "lv_LV")
+            LocaleCode: Canonical lowercase POSIX locale code (e.g., "en_us", "lv_lv")
 
         Example:
             >>> bundle = FluentBundle("lv_LV")
             >>> bundle.locale
-            'lv_LV'
+            'lv_lv'
         """
         return self._locale
 
@@ -560,8 +487,8 @@ class FluentBundle:
 
         Example:
             >>> bundle = FluentBundle.for_system_locale()
-            >>> bundle.locale  # Returns detected system locale
-            'en_US'
+            >>> bundle.locale  # Returns canonical detected system locale
+            'en_us'
         """
         # Delegate to unified locale detection (raises RuntimeError on failure)
         system_locale = get_system_locale(raise_on_failure=True)
@@ -586,7 +513,7 @@ class FluentBundle:
         Example:
             >>> bundle = FluentBundle("lv_LV")
             >>> repr(bundle)
-            "FluentBundle(locale='lv_LV', messages=0, terms=0)"
+            "FluentBundle(locale='lv_lv', messages=0, terms=0)"
         """
         with self._rwlock.read():
             return (
@@ -616,15 +543,14 @@ class FluentBundle:
             'en_US'
 
         Note:
-            This creates a LocaleContext temporarily to access Babel locale information.
-            The return value shows what locale Babel is using for CLDR-based formatting.
+            This creates a LocaleContext temporarily to access Babel locale
+            information. The return value shows the Babel/CLDR locale, which
+            may differ in casing from bundle.locale.
 
         See Also:
-            - bundle.locale: The original locale code passed to FluentBundle
+            - bundle.locale: The canonical LocaleCode stored by FluentBundle
             - LocaleContext.babel_locale: The underlying Babel Locale object
         """
-        # LocaleContext.create() normalizes the locale code internally,
-        # so "en-US" and "en_US" share the same cached LocaleContext entry.
         ctx = LocaleContext.create(self._locale)
         return str(ctx.babel_locale)
 
@@ -1437,11 +1363,11 @@ class FluentBundle:
             return self._cache.get_stats()
         return None
 
-    def get_cache_audit_log(self) -> tuple[WriteLogEntry, ...] | None:
+    def get_cache_audit_log(self) -> tuple[CacheAuditLogEntry, ...] | None:
         """Get immutable cache audit log entries.
 
         Returns:
-            Tuple of WriteLogEntry snapshots, or None if caching is disabled.
+            Tuple of cache audit-log entry snapshots, or None if caching is disabled.
             Returns an empty tuple when caching is enabled but audit logging is
             disabled or no cache operations have been recorded.
         """

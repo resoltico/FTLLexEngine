@@ -8,6 +8,8 @@
 #
 # AI AGENT OPTIMIZATION:
 #   - Quiet by default (Log-on-Fail)
+#   - Periodic heartbeat in quiet mode (prevents long silent hangs)
+#   - Focused failure digest with persisted full log path
 #   - Structured markers: [SECTION-NAME] for navigation
 #   - JSON output: [SUMMARY-JSON-BEGIN/END] with "failed_tests"
 #   - Debug suggestions: [DEBUG-SUGGESTION] blocks
@@ -56,8 +58,13 @@ QUICK_MODE=false
 CI_MODE=false
 CLEAN_CACHE=true
 VERBOSE=false
+SHOW_FULL_LOG_ON_FAIL=false
+HEARTBEAT_ENABLED=true
 PYTEST_EXTRA_ARGS=()
 IS_GHA="${GITHUB_ACTIONS:-false}"
+HEARTBEAT_INTERVAL_SEC="${TEST_HEARTBEAT_INTERVAL_SEC:-30}"
+FAILURE_TAIL_LINES="${TEST_FAILURE_TAIL_LINES:-80}"
+FAILURE_LOG_PATH="${TEST_FAILURE_LOG_PATH:-tmp/test-last-failure.log}"
 
 if [[ "${NO_COLOR:-}" == "1" ]]; then
     RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; BOLD=""; RESET=""
@@ -71,6 +78,104 @@ log_info() { echo -e "${BLUE}[INFO]${RESET} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${RESET} $1"; }
 log_pass() { echo -e "${GREEN}[PASS]${RESET} $1"; }
 log_err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
+format_bytes() {
+    local bytes="$1"
+    if (( bytes >= 1048576 )); then
+        printf "%d MiB" $((bytes / 1048576))
+    elif (( bytes >= 1024 )); then
+        printf "%d KiB" $((bytes / 1024))
+    else
+        printf "%d B" "$bytes"
+    fi
+}
+last_nonempty_log_line() {
+    local log_file="$1"
+    local last_line
+    last_line=$(awk 'NF { line = $0 } END { print line }' "$log_file")
+    last_line=${last_line//$'\r'/}
+    if [[ -z "$last_line" ]]; then
+        echo "awaiting first pytest output"
+        return 0
+    fi
+    if (( ${#last_line} > 160 )); then
+        echo "${last_line:0:157}..."
+        return 0
+    fi
+    echo "$last_line"
+}
+emit_quiet_heartbeat() {
+    local log_file="$1"
+    local elapsed=$((SECONDS - RUN_START_SECONDS))
+    local log_bytes=0
+    local last_line
+    if [[ -f "$log_file" ]]; then
+        log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
+    fi
+    last_line=$(last_nonempty_log_line "$log_file")
+    log_info \
+        "Pytest still running (${elapsed}s, log=$(format_bytes "$log_bytes"), last=${last_line})"
+}
+capture_pytest_with_heartbeat() {
+    local log_file="$1"
+    "${CMD[@]}" > "$log_file" 2>&1 &
+    local pytest_pid=$!
+
+    if [[ "$HEARTBEAT_ENABLED" != "true" || "$HEARTBEAT_INTERVAL_SEC" -le 0 ]]; then
+        wait "$pytest_pid"
+        return $?
+    fi
+
+    while kill -0 "$pytest_pid" 2>/dev/null; do
+        sleep "$HEARTBEAT_INTERVAL_SEC"
+        if kill -0 "$pytest_pid" 2>/dev/null; then
+            emit_quiet_heartbeat "$log_file"
+        fi
+    done
+
+    wait "$pytest_pid"
+}
+persist_failure_log() {
+    local log_file="$1"
+    local failure_dir
+    failure_dir=$(dirname "$FAILURE_LOG_PATH")
+    mkdir -p "$failure_dir"
+    cp "$log_file" "$FAILURE_LOG_PATH"
+}
+emit_failure_digest() {
+    local log_file="$1"
+    local failure_section summary_section
+    failure_section=$(mktemp)
+    summary_section=$(mktemp)
+
+    awk '
+        /^=+ FAILURES =+$/ { capture = 1 }
+        capture { print }
+        capture && /^=+ short test summary info =+$/ { exit }
+    ' "$log_file" > "$failure_section"
+
+    awk '
+        /^=+ short test summary info =+$/ { capture = 1 }
+        capture { print }
+    ' "$log_file" > "$summary_section"
+
+    if [[ -s "$failure_section" ]]; then
+        echo "[FAILURE-EXCERPT]"
+        cat "$failure_section"
+    fi
+
+    if [[ -s "$summary_section" ]]; then
+        if [[ -s "$failure_section" ]]; then
+            echo
+        fi
+        echo "[SUMMARY-EXCERPT]"
+        cat "$summary_section"
+    elif [[ ! -s "$failure_section" ]]; then
+        echo "[SUMMARY-EXCERPT]"
+        tail -n "$FAILURE_TAIL_LINES" "$log_file"
+    fi
+
+    rm -f "$failure_section" "$summary_section"
+}
 
 # CLI Args Parsing
 while [[ $# -gt 0 ]]; do
@@ -79,10 +184,22 @@ while [[ $# -gt 0 ]]; do
         --ci)       CI_MODE=true; shift ;;
         --no-clean) CLEAN_CACHE=false; shift ;;
         --verbose)  VERBOSE=true; shift ;;
+        --show-full-log-on-fail) SHOW_FULL_LOG_ON_FAIL=true; shift ;;
+        --no-heartbeat) HEARTBEAT_ENABLED=false; shift ;;
         --)         shift; PYTEST_EXTRA_ARGS+=("$@"); break ;;
         *)          PYTEST_EXTRA_ARGS+=("$1"); shift ;;
     esac
 done
+
+if ! [[ "$HEARTBEAT_INTERVAL_SEC" =~ ^[0-9]+$ ]]; then
+    log_err "TEST_HEARTBEAT_INTERVAL_SEC must be an integer (got: $HEARTBEAT_INTERVAL_SEC)"
+    exit 1
+fi
+
+if ! [[ "$FAILURE_TAIL_LINES" =~ ^[0-9]+$ ]]; then
+    log_err "TEST_FAILURE_TAIL_LINES must be an integer (got: $FAILURE_TAIL_LINES)"
+    exit 1
+fi
 
 # Auto-configure PYTHONPATH to include 'src' if it exists (Parity with lint.sh)
 if [[ -d "src" ]]; then
@@ -181,6 +298,7 @@ LOG_FILE=$(mktemp)
 trap 'rm -f "$LOG_FILE"' EXIT
 
 START_TIME="${EPOCHREALTIME}"
+RUN_START_SECONDS=$SECONDS
 
 # Execution Logic: Capture vs Stream
 set +e
@@ -189,8 +307,9 @@ if [[ "$VERBOSE" == "true" ]]; then
     "${CMD[@]}" 2>&1 | tee "$LOG_FILE"
     EXIT_CODE=${PIPESTATUS[0]}
 else
-    # Quiet: Capture to file (agent sees nothing yet)
-    "${CMD[@]}" > "$LOG_FILE" 2>&1
+    # Quiet: Capture to file but emit periodic heartbeats so non-interactive
+    # runners do not mistake a long suite for a hung process.
+    capture_pytest_with_heartbeat "$LOG_FILE"
     EXIT_CODE=$?
 fi
 set -e
@@ -250,13 +369,15 @@ if [[ $EXIT_CODE -eq 0 ]]; then
         log_warn "Non-fuzz skipped tests detected: $SKIPPED_OTHER (investigate these — only fuzz tests should be skipped)"
     fi
 else
-    # On failure (if not verbose), we must now Dump the log for the agent
+    persist_failure_log "$LOG_FILE"
     log_group_start "Failure Details"
-    if [[ "$VERBOSE" != "true" ]]; then
+    if [[ "$SHOW_FULL_LOG_ON_FAIL" == "true" ]]; then
         cat "$LOG_FILE"
     else
-        echo "(See stream above for details)"
+        emit_failure_digest "$LOG_FILE"
     fi
+    echo
+    log_info "Full pytest log saved to: $FAILURE_LOG_PATH"
     log_group_end
     
     if [[ "$HYPOTHESIS_FAILURE" == "true" ]]; then

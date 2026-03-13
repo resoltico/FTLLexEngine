@@ -17,6 +17,7 @@ from hypothesis import event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_FORMAT_DIGITS
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -89,23 +90,29 @@ class TestLocaleContextCreateProperties:
     @example(locale_code="")
     @example(locale_code="en-US")
     @example(locale_code="not-a-locale!!!")
-    def test_create_never_crashes(self, locale_code: str) -> None:
-        """create() never raises an unhandled exception (property: robustness).
+    def test_create_rejects_invalid_or_returns_canonical_context(
+        self, locale_code: str
+    ) -> None:
+        """create() either rejects invalid boundaries or returns a canonical context.
 
-        Property: For all strings S, create(S) returns a LocaleContext
-        instance (with en_US fallback for invalid locales).
+        Property: For all strings S, create(S) either raises a boundary-validation
+        exception or returns a LocaleContext whose locale_code is canonical.
 
         Events emitted:
-        - outcome={result}: Whether locale was valid or fell back
+        - outcome={result}: Whether locale was rejected, exact, or fallback
         - input_length={range}: Length category of input
         """
-        result = LocaleContext.create(locale_code)
-
-        assert isinstance(result, LocaleContext)
-        if result.is_fallback:
-            event("outcome=fallback")
+        try:
+            result = LocaleContext.create(locale_code)
+        except (TypeError, ValueError):
+            event("outcome=rejected")
         else:
-            event("outcome=exact_match")
+            assert isinstance(result, LocaleContext)
+            assert result.locale_code == normalize_locale(locale_code.strip())
+            if result.is_fallback:
+                event("outcome=fallback")
+            else:
+                event("outcome=exact_match")
 
         length = len(locale_code)
         if length == 0:

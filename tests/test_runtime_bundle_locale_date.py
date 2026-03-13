@@ -16,6 +16,7 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.runtime.functions import currency_format
 from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -28,28 +29,28 @@ class TestFluentBundleLocaleValidation:
 
     def test_init_with_empty_locale_raises(self) -> None:
         """Empty locale raises ValueError in __init__."""
-        with pytest.raises(ValueError, match="Locale code cannot be empty"):
+        with pytest.raises(ValueError, match="locale cannot be blank"):
             FluentBundle("")
 
     def test_init_with_invalid_locale_format_raises(self) -> None:
         """Invalid locale format raises ValueError in __init__."""
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en US'"):
             FluentBundle("en US")  # Space not allowed
 
     def test_init_with_special_chars_raises(self) -> None:
         """Locale with special characters raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en@US'"):
             FluentBundle("en@US")
 
     def test_init_with_valid_underscore_locale_succeeds(self) -> None:
         """Valid locale with underscore succeeds."""
         bundle = FluentBundle("en_US")
-        assert bundle.locale == "en_US"
+        assert bundle.locale == "en_us"
 
     def test_init_with_valid_hyphen_locale_succeeds(self) -> None:
         """Valid locale with hyphen succeeds."""
         bundle = FluentBundle("en-US")
-        assert bundle.locale == "en-US"
+        assert bundle.locale == "en_us"
 
     def test_init_with_simple_locale_succeeds(self) -> None:
         """Simple language code succeeds."""
@@ -68,7 +69,7 @@ class TestFluentBundleLocaleValidation:
         has_subtag = "_" in locale
         event(f"outcome={'subtag' if has_subtag else 'simple'}")
         bundle = FluentBundle(locale)
-        assert bundle.locale == locale
+        assert bundle.locale == normalize_locale(locale)
 
     @given(st.text(min_size=1, max_size=10).filter(
         lambda s: not s.replace("_", "").replace("-", "").isalnum() and s
@@ -76,8 +77,10 @@ class TestFluentBundleLocaleValidation:
     @settings(max_examples=50)
     def test_invalid_locale_formats_rejected(self, locale: str) -> None:
         """Invalid locale formats are rejected by __init__."""
-        event("outcome=rejected")
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        stripped = locale.strip()
+        event(f"outcome={'blank_rejected' if stripped == '' else 'invalid_rejected'}")
+        expected_message = "locale cannot be blank" if stripped == "" else r"Invalid locale:"
+        with pytest.raises(ValueError, match=expected_message):
             FluentBundle(locale)
 
 

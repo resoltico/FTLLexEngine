@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.151.0"
+version: "0.152.0"
 domain: reference
 updated: "2026-03-12"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, make_fluent_number]
-  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how do I validate localization at boot?", "how do I construct a FluentNumber manually?", "how to clear cache?", "how do I get the cache audit log?"]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, make_fluent_number, FluentNumber]
+  questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how to clear cache?", "how do I get the cache audit log?"]
 ---
 
 # FTLLexEngine Quick Reference
@@ -337,13 +337,13 @@ bundle.introspect_term(term_id: str) -> MessageIntrospection
 bundle.add_function(name: str, func: Callable) -> None
 bundle.clear_cache() -> None
 bundle.get_cache_stats() -> CacheStats | None
-bundle.get_cache_audit_log() -> tuple[WriteLogEntry, ...] | None
+bundle.get_cache_audit_log() -> tuple[CacheAuditLogEntry, ...] | None
 bundle.get_babel_locale() -> str
 ```
 
 **Properties**:
 ```python
-bundle.locale -> str  # Read-only
+bundle.locale -> LocaleCode  # Read-only canonical lowercase underscore locale
 bundle.use_isolating -> bool  # Read-only
 bundle.cache_config -> CacheConfig | None  # Read-only; None when caching disabled
 bundle.cache_enabled -> bool  # Read-only
@@ -389,9 +389,10 @@ l10n.introspect_term(term_id: str) -> MessageIntrospection | None
 l10n.add_function(name: str, func: Callable) -> None
 l10n.clear_cache() -> None
 l10n.get_cache_stats() -> LocalizationCacheStats | None
-l10n.get_cache_audit_log() -> dict[str, tuple[WriteLogEntry, ...]] | None
+l10n.get_cache_audit_log() -> dict[str, tuple[CacheAuditLogEntry, ...]] | None
 l10n.get_load_summary() -> LoadSummary
 l10n.require_clean() -> LoadSummary
+l10n.validate_message_variables(message_id: str, expected_variables: frozenset[str] | set[str]) -> MessageVariableValidationResult
 l10n.validate_message_schemas(expected_schemas: Mapping[str, frozenset[str] | set[str]]) -> tuple[MessageVariableValidationResult, ...]
 l10n.get_bundles() -> Generator[FluentBundle]
 l10n.get_babel_locale() -> str
@@ -410,6 +411,7 @@ l10n.cache_enabled -> bool  # Read-only
 **Boot Validation**:
 ```python
 l10n.require_clean()
+l10n.validate_message_variables("invoice-total", frozenset({"amount", "customer"}))
 l10n.validate_message_schemas({
     "invoice-total": frozenset({"amount", "customer"}),
 })
@@ -553,11 +555,13 @@ price-name = { CURRENCY($amount, currency: "EUR", currencyDisplay: "name") }
 ```python
 from decimal import Decimal
 
+from ftllexengine import FluentNumber
 from ftllexengine.runtime import make_fluent_number
 
 raw_amount = make_fluent_number(Decimal("12.3400"))
 rendered_amount = make_fluent_number(42, formatted="42.00")
 localized_amount = make_fluent_number(Decimal("1234.50"), formatted="1 234,50 EUR")
+manual_amount = FluentNumber(value=Decimal("5.00"), formatted="5.00", precision=2)
 ```
 
 ---
@@ -761,12 +765,14 @@ clear_module_caches()
 **Individual Cache Clear Functions**:
 ```python
 from ftllexengine.core.locale_utils import clear_locale_cache
+from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.parsing import clear_date_caches, clear_currency_caches
 from ftllexengine.introspection import clear_introspection_cache, clear_iso_cache
 from ftllexengine.runtime.locale_context import LocaleContext
 
 # Clear specific caches
 clear_locale_cache()           # Babel locale objects
+locale_code = require_locale_code("  en-US  ", "user.locale")
 clear_date_caches()            # Date/datetime patterns
 clear_currency_caches()        # Currency maps and patterns
 clear_introspection_cache()    # Message introspection results

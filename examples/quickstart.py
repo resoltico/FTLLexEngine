@@ -18,9 +18,11 @@ from ftllexengine import (
     CacheConfig,
     FluentBundle,
     FluentLocalization,
+    FluentNumber,
     make_fluent_number,
     validate_resource,
 )
+from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.integrity import FormattingIntegrityError
 
 # Example 1: Simple message
@@ -256,7 +258,7 @@ system-locale = Detected system locale: { $locale }
 
 result, _ = system_bundle.format_pattern("system-locale", {"locale": system_bundle.locale})
 print(result)
-# Output: Detected system locale: en_US (or your system locale)
+# Output: Detected system locale: en_us (or your system locale)
 
 # Example 10: Strict Mode (Fail-Fast) - the default
 print("\n" + "=" * 50)
@@ -314,9 +316,9 @@ print(f"Invalid FTL: {invalid_result.is_valid}, errors: {len(invalid_result.erro
 
 print("[OK] Resource introspection APIs working")
 
-# Example 12: Boot Validation and Manual FluentNumber
+# Example 12: Boot Validation, Locale Boundaries, and Manual FluentNumber
 print("\n" + "=" * 50)
-print("Example 12: Boot Validation and Manual FluentNumber")
+print("Example 12: Boot Validation, Locale Boundaries, and Manual FluentNumber")
 print("=" * 50)
 
 
@@ -336,14 +338,24 @@ boot_l10n = FluentLocalization(
 boot_summary = boot_l10n.require_clean()
 print(f"Boot load clean: {boot_summary.all_clean}")
 
+locale_code = require_locale_code("  EN-US  ", "invoice.locale")
+print(f"Canonical locale code: {locale_code}")
+
+schema_result = boot_l10n.validate_message_variables(
+    "invoice",
+    frozenset({"amount", "customer"}),
+)
+print(f"Single schema valid: {schema_result.is_valid}")
+
 schema_results = boot_l10n.validate_message_schemas({
     "invoice": frozenset({"amount", "customer"}),
 })
 print(f"Schema valid: {schema_results[0].is_valid}")
 
 manual_amount = make_fluent_number(Decimal("500.00"), formatted="500,00")
+manual_fee = FluentNumber(value=Decimal("5.00"), formatted="5,00", precision=2)
 result, _ = boot_l10n.format_pattern("invoice", {
-    "amount": manual_amount,
+    "amount": make_fluent_number(manual_amount.value + manual_fee.value, formatted="505,00"),
     "customer": "Alice",
 })
 print(result)

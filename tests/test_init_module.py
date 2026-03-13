@@ -40,6 +40,15 @@ class TestBabelOptionalSymbolAccess:
 
         assert ftllexengine.FluentValue is Direct
 
+    def test_fluent_number_is_accessible(self) -> None:
+        """FluentNumber resolves to the class in the runtime package."""
+        import ftllexengine
+
+        assert hasattr(ftllexengine, "FluentNumber")
+        from ftllexengine.runtime import FluentNumber as Direct
+
+        assert ftllexengine.FluentNumber is Direct
+
     def test_fluent_function_is_accessible(self) -> None:
         """fluent_function resolves to the decorator in runtime.function_bridge."""
         import ftllexengine
@@ -133,6 +142,7 @@ class TestBabelOptionalAttrsSet:
         expected = {
             "CacheConfig",
             "FluentBundle",
+            "FluentNumber",
             "FluentLocalization",
             "FluentValue",
             "fluent_function",
@@ -359,7 +369,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 40
+        assert len(ftllexengine.__all__) == 41
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
@@ -367,6 +377,7 @@ class TestInitModuleExports:
 
         for name in (
             "FluentBundle",
+            "FluentNumber",
             "FluentLocalization",
             "CacheConfig",
             "FluentValue",

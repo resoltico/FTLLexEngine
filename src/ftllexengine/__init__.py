@@ -10,6 +10,7 @@ Public API:
     parse_ftl - Parse FTL source to AST (no external dependencies)
     serialize_ftl - Serialize AST to FTL source (no external dependencies)
     validate_resource - Validate FTL resource for semantic errors (no external dependencies)
+    FluentNumber - Immutable formatted-number wrapper preserving numeric identity
     FluentValue - Type alias for values accepted by formatting functions
     make_fluent_number - Construct FluentNumber from int/Decimal with inferred precision
     fluent_function - Decorator for custom functions (locale injection support)
@@ -131,13 +132,16 @@ try:
         FluentBundle as FluentBundle,
     )
     from .runtime import (
+        FluentNumber as FluentNumber,
+    )
+    from .runtime import (
+        fluent_function as fluent_function,
+    )
+    from .runtime import (
         make_fluent_number as make_fluent_number,
     )
     from .runtime.cache_config import (
         CacheConfig as CacheConfig,
-    )
-    from .runtime.function_bridge import (
-        fluent_function as fluent_function,
     )
     from .runtime.value_types import (
         FluentValue as FluentValue,
@@ -149,6 +153,7 @@ except ImportError:
 _BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
     "CacheConfig",
     "FluentBundle",
+    "FluentNumber",
     "FluentLocalization",
     "FluentValue",
     "fluent_function",
@@ -268,6 +273,7 @@ __all__ = [
     # Bundle and Localization (Babel-optional; absent in parser-only installs)
     "CacheConfig",
     "FluentBundle",
+    "FluentNumber",
     "FluentLocalization",
     "FluentValue",
     "fluent_function",

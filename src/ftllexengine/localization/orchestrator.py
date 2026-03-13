@@ -38,6 +38,7 @@ from collections.abc import Callable, Generator, Iterable, Mapping
 from typing import TYPE_CHECKING, NoReturn
 
 from ftllexengine.constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
+from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode
 from ftllexengine.diagnostics.errors import ErrorCategory, FrozenFluentError
 from ftllexengine.enums import LoadStatus
@@ -48,7 +49,9 @@ from ftllexengine.integrity import (
 )
 from ftllexengine.introspection import (
     MessageVariableValidationResult,
-    validate_message_variables,
+)
+from ftllexengine.introspection import (
+    validate_message_variables as validate_message_ast_variables,
 )
 from ftllexengine.localization.loading import (
     FallbackInfo,
@@ -56,8 +59,8 @@ from ftllexengine.localization.loading import (
     ResourceLoader,
     ResourceLoadResult,
 )
-from ftllexengine.runtime.bundle import FluentBundle, _validate_locale_format
-from ftllexengine.runtime.cache import CacheStats, WriteLogEntry
+from ftllexengine.runtime.bundle import FluentBundle
+from ftllexengine.runtime.cache import CacheAuditLogEntry, CacheStats
 from ftllexengine.runtime.rwlock import RWLock
 
 if TYPE_CHECKING:
@@ -176,13 +179,10 @@ class FluentLocalization:
             msg = "resource_loader required when resource_ids provided"
             raise ValueError(msg)
 
-        # dict.fromkeys() removes duplicates while maintaining insertion order
-        self._locales: tuple[LocaleCode, ...] = tuple(dict.fromkeys(locale_list))
-
-        # Validate all locales eagerly (fail-fast pattern)
-        # Prevents ValueError from leaking out of format_value during lazy bundle creation
-        for locale in self._locales:
-            _validate_locale_format(locale)
+        # Canonicalize all locales eagerly (fail-fast pattern). dict.fromkeys()
+        # removes duplicates while maintaining insertion order.
+        validated_locales = [require_locale_code(locale, "locale") for locale in locale_list]
+        self._locales = tuple(dict.fromkeys(validated_locales))
 
         # Precompute primary locale once: _locales is guaranteed non-empty (checked above)
         # and is immutable (tuple), so this value never changes after construction.
@@ -489,6 +489,55 @@ class FluentLocalization:
             parts.append(f"extra {{{extra}}}")
         return "; ".join(parts)
 
+    def _resolve_message_schema_validation(
+        self,
+        message_id: MessageId,
+        expected_variables: frozenset[str] | set[str],
+    ) -> MessageVariableValidationResult | None:
+        """Resolve a message through the fallback chain and validate its schema."""
+        message = self.get_message(message_id)
+        if message is None:
+            return None
+        return validate_message_ast_variables(message, frozenset(expected_variables))
+
+    def validate_message_variables(
+        self,
+        message_id: str,
+        expected_variables: frozenset[str] | set[str],
+    ) -> MessageVariableValidationResult:
+        """Require an exact variable schema match for a single fallback-resolved message.
+
+        Resolves ``message_id`` using the same fallback-chain semantics as
+        ``get_message()``. Returns the immutable validation result when the
+        message exists and its declared variables exactly match
+        ``expected_variables``. Missing messages and exact-schema mismatches
+        raise ``IntegrityCheckFailedError`` with localization-scoped context.
+        """
+        validation = self._resolve_message_schema_validation(message_id, expected_variables)
+        if validation is None:
+            msg = f"Localization message schema validation failed: {message_id}: not found"
+            self._raise_integrity_check_failed(
+                "validate_message_variables",
+                msg,
+                key=message_id,
+                expected="1 exact schema match",
+                actual="missing_messages=1",
+            )
+
+        if validation.is_valid:
+            return validation
+
+        difference = self._format_schema_difference(validation)
+        msg = f"Localization message schema validation failed: {message_id}: {difference}"
+        self._raise_integrity_check_failed(
+            "validate_message_variables",
+            msg,
+            key=message_id,
+            expected="1 exact schema match",
+            actual="schema_mismatches=1",
+        )
+        raise AssertionError
+
     def validate_message_schemas(
         self,
         expected_schemas: Mapping[MessageId, frozenset[str] | set[str]],
@@ -507,14 +556,13 @@ class FluentLocalization:
         schema_mismatches = 0
 
         for message_id, expected_variables in expected_schemas.items():
-            message = self.get_message(message_id)
-            if message is None:
+            validation = self._resolve_message_schema_validation(message_id, expected_variables)
+            if validation is None:
                 first_failure = first_failure or str(message_id)
                 missing_messages += 1
                 mismatches.append(f"{message_id}: not found")
                 continue
 
-            validation = validate_message_variables(message, frozenset(expected_variables))
             results.append(validation)
             if validation.is_valid:
                 continue
@@ -621,7 +669,7 @@ class FluentLocalization:
         Thread-safe via internal RWLock.
 
         Args:
-            locale: Locale code (must be in fallback chain, no leading/trailing whitespace)
+            locale: Locale code (must resolve to an entry in the fallback chain)
             ftl_source: FTL source code
 
         Returns:
@@ -629,27 +677,23 @@ class FluentLocalization:
             parsing succeeded without errors.
 
         Raises:
-            ValueError: If locale not in fallback chain or contains whitespace.
+            ValueError: If locale does not resolve to a locale in the fallback chain.
         """
-        stripped = locale.strip()
-        if stripped != locale:
-            msg = (
-                f"Locale code contains leading/trailing whitespace: {locale!r}. "
-                f"Stripped would be: {stripped!r}"
-            )
-            raise ValueError(msg)
+        normalized_locale = require_locale_code(locale, "locale")
 
         with self._lock.write():
-            if locale not in self._locales:
-                msg = f"Locale '{locale}' not in fallback chain {self._locales}"
+            if normalized_locale not in self._locales:
+                msg = (
+                    f"Locale '{normalized_locale}' not in fallback chain {self._locales}"
+                )
                 raise ValueError(msg)
 
             # Direct lookup/create under write lock. _get_or_create_bundle cannot
             # be used here because it acquires a read lock, and RWLock prohibits
             # acquiring a read lock while holding the write lock.
-            if locale not in self._bundles:
-                self._create_bundle(locale)
-            return self._bundles[locale].add_resource(ftl_source)
+            if normalized_locale not in self._bundles:
+                self._create_bundle(normalized_locale)
+            return self._bundles[normalized_locale].add_resource(ftl_source)
 
     def _handle_message_not_found(
         self,
@@ -1269,11 +1313,11 @@ class FluentLocalization:
                 "bundle_count": len(self._bundles),
             }
 
-    def get_cache_audit_log(self) -> dict[LocaleCode, tuple[WriteLogEntry, ...]] | None:
+    def get_cache_audit_log(self) -> dict[LocaleCode, tuple[CacheAuditLogEntry, ...]] | None:
         """Get per-locale cache audit logs for initialized bundles.
 
         Returns:
-            Mapping of initialized locale codes to immutable WriteLogEntry
+            Mapping of initialized locale codes to immutable cache audit-log entry
             tuples, or None if caching is disabled. Bundles with audit logging
             disabled return empty tuples. Uninitialized bundles are omitted and
             this method does not create them.
@@ -1282,7 +1326,7 @@ class FluentLocalization:
             return None
 
         with self._lock.read():
-            audit_logs: dict[LocaleCode, tuple[WriteLogEntry, ...]] = {}
+            audit_logs: dict[LocaleCode, tuple[CacheAuditLogEntry, ...]] = {}
             for locale in self._locales:
                 bundle = self._bundles.get(locale)
                 if bundle is None:

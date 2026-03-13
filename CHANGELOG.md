@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.151.0"
+version: "0.152.0"
 domain: CHANGELOG
-updated: "2026-03-12"
+updated: "2026-03-13"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -15,12 +15,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.152.0] - 2026-03-13
+
+### Breaking Changes
+
+- **Runtime/localization locale surfaces now emit one canonical `LocaleCode` model everywhere**:
+  - `FluentBundle.locale`, `FluentLocalization.locales`, `FallbackInfo.requested_locale`,
+    `FallbackInfo.resolved_locale`, `ResourceLoadResult.locale`, `PathResourceLoader`
+    `{locale}` substitution, and `LocaleContext.locale_code` now all use canonical
+    lowercase underscore locale codes such as `"en_us"` rather than preserving caller
+    spelling
+  - `LocaleContext.create()` now rejects blank or structurally invalid locale boundary
+    values instead of silently converting them into fallback contexts; only unknown but
+    structurally valid locales retain the `en_US` formatting fallback path
+  - `core.locale_utils.get_babel_locale()` now validates locale boundary values via
+    `require_locale_code()` before consulting Babel, so malformed locale inputs fail with
+    the shared explicit boundary error model
+
+### Added
+
+- **`require_locale_code(value, field_name)` public locale boundary helper**:
+  - downstream code no longer needs to duplicate trim, blank-check, structural validation,
+    length guarding, and canonical normalization before handing locale identifiers to
+    FTLLexEngine entry points
+  - `require_locale_code()` now accepts raw boundary values, rejects non-string or blank input,
+    rejects structurally invalid locale codes, and returns the canonical normalized locale
+    string for APIs that store normalized `LocaleCode` values
+  - locale validation is now centralized in `core.locale_utils`, so `FluentBundle`,
+    `FluentLocalization`, `LocaleContext`, and `PathResourceLoader` all share one explicit
+    trim/blank/length/structure rejection path and one canonical locale representation
+
+- **`FluentLocalization.validate_message_variables()` first-class single-message boot validation**:
+  - callers that validate one required message at startup no longer need to compose
+    `get_message()` fallback lookup, missing-message integrity checks, and
+    `validate_message_variables()` manually
+  - `validate_message_variables(message_id, expected_variables)` now resolves the message
+    through the fallback chain, returns the immutable `MessageVariableValidationResult`
+    on success, and raises `IntegrityCheckFailedError` for missing messages or exact-schema
+    mismatches with localization-scoped integrity context
+
+- **Public runtime/localization export cleanup for downstream extension points and cache types**:
+  - `ftllexengine.runtime` now exports `FluentNumber` and `fluent_function`, so custom FTL
+    function authors can stay on the public runtime facade instead of importing from
+    `runtime.function_bridge`
+  - top-level `ftllexengine` now exports `FluentNumber` for symmetry with `make_fluent_number()`
+  - `ftllexengine.localization` now exports `LocalizationCacheStats`, and the public cache
+    audit-log entry type is now available as `CacheAuditLogEntry` from both
+    `ftllexengine.runtime` and `ftllexengine.localization`
+
 ## [0.151.0] - 2026-03-12
 
 ### Added
 
-- **`FluentLocalization.require_clean()` and `FluentLocalization.validate_message_schemas()`**
-  (resolution of ITEM 001):
+- **`FluentLocalization.require_clean()` and `FluentLocalization.validate_message_schemas()`**:
   - boot-time validation no longer needs downstream wrappers to reassemble `LoadSummary.all_clean`,
     `get_message()`, and `validate_message_variables()` into a separate policy layer
   - `require_clean()` now returns the immutable initialization `LoadSummary` when every loader-driven
@@ -30,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     returns immutable `MessageVariableValidationResult` tuples on success; missing messages and schema
     mismatches raise `IntegrityCheckFailedError` for fail-fast boot validation
 
-- **`make_fluent_number(value, *, formatted=None)` public helper** (resolution of ITEM 002):
+- **`make_fluent_number(value, *, formatted=None)` public helper**:
   - downstream adapters that already own `int` or `Decimal` values can now construct a
     `FluentNumber` without re-implementing visible-precision inference
   - the helper preserves selector semantics by deriving precision from either the supplied rendered
@@ -41,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`FluentBundle.get_cache_audit_log()` and `FluentLocalization.get_cache_audit_log()`** (resolution of ITEM 001):
+- **`FluentBundle.get_cache_audit_log()` and `FluentLocalization.get_cache_audit_log()`**:
   - `IntegrityCache` already exposed immutable `WriteLogEntry` audit records, but callers using
     only the `FluentBundle` and `FluentLocalization` facades could inspect counters via
     `get_cache_stats()` and had no public way to retrieve the underlying audit trail for
@@ -102,8 +149,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`ftllexengine.FiscalDelta` and `ftllexengine.MonthEndPolicy` at top-level package**
-  (resolution of FIX-FISCAL-TOPLEVEL-001):
+- **`ftllexengine.FiscalDelta` and `ftllexengine.MonthEndPolicy` at top-level package**:
   - Both symbols were accessible via `ftllexengine.core.fiscal` and `ftllexengine.parsing`
     but were inadvertently absent from the runtime `__init__.py` top-level namespace in
     releases prior to v0.148.0; the `.pyi` stub was updated in v0.147.0 but the runtime
@@ -136,7 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`ftllexengine.__init__`: `__getattr__`-based lazy exports replaced by explicit module-level
-  imports** (resolution of ITEM 002, FIX-PYLINT-GETATTR-001):
+  imports**:
   - Static analysis tools (pylint, PyCharm, and IDE plugins) cannot resolve symbols exported
     via `module.__getattr__` even when a `.pyi` stub declares them, because they prioritise
     their own AST analysis of the `.py` source; with `__getattr__` dispatch, `from ftllexengine
@@ -303,17 +349,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     in `parsing/guards.py` (required by `get_type_hints()` on TypeIs annotations at runtime)
     and `CommentType` in `syntax/ast.py` (public re-exported symbol that callers import)
 
-- **`scripts/test.sh`: failed test names now emitted before JSON summary**:
-  - When tests fail, the final report now lists all failed test node IDs in human-readable
-    form immediately before the `[SUMMARY-JSON-BEGIN]` block, eliminating the need to grep
-    the hypothesis statistics output or parse the JSON blob to find which tests failed
-
 ## [0.147.0] - 2026-03-09
 
 ### Fixed
 
-- **`__init__.pyi`: fiscal calendar exports and `ParseTypeLiteral` absent from type stub**
-  (FIX-STUB-FISCAL-001):
+- **`__init__.pyi`: fiscal calendar exports and `ParseTypeLiteral` absent from type stub**:
   - `FiscalCalendar`, `FiscalDelta`, `FiscalPeriod`, `MonthEndPolicy`, `fiscal_quarter`,
     `fiscal_year`, `fiscal_month`, `fiscal_year_start`, `fiscal_year_end`, and `ParseTypeLiteral`
     were exported at runtime via `__all__` in `__init__.py` but were entirely absent from
@@ -326,8 +366,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     to match `__init__.py`
   - Location: `src/ftllexengine/__init__.pyi`
 
-- **`parsing/numbers.py` `parse_decimal` and `parsing/currency.py` `parse_currency`: locale codes containing non-BCP-47 characters silently parse valid-looking values instead of returning a locale error**
-  (FIX-PARSE-LOCALE-CHARS-001):
+- **`parsing/numbers.py` `parse_decimal` and `parsing/currency.py` `parse_currency`: locale codes containing non-BCP-47 characters silently parse valid-looking values instead of returning a locale error**:
   - Babel's `Locale.parse()` silently accepts locale codes that contain characters outside the
     BCP-47 alphabet (e.g., `/`, `\x00`, or arbitrary Unicode) without raising `UnknownLocaleError`
     or `ValueError`; instead it creates a `Locale` object using default number-format settings;
@@ -350,8 +389,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`parsing/numbers.py` `parse_decimal`: misplaced group separators silently produce a result instead of returning a parse error**
-  (FIX-PARSE-DECIMAL-GROUPING-001):
+- **`parsing/numbers.py` `parse_decimal`: misplaced group separators silently produce a result instead of returning a parse error**:
   - Babel's `parse_decimal` strips group separators without validating their positions; inputs
     such as `"1,2,3"` for `en_US` (where `,` is the thousands separator) had all commas stripped
     to produce `Decimal("123")` — a result with no diagnostic — despite the grouping being
@@ -376,8 +414,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`runtime/locale_context.py` `format_currency`: custom `pattern=` path uses wrong decimal precision when CLDR currency precision differs from declared pattern precision**
-  (FIX-CURRENCY-PATTERN-PREC-001):
+- **`runtime/locale_context.py` `format_currency`: custom `pattern=` path uses wrong decimal precision when CLDR currency precision differs from declared pattern precision**:
   - When `format_currency` is called with a custom `pattern=` argument (e.g., `¤#,##0.000`)
     and a currency whose CLDR-mandated precision differs from the pattern's declared decimal count
     (e.g., AUD with CLDR precision 2), the pre-quantization step correctly targeted the pattern's
@@ -399,8 +436,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`runtime/locale_context.py` `format_number` and `format_currency`: ROUND_HALF_EVEN instead of ROUND_HALF_UP**
-  (FIX-ROUNDING-001):
+- **`runtime/locale_context.py` `format_number` and `format_currency`: ROUND_HALF_EVEN instead of ROUND_HALF_UP**:
   - Babel's `format_decimal()` and `format_currency()` call `Decimal.quantize()` internally using
     Python's default `decimal.Context` rounding mode, which is `ROUND_HALF_EVEN` (banker's rounding);
     midpoint values — exactly halfway between two representable values — are rounded to the nearest
@@ -430,8 +466,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     preserves the existing pass-through behavior for these edge cases
   - Location: `runtime/locale_context.py` `LocaleContext.format_number`, `LocaleContext.format_currency`
 
-- **`runtime/locale_context.py` `format_number`: `minimumFractionDigits > maximumFractionDigits` produces semantically wrong output**
-  (FIX-DIGIT-CLAMP-001):
+- **`runtime/locale_context.py` `format_number`: `minimumFractionDigits > maximumFractionDigits` produces semantically wrong output**:
   - When `minimumFractionDigits > maximumFractionDigits` (e.g., `min=3, max=2`), the quantizer
     used `max` decimal places (rounds to 2) but the format pattern required `min` mandatory digit
     positions ("000"); this produced a value like `1.23` formatted as `"1.230"` — three decimal
@@ -444,8 +479,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (specifying `minimumFractionDigits: 4` without `maximumFractionDigits` yields 4 decimal places)
   - Location: `runtime/locale_context.py` `LocaleContext.format_number`
 
-- **`runtime/bundle.py`: non-strict bundle raises `CacheCorruptionError` when cache is enabled**
-  (FIX-CACHE-STRICT-GATE-001):
+- **`runtime/bundle.py`: non-strict bundle raises `CacheCorruptionError` when cache is enabled**:
   - `FluentBundle.__init__` passed `cache.integrity_strict` (default: `True`) directly to
     `IntegrityCache(strict=...)`, making the cache unconditionally strict regardless of the
     bundle's own `strict` parameter; when `FluentBundle(strict=False, cache=CacheConfig())` was
@@ -468,8 +502,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `runtime/bundle.py` `FluentBundle.__init__` cache initialization;
     `runtime/cache_config.py` `CacheConfig.integrity_strict` docstring
 
-- **`analysis/graph.py` `detect_cycles`: out-of-memory on dense and complete graphs**
-  (FIX-GRAPH-OOM-001):
+- **`analysis/graph.py` `detect_cycles`: out-of-memory on dense and complete graphs**:
   - `detect_cycles` intentionally omits a globally-visited guard on neighbor pushes so that
     cycles through shared nodes are found (e.g., A→B→D→A and A→C→D→A both require exploring
     D independently via B and via C); in adversarial dense graphs this causes O(n!) DFS
@@ -498,8 +531,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `analysis/graph.py` `detect_cycles`; `constants.py` `MAX_DETECTED_CYCLES`,
     `MAX_GRAPH_DFS_STACK`
 
-- **`introspection/iso.py` `get_territory`, `get_currency`, `get_territory_currencies`: Unicode casefold expansion bypasses type guard**
-  (FIX-ISO-CASEFOLD-001):
+- **`introspection/iso.py` `get_territory`, `get_currency`, `get_territory_currencies`: Unicode casefold expansion bypasses type guard**:
   - Python's `str.upper()` can expand a single character into multiple characters; the LATIN
     SMALL LETTER SHARP S `'ß'` (U+00DF, len=1) uppercases to `'SS'` (len=2), which is the
     valid ISO 3166-1 alpha-2 code for South Sudan; `get_territory('ß')` called
@@ -521,8 +553,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `TestTypeGuards` asserting the guard/lookup invariant for `'ß'` and `'ßD'`
   - Location: `introspection/iso.py` `get_territory`, `get_currency`, `get_territory_currencies`
 
-- **`fuzz_atheris/fuzz_scope.py`: all FluentBundle instances use strict=True (default), breaking soft-error return API**
-  (FIX-SCOPE-FUZZER-STRICT-001):
+- **`fuzz_atheris/fuzz_scope.py`: all FluentBundle instances use strict=True (default), breaking soft-error return API**:
   - `fuzz_scope.py` was written when `strict=False` was the `FluentBundle` default; since
     v0.143.0 the default is `strict=True`; patterns that intentionally produce formatting
     errors (`_pattern_adversarial_scope` case 0 — term scope isolation; case 1 — missing
@@ -546,8 +577,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`runtime/resolver.py` `_format_value`: float raises `TypeError` that escapes error handlers**
-  (FIX-RESOLVER-FLOAT-001):
+- **`runtime/resolver.py` `_format_value`: float raises `TypeError` that escapes error handlers**:
   - The `case float():` branch in `_format_value` raised `TypeError`, which is not a subclass
     of `FrozenFluentError`; in `_resolve_select_expression`, `_format_value(selector_value)` is
     called outside any `try/except FrozenFluentError` block, so a float selector value would
@@ -561,16 +591,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     satisfy the never-fail-catastrophically contract
   - Location: `runtime/resolver.py` `FluentResolver._format_value`
 
-- **`runtime/bundle.py` `strict` property docstring: incorrect default example**
-  (FIX-BUNDLE-DOCS-001):
+- **`runtime/bundle.py` `strict` property docstring: incorrect default example**:
   - `FluentBundle.__init__` signature has `strict: bool = True` as the default, but the
     `strict` property's docstring example showed `FluentBundle("en")` returning `False` for
     `bundle.strict`; any user copying the example would receive the wrong mental model
   - Changed the example output from `False` to `True`
   - Location: `runtime/bundle.py` `FluentBundle.strict` property docstring
 
-- **`runtime/bundle.py` `_collect_pending_entries`: O(N) debug log for comments**
-  (FIX-BUNDLE-COMMENT-LOG-001):
+- **`runtime/bundle.py` `_collect_pending_entries`: O(N) debug log for comments**:
   - `_collect_pending_entries` emitted `logger.debug("Skipping comment entry")` for every
     `Comment` AST node in a parsed resource; FTL files routinely contain many comments (section
     headers, attribution, translator notes), so a single `add_resource()` call with 50 comments
@@ -583,8 +611,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`constants.py` `DEFAULT_MAX_EXPANSION_SIZE`: documented conservative accounting semantics**
-  (ARCH-EXPANSION-DOCS-001):
+- **`constants.py` `DEFAULT_MAX_EXPANSION_SIZE`: documented conservative accounting semantics**:
   - The `DEFAULT_MAX_EXPANSION_SIZE` comment did not explain that the expansion budget is a
     conservative upper bound rather than an exact character count; nested message references
     pass the same `ResolutionContext` to inner `resolve_message()` calls, so the inner
@@ -599,8 +626,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **`IntegrityCacheEntry.create` signature: added required `key_hash` parameter**
-  (ARCH-CACHE-KEY-BINDING-001):
+- **`IntegrityCacheEntry.create` signature: added required `key_hash` parameter**:
   - `create(formatted, errors, sequence)` → `create(formatted, errors, sequence, key_hash)`
   - `key_hash` is a BLAKE2b-8 digest of the cache key computed at `put()` time; binds each
     entry cryptographically to its storage position for key confusion detection
@@ -610,8 +636,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     key binding verification (test-only construction)
   - Location: `runtime/cache.py` `IntegrityCacheEntry.create`, `IntegrityCacheEntry._compute_checksum`
 
-- **`syntax.ast.SelectExpression.selector` narrowed from `InlineExpression` to `SelectorExpression`**
-  (ARCH-SELECTOR-TYPE-001):
+- **`syntax.ast.SelectExpression.selector` narrowed from `InlineExpression` to `SelectorExpression`**:
   - `selector: InlineExpression` → `selector: SelectorExpression`
   - `SelectorExpression` is a new type alias for the 6 concrete types the Fluent spec permits
     as select expression selectors: `StringLiteral | NumberLiteral | VariableReference |
@@ -624,8 +649,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`runtime/cache.py` `IntegrityCache.get`: key confusion not detected**
-  (FIX-CACHE-KEY-BINDING-001):
+- **`runtime/cache.py` `IntegrityCache.get`: key confusion not detected**:
   - `IntegrityCacheEntry.verify()` checked internal consistency (checksum covered content +
     metadata) but could not detect key confusion — a scenario where an entry is moved to a
     different cache slot (e.g., via memory corruption, deserialization collision, or hash
@@ -639,8 +663,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     in non-strict mode
   - Location: `runtime/cache.py` `IntegrityCacheEntry`, `IntegrityCache.get`, `IntegrityCache._compute_key_hash`
 
-- **`syntax/ast.py` `SelectExpression.selector`: `Placeable` admitted at type level**
-  (FIX-SELECTOR-TYPE-001):
+- **`syntax/ast.py` `SelectExpression.selector`: `Placeable` admitted at type level**:
   - `selector: InlineExpression` included `Placeable` in the union (per EBNF `inline-expression`
     grammar) but the Fluent Guide and `is_valid_selector` check at parse time reject `Placeable`
     as a selector; the mismatch allowed adversarial AST construction with a `Placeable` selector
@@ -655,21 +678,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`SelectorExpression` type alias exported from `ftllexengine.syntax`**
-  (ARCH-SELECTOR-TYPE-001):
+- **`SelectorExpression` type alias exported from `ftllexengine.syntax`**:
   - `type SelectorExpression = StringLiteral | NumberLiteral | VariableReference | MessageReference | TermReference | FunctionReference`
   - Provides a named type for the restricted set of expressions valid as `SelectExpression.selector`;
     import via `from ftllexengine.syntax import SelectorExpression`
   - Location: `syntax/ast.py`, re-exported from `syntax/__init__.py`
 
-- **`diagnostics.DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR` (code 5011)**
-  (FIX-SELECTOR-TYPE-001):
+- **`diagnostics.DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR` (code 5011)**:
   - New validation error code emitted when a `SelectExpression.selector` is a `Placeable`
     (defense-in-depth guard in `syntax/validator.py`)
   - Location: `diagnostics/codes.py`
 
-- **`diagnostics.ParseTypeLiteral` type alias**
-  (OBS-CODES-003):
+- **`diagnostics.ParseTypeLiteral` type alias**:
   - `type ParseTypeLiteral = Literal["", "currency", "date", "datetime", "decimal", "number"]`
   - Explicit named alias for the `parse_type` field of `FrozenErrorContext`; the `""` absent
     sentinel is now self-documenting from the alias name rather than hidden inside a bare
@@ -680,8 +700,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`diagnostics.DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR` reclassified from warning to error range**
-  (OBS-CODES-006):
+- **`diagnostics.DiagnosticCode.VALIDATION_PLACEABLE_SELECTOR` reclassified from warning to error range**:
   - Code changed from `5110` (validation warning range 5100-5199) to `5011` (validation error
     range 5000-5099); a `Placeable` used as a `SelectExpression` selector is a Fluent spec
     violation, not a structural hint — misclassification as a warning understated the severity
@@ -691,8 +710,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     update any literal `5110` comparisons to `5011`
   - Location: `diagnostics/codes.py`
 
-- **`integrity.PYTHON_EXCEPTION_ATTRS` removed from `__all__`**
-  (OBS-INTEGRITY-002):
+- **`integrity.PYTHON_EXCEPTION_ATTRS` removed from `__all__`**:
   - `PYTHON_EXCEPTION_ATTRS` is an internal implementation constant (frozenset of exception
     machinery attribute names required to stay mutable during exception propagation); it has no
     consumer-facing semantics and must not be imported by application code
@@ -700,8 +718,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     exported public API surface
   - Location: `integrity.py`
 
-- **`diagnostics.DiagnosticCode` gap at `4001` documented**
-  (OBS-CODES-001):
+- **`diagnostics.DiagnosticCode` gap at `4001` documented**:
   - Added inline comment `# 4001: not assigned (gap intentional)` before `PARSE_DECIMAL_FAILED
     = 4002`; previously the enum jumped silently from the range comment to 4002, creating risk
     of accidental reuse
@@ -709,16 +726,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- **`validation/resource.py` responsibility matrix annotated with "internal" qualifier**
-  (OBS-VALIDATION-007):
+- **`validation/resource.py` responsibility matrix annotated with "internal" qualifier**:
   - `VALIDATION_GUIDE.md` responsibility matrix now explicitly labels private functions
     (`_extract_syntax_errors`, `_collect_entries`, `_check_undefined_references`,
     `_detect_circular_references`, `_detect_long_chains`) as "(internal)"; a note states
     these are listed for traceability only and direct imports are unsupported
   - Added missing row: `Placeable as selector (bypass guard)` | `syntax.validator` | `SemanticValidator`
 
-- **`parsing/guards.py` and `runtime/functions.py` canonical import path documented**
-  (OBS-IMPORT-008):
+- **`parsing/guards.py` and `runtime/functions.py` canonical import path documented**:
   - Both private submodule docstrings now state the canonical public import path
     (`from ftllexengine.parsing import ...` and `from ftllexengine.runtime import ...`)
     and explicitly note that direct imports from the private submodule are unsupported
@@ -727,8 +742,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 
-- **`ftllexengine.clear_all_caches` renamed to `ftllexengine.clear_module_caches`**
-  (RENAME-CLEAR-CACHES-001):
+- **`ftllexengine.clear_all_caches` renamed to `ftllexengine.clear_module_caches`**:
   - The function `clear_all_caches()` is renamed to `clear_module_caches()` to accurately
     describe its scope: it clears module-level library caches, not bundle-level caches
     (per-bundle `IntegrityCache` instances are unaffected and must be cleared via
@@ -738,16 +752,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`runtime/bundle.py` `_PendingRegistration.overwrite_warnings`: untyped tuple narrowed**
-  (DEFECT-BUNDLE-OVERWRITE-TYPE-001):
+- **`runtime/bundle.py` `_PendingRegistration.overwrite_warnings`: untyped tuple narrowed**:
   - `overwrite_warnings` field was typed as `list[tuple[str, str]]`; the first element is always
     one of the string literals `"message"` or `"term"` — a fact encoded structurally in the two
     `case` branches that append to this list, but invisible to mypy; narrowed to
     `list[tuple[Literal["message", "term"], str]]` to make the invariant machine-checked
   - Location: `runtime/bundle.py` `_PendingRegistration.overwrite_warnings`
 
-- **`runtime/resolution_context.py` `ResolutionContext.pop`: `IntegrityContext` missing timestamps**
-  (DEFECT-RESOLUTION-CONTEXT-TIMESTAMP-001):
+- **`runtime/resolution_context.py` `ResolutionContext.pop`: `IntegrityContext` missing timestamps**:
   - Both `IntegrityContext` instances constructed in `pop()` omitted the `timestamp` field;
     `IntegrityContext.timestamp` is the primary diagnostic signal for post-mortem ordering of
     integrity events in production; all other `IntegrityContext` constructions in the runtime layer
@@ -756,8 +768,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (stack-underflow path and stack-corruption path)
   - Location: `runtime/resolution_context.py` `ResolutionContext.pop`
 
-- **`runtime/functions.py`: broad `except Exception` narrowed in `parse_pattern` fallback paths**
-  (DEFECT-FUNCTIONS-BROAD-EXCEPT-001):
+- **`runtime/functions.py`: broad `except Exception` narrowed in `parse_pattern` fallback paths**:
   - `number_format` and `currency_format` each contained `except Exception` when catching
     `parse_pattern` failures during max-fraction-digits extraction; `Exception` catches unexpected
     errors (programming bugs, memory issues proxied via exceptions) that should propagate, not be
@@ -770,8 +781,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`FluentBundle` and `FluentLocalization` default `strict` parameter changed to `True`**
-  (CHANGE-STRICT-DEFAULT-001):
+- **`FluentBundle` and `FluentLocalization` default `strict` parameter changed to `True`**:
   - Both `FluentBundle.__init__` and `FluentLocalization.__init__` now default to `strict=True`
     instead of `strict=False`; financial applications require fail-fast behavior — silent fallbacks
     mask formatting errors that would otherwise go undetected in production
@@ -786,8 +796,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`runtime/cache.py` `IntegrityCache.get`: unhashable bypass incorrectly counted as a cache miss**
-  (DEFECT-CACHE-HITRATE-001):
+- **`runtime/cache.py` `IntegrityCache.get`: unhashable bypass incorrectly counted as a cache miss**:
   - `get()` incremented `_misses` when `_make_key` returned `None` (unhashable argument); this
     included unhashable bypasses in the miss denominator of `hit_rate`, deflating the reported rate
     for any workload that passes non-standard argument types; an unhashable bypass is not a cache
@@ -800,8 +809,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     patterns, and `hit_rate` to diagnose insufficient cache size
   - Location: `runtime/cache.py` `IntegrityCache.get` (unhashable-bypass branch)
 
-- **`runtime/cache.py` `IntegrityCacheEntry._compute_checksum`: sequence encoded as signed integer**
-  (DEFECT-CACHE-SEQUENCE-UNSIGNED-001):
+- **`runtime/cache.py` `IntegrityCacheEntry._compute_checksum`: sequence encoded as signed integer**:
   - `_compute_checksum` called `sequence.to_bytes(8, "big", signed=True)`; the sequence is a
     monotonically increasing non-negative counter — using `signed=True` halved the effective range
     (uint64: 0..2^64-1, int64: 0..2^63-1); no negative sequence is ever produced, so the signed
@@ -812,7 +820,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`runtime/rwlock.py` `RWLock`: state inspection properties** (ENHANCEMENT-RWLOCK-OBSERVABILITY-001):
+- **`runtime/rwlock.py` `RWLock`: state inspection properties**:
   - Added three thread-safe read-only properties for production monitoring and testing:
     - `reader_count: int` — number of distinct threads currently holding read locks (a reentrant
       reader counts as one); returns 0 when no readers are active
@@ -823,8 +831,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All three properties acquire `self._condition` for an atomic point-in-time snapshot
   - Location: `runtime/rwlock.py` `RWLock` (three new `@property` methods)
 
-- **`integrity.py` `DataIntegrityError`: runtime `@final` enforcement via `__init_subclass__`**
-  (ENHANCEMENT-INTEGRITY-FINAL-ENFORCEMENT-001):
+- **`integrity.py` `DataIntegrityError`: runtime `@final` enforcement via `__init_subclass__`**:
   - `typing.final` sets `__final__ = True` on decorated classes but provides static-analysis-only
     enforcement (mypy); a runtime subclassing attempt on any of the six `@final` subclasses would
     succeed silently at runtime; added `__init_subclass__` to `DataIntegrityError` that detects
@@ -841,7 +848,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`localization/orchestrator.py` `FluentLocalization.format_pattern`: strict mode not enforced on
-  two early-return paths** (DEFECT-ORCHESTRATOR-STRICT-ENFORCEMENT-001):
+  two early-return paths**:
   - `format_pattern` validated two conditions before entering the main resolution path — (1) that
     `args` is a `Mapping` or `None` via `_check_mapping_arg`, and (2) that `attribute` is `str` or
     `None` — and returned `(FALLBACK_INVALID, tuple(errors))` on failure for both; neither path
@@ -858,10 +865,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `localization/orchestrator.py` `FluentLocalization.format_pattern` (lines guarding
     `_check_mapping_arg` failure and non-`str` attribute)
 
-- **`runtime/cache.py` `IntegrityCache`: four defects corrected in `IntegrityCache`**
-  (DEFECT-CACHE-OBSERVABILITY-001 through DEFECT-CACHE-OBSERVABILITY-004):
-
-  - **DEFECT-CACHE-OBSERVABILITY-001 — `write_once_conflicts` counter missing**: True write-once
+- **`runtime/cache.py` `IntegrityCache`: four defects corrected in `IntegrityCache`**:
+  - **`write_once_conflicts` counter missing**: True write-once
     violations (different content attempted for an existing key under `write_once=True`) were
     silently rejected in non-strict mode with only an audit log entry and no counter; production
     deployments without audit logging had no observable signal for data races; added
@@ -870,8 +875,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     silently rejects AND increments; exposed as `get_stats()["write_once_conflicts"]` and
     `cache.write_once_conflicts` property; the `FluentLocalization.get_cache_stats()` aggregates
     this counter across all bundles
-
-  - **DEFECT-CACHE-OBSERVABILITY-002 — `HashableValue` comment was incorrect**: line-164 comment
+  - **`HashableValue` comment was incorrect**: line-164 comment
     stated "Note: Decimal, datetime, date, FluentNumber are hashable and preserved unchanged" —
     factually wrong; `_make_hashable()` never returns these types directly; all are converted to
     type-tagged tuples (e.g., `Decimal("1.5")` → `("__decimal__", "1.5")`); the primitives appear
@@ -879,13 +883,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     recursive); corrected to accurately describe type-tagging semantics and explain why primitives
     appear in the union
 
-  - **DEFECT-CACHE-OBSERVABILITY-003 — class docstring memory formula was stale**: `IntegrityCache`
+  - **class docstring memory formula was stale**: `IntegrityCache`
     class docstring stated `"Weight is calculated as: len(formatted_str) + (len(errors) * 200)"` —
     the static `200` coefficient was removed in a prior version when dynamic weight calculation via
     `_estimate_error_weight()` was introduced; corrected to `"len(formatted_str) +
     sum(_estimate_error_weight(e) for e in errors)"` with a description of the function's scope
 
-  - **DEFECT-CACHE-OBSERVABILITY-004 — `_error_bloat_skips` conflated two distinct skip causes**:
+  - **`_error_bloat_skips` conflated two distinct skip causes**:
     `put()` has three independent weight guards; check 2 (`len(errors) > max_errors_per_entry`) and
     check 3 (`total_weight > max_entry_weight`) both incremented `_error_bloat_skips`; high
     `_error_bloat_skips` was ambiguous — it could indicate too many errors (pointing at error
@@ -5969,6 +5973,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The changelog has been wiped clean. A lot has changed since the last release, but we're starting fresh.
 - We're officially out of Alpha. Welcome to Beta.
 
+[0.152.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.152.0
 [0.151.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.151.0
 [0.150.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.150.0
 [0.149.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.149.0

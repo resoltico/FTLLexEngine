@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from ftllexengine import FluentBundle
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.localization import (
     FallbackInfo,
     FluentLocalization,
@@ -54,7 +55,7 @@ class TestFluentLocalizationBasics:
         Locale format errors are caught at construction time rather than
         propagating out of format_value during lazy bundle creation.
         """
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'invalid locale with spaces'"):
             FluentLocalization(["en", "invalid locale with spaces"])
 
     def test_locales_property_immutable(self) -> None:
@@ -856,8 +857,8 @@ class TestOnFallbackCallback:
 
         assert result == "English fallback"
         assert len(fallback_events) == 1
-        assert fallback_events[0].requested_locale == "lv"
-        assert fallback_events[0].resolved_locale == "en"
+        assert fallback_events[0].requested_locale == normalize_locale("lv")
+        assert fallback_events[0].resolved_locale == normalize_locale("en")
         assert fallback_events[0].message_id == "fallback-msg"
 
     def test_on_fallback_invoked_on_format_pattern(self) -> None:
@@ -877,8 +878,8 @@ class TestOnFallbackCallback:
 
         assert result == "Pattern from fallback"
         assert len(fallback_events) == 1
-        assert fallback_events[0].requested_locale == "de"
-        assert fallback_events[0].resolved_locale == "en"
+        assert fallback_events[0].requested_locale == normalize_locale("de")
+        assert fallback_events[0].resolved_locale == normalize_locale("en")
         assert fallback_events[0].message_id == "pattern-msg"
 
     def test_on_fallback_not_invoked_for_primary_locale(self) -> None:
@@ -1233,35 +1234,35 @@ class TestPathResourceLoaderLocaleValidation:
         """'..' in locale code raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
-        with pytest.raises(ValueError, match="Path traversal sequences not allowed in locale"):
+        with pytest.raises(ValueError, match=r"Invalid locale: '../../../etc'"):
             loader.load("../../../etc", "messages.ftl")
 
     def test_load_rejects_locale_with_embedded_traversal(self) -> None:
         """'..' embedded within locale code raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
-        with pytest.raises(ValueError, match="Path traversal sequences not allowed in locale"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en/\.\./de'"):
             loader.load("en/../de", "messages.ftl")
 
     def test_load_rejects_locale_with_forward_slash(self) -> None:
         """'/' in locale code raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
-        with pytest.raises(ValueError, match="Path separators not allowed in locale"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en/attack'"):
             loader.load("en/attack", "messages.ftl")
 
     def test_load_rejects_locale_with_backslash(self) -> None:
         """'\\' in locale code raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
-        with pytest.raises(ValueError, match="Path separators not allowed in locale"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en\\\\attack'"):
             loader.load("en\\attack", "messages.ftl")
 
     def test_load_rejects_empty_locale(self) -> None:
         """Empty locale code raises ValueError."""
         loader = PathResourceLoader("locales/{locale}")
 
-        with pytest.raises(ValueError, match="Locale code cannot be empty"):
+        with pytest.raises(ValueError, match="locale cannot be blank"):
             loader.load("", "messages.ftl")
 
     def test_load_accepts_valid_locale_codes(self) -> None:

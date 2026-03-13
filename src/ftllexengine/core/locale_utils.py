@@ -25,11 +25,13 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE
+from ftllexengine.constants import MAX_LOCALE_CACHE_SIZE, MAX_LOCALE_LENGTH_HARD_LIMIT
 from ftllexengine.core.babel_compat import get_locale_class, require_babel
 
 if TYPE_CHECKING:
     from babel import Locale
+
+    from ftllexengine.localization.types import LocaleCode
 
 __all__ = [
     "clear_locale_cache",
@@ -37,20 +39,22 @@ __all__ = [
     "get_system_locale",
     "is_structurally_valid_locale_code",
     "normalize_locale",
+    "require_locale_code",
 ]
 
 
-# BCP-47 locale codes consist of alphanumeric subtags joined by hyphens or
-# underscores. Characters outside this set (e.g. '/', '\x00', unicode)
-# are never valid and can cause Babel to silently create a Locale object
-# with default settings instead of raising UnknownLocaleError or ValueError.
-_VALID_LOCALE_CODE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\-]*$")
+# BCP-47 locale codes consist of ASCII alphanumeric subtags joined by hyphens
+# or underscores. The first subtag must start with a letter. Characters outside
+# this set (e.g. '/', '\x00', unicode) are never valid and can cause Babel to
+# silently create a Locale object with default settings instead of raising
+# UnknownLocaleError or ValueError.
+_VALID_LOCALE_CODE_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9]*([_-][a-zA-Z0-9]+)*\Z")
 
 
 def is_structurally_valid_locale_code(locale_code: str) -> bool:
     """Return True if locale_code contains only BCP-47-valid characters.
 
-    Validates character set only; does NOT verify that the locale exists in
+    Validates structure only; does NOT verify that the locale exists in
     Babel's CLDR database. Use this as a fast pre-filter before calling
     Babel's Locale.parse() to avoid silent acceptance of malformed codes.
 
@@ -58,8 +62,9 @@ def is_structurally_valid_locale_code(locale_code: str) -> bool:
         locale_code: Raw locale code string to validate.
 
     Returns:
-        True if the code contains only alphanumerics, hyphens, and underscores
-        with a letter or digit as the first character; False otherwise.
+        True if the code begins with an ASCII letter and then contains only
+        ASCII alphanumerics joined by hyphen/underscore separators; False
+        otherwise.
     """
     return bool(_VALID_LOCALE_CODE_RE.match(locale_code))
 
@@ -95,6 +100,54 @@ def normalize_locale(locale_code: str) -> str:
         'en'
     """
     return locale_code.replace("-", "_").lower()
+
+
+def require_locale_code(value: object, field_name: str) -> LocaleCode:
+    """Validate and canonicalize a locale code at a system boundary.
+
+    Accepts only non-blank strings containing structurally valid BCP-47 / POSIX
+    locale identifiers, trims surrounding whitespace, and returns the canonical
+    normalized locale code used internally by FTLLexEngine.
+
+    Args:
+        value: Raw locale boundary value.
+        field_name: Field name used in validation error messages.
+
+    Returns:
+        Canonical lowercase POSIX locale code.
+
+    Raises:
+        TypeError: If value is not a string.
+        ValueError: If the value is blank, excessively long, or structurally invalid.
+    """
+    if not isinstance(value, str):
+        msg = f"{field_name} must be str, got {type(value).__name__}"
+        raise TypeError(msg)
+
+    locale_code = value.strip()
+    if locale_code == "":
+        msg = f"{field_name} cannot be blank"
+        raise ValueError(msg)
+
+    if len(locale_code) > MAX_LOCALE_LENGTH_HARD_LIMIT:
+        msg = (
+            f"{field_name} exceeds maximum length of "
+            f"{MAX_LOCALE_LENGTH_HARD_LIMIT} characters: "
+            f"{locale_code[:50]!r}... ({len(locale_code)} characters)"
+        )
+        raise ValueError(msg)
+
+    if not is_structurally_valid_locale_code(locale_code):
+        msg = (
+            f"Invalid {field_name}: {locale_code!r}. "
+            "Locale must be ASCII alphanumeric with optional underscore or "
+            "hyphen separators, beginning with a letter. "
+            "Use BCP 47 format (e.g., 'en-US', 'de-DE', 'zh-Hans-CN'). "
+            "Strip charset suffixes such as '.UTF-8' from POSIX locale strings."
+        )
+        raise ValueError(msg)
+
+    return normalize_locale(locale_code)
 
 
 def _is_pseudo_locale(locale_code: str) -> bool:
@@ -158,7 +211,8 @@ def get_babel_locale(locale_code: str) -> Locale:
         >>> locale.territory
         'US'
     """
-    return _get_babel_locale_normalized(normalize_locale(locale_code))
+    normalized_code = require_locale_code(locale_code, "locale_code")
+    return _get_babel_locale_normalized(normalized_code)
 
 
 def get_system_locale(*, raise_on_failure: bool = False) -> str:

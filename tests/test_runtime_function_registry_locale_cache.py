@@ -2,8 +2,8 @@
 
 Tests for:
 - FunctionRegistry.get_callable() public API
-- LocaleContext.create() always returns LocaleContext
-- LocaleContext.create_or_raise() raises ValueError for invalid locales
+- LocaleContext.create() canonicalizes locale codes and falls back for unknown locales
+- LocaleContext.create_or_raise() raises ValueError for invalid or unknown locales
 - FormatCache.get_stats() returns float hit_rate
 - ASTVisitor uses __slots__
 
@@ -16,6 +16,7 @@ import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.locale_context import LocaleContext
@@ -87,7 +88,7 @@ class TestFunctionRegistryGetCallable:
 
 
 class TestLocaleContextCreate:
-    """Tests for LocaleContext.create() always returning LocaleContext."""
+    """Tests for LocaleContext.create() locale boundary handling."""
 
     def test_create_with_valid_locale_returns_locale_context(self) -> None:
         """create() returns LocaleContext for valid locale."""
@@ -95,42 +96,45 @@ class TestLocaleContextCreate:
         result = LocaleContext.create("en-US")
 
         assert isinstance(result, LocaleContext)
-        assert result.locale_code == "en-US"
+        assert result.locale_code == "en_us"
 
     def test_create_with_unknown_locale_returns_locale_context_with_fallback(self) -> None:
         """create() returns LocaleContext with en_US fallback for unknown locale."""
         result = LocaleContext.create("xx-UNKNOWN")
 
-        # Should return LocaleContext (create() always succeeds now)
+        # Unknown but structurally valid locales still produce a fallback context.
         assert isinstance(result, LocaleContext)
-        # Original locale_code preserved for debugging
-        assert result.locale_code == "xx-UNKNOWN"
+        assert result.locale_code == "xx_unknown"
         # Formatting uses en_US rules (fallback)
         formatted = result.format_number(Decimal("1234.5"), use_grouping=True)
         assert "1,234" in formatted or "1234" in formatted
 
-    def test_create_with_invalid_format_returns_locale_context(self) -> None:
-        """create() returns LocaleContext for invalid locale format."""
+    def test_create_with_unknown_hyphenated_locale_returns_locale_context(self) -> None:
+        """create() falls back for unknown but structurally valid locale strings."""
         result = LocaleContext.create("not-a-valid-locale-format-at-all")
 
         assert isinstance(result, LocaleContext)
-        assert result.locale_code == "not-a-valid-locale-format-at-all"
+        assert result.locale_code == normalize_locale("not-a-valid-locale-format-at-all")
 
-    def test_create_always_returns_locale_context(self) -> None:
-        """create() always returns LocaleContext for any input."""
+    def test_create_accepts_structurally_valid_locale_boundaries(self) -> None:
+        """create() accepts structurally valid locale strings and canonicalizes them."""
         test_locales = [
             "en-US",
             "lv-LV",
             "xx-XX",
             "invalid",
-            "",
-            "123",
             "a" * 100,
         ]
 
         for locale in test_locales:
             result = LocaleContext.create(locale)
             assert isinstance(result, LocaleContext), f"Failed for locale: {locale}"
+
+    @pytest.mark.parametrize("locale", ["", "123", "!!!", " en/us "])
+    def test_create_rejects_structurally_invalid_boundaries(self, locale: str) -> None:
+        """create() rejects blank and structurally invalid locale boundary values."""
+        with pytest.raises((TypeError, ValueError)):
+            LocaleContext.create(locale)
 
 
 class TestLocaleContextCreateOrRaise:
@@ -141,7 +145,7 @@ class TestLocaleContextCreateOrRaise:
         result = LocaleContext.create_or_raise("en-US")
 
         assert isinstance(result, LocaleContext)
-        assert result.locale_code == "en-US"
+        assert result.locale_code == "en_us"
 
     def test_create_or_raise_with_unknown_locale_raises_value_error(self) -> None:
         """create_or_raise() raises ValueError for unknown locale."""
@@ -155,7 +159,7 @@ class TestLocaleContextCreateOrRaise:
 
     def test_create_or_raise_error_message_contains_locale(self) -> None:
         """create_or_raise() error message includes the locale code."""
-        with pytest.raises(ValueError, match="xyz-123"):
+        with pytest.raises(ValueError, match="xyz_123"):
             LocaleContext.create_or_raise("xyz-123")
 
 

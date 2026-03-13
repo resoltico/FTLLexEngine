@@ -332,10 +332,10 @@ class TestLocaleHandlingContracts:
 
     def test_empty_locale_raises_value_error(self) -> None:
         """Empty locale code raises ValueError."""
-        with pytest.raises(ValueError, match="cannot be empty"):
+        with pytest.raises(ValueError, match="locale cannot be blank"):
             FluentBundle("")
 
     def test_locale_with_path_separator_raises_value_error(self) -> None:
         """Locale code containing '/' raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid locale code"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en/US'"):
             FluentBundle("en/US")

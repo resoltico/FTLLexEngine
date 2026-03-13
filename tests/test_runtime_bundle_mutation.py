@@ -12,6 +12,7 @@ Phase: 1 (High-Impact Quick Wins)
 
 import pytest
 
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime import FluentBundle
 
@@ -29,14 +30,14 @@ class TestBundleInitialization:
         """
         # Valid: string locale
         bundle = FluentBundle("en-US")
-        assert bundle.locale == "en-US"
+        assert bundle.locale == "en_us"
 
     def test_bundle_with_empty_locale_raises(self):
         """Kills: len(locale) > 0 mutations.
 
         Empty locale string should raise ValueError.
         """
-        with pytest.raises(ValueError, match="Locale code cannot be empty"):
+        with pytest.raises(ValueError, match="locale cannot be blank"):
             FluentBundle("")
 
     def test_bundle_with_single_char_locale(self):
@@ -396,7 +397,7 @@ class TestLocalePropertyValidation:
         Locale property should return the locale.
         """
         bundle = FluentBundle("de-DE")
-        assert bundle.locale == "de-DE"
+        assert bundle.locale == normalize_locale("de-DE")
 
     def test_locale_property_not_none(self):
         """Kills: locale is None mutations.

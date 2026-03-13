@@ -359,7 +359,7 @@ def GREETING(name: str, locale_code: str, /, *, formal: str = "false") -> str:
 
     Args:
         name: Person's name (positional, from FTL)
-        locale_code: Bundle's locale (auto-injected by runtime)
+        locale_code: Bundle's canonical lowercase underscore locale (auto-injected)
         formal: "true" for formal greeting, "false" for informal (keyword)
 
     Returns:

@@ -30,7 +30,7 @@ Unique coverage (not covered by other fuzzers):
 - format_number() direct: min/max fraction digits, grouping, custom pattern
 - format_currency() direct: currency precision override, custom pattern
 - format_datetime() direct: date object promotion, time/date style combos
-- LocaleContext.create() with invalid locale codes (boundary testing)
+- LocaleContext.create() canonical boundary handling and fallback behavior
 - LocaleContext.cache_size() and clear_cache() lifecycle
 - Cross-locale same-value formatting (determinism invariant)
 - ROUND_HALF_UP oracle checks at fuzz scale
@@ -278,6 +278,7 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine.core.locale_utils import normalize_locale, require_locale_code
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.runtime.locale_context import LocaleContext
 
@@ -388,6 +389,13 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
         pattern_choice = _PATTERN_INDEX[pattern_name]
         locale_code = fdp.PickValueInList(list(_VALID_LOCALES))
         ctx = LocaleContext.create(locale_code)
+        expected_locale = normalize_locale(locale_code)
+        if ctx.locale_code != expected_locale:
+            msg = (
+                f"LocaleContext stored non-canonical locale for {locale_code!r}: "
+                f"{ctx.locale_code!r} vs {expected_locale!r}"
+            )
+            raise LocaleContextFuzzError(msg)
 
         match pattern_choice:
             case 0:  # format_number_int
@@ -586,6 +594,17 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
                 # Must not crash -- either succeeds or raises ValueError
                 try:
                     adv_ctx = LocaleContext.create(fuzz_locale)
+                except (ValueError, TypeError, FrozenFluentError):
+                    pass  # Expected for invalid locale codes
+                else:
+                    expected_locale = require_locale_code(fuzz_locale, "locale_code")
+                    if adv_ctx.locale_code != expected_locale:
+                        msg = (
+                            f"LocaleContext.create({fuzz_locale!r}) returned "
+                            f"locale_code {adv_ctx.locale_code!r}, "
+                            f"expected {expected_locale!r}"
+                        )
+                        raise LocaleContextFuzzError(msg)
                     # If create succeeds, format_number must work
                     result = adv_ctx.format_number(Decimal("1.23"))
                     if not result:
@@ -594,8 +613,6 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
                             f"returned empty"
                         )
                         raise LocaleContextFuzzError(msg)
-                except (ValueError, TypeError, FrozenFluentError):
-                    pass  # Expected for invalid locale codes
 
             case _:  # cross_locale_determinism
                 _domain.cross_locale_checks += 1

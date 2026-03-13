@@ -11,6 +11,7 @@ from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from tests.strategies import ftl_simple_text
 
@@ -565,7 +566,7 @@ class TestBundleEdgeCases:
         try:
             bundle = FluentBundle(locale)
             event(f"locale_len={len(locale)}")
-            assert bundle.locale == locale
+            assert bundle.locale == normalize_locale(locale)
             event("outcome=arbitrary_locale_accepted")
         except Exception:  # pylint: disable=broad-exception-caught
             # Some locales might be rejected by Babel, that's OK
@@ -1621,11 +1622,11 @@ class TestBundleState:
         bundle.add_resource(f"{msg_id} = Value")
 
         # Locale should remain unchanged
-        assert bundle.locale == locale
+        assert bundle.locale == normalize_locale(locale)
 
         # After formatting
         bundle.format_pattern(msg_id)
-        assert bundle.locale == locale
+        assert bundle.locale == normalize_locale(locale)
 
     @given(
         msg_id=ftl_identifiers,
@@ -2415,11 +2416,11 @@ class TestLocaleFallbackBehavior:
         bundle = FluentBundle(locale)
         bundle.add_resource(f"{msg_id} = Value")
 
-        assert bundle.locale == locale
+        assert bundle.locale == normalize_locale(locale)
 
         # After formatting, locale should remain
         bundle.format_pattern(msg_id)
-        assert bundle.locale == locale
+        assert bundle.locale == normalize_locale(locale)
 
     def test_locale_specific_number_formatting(self) -> None:
         """Locale-specific number formatting works."""
@@ -2453,8 +2454,8 @@ class TestLocaleFallbackBehavior:
         bundle2.add_resource("msg = Bundle 2")
 
         # Locales should remain distinct
-        assert bundle1.locale == locale1
-        assert bundle2.locale == locale2
+        assert bundle1.locale == normalize_locale(locale1)
+        assert bundle2.locale == normalize_locale(locale2)
 
 
 # ============================================================================
@@ -2777,10 +2778,10 @@ class TestBundleLocaleHandling:
     def test_locale_preserved_in_bundle(
         self, locale: str, msg_id: str, msg_value: str
     ) -> None:
-        """Property: Bundle preserves locale configuration."""
+        """Property: Bundle canonicalizes and preserves locale configuration."""
         bundle = FluentBundle(locale)
 
-        assert bundle.locale == locale, "Bundle locale mismatch"
+        assert bundle.locale == normalize_locale(locale), "Bundle locale mismatch"
 
         ftl_source = f"{msg_id} = {msg_value}"
         bundle.add_resource(ftl_source)

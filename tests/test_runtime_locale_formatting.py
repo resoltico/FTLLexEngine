@@ -16,6 +16,7 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentBundle
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.runtime.locale_context import LocaleContext
 
 # Test locale set - representative sample of supported locales
@@ -73,7 +74,7 @@ class TestLocaleContextAllLocales:
     def test_locale_context_creation(self, locale_code: str) -> None:
         """LocaleContext can be created for all 30 locales."""
         ctx = LocaleContext.create_or_raise(locale_code)
-        assert ctx.locale_code == locale_code
+        assert ctx.locale_code == normalize_locale(locale_code)
 
     @pytest.mark.parametrize("locale_code", sorted(TEST_LOCALES))
     def test_babel_locale_property(self, locale_code: str) -> None:
@@ -131,7 +132,7 @@ class TestFluentBundleAllLocales:
     def test_bundle_creation(self, locale_code: str) -> None:
         """FluentBundle can be created for all 30 locales."""
         bundle = FluentBundle(locale_code)
-        assert bundle.locale.startswith(locale_code.split("_", maxsplit=1)[0])
+        assert bundle.locale == normalize_locale(locale_code)
 
     @pytest.mark.parametrize("locale_code", sorted(TEST_LOCALES))
     def test_bundle_number_function(self, locale_code: str) -> None:

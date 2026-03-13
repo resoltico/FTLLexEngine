@@ -15,6 +15,7 @@ Concern boundary: this fuzzer targets the text-to-Decimal API surface rather
 than runtime formatting. It exercises:
 - parse_decimal() success and soft-error contracts
 - locale normalization equivalence (BCP-47 vs POSIX vs mixed case)
+- require_locale_code() trim/type/structure/canonicalization boundary checks
 - Babel locale cache behavior and cache clearing
 - get_system_locale() precedence and fallback branches
 - Decimal type-guard invariants for None/NaN/Infinity
@@ -80,6 +81,7 @@ class ParseDecimalMetrics:
     parse_successes: int = 0
     soft_errors: int = 0
     locale_variant_checks: int = 0
+    locale_boundary_checks: int = 0
     type_guard_checks: int = 0
     locale_cache_checks: int = 0
     system_locale_checks: int = 0
@@ -101,6 +103,7 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("canonical_values", 14),
     ("locale_variants", 12),
     ("invalid_soft_error", 12),
+    ("require_locale_code_api", 10),
     ("type_guard_contract", 10),
     ("babel_locale_cache", 10),
     ("system_locale_resolution", 10),
@@ -157,6 +160,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["parse_successes"] = _domain.parse_successes
     stats["soft_errors"] = _domain.soft_errors
     stats["locale_variant_checks"] = _domain.locale_variant_checks
+    stats["locale_boundary_checks"] = _domain.locale_boundary_checks
     stats["type_guard_checks"] = _domain.type_guard_checks
     stats["locale_cache_checks"] = _domain.locale_cache_checks
     stats["system_locale_checks"] = _domain.system_locale_checks
@@ -182,12 +186,14 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
     from ftllexengine.core.locale_utils import (
         _get_babel_locale_normalized,
         clear_locale_cache,
         get_babel_locale,
         get_system_locale,
         normalize_locale,
+        require_locale_code,
     )
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.parsing import is_valid_decimal, parse_decimal
@@ -286,6 +292,114 @@ def _pattern_invalid_soft_error(fdp: atheris.FuzzedDataProvider) -> None:
         raise ParseDecimalFuzzError(msg)
 
     _domain.soft_errors += 1
+
+
+def _assert_require_locale_code_value_error(
+    value: str,
+    field_name: str,
+    expected_fragment: str,
+) -> None:
+    """require_locale_code should reject invalid string input with a helpful message."""
+    try:
+        require_locale_code(value, field_name)
+    except ValueError as err:
+        if expected_fragment not in str(err):
+            msg = f"Locale error missing {expected_fragment!r}: {err!s}"
+            raise ParseDecimalFuzzError(msg) from err
+    else:
+        msg = f"require_locale_code() accepted invalid locale text {value!r}"
+        raise ParseDecimalFuzzError(msg)
+
+
+def _check_require_locale_code_success(
+    fdp: atheris.FuzzedDataProvider,
+    field_name: str,
+) -> None:
+    """Valid locale text is trimmed and canonicalized."""
+    raw = fdp.PickValueInList(
+        [
+            "  EN-us  ",
+            "\tpt-BR\n",
+            " zh-Hans-CN ",
+            "sr_Cyrl_RS",
+        ]
+    )
+    normalized = require_locale_code(raw, field_name)
+    expected = normalize_locale(raw.strip())
+    if normalized != expected:
+        msg = (
+            f"require_locale_code({raw!r}, {field_name!r}) -> {normalized!r}, "
+            f"expected {expected!r}"
+        )
+        raise ParseDecimalFuzzError(msg)
+
+
+def _check_require_locale_code_blank(
+    fdp: atheris.FuzzedDataProvider,
+    field_name: str,
+) -> None:
+    """Blank locale text is rejected."""
+    raw = fdp.PickValueInList(["", " ", "\n\t "])
+    _assert_require_locale_code_value_error(raw, field_name, f"{field_name} cannot be blank")
+
+
+def _check_require_locale_code_invalid_structure(
+    fdp: atheris.FuzzedDataProvider,
+    field_name: str,
+) -> None:
+    """Structurally invalid locale text is rejected."""
+    raw = fdp.PickValueInList(
+        [
+            "1en-US",
+            "en/US",
+            "en US",
+            "C.UTF-8",
+            "en@latin",
+            "de-DE.UTF-8",
+        ]
+    )
+    _assert_require_locale_code_value_error(raw, field_name, f"Invalid {field_name}:")
+
+
+def _check_require_locale_code_non_string(
+    fdp: atheris.FuzzedDataProvider,
+    field_name: str,
+) -> None:
+    """Non-string locale boundary values are rejected."""
+    value = fdp.PickValueInList(
+        [None, 0, Decimal("1.0"), ["en-US"], {"locale": "en-US"}]
+    )
+    try:
+        require_locale_code(value, field_name)
+    except TypeError as err:
+        expected = f"{field_name} must be str"
+        if expected not in str(err):
+            msg = f"Non-string locale error missing {expected!r}: {err!s}"
+            raise ParseDecimalFuzzError(msg) from err
+    else:
+        msg = f"require_locale_code() accepted non-string {value!r}"
+        raise ParseDecimalFuzzError(msg)
+
+
+def _check_require_locale_code_overlong(field_name: str) -> None:
+    """Overlong locale text is rejected."""
+    raw = "e" + ("n" * MAX_LOCALE_LENGTH_HARD_LIMIT)
+    _assert_require_locale_code_value_error(raw, field_name, f"{field_name} exceeds maximum length")
+
+
+def _pattern_require_locale_code_api(fdp: atheris.FuzzedDataProvider) -> None:
+    """require_locale_code enforces trim/type/structure/normalization."""
+    _domain.locale_boundary_checks += 1
+    field_name = fdp.PickValueInList(["locale", "preferred_locale", "ui_locale"])
+    handlers = (
+        lambda: _check_require_locale_code_success(fdp, field_name),
+        lambda: _check_require_locale_code_blank(fdp, field_name),
+        lambda: _check_require_locale_code_invalid_structure(fdp, field_name),
+        lambda: _check_require_locale_code_non_string(fdp, field_name),
+        lambda: _check_require_locale_code_overlong(field_name),
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    handler()
 
 
 def _pattern_type_guard_contract(fdp: atheris.FuzzedDataProvider) -> None:
@@ -428,6 +542,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "canonical_values": _pattern_canonical_values,
     "locale_variants": _pattern_locale_variants,
     "invalid_soft_error": _pattern_invalid_soft_error,
+    "require_locale_code_api": _pattern_require_locale_code_api,
     "type_guard_contract": _pattern_type_guard_contract,
     "babel_locale_cache": _pattern_babel_locale_cache,
     "system_locale_resolution": _pattern_system_locale_resolution,

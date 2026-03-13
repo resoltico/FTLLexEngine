@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.151.0"
+version: "0.152.0"
 domain: CORE
 updated: "2026-03-12"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, WriteLogEntry]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how to validate localization at boot?", "how to check message exists?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
+  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
 ---
 
 # Core API Reference
@@ -411,7 +411,7 @@ def get_cache_stats(self) -> CacheStats | None:
 
 ### Signature
 ```python
-def get_cache_audit_log(self) -> tuple[WriteLogEntry, ...] | None:
+def get_cache_audit_log(self) -> tuple[CacheAuditLogEntry, ...] | None:
 ```
 
 ### Parameters
@@ -419,8 +419,8 @@ def get_cache_audit_log(self) -> tuple[WriteLogEntry, ...] | None:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Tuple of immutable `WriteLogEntry` snapshots, or `None` if caching disabled. Audit-disabled caches return `()`.
-- Import: `from ftllexengine.runtime.cache import WriteLogEntry`
+- Return: Tuple of immutable `CacheAuditLogEntry` snapshots, or `None` if caching disabled. Audit-disabled caches return `()`.
+- Import: `from ftllexengine.localization import CacheAuditLogEntry`
 - Raises: Never.
 - State: Read-only.
 - Thread: Safe.
@@ -440,7 +440,7 @@ def locale(self) -> str:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Locale code string.
+- Return: Canonical lowercase underscore `LocaleCode`.
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
@@ -671,12 +671,12 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk,
 ### Parameters
 | Parameter | Type | Req | Description |
 |:----------|:-----|:----|:------------|
-| `locale` | `LocaleCode` | Y | Target locale (must be in chain, no leading/trailing whitespace). |
+| `locale` | `LocaleCode` | Y | Target locale boundary value; canonicalized before fallback-chain lookup. |
 | `ftl_source` | `FTLSource` | Y | FTL source code. |
 
 ### Constraints
 - Return: Tuple of Junk entries (syntax errors). Empty if parse succeeded.
-- Raises: `ValueError` if locale not in fallback chain or contains leading/trailing whitespace.
+- Raises: `ValueError` if locale is not in the fallback chain after canonicalization, or if the locale boundary is blank/invalid.
 - State: Mutates target bundle.
 - Thread: Safe (RWLock write lock).
 
@@ -904,7 +904,7 @@ def locales(self) -> tuple[LocaleCode, ...]:
 ```
 
 ### Constraints
-- Return: Immutable tuple of locale codes.
+- Return: Immutable tuple of canonical lowercase underscore `LocaleCode` values.
 - Raises: None.
 - State: Read-only property.
 - Thread: Safe.
@@ -976,6 +976,34 @@ def validate_message_schemas(
 - Thread: Safe.
 - Exactness: Declared variables must equal the expected set; both missing and extra variables fail validation.
 - Scope: Resolves each message through the fallback chain via `get_message()`. Terms remain available through `get_term()` plus `validate_message_variables()`.
+
+---
+
+## `FluentLocalization.validate_message_variables`
+
+Method that enforces an exact variable schema for a single fallback-resolved message.
+
+### Signature
+```python
+def validate_message_variables(
+    self,
+    message_id: str,
+    expected_variables: frozenset[str] | set[str],
+) -> MessageVariableValidationResult:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `message_id` | `str` | Y | Message ID to resolve through the fallback chain. |
+| `expected_variables` | `frozenset[str] \| set[str]` | Y | Exact variable set expected for that message. |
+
+### Constraints
+- Return: Immutable `MessageVariableValidationResult` when the message exists and declares exactly the expected variables.
+- Raises: `IntegrityCheckFailedError` when the message is missing or its declared variables differ from `expected_variables`.
+- State: Read-only.
+- Thread: Safe.
+- Scope: Uses the same fallback lookup semantics as `get_message()`.
 
 ---
 
@@ -1182,7 +1210,7 @@ def get_babel_locale(self) -> str:
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Babel locale identifier from primary bundle.
+- Return: Babel locale identifier from the primary bundle's canonical locale.
 - Raises: None.
 - State: Read-only.
 - Thread: Safe.
@@ -1243,7 +1271,7 @@ def get_cache_stats(self) -> LocalizationCacheStats | None:
 - Return: `LocalizationCacheStats` TypedDict with 20 aggregated fields, or `None` if caching disabled. Extends `CacheStats` with `bundle_count`. See `LocalizationCacheStats` for all fields.
 - Note: Numeric fields summed across all bundles; boolean fields reflect first bundle's `CacheConfig`.
 - Note: `bundle_count` reflects only initialized bundles, not total locales.
-- Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
+- Import: `from ftllexengine.localization import LocalizationCacheStats`
 - Raises: None.
 - State: Reads cache statistics from all initialized bundles.
 - Thread: Safe.
@@ -1254,7 +1282,7 @@ def get_cache_stats(self) -> LocalizationCacheStats | None:
 
 ### Signature
 ```python
-def get_cache_audit_log(self) -> dict[LocaleCode, tuple[WriteLogEntry, ...]] | None:
+def get_cache_audit_log(self) -> dict[LocaleCode, tuple[CacheAuditLogEntry, ...]] | None:
 ```
 
 ### Parameters
@@ -1262,10 +1290,10 @@ def get_cache_audit_log(self) -> dict[LocaleCode, tuple[WriteLogEntry, ...]] | N
 |:----------|:-----|:----|:------------|
 
 ### Constraints
-- Return: Per-locale mapping of immutable `WriteLogEntry` tuples, or `None` if caching disabled.
+- Return: Per-locale mapping of immutable `CacheAuditLogEntry` tuples, or `None` if caching disabled.
 - Note: Only initialized bundles are included; this method does not create lazy bundles.
 - Note: Audit-disabled bundles return `()`.
-- Import: `from ftllexengine.runtime.cache import WriteLogEntry`
+- Import: `from ftllexengine.runtime import CacheAuditLogEntry`
 - Raises: Never.
 - State: Reads audit logs from initialized bundles.
 - Thread: Safe.
@@ -1285,7 +1313,7 @@ class LocalizationCacheStats(CacheStats, total=True):
 ### Constraints
 - Purpose: Extends `CacheStats` with `bundle_count` for multi-bundle monitoring. All 19 `CacheStats` fields are inherited with the same semantics; numeric fields are summed across all bundles.
 - `bundle_count`: number of initialized bundles contributing to the aggregated statistics.
-- Import: `from ftllexengine.localization.orchestrator import LocalizationCacheStats`
+- Import: `from ftllexengine.localization import LocalizationCacheStats`
 - Boolean fields: `write_once`, `strict`, `audit_enabled` reflect the first bundle's `CacheConfig` (all bundles share one config).
 
 ---
@@ -1386,6 +1414,32 @@ def normalize_locale(locale_code: str) -> str:
 
 ---
 
+## `require_locale_code`
+
+Validate and canonicalize a locale code at a system boundary.
+
+### Signature
+```python
+def require_locale_code(value: object, field_name: str) -> LocaleCode:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. |
+| `field_name` | `str` | Y | Field label used in error messages. |
+
+### Constraints
+- Return: Lowercase POSIX-formatted locale code (hyphens to underscores, lowercased).
+- Raises: `TypeError` if `value` is not a string.
+- Raises: `ValueError` if `value` is blank, too long, or structurally invalid.
+- State: Trims surrounding whitespace and normalizes the accepted locale.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine.core.locale_utils import require_locale_code`
+
+---
+
 ## `get_babel_locale`
 
 ### Signature
@@ -1401,7 +1455,8 @@ def get_babel_locale(locale_code: str) -> Locale:
 ### Constraints
 - Return: Babel Locale object. Results are cached; semantically equivalent locale codes (e.g., `"en-US"` and `"en_US"`) share a single cache entry.
 - Raises: `BabelImportError` if Babel not installed.
-- Raises: `babel.core.UnknownLocaleError` on invalid locale.
+- Raises: `TypeError` / `ValueError` if the locale boundary value is not a valid locale string.
+- Raises: `babel.core.UnknownLocaleError` when the canonical locale is structurally valid but unknown to Babel.
 - State: Normalizes `locale_code` before delegating to the internal cache.
 - Thread: Safe (internal LRU cache uses its own locking).
 - Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.

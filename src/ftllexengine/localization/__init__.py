@@ -22,12 +22,14 @@ from ftllexengine.localization.loading import (
     ResourceLoader,
     ResourceLoadResult,
 )
-from ftllexengine.localization.orchestrator import FluentLocalization
+from ftllexengine.localization.orchestrator import FluentLocalization, LocalizationCacheStats
 from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
+from ftllexengine.runtime.cache import CacheAuditLogEntry
 
 __all__ = [
     # Main orchestrator
     "FluentLocalization",
+    "LocalizationCacheStats",
     # Loader protocol and implementations
     "ResourceLoader",
     "PathResourceLoader",
@@ -42,4 +44,6 @@ __all__ = [
     "LocaleCode",
     "MessageId",
     "ResourceId",
+    # Public cache audit-log entry type used by localization cache APIs
+    "CacheAuditLogEntry",
 ]

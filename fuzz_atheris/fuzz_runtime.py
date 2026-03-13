@@ -7,7 +7,8 @@
 """Runtime End-to-End Fuzzer (Atheris).
 
 Grammar-aware fuzzer targeting the full runtime stack: FluentBundle,
-IntegrityCache, Resolver, and Strict Mode integrity guarantees.
+IntegrityCache, Resolver, constructor locale boundaries, and strict mode
+integrity guarantees.
 
 Uses structured construction from fuzzed bytes so that libFuzzer mutations
 map to meaningful FTL grammar variations (message structure, selector types,
@@ -102,6 +103,7 @@ class RuntimeMetrics:
     cache_stability_checks: int = 0
     corruption_simulations: int = 0
     ast_lookup_checks: int = 0
+    locale_boundary_checks: int = 0
 
 
 # --- Global State ---
@@ -109,7 +111,7 @@ class RuntimeMetrics:
 _state = BaseFuzzerState(
     seed_corpus_max_size=500,
     fuzzer_name="runtime",
-    fuzzer_target="FluentBundle, IntegrityCache, Resolver, Strict Mode",
+    fuzzer_target="FluentBundle, IntegrityCache, Resolver, Strict Mode, Locale Boundary",
 )
 _domain = RuntimeMetrics()
 
@@ -131,12 +133,22 @@ TEST_LOCALES: Sequence[str] = (
     "root",  # CLDR root
 )
 
-MALICIOUS_LOCALES: Sequence[str] = (
-    "x" * 10000,  # Very long
-    "en" * 1000,  # Repeated
-    "\x00\x01\x02" * 100,  # Control chars
-    "en-US" + "\x00" * 1000,  # Null bytes
-    "invalid!!",  # Invalid chars
+_STRUCTURALLY_INVALID_LOCALES: Sequence[str] = (
+    "en/US",
+    "en US",
+    "en@US",
+    "123_US",
+    "\x00\x01\x02",
+    "en-US" + "\x00" * 8,
+    "invalid!!",
+)
+
+_NON_STRING_LOCALES: Sequence[object] = (
+    None,
+    0,
+    1.5,
+    ["en-US"],
+    {"locale": "en-US"},
 )
 
 TARGET_MESSAGE_IDS: Sequence[str] = (
@@ -279,7 +291,7 @@ _SECURITY_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("security_memory", 20),
     ("security_cache_poison", 15),
     ("security_function_inject", 12),
-    ("security_locale_explosion", 8),
+    ("security_locale_boundary", 8),
     ("security_expansion_budget", 8),
     ("security_dag_expansion", 7),
     ("security_dict_functions", 5),
@@ -321,6 +333,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["cache_stability_checks"] = _domain.cache_stability_checks
     stats["corruption_simulations"] = _domain.corruption_simulations
     stats["ast_lookup_checks"] = _domain.ast_lookup_checks
+    stats["locale_boundary_checks"] = _domain.locale_boundary_checks
 
     return stats
 
@@ -354,6 +367,8 @@ atheris.enabled_hooks.add("RegEx")
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine import validate_message_variables
+    from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
+    from ftllexengine.core.locale_utils import require_locale_code
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.integrity import (
         CacheCorruptionError,
@@ -855,8 +870,8 @@ def _perform_security_fuzzing(fdp: atheris.FuzzedDataProvider) -> str:
             _test_cache_poisoning(fdp)
         case "security_function_inject":
             _test_function_injection(fdp)
-        case "security_locale_explosion":
-            _test_locale_explosion(fdp)
+        case "security_locale_boundary":
+            _test_locale_boundary(fdp)
         case "security_expansion_budget":
             _test_expansion_budget(fdp)
         case "security_dag_expansion":
@@ -984,16 +999,107 @@ def _test_function_injection(fdp: atheris.FuzzedDataProvider) -> None:
         pass
 
 
-def _test_locale_explosion(fdp: atheris.FuzzedDataProvider) -> None:
-    """Test locale explosion attack."""
-    locale = fdp.PickValueInList(list(MALICIOUS_LOCALES))
+def _assert_bundle_locale_accepts(raw_locale: str) -> None:
+    """Accepted constructor locales are canonicalized to LocaleCode form."""
+    try:
+        bundle = FluentBundle(raw_locale, strict=False)
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        msg = f"FluentBundle rejected valid locale {raw_locale!r}: {err}"
+        raise RuntimeIntegrityError(msg) from err
+
+    expected_locale = require_locale_code(raw_locale, "locale")
+    if bundle.locale != expected_locale:
+        msg = (
+            f"FluentBundle stored the wrong canonical locale for {raw_locale!r}: "
+            f"{bundle.locale!r} vs {expected_locale!r}"
+        )
+        raise RuntimeIntegrityError(msg)
+
+    bundle.add_resource("msg = ready\n")
+    result, errors = bundle.format_pattern("msg", {})
+    if result != "ready" or errors:
+        msg = (
+            f"FluentBundle with accepted locale {expected_locale!r} "
+            f"failed basic formatting: result={result!r}, errors={errors!r}"
+        )
+        raise RuntimeIntegrityError(msg)
+
+
+def _assert_bundle_locale_rejected(
+    locale: object,
+    *,
+    expected_exception: type[ValueError | TypeError],
+    expected_fragment: str,
+) -> None:
+    """Rejected constructor locales surface the canonical boundary error model."""
+    locale_value: Any = locale
 
     try:
-        bundle = FluentBundle(locale, strict=False)
-        bundle.add_resource("msg = test\n")
-        bundle.format_pattern("msg", {})
-    except (ValueError, TypeError):
-        pass
+        FluentBundle(locale_value, strict=False)
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        if not isinstance(err, expected_exception):
+            msg = (
+                "FluentBundle raised the wrong locale-boundary exception for "
+                f"{locale!r}: {type(err).__name__}"
+            )
+            raise RuntimeIntegrityError(msg) from err
+        if expected_fragment not in str(err):
+            msg = (
+                "FluentBundle locale-boundary error message drifted for "
+                f"{locale!r}: {err}"
+            )
+            raise RuntimeIntegrityError(msg) from err
+        return
+
+    msg = f"FluentBundle accepted invalid locale {locale!r}"
+    raise RuntimeIntegrityError(msg)
+
+
+def _test_locale_boundary(fdp: atheris.FuzzedDataProvider) -> None:
+    """Test the FluentBundle constructor locale boundary contract."""
+    _domain.locale_boundary_checks += 1
+    scenario = fdp.ConsumeIntInRange(0, 4)
+    boundary_locale = "a" + ("b" * (MAX_LOCALE_LENGTH_HARD_LIMIT - 2)) + "C"
+
+    match scenario:
+        case 0:
+            raw_locale = fdp.PickValueInList(
+                [
+                    "  EN-us  ",
+                    "\tpt-BR\n",
+                    f"  {boundary_locale}  ",
+                ]
+            )
+            _assert_bundle_locale_accepts(raw_locale)
+        case 1:
+            blank_locale = fdp.PickValueInList(["", " ", "\t\n", " \r\n "])
+            _assert_bundle_locale_rejected(
+                blank_locale,
+                expected_exception=ValueError,
+                expected_fragment="locale cannot be blank",
+            )
+        case 2:
+            invalid_locale = fdp.PickValueInList(list(_STRUCTURALLY_INVALID_LOCALES))
+            _assert_bundle_locale_rejected(
+                invalid_locale,
+                expected_exception=ValueError,
+                expected_fragment="Invalid locale:",
+            )
+        case 3:
+            overshoot = fdp.ConsumeIntInRange(1, 32)
+            overlong_locale = "a" * (MAX_LOCALE_LENGTH_HARD_LIMIT + overshoot)
+            _assert_bundle_locale_rejected(
+                overlong_locale,
+                expected_exception=ValueError,
+                expected_fragment="locale exceeds maximum length",
+            )
+        case _:
+            non_string_locale = fdp.PickValueInList(list(_NON_STRING_LOCALES))
+            _assert_bundle_locale_rejected(
+                non_string_locale,
+                expected_exception=TypeError,
+                expected_fragment="locale must be str",
+            )
 
 
 def _test_expansion_budget(fdp: atheris.FuzzedDataProvider) -> None:

@@ -52,6 +52,7 @@ from ftllexengine.integrity import (
 from ftllexengine.runtime.value_types import FluentNumber, FluentValue
 
 __all__ = [
+    "CacheAuditLogEntry",
     "CacheStats",
     "HashableValue",
     "IntegrityCache",
@@ -451,6 +452,10 @@ class WriteLogEntry:
     timestamp: float
     sequence: int
     checksum_hex: str
+
+
+# Public alias for cache audit-log entries returned by runtime/localization facades.
+CacheAuditLogEntry = WriteLogEntry
 
 
 @final

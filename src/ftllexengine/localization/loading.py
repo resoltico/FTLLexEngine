@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.enums import LoadStatus
 
 if TYPE_CHECKING:
@@ -155,24 +156,17 @@ class PathResourceLoader:
         object.__setattr__(self, "_resolved_root", resolved)
 
     @staticmethod
-    def _validate_locale(locale: LocaleCode) -> None:
-        """Validate locale code for path traversal attacks.
+    def _validate_locale(locale: LocaleCode) -> LocaleCode:
+        """Validate and canonicalize locale code for path substitution.
 
         Args:
             locale: Locale code to validate
 
         Raises:
-            ValueError: If locale contains unsafe path components
+            TypeError: If locale is not a string
+            ValueError: If locale is blank or structurally invalid
         """
-        if ".." in locale:
-            msg = f"Path traversal sequences not allowed in locale: '{locale}'"
-            raise ValueError(msg)
-        if "/" in locale or "\\" in locale:
-            msg = f"Path separators not allowed in locale: '{locale}'"
-            raise ValueError(msg)
-        if not locale:
-            msg = "Locale code cannot be empty"
-            raise ValueError(msg)
+        return require_locale_code(locale, "locale")
 
     @staticmethod
     def _validate_resource_id(resource_id: ResourceId) -> None:
@@ -237,7 +231,8 @@ class PathResourceLoader:
         Returns:
             Constructed path string showing the locale-substituted directory
         """
-        locale_path = self.base_path.replace("{locale}", locale)
+        normalized_locale = self._validate_locale(locale)
+        locale_path = self.base_path.replace("{locale}", normalized_locale)
         return f"{locale_path}/{resource_id}"
 
     def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource:
@@ -259,12 +254,12 @@ class PathResourceLoader:
             Validates both locale and resource_id to prevent directory traversal.
             All resolved paths are verified against a fixed root directory.
         """
-        self._validate_locale(locale)
+        normalized_locale = self._validate_locale(locale)
         self._validate_resource_id(resource_id)
 
         # Use replace() instead of format() to avoid KeyError if template
         # contains other braces like "{version}" for future extensibility
-        locale_path = self.base_path.replace("{locale}", locale)
+        locale_path = self.base_path.replace("{locale}", normalized_locale)
         base_dir = Path(locale_path).resolve()
         full_path = (base_dir / resource_id).resolve()
 

@@ -1,6 +1,6 @@
 """Property-based tests for NUMBER, DATETIME, and CURRENCY built-in functions.
 
-LocaleContext.create() always succeeds with en_US fallback.
+Unknown but structurally valid locales fall back to en_US formatting.
 """
 
 from datetime import UTC, datetime

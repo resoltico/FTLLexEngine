@@ -166,42 +166,37 @@ class TestPathResourceLoaderWhitespaceValidation:
 
 
 class TestFluentLocalizationAddResourceWhitespaceValidation:
-    """Test FluentLocalization.add_resource locale whitespace validation."""
+    """Test FluentLocalization.add_resource locale boundary canonicalization."""
 
     def test_add_resource_locale_leading_space_explicit(self) -> None:
-        """add_resource with leading space in locale raises ValueError."""
+        """add_resource trims leading locale whitespace at the boundary."""
         l10n = FluentLocalization(["en"])
+        l10n.add_resource(" en", "msg = test")
 
-        with pytest.raises(
-            ValueError, match=r"leading/trailing whitespace"
-        ) as exc_info:
-            l10n.add_resource(" en", "msg = test")
-
-        assert "leading/trailing whitespace" in str(exc_info.value)
-        assert "' en'" in str(exc_info.value)
-        assert "'en'" in str(exc_info.value)
+        result, errors = l10n.format_value("msg")
+        assert result == "test"
+        assert errors == ()
+        assert l10n.locales == ("en",)
 
     def test_add_resource_locale_trailing_space_explicit(self) -> None:
-        """add_resource with trailing space in locale raises ValueError."""
+        """add_resource trims trailing locale whitespace at the boundary."""
         l10n = FluentLocalization(["en"])
+        l10n.add_resource("en ", "msg = test")
 
-        with pytest.raises(
-            ValueError, match=r"leading/trailing whitespace"
-        ) as exc_info:
-            l10n.add_resource("en ", "msg = test")
-
-        assert "leading/trailing whitespace" in str(exc_info.value)
+        result, errors = l10n.format_value("msg")
+        assert result == "test"
+        assert errors == ()
+        assert l10n.locales == ("en",)
 
     def test_add_resource_locale_tab_character_explicit(self) -> None:
-        """add_resource with tab in locale raises ValueError."""
+        """add_resource trims trailing tab whitespace at the boundary."""
         l10n = FluentLocalization(["en"])
+        l10n.add_resource("en\t", "msg = test")
 
-        with pytest.raises(
-            ValueError, match=r"leading/trailing whitespace"
-        ) as exc_info:
-            l10n.add_resource("en\t", "msg = test")
-
-        assert "leading/trailing whitespace" in str(exc_info.value)
+        result, errors = l10n.format_value("msg")
+        assert result == "test"
+        assert errors == ()
+        assert l10n.locales == ("en",)
 
 
 class TestFormatValueInvalidArgsTypeValidation:

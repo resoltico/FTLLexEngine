@@ -11,6 +11,7 @@ from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT, MAX_SOURCE_SIZE
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError, ValidationError
 from ftllexengine.integrity import FormattingIntegrityError, SyntaxIntegrityError
 from ftllexengine.runtime import FluentBundle
@@ -27,7 +28,7 @@ class TestFluentBundleCreation:
         """Create bundle with locale code."""
         bundle = FluentBundle("lv_LV")
 
-        assert bundle.locale == "lv_LV"
+        assert bundle.locale == "lv_lv"
 
     def test_create_bundle_initializes_empty_registries(self) -> None:
         """Bundle starts with empty message/term registries."""
@@ -791,12 +792,12 @@ class TestBundlePropertyAccessors:
     """Test all property accessors for complete coverage."""
 
     def test_locale_property_returns_configured_locale(self) -> None:
-        """locale property returns the configured locale code."""
+        """locale property returns the canonical locale code."""
         bundle = FluentBundle("lv_LV")
-        assert bundle.locale == "lv_LV"
+        assert bundle.locale == "lv_lv"
 
         bundle_ar = FluentBundle("ar_EG")
-        assert bundle_ar.locale == "ar_EG"
+        assert bundle_ar.locale == "ar_eg"
 
     def test_use_isolating_property_true(self) -> None:
         """use_isolating property returns True when enabled."""
@@ -906,38 +907,38 @@ class TestBundleLocaleValidation:
 
     def test_rejects_invalid_characters(self) -> None:
         """Locale with special characters raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en@invalid'"):
             FluentBundle("en@invalid")
 
     def test_rejects_spaces(self) -> None:
         """Locale with spaces raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en US'"):
             FluentBundle("en US")
 
     def test_rejects_non_ascii(self) -> None:
         """Locale with non-ASCII characters raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid locale code format"):
+        with pytest.raises(ValueError, match=r"Invalid locale: 'ën_FR'"):
             FluentBundle("\u00ebn_FR")
 
     def test_accepts_hyphen_separator(self) -> None:
         """Locale with hyphen separator accepted."""
-        assert FluentBundle("en-US").locale == "en-US"
+        assert FluentBundle("en-US").locale == "en_us"
 
     def test_accepts_underscore_separator(self) -> None:
         """Locale with underscore separator accepted."""
-        assert FluentBundle("en_US").locale == "en_US"
+        assert FluentBundle("en_US").locale == "en_us"
 
     def test_exceeding_max_length_rejected(self) -> None:
         """Locale exceeding MAX_LOCALE_LENGTH_HARD_LIMIT raises ValueError."""
         long_locale = "a" * (MAX_LOCALE_LENGTH_HARD_LIMIT + 1)
-        with pytest.raises(ValueError, match="Locale code exceeds maximum"):
+        with pytest.raises(ValueError, match="locale exceeds maximum length"):
             FluentBundle(long_locale)
 
     def test_exceeding_max_length_shows_truncated(self) -> None:
         """Error message includes truncated locale and actual length."""
         long_locale = "X" * (MAX_LOCALE_LENGTH_HARD_LIMIT + 100)
         with pytest.raises(
-            ValueError, match="Locale code exceeds maximum"
+            ValueError, match="locale exceeds maximum length"
         ) as exc_info:
             FluentBundle(long_locale)
         error_msg = str(exc_info.value)
@@ -958,7 +959,7 @@ class TestBundleSpecialMethods:
         bundle = FluentBundle("lv_LV")
         repr_str = repr(bundle)
         assert "FluentBundle" in repr_str
-        assert "lv_LV" in repr_str
+        assert "lv_lv" in repr_str
         assert "messages=0" in repr_str
         assert "terms=0" in repr_str
 
@@ -986,7 +987,7 @@ class TestBundleForSystemLocale:
             return_value="en_US",
         ):
             bundle = FluentBundle.for_system_locale()
-            assert bundle.locale == "en_US"
+            assert bundle.locale == "en_us"
 
     def test_passes_configuration_parameters(self) -> None:
         """for_system_locale passes all configuration parameters."""
@@ -1000,7 +1001,7 @@ class TestBundleForSystemLocale:
                 strict=True,
                 max_source_size=500_000,
             )
-            assert bundle.locale == "de_DE"
+            assert bundle.locale == "de_de"
             assert bundle.use_isolating is False
             assert bundle.cache_enabled is True
             assert bundle.cache_config is not None
@@ -2062,7 +2063,7 @@ class TestBundleHypothesisProperties:
         try:
             bundle = FluentBundle(locale)
             event("outcome=accepted")
-            assert bundle.locale == locale
+            assert bundle.locale == normalize_locale(locale)
         except ValueError:
             event("outcome=rejected")
 
@@ -2162,7 +2163,7 @@ class TestLocaleValidationAsciiOnly:
         ]
         for locale in valid_locales:
             bundle = FluentBundle(locale)
-            assert bundle.locale == locale
+            assert bundle.locale == normalize_locale(locale)
 
     def test_unicode_locale_rejected(self) -> None:
         """Locale codes with non-ASCII characters raise ValueError."""
@@ -2178,7 +2179,7 @@ class TestLocaleValidationAsciiOnly:
 
     def test_empty_locale_rejected(self) -> None:
         """Empty locale code raises ValueError."""
-        with pytest.raises(ValueError, match="cannot be empty"):
+        with pytest.raises(ValueError, match="locale cannot be blank"):
             FluentBundle("")
 
     def test_invalid_format_rejected(self) -> None:
@@ -2192,7 +2193,7 @@ class TestLocaleValidationAsciiOnly:
             "en@US",
         ]
         for locale in invalid_formats:
-            with pytest.raises(ValueError, match="Invalid locale code format"):
+            with pytest.raises(ValueError, match=r"Invalid locale:"):
                 FluentBundle(locale)
 
     @given(
@@ -2214,7 +2215,7 @@ class TestLocaleValidationAsciiOnly:
         """PROPERTY: ASCII alphanumeric strings starting with a letter are valid locales."""
         event(f"locale_len={len(locale)}")
         bundle = FluentBundle(locale)
-        assert bundle.locale == locale
+        assert bundle.locale == normalize_locale(locale)
 
 
 class TestBundleOverwriteWarning:

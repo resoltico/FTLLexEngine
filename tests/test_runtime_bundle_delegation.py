@@ -15,6 +15,7 @@ from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.runtime.bundle import FluentBundle
@@ -33,7 +34,7 @@ class TestLocaleValidationDoSPrevention:
         # Create locale string exceeding hard limit (1000 characters)
         malicious_locale = "en_" + ("X" * MAX_LOCALE_LENGTH_HARD_LIMIT)
 
-        with pytest.raises(ValueError, match=r"Locale code exceeds maximum length"):
+        with pytest.raises(ValueError, match=r"locale exceeds maximum length"):
             FluentBundle(malicious_locale)
 
     def test_locale_at_hard_limit_boundary_accepted(self) -> None:
@@ -45,7 +46,7 @@ class TestLocaleValidationDoSPrevention:
 
         # Should succeed (at boundary, not exceeding)
         bundle = FluentBundle(boundary_locale)
-        assert bundle.locale == boundary_locale
+        assert bundle.locale == normalize_locale(boundary_locale)
 
     def test_locale_one_over_hard_limit_rejected(self) -> None:
         """Locale at MAX_LOCALE_LENGTH_HARD_LIMIT + 1 is rejected."""
@@ -53,7 +54,7 @@ class TestLocaleValidationDoSPrevention:
         over_limit_locale = "a" * (MAX_LOCALE_LENGTH_HARD_LIMIT + 1)
         assert len(over_limit_locale) == MAX_LOCALE_LENGTH_HARD_LIMIT + 1
 
-        with pytest.raises(ValueError, match=r"Locale code exceeds maximum length"):
+        with pytest.raises(ValueError, match=r"locale exceeds maximum length"):
             FluentBundle(over_limit_locale)
 
     def test_locale_error_message_truncates_display(self) -> None:
@@ -62,7 +63,7 @@ class TestLocaleValidationDoSPrevention:
         long_locale = "X" * 2000
 
         with pytest.raises(
-            ValueError, match=r"Locale code exceeds maximum length"
+            ValueError, match=r"locale exceeds maximum length"
         ) as exc_info:
             FluentBundle(long_locale)
 
@@ -85,7 +86,7 @@ class TestLocaleValidationDoSPrevention:
         overshoot = len(locale) - MAX_LOCALE_LENGTH_HARD_LIMIT
         event(f"boundary={'near' if overshoot <= 10 else 'far'}_limit")
 
-        with pytest.raises(ValueError, match=r"Locale code exceeds maximum length"):
+        with pytest.raises(ValueError, match=r"locale exceeds maximum length"):
             FluentBundle(locale)
 
 

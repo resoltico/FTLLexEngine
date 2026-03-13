@@ -16,12 +16,15 @@ from babel import Locale
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
 from ftllexengine.core.locale_utils import (
     _get_babel_locale_normalized,
     clear_locale_cache,
     get_babel_locale,
     get_system_locale,
+    is_structurally_valid_locale_code,
     normalize_locale,
+    require_locale_code,
 )
 
 
@@ -51,6 +54,41 @@ class TestNormalizeLocale:
     def test_multiple_hyphens(self) -> None:
         """Multiple hyphens all converted to underscores and lowercased."""
         assert normalize_locale("zh-Hans-CN") == "zh_hans_cn"
+
+
+class TestRequireLocaleCode:
+    """Test the public locale boundary helper."""
+
+    def test_returns_normalized_locale_code(self) -> None:
+        """Valid locale strings are trimmed and normalized."""
+        assert require_locale_code("  EN-US  ", "locale") == "en_us"
+
+    def test_rejects_non_string_input(self) -> None:
+        """Non-string boundary values raise TypeError."""
+        with pytest.raises(TypeError, match="locale must be str, got int"):
+            require_locale_code(123, "locale")
+
+    def test_rejects_blank_input(self) -> None:
+        """Blank and whitespace-only values raise ValueError."""
+        with pytest.raises(ValueError, match="locale cannot be blank"):
+            require_locale_code("   ", "locale")
+
+    def test_rejects_invalid_structure(self) -> None:
+        """Malformed locale codes raise ValueError with field context."""
+        with pytest.raises(ValueError, match=r"Invalid locale: 'en/US'"):
+            require_locale_code("en/US", "locale")
+
+    def test_rejects_numeric_first_subtag(self) -> None:
+        """Locale codes must begin with an ASCII letter."""
+        assert is_structurally_valid_locale_code("123_US") is False
+        with pytest.raises(ValueError, match=r"Invalid locale: '123_US'"):
+            require_locale_code("123_US", "locale")
+
+    def test_rejects_excessive_length(self) -> None:
+        """Hard locale length limits are enforced at the boundary."""
+        too_long = "a" * (MAX_LOCALE_LENGTH_HARD_LIMIT + 1)
+        with pytest.raises(ValueError, match="locale exceeds maximum length"):
+            require_locale_code(too_long, "locale")
 
 
 class TestClearLocaleCache:

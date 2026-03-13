@@ -11,7 +11,7 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import FluentLocalization
-from ftllexengine.localization.orchestrator import LocalizationCacheStats
+from ftllexengine.localization import LocalizationCacheStats
 from ftllexengine.runtime.cache_config import CacheConfig
 
 

@@ -198,27 +198,27 @@ date-only = { DATETIME($date, dateStyle: "medium") }
 ```python
 bundle = FluentBundle("en-US")
 
-# Returns input as-is (preserves original)
-bundle.locale  # → "en-US"
+# Returns FTLLexEngine's canonical LocaleCode
+bundle.locale  # → "en_us"
 
-# Returns normalized Babel identifier
+# Returns Babel's CLDR identifier
 bundle.get_babel_locale()  # → "en_US"
 ```
 
 **Design Rationale**:
-- `locale`: Preserves original for debugging/display
-- `get_babel_locale()`: Returns normalized form for Babel operations
+- `locale`: Returns the canonical lowercase underscore `LocaleCode`
+- `get_babel_locale()`: Returns Babel's CLDR-facing identifier
 
 ### Locale Normalization
 
 Internally, locales are normalized for consistent cache keys:
 
 ```python
-# All of these produce the same Babel locale:
-"en-US"   → "en_US"
-"en_US"   → "en_US"
-"EN-US"   → "en_US"
-"en-us"   → "en_US"
+# All of these produce the same canonical LocaleCode:
+"en-US"   → "en_us"
+"en_US"   → "en_us"
+"EN-US"   → "en_us"
+"en-us"   → "en_us"
 ```
 
 BCP-47 is case-insensitive by specification, so all variants are equivalent.
@@ -229,10 +229,10 @@ BCP-47 is case-insensitive by specification, so all variants are equivalent.
 
 ```python
 # Internal: cache key uses normalized form
-cache_key = normalize_locale(locale_code)  # "en_US"
+cache_key = normalize_locale(locale_code)  # "en_us"
 
-# But original is preserved for display
-ctx.locale_code  # Returns original input
+# The public locale_code is canonical too
+ctx.locale_code  # "en_us"
 ```
 
 ---
@@ -311,7 +311,7 @@ result, errors = parse_decimal("1.234,56", "de_DE")
 | `{ NUMBER($var) }` | Locale-aware number formatting |
 | `{ DATETIME($var) }` | Locale-aware date/time formatting |
 | `{ CURRENCY($var, currency: "XXX") }` | Locale-aware currency formatting |
-| `bundle.locale` | Original input, preserved for display |
+| `bundle.locale` | Canonical lowercase underscore `LocaleCode` |
 | `bundle.get_babel_locale()` | Normalized Babel identifier |
 
 **Remember**: Fluent's explicit formatting is a feature, not a bug. When in doubt, check the [Fluent specification](https://projectfluent.org/fluent/guide/).

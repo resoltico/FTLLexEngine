@@ -28,11 +28,13 @@ from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine import validate_message_variables
+from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.integrity import (
     FormattingIntegrityError,
     IntegrityCheckFailedError,
 )
 from ftllexengine.localization import (
+    CacheAuditLogEntry,
     FluentLocalization,
     LoadStatus,
     LoadSummary,
@@ -40,7 +42,6 @@ from ftllexengine.localization import (
     ResourceLoadResult,
 )
 from ftllexengine.runtime.bundle import FluentBundle
-from ftllexengine.runtime.cache import WriteLogEntry
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax import Message, Term
 from ftllexengine.syntax.ast import Junk, Span
@@ -675,6 +676,29 @@ class TestBootValidation:
         assert len(results) == 1
         assert results[0].is_valid is True
 
+    def test_validate_message_variables_returns_single_result(self) -> None:
+        """Single-message boot validation returns the exact validation result."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "invoice = Total { $amount } for { $customer }\n")
+
+        result = l10n.validate_message_variables(
+            "invoice",
+            frozenset({"amount", "customer"}),
+        )
+
+        assert result.message_id == "invoice"
+        assert result.is_valid is True
+
+    def test_validate_message_variables_uses_fallback_chain(self) -> None:
+        """Single-message validation resolves through localization fallback."""
+        l10n = FluentLocalization(["lv", "en"])
+        l10n.add_resource("en", "welcome = Hello { $name }\n")
+
+        result = l10n.validate_message_variables("welcome", frozenset({"name"}))
+
+        assert result.message_id == "welcome"
+        assert result.is_valid is True
+
     def test_validate_message_schemas_raises_for_missing_message(self) -> None:
         """Missing messages fail boot validation with an integrity exception."""
         l10n = FluentLocalization(["en"])
@@ -688,6 +712,21 @@ class TestBootValidation:
         ctx = err.context
         assert ctx is not None
         assert ctx.operation == "validate_message_schemas"
+        assert ctx.key == "missing"
+        assert ctx.actual == "missing_messages=1"
+
+    def test_validate_message_variables_raises_for_missing_message(self) -> None:
+        """Missing single-message validation raises IntegrityCheckFailedError."""
+        l10n = FluentLocalization(["en"])
+
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            l10n.validate_message_variables("missing", frozenset())
+
+        err = exc_info.value
+        assert "missing: not found" in str(err)
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.operation == "validate_message_variables"
         assert ctx.key == "missing"
         assert ctx.actual == "missing_messages=1"
 
@@ -706,6 +745,22 @@ class TestBootValidation:
         ctx = err.context
         assert ctx is not None
         assert ctx.operation == "validate_message_schemas"
+        assert ctx.key == "checkout"
+        assert ctx.actual == "schema_mismatches=1"
+
+    def test_validate_message_variables_raises_for_exact_schema_mismatch(self) -> None:
+        """Single-message validation raises on exact-schema mismatch."""
+        l10n = FluentLocalization(["en"])
+        l10n.add_resource("en", "checkout = Total { $amount } for { $customer }\n")
+
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            l10n.validate_message_variables("checkout", frozenset({"amount"}))
+
+        err = exc_info.value
+        assert "checkout: extra {customer}" in str(err)
+        ctx = err.context
+        assert ctx is not None
+        assert ctx.operation == "validate_message_variables"
         assert ctx.key == "checkout"
         assert ctx.actual == "schema_mismatches=1"
 
@@ -786,7 +841,7 @@ class TestCacheAuditLogBranch:
         assert audit_logs == {}
 
     def test_returns_per_locale_write_log_entries(self) -> None:
-        """get_cache_audit_log() returns immutable WriteLogEntry tuples per locale."""
+        """get_cache_audit_log() returns immutable CacheAuditLogEntry tuples per locale."""
         l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_audit=True))
         l10n.add_resource("en", "msg = Hello\n")
         l10n.add_resource("de", "msg = Hallo\n")
@@ -799,14 +854,14 @@ class TestCacheAuditLogBranch:
         assert list(audit_logs) == ["en", "de"]
         assert [entry.operation for entry in audit_logs["en"]] == ["MISS", "PUT", "HIT"]
         assert audit_logs["de"] == ()
-        assert all(isinstance(entry, WriteLogEntry) for entry in audit_logs["en"])
+        assert all(isinstance(entry, CacheAuditLogEntry) for entry in audit_logs["en"])
 
     @given(enable_audit=st.booleans(), locales=locale_chains(min_size=1, max_size=3))
     @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_property_audit_log_tracks_initialized_locales(
         self, enable_audit: bool, locales: list[str]
     ) -> None:
-        """PROPERTY: get_cache_audit_log() preserves initialized locale keys."""
+        """PROPERTY: get_cache_audit_log() uses canonical locale keys."""
         l10n = FluentLocalization(locales, cache=CacheConfig(enable_audit=enable_audit))
         for locale in locales:
             l10n.add_resource(locale, "msg = Hello\n")
@@ -815,14 +870,18 @@ class TestCacheAuditLogBranch:
 
         audit_logs = l10n.get_cache_audit_log()
         assert audit_logs is not None
-        assert list(audit_logs) == locales
+        normalized_locales = [normalize_locale(locale) for locale in locales]
+        assert list(audit_logs) == normalized_locales
 
         event(f"audit={'enabled' if enable_audit else 'disabled'}")
         event(f"locale_count={len(locales)}")
 
         if enable_audit:
-            assert len(audit_logs[locales[0]]) >= 2
-            assert all(isinstance(entry, WriteLogEntry) for entry in audit_logs[locales[0]])
+            assert len(audit_logs[normalized_locales[0]]) >= 2
+            assert all(
+                isinstance(entry, CacheAuditLogEntry)
+                for entry in audit_logs[normalized_locales[0]]
+            )
         else:
             assert all(log == () for log in audit_logs.values())
 

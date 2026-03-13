@@ -1,7 +1,8 @@
 """Fluent runtime package.
 
 Provides message resolution, built-in functions, manual FluentNumber helpers,
-and the FluentBundle API.
+custom function extension points, cache audit entry aliases, and the
+FluentBundle API.
 Depends on syntax package for parsing.
 
 Python 3.13+.
@@ -10,8 +11,9 @@ Python 3.13+.
 from ftllexengine.diagnostics import ValidationResult
 
 from .bundle import FluentBundle
+from .cache import CacheAuditLogEntry, WriteLogEntry
 from .cache_config import CacheConfig
-from .function_bridge import FunctionRegistry
+from .function_bridge import FluentNumber, FunctionRegistry, fluent_function
 from .functions import (
     create_default_registry,
     currency_format,
@@ -25,15 +27,19 @@ from .resolver import FluentResolver
 from .value_types import make_fluent_number
 
 __all__ = [
+    "CacheAuditLogEntry",
     "CacheConfig",
     "FluentBundle",
+    "FluentNumber",
     "FluentResolver",
     "FunctionRegistry",
     "ResolutionContext",
     "ValidationResult",
+    "WriteLogEntry",
     "create_default_registry",
     "currency_format",
     "datetime_format",
+    "fluent_function",
     "get_shared_registry",
     "make_fluent_number",
     "number_format",
