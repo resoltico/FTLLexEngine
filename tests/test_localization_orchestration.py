@@ -1050,7 +1050,7 @@ class TestOrchestrationProperties:
         event(f"locale_count={len(locales)}")
         locales_dir = tmp_path / "locales"
         for idx, locale in enumerate(locales):
-            locale_dir = locales_dir / locale
+            locale_dir = locales_dir / normalize_locale(locale)
             locale_dir.mkdir(parents=True, exist_ok=True)
             (locale_dir / "main.ftl").write_text(
                 f"{message_id} = Value {idx}", encoding="utf-8",

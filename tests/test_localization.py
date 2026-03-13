@@ -1274,7 +1274,7 @@ class TestPathResourceLoaderLocaleValidation:
             valid_locales = ["en", "en_US", "de_DE", "lv_LV", "zh_Hans_CN"]
 
             for locale in valid_locales:
-                locale_dir = base / "locales" / locale
+                locale_dir = base / "locales" / normalize_locale(locale)
                 locale_dir.mkdir(parents=True, exist_ok=True)
                 test_file = locale_dir / "test.ftl"
                 test_file.write_text(f"msg = Test for {locale}")
