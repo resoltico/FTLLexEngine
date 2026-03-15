@@ -36,7 +36,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.153.0"
+version = "0.154.0"
 description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -102,7 +102,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "hypothesis>=6.151.9",
     "mypy>=1.19.1",
-    "ruff>=0.15.5",
+    "ruff>=0.15.6",
     "pytest-benchmark>=5.2.3",
     "pytest-xdist>=3.8.0",
     "pytest-sugar>=1.1.1",

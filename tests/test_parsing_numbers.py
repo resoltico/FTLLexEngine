@@ -8,8 +8,10 @@ Validates parse_decimal() across multiple locales and roundtrip correctness.
 """
 
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
 from ftllexengine.parsing import parse_decimal, parse_fluent_number
+from ftllexengine.parsing.numbers import _validate_group_positions
 from ftllexengine.runtime import make_fluent_number
 
 
@@ -180,3 +182,85 @@ class TestRoundtrip:
         parsed, errors = parse_decimal(str(formatted), "lv_LV")
         assert not errors
         assert parsed == original
+
+
+class TestValidateGroupPositions:
+    """Direct tests for _validate_group_positions branch coverage.
+
+    The helper is private but tested directly via import because the paths
+    it guards (separator in decimal part only, non-digit groups, wrong middle
+    group size) are not reachable via parse_decimal without crafted inputs
+    that bypass the caller's pre-condition checks.
+    """
+
+    def test_group_sep_in_decimal_part_only_returns_true(self) -> None:
+        """Returns True when group_sep appears only in the decimal part.
+
+        The caller requires group_sep in value, but split on decimal_sep
+        isolates an int_part that does not contain group_sep. Validation
+        is a no-op: Babel will handle the decimal correctly.
+        """
+        # decimal_sep="." splits "1234.5,0" → int_part="1234"; "," not in "1234"
+        result = _validate_group_positions(
+            "1234.5,0",
+            group_sep=",",
+            decimal_sep=".",
+            primary_group=3,
+            secondary_group=3,
+        )
+        assert result is True
+
+    def test_non_digit_groups_returns_true(self) -> None:
+        """Returns True when groups contain non-digit characters.
+
+        Babel will reject the value independently; duplicate error reporting
+        is avoided by skipping the grouping check.
+        """
+        # int_part="abc,123"; "abc".isdigit()=False
+        result = _validate_group_positions(
+            "abc,123",
+            group_sep=",",
+            decimal_sep=".",
+            primary_group=3,
+            secondary_group=3,
+        )
+        assert result is True
+
+    def test_wrong_middle_group_size_returns_false(self) -> None:
+        """Returns False when a middle group has the wrong digit count.
+
+        "1,2,345": groups=["1","2","345"]. Rightmost "345" has 3 digits
+        (passes primary_group=3). Middle "2" has 1 digit (fails secondary_group=3).
+        """
+        result = _validate_group_positions(
+            "1,2,345",
+            group_sep=",",
+            decimal_sep=".",
+            primary_group=3,
+            secondary_group=3,
+        )
+        assert result is False
+
+    def test_locale_symbol_extraction_failure_uses_defaults(self) -> None:
+        """Babel locale symbol access failure falls back to empty group_sep.
+
+        When AttributeError is raised by the locale object's number_symbols
+        mapping, the except clause sets group_sep='' so grouping validation
+        is skipped entirely.
+        """
+        mock_locale = MagicMock()
+        # Make number_symbols[...] raise AttributeError (malformed CLDR data)
+        mock_locale.number_symbols.__getitem__.side_effect = AttributeError(
+            "no number_symbols"
+        )
+        mock_cls = MagicMock()
+        mock_cls.parse.return_value = mock_locale
+
+        with patch(
+            "ftllexengine.parsing.numbers.get_locale_class", return_value=mock_cls,
+        ):
+            # With empty group_sep, validation is skipped.
+            # babel_parse_decimal may succeed or fail with the mock; function
+            # must not propagate an exception either way.
+            _result, errors = parse_decimal("1234.56", "en_US")
+            assert isinstance(errors, tuple)

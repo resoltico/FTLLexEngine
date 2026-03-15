@@ -21,10 +21,10 @@ from babel.numbers import NumberPattern
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.core.value_types import _compute_visible_precision
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import (
-    _compute_visible_precision,
     _mark_locale_required,
     create_default_registry,
     currency_format,

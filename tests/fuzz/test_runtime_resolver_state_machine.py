@@ -14,12 +14,12 @@ from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, invariant, rule
 
+from ftllexengine.core.value_types import FluentValue
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import create_default_registry
 from ftllexengine.runtime.resolver import FluentResolver
-from ftllexengine.runtime.value_types import FluentValue
 from ftllexengine.syntax import (
     Attribute,
     CallArguments,

@@ -1,12 +1,14 @@
-"""Core utilities shared across syntax and runtime layers.
+"""Core utilities shared across syntax, parsing, and runtime layers.
 
-This package provides foundational utilities that both the syntax layer
-(parsing, serialization) and runtime layer (resolution, formatting) depend on.
+This package provides foundational utilities that all higher layers depend on.
 By isolating these utilities here, we maintain a clean dependency graph:
 
-    core <- syntax <- runtime
+    core <- syntax <- parsing <- runtime
 
 Exports (eager — no Babel dependency, no circular import risk):
+    FluentNumber: Formatted number preserving numeric identity and precision
+    FluentValue: Union of all Fluent-compatible value types
+    make_fluent_number: Public helper for manual FluentNumber construction
     FiscalCalendar: Configuration for fiscal year boundaries
     FiscalDelta: Immutable fiscal period delta for date arithmetic
     FiscalPeriod: Immutable fiscal period identifier
@@ -44,6 +46,7 @@ from .fiscal import (
     fiscal_year_end,
     fiscal_year_start,
 )
+from .value_types import FluentNumber, FluentValue, make_fluent_number
 
 if TYPE_CHECKING:
     from .depth_guard import DepthGuard, depth_clamp
@@ -53,6 +56,8 @@ __all__ = [
     "FiscalCalendar",
     "FiscalDelta",
     "FiscalPeriod",
+    "FluentNumber",
+    "FluentValue",
     "MonthEndPolicy",
     "depth_clamp",
     "fiscal_month",
@@ -60,6 +65,7 @@ __all__ = [
     "fiscal_year",
     "fiscal_year_end",
     "fiscal_year_start",
+    "make_fluent_number",
 ]
 
 _LAZY_DEPTH_GUARD = frozenset({"DepthGuard", "depth_clamp"})

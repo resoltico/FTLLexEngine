@@ -2,7 +2,7 @@
 afad: "3.3"
 version: "0.153.0"
 domain: CORE
-updated: "2026-03-13"
+updated: "2026-03-14"
 route:
   keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
@@ -86,7 +86,7 @@ class FluentBundle:
 - Raises: `ValueError` on invalid locale format (must be ASCII alphanumeric with underscore/hyphen separators) or locale code exceeding 1000 characters (DoS prevention).
 - State: Creates internal message/term registries.
 - Thread: Always thread-safe via internal RWLock.
-- Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`. `FluentValue` from `ftllexengine.runtime.value_types`.
+- Import: `FunctionRegistry` from `ftllexengine.runtime.function_bridge`. `FluentValue` from `ftllexengine.core.value_types`.
 - Strict: Default `strict=True` raises `FormattingIntegrityError` on any resolution error and `SyntaxIntegrityError` on junk FTL. Use `strict=False` for soft-error recovery; errors are then returned as a tuple. Errors are cached before raising; subsequent cache hits re-raise without re-resolution.
 - Cache: Security parameters expose `IntegrityCache` features for financial-grade applications.
 

@@ -1,4 +1,4 @@
-"""Tests for _compute_visible_precision edge cases.
+"""Property and unit tests for _compute_visible_precision in core/value_types.
 
 Validates that visible fraction digit counting handles:
 - Standard decimal formats
@@ -15,7 +15,7 @@ from __future__ import annotations
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
-from ftllexengine.runtime.functions import _compute_visible_precision
+from ftllexengine.core.value_types import _compute_visible_precision
 
 
 class TestComputeVisiblePrecisionStandard:

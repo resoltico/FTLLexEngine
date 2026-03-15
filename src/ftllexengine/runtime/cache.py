@@ -43,13 +43,13 @@ from threading import Lock
 from typing import TypedDict, final
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT, MAX_DEPTH
+from ftllexengine.core.value_types import FluentNumber, FluentValue
 from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.integrity import (
     CacheCorruptionError,
     IntegrityContext,
     WriteConflictError,
 )
-from ftllexengine.runtime.value_types import FluentNumber, FluentValue
 
 __all__ = [
     "CacheAuditLogEntry",

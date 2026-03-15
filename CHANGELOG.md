@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.154.0"
 domain: CHANGELOG
-updated: "2026-03-13"
+updated: "2026-03-14"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,61 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.154.0] - 2026-03-15
+
+### Breaking Changes
+
+- **`FluentNumber`, `FluentValue`, `make_fluent_number` canonical path moved to `ftllexengine.core.value_types`**:
+  - `parsing/numbers.py` required `FluentNumber` and `make_fluent_number` to implement
+    `parse_fluent_number()`, creating an upward dependency from the `parsing` layer into
+    the `runtime` layer — a violation of the enforced `core <- syntax <- parsing <- runtime`
+    layer graph
+  - all three symbols are now defined in `ftllexengine.core.value_types`; `runtime.value_types`
+    re-exports them for any internal code that already references that path, but the canonical
+    import is `ftllexengine.core.value_types`
+  - the public package facades (`ftllexengine`, `ftllexengine.runtime`) are unchanged; code
+    importing from those surfaces requires no update
+
+- **`_compute_visible_precision` no longer importable from `ftllexengine.runtime.functions`**:
+  - the pass-through wrapper in `runtime/functions.py` that delegated to
+    `core.value_types._compute_visible_precision` has been removed; the redundant indirection
+    added no value and made the true owner of the function ambiguous
+  - import directly from `ftllexengine.core.value_types` (internal API)
+
+- **`_FTL_REQUIRES_LOCALE_ATTR` relocated from `runtime.value_types` to `runtime.function_bridge`**:
+  - this string constant marks functions requiring locale injection for `@fluent_function` and
+    `FunctionRegistry`; its only users are within `function_bridge.py` and `functions.py`, so
+    placing it in `value_types.py` was a misallocation of responsibility
+  - import from `ftllexengine.runtime.function_bridge` (internal API)
+
+### Fixed
+
+- **Dead code removed from `parsing/numbers.py`**:
+  - `_validate_group_positions` contained an unreachable branch `if len(groups) == 1: return True`
+    immediately after `if group_sep not in int_part: return True`; after the first guard passes
+    (`group_sep` is confirmed to be in `int_part`), `split` always yields at least two elements,
+    making `len(groups) == 1` impossible; the dead branch has been deleted
+
+### Changed
+
+- **Dead TypeIs version guards removed in three modules**:
+  - `parsing/guards.py`, `introspection/iso.py`, and `syntax/ast.py` each contained
+    `if sys.version_info >= (3, 13) or TYPE_CHECKING: from typing import TypeIs` guards
+  - Python 3.13 is the minimum supported version; the condition is always True at runtime,
+    making the `or TYPE_CHECKING` branch permanently dead code
+  - `TypeIs` is now imported unconditionally as a direct top-level import in all three files;
+    `import sys` and the associated `TYPE_CHECKING` guard (where used exclusively for TypeIs)
+    have been removed
+
+- **Coverage pragmas added for structurally unreachable paths**:
+  - `@overload` stubs in `runtime/function_bridge.py` annotated `# pragma: no cover`; PEP 484
+    overload stubs are never executed at runtime — the implementation body is the only callable
+  - defensive `raise AssertionError` after `NoReturn` calls in `localization/orchestrator.py`
+    annotated `# pragma: no cover`; the preceding `_raise_integrity_check_failed()` is declared
+    `-> NoReturn` and always raises, making the guard unreachable by construction
+  - for-loop in `require_clean` annotated `# pragma: no branch`; when `all_clean=False` at
+    least one result is always non-clean, so the loop always breaks before exhaustion
 
 ## [0.153.0] - 2026-03-13
 

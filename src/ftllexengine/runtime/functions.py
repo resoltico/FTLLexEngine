@@ -38,35 +38,17 @@ if TYPE_CHECKING:
     from decimal import Decimal
 
 from ftllexengine.core.babel_compat import get_babel_numbers
-
-from .function_bridge import FunctionRegistry
-from .locale_context import LocaleContext
-from .value_types import (
-    _FTL_REQUIRES_LOCALE_ATTR,
+from ftllexengine.core.value_types import (
     FluentNumber,
     _make_fluent_number,
 )
-from .value_types import (
-    _compute_visible_precision as _compute_visible_precision_impl,
-)
+
+from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FunctionRegistry
+from .locale_context import LocaleContext
 
 __all__ = ["create_default_registry", "get_shared_registry"]
 
 logger = logging.getLogger(__name__)
-
-
-def _compute_visible_precision(
-    formatted: str,
-    decimal_symbol: str,
-    *,
-    max_fraction_digits: int | None = None,
-) -> int:
-    """Count visible fraction digits in a formatted number string."""
-    return _compute_visible_precision_impl(
-        formatted,
-        decimal_symbol,
-        max_fraction_digits=max_fraction_digits,
-    )
 
 
 def number_format(

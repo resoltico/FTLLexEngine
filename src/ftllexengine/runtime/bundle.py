@@ -45,10 +45,10 @@ from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
 if TYPE_CHECKING:
+    from ftllexengine.core.value_types import FluentValue
     from ftllexengine.introspection import MessageIntrospection
     from ftllexengine.localization.types import LocaleCode
     from ftllexengine.runtime.cache_config import CacheConfig
-    from ftllexengine.runtime.value_types import FluentValue
 
 __all__ = ["FluentBundle"]
 

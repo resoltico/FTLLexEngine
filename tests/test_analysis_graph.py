@@ -11,9 +11,11 @@ Python 3.13+.
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
+import ftllexengine.analysis.graph as _graph_mod
 from ftllexengine.analysis.graph import (
     detect_cycles,
     entry_dependency_set,
@@ -502,3 +504,58 @@ class TestDetectCyclesBounded:
         cycles = detect_cycles(graph)
         event(f"cycle_count={len(cycles)}")
         assert len(cycles) <= MAX_DETECTED_CYCLES
+
+
+class TestDetectCyclesMonkeypatched:
+    """Tests that exercise limit-sentinel branches via monkeypatched constants.
+
+    detect_cycles() has two early-exit sentinels:
+    1. ``MAX_DETECTED_CYCLES`` outer-loop ``break`` (line: ``if len(cycles) >= ...``).
+    2. ``MAX_GRAPH_DFS_STACK`` stack-push guard (``if len(stack) < ...``).
+
+    Both branches require adversarial inputs that are infeasible to construct at
+    real production limits (1000 and 100000). Monkeypatching the module-level
+    constants to tiny values lets the same code path fire on small graphs.
+    """
+
+    def test_max_detected_cycles_outer_break_fires(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Outer-loop break fires when MAX_DETECTED_CYCLES reached mid-iteration.
+
+        With the limit set to 1, after finding the first cycle the outer loop
+        encounters a second start_node and immediately breaks before exploring it.
+        """
+        monkeypatch.setattr(_graph_mod, "MAX_DETECTED_CYCLES", 1)
+
+        # Two disjoint self-loops: each is a cycle. Limit=1 means the second
+        # start_node triggers the outer break before it is explored.
+        deps = {"a": {"a"}, "b": {"b"}}
+        cycles = detect_cycles(deps)
+
+        # Limit enforced: at most 1 cycle returned
+        assert len(cycles) <= 1
+
+    def test_max_graph_dfs_stack_push_guard_fires(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Stack-push guard fires when the DFS work queue reaches MAX_GRAPH_DFS_STACK.
+
+        With the limit set to 3, a moderately connected graph saturates the
+        stack before all neighbors are pushed. detect_cycles must still return
+        without error and without exceeding the limit.
+        """
+        monkeypatch.setattr(_graph_mod, "MAX_GRAPH_DFS_STACK", 3)
+
+        # Dense 4-node graph generates many stack pushes per node
+        deps = {
+            "a": {"b", "c", "d"},
+            "b": {"a", "c"},
+            "c": {"a", "b"},
+            "d": {"a"},
+        }
+        cycles = detect_cycles(deps)
+
+        # Function must not raise and must return a valid list
+        assert isinstance(cycles, list)
+        assert all(isinstance(c, list) for c in cycles)

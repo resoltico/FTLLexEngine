@@ -2,7 +2,7 @@
 afad: "3.3"
 version: "0.153.0"
 domain: FUZZING
-updated: "2026-03-13"
+updated: "2026-03-14"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -16,7 +16,7 @@ route:
 
 | Fuzzer | Target Module(s) | Patterns | Seeds | Concern |
 |:-------|:-----------------|:---------|:------|:--------|
-| `fuzz_bridge.py` | `runtime.function_bridge`, `runtime.value_types` | 16 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts, `make_fluent_number()` |
+| `fuzz_bridge.py` | `runtime.function_bridge`, `core.value_types` | 16 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts, `make_fluent_number()` |
 | `fuzz_graph.py` | `analysis.graph` | 12 | 24 (.bin) | Dependency graph cycle detection, canonicalization |
 | `fuzz_builtins.py` | `runtime.functions` | 13 | 24 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency, integrity, and public audit-trail access |
@@ -70,7 +70,7 @@ route:
 | `runtime.cache` | runtime, cache |
 | `runtime.plural_rules` | plural |
 | `runtime.rwlock` | lock |
-| `runtime.value_types` | bridge |
+| `core.value_types` | bridge |
 | `syntax.cursor` | cursor |
 | `syntax.parser` | oom, roundtrip, serializer, structured |
 | `syntax.position` | cursor |
@@ -80,7 +80,7 @@ route:
 
 ## `fuzz_bridge`
 
-Target: `runtime.function_bridge`, `runtime.value_types` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `make_fluent_number()`, `fluent_function` decorator, freeze/copy isolation, dict-like interface, metadata API, signature validation error paths.
+Target: `runtime.function_bridge`, `core.value_types` -- FunctionRegistry lifecycle, `_to_camel_case`, parameter mapping, FluentNumber contracts, `make_fluent_number()`, `fluent_function` decorator, freeze/copy isolation, dict-like interface, metadata API, signature validation error paths.
 
 Concern boundary: This fuzzer stress-tests the bridge machinery that connects FTL function calls to Python implementations. Distinct from fuzz_builtins which tests built-in functions (NUMBER, DATETIME, CURRENCY) through the bridge; this fuzzer tests the bridge itself: registration, dispatch, parameter conversion, lifecycle, direct FluentNumber construction, and introspection. Tests registration error paths (inject_locale arity validation, underscore collision detection, auto-naming), metadata API (get_expected_positional_args, get_builtin_metadata, has_function), `make_fluent_number()` visible-precision inference, and adversarial Python objects through FluentBundle resolution.
 

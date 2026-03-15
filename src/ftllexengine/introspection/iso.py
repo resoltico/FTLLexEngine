@@ -14,10 +14,13 @@ Python 3.13+. Babel is optional dependency.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING
+
+# TypeIs (PEP 742) is available unconditionally on Python 3.13+, which is the
+# minimum supported version. The import is placed here at module level so that
+# typing.get_type_hints() callers resolve the name from this module's globals.
+from typing import TypeIs
 
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
@@ -34,12 +37,6 @@ from ftllexengine.core.babel_compat import (
     get_unknown_locale_error_class,
 )
 from ftllexengine.core.locale_utils import normalize_locale
-
-# TypeIs was added in Python 3.13 (PEP 742). Use a version guard so:
-# - Python 3.13+: TypeIs is in the module namespace at runtime; get_type_hints() works.
-# - Python 3.12: avoids ImportError; defer to TYPE_CHECKING for mypy only.
-if sys.version_info >= (3, 13) or TYPE_CHECKING:
-    from typing import TypeIs
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [

@@ -28,6 +28,7 @@ from ftllexengine.core.locale_utils import (
     is_structurally_valid_locale_code,
     normalize_locale,
 )
+from ftllexengine.core.value_types import FluentNumber, make_fluent_number
 from ftllexengine.diagnostics import (
     ErrorCategory,
     FrozenErrorContext,
@@ -35,7 +36,6 @@ from ftllexengine.diagnostics import (
     ParseResult,
 )
 from ftllexengine.diagnostics.templates import ErrorTemplate
-from ftllexengine.runtime.value_types import FluentNumber, make_fluent_number
 
 __all__ = ["parse_decimal", "parse_fluent_number"]
 
@@ -65,8 +65,6 @@ def _validate_group_positions(
     if group_sep not in int_part:
         return True
     groups = int_part.split(group_sep)
-    if len(groups) == 1:
-        return True
     # Non-digit content means Babel will reject the input independently;
     # skip grouping check to avoid duplicate error reporting.
     if not all(g.isdigit() for g in groups):

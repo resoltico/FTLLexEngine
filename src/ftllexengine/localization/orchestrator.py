@@ -64,11 +64,11 @@ from ftllexengine.runtime.cache import CacheAuditLogEntry, CacheStats
 from ftllexengine.runtime.rwlock import RWLock
 
 if TYPE_CHECKING:
+    from ftllexengine.core.value_types import FluentValue
     from ftllexengine.diagnostics import ValidationResult
     from ftllexengine.introspection import MessageIntrospection
     from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
     from ftllexengine.runtime.cache_config import CacheConfig
-    from ftllexengine.runtime.value_types import FluentValue
     from ftllexengine.syntax import Junk, Message, Term
 
 __all__ = ["FluentLocalization", "LocalizationCacheStats"]
@@ -454,7 +454,7 @@ class FluentLocalization:
 
         issue_key: str | None = None
         issue_detail: str | None = None
-        for result in summary.results:
+        for result in summary.results:  # pragma: no branch
             if result.is_error or result.is_not_found or result.has_junk:
                 issue_key, issue_detail = self._describe_unclean_load_result(result)
                 break
@@ -473,7 +473,7 @@ class FluentLocalization:
             expected="LoadSummary(all_clean=True)",
             actual=actual,
         )
-        raise AssertionError
+        raise AssertionError  # pragma: no cover
 
     @staticmethod
     def _format_schema_difference(
@@ -536,7 +536,7 @@ class FluentLocalization:
             expected="1 exact schema match",
             actual="schema_mismatches=1",
         )
-        raise AssertionError
+        raise AssertionError  # pragma: no cover
 
     def validate_message_schemas(
         self,

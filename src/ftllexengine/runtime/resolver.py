@@ -31,6 +31,7 @@ from ftllexengine.constants import (
 )
 from ftllexengine.core import depth_clamp
 from ftllexengine.core.babel_compat import BabelImportError
+from ftllexengine.core.value_types import FluentNumber
 from ftllexengine.diagnostics import (
     ErrorCategory,
     ErrorTemplate,
@@ -41,7 +42,6 @@ from ftllexengine.runtime.resolution_context import (
     GlobalDepthGuard,
     ResolutionContext,
 )
-from ftllexengine.runtime.value_types import FluentNumber
 from ftllexengine.syntax import (
     Expression,
     FunctionReference,
@@ -61,8 +61,8 @@ from ftllexengine.syntax import (
 )
 
 if TYPE_CHECKING:
+    from ftllexengine.core.value_types import FluentValue
     from ftllexengine.runtime.function_bridge import FunctionRegistry
-    from ftllexengine.runtime.value_types import FluentValue
 
 __all__ = ["FluentResolver", "GlobalDepthGuard", "ResolutionContext"]
 

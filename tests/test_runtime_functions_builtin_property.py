@@ -9,9 +9,9 @@ from decimal import Decimal
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.core.value_types import _compute_visible_precision
 from ftllexengine.runtime.function_bridge import FluentNumber
 from ftllexengine.runtime.functions import (
-    _compute_visible_precision,
     create_default_registry,
     currency_format,
     datetime_format,

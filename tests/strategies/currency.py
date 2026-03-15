@@ -42,22 +42,36 @@ _AMBIGUOUS_SYMBOLS: list[str] = [
     "$", "kr", "\u00a5", "\u00a3", "R", "R$", "S/",
 ]
 
-# Locale -> expected currency for locale inference tests
-_LOCALE_CURRENCY_PAIRS: list[tuple[str, str]] = [
-    ("en_US", "USD"),
-    ("en_CA", "CAD"),
-    ("en_AU", "AUD"),
-    ("en_GB", "GBP"),
-    ("de_DE", "EUR"),
-    ("ja_JP", "JPY"),
-    ("zh_CN", "CNY"),
-    ("es_MX", "MXN"),
-    ("pt_BR", "BRL"),
-    ("sv_SE", "SEK"),
-    ("ko_KR", "KRW"),
-    ("hi_IN", "INR"),
-    ("lv_LV", "EUR"),
-]
+# Category-first locale pairs for uniform distribution across symbol categories.
+# Keyed by symbol category so the strategy draws category first, then picks a
+# locale within it. Drawing locale first from a flat list would create structural
+# skew because dollar-associated currencies (USD, CAD, AUD, MXN, BRL, EUR) make
+# up 7 of 13 entries (~54%), collapsing the intended 20%-per-category distribution.
+_CATEGORY_LOCALE_PAIRS: dict[str, list[tuple[str, str]]] = {
+    "dollar": [
+        ("en_US", "USD"),
+        ("en_CA", "CAD"),
+        ("en_AU", "AUD"),
+        ("es_MX", "MXN"),
+        ("pt_BR", "BRL"),
+        ("de_DE", "EUR"),
+        ("lv_LV", "EUR"),
+    ],
+    "yen": [
+        ("ja_JP", "JPY"),
+        ("zh_CN", "CNY"),
+    ],
+    "pound": [
+        ("en_GB", "GBP"),
+    ],
+    "krona": [
+        ("sv_SE", "SEK"),
+    ],
+    "other": [
+        ("ko_KR", "KRW"),
+        ("hi_IN", "INR"),
+    ],
+}
 
 # ISO codes for direct code-based parsing
 _COMMON_ISO_CODES: list[str] = [
@@ -163,25 +177,21 @@ def ambiguous_currency_inputs(
     Returns:
         Tuple of (value_str, locale, default_currency, expected_code).
     """
-    locale, expected = draw(st.sampled_from(_LOCALE_CURRENCY_PAIRS))
+    symbol_cat = draw(st.sampled_from(["dollar", "yen", "pound", "krona", "other"]))
+    locale, expected = draw(st.sampled_from(_CATEGORY_LOCALE_PAIRS[symbol_cat]))
     amount = draw(currency_amounts())
 
-    # Pick symbol appropriate for the locale's currency
-    symbol = "$"
-    symbol_cat = "dollar"
-    if expected in {"JPY", "CNY"}:
-        symbol = "\u00a5"
-        symbol_cat = "yen"
-    elif expected == "GBP":
-        symbol = "\u00a3"
-        symbol_cat = "pound"
-    elif expected == "SEK":
-        symbol = "kr"
-        symbol_cat = "krona"
-    elif expected in {"INR", "KRW"}:
-        # Use ISO code for these (their symbols are unambiguous)
-        symbol = expected
-        symbol_cat = "other"
+    match symbol_cat:
+        case "dollar":
+            symbol = "$"
+        case "yen":
+            symbol = "\u00a5"
+        case "pound":
+            symbol = "\u00a3"
+        case "krona":
+            symbol = "kr"
+        case _:  # other: use ISO code directly (KRW, INR)
+            symbol = expected
 
     value = f"{symbol}{amount}"
 

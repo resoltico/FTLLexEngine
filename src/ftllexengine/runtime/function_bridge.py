@@ -32,14 +32,15 @@ from functools import wraps
 from inspect import Parameter, signature
 from typing import TYPE_CHECKING, overload
 
+from ftllexengine.core.value_types import FluentNumber, FluentValue
 from ftllexengine.diagnostics import ErrorCategory, ErrorTemplate, FrozenFluentError
-from ftllexengine.runtime.value_types import (
-    _FTL_REQUIRES_LOCALE_ATTR,
-    FluentFunction,
-    FluentNumber,
-    FluentValue,
-    FunctionSignature,
-)
+from ftllexengine.runtime.value_types import FluentFunction, FunctionSignature
+
+# Attribute name for marking functions that require locale injection.
+# Defined here (the function bridge) because only fluent_function(), @fluent_function
+# decorator, and FunctionRegistry.should_inject_locale() read/write this attribute.
+# Exported so that runtime/functions.py can access it without importing from value_types.
+_FTL_REQUIRES_LOCALE_ATTR: str = "_ftl_requires_locale"
 
 if TYPE_CHECKING:
     from ftllexengine.runtime.function_metadata import FunctionMetadata
@@ -55,7 +56,7 @@ __all__ = [
 
 
 @overload
-def fluent_function[F: Callable[..., FluentValue]](
+def fluent_function[F: Callable[..., FluentValue]](  # pragma: no cover
     func: F,
     *,
     inject_locale: bool = False,
@@ -63,7 +64,7 @@ def fluent_function[F: Callable[..., FluentValue]](
 
 
 @overload
-def fluent_function[F: Callable[..., FluentValue]](
+def fluent_function[F: Callable[..., FluentValue]](  # pragma: no cover
     func: None = None,
     *,
     inject_locale: bool = False,
