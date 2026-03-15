@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.154.0"
 domain: FUZZING
-updated: "2026-03-14"
+updated: "2026-03-15"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]

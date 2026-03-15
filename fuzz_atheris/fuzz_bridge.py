@@ -6,7 +6,7 @@
 # FUZZ_PLUGIN_HEADER_END
 """FunctionRegistry Bridge Machinery Fuzzer (Atheris).
 
-Targets: ftllexengine.runtime.function_bridge, ftllexengine.runtime.value_types
+Targets: ftllexengine.runtime.function_bridge, ftllexengine.core.value_types
 (FunctionRegistry, FunctionSignature, FluentNumber, make_fluent_number,
 fluent_function decorator, parameter mapping, locale injection)
 
@@ -260,6 +260,7 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    from ftllexengine.core.value_types import make_fluent_number
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.runtime.bundle import FluentBundle
     from ftllexengine.runtime.cache_config import CacheConfig
@@ -272,7 +273,6 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         create_default_registry,
         get_shared_registry,
     )
-    from ftllexengine.runtime.value_types import make_fluent_number
 
 
 # --- Constants ---
